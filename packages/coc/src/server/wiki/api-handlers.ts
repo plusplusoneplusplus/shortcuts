@@ -58,7 +58,6 @@ export function handleApiRequest(
 ): void {
     const { wikiData } = context;
 
-    // GET /api/graph
     if (method === 'GET' && pathname === '/api/graph') {
         handleGetGraph(res, wikiData);
         return;
@@ -87,7 +86,6 @@ export function handleApiRequest(
         return;
     }
 
-    // GET /api/components
     if (method === 'GET' && pathname === '/api/components') {
         handleGetComponents(res, wikiData);
         return;
@@ -201,7 +199,6 @@ export function handleApiRequest(
         }
     }
 
-    // 404 for unknown API routes
     send404(res, `Unknown API endpoint: ${method} ${pathname}`);
 }
 

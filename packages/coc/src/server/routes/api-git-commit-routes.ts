@@ -199,7 +199,6 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             try {
                 // name-status with rename/copy detection
                 const nameStatusRaw = await execGitArgsAsync(['diff-tree', '--no-commit-id', '-r', '--name-status', '-M', '-C', hash], ws.rootPath);
-                // numstat for additions/deletions
                 const numstatRaw = await execGitArgsAsync(['diff-tree', '--no-commit-id', '-r', '--numstat', '-M', '-C', hash], ws.rootPath);
 
                 // Parse numstat: "additions\tdeletions\tpath" (renames: "old\tnew")

@@ -95,12 +95,10 @@ export class WikiManager {
     register(registration: WikiRegistration): void {
         const resolvedDir = path.resolve(registration.wikiDir);
 
-        // Validate directory exists
         if (!fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) {
             throw new Error(`Wiki directory does not exist: ${resolvedDir}`);
         }
 
-        // Validate component-graph.json exists
         const graphPath = path.join(resolvedDir, 'component-graph.json');
         if (!fs.existsSync(graphPath)) {
             throw new Error(`component-graph.json not found in wiki directory: ${resolvedDir}`);
@@ -116,7 +114,6 @@ export class WikiManager {
             );
         }
 
-        // If this wiki ID is already registered, unregister it first
         if (this.wikis.has(registration.wikiId)) {
             this.unregister(registration.wikiId);
         }
@@ -184,7 +181,6 @@ export class WikiManager {
         // Destroy conversation sessions
         runtime.sessionManager?.destroyAll();
 
-        // Stop file watcher
         runtime.fileWatcher?.stop();
 
         // Remove from registry

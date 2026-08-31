@@ -448,7 +448,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const startTime = Date.now();
         logger.debug(LogCategory.AI, `[QueueExecutor] Starting task ${task.id} (type: ${task.type}, name: ${task.displayName || 'unnamed'})`);
 
-        // Check if cancelled before starting
         if (opts.cancelledTasks.has(task.id)) {
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} was cancelled before starting`);
             if (isChatFollowUp(task.payload)) {
@@ -933,7 +932,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
                 }
 
-                // Drain pending messages after task completion
                 if (finalStatus === 'completed' && opts.onDrainPendingMessages) {
                     try {
                         await opts.onDrainPendingMessages(processId, task.id);

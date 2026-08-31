@@ -149,7 +149,6 @@ export function createRequestHandler(
         ...options.routes,
     ];
 
-    // Static file handlers
     const staticHandlers = [];
 
     // Main static directory

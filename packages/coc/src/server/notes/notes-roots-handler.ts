@@ -112,7 +112,6 @@ export function registerNotesRootsRoutes(
                 return sendError(res, 400, 'Missing required field: rootPath');
             }
 
-            // Validate the path format
             const validationError = validateNotesRootPath(rawPath);
             if (validationError) {
                 return sendError(res, 400, validationError);

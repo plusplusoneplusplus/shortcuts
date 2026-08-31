@@ -181,12 +181,10 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
                 }
             }
 
-            // No route matched
             send404(res, `API route not found: ${pathname}`);
             return;
         }
 
-        // Static file handlers
         for (const handler of staticHandlers) {
             const filePath = handler.resolve(pathname);
             if (filePath && serveStaticFile(filePath, res)) {

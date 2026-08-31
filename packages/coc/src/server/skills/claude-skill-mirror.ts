@@ -192,7 +192,6 @@ export async function mirrorBundledSkillToClaude(
     const logger = getLogger();
 
     try {
-        // Validate source skill exists
         const sourcePath = path.join(cocSkillsDir, skillName);
         const sourceSkillMd = path.join(sourcePath, 'SKILL.md');
         if (!fs.existsSync(sourceSkillMd)) {
@@ -212,19 +211,15 @@ export async function mirrorBundledSkillToClaude(
             };
         }
 
-        // Get target command file path
         const commandsDir = getClaudeCommandsDir();
         const targetMdPath = path.join(commandsDir, `${skillName}.md`);
 
         // Ensure Claude commands directory exists
         fs.mkdirSync(commandsDir, { recursive: true });
 
-        // Parse source version
         const sourceVersion = parseSkillVersionFromFile(sourceSkillMd);
 
-        // Check if target command file exists
         if (!fs.existsSync(targetMdPath)) {
-            // New command — copy it
             copyCommandFileAtomic(sourceSkillMd, targetMdPath, commandsDir, skillName, sourceVersion);
             logger.info(LogCategory.GENERAL, `Mirrored bundled skill to Claude: ${skillName}`);
             return { skillName, status: 'copied' };

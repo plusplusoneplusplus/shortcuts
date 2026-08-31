@@ -351,7 +351,6 @@ export function registerWikiRoutes(
                     fs.mkdirSync(wikiDir, { recursive: true });
                 }
 
-                // Check if wiki data already exists (component-graph.json)
                 const graphPath = path.join(wikiDir, 'component-graph.json');
                 const hasExistingData = fs.existsSync(graphPath);
 
@@ -366,7 +365,6 @@ export function registerWikiRoutes(
                     });
                 }
 
-                // Persist wiki registration to the store
                 if (store) {
                     const wikiInfo: WikiInfo = {
                         id: body.id,
@@ -455,7 +453,6 @@ export function registerWikiRoutes(
                 const runtime = wikiManager.get(wikiId);
                 let foundInStore = false;
 
-                // Persist updates to the store
                 if (store) {
                     const storeUpdates: Record<string, unknown> = {};
                     if (body.name !== undefined) storeUpdates.name = body.name;

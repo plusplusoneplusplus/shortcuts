@@ -52,7 +52,6 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 return sendError(res, 400, 'Invalid JSON');
             }
 
-            // Validate goalSpec
             const goalSpec = typeof body.goalSpec === 'string' ? body.goalSpec.trim() : '';
             if (!goalSpec) {
                 return sendError(res, 400, 'Missing or empty field: goalSpec');

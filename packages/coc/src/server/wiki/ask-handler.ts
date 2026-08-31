@@ -129,7 +129,6 @@ export async function handleAskCore(
     });
 
     try {
-        // Retrieve context
         const retrieved = context.contextBuilder.retrieve(askReq.question);
         sendSSE(res, {
             type: 'context',

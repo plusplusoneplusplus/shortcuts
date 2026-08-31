@@ -109,7 +109,6 @@ export function registerNotesEditsRoutes(routes: Route[], store: ProcessStore, d
                     }
                 }
 
-                // Write the pre-edit content back
                 await fs.promises.mkdir(path.dirname(resolved), { recursive: true });
                 await fs.promises.writeFile(resolved, snapshot.preEditContent, 'utf-8');
 

@@ -179,7 +179,6 @@ export function createStubStore(): ProcessStore {
         },
     };
 
-    // Expose onProcessChange setter via defineProperty
     Object.defineProperty(store, 'onProcessChange', {
         get: () => changeCallback,
         set: (cb: ProcessChangeCallback | undefined) => { changeCallback = cb; },

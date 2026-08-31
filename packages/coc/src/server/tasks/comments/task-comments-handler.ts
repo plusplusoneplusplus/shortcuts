@@ -350,17 +350,14 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
                     prompt = buildAIPrompt(comment, question);
                 }
 
-                // Try to invoke AI
                 const aiResult = await invokeCommentAI(prompt);
                 if (!aiResult.success) {
                     return sendError(res, aiResult.unavailable ? 503 : 502, aiResult.error);
                 }
                 const aiResponse = aiResult.response;
 
-                // Store AI response on the comment
                 await manager.updateComment(wsId, taskPath, commentId, { aiResponse });
 
-                // Also add as an AI reply
                 const reply = await manager.addReply(wsId, taskPath, commentId, {
                     author: 'AI',
                     text: aiResponse,
@@ -398,7 +395,6 @@ export function registerTaskCommentsRoutes(routes: Route[], dataDir: string, bri
             const userContext: string | undefined = body.userContext;
             const skills: string[] | undefined = Array.isArray(body.skills) ? body.skills : undefined;
 
-            // Load and filter open comments
             const allComments = await manager.getComments(wsId, taskPath);
             const openComments = allComments.filter(c => c.status === 'open');
             if (openComments.length === 0) {

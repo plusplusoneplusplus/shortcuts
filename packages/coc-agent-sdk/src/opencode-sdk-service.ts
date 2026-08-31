@@ -436,7 +436,6 @@ export class OpenCodeSDKService implements ISDKService {
                 }
             }
 
-            // Build the prompt body
             const modelRef = parseOpenCodeModelRef(options.model);
             const systemMsg = resolveOpenCodeSystemMessage(options.systemMessage);
             const promptBody: OpenCodePromptBody = {

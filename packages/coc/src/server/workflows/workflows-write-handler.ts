@@ -160,7 +160,6 @@ ${WORKFLOW_SCHEMA_REFERENCE}`;
                 return sendError(res, 400, 'Missing required field: instruction');
             }
 
-            // Validate that currentYaml is parseable YAML
             try {
                 yaml.load(currentYaml);
             } catch (err: any) {

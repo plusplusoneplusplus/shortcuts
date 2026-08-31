@@ -55,7 +55,6 @@ export class ReplicateTemplateStrategy implements TaskStrategy {
             }
         };
 
-        // Emit phase-start event
         try {
             store.emitProcessEvent(processId, {
                 type: 'pipeline-phase',
@@ -95,7 +94,6 @@ export class ReplicateTemplateStrategy implements TaskStrategy {
             throw err;
         }
 
-        // Emit phase-complete event
         try {
             store.emitProcessEvent(processId, {
                 type: 'pipeline-phase',

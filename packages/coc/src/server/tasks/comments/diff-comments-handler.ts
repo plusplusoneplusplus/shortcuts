@@ -590,7 +590,6 @@ export function registerDiffCommentsRoutes(
                     return sendError(res, 400, 'No open comments found');
                 }
 
-                // Group by storageKey
                 const grouped = new Map<string, { storageKey: string; commentIds: string[]; filePath: string }>();
                 for (const tc of targetComments) {
                     const sk = tc.storageKey;

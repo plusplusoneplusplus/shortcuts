@@ -145,7 +145,6 @@ export function ensureFolderTrusted(folder: string): void {
         const config = readConfig(configPath);
         const trustedFolders = Array.isArray(config['trusted_folders']) ? config['trusted_folders'] as string[] : [];
 
-        // Check if already trusted
         if (trustedFolders.some(f => normalizeFolderPath(f) === normalized)) {
             aiLog.debug({ folder: normalized }, 'Folder is already trusted');
             return;

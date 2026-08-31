@@ -82,7 +82,6 @@ export function registerMyLifeRoutes(
                 const dateLabel = formatSyncDate();
                 const syncHeader = `\n## Synced ${dateLabel}\n`;
 
-                // Append goals
                 const goalsPath = path.join(notesRoot, 'Goals.md');
                 if (body.goals && Array.isArray(body.goals) && body.goals.length > 0) {
                     const items = body.goals.map((item: string) => `- [ ] ${item}`).join('\n');
@@ -90,7 +89,6 @@ export function registerMyLifeRoutes(
                     await fs.promises.appendFile(goalsPath, section, 'utf-8');
                 }
 
-                // Append journal entries
                 const journalPath = path.join(notesRoot, 'Journal.md');
                 if (body.entries && typeof body.entries === 'object' && Object.keys(body.entries).length > 0) {
                     let section = syncHeader;

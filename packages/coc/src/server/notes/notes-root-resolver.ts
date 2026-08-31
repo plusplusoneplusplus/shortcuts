@@ -130,7 +130,6 @@ export function resolveNotesRoot(
         };
     }
 
-    // Validate workspace root is available
     if (!workspaceRoot) {
         return {
             error: 'Workspace root path is not available. Cannot resolve repo-folder root.',
@@ -138,7 +137,6 @@ export function resolveNotesRoot(
         };
     }
 
-    // Resolve to absolute path under workspace root
     const absolutePath = path.resolve(workspaceRoot, normalized);
 
     // Security: ensure the resolved path is within the workspace root

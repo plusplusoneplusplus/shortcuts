@@ -88,9 +88,7 @@ export function registerLogsRoutes(routes: Route[], logDir?: string): void {
             const onEntry = (entry: unknown) => {
                 if (closed) return;
                 const e = entry as LogEntry;
-                // Level filter
                 if (minLevel && levelToNum(e.level) < levelToNum(minLevel)) return;
-                // Session filter
                 if (sessionId && e.sessionId !== sessionId) return;
                 sendSseEvent(res, 'log-entry', entry);
             };

@@ -239,7 +239,6 @@ export class ProcessWebSocketServer {
             this.clients.add(client);
             getServerLogger().info({ clientId, remoteAddress }, 'WebSocket connected');
 
-            // Send welcome message
             client.send(JSON.stringify({
                 type: 'welcome',
                 clientId,
@@ -268,7 +267,6 @@ export class ProcessWebSocketServer {
             });
         });
 
-        // Start heartbeat check
         this.startHeartbeat();
     }
 
@@ -285,12 +283,10 @@ export class ProcessWebSocketServer {
                 client.send(data);
                 continue;
             }
-            // If event has no workspace, send to all
             if (!eventWorkspaceId) {
                 client.send(data);
                 continue;
             }
-            // Only send if workspace matches
             if (client.workspaceId === eventWorkspaceId) {
                 client.send(data);
             }

@@ -171,7 +171,6 @@ export class TeamsMessagingManager {
         )?.id;
 
         if (!teamId) {
-            // Create the team
             const createResult = await mcpClient.callTool('CreateTeam', {
                 displayName: this.config.teamName,
                 description: `CoC Teams bridge — ${this.config.teamName}`,
@@ -200,7 +199,6 @@ export class TeamsMessagingManager {
         )?.id;
 
         if (!channelId) {
-            // Create the channel
             const createChResult = await mcpClient.callTool('CreateChannel', {
                 teamId,
                 displayName: this.config.channelName,

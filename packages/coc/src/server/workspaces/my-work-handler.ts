@@ -185,7 +185,6 @@ export function registerMyWorkRoutes(
                 const dateLabel = formatSyncDate();
                 const syncHeader = `\n## Synced ${dateLabel}\n`;
 
-                // Append action items
                 const actionItemsPath = path.join(notesRoot, 'Action Items.md');
                 const actionLines = syncItemsToLines(body.actionItems);
                 if (actionLines.length > 0) {

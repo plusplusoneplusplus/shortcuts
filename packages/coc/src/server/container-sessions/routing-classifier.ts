@@ -81,14 +81,12 @@ export async function classifyRouting(
         throw new Error('No agents or workspaces available for routing');
     }
 
-    // Build classifier prompt
     const systemPrompt = buildSystemPrompt(agents);
     const userPrompt = buildUserPrompt(message, history);
 
     // Call LLM
     const rawResponse = await deps.invokeClassifier(systemPrompt, userPrompt);
 
-    // Parse response
     const decision = parseClassifierResponse(rawResponse, agents);
 
     // If confidence is below threshold, fall back to last-used route

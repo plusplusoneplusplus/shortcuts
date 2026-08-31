@@ -284,7 +284,6 @@ export function registerTemplateWriteRoutes(
                 return sendError(res, 400, 'Request body must be a JSON object');
             }
 
-            // Read existing template, merge with updates
             const existing = await readTemplateFile(resolvedPath);
             if (!existing) {
                 return sendError(res, 500, 'Failed to read existing template');

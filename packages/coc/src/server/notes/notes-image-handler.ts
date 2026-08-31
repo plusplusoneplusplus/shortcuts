@@ -128,7 +128,6 @@ export function registerNotesImageRoutes(
                 return sendError(res, 400, 'Missing or invalid "data" field (expected base64 data URL)');
             }
 
-            // Parse and validate the data URL
             const parsed = parseDataUrl(data);
             if (!parsed) {
                 return sendError(res, 400, 'Invalid data URL format — expected data:image/<type>;base64,... or data:application/pdf;base64,...');

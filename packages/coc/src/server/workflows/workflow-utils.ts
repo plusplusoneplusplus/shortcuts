@@ -65,7 +65,6 @@ export async function discoverAndEnrichWorkflows(pipelinesDir: string): Promise<
             // Ignore read errors — validation will catch them
         }
 
-        // Validate workflow
         try {
             const result = validatePipeline(yamlPath);
             isValid = result.valid;

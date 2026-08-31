@@ -111,7 +111,6 @@ export class TaskWatcher {
     // ========================================================================
 
     private debounceFire(workspaceId: string): void {
-        // Clear any existing timer for this workspace
         const existing = this.timers.get(workspaceId);
         if (existing) {
             clearTimeout(existing);

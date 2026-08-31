@@ -285,7 +285,6 @@ export function createSearchConversationsTool(
                 offset: effectiveOffset,
             });
 
-            // Filter out current session
             const filtered = currentProcessId
                 ? results.filter(r => r.processId !== currentProcessId)
                 : results;
@@ -359,7 +358,6 @@ async function handleRecentMode(
     currentProcessId: string | undefined,
 ) {
     if (!store.listRecentProcesses) {
-        // Fallback: try getProcessSummaries
         if (store.getProcessSummaries) {
             const { entries, total } = await store.getProcessSummaries({
                 workspaceId,
@@ -468,7 +466,6 @@ async function handleSummarizeMode(
             status: session.processStatus,
         };
 
-        // Load conversation turns
         let turns: ConversationTurn[] | undefined;
         if (store.getConversationTurns) {
             turns = await store.getConversationTurns(session.processId);

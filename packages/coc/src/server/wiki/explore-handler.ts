@@ -110,7 +110,6 @@ export async function handleExploreCore(
         return;
     }
 
-    // Parse body
     const body = await readBody(req);
     let exploreReq: ExploreRequest = {};
     if (body.trim()) {

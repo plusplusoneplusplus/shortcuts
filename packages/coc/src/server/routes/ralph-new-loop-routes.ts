@@ -53,7 +53,6 @@ export function registerRalphNewLoopRoutes(routes: Route[], ctx: RalphNewLoopRou
                 body = {};
             }
 
-            // Validate required newGoal
             if (!body || typeof body.newGoal !== 'string' || body.newGoal.trim() === '') {
                 return sendError(res, 400, 'Missing or empty field: newGoal');
             }

@@ -777,7 +777,6 @@ export class StorageMigrationEngine {
     private cleanup(): void {
         this.emit({ phase: 6, status: 'running', message: 'Updating configuration and cleaning up...' });
 
-        // Update config.yaml
         const configPath = path.join(this.options.dataDir, 'config.yaml');
         const existingConfig = loadConfigFile(configPath) ?? {};
         existingConfig.store = { ...existingConfig.store, backend: 'sqlite' };

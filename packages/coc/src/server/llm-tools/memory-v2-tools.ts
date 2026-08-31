@@ -151,7 +151,6 @@ export function createMemoryStoreFactTool(deps: MemoryV2ToolDeps) {
                 return { ok: false, code: 'missing_content', error: 'content must be a non-empty string.' };
             }
 
-            // Resolve target scope and store
             const target = args.target === 'workspace' ? 'workspace' : 'global';
 
             let factStore: SqliteFactStore | undefined;
@@ -257,7 +256,6 @@ export function createMemoryRecallTool(deps: MemoryV2ToolDeps) {
                 const allResults: MemoryRecallEntry[] = [];
                 const seen = new Set<string>();
 
-                // Search global store
                 if (deps.globalFactStore) {
                     const engine = new HybridSearchEngine(deps.globalFactStore);
                     const results = await engine.search({ text: query, limit, statuses: ['active'] });
@@ -279,7 +277,6 @@ export function createMemoryRecallTool(deps: MemoryV2ToolDeps) {
                     }
                 }
 
-                // Search workspace store
                 if (deps.workspaceFactStore) {
                     const engine = new HybridSearchEngine(deps.workspaceFactStore);
                     const results = await engine.search({ text: query, limit, statuses: ['active'] });
@@ -301,7 +298,6 @@ export function createMemoryRecallTool(deps: MemoryV2ToolDeps) {
                     }
                 }
 
-                // Sort by score descending and apply limit
                 const final = allResults.sort((a, b) => b.score - a.score).slice(0, limit);
 
                 return {

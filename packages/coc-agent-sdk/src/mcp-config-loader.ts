@@ -346,7 +346,6 @@ export function mergeMcpConfigs(
     defaultConfig: Record<string, MCPServerConfig>,
     explicitConfig?: Record<string, MCPServerConfig>
 ): Record<string, MCPServerConfig> {
-    // If no explicit config, return default
     if (!explicitConfig) {
         return { ...defaultConfig };
     }

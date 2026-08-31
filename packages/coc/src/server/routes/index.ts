@@ -674,7 +674,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }
     };
 
-    // Cron routes
     if (opts.cronStore && opts.cronExecutor) {
         registerCronRoutes(routes, {
             store: opts.cronStore,
@@ -856,7 +855,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         ? () => opts.runtimeConfigService!.config.features?.gitWorktreeExecution ?? false
         : () => opts.resolvedConfig?.features?.gitWorktreeExecution ?? false;
 
-    // Ralph routes
     registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getGitWorktreeExecutionEnabled });
     registerRalphSessionRoutes(routes, { dataDir, store, bridge: bridgeWithResolvedDefaults });
     registerRalphContinueRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });

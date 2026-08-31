@@ -46,7 +46,6 @@ export function createWebSocketInfrastructure(
     wsServer.attachConnectionHandler();
     attachWebSocketUpgradeHandler(server, wsServer, terminalWsServer);
 
-    // Invalidate the git-info cache whenever a git mutation event is broadcast
     wsServer.onGitChanged((workspaceId) => {
         gitInfoCache.invalidate(workspaceId);
     });

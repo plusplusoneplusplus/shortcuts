@@ -86,13 +86,11 @@ export function initializeQueueStartup(options: QueueStartupOptions): QueueStart
         });
     };
 
-    // Enqueue with resolved defaults
     const enqueueWithResolvedDefaults = async (input: CreateTaskInput): Promise<string> => {
         await prepareEnqueueTask(input);
         return bridge.enqueue(input);
     };
 
-    // Create bridge wrapper with resolved defaults
     const bridgeWithResolvedDefaults = Object.create(bridge) as MultiRepoQueueRouter;
     Object.defineProperty(bridgeWithResolvedDefaults, 'enqueue', {
         value: enqueueWithResolvedDefaults,

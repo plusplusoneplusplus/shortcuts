@@ -143,7 +143,6 @@ export function saveAttachmentsToTempFiles(
             }
         }
 
-        // Generic data URL parsing
         const parsed = parseGenericDataUrl(payload.dataUrl);
         if (!parsed) continue;
         // Decoded-byte enforcement (same rationale as the image path above):

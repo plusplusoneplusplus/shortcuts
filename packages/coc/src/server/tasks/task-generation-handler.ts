@@ -125,7 +125,6 @@ export function registerTaskGenerationRoutes(
             let aiPrompt: string;
 
             if (mode === 'from-feature') {
-                // Gather feature context from the target folder
                 const context = await gatherFeatureContext(resolvedTarget, ws.rootPath);
                 const selectedContext: SelectedContext = {
                     description: context.description,
@@ -151,7 +150,6 @@ export function registerTaskGenerationRoutes(
                 aiPrompt = buildCreateTaskPrompt(prompt, resolvedTarget);
             }
 
-            // Build system prompt for plan generation
             const systemPrompt = buildPlanGenerationSystemPrompt({
                 targetPath: resolvedTarget,
                 autoFolder: isAutoFolder,

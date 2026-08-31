@@ -268,7 +268,6 @@ export class CronExecutor {
                 },
             });
             if (!queueManager.requeueFromHistory(taskId)) {
-                // Fall through to enqueue new task
                 await this.enqueueNewFollowUpTask(cron);
             }
         } else if (!existingTask || existingTask.status === 'cancelled') {

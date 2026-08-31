@@ -144,11 +144,9 @@ export class ContextBuilder {
             }
         }
 
-        // Sort by score descending
         componentScores.sort((a, b) => b.score - a.score);
         themeScores.sort((a, b) => b.score - a.score);
 
-        // Select top-K components
         const topComponents = componentScores.slice(0, maxComponents);
         const selectedIds = topComponents.map(s => s.componentId);
 
@@ -210,7 +208,6 @@ export class ContextBuilder {
             contextParts.push(`## Theme Article: ${articleMeta?.title || slug}\n\nSource: themes/${themeId}/${slug}.md\n\n${content}`);
         }
 
-        // Build graph summary
         const graphSummary = this.buildGraphSummary();
 
         return {

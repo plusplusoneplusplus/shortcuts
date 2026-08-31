@@ -457,7 +457,6 @@ async function fetchTeamScopePullRequests(
 ): Promise<any[]> {
     if (roster.length === 0) return [];
 
-    // Check team-scope cache
     const cacheKey = makeTeamScopeCacheKey(repoId, workspaceId, status);
     const cached = teamScopeCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {

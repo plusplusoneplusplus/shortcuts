@@ -310,7 +310,6 @@ export class TeamsCommandRouter {
         }
 
         if (targetId) {
-            // Follow-up on existing topic
             await this.deps.executeFollowUp(targetId, message);
             this.userState.update(userKey, { lastActiveTopic: targetId });
             await this.deps.sendReply(

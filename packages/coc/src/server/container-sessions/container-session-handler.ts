@@ -94,7 +94,6 @@ export function registerContainerSessionRoutes(
                     return sendError(res, 400, 'content is required');
                 }
 
-                // Classify routing
                 const agents = await getAgents();
                 const routing: RoutingDecision = await classifyRouting(
                     {
@@ -109,7 +108,6 @@ export function registerContainerSessionRoutes(
                 // Find existing downstream process for this agent:workspace
                 const existingProcessId = findExistingDownstreamProcess(session.turns, routing);
 
-                // Forward message to target agent
                 const downstreamProcessId = await forwardMessage(
                     routing.agentId,
                     routing.workspaceId,
@@ -117,7 +115,6 @@ export function registerContainerSessionRoutes(
                     existingProcessId,
                 );
 
-                // Record user turn
                 const turnIndex = session.turns.length;
                 const userTurn = {
                     index: turnIndex,

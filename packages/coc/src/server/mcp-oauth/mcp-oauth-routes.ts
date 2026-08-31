@@ -109,7 +109,6 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
         },
     });
 
-    // Get
     routes.push({
         method: 'GET',
         pattern: PENDING_ITEM,
@@ -148,7 +147,6 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
         },
     });
 
-    // Delete
     routes.push({
         method: 'DELETE',
         pattern: PENDING_ITEM,

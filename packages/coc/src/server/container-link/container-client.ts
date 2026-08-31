@@ -301,7 +301,6 @@ export class ContainerLinkClient extends EventEmitter {
         const port = this.options.localPort;
         if (!port) return;
 
-        // Cancel existing subscription if any
         this.cancelSSESubscription(payload.subscriptionId);
 
         const req = http.get({
@@ -401,7 +400,6 @@ export class ContainerLinkClient extends EventEmitter {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
-        // Close all SSE subscriptions
         for (const [id, res] of this.sseSubscriptions) {
             res.destroy();
         }

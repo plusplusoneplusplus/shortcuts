@@ -185,7 +185,6 @@ export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCo
                     });
                 }
 
-                // Filter by status when requested
                 if (options?.statuses && options.statuses.length > 0) {
                     comments = comments.filter(c => options.statuses!.includes(c.status));
                 }
@@ -236,7 +235,6 @@ export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCo
                 const storage: DiffCommentsStorage = JSON.parse(content);
                 let comments = storage.comments || [];
 
-                // Filter by status when requested
                 if (options?.statuses && options.statuses.length > 0) {
                     comments = comments.filter(c => options.statuses!.includes(c.status));
                 }

@@ -344,7 +344,6 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                                 return sendError(res, 409, 'A document group with that name already exists');
                             }
 
-                            // Rename all files in the group
                             for (const file of groupFiles) {
                                 const suffix = file.slice(baseGroupName.length); // e.g., ".plan.md"
                                 const newFileName = sanitizedName + suffix;
@@ -623,7 +622,6 @@ export function registerTaskWriteRoutes(routes: Route[], store: ProcessStore, da
                     await fs.promises.rename(resolvedPath, destPath);
                     const newRelPath = path.relative(tasksFolder, destPath);
 
-                    // Determine if this is a file or folder
                     let itemType: 'file' | 'folder';
                     try {
                         const s = await fs.promises.stat(destPath);

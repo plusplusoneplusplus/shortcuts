@@ -203,7 +203,6 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
         const tree = await buildTree(notesRoot, '');
         const compacted = compactTree(tree);
 
-        // Build a structured prompt for the AI
         const structuredPrompt = this.buildNoteCreatePrompt(userPrompt, compacted);
 
         // Override prompt for AI execution
@@ -222,7 +221,6 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
             const aiResponse = result.response ?? '';
             const parsed = parseNoteCreateResponse(aiResponse);
 
-            // Determine the actual parent path
             let actualParentPath = parsed.parentPath;
             if (parsed.createNotebook && parsed.newNotebookName) {
                 actualParentPath = parsed.newNotebookName;
@@ -230,7 +228,6 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
                 await fs.promises.mkdir(notebookDir, { recursive: true });
             }
 
-            // Validate parent path exists
             if (actualParentPath) {
                 const parentDir = path.join(notesRoot, actualParentPath);
                 const normalizedParent = path.normalize(parentDir);
@@ -241,7 +238,6 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
                 await fs.promises.mkdir(parentDir, { recursive: true });
             }
 
-            // Create the note file
             const fileName = `${parsed.title}.md`;
             const notePath = actualParentPath ? `${actualParentPath}/${fileName}` : fileName;
             const fullPath = path.join(notesRoot, notePath);

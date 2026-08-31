@@ -66,7 +66,6 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         const commitHash = commitChat?.commitHash ?? '';
         const wsId = payload.workspaceId;
 
-        // Resolve parent hash
         const parentHash = await resolveParentHash(commitHash, workingDirectory);
 
         // Build tools first so we can route the aggregated tool-guidance prose

@@ -87,7 +87,6 @@ export async function createWorkItemFromChatCommand(
 
     await ctx.workItemStore.addWorkItem(item);
 
-    // Persist the plan version record
     await ctx.workItemStore.savePlanVersion(item.id, {
         version: 1,
         content: item.plan.content,

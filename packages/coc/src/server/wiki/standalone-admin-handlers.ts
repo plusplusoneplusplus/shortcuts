@@ -59,13 +59,11 @@ export function handleAdminRequest(
     method: string,
     context: AdminHandlerContext
 ): boolean {
-    // GET /api/admin/seeds
     if (method === 'GET' && pathname === '/api/admin/seeds') {
         handleGetSeeds(res, context);
         return true;
     }
 
-    // PUT /api/admin/seeds
     if (method === 'PUT' && pathname === '/api/admin/seeds') {
         handlePutSeeds(req, res, context).catch(() => {
             if (!res.headersSent) {
@@ -75,13 +73,11 @@ export function handleAdminRequest(
         return true;
     }
 
-    // GET /api/admin/config
     if (method === 'GET' && pathname === '/api/admin/config') {
         handleGetConfig(res, context);
         return true;
     }
 
-    // PUT /api/admin/config
     if (method === 'PUT' && pathname === '/api/admin/config') {
         handlePutConfig(req, res, context).catch(() => {
             if (!res.headersSent) {

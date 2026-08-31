@@ -67,7 +67,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             task = { ...task, config: { ...task.config, model: noteModel } };
         }
 
-        // Capture pre-edit content
         const preEditContent = notePath
             ? await this.readNoteContentForWs(wsId, notePath)
             : undefined;

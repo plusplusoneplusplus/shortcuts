@@ -53,7 +53,6 @@ export function registerSeenStateRoutes(routes: Route[], store: SeenStateStore):
                 return;
             }
 
-            // Validate each entry
             for (const entry of entries) {
                 if (typeof entry.processId !== 'string' || typeof entry.seenAt !== 'string') {
                     sendJSON(res, 400, { error: 'Each entry must have "processId" and "seenAt" strings' });
