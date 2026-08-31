@@ -145,10 +145,10 @@ export function GitAutoPullControl({ value, onChange, status, compact }: GitAuto
     }
 
     return (
-        <div className="relative inline-flex" ref={rootRef} data-testid="git-autopull-control">
+        <div className="relative inline-flex shrink-0" ref={rootRef} data-testid="git-autopull-control">
             <button
                 type="button"
-                className={`inline-flex items-center gap-1 rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50 ${enabled ? 'text-[#16825d]' : 'text-[#616161] dark:text-[#999]'} ${compact ? 'h-[18px] px-1 text-[10px] leading-[16px]' : 'h-6 px-1.5 text-[11px] leading-[22px]'}`}
+                className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50 ${enabled ? 'text-[#16825d]' : 'text-[#616161] dark:text-[#999]'} ${compact ? 'h-[18px] px-1 text-[10px] leading-[16px]' : 'h-6 px-1.5 text-[11px] leading-[22px]'}`}
                 onClick={toggleOpen}
                 title={title}
                 data-testid="git-autopull-toggle"
@@ -161,9 +161,14 @@ export function GitAutoPullControl({ value, onChange, status, compact }: GitAuto
                 </svg>
                 <span data-testid="git-autopull-current" className="tabular-nums">{label}</span>
                 {enabled && nextRunLabel && (
+                    /* The countdown is the button's most expendable piece: in a
+                       narrow git header (an inline-size @container) it is the
+                       first thing dropped, since the same value is in the
+                       button's tooltip and in the dropdown's status rows.
+                       Outside a container context the query never matches. */
                     <span
                         data-testid="git-autopull-next-run"
-                        className="tabular-nums text-[#999] dark:text-[#777]"
+                        className="tabular-nums text-[#999] dark:text-[#777] [@container_(max-width:359px)]:hidden"
                     >
                         {nextRunLabel}
                     </span>

@@ -244,6 +244,23 @@ describe('server-owned status', () => {
         expect(screen.getByTestId('git-autopull-next-run').textContent).toBe('in 10m');
     });
 
+    it('never wraps or shrinks the toggle, so it cannot overflow a narrow header row', () => {
+        renderControl({ value: { enabled: true, intervalMinutes: 480 }, status: statusIn(480) });
+        const toggle = screen.getByTestId('git-autopull-toggle');
+        expect(toggle.className).toContain('whitespace-nowrap');
+        expect(toggle.className).toContain('shrink-0');
+        expect(screen.getByTestId('git-autopull-control').className).toContain('shrink-0');
+    });
+
+    it('drops the countdown when the header container is narrow, keeping it in the tooltip', () => {
+        renderControl({ value: { enabled: true, intervalMinutes: 480 }, status: statusIn(480) });
+        // Redundant with the tooltip and the dropdown status row, so it is the
+        // first thing sacrificed once the git column gets tight.
+        expect(screen.getByTestId('git-autopull-next-run').className)
+            .toContain('[@container_(max-width:359px)]:hidden');
+        expect(screen.getByTestId('git-autopull-toggle').title).toContain('next run in 8h');
+    });
+
     it('omits the countdown while auto-pull is off', () => {
         renderControl({ value: { enabled: false, intervalMinutes: 30 }, status: statusIn(10) });
         expect(screen.queryByTestId('git-autopull-next-run')).toBeNull();

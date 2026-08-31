@@ -426,15 +426,39 @@ describe('GitPanelHeader', () => {
         });
 
         it('compact root drops the strip chrome (border/bg/sticky/min-height) for the 22px header row', () => {
-            expect(source).toContain("'git-panel-header git-panel-header--compact flex flex-1 items-center gap-1 min-w-0 px-1'");
+            expect(source).toContain("'git-panel-header git-panel-header--compact flex flex-1 items-center gap-1 min-w-0 px-1");
         });
 
         it('default root keeps the full-height strip chrome', () => {
-            expect(source).toContain("'git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px]'");
+            expect(source).toContain("'git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px]");
         });
 
         it('shortens the relative timestamp in compact (strips the " ago" suffix)', () => {
             expect(source).toContain(".replace(/\\s+ago$/, '')");
+        });
+
+        it('makes the header an inline-size container so narrow columns can shed pieces', () => {
+            // Both variants opt in; without this the @container queries below never match.
+            const roots = source.match(/git-panel-header[^']*\[container-type:inline-size\]/g) ?? [];
+            expect(roots.length).toBe(2);
+        });
+
+        it('keeps the split-action button from wrapping or shrinking', () => {
+            expect(source).toContain("className=\"relative inline-flex shrink-0\"");
+            expect(source).toContain('flex items-stretch whitespace-nowrap rounded-md');
+        });
+
+        it('drops the "Pull" word below 280px of header width, keeping the icon', () => {
+            expect(source).toContain('<span className="[@container_(max-width:279px)]:hidden">Pull</span>');
+        });
+
+        it('hides the last-refreshed timestamp below 320px of header width', () => {
+            expect(source).toContain('[@container_(max-width:319px)]:!hidden');
+        });
+
+        it('keeps the trailing controls from being squeezed into a wrap', () => {
+            expect(source).toContain('git-refresh-btn flex shrink-0 items-center justify-center');
+            expect(source).toContain('tabular-nums whitespace-nowrap shrink-0');
         });
 
         it('shrinks the split-action button and refresh button in compact', () => {
