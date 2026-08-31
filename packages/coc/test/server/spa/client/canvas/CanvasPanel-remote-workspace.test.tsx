@@ -154,6 +154,15 @@ describe('CanvasPanel on a remote workspace', () => {
     });
 
     it('creates a Kusto canvas on the remote server', async () => {
+        // The "New Kusto query" button only renders on a Kusto canvas, so the
+        // panel has to be opened on one to reach the remote create call.
+        mocks.remote.get.mockResolvedValue(makeCanvas({
+            type: 'kusto',
+            content: JSON.stringify({
+                query: 'T | take 1', clusterUrl: '', database: '',
+                columns: [], rows: [], truncated: false,
+            }),
+        }));
         await renderPanel({ onSelectCanvas: vi.fn(), onCanvasCreated: vi.fn() });
 
         fireEvent.click(screen.getByTestId('canvas-panel-new-kusto'));

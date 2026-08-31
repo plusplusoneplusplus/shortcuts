@@ -69,6 +69,11 @@ component; do not grow `CanvasPanel.tsx` back.
   markdown pipeline (a Kusto result JSON can be 10k rows); extension canvases
   only do so to show raw JSON in a history view. SVG detection runs against the
   *displayed* content, so an older revision is classified on its own body.
+- **Header actions gate on canvas type, not just on flags.** Export entries key
+  off `canvas.type`, and "New Kusto query" needs `kustoEnabled && kind.isKusto`
+  — a feature flag alone would park it on every canvas. Creating a Kusto canvas
+  is therefore reachable only from an existing one; there is no global
+  new-canvas surface in the SPA.
 
 ## Tests
 

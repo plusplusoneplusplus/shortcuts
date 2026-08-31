@@ -128,7 +128,9 @@ linked to a chat, Ask AI sends a follow-up naming `kusto_query`.
 
 `CanvasPanel`'s header offers a new-Kusto action (`data-testid="canvas-panel-new-kusto"`)
 creating a blank `type: 'kusto'` canvas, best-effort seeding cluster/database from the
-workspace's most recent Kusto canvas (`kustoCreate.ts`). Kusto canvases own their editing
+workspace's most recent Kusto canvas (`kustoCreate.ts`). The button renders only when the
+flag is on **and** the open canvas is itself Kusto (`kustoEnabled && kind.isKusto`), so it is
+reachable only from an existing Kusto canvas. Kusto canvases own their editing
 surface: no markdown Preview/Edit toggle, no HTML export. Older revisions route the stored
 snapshot through the same `KustoView` in `readOnly` mode so historical rows render via
 `InteractiveTable`. Kusto canvases never feed serialized row JSON to `chatMarkdownToHtml`,

@@ -1360,18 +1360,54 @@ describe('CanvasPanel', () => {
         expect(screen.getByText('Texas')).toBeInTheDocument();
     });
 
-    // AC-07 — the "New Kusto query" affordance is gated on the Kusto flag.
+    // AC-07 — the "New Kusto query" affordance is gated on the Kusto flag AND
+    // on the open canvas being a Kusto canvas.
     describe('New Kusto query button (AC-07)', () => {
+        // A Kusto canvas to open the panel on, so the button is in scope.
+        const kustoCanvas = (overrides: Record<string, unknown> = {}) => makeCanvas({
+            id: 'expl-cur001',
+            type: 'kusto',
+            title: 'Current Query',
+            content: JSON.stringify({
+                query: 'Current | take 1',
+                clusterUrl: '',
+                database: '',
+                columns: [], rows: [], truncated: false,
+            }),
+            ...overrides,
+        });
+
         afterEach(() => {
             delete (window as any).__DASHBOARD_CONFIG__;
         });
 
         it('is hidden when the Kusto feature is disabled', async () => {
             delete (window as any).__DASHBOARD_CONFIG__;
-            mocks.get.mockResolvedValue(makeCanvas());
+            mocks.get.mockResolvedValue(kustoCanvas());
+            render(<CanvasPanel workspaceId="ws-1" canvasId="expl-cur001" liveEvent={null} />);
+            await waitFor(() => expect(screen.getByTestId('canvas-panel-title')).toBeTruthy());
+            expect(screen.queryByTestId('canvas-panel-new-kusto')).toBeNull();
+        });
+
+        // Regression: the button used to render on every canvas type because it
+        // was gated on the feature flag alone.
+        it.each([
+            ['markdown', '# Plan body'],
+            ['extension', '{}'],
+            ['excalidraw', JSON.stringify({ elements: [], appState: {} })],
+        ])('is hidden on a %s canvas even when the Kusto feature is enabled', async (type, content) => {
+            (window as any).__DASHBOARD_CONFIG__ = { kustoEnabled: true };
+            mocks.get.mockResolvedValue(makeCanvas({ type, content }));
             render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} />);
             await waitFor(() => expect(screen.getByTestId('canvas-panel-title')).toBeTruthy());
             expect(screen.queryByTestId('canvas-panel-new-kusto')).toBeNull();
+        });
+
+        it('is shown on a Kusto canvas when the Kusto feature is enabled', async () => {
+            (window as any).__DASHBOARD_CONFIG__ = { kustoEnabled: true };
+            mocks.get.mockResolvedValue(kustoCanvas());
+            render(<CanvasPanel workspaceId="ws-1" canvasId="expl-cur001" liveEvent={null} />);
+            await waitFor(() => expect(screen.getByTestId('canvas-panel-new-kusto')).toBeTruthy());
         });
 
         it('creates a blank Kusto canvas prefilled from the most recent one and selects it', async () => {
@@ -1389,9 +1425,10 @@ describe('CanvasPanel', () => {
                         }),
                     });
                 }
-                return makeCanvas();
+                return kustoCanvas();
             });
             mocks.list.mockResolvedValue([
+                makeCanvasSummary({ id: 'expl-cur001', type: 'kusto', updatedAt: '2026-07-18T04:00:00.000Z' }),
                 makeCanvasSummary({ id: 'expl-prev01', type: 'kusto', updatedAt: '2026-07-18T05:00:00.000Z' }),
                 makeCanvasSummary({ id: 'doc-abc123', type: 'markdown', updatedAt: '2026-07-18T06:00:00.000Z' }),
             ]);
@@ -1402,7 +1439,7 @@ describe('CanvasPanel', () => {
             render(
                 <CanvasPanel
                     workspaceId="ws-1"
-                    canvasId="doc-abc123"
+                    canvasId="expl-cur001"
                     liveEvent={null}
                     onSelectCanvas={onSelectCanvas}
                     onCanvasCreated={onCanvasCreated}
@@ -1427,11 +1464,13 @@ describe('CanvasPanel', () => {
 
         it('creates with an empty seed when the workspace has no prior Kusto canvas', async () => {
             (window as any).__DASHBOARD_CONFIG__ = { kustoEnabled: true };
-            mocks.get.mockResolvedValue(makeCanvas());
+            // The open canvas is Kusto but its seed fields are blank, so there is
+            // nothing to prefill from.
+            mocks.get.mockResolvedValue(kustoCanvas());
             mocks.list.mockResolvedValue([makeCanvasSummary({ id: 'doc-abc123', type: 'markdown' })]);
             mocks.create.mockResolvedValue(makeCanvas({ id: 'expl-new001', type: 'kusto' }));
 
-            render(<CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onSelectCanvas={vi.fn()} />);
+            render(<CanvasPanel workspaceId="ws-1" canvasId="expl-cur001" liveEvent={null} onSelectCanvas={vi.fn()} />);
 
             await waitFor(() => expect(screen.getByTestId('canvas-panel-new-kusto')).toBeTruthy());
             fireEvent.click(screen.getByTestId('canvas-panel-new-kusto'));

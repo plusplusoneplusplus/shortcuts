@@ -30,6 +30,9 @@ import { RemoteServerBadge } from './RemoteServerBadge';
 import { useDropdownPopover } from './useDropdownPopover';
 import { WslBadge } from './WslBadge';
 import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './RepoPickerPopover';
+import { usePinnedScopesEnabled } from '../../hooks/feature-flags/usePinnedScopesEnabled';
+import { isPinnedScope, type PinnedScopeRef } from './pinnedScopes';
+import { usePinnedScopes } from './usePinnedScopes';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useShellNavigation } from './useShellNavigation';
 import { useWorkspaceRemoval } from './useWorkspaceRemoval';
@@ -57,6 +60,23 @@ export interface WorkspaceIdentityChipProps {
      * the group id therefore gets its own `data-repo-group-id` attribute.
      */
     groupIdentity?: { id: string; name: string };
+    /**
+     * When true the chip renders as a bare picker trigger (chevron only, no dot /
+     * name / badges). Set by `ScopeSlideSwitcher` when a *pinned* segment is
+     * already showing this exact identity — otherwise the same remote name would
+     * appear twice in one bar, once as the active pin and once here.
+     */
+    identitySuppressed?: boolean;
+}
+
+/** Filled when pinned, outline when not — the row's pin toggle. */
+function PinGlyph({ filled }: { filled: boolean }) {
+    return (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6z" />
+            <path d="M12 15v5" />
+        </svg>
+    );
 }
 
 function Chevron() {
@@ -138,7 +158,7 @@ function groupMatchesSearch(group: RepoGroup, query: string): boolean {
         || group.repos.some(repo => String(repo.workspace.name ?? '').toLowerCase().includes(q));
 }
 
-export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity }: WorkspaceIdentityChipProps) {
+export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity, identitySuppressed }: WorkspaceIdentityChipProps) {
     const cloneId = repo ? getRepoSelectionId(repo) : '';
     const { state: queueState } = useQueue();
     const { state: appState } = useApp();
@@ -183,6 +203,42 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
         };
     }, [repo]);
     const { recentGroups, remainingGroups, recordUse } = useRecentRemotes(groups);
+    const pinnedScopesEnabled = usePinnedScopesEnabled();
+    const { pins, toggle: togglePin, full: pinsFull } = usePinnedScopes();
+
+    /**
+     * The pin toggle rendered on a picker row. `kind` is what keeps the two
+     * "repo group" key spaces apart: `repo` carries a `groupKey` (git-remote
+     * clustering), `group` carries a repo-group virtual workspace id. Storing
+     * either as a bare string would let a remote named like a group id resolve
+     * to the wrong scope.
+     */
+    const renderPinToggle = useCallback((ref: PinnedScopeRef, label: string) => {
+        if (!pinnedScopesEnabled) return null;
+        const pinned = isPinnedScope(pins, ref);
+        const blocked = !pinned && pinsFull;
+        return (
+            <button
+                data-testid="scope-pin-toggle"
+                data-pin-kind={ref.kind}
+                data-pin-key={ref.key}
+                aria-pressed={pinned}
+                disabled={blocked}
+                aria-label={`${pinned ? 'Unpin' : 'Pin'} ${label}`}
+                title={blocked ? 'Pin limit reached' : pinned ? 'Unpin from the scope switcher' : 'Pin to the scope switcher'}
+                onClick={e => { e.stopPropagation(); togglePin(ref); }}
+                className={
+                    'flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded transition-opacity '
+                    + (pinned
+                        ? 'text-[#0969da] dark:text-[#79c0ff] opacity-100'
+                        : 'text-[#848484] dark:text-[#777] opacity-0 group-hover/row:opacity-100 focus:opacity-100 disabled:opacity-0')
+                    + ' hover:bg-black/[0.06] dark:hover:bg-white/[0.10]'
+                }
+            >
+                <PinGlyph filled={pinned} />
+            </button>
+        );
+    }, [pinnedScopesEnabled, pins, pinsFull, togglePin]);
 
     useEffect(() => {
         if (activeGroupKey) {
@@ -305,6 +361,25 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
         // Any-semantics, unlike the WSL pill: one remote clone is enough to mark
         // the collection as reaching another CoC server.
         const remoteServers = getGroupRemoteServers(group);
+        const pinToggle = renderPinToggle({ kind: 'repo', key }, summary.name);
+        // Both slots are optional; passing `undefined` when neither is present
+        // keeps the row's plain (unwrapped) layout.
+        const kebab = soleClone ? (
+            <button
+                data-testid="remote-dropdown-row-menu"
+                data-remote-key={key}
+                aria-label={`More actions for ${summary.name}`}
+                title="More actions"
+                onClick={e => {
+                    e.stopPropagation();
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setRowMenu({ repo: soleClone, x: rect.left, y: rect.bottom });
+                }}
+                className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
+            >
+                <KebabGlyph />
+            </button>
+        ) : null;
         return (
             <PickerRow
                 key={key}
@@ -315,22 +390,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                 name={summary.name}
                 sublabel={group.label}
                 onClick={() => chooseGroup(group)}
-                rowMenu={soleClone ? (
-                    <button
-                        data-testid="remote-dropdown-row-menu"
-                        data-remote-key={key}
-                        aria-label={`More actions for ${summary.name}`}
-                        title="More actions"
-                        onClick={e => {
-                            e.stopPropagation();
-                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                            setRowMenu({ repo: soleClone, x: rect.left, y: rect.bottom });
-                        }}
-                        className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
-                    >
-                        <KebabGlyph />
-                    </button>
-                ) : undefined}
+                rowMenu={pinToggle || kebab ? <>{pinToggle}{kebab}</> : undefined}
                 badges={
                     <>
                         {remoteServers.length > 0 && <RemoteServerBadge servers={remoteServers} />}
@@ -394,7 +454,24 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
 
     return (
         <div className="relative flex items-center min-w-0 flex-shrink-0" ref={rootRef}>
-            {onSwitchBack ? (
+            {identitySuppressed ? (
+                // A pinned segment already owns this identity — render only the
+                // affordance the pin cannot replace: the picker trigger.
+                <button
+                    ref={triggerRef}
+                    data-testid="remote-chip"
+                    data-identity-suppressed="true"
+                    data-remote-key={activeGroupKey ?? ''}
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    aria-label="Open remote picker"
+                    title="Switch remote"
+                    onClick={toggle}
+                    className="relative inline-flex items-center h-[26px] px-1.5 rounded-md text-[#656d76] dark:text-[#999] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                >
+                    <Chevron />
+                </button>
+            ) : onSwitchBack ? (
                 // Inactive workspace under a virtual scope: identity body switches
                 // back to this workspace, chevron opens the picker. (AC-02)
                 <div className="relative inline-flex items-center rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] max-w-[190px]">
@@ -498,6 +575,25 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                         // Delete are simply unavailable until it reconnects. (AC-04)
                         const remote = ws?.remote as { serverLabel?: string; offline?: boolean } | undefined;
                         const offline = !!remote?.offline;
+                        const pinToggle = renderPinToggle({ kind: 'group', key: String(ws.id) }, String(ws.name ?? ws.id));
+                        // Offline groups are read-only, so they keep no ⋮ menu —
+                        // but pinning is local state and stays available.
+                        const kebab = offline ? null : (
+                            <button
+                                data-testid="repo-group-row-menu"
+                                data-remote-key={String(ws.id)}
+                                aria-label={`More actions for ${ws.name ?? ws.id}`}
+                                title="More actions"
+                                onClick={e => {
+                                    e.stopPropagation();
+                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                    setGroupMenu({ workspace: ws, x: rect.left, y: rect.bottom });
+                                }}
+                                className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
+                            >
+                                <KebabGlyph />
+                            </button>
+                        );
                         return (
                             // Row click switches the dashboard to the group's virtual
                             // workspace (RepoGroupView) through the same target-aware
@@ -530,22 +626,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                                         )}
                                     </>
                                 }
-                                rowMenu={offline ? undefined : (
-                                    <button
-                                        data-testid="repo-group-row-menu"
-                                        data-remote-key={String(ws.id)}
-                                        aria-label={`More actions for ${ws.name ?? ws.id}`}
-                                        title="More actions"
-                                        onClick={e => {
-                                            e.stopPropagation();
-                                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                            setGroupMenu({ workspace: ws, x: rect.left, y: rect.bottom });
-                                        }}
-                                        className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
-                                    >
-                                        <KebabGlyph />
-                                    </button>
-                                )}
+                                rowMenu={pinToggle || kebab ? <>{pinToggle}{kebab}</> : undefined}
                             />
                         );
                     })

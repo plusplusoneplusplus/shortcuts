@@ -56,6 +56,66 @@ identity — group name only, no provider badge, no `⧉N`, none of which descri
 — and emits `data-repo-group-id`, kept distinct from `data-remote-key` (git-remote
 `RepoGroup` clustering).
 
+### Pinned scope segments
+
+`features.pinnedScopes` (runtime `pinnedScopesEnabled`, `isPinnedScopesEnabled()`, hook
+`usePinnedScopesEnabled`; off by default, only meaningful with `scopeSwitcher`) adds
+user-pinned segments between the virtual scopes and the workspace chip, bracketed by
+`scope-pin-divider` on each side. A pin renders as `scope-segment` with
+`data-scope="pin"`, `data-pin-id`, `data-pin-kind`, an unread badge
+(`scope-pin-unseen-badge`), the shared pop-out icon, the shared right-click menu, and
+hover controls `scope-pin-move-left` / `scope-pin-move-right` / `scope-pin-unpin`.
+Below `xl` a pin drops to icon-only; below `lg` the whole strip
+(`scope-pin-strip`) is hidden.
+
+Pins persist in the global preference `pinnedScopes` (cap 8, same shape as
+`recentRemotes`). Each entry is a prefixed, discriminated key because the two things the
+UI calls a "repo group" have separate key spaces: `repo:<groupKey>` is a git-remote
+`RepoGroup`, `group:<workspaceId>` a repo-group virtual workspace. `pinnedScopes.ts`
+holds the pure model (`parsePinnedScope` splits on the first colon so a
+`repo:workspace:<id>` key survives; `resolvePinnedScopes` drops pins whose target is
+missing from the rendered set only, never from storage). `usePinnedScopes.ts` is a
+module-level store rather than per-hook state so the pin toggles on the picker rows
+(`scope-pin-toggle`, `data-pin-kind` / `data-pin-key`, in `WorkspaceIdentityChip`) and
+the segments in `ScopeSlideSwitcher` stay in sync without a common owner.
+
+An active pin takes the thumb from the workspace segment (`data-active-pin` on the
+container). Because a pin and the chip must never show the same identity twice: a
+pinned *group* suppresses the chip's `groupIdentity`, so the chip falls back to the
+remembered repo with the usual switch-back split button; a pinned *remote* sets
+`identitySuppressed`, collapsing the chip to a bare chevron picker trigger
+(`data-identity-suppressed`).
+
+### Pinned scope segments
+
+`features.pinnedScopes` (runtime `pinnedScopesEnabled`, `isPinnedScopesEnabled()`, hook
+`usePinnedScopesEnabled`; off by default, only meaningful with `scopeSwitcher`) adds
+user-pinned segments between the virtual scopes and the workspace chip, bracketed by
+`scope-pin-divider` on each side. A pin renders as `scope-segment` with
+`data-scope="pin"`, `data-pin-id`, `data-pin-kind`, an unread badge
+(`scope-pin-unseen-badge`), the shared pop-out icon, the shared right-click menu, and
+hover controls `scope-pin-move-left` / `scope-pin-move-right` / `scope-pin-unpin`.
+Below `xl` a pin drops to icon-only; below `lg` the whole strip
+(`scope-pin-strip`) is hidden.
+
+Pins persist in the global preference `pinnedScopes` (cap 8, same shape as
+`recentRemotes`). Each entry is a prefixed, discriminated key because the two things the
+UI calls a "repo group" have separate key spaces: `repo:<groupKey>` is a git-remote
+`RepoGroup`, `group:<workspaceId>` a repo-group virtual workspace. `pinnedScopes.ts`
+holds the pure model (`parsePinnedScope` splits on the first colon so a
+`repo:workspace:<id>` key survives; `resolvePinnedScopes` drops pins whose target is
+missing from the rendered set only, never from storage). `usePinnedScopes.ts` is a
+module-level store rather than per-hook state so the pin toggles on the picker rows
+(`scope-pin-toggle`, `data-pin-kind` / `data-pin-key`, in `WorkspaceIdentityChip`) and
+the segments in `ScopeSlideSwitcher` stay in sync without a common owner.
+
+An active pin takes the thumb from the workspace segment (`data-active-pin` on the
+container). Because a pin and the chip must never show the same identity twice: a
+pinned *group* suppresses the chip's `groupIdentity`, so the chip falls back to the
+remembered repo with the usual switch-back split button; a pinned *remote* sets
+`identitySuppressed`, collapsing the chip to a bare chevron picker trigger
+(`data-identity-suppressed`).
+
 `RemoteScopeCluster` renders the chip itself unless `hideIdentity` is set; both headers
 forward `hideIdentity` so identity renders exactly once. Virtual-scope navigation
 (`goToMyWork` / `goToMyLife`, saved-note-path restore) lives in shared
