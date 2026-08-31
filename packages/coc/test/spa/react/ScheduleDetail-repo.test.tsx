@@ -231,7 +231,6 @@ describe('ScheduleDetail — repo schedule read-only', () => {
 
         expect(screen.getByTestId('commit-reminder')).toBeTruthy();
 
-        // Dismiss
         act(() => {
             fireEvent.click(screen.getByLabelText('Dismiss reminder'));
         });

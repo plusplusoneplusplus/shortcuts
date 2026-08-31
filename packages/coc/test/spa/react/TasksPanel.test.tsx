@@ -2016,7 +2016,6 @@ describe('TasksPanel — search results', () => {
             expect(screen.queryByTestId('task-tree')).toBeNull();
         });
 
-        // Clear the search
         fireEvent.click(screen.getByTestId('task-search-clear'));
         await waitFor(() => {
             expect(screen.getByTestId('task-tree')).toBeTruthy();

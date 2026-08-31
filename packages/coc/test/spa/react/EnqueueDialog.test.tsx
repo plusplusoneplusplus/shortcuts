@@ -293,25 +293,20 @@ describe('EnqueueDialog', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Select workspace
         const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
-        // Wait for folder select to appear
         await waitFor(() => {
             expect(screen.getByTestId('folder-select')).toBeTruthy();
         });
 
-        // Select folder
         const folderSelect = screen.getByTestId('folder-select');
         fireEvent.change(folderSelect, { target: { value: 'feature1' } });
 
-        // Enter prompt
         const textarea = screen.getByTestId('prompt-input');
         textarea.innerText = 'Test prompt';
         fireEvent.input(textarea);
 
-        // Submit
         fireEvent.click(screen.getByText('Enqueue'));
         await waitFor(() => {
             expect(postBody).toBeTruthy();
@@ -1158,7 +1153,6 @@ describe('EnqueueDialog', () => {
             expect(screen.getByText('Enqueue AI Task')).toBeTruthy();
         });
 
-        // Select workspace
         const wsSelect = screen.getByTestId('workspace-select');
         fireEvent.change(wsSelect, { target: { value: 'ws1' } });
 
@@ -2143,7 +2137,6 @@ describe('EnqueueDialog slash commands', () => {
             expect(screen.getByTestId('slash-command-menu')).toBeTruthy();
         });
 
-        // Press Escape
         fireEvent.keyDown(textarea, { key: 'Escape' });
 
         await waitFor(() => {

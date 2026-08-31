@@ -171,7 +171,6 @@ describe('TaskSearchResults', () => {
 
         const row = screen.getByTestId('search-result-done-task');
         expect(row.textContent).toContain('✅');
-        // data-status attribute
         const statusSpan = row.querySelector('[data-status="done"]');
         expect(statusSpan).toBeTruthy();
     });

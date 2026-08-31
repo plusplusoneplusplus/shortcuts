@@ -191,7 +191,6 @@ describe('DbBrowserSection — inline editing', () => {
         fireEvent.click(screen.getByTestId('db-edit-row-0'));
         await waitFor(() => screen.getByTestId('db-edit-name'));
 
-        // Change the name field
         fireEvent.change(screen.getByTestId('db-edit-name'), { target: { value: 'Updated' } });
 
         fireEvent.click(screen.getByTestId('db-edit-save'));

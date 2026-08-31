@@ -254,7 +254,6 @@ describe('InlineCommentPopup', () => {
         const textarea = screen.getByTestId('comment-textarea');
         fireEvent.change(textarea, { target: { value: 'My comment' } });
 
-        // Click Submit button
         const submitBtn = screen.getByText(/Submit/);
         fireEvent.click(submitBtn);
 
@@ -365,7 +364,6 @@ describe('InlineCommentPopup', () => {
             />
         );
 
-        // Click suggestion
         fireEvent.click(screen.getByTestId('category-chip-suggestion'));
 
         const suggestionChip = screen.getByTestId('category-chip-suggestion');

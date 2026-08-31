@@ -110,7 +110,6 @@ describe('AdminPanel', () => {
         await act(async () => {
             renderWithProviders();
         });
-        // Navigate to Data tab
         await act(async () => {
             fireEvent.click(screen.getByTestId('admin-tab-data'));
         });
@@ -130,7 +129,6 @@ describe('AdminPanel', () => {
         await act(async () => {
             renderWithProviders();
         });
-        // Navigate to Data tab
         await act(async () => {
             fireEvent.click(screen.getByTestId('admin-tab-data'));
         });
@@ -201,7 +199,6 @@ describe('AdminPanel', () => {
             renderWithProviders();
         });
 
-        // Navigate to Data tab
         await act(async () => {
             fireEvent.click(screen.getByTestId('admin-tab-data'));
         });
@@ -635,14 +632,12 @@ describe('AdminPanel', () => {
             await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('task-card-density-dense')).toBeDefined());
 
-            // Click Dense segment
             await act(async () => {
                 fireEvent.click(screen.getByTestId('task-card-density-dense'));
             });
 
             expect((screen.getByTestId('task-card-density-dense') as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
 
-            // Click Appearance card Save
             await act(async () => {
                 fireEvent.click(screen.getByTestId('settings-appearance-save'));
             });
@@ -751,12 +746,10 @@ describe('AdminPanel', () => {
             await gotoSettingsSubTab('appearance');
             await waitFor(() => expect(screen.getByTestId('task-card-density-compact')).toBeDefined());
 
-            // Click Dense
             await act(async () => {
                 fireEvent.click(screen.getByTestId('task-card-density-dense'));
             });
 
-            // Click Cancel on Appearance card
             await act(async () => {
                 fireEvent.click(screen.getByTestId('settings-appearance-cancel'));
             });
@@ -1137,12 +1130,10 @@ describe('AdminPanel', () => {
             await gotoSettingsSubTab('features');
             await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeDefined());
 
-            // Enable terminal
             await act(async () => {
                 fireEvent.click(screen.getByTestId('toggle-terminal-enabled'));
             });
 
-            // Save
             await act(async () => {
                 fireEvent.click(screen.getByTestId('settings-features-save'));
             });

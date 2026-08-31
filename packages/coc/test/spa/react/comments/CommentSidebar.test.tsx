@@ -71,7 +71,6 @@ describe('CommentSidebar', () => {
                 onAskAI={noop} onCommentClick={noop}
             />
         );
-        // Click Open filter
         fireEvent.click(screen.getByTestId('status-filter-open'));
         expect(screen.getByText('open one')).toBeTruthy();
         expect(screen.queryByText('resolved one')).toBeNull();

@@ -699,7 +699,6 @@ describe('FilePreview', () => {
 
             await waitFor(() => {
                 expect(document.querySelector('.file-preview-lines')).not.toBeNull();
-                // Not using markdown-body
                 expect(document.querySelector('.markdown-body')).toBeNull();
             });
         });

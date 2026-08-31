@@ -62,7 +62,6 @@ describe('useFilesViewMode', () => {
 
         const { result } = renderHook(() => useFilesViewMode('ws-2'));
 
-        // Wait for the fetch to complete
         await waitFor(() => {
             expect(fetchSpy).toHaveBeenCalled();
         });

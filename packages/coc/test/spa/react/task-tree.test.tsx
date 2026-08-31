@@ -192,7 +192,6 @@ describe('TaskTree', () => {
     it('renders "Empty folder" placeholder for empty folder children', () => {
         renderTaskTree(emptyFolderTree);
 
-        // Click the empty folder
         fireEvent.click(screen.getByTestId('task-tree-item-empty'));
         expect(screen.getByTestId('miller-column-1')).toBeTruthy();
         expect(screen.getByText('Empty folder')).toBeTruthy();
