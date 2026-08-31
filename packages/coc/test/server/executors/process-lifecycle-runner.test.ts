@@ -2203,3 +2203,91 @@ describe('ProcessLifecycleRunner — metadata.commitChat from commit-chat contex
         expect((await store.getProcess(`queue_${task.id}`))?.metadata?.commitChat).toBeUndefined();
     });
 });
+
+// ============================================================================
+// metadata.pullRequestChat from context.pullRequestChat
+// ============================================================================
+
+describe('ProcessLifecycleRunner — metadata.pullRequestChat from PR-chat context', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('persists every identifying field the PR-chat bindings send', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Review this PR',
+                workspaceId: 'ws-abc',
+                context: {
+                    pullRequestChat: {
+                        prId: '4211',
+                        prNumber: 4211,
+                        prTitle: 'Suppress the plan save-location directive',
+                        repoId: 'ws-abc',
+                        originId: 'origin-1',
+                    },
+                },
+            } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.pullRequestChat).toEqual({
+            prId: '4211',
+            prNumber: 4211,
+            prTitle: 'Suppress the plan save-location directive',
+            repoId: 'ws-abc',
+            originId: 'origin-1',
+        });
+    });
+
+    it('persists prId alone when the binding omits the optional fields', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Review this PR',
+                workspaceId: 'ws-abc',
+                context: { pullRequestChat: { prId: '7' } },
+            } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.pullRequestChat)
+            .toEqual({ prId: '7' });
+    });
+
+    it('omits pullRequestChat for a normal chat', async () => {
+        const task = makeTask();
+        await runner.run(task, makeOpts());
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.pullRequestChat).toBeUndefined();
+    });
+
+    it('omits pullRequestChat for non-chat tasks that carry PR context elsewhere', async () => {
+        const task = makeTask({
+            type: 'run-script',
+            payload: { kind: 'run-script', script: 'echo hi', context: { pullRequestChat: { prId: '7' } } } as any,
+        });
+        await runner.run(task, makeOpts());
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.pullRequestChat).toBeUndefined();
+    });
+
+    it('omits pullRequestChat when the context object has no usable prId', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Review',
+                workspaceId: 'ws-abc',
+                context: { pullRequestChat: { prTitle: 'no id here' } },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.pullRequestChat).toBeUndefined();
+    });
+});

@@ -146,6 +146,22 @@ describe('NoteChatExecutor', () => {
             expect(opts.agentMode).toBe('interactive');
         });
 
+        it('omits the plan save-location block from the system message', async () => {
+            const task = makeNoteChatTask('task-no-autofolder', 'ask');
+            const opts = await (executor as any).buildModeOptions(task, 'do it', '/repo');
+            const content = opts.systemMessage?.content ?? '';
+            expect(content).not.toContain('Save location');
+            expect(content).not.toContain('.plan.md');
+        });
+
+        it('yields an undefined system message when nothing else produces content', async () => {
+            const bare = new NoteChatExecutor(store, makeOptions(store), DATA_DIR);
+            vi.spyOn(bare as any, 'resolveGlobalSystemPrompt').mockReturnValue(undefined);
+            const task = makeNoteChatTask('task-empty-system', 'ask');
+            const opts = await (bare as any).buildModeOptions(task, 'do it', '/repo');
+            expect(opts.systemMessage).toBeUndefined();
+        });
+
         it('does not include toolResultInterceptors', async () => {
             const task = makeNoteChatTask();
             const opts = await (executor as any).buildModeOptions(task, 'do it', undefined);

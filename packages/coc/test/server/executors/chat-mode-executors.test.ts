@@ -1285,6 +1285,69 @@ describe('ChatExecutor ralph grilling phase', () => {
 });
 
 // ============================================================================
+// Auto-folder suppression for artifact-bound chats
+// ============================================================================
+
+describe('ChatExecutor plan save-location block', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'AI answer',
+            sessionId: 'sess-autofolder',
+        });
+    });
+
+    function makeAskTask(id: string, context?: Record<string, unknown>): QueuedTask {
+        return {
+            id,
+            type: 'chat',
+            priority: 'normal',
+            status: 'running',
+            createdAt: Date.now(),
+            payload: {
+                kind: 'chat',
+                mode: 'ask',
+                prompt: 'Explain this',
+                workspaceId: 'ws-id',
+                workingDirectory: '/repo/work',
+                ...(context ? { context } : {}),
+            } as any,
+            config: {},
+            displayName: 'Explain this',
+        };
+    }
+
+    it('is omitted for a PR chat', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeAskTask('task-pr-chat', {
+            pullRequestChat: { prId: '42', prNumber: 42, prTitle: 'Fix the thing', repoId: 'ws-id' },
+        });
+
+        await executor.execute(task, 'Explain this');
+
+        const systemContent = sdkMocks.mockSendMessage.mock.calls[0][0].systemMessage?.content ?? '';
+        expect(systemContent).not.toContain('Save location');
+        expect(systemContent).not.toContain('.plan.md');
+    });
+
+    it('is still present for a plain ask chat', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeAskTask('task-plain-ask');
+
+        await executor.execute(task, 'Explain this');
+
+        const systemContent = sdkMocks.mockSendMessage.mock.calls[0][0].systemMessage?.content ?? '';
+        expect(systemContent).toContain('Save location');
+        expect(systemContent).toContain('.plan.md');
+    });
+});
+
+// ============================================================================
 // Skill injection tests (context.skills)
 // ============================================================================
 

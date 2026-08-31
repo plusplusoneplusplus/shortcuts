@@ -157,7 +157,7 @@ Diff classification is queued as a first-class `pr-classification` task or a cla
 
 ### Shared turn pipeline
 
-First turns (`ChatBaseExecutor.execute`) and continuations (`FollowUpExecutor.executeFollowUp`) share one pipeline. `buildChatTurnSystemMessage` fixes block order (mode → global prompt → For Each/Map Reduce → repo instructions → chat style → source-location → memory → tool guidance → auto-folder → note file); callers only pass `undefined` to skip a block.
+First turns (`ChatBaseExecutor.execute`) and continuations (`FollowUpExecutor.executeFollowUp`) share one pipeline. `buildChatTurnSystemMessage` fixes block order (mode → global prompt → For Each/Map Reduce → repo instructions → chat style → source-location → memory → tool guidance → auto-folder → note file); callers only pass `undefined` to skip a block. `suppressesAutoFolder` (auto-folder-utils) drops the auto-folder plan save-location block for artifact-bound chats — note, commit, and PR — on both first and follow-up turns, keyed off payload context or the denormalized process metadata; Ralph grilling suppresses it separately because its user-message directive replaces it.
 
 `resolveChatTurnPolicy` owns model resolution (explicit → per-repo default for the turn's slot → provider default), reasoning-effort precedence (per-turn → provider-scoped persisted → Copilot-only global → SDK default), and the Copilot-only long-context tier derived from tiered billing metadata. On an unsupported effort a first turn fails while a follow-up drops only the per-turn override and continues; persisted/default effort validation stays strict. Follow-ups resolve provider/session/default model before applying per-turn effort.
 

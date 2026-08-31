@@ -69,15 +69,6 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         // Resolve parent hash
         const parentHash = await resolveParentHash(commitHash, workingDirectory);
 
-        // Build auto-folder context (same pattern as ChatExecutor)
-        let autoFolderContext = undefined;
-        if (workingDirectory) {
-            autoFolderContext = await this.buildAutoFolderContext(
-                workingDirectory,
-                wsId,
-            );
-        }
-
         // Build tools first so we can route the aggregated tool-guidance prose
         // into the system message via `.appendToolGuidance()`.
         const tools: Tool<unknown>[] = [];
@@ -124,7 +115,6 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             .withRepoInstructions(workingDirectory, 'ask')
             .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendToolGuidance(toolGuidance)
-            .appendAutoFolder(autoFolderContext)
             .build();
 
         return {

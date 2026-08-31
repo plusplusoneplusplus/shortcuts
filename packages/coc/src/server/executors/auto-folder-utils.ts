@@ -61,3 +61,51 @@ export async function resolveAutoFolderContext(
         .map(e => e.name);
     return { tasksRoot: folderRoot, existingFolders };
 }
+
+/**
+ * Input for {@link suppressesAutoFolder}: a queued chat payload (first turn),
+ * a process metadata record (follow-up turns), or both.
+ */
+export interface SuppressesAutoFolderInput {
+    payload?: unknown;
+    metadata?: Record<string, unknown> | null;
+}
+
+function isNonEmptyRecord(value: unknown): boolean {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Chat kinds bound to a specific artifact - a note, a commit, or a pull
+ * request - never get the plan save-location block. Those conversations are
+ * scoped to the thing they are about; a standing `notes/Plans/<name>.plan.md`
+ * save target invites unrequested file writes and, for note chats, competes
+ * with the note the chat is actually editing.
+ *
+ * Ralph grilling suppression is handled separately at its own call site: it
+ * replaces the block with a user-message directive rather than dropping it.
+ */
+export function suppressesAutoFolder(input: SuppressesAutoFolderInput): boolean {
+    const payloadContext = isNonEmptyRecord(input.payload)
+        ? (input.payload as { context?: unknown }).context
+        : undefined;
+    const context = isNonEmptyRecord(payloadContext)
+        ? payloadContext as Record<string, unknown>
+        : undefined;
+    if (context) {
+        if (isNonEmptyRecord(context.pullRequestChat)) return true;
+        if (isNonEmptyRecord(context.commitChat)) return true;
+        if (isNonEmptyRecord(context.noteChat)) return true;
+    }
+
+    const metadata = isNonEmptyRecord(input.metadata)
+        ? input.metadata as Record<string, unknown>
+        : undefined;
+    if (metadata) {
+        if (isNonEmptyRecord(metadata.pullRequestChat)) return true;
+        if (isNonEmptyRecord(metadata.commitChat)) return true;
+        if (typeof metadata.notePath === 'string' && metadata.notePath.trim()) return true;
+    }
+
+    return false;
+}
