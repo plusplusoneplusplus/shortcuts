@@ -181,7 +181,7 @@ test.describe('Add Repo workflow', () => {
         }
     });
 
-    test('select path from browser fills input', async ({ page, serverUrl }) => {
+    test('browsing into a directory fills the path input', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-select-'));
         const repoDir = createRepoFixture(tmpDir);
 
@@ -201,10 +201,13 @@ test.describe('Add Repo workflow', () => {
             await page.locator('.path-browser-entry', { hasText: 'test-repo' }).click();
             await expect(page.locator('#path-breadcrumb')).toContainText('test-repo');
 
-            // Click "Select This Directory"
-            await page.click('#path-browser-select');
+            // Path input tracks the browsed directory — no separate confirm button
+            await expect(page.locator('#repo-path')).toHaveValue(repoDir);
+            await expect(page.locator('#path-browser-select')).toHaveCount(0);
 
-            // Path input should be filled, browser should be hidden
+            // The tree stays open, and Close dismisses it without reverting the path
+            await expect(page.locator('#path-browser')).toBeVisible();
+            await page.click('#path-browser-close');
             await expect(page.locator('#path-browser')).toBeHidden();
             await expect(page.locator('#repo-path')).toHaveValue(repoDir);
         } finally {
@@ -223,11 +226,11 @@ test.describe('Add Repo workflow', () => {
             await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
             await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
 
-            // Navigate browser to test-repo and select it
+            // Navigate browser into test-repo — that alone is the selection
             await page.fill('#repo-path', tmpDir);
             await page.click('#browse-btn');
             await page.locator('.path-browser-entry', { hasText: 'test-repo' }).click();
-            await page.click('#path-browser-select');
+            await expect(page.locator('#path-breadcrumb')).toContainText('test-repo');
 
             // Alias should be auto-populated from last path segment
             await expect(page.locator('#repo-alias')).toHaveValue('test-repo');

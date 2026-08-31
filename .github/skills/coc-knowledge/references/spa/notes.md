@@ -185,6 +185,16 @@ rows exist (formatting row, find/replace row, contextual table strip) and delega
 `features/notes/editor/toolbar/`. It re-exports `HIGHLIGHT_COLORS`, `HEADING_LEVELS`,
 `TABLE_PICKER_COLS`, and `TABLE_PICKER_ROWS` so it stays the entry point.
 
+The one thing it owns for the whole toolbar is reactivity. `RichEditorCore` is the
+component that calls `useEditor`, and it sits *below* the toolbar's owner
+(`NoteEditor`), whose only editor bridge is `onUpdate` — which Tiptap fires solely when
+`transaction.docChanged`. Selection-only transactions therefore never reach the
+toolbar on their own, so `NoteEditorToolbar` calls `useEditorTransactionTick(editor)`
+before its `!editor` early return (keeping hook order stable). Every child that reads
+editor state while rendering — the table strip, mark/heading/list pressed states, the
+colour and font readouts, the find counter — depends on that single subscription; do
+not add a second one per widget.
+
 - `formattingCommands.ts` — `FORMATTING_GROUPS`, the descriptor list driving the
   formatting half. Each inner array is one visual group with a separator drawn between
   groups, so reordering is an edit here rather than in JSX. A descriptor carries `id`,
@@ -207,8 +217,13 @@ rows exist (formatting row, find/replace row, contextual table strip) and delega
   activates on `onMouseDown` (with `preventDefault`, so the editor selection survives)
   plus Enter/Space, and deliberately has no `onClick`, which would run the command
   twice.
+- `useEditorTransactionTick.ts` — the toolbar's whole reactivity story: subscribes to
+  `transaction` and re-renders the caller. Tolerates a test double with no event
+  emitter (`typeof editor.on !== 'function'`), which the hand-rolled `makeMockEditor`
+  in the toolbar tests relies on.
 - `useFindReplaceToolbarController.ts` — owns whether the find row shows, plus
-  `useFindAndReplaceState` (the `transaction` subscription) and `getSelectedText`.
+  `useFindAndReplaceState` (a plain read of `editor.storage.findAndReplace`, live off
+  the shared tick) and `getSelectedText`.
 - `TableToolbarControls.tsx` — the contextual table strip, insert-size picker
   (`TABLE_PICKER_COLS`/`ROWS`), cell fill picker, and `useTableToolbarState`, which
   derives widths / header shape / wrap mode / move availability. Outside a table it
@@ -254,9 +269,9 @@ In-document find and replace lives behind the toolbar's 🔍 button
 (`features/notes/editor/toolbar/FindReplacePanel.tsx`), backed by
 `@tiptap/extension-find-and-replace`, registered last in `RichEditorCore` so its match
 decorations paint above the comment and AI-edit decorations. State lives on the editor
-instance (`editor.storage.findAndReplace`: term, modifiers, `results`, `currentIndex`);
-because the toolbar is not the component calling `useEditor`, the panel subscribes to
-`transaction` events to keep the `n / total` counter live.
+instance (`editor.storage.findAndReplace`: term, modifiers, `results`, `currentIndex`)
+and is read fresh on each render; the `n / total` counter stays live off the toolbar's
+shared `useEditorTransactionTick` subscription.
 
 The panel offers find/replace inputs, prev/next (Enter and Shift+Enter in the find
 input), Aa / `ab|` / `.*` modifier toggles, and Replace / Replace all, seeding the term

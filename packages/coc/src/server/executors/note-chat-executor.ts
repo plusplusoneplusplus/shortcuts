@@ -111,15 +111,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const wsId = payload.workspaceId;
 
-        // Build auto-folder context (same pattern as ChatExecutor)
-        let autoFolderContext = undefined;
-        if (workingDirectory) {
-            autoFolderContext = await this.buildAutoFolderContext(
-                workingDirectory,
-                wsId,
-            );
-        }
-
         // Standard chat tools
         const followUp = buildFollowUpSuggestionsAddon(
             this.followUpSuggestions.enabled,
@@ -140,7 +131,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
         const systemMessage = await systemMessageBuilder()
             .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .appendToolGuidance(toolGuidance)
-            .appendAutoFolder(autoFolderContext)
             .build();
 
         const payloadMode = payload.mode;

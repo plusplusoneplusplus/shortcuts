@@ -159,7 +159,7 @@ describe('routing to the selected server', () => {
         expect(repositoryServiceMocks.registerWorkspace.mock.calls[0][1]).toBeUndefined();
     });
 
-    it('clears the path and re-roots the open browser when the server changes', async () => {
+    it('re-roots the open browser and retargets the path when the server changes', async () => {
         renderDialog();
         await waitFor(() => expect(serverSelect().options.length).toBe(2));
 
@@ -172,7 +172,8 @@ describe('routing to the selected server', () => {
 
         await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders)
             .toHaveBeenNthCalledWith(2, '~', REMOTE_URL));
-        expect(pathInput().value).toBe('');
+        // The old server's path is dropped; Path then tracks the new server's root.
+        await waitFor(() => expect(pathInput().value).toBe('~'));
     });
 });
 

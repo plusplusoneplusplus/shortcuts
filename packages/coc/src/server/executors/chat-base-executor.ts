@@ -58,7 +58,7 @@ import { EMPTY_EXECUTOR_RUNTIME } from './executor-runtime-contracts';
 import type { ChatExecutorRuntime } from './executor-runtime-contracts';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
-import { resolveAutoFolderContext } from './auto-folder-utils';
+import { resolveAutoFolderContext, suppressesAutoFolder } from './auto-folder-utils';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
@@ -553,7 +553,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // During grilling, the user-message directive owns the output contract
         // (Notes goal file for general Ralph, Work Item versioning for Goal items).
         // Suppress the generic auto-folder system block so the model does not
-        // receive a contradictory `.plan.md` save target.
+        // receive a contradictory `.plan.md` save target. Artifact-bound chats
+        // (PR chats route through here) drop the block outright - see
+        // `suppressesAutoFolder`.
         const systemMessage = await buildChatTurnSystemMessage({
             mode,
             workingDirectory,
@@ -563,7 +565,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             mapReduceGeneration,
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
-            autoFolderContext: isGrilling ? undefined : autoFolderContext,
+            autoFolderContext: isGrilling || suppressesAutoFolder({ payload: task.payload })
+                ? undefined
+                : autoFolderContext,
             notePath,
         });
 

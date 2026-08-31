@@ -758,6 +758,47 @@ describe('exportCommitPatch and applyCommitPatch', () => {
         expect(applied.message).toBe('Repository already has a merge operation in progress');
     });
 
+    it('appends the missing trailing newline to a patch body before applying', async () => {
+        const source = makeRepo('patch-nonewline-source');
+        const target = makeRepo('patch-nonewline-target');
+        const hash = commit(source, 'carried.txt', 'carried\n', 'carry me');
+        const exported = await service.exportCommitPatch(source, hash);
+
+        const applied = await service.applyCommitPatch(target, exported.patch!.replace(/\n+$/, ''));
+
+        expect(applied).toMatchObject({ success: true, conflicts: false, appliedCount: 1 });
+        expect(git(target, 'log', '-1', '--format=%s').trim()).toBe('carry me');
+    });
+
+    it('carries a multi-megabyte patch body', async () => {
+        const source = makeRepo('patch-large-source');
+        const target = makeRepo('patch-large-target');
+        // The payload is caller-sized, so the write path has to hold up on a
+        // whole-commit diff rather than only on the small patches above.
+        const big = 'the quick brown fox jumps over the lazy dog\n'.repeat(60_000);
+        const hash = commit(source, 'big.txt', big, 'carry something big');
+        const exported = await service.exportCommitPatch(source, hash);
+        expect(exported.patch!.length).toBeGreaterThan(2 * 1024 * 1024);
+
+        const applied = await service.applyCommitPatch(target, exported.patch!);
+
+        expect(applied).toMatchObject({ success: true, conflicts: false, appliedCount: 1 });
+        expect(fs.readFileSync(path.join(target, 'big.txt'), 'utf-8')).toBe(big);
+    });
+
+    it('removes the temporary patch directory once the apply is done', async () => {
+        const source = makeRepo('patch-cleanup-source');
+        const target = makeRepo('patch-cleanup-target');
+        const hash = commit(source, 'carried.txt', 'carried\n', 'carry me');
+        const exported = await service.exportCommitPatch(source, hash);
+
+        expect(await service.applyCommitPatch(target, exported.patch!)).toMatchObject({ success: true });
+
+        const leftovers = fs.readdirSync(path.join(target, '.git'))
+            .filter(entry => entry.startsWith('tmp-patch-apply-'));
+        expect(leftovers).toEqual([]);
+    });
+
     it('rejects an empty patch body', async () => {
         const repo = makeRepo();
 

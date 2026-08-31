@@ -138,6 +138,12 @@ that same registry.
   `CloneRepoDialog` runs `POST /api/git/clone` on the selected server, then registers the
   cloned path there; only a **local** clone dispatches `WORKSPACE_REGISTERED` and
   navigates — a remote id is routable only after `aggregateRemoteWorkspaces` re-runs.
+- `AddRepoDialog`'s inline filesystem browser (`path-browser`) treats browsing as
+  selecting: every successful `navigateTo` writes the shown directory into `repo-path`
+  and, while the name still holds the value the browser derived, re-derives `repo-alias`
+  from the path leaf. A name the user types is never overwritten. The tree has no confirm
+  of its own — `path-browser-close` only dismisses it (the path stays), and the dialog's
+  `add-repo-submit` is the single confirm, which also closes the tree.
 - Switching server clears checked members — their ids mean nothing in the new registry —
   and the dropdown is **disabled while editing**, because a group's server is fixed at
   creation. `RepoGroupDialog` takes `groupBaseUrl` so load and save route to the owner.

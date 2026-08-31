@@ -180,6 +180,45 @@ export interface CommitChatContext {
 }
 
 /**
+ * The pull request a conversation is anchored to. Carried on
+ * `ChatPayload.context` when the chat is created and denormalized onto
+ * `AIProcess.metadata.pullRequestChat` so follow-up turns can recognise a PR
+ * chat without re-reading the queue payload.
+ */
+export interface PullRequestChatContext {
+    /** Stable per-provider PR identifier (numeric for GitHub/ADO). */
+    prId: string;
+    /** Optional repo identifier (workspace ID) the PR belongs to. */
+    repoId?: string;
+    /** Human-readable PR number (typically equal to prId for GitHub/ADO). */
+    prNumber?: number;
+    /** PR title - used to enrich the AI prompt. */
+    prTitle?: string;
+    /** Optional PR origin (remote) identifier for multi-origin workspaces. */
+    originId?: string;
+}
+
+/**
+ * Validate an arbitrary value as pull-request-chat context. Returns a fresh
+ * object carrying only the known fields, or undefined when `prId` is missing or
+ * not a non-empty string.
+ */
+export function readPullRequestChatContext(value: unknown): PullRequestChatContext | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const candidate = value as Record<string, unknown>;
+    const prId = typeof candidate.prId === 'string'
+        ? candidate.prId.trim()
+        : typeof candidate.prId === 'number' ? String(candidate.prId) : '';
+    if (!prId) return undefined;
+    const result: PullRequestChatContext = { prId };
+    if (typeof candidate.repoId === 'string' && candidate.repoId.trim()) result.repoId = candidate.repoId;
+    if (typeof candidate.prNumber === 'number' && Number.isFinite(candidate.prNumber)) result.prNumber = candidate.prNumber;
+    if (typeof candidate.prTitle === 'string' && candidate.prTitle.trim()) result.prTitle = candidate.prTitle;
+    if (typeof candidate.originId === 'string' && candidate.originId.trim()) result.originId = candidate.originId;
+    return result;
+}
+
+/**
  * Validate an arbitrary value as commit-chat context. Returns a fresh object
  * carrying only the two known fields, or undefined when the hash is missing or
  * not a non-empty string — malformed values never reach the popover.
@@ -243,16 +282,7 @@ export interface ChatContext {
     /** Commit-chat preset (side-by-side chat anchored to a specific commit). */
     commitChat?: CommitChatContext;
     /** Pull-request-chat preset (side-by-side chat anchored to a specific PR). */
-    pullRequestChat?: {
-        /** Stable per-provider PR identifier (numeric for GitHub/ADO). */
-        prId: string;
-        /** Optional repo identifier (workspace ID) the PR belongs to. */
-        repoId?: string;
-        /** Human-readable PR number (typically equal to prId for GitHub/ADO). */
-        prNumber?: number;
-        /** PR title — used to enrich the AI prompt. */
-        prTitle?: string;
-    };
+    pullRequestChat?: PullRequestChatContext;
     /** Work Item chat preset (side-by-side chat anchored to a local Work Item/Goal). */
     workItemChat?: {
         workspaceId: string;
@@ -911,6 +941,17 @@ export function serializeCommitChatMetadata(payload: unknown): CommitChatContext
     if (!payload || typeof payload !== 'object') return undefined;
     if (!isChatPayload(payload as Record<string, unknown>)) return undefined;
     return readCommitChatContext((payload as ChatPayload).context?.commitChat);
+}
+
+/**
+ * Computes `AIProcess.metadata.pullRequestChat` from a queued task payload.
+ * Returns undefined for non-chat payloads and for chat payloads without PR
+ * context, so normal/commit/note chats, workflows, and scripts store nothing.
+ */
+export function serializePullRequestChatMetadata(payload: unknown): PullRequestChatContext | undefined {
+    if (!payload || typeof payload !== 'object') return undefined;
+    if (!isChatPayload(payload as Record<string, unknown>)) return undefined;
+    return readPullRequestChatContext((payload as ChatPayload).context?.pullRequestChat);
 }
 
 export function serializeTaskGroupMetadata(payload: unknown): TaskGroupRef | undefined {

@@ -472,7 +472,106 @@ describe('AddRepoDialog', () => {
             expect(entries.length).toBe(2);
         });
 
-        it('selects current browser path and populates name from path leaf', async () => {
+        it('fills path and name from the browsed directory without a separate confirm', async () => {
+            repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({
+                path: '/home/user/my-project',
+                parent: '/home/user',
+                entries: [],
+            });
+
+            renderDialog();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('browse-btn'));
+            });
+
+            expect(getPathInput().value).toBe('/home/user/my-project');
+            expect(getNameInput().value).toBe('my-project');
+            // The outer "Add Repo" button is the only confirm.
+            expect(screen.queryByTestId('path-browser-select')).toBeNull();
+            // Browsing does not dismiss the tree.
+            expect(screen.getByTestId('path-browser')).toBeTruthy();
+        });
+
+        it('keeps tracking path and name while navigating into a subdirectory', async () => {
+            repositoryServiceMocks.browseWorkspaceFolders
+                .mockResolvedValueOnce({
+                    path: '/home/user',
+                    parent: '/home',
+                    entries: [{ name: 'my-project', isGitRepo: true }],
+                })
+                .mockResolvedValueOnce({
+                    path: '/home/user/my-project',
+                    parent: '/home/user',
+                    entries: [],
+                });
+
+            renderDialog();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('browse-btn'));
+            });
+            expect(getPathInput().value).toBe('/home/user');
+            expect(getNameInput().value).toBe('user');
+
+            await act(async () => {
+                fireEvent.click(screen.getAllByTestId('path-browser-entry')[0]);
+            });
+
+            expect(getPathInput().value).toBe('/home/user/my-project');
+            expect(getNameInput().value).toBe('my-project');
+            expect(screen.getByTestId('path-browser')).toBeTruthy();
+        });
+
+        it('does not clobber a name the user typed', async () => {
+            repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({
+                path: '/home/user/my-project',
+                parent: '/home/user',
+                entries: [],
+            });
+
+            renderDialog();
+            fireEvent.change(getNameInput(), { target: { value: 'custom-alias' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('browse-btn'));
+            });
+
+            expect(getPathInput().value).toBe('/home/user/my-project');
+            expect(getNameInput().value).toBe('custom-alias');
+        });
+
+        it('stops re-deriving the name once the user edits the auto-filled value', async () => {
+            repositoryServiceMocks.browseWorkspaceFolders
+                .mockResolvedValueOnce({
+                    path: '/home/user',
+                    parent: '/home',
+                    entries: [{ name: 'my-project', isGitRepo: true }],
+                })
+                .mockResolvedValueOnce({
+                    path: '/home/user/my-project',
+                    parent: '/home/user',
+                    entries: [],
+                });
+
+            renderDialog();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('browse-btn'));
+            });
+            expect(getNameInput().value).toBe('user');
+
+            fireEvent.change(getNameInput(), { target: { value: 'my-alias' } });
+
+            await act(async () => {
+                fireEvent.click(screen.getAllByTestId('path-browser-entry')[0]);
+            });
+
+            expect(getPathInput().value).toBe('/home/user/my-project');
+            expect(getNameInput().value).toBe('my-alias');
+        });
+
+        it('closes the tree without reverting path when Close is clicked', async () => {
             repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({
                 path: '/home/user/my-project',
                 parent: '/home/user',
@@ -486,11 +585,38 @@ describe('AddRepoDialog', () => {
             });
 
             await act(async () => {
-                fireEvent.click(screen.getByTestId('path-browser-select'));
+                fireEvent.click(screen.getByTestId('path-browser-close'));
             });
 
+            expect(screen.queryByTestId('path-browser')).toBeNull();
             expect(getPathInput().value).toBe('/home/user/my-project');
             expect(getNameInput().value).toBe('my-project');
+        });
+
+        it('closes the tree when the outer submit confirms the browsed path', async () => {
+            repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValueOnce({
+                path: '/home/user/my-project',
+                parent: '/home/user',
+                entries: [],
+            });
+            repositoryServiceMocks.registerWorkspace.mockResolvedValueOnce({});
+
+            renderDialog();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('browse-btn'));
+            });
+            expect(screen.getByTestId('path-browser')).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('add-repo-submit'));
+            });
+
+            expect(screen.queryByTestId('path-browser')).toBeNull();
+            expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(1);
+            const [body] = repositoryServiceMocks.registerWorkspace.mock.calls[0];
+            expect(body.rootPath).toBe('/home/user/my-project');
+            expect(body.name).toBe('my-project');
         });
 
         it('shows error message when browse API fails', async () => {

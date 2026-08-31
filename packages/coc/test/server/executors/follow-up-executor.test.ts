@@ -1913,3 +1913,54 @@ describe('FollowUpExecutor contextTier', () => {
         });
     });
 });
+
+// ============================================================================
+// Plan save-location block on follow-up turns
+// ============================================================================
+
+describe('FollowUpExecutor plan save-location block', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
+        mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
+        mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });
+    });
+
+    async function runFollowUp(id: string, metadata: Record<string, unknown>) {
+        const proc = makeProcess({
+            id,
+            workingDirectory: path.join(os.tmpdir(), 'follow-up-autofolder'),
+            metadata: { type: 'chat', workspaceId: 'ws-id', mode: 'ask', ...metadata } as any,
+        });
+        await store.addProcess(proc);
+        await makeExecutor(store).executeFollowUp(id, 'another question', undefined, 'ask');
+        return (sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any).systemMessage?.content ?? '';
+    }
+
+    it('is suppressed for a note-chat follow-up', async () => {
+        const content = await runFollowUp('proc-fu-note', { notePath: 'my-note.md' });
+        expect(content).not.toContain('Save location');
+        expect(content).not.toContain('.plan.md');
+    });
+
+    it('is suppressed for a commit-chat follow-up', async () => {
+        const content = await runFollowUp('proc-fu-commit', { commitChat: { commitHash: 'abc123' } });
+        expect(content).not.toContain('Save location');
+        expect(content).not.toContain('.plan.md');
+    });
+
+    it('is suppressed for a PR-chat follow-up', async () => {
+        const content = await runFollowUp('proc-fu-pr', { pullRequestChat: { prId: '42' } });
+        expect(content).not.toContain('Save location');
+        expect(content).not.toContain('.plan.md');
+    });
+
+    it('is still present for a plain ask follow-up', async () => {
+        const content = await runFollowUp('proc-fu-plain', {});
+        expect(content).toContain('Save location');
+        expect(content).toContain('.plan.md');
+    });
+});

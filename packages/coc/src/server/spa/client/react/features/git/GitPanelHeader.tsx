@@ -82,14 +82,18 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
         <>
             <style>{spinKeyframes}</style>
             <div
+            /* Inline-size container so the row can shed its expendable pieces
+               (auto-pull countdown, refresh timestamp, "Pull" word) when the
+               git column is narrow, instead of overflowing the fixed-height
+               row. Thresholds live on the pieces themselves. */
             className={compact
-                ? 'git-panel-header git-panel-header--compact flex flex-1 items-center gap-1 min-w-0 px-1'
-                : 'git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px]'}
+                ? 'git-panel-header git-panel-header--compact flex flex-1 items-center gap-1 min-w-0 px-1 [container-type:inline-size]'
+                : 'git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px] [container-type:inline-size]'}
             data-testid="git-panel-header"
         >
             {/* Branch pill */}
             <button
-                className={`inline-flex items-center font-mono font-semibold border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#2d2d2d]/70 text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate ${compact ? 'gap-1 px-1.5 py-0 text-[10px] leading-[15px] max-w-[160px]' : 'gap-1.5 px-2 py-[2px] text-[11px] leading-[18px] max-w-[360px]'} ${onBranchClick ? 'cursor-pointer hover:bg-white hover:border-[#0078d4] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
+                className={`inline-flex items-center font-mono font-semibold border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#2d2d2d]/70 text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate min-w-0 ${compact ? 'gap-1 px-1.5 py-0 text-[10px] leading-[15px] max-w-[160px]' : 'gap-1.5 px-2 py-[2px] text-[11px] leading-[18px] max-w-[360px]'} ${onBranchClick ? 'cursor-pointer hover:bg-white hover:border-[#0078d4] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
                 title={branch}
                 data-testid="git-branch-pill"
                 onClick={onBranchClick}
@@ -105,7 +109,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             {/* Ahead/behind badge */}
             {hasAheadBehind && (
                 <span
-                    className={`inline-flex items-center gap-1 font-mono font-semibold text-[#616161] dark:text-[#999] tabular-nums whitespace-nowrap ${compact ? 'text-[10px] leading-[15px]' : 'text-[11px] leading-[18px]'}`}
+                    className={`inline-flex items-center gap-1 font-mono font-semibold text-[#616161] dark:text-[#999] tabular-nums whitespace-nowrap shrink-0 ${compact ? 'text-[10px] leading-[15px]' : 'text-[11px] leading-[18px]'}`}
                     data-testid="git-ahead-behind-badge"
                 >
                     {ahead > 0 && <span className="text-[#16825d]" data-testid="git-ahead-count">↑{ahead}</span>}
@@ -119,11 +123,11 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             {/* Split action button (Fetch / Pull / Push) */}
             {hasAnyAction && (
                 <div
-                    className="relative inline-flex"
+                    className="relative inline-flex shrink-0"
                     ref={dropdownRef}
                     data-testid="git-sync-split-btn"
                 >
-                    <div className={`flex items-stretch rounded-md overflow-hidden border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] ${compact ? 'h-[18px]' : 'h-6'}`}>
+                    <div className={`flex items-stretch whitespace-nowrap rounded-md overflow-hidden border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] ${compact ? 'h-[18px]' : 'h-6'}`}>
                         {/* Primary action: Pull */}
                         <button
                             className={`git-action-btn flex items-center gap-1 hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'px-1 text-[10px] leading-[16px]' : 'px-1.5 text-[11px] leading-[22px]'}`}
@@ -142,7 +146,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
                                     <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
                                 </svg>
                             )}
-                            Pull
+                            <span className="[@container_(max-width:279px)]:hidden">Pull</span>
                         </button>
 
                         {/* Chevron toggle */}
@@ -247,7 +251,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             {/* Last refreshed timestamp */}
             {lastRefreshedAt != null && (
                 <span
-                    className={`text-[#999] dark:text-[#777] whitespace-nowrap hidden sm:inline tabular-nums ${compact ? 'text-[10px]' : 'text-[11px]'}`}
+                    className={`text-[#999] dark:text-[#777] whitespace-nowrap shrink-0 hidden sm:inline tabular-nums [@container_(max-width:319px)]:!hidden ${compact ? 'text-[10px]' : 'text-[11px]'}`}
                     title={new Date(lastRefreshedAt).toLocaleString()}
                     data-testid="git-last-refreshed"
                 >
@@ -259,7 +263,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
 
             {/* Refresh button */}
             <button
-                className={`git-refresh-btn flex items-center justify-center rounded-md hover:bg-white dark:hover:bg-[#2d2d2d] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'w-[18px] h-[18px]' : 'w-6 h-6'}`}
+                className={`git-refresh-btn flex shrink-0 items-center justify-center rounded-md hover:bg-white dark:hover:bg-[#2d2d2d] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'w-[18px] h-[18px]' : 'w-6 h-6'}`}
                 onClick={onRefresh}
                 disabled={refreshing}
                 title="Refresh git data"

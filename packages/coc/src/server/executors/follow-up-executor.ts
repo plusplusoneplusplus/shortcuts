@@ -50,6 +50,7 @@ import {
     resolveSelectedSkillReferences,
 } from './prompt-builder';
 import { readNoteContent } from './note-chat-executor';
+import { suppressesAutoFolder } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
@@ -304,7 +305,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         let autoFolderContextForFollowUp: AutoFolderContext | undefined;
         const wsId = (process.metadata?.workspaceId as string) ?? (workingDirectory ? await this.resolveWorkspaceIdForPathFn(workingDirectory) : undefined);
-        if (workingDirectory) {
+        // Artifact-bound chats (note, commit, PR) never receive the plan
+        // save-location block, so skip the mkdir + readdir that builds it.
+        const autoFolderSuppressed = suppressesAutoFolder({ metadata: process.metadata });
+        if (workingDirectory && !autoFolderSuppressed) {
             autoFolderContextForFollowUp = await this.buildAutoFolderContext(
                 workingDirectory,
                 wsId,
@@ -429,7 +433,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 mapReduceGeneration,
                 memoryV2: chatCtx.memoryV2,
                 toolGuidance: chatCtx.toolGuidance,
-                autoFolderContext: currentMode === 'ask' ? autoFolderContextForFollowUp : undefined,
+                autoFolderContext: currentMode === 'ask' && !autoFolderSuppressed
+                    ? autoFolderContextForFollowUp
+                    : undefined,
                 notePath,
             });
 

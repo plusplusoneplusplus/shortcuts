@@ -42,6 +42,13 @@ accepting bare or `queue_`-prefixed task IDs, scoped by workspace — adding the
 missing, never overwriting an existing object or recording a commit message. No-op for
 file-backed stores.
 
+### PR chat metadata
+
+PR chats denormalize `metadata.pullRequestChat = { prId, repoId?, prNumber?, prTitle?, originId? }`
+from the validated `ChatPayload.context.pullRequestChat` at creation, so follow-up turns and
+anything reading process metadata can recognise a PR chat without re-reading the queue payload.
+Absent for every other chat kind.
+
 The commit, PR, and Work Item fresh-chat routes archive the bound process and clear only that
 target's binding — nothing is forked and no turns are copied, so the next lens send creates an
 empty chat. See [rest-api.md](rest-api.md).

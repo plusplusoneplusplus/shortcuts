@@ -71,6 +71,7 @@ import {
     serializeForEachMetadata,
     serializeMapReduceMetadata,
     serializeCommitChatMetadata,
+    serializePullRequestChatMetadata,
     serializeRalphMetadata,
     serializeTaskGroupMetadata,
 } from '../tasks/task-types';
@@ -680,6 +681,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 // Denormalized so the conversation keeps naming its own commit
                 // after HEAD moves or the routing binding is archived.
                 commitChat: serializeCommitChatMetadata(task.payload),
+                // Denormalized for the same reason as `commitChat`: follow-up
+                // turns must be able to tell they are inside a PR chat without
+                // re-reading the queue payload.
+                pullRequestChat: serializePullRequestChatMetadata(task.payload),
                 dream: isDreamRunPayload(task.payload)
                     ? {
                         workspaceId: task.payload.workspaceId,

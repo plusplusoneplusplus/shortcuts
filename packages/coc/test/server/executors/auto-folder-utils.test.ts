@@ -5,7 +5,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, it, expect } from 'vitest';
-import { isValidTaskFolder, resolveAutoFolderContext } from '../../../src/server/executors/auto-folder-utils';
+import { isValidTaskFolder, resolveAutoFolderContext, suppressesAutoFolder } from '../../../src/server/executors/auto-folder-utils';
 
 describe('isValidTaskFolder', () => {
     it('returns true for a normal folder name', () => {
@@ -120,5 +120,45 @@ describe('resolveAutoFolderContext', () => {
         // Ensure no notes/Plans directory was created
         const plansRoot = path.join(dataDir, 'repos', 'ws-other', 'notes', 'Plans');
         await expect(fs.stat(plansRoot)).rejects.toThrow();
+    });
+});
+
+describe('suppressesAutoFolder', () => {
+    const chat = (context: Record<string, unknown>) => ({ kind: 'chat', mode: 'ask', context });
+
+    it('suppresses a PR chat from its payload context', () => {
+        expect(suppressesAutoFolder({ payload: chat({ pullRequestChat: { prId: '7' } }) })).toBe(true);
+    });
+
+    it('suppresses a commit chat from its payload context', () => {
+        expect(suppressesAutoFolder({ payload: chat({ commitChat: { commitHash: 'abc123' } }) })).toBe(true);
+    });
+
+    it('suppresses a note chat from its payload context', () => {
+        expect(suppressesAutoFolder({ payload: chat({ noteChat: { notePath: 'n.md' } }) })).toBe(true);
+    });
+
+    it('suppresses a PR chat from process metadata', () => {
+        expect(suppressesAutoFolder({ metadata: { pullRequestChat: { prId: '7' } } })).toBe(true);
+    });
+
+    it('suppresses a commit chat from process metadata', () => {
+        expect(suppressesAutoFolder({ metadata: { commitChat: { commitHash: 'abc123' } } })).toBe(true);
+    });
+
+    it('suppresses a note chat from metadata.notePath', () => {
+        expect(suppressesAutoFolder({ metadata: { notePath: 'Plans/x.md' } })).toBe(true);
+    });
+
+    it('does not suppress a plain ask chat', () => {
+        expect(suppressesAutoFolder({ payload: chat({ files: ['a.ts'] }), metadata: { mode: 'ask' } })).toBe(false);
+    });
+
+    it('does not suppress on empty, missing, or malformed input', () => {
+        expect(suppressesAutoFolder({})).toBe(false);
+        expect(suppressesAutoFolder({ payload: undefined, metadata: null })).toBe(false);
+        expect(suppressesAutoFolder({ payload: 'not-an-object' })).toBe(false);
+        expect(suppressesAutoFolder({ metadata: { notePath: '   ' } })).toBe(false);
+        expect(suppressesAutoFolder({ metadata: { commitChat: null } })).toBe(false);
     });
 });

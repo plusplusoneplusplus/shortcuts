@@ -169,6 +169,20 @@ describe('CommitChatExecutor', () => {
             expect(callArgs.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
         });
 
+        it('omits the plan save-location block while keeping the other blocks', async () => {
+            const store = createMockProcessStore();
+            const executor = new CommitChatExecutor(store, makeOptions(store), undefined, '/data');
+            const task = makeCommitChatTask();
+
+            await executor.execute(task, 'Review this commit');
+
+            const content = sdkMocks.service.sendMessage.mock.calls[0][0].systemMessage?.content ?? '';
+            expect(content).not.toContain('Save location');
+            expect(content).not.toContain('.plan.md');
+            expect(content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+            expect(content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+        });
+
         it('injects add_diff_comment tool when context is complete', async () => {
             const store = createMockProcessStore();
             const executor = new CommitChatExecutor(store, makeOptions(store), undefined, '/data');

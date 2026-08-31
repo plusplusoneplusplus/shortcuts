@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorToolbar';
 import { TABLE_CELL_COLORS } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableCellBackground';
 
@@ -1840,5 +1840,129 @@ describe('NoteEditorToolbar — shared dropdown behaviour', () => {
         fireEvent.mouseDown(screen.getByLabelText('Insert table'));
 
         expect(screen.getByTestId('table-size-label').textContent).toBe('Insert table');
+    });
+});
+
+// ── Selection-only reactivity ───────────────────────────────────────────────
+
+/**
+ * A mock editor that can actually emit, which `makeMockEditor` deliberately
+ * cannot: its `isActive` answers are fixed and every assertion above is
+ * render-time, so those tests structurally cannot see a missing subscription.
+ *
+ * `setActive` moves the "caret" without touching the document, which is exactly
+ * the transaction shape tiptap does NOT report through `onUpdate`.
+ */
+function makeEmittingEditor() {
+    let activeNames = new Set<string>();
+    const listeners = new Map<string, Set<() => void>>();
+
+    const editor = makeMockEditor((name) => activeNames.has(name)) as Record<string, unknown> & {
+        on: unknown; off: unknown;
+    };
+    editor.on = vi.fn((event: string, fn: () => void) => {
+        if (!listeners.has(event)) listeners.set(event, new Set());
+        listeners.get(event)!.add(fn);
+    });
+    editor.off = vi.fn((event: string, fn: () => void) => {
+        listeners.get(event)?.delete(fn);
+    });
+
+    return {
+        editor,
+        /** Move the caret: change what `isActive` reports, with no doc change. */
+        setActive: (...names: string[]) => { activeNames = new Set(names); },
+        /** Fire the selection-only transaction the editor would fire. */
+        emitTransaction: () => act(() => {
+            for (const fn of [...(listeners.get('transaction') ?? [])]) fn();
+        }),
+        transactionListenerCount: () => listeners.get('transaction')?.size ?? 0,
+    };
+}
+
+/** Whether a `TB` button is rendering its pressed styling. */
+function isPressed(label: string): boolean {
+    return screen.getByLabelText(label).className.includes('bg-[#e8e8e8]');
+}
+
+describe('NoteEditorToolbar — re-renders on selection-only transactions', () => {
+    it('shows the table strip when the caret enters a table, with no document change', () => {
+        const { editor, setActive, emitTransaction } = makeEmittingEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.queryByTestId('table-controls-row')).toBeNull();
+
+        setActive('table');
+        emitTransaction();
+
+        expect(screen.getByTestId('table-controls-row')).toBeDefined();
+        expect(screen.getByLabelText('Add column before')).toBeDefined();
+        expect(screen.getByLabelText('Delete table')).toBeDefined();
+    });
+
+    it('hides the table strip when the caret leaves the table, with no document change', () => {
+        const { editor, setActive, emitTransaction } = makeEmittingEditor();
+        setActive('table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.getByTestId('table-controls-row')).toBeDefined();
+
+        setActive();
+        emitTransaction();
+
+        expect(screen.queryByTestId('table-controls-row')).toBeNull();
+        expect(screen.queryByLabelText('Add column before')).toBeNull();
+    });
+
+    it('tracks per-cell table state as the caret moves between cells', () => {
+        const { editor, setActive, emitTransaction } = makeEmittingEditor();
+        setActive('table');
+        tableHeaderMocks.tableHeaderState.mockReturnValue({ row: false, column: false });
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const headerRow = () => screen.getByLabelText('Toggle header row').getAttribute('aria-pressed');
+        expect(headerRow()).toBe('false');
+
+        // Caret moves into a header cell — a selection-only transaction.
+        tableHeaderMocks.tableHeaderState.mockReturnValue({ row: true, column: false });
+        emitTransaction();
+
+        expect(headerRow()).toBe('true');
+    });
+
+    it('tracks a formatting button pressed state as the caret moves', () => {
+        const { editor, setActive, emitTransaction } = makeEmittingEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(isPressed('Bold')).toBe(false);
+
+        // Ctrl+B on an empty selection sets a stored mark — no doc change.
+        setActive('bold');
+        emitTransaction();
+        expect(isPressed('Bold')).toBe(true);
+
+        // Caret moves off the bold run — again no doc change.
+        setActive();
+        emitTransaction();
+        expect(isPressed('Bold')).toBe(false);
+    });
+
+    it('subscribes once and unsubscribes on unmount', () => {
+        const { editor, transactionListenerCount } = makeEmittingEditor();
+        const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(transactionListenerCount()).toBe(1);
+
+        unmount();
+        expect(transactionListenerCount()).toBe(0);
+    });
+
+    it('renders an editor double that has no event emitter', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        expect((editor as Record<string, unknown>).on).toBeUndefined();
+
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.getByTestId('table-controls-row')).toBeDefined();
     });
 });
