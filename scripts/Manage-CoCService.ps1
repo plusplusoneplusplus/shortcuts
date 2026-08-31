@@ -209,6 +209,11 @@ function Invoke-Install {
             if ($LASTEXITCODE -ne 0) {
                 Write-Host 'npm install failed.' -ForegroundColor Red; exit 1
             }
+            npm run ensure:native
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host 'Native addon build failed. Install Rust from https://rustup.rs, open a new shell, and run install again.' -ForegroundColor Red
+                exit 1
+            }
             npm run coc:link
             if ($LASTEXITCODE -ne 0) {
                 Write-Host 'Build (coc:link) failed.' -ForegroundColor Red; exit 1
