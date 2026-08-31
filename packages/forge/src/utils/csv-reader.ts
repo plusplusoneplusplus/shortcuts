@@ -60,7 +60,6 @@ export class CSVParseError extends PipelineCoreError {
  * @returns Parsed CSV result with items and headers
  */
 export function parseCSVContent(content: string, options?: CSVParseOptions): CSVParseResult {
-    // Filter out undefined values from options before merging
     const filteredOptions = options ? Object.fromEntries(
         Object.entries(options).filter(([, v]) => v !== undefined)
     ) as CSVParseOptions : undefined;
@@ -70,7 +69,6 @@ export function parseCSVContent(content: string, options?: CSVParseOptions): CSV
     // Normalize line endings
     const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-    // Parse into rows
     const rows = parseCSVRows(normalizedContent, opts.delimiter);
 
     if (rows.length === 0) {
@@ -88,13 +86,11 @@ export function parseCSVContent(content: string, options?: CSVParseOptions): CSV
         headers = rows[0].map(h => h.trim());
         dataRows = rows.slice(1);
     } else {
-        // Generate default headers (col0, col1, etc.)
         const numCols = rows[0].length;
         headers = Array.from({ length: numCols }, (_, i) => `col${i}`);
         dataRows = rows;
     }
 
-    // Validate headers are unique
     const headerSet = new Set<string>();
     for (const header of headers) {
         if (headerSet.has(header)) {
@@ -103,7 +99,6 @@ export function parseCSVContent(content: string, options?: CSVParseOptions): CSV
         headerSet.add(header);
     }
 
-    // Convert rows to items
     const items: PromptItem[] = dataRows.map((row, rowIndex) => {
         const item: PromptItem = {};
         for (let i = 0; i < headers.length; i++) {
@@ -197,7 +192,6 @@ export async function readCSVFile(
     filePath: string,
     options?: CSVParseOptions
 ): Promise<CSVParseResult> {
-    // Filter out undefined values from options before merging
     const filteredOptions = options ? Object.fromEntries(
         Object.entries(options).filter(([, v]) => v !== undefined)
     ) as CSVParseOptions : undefined;
@@ -225,7 +219,6 @@ export function readCSVFileSync(
     filePath: string,
     options?: CSVParseOptions
 ): CSVParseResult {
-    // Filter out undefined values from options before merging
     const filteredOptions = options ? Object.fromEntries(
         Object.entries(options).filter(([, v]) => v !== undefined)
     ) as CSVParseOptions : undefined;

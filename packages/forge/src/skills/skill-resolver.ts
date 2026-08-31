@@ -183,7 +183,6 @@ export function listSkills(
                 if (!entry.isDirectory()) {
                     return false;
                 }
-                // Check if the directory contains a SKILL.md file
                 const promptPath = path.join(skillsDir, entry.name, SKILL_PROMPT_FILENAME);
                 return fs.existsSync(promptPath);
             })
@@ -336,7 +335,6 @@ export async function resolveSkillWithDetails(
     const skillDirectory = getSkillDirectory(skillName, workspaceRoot, customSkillsPath);
     const promptPath = path.join(skillDirectory, SKILL_PROMPT_FILENAME);
     
-    // Check if skill directory exists
     if (!fs.existsSync(skillDirectory)) {
         const skillsDir = getSkillsDirectory(workspaceRoot, customSkillsPath);
         throw new SkillResolverError(
@@ -347,7 +345,6 @@ export async function resolveSkillWithDetails(
         );
     }
     
-    // Check if SKILL.md exists
     if (!fs.existsSync(promptPath)) {
         throw new SkillResolverError(
             `Skill "${skillName}" is missing SKILL.md. Expected: ${promptPath}`,
@@ -414,7 +411,6 @@ export function resolveSkillWithDetailsSync(
     const skillDirectory = getSkillDirectory(skillName, workspaceRoot, customSkillsPath);
     const promptPath = path.join(skillDirectory, SKILL_PROMPT_FILENAME);
     
-    // Check if skill directory exists
     if (!fs.existsSync(skillDirectory)) {
         const skillsDir = getSkillsDirectory(workspaceRoot, customSkillsPath);
         throw new SkillResolverError(
@@ -425,7 +421,6 @@ export function resolveSkillWithDetailsSync(
         );
     }
     
-    // Check if SKILL.md exists
     if (!fs.existsSync(promptPath)) {
         throw new SkillResolverError(
             `Skill "${skillName}" is missing SKILL.md. Expected: ${promptPath}`,

@@ -131,9 +131,7 @@ export function toPipelineCoreError(
     defaultCode: ErrorCodeType = ErrorCode.UNKNOWN,
     meta?: ErrorMetadata
 ): PipelineCoreError {
-    // Already a PipelineCoreError
     if (isPipelineCoreError(error)) {
-        // Merge additional meta if provided
         if (meta) {
             return new PipelineCoreError(error.message, {
                 code: error.code,
@@ -144,7 +142,6 @@ export function toPipelineCoreError(
         return error;
     }
 
-    // Regular Error
     if (error instanceof Error) {
         // Try to detect code from Node.js system errors
         const nodeCode = (error as NodeJS.ErrnoException).code;
@@ -157,7 +154,6 @@ export function toPipelineCoreError(
         });
     }
 
-    // String or other primitive
     const message = typeof error === 'string' ? error : String(error);
     return new PipelineCoreError(message, {
         code: defaultCode,
@@ -243,5 +239,4 @@ export function logError(
     }
 }
 
-// Re-export for convenience
 export { ErrorCode, ErrorCodeType, mapSystemErrorCode } from './error-codes';

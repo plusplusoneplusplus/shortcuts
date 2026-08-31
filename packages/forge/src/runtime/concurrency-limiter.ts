@@ -157,7 +157,6 @@ export class ConcurrencyLimiter {
             return Promise.resolve();
         }
 
-        // Queue the request and wait for a slot
         return new Promise<void>(resolve => {
             this.queue.push(resolve);
         });
@@ -170,7 +169,6 @@ export class ConcurrencyLimiter {
     private release(): void {
         this.running--;
 
-        // Start next queued task if any
         const next = this.queue.shift();
         if (next) {
             this.running++;

@@ -72,7 +72,6 @@ async function executeNode(
     const parentIds = nodeConfig.from ?? [];
     const inputs = gatherInputs(parentIds, ctx.results);
 
-    // Emit 'running' event
     ctx.options.onProgress?.({
         nodeId,
         phase: 'running',
@@ -130,7 +129,6 @@ async function executeNode(
             },
         });
 
-        // Emit 'completed' event
         ctx.options.onProgress?.({
             nodeId,
             phase: 'completed',
@@ -163,7 +161,6 @@ async function executeNode(
                 },
                 error: msg,
             });
-            // Emit 'warned' event
             ctx.options.onProgress?.({
                 nodeId,
                 phase: 'warned',
@@ -178,7 +175,6 @@ async function executeNode(
                 `[Workflow] Node error: ${nodeId}`,
                 err instanceof Error ? err : new Error(String(err)),
             );
-            // Emit 'failed' event
             ctx.options.onProgress?.({
                 nodeId,
                 phase: 'failed',
