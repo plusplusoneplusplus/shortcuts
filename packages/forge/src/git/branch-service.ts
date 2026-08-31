@@ -1221,7 +1221,9 @@ export class BranchService {
             const gitDir = await this.getResolvedGitDir(repoRoot);
             tmpDir = fs.mkdtempSync(path.join(gitDir, 'tmp-patch-apply-'));
             const patchPath = path.join(tmpDir, 'commit.patch');
-            fs.writeFileSync(patchPath, patchBody.endsWith('\n') ? patchBody : `${patchBody}\n`, 'utf-8');
+            // `patchBody` is caller-sized (a whole commit's diff, potentially multi-MB),
+            // so this write goes through the async API to keep it off the event loop.
+            await fs.promises.writeFile(patchPath, patchBody.endsWith('\n') ? patchBody : `${patchBody}\n`, 'utf-8');
 
             preApplyHead = await this.revParseHeadSafe(repoRoot);
             await this.runGit(repoRoot, ['am', '--3way', patchPath], {
