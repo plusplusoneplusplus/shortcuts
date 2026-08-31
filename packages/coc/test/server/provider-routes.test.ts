@@ -103,7 +103,6 @@ describe('Provider Routes', () => {
             const providers = (body as any).providers;
             // Token must not be returned as a string
             expect(typeof providers.github.token).not.toBe('string');
-            // hasToken should be true
             expect(providers.github.hasToken).toBe(true);
         });
 

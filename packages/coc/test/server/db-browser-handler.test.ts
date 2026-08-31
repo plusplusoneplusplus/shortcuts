@@ -513,7 +513,6 @@ describe('DB Browser Handler', () => {
             const srv = await startSqliteServer();
             seedTestTable(sqliteStore!);
 
-            // Delete row with id=2
             const res = await deleteRows(srv.url, 'test_items', {
                 pkColumns: { id: 2 },
             });

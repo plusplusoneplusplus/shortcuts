@@ -300,7 +300,6 @@ describe('Template Wiring in createExecutionServer', () => {
             // Give the watcher time to register
             await wait(500);
 
-            // Remove workspace
             await httpRequest(`${baseUrl}/api/workspaces/ws-remove`, { method: 'DELETE' });
             await wait(300);
 

@@ -274,7 +274,6 @@ describe('POST /api/processes/:id/message — image persistence', () => {
         });
 
         expect(resp.status).toBe(202);
-        // Bridge should have been called with attachments
         expect(bridge.executeFollowUp).toHaveBeenCalled();
     });
 });

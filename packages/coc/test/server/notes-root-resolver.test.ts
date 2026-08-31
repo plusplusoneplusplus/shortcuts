@@ -20,7 +20,6 @@ describe('resolveNotesRoot', () => {
             expect(result.isDefault).toBe(true);
             expect(result.isTaskDerived).toBe(false);
             expect(result.rootId).toBe(DEFAULT_ROOT_ID);
-            // Should contain 'notes' in the path
             expect(result.absolutePath).toContain('notes');
         }
     });

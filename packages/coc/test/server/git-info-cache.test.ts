@@ -90,7 +90,6 @@ describe('GitInfoCacheService', () => {
         fetchFn.mockResolvedValue(RESULT_B);
         fetchFn.mockClear();
 
-        // Advance time past the stale threshold
         vi.advanceTimersByTime(STALE_THRESHOLD_MS + 1);
 
         const result = await cache.getOrFetch('ws-a');
@@ -261,7 +260,6 @@ describe('GitInfoCacheService', () => {
     it('background refresh re-fetches the active workspaces after REFRESH_PERIOD_MS', async () => {
         cache.start(fetchFn, activeIds(['ws-a', 'ws-b']));
 
-        // Advance past the refresh interval
         await vi.advanceTimersByTimeAsync(REFRESH_PERIOD_MS + 100);
 
         expect(fetchFn).toHaveBeenCalledWith('ws-a');

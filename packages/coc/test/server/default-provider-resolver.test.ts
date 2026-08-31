@@ -202,7 +202,6 @@ describe('DefaultProviderResolver', () => {
 
             const result = await resolver.resolveDefaultProvider();
 
-            // Should call quota cache to get data
             expect(mockQuotaCache.get).toHaveBeenCalledWith({ refreshIfStale: true });
             // Auto router will return some result (exact provider depends on quota data)
             expect(result.selectedByAuto).toBe(true);

@@ -72,7 +72,6 @@ const WS = {
 };
 
 beforeAll(async () => {
-    // Create a temp repo dir
     repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instr-handler-test-'));
     WS.rootPath = repoDir;
 

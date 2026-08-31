@@ -230,7 +230,6 @@ describe('Commit-Chat Binding API endpoints', () => {
             const res = await request(api('commit-chat-bindings/cafe1234'), { method: 'DELETE' });
             expect(res.status).toBe(204);
 
-            // Verify it's gone
             const verify = await request(api('commit-chat-bindings/cafe1234'));
             expect(verify.status).toBe(404);
         });

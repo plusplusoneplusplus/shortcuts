@@ -259,10 +259,8 @@ describe('follow-up routing by task status', () => {
         // Queue a follow-up while running
         await bridge.queueFollowUpBehindRunningTask(taskId, 'Follow-up');
 
-        // Complete the task
         manager.markCompleted(taskId);
 
-        // Count tasks with this processId
         const allTasks = manager.getAll();
         const matching = allTasks.filter(t => t.processId === 'proc-no-dup');
         expect(matching.length).toBe(1);

@@ -128,7 +128,6 @@ describe('Cron Infrastructure', () => {
             expect(timerRegistry.has('cron_shutdown_1')).toBe(true);
             expect(timerRegistry.has('cron_shutdown_2')).toBe(true);
 
-            // Shutdown
             executor.shutdownAll();
 
             // Timers should be cancelled

@@ -281,7 +281,6 @@ describe('Schedule AI Failure (integration — HTTP server)', () => {
         // Trigger a run (it completes because there's no real AI in test env)
         await postJSON(`${schedulesUrl()}/${scheduleId}/run`, {});
 
-        // Get history
         const histRes = await request(`${schedulesUrl()}/${scheduleId}/history`);
         expect(histRes.status).toBe(200);
         const { history } = JSON.parse(histRes.body);

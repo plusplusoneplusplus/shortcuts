@@ -4336,7 +4336,6 @@ describe('createQueueExecutorBridge', () => {
         // Wait for task to start
         await delay(200);
 
-        // Cancel it
         executor.cancelTask(taskId);
 
         // Wait for cancellation to process

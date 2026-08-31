@@ -207,11 +207,9 @@ describe('Admin Handler', () => {
                 headers: { 'Content-Type': 'application/json' },
             });
 
-            // Get token
             const tokenRes = await request(`${srv.url}/api/admin/data/wipe-token`);
             const { token } = JSON.parse(tokenRes.body);
 
-            // Wipe
             const wipeRes = await request(`${srv.url}/api/admin/data?confirm=${token}`, {
                 method: 'DELETE',
             });
@@ -235,7 +233,6 @@ describe('Admin Handler', () => {
         it('should not allow token reuse', async () => {
             const srv = await startServer();
 
-            // Get token
             const tokenRes = await request(`${srv.url}/api/admin/data/wipe-token`);
             const { token } = JSON.parse(tokenRes.body);
 
@@ -255,7 +252,6 @@ describe('Admin Handler', () => {
         it('should delete preferences when wiping', async () => {
             const srv = await startServer();
 
-            // Create preferences
             const prefsPath = path.join(dataDir, 'preferences.json');
             fs.writeFileSync(prefsPath, JSON.stringify({ lastModel: 'gpt-4' }), 'utf-8');
 
@@ -2292,7 +2288,6 @@ describe('GET /api/admin/providers/availability', () => {
                 headers: { 'Content-Type': 'application/json' },
             });
 
-            // Get import token
             const tokenRes = await request(`${srv.url}/api/admin/import-token`);
             const { token } = JSON.parse(tokenRes.body);
 
@@ -2338,7 +2333,6 @@ describe('GET /api/admin/providers/availability', () => {
                 headers: { 'Content-Type': 'application/json' },
             });
 
-            // Get import token
             const tokenRes = await request(`${srv.url}/api/admin/import-token`);
             const { token } = JSON.parse(tokenRes.body);
 

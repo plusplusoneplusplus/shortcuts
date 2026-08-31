@@ -328,7 +328,6 @@ describe('API Handler', () => {
         it('should register a workspace and list it', async () => {
             const srv = await startServer();
 
-            // POST workspace
             const createRes = await postJSON(`${srv.url}/api/workspaces`, {
                 id: 'ws-1',
                 name: 'frontend',
@@ -341,7 +340,6 @@ describe('API Handler', () => {
             expect(created.name).toBe('frontend');
             expect(created.color).toBe('#ff0000');
 
-            // GET workspaces
             const listRes = await request(`${srv.url}/api/workspaces`);
             expect(listRes.status).toBe(200);
             const listed = JSON.parse(listRes.body);

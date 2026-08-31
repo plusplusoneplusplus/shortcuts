@@ -111,7 +111,6 @@ describe('parseUnifiedDiff', () => {
     it('parses multiple hunks', () => {
         const lines = parseUnifiedDiff(MULTI_HUNK_DIFF);
 
-        // Find the two hunk headers
         const hunkHeaders = lines.filter((l) => l.type === 'hunk-header');
         expect(hunkHeaders).toHaveLength(2);
 

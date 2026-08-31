@@ -29,13 +29,11 @@ describe('codex-skill-mirror', () => {
         fs.mkdirSync(cocSkillsDir, { recursive: true });
         fs.mkdirSync(codexHome, { recursive: true });
 
-        // Mock CODEX_HOME
         originalCodexHome = process.env.CODEX_HOME;
         process.env.CODEX_HOME = codexHome;
     });
 
     afterEach(() => {
-        // Restore original CODEX_HOME
         if (originalCodexHome !== undefined) {
             process.env.CODEX_HOME = originalCodexHome;
         } else {

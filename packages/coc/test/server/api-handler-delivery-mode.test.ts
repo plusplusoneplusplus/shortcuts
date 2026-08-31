@@ -194,7 +194,6 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
         expect(resp.status).toBe(202);
         const { turnIndex } = resp.json();
 
-        // message-queued event should have been emitted via store.emitProcessEvent
         expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-dm', expect.objectContaining({
             type: 'message-queued',
             turnIndex,

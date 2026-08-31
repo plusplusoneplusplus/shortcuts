@@ -130,7 +130,6 @@ describe('Tasks Handler Write', () => {
         it('should create a task file with frontmatter and return 201', async () => {
             const srv = await startServer();
             const wsId = await registerWorkspace(srv, workspaceDir);
-            // Ensure tasks dir exists
             fs.mkdirSync(tasksDir(), { recursive: true });
 
             const res = await jsonRequest(`${srv.url}/api/workspaces/${wsId}/tasks`, 'POST', {

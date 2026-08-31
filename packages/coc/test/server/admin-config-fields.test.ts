@@ -275,7 +275,6 @@ describe('validate()', () => {
         });
     });
 
-    // All plain boolean fields
     const booleanFields = [
         'showReportIntent', 'groupSingleLineMessages',
         'chat.followUpSuggestions.enabled', 'chat.askUser.enabled',

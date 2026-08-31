@@ -117,7 +117,6 @@ describe('OutputFileManager', () => {
 
             await OutputFileManager.deleteOutput(filePath!);
 
-            // File should be gone
             await expect(fs.access(filePath!)).rejects.toThrow();
         });
 

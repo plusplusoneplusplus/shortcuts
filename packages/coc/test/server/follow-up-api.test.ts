@@ -212,7 +212,6 @@ describe('POST /api/processes/:id/message', () => {
             expect(call.payload.kind).toBe('chat');
             expect(call.payload.processId).toBe('proc-enqueue');
             expect(call.payload.prompt).toBe('Hello from enqueue');
-            // executeFollowUp should NOT be called directly
             expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
         });
 

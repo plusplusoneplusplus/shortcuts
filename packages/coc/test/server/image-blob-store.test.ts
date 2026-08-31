@@ -152,7 +152,6 @@ describe('ImageBlobStore', () => {
 
             await ImageBlobStore.deleteImages(filePath!);
 
-            // File should be gone
             await expect(fs.access(filePath!)).rejects.toThrow();
         });
 

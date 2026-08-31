@@ -511,7 +511,6 @@ describe('DiffCommentsManager', () => {
             const storageFile = path.join(wsDir, `${key}.json`);
             const tempFile = `${storageFile}.tmp`;
 
-            // Mock fs.promises.rename to throw
             const original = fs.promises.rename;
             vi.spyOn(fs.promises, 'rename').mockRejectedValueOnce(new Error('rename failed'));
 
@@ -522,7 +521,6 @@ describe('DiffCommentsManager', () => {
             // .tmp file should have been cleaned up
             expect(fs.existsSync(tempFile)).toBe(false);
 
-            // Restore
             vi.restoreAllMocks();
         });
     });

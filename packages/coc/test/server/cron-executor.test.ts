@@ -290,7 +290,6 @@ describe('CronExecutor', () => {
             const executor = new CronExecutor(deps);
             executor.armAll();
 
-            // Fire the timer callback
             await timerRegistry._fire('cron_tick');
 
             // Should have tried to enqueue
@@ -387,7 +386,6 @@ describe('CronExecutor', () => {
 
             await timerRegistry._fire('cron_skip_running');
 
-            // Should NOT enqueue
             expect(queueManager.enqueue).not.toHaveBeenCalled();
             expect(queueManager.requeueFromHistory).not.toHaveBeenCalled();
 

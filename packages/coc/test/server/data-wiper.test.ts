@@ -185,7 +185,6 @@ describe('DataWiper', () => {
             const schedulesDir = path.join(repoDir, 'schedules');
             fs.mkdirSync(schedulesDir, { recursive: true });
             fs.writeFileSync(path.join(schedulesDir, 'sched-1.yaml'), 'id: sched-1\nname: Test');
-            // Insert schedule runs into SQLite
             const db = store.getDatabase();
             db.prepare('INSERT INTO schedule_runs (id, schedule_id, repo_id, started_at, status) VALUES (?, ?, ?, ?, ?)').run('run1', 'sched-1', 'abc123', '2026-03-01T00:00:00Z', 'completed');
             writeJSON(path.join(repoDir, 'git-ops.json'), {});
@@ -395,7 +394,6 @@ describe('DataWiper', () => {
             const schedulesDir = path.join(repoDir, 'schedules');
             fs.mkdirSync(schedulesDir, { recursive: true });
             fs.writeFileSync(path.join(schedulesDir, 'sched-1.yaml'), 'id: sched-1\nname: Test');
-            // Insert schedule runs into SQLite
             const db = store.getDatabase();
             db.prepare('INSERT INTO schedule_runs (id, schedule_id, repo_id, started_at, status) VALUES (?, ?, ?, ?, ?)').run('run1', 'sched-1', 'abc123', '2026-03-01T00:00:00Z', 'completed');
             writeJSON(path.join(repoDir, 'git-ops.json'), {});

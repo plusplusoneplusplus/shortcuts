@@ -248,7 +248,6 @@ describe('Admin Storage Routes', () => {
             const events = parseSSEEvents(res.body);
             expect(events.length).toBeGreaterThan(0);
 
-            // Last event should be a done event
             const doneEvent = events.find((e: any) => e.type === 'done') as any;
             expect(doneEvent).toBeDefined();
             expect(doneEvent.success).toBe(true);
@@ -304,7 +303,6 @@ describe('Admin Storage Routes', () => {
             expect(res.headers['content-type']).toBe('text/event-stream');
 
             const events = parseSSEEvents(res.body);
-            // Should have a phase 5 event with "skipped" message
             const phase5 = events.find((e: any) => e.phase === 5 && e.message?.includes('skipped'));
             expect(phase5).toBeDefined();
 
@@ -363,7 +361,6 @@ describe('Admin Storage Routes', () => {
             // Small delay to let migration start
             await new Promise((resolve) => setTimeout(resolve, 50));
 
-            // Cancel it
             const cancelRes = await request(`${srv.url}/api/admin/storage/migrate/cancel`, { method: 'POST' });
 
             // Wait for migration to end

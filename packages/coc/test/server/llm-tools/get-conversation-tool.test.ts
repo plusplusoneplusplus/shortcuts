@@ -93,7 +93,6 @@ describe('createGetConversationTool', () => {
 
     it('returns a not-found note when process does not exist', async () => {
         const store = makeStore({ omitGetTurns: true });
-        // Override getProcess to return undefined
         (store.getProcess as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
         const { tool } = createGetConversationTool({ store });
 
