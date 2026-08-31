@@ -1,7 +1,8 @@
 /**
  * CanvasPanelHeader — the panel's top chrome: title (with the multi-canvas
  * switcher), type badge, version stepper, save status, Preview/Edit toggle,
- * Export menu, "New Kusto query", pop-out, fullscreen, and close.
+ * Export menu, "New Kusto query" (Kusto canvases only), pop-out, fullscreen,
+ * and close.
  *
  * Presentational: every action is a prop. The only local state is the
  * open/closed state of the two menus it owns.
@@ -248,7 +249,9 @@ export function CanvasPanelHeader({
                     )}
                 </div>
             )}
-            {kustoEnabled && (
+            {/* Kusto-only: creating a query from a markdown/extension/excalidraw
+                canvas is unrelated to what the user is looking at. */}
+            {kustoEnabled && kind.isKusto && (
                 <button
                     type="button"
                     className="px-2 py-0.5 text-[11px] rounded text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
