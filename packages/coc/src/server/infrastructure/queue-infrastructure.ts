@@ -22,6 +22,7 @@ import { defaultIsExclusive } from '../queue/queue-executor-bridge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ExecutionServerOptions } from '../types';
 import type { ExecutorRuntimeCapabilities } from '../executors/executor-runtime-contracts';
+import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
 
 // ============================================================================
 // Types
@@ -48,17 +49,19 @@ export interface QueueInfrastructure {
  * @param store             - Process store for task tracking.
  * @param dataDir           - Root data directory (e.g. `~/.coc/`).
  * @param options           - Subset of ExecutionServerOptions relevant to the queue.
- * @param defaultTimeoutMs  - Default AI task timeout in milliseconds.
- * @param followUpSuggestions - Follow-up suggestions config (`{ enabled, count }`).
+ * @param queueConfig       - Live config port for queue-owned settings. Backed
+ *                            by the server's authoritative RuntimeConfigService
+ *                            so queue execution and the admin surface always
+ *                            read the same config file. Passed down by
+ *                            identity; no value is copied into a second
+ *                            mutable snapshot here.
  * @param getWsServer       - Forward-reference accessor for the WebSocket server.
  */
 export function createQueueInfrastructure(
     store: ProcessStore,
     dataDir: string,
     options: Pick<ExecutionServerOptions, 'queue' | 'aiService'>,
-    defaultTimeoutMs: number,
-    followUpSuggestions: { enabled: boolean; count: number } | undefined,
-    askUser: { enabled: boolean } | undefined,
+    queueConfig: QueueRuntimeConfig,
     getWsServer: () => ProcessWebSocketServer,
     getCronInfra?: () => import('../executors/executor-runtime-contracts').CronInfraDeps | undefined,
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined,
@@ -114,9 +117,7 @@ export function createQueueInfrastructure(
         approvePermissions: true,
         dataDir,
         aiService: options.aiService,
-        defaultTimeoutMs,
-        followUpSuggestions,
-        askUser,
+        queueConfig,
         provider,
         ralphMultiAgentGrillEnabled,
         initialDelayMs: options.queue?.restartPickupDelayMs,

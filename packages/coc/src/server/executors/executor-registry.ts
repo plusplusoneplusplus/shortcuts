@@ -25,14 +25,24 @@ import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
 import type { ChatModeExecutorOptions } from './chat-base-executor';
 import type { DreamRuntime, ExecutorRuntimeCapabilities, LifecycleRuntime } from './executor-runtime-contracts';
+import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
     defaultWorkingDirectory?: string;
     aiService: ISDKService;
     dataDir?: string;
-    defaultTimeoutMs: number;
-    followUpSuggestions: { enabled: boolean; count: number };
+    /**
+     * Live configuration port for queue-owned settings. Forwarded to every
+     * chat executor by identity. When omitted, the three direct options below
+     * are folded into a fixed adapter by {@link ChatBaseExecutor}.
+     */
+    queueConfig?: QueueRuntimeConfig;
+    /** Ignored when `queueConfig` is supplied. */
+    defaultTimeoutMs?: number;
+    /** Ignored when `queueConfig` is supplied. */
+    followUpSuggestions?: { enabled: boolean; count: number };
+    /** Ignored when `queueConfig` is supplied. */
     askUser?: { enabled: boolean };
     /** Default AI provider name recorded on new processes when the task has no provider override. */
     provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
@@ -98,6 +108,7 @@ export class ExecutorRegistry {
             workingDirectory: options.defaultWorkingDirectory,
             approvePermissions: options.approvePermissions,
             aiService: options.aiService,
+            queueConfig: options.queueConfig,
             defaultTimeoutMs: options.defaultTimeoutMs,
             followUpSuggestions: options.followUpSuggestions,
             askUser: options.askUser,

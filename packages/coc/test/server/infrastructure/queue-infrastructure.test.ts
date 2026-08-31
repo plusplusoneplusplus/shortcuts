@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { DEFAULT_AI_TIMEOUT_MS, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 
 const sdkMocks = createMockSDKService();
@@ -21,6 +21,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 });
 
 import { createQueueInfrastructure } from '../../../src/server/infrastructure/queue-infrastructure';
+import { createFixedQueueRuntimeConfig, DEFAULT_QUEUE_RUNTIME_CONFIG } from '../../../src/server/queue/queue-runtime-config';
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
@@ -56,9 +57,7 @@ describe('createQueueInfrastructure', () => {
             store,
             dataDir,
             { queue: { autoStart: false } },
-            DEFAULT_AI_TIMEOUT_MS,
-            undefined,
-            undefined,
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
             getWsServer,
         );
 
@@ -74,9 +73,7 @@ describe('createQueueInfrastructure', () => {
             store,
             dataDir,
             { queue: { autoStart: false, historyLimit: 42 } },
-            DEFAULT_AI_TIMEOUT_MS,
-            undefined,
-            undefined,
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
             getWsServer,
         );
 
@@ -91,9 +88,7 @@ describe('createQueueInfrastructure', () => {
                 store,
                 dataDir,
                 { queue: { autoStart: false } },
-                DEFAULT_AI_TIMEOUT_MS,
-                followUpSuggestions,
-                undefined,
+                createFixedQueueRuntimeConfig({ followUpSuggestions }),
                 getWsServer,
             ),
         ).not.toThrow();
@@ -105,9 +100,7 @@ describe('createQueueInfrastructure', () => {
                 store,
                 dataDir,
                 { queue: { autoStart: false } },
-                DEFAULT_AI_TIMEOUT_MS,
-                undefined,
-                undefined,
+                DEFAULT_QUEUE_RUNTIME_CONFIG,
                 getWsServer,
             ),
         ).not.toThrow();
@@ -118,9 +111,7 @@ describe('createQueueInfrastructure', () => {
             store,
             dataDir,
             {},
-            DEFAULT_AI_TIMEOUT_MS,
-            undefined,
-            undefined,
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
             getWsServer,
         );
         expect(result.registry).toBeInstanceOf(RepoQueueRegistry);
@@ -132,9 +123,7 @@ describe('createQueueInfrastructure', () => {
             store,
             dataDir,
             { queue: { autoStart: false, restartPickupDelayMs: 5000 } },
-            DEFAULT_AI_TIMEOUT_MS,
-            undefined,
-            undefined,
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
             getWsServer,
         );
 
@@ -146,9 +135,7 @@ describe('createQueueInfrastructure', () => {
             store,
             dataDir,
             { queue: { autoStart: false, restartPickupDelayMs: 30000 } },
-            DEFAULT_AI_TIMEOUT_MS,
-            undefined,
-            undefined,
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
             getWsServer,
         );
 
@@ -168,9 +155,7 @@ describe('createQueueInfrastructure', () => {
             mockStore,
             dataDir,
             { queue: { autoStart: false } },
-            DEFAULT_AI_TIMEOUT_MS,
-            undefined,
-            undefined,
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
             getWsServer,
         );
 
@@ -183,9 +168,7 @@ describe('createQueueInfrastructure', () => {
             store,
             dataDir,
             { queue: { autoStart: false } },
-            DEFAULT_AI_TIMEOUT_MS,
-            undefined,
-            undefined,
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
             getWsServer,
         );
 

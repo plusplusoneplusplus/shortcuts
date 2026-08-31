@@ -13,8 +13,8 @@ import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
 import { orchestrateSubmitCompletion } from '../ralph/orchestrate-submit';
 import { getRalphTaskKind } from '../ralph/task-kind';
-import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
-import type { CLIConfig } from '../../config';
+import { createFixedQueueRuntimeConfig } from './queue-runtime-config';
+import type { QueueRuntimeConfig } from './queue-runtime-config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import { ASK_USER_RESUME_FAILED_MESSAGE, buildAskUserResumeMessage, buildPendingAskUserAnswerRecord } from '../llm-tools/ask-user-resume';
@@ -31,8 +31,23 @@ export type GetEffortTiersForProvider = (provider: import('../tasks/task-types')
 
 export interface CLITaskExecutorOptions {
     approvePermissions?: boolean; workingDirectory?: string; dataDir?: string;
-    aiService?: ISDKService; defaultTimeoutMs?: number;
+    aiService?: ISDKService;
+    /**
+     * Live configuration port for every queue-owned setting: execution
+     * timeout, follow-up suggestions, Ask User, global skill folders, and the
+     * Ralph final-check loop cap.
+     *
+     * The server composition layer backs this with the authoritative
+     * `RuntimeConfigService`, so the queue reads the same config file the rest
+     * of the server was started with. Callers that omit it get a fixed adapter
+     * built from the three direct options below — never a disk read.
+     */
+    queueConfig?: QueueRuntimeConfig;
+    /** Ignored when `queueConfig` is supplied. */
+    defaultTimeoutMs?: number;
+    /** Ignored when `queueConfig` is supplied. */
     followUpSuggestions?: { enabled: boolean; count: number };
+    /** Ignored when `queueConfig` is supplied. */
     askUser?: { enabled: boolean };
     /** Default AI provider name recorded on new processes when the task has no provider override. */
     provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
@@ -142,6 +157,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      * `getDreamRunExecutor`.
      */
     private readonly runtime: ExecutorRuntimeCapabilities;
+    /**
+     * The one configuration boundary for this executor. Every queue-owned
+     * setting is read through it at the point the setting takes effect, so
+     * nothing here reparses a config file on the execution hot path and
+     * nothing resolves the default home-directory config behind the server's
+     * back.
+     */
+    private readonly queueConfig: QueueRuntimeConfig;
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     private getEffortTiersForProvider?: GetEffortTiersForProvider;
@@ -162,6 +185,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.resolveDefaultProvider = options.resolveDefaultProvider;
         this.getEffortTiersForProvider = options.getEffortTiersForProvider;
         this.dreamRunExecutor = options.dreamRunExecutor;
+        this.queueConfig = options.queueConfig ?? createFixedQueueRuntimeConfig({
+            defaultTimeoutMs: options.defaultTimeoutMs,
+            followUpSuggestions: options.followUpSuggestions ?? DEFAULT_FOLLOW_UP_SUGGESTIONS,
+            askUser: options.askUser ?? { enabled: false },
+        });
         // Extend the composed capability set with the two capabilities the
         // bridge itself owns. Spreading a typed object (rather than listing
         // members) keeps every capability from the composition layer intact.
@@ -179,15 +207,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             // Live-read the configured global skill-folder settings so the
             // resolver honors `skills.globalExtraFolders` and
             // `skills.autoDetectDefaultFolders` at execution time.
-            let skillsCfg: CLIConfig['skills'] | undefined;
-            try {
-                skillsCfg = loadConfigFile()?.skills;
-            } catch {
-                // Non-fatal: fall back to default folder resolution
-            }
+            //
+            // This reads the already-resolved snapshot rather than reparsing
+            // YAML per task, so a malformed config surfaces once at load time
+            // instead of silently degrading every execution to default folders.
+            const skillFolders = this.queueConfig.getSkillFolders();
             return resolveSkillConfig(store, this.dataDir, wsId, workDir, {
-                globalExtraFolders: skillsCfg?.globalExtraFolders,
-                autoDetectDefaultFolders: skillsCfg?.autoDetectDefaultFolders,
+                globalExtraFolders: skillFolders.globalExtraFolders,
+                autoDetectDefaultFolders: skillFolders.autoDetectDefaultFolders,
             });
         };
         this.executors = new ExecutorRegistry(store, {
@@ -196,9 +223,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             defaultWorkingDirectory: this.defaultWorkingDirectory,
             aiService: this.aiService,
             dataDir: this.dataDir,
-            defaultTimeoutMs: options.defaultTimeoutMs ?? DEFAULT_AI_TIMEOUT_MS,
-            followUpSuggestions: options.followUpSuggestions ?? DEFAULT_FOLLOW_UP_SUGGESTIONS,
-            askUser: options.askUser,
+            queueConfig: this.queueConfig,
             provider: options.provider,
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveSkillConfig: skillCfg,
@@ -421,10 +446,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Failed to update processId for check ${checkIndex}: ${err instanceof Error ? err.message : String(err)}`);
         });
 
-        // Resolve config cap
-        const fileConfig = loadConfigFile();
-        const maxGapFixLoops = fileConfig?.ralph?.finalCheck?.maxGapFixLoops
-            ?? DEFAULT_CONFIG.ralph.finalCheck.maxGapFixLoops;
+        // Resolve the loop cap from the authoritative config port, snapshotted
+        // once here so a mid-session admin edit cannot change the cap partway
+        // through one final-check chain.
+        const { maxGapFixLoops } = this.queueConfig.getRalphFinalCheckPolicy();
 
         const qm = this.queueManager;
         await orchestrateFinalCheck({

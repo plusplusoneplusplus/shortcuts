@@ -38,6 +38,27 @@ Both `GET /api/config/runtime` and the `spaHtml` bootstrap use `buildRuntimeFeat
 
 Behavior-specific tests (what the flag gates) belong with the feature; the standard setting contract needs no new tests. Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()`; the admin write path re-validates the merged config before persisting, so admin updates and config-file loading reject the same invalid combinations.
 
+## Queue Configuration Boundary
+
+Queue execution never loads a config file itself. `packages/coc/src/server/queue/queue-runtime-config.ts` defines `QueueRuntimeConfig`, a narrow port of typed getters for the five queue-owned settings:
+
+| Getter | Backing config | Read at |
+|--------|----------------|---------|
+| `getDefaultTimeoutMs()` | `timeout` (seconds → ms) | execution start, when a task has no `config.timeoutMs` |
+| `getFollowUpSuggestions()` | `chat.followUpSuggestions` | chat-turn context build |
+| `getAskUser()` | `chat.askUser` | chat-turn context build |
+| `getSkillFolders()` | `skills.globalExtraFolders`, `skills.autoDetectDefaultFolders` | each `resolveSkillConfig` call |
+| `getRalphFinalCheckPolicy()` | `ralph.finalCheck.maxGapFixLoops` | when a final check is scheduled |
+
+`createExecutionServer` builds the port once with `createQueueRuntimeConfig(runtimeConfigService)` and threads it through `createQueueInfrastructure` → `MultiRepoQueueRouter` → `CLITaskExecutor` → `ExecutorRegistry` → chat executors, by identity. On `ChatBaseExecutor` the three chat settings are **accessors**, not fields, so all ten subclasses resolve them live at their existing call sites.
+
+Rules:
+
+- Do not call `loadConfigFile()` from the queue or executor graph. A no-argument call resolves `~/.coc/config.yaml`, which diverges from `options.configPath` and silently executes tasks against a different file than the admin surface shows.
+- Do not pass `RuntimeConfigService` itself down — the port exists so persistence, revisions, listeners, and the admin APIs stay out of the queue.
+- CLI-only and test composition roots pass `createFixedQueueRuntimeConfig({...})` (or `DEFAULT_QUEUE_RUNTIME_CONFIG`), which derives everything from explicit values plus `DEFAULT_CONFIG` and never touches disk. `CLITaskExecutorOptions.defaultTimeoutMs` / `followUpSuggestions` / `askUser` remain as direct options and are folded into a fixed adapter when no `queueConfig` is supplied; they are ignored when one is.
+- Adding a queue-visible setting means one getter here plus its `ADMIN_SETTING_DEFINITIONS` entry — not a new startup capture or a new config read.
+
 ## Namespaced Config Merge & Source Tracking
 
 Precedence is CLI flags > config file > defaults; the default process store backend is SQLite.

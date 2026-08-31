@@ -56,7 +56,7 @@ import { HeapMonitor } from './admin/heap-monitor';
 import { coerceChatStyle } from './executors/chat-style-prompt';
 import { buildRuntimeFeatures } from './config/runtime-config-handler';
 import { RuntimeConfigService } from '../config/runtime-config-service';
-import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { createQueueRuntimeConfig } from './queue/queue-runtime-config';
 import { autoUpdateBundledSkills, autoInstallDefaultSkills, autoInstallMyWorkSkills, DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './processes/in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
@@ -231,10 +231,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     //     - terminal.enabled   → terminal pty/session manager
     //     - cron.enabled      → cron executor, timer registry
     //
-    //   Live but still startup-captured in queue infrastructure (future migration):
-    //     - timeout            → defaultTimeoutMs passed to queue infra
-    //     - chat.followUpSuggestions, chat.askUser → queue executor behavior
-    //
     //   Non-admin-editable (no migration needed):
     //     - mcpOauth.enabled   → MCP OAuth infra
     //     - monitoring.heapCheck → heap monitor
@@ -242,9 +238,16 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     //     - features.autoMemoryPromotion → auto-promote scheduler
     //
     // Route handlers and SPA feature flags use runtimeConfigService for live
-    // reads (see registerAllRoutes and spaHtml closure below).
+    // reads (see registerAllRoutes and spaHtml closure below). Queue execution
+    // reads through `queueConfig` below — the one config boundary into the
+    // queue, so it can never resolve a different file than this service.
     const resolvedConfig = runtimeConfigService.config;
-    const defaultTimeoutMs = resolvedConfig.timeout ? resolvedConfig.timeout * 1000 : DEFAULT_AI_TIMEOUT_MS;
+
+    // The single configuration boundary between the authoritative config
+    // service and the queue/executor graph. Every setting it exposes is
+    // classified `live`, so admin edits reach execution without a restart and
+    // always come from `options.configPath`, not `~/.coc/config.yaml`.
+    const queueConfig = createQueueRuntimeConfig(runtimeConfigService);
 
     // Forward declaration — bridge captures this via closure before wsServer is assigned
     let wsServer!: ProcessWebSocketServer;
@@ -367,8 +370,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     };
 
     const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
-        store, dataDir, { ...options, aiService: resolvedAiService }, defaultTimeoutMs,
-        resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
+        store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,
+        () => wsServer,
         () => {
             if (!cronInfra) return undefined;
             return {
@@ -1041,6 +1044,10 @@ export { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID, GLOBAL_WORKSPACE_NAME } fro
 // Queue
 export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, DEFAULT_FOLLOW_UP_SUGGESTIONS } from './queue/queue-executor-bridge';
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue/queue-executor-bridge';
+// The configuration boundary into the queue. External composition roots build
+// an adapter here rather than letting the queue read a config file itself.
+export { createQueueRuntimeConfig, createFixedQueueRuntimeConfig, DEFAULT_QUEUE_RUNTIME_CONFIG, resolveDefaultTimeoutMs } from './queue/queue-runtime-config';
+export type { QueueRuntimeConfig, QueueConfigSource, QueueSkillFoldersConfig, QueueRalphFinalCheckPolicy } from './queue/queue-runtime-config';
 export { ExecutorRegistry } from './executors/executor-registry';
 export type { ExecutorRegistryOptions } from './executors/executor-registry';
 export { EMPTY_EXECUTOR_RUNTIME } from './executors/executor-runtime-contracts';
