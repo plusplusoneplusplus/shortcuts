@@ -33,7 +33,7 @@
     "ensure:native": "npm run ensure:native -w packages/coc-native",
     "ensure:native:node": "npm run ensure:native:node -w packages/coc-desktop",
     "build:desktop": "npm run build -w packages/coc && npm run build -w packages/coc-desktop && npm run rebuild:native -w packages/coc-desktop && npm run dist -w packages/coc-desktop",
-    "coc:link": "cd packages/coc-agent-sdk && npm run build && cd ../coc-workflow && npm run build && npm link && cd ../forge && npm run build && npm link && cd ../coc-client && npm run build && cd ../coc-connector && npm run build && cd ../coc && npm run build && npm link && node -e \"require('fs').rmSync('node_modules/@plusplusoneplusplus/forge', {recursive:true,force:true})\"",
+    "coc:link": "cd packages/coc-native && npm run build && cd ../coc-agent-sdk && npm run build && cd ../coc-workflow && npm run build && npm link && cd ../forge && npm run build && npm link && cd ../coc-client && npm run build && cd ../coc-connector && npm run build && cd ../coc && npm run build && npm link && node -e \"require('fs').rmSync('node_modules/@plusplusoneplusplus/forge', {recursive:true,force:true})\"",
     "deep-wiki:link": "cd packages/deep-wiki && npm run build && npm link",
     "changeset": "changeset",
     "version-packages": "changeset version",

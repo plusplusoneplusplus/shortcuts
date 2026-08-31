@@ -150,6 +150,17 @@ test('the root package exposes the ensure:native passthrough the loops call', ()
     assert.equal(root.scripts['ensure:native'], 'npm run ensure:native -w packages/coc-native');
 });
 
+test('coc:link builds coc-native before packages that import it', () => {
+    const root = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    const link = root.scripts['coc:link'];
+    const native = link.indexOf('cd packages/coc-native && npm run build');
+    const sdk = link.indexOf('cd ../coc-agent-sdk && npm run build');
+
+    assert.notEqual(native, -1, 'coc:link must build the coc-native TypeScript package');
+    assert.notEqual(sdk, -1, 'coc:link must build coc-agent-sdk');
+    assert.ok(native < sdk, 'coc-native dist must exist before coc-agent-sdk compiles against it');
+});
+
 // The invariant `build-native.mjs` documents in its header: the TypeScript
 // build compiles the committed `native-bindings.ts` and must never need cargo.
 // Hooking the addon into `build` would put a Rust toolchain on the critical
