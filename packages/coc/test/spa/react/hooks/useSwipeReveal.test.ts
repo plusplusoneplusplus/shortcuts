@@ -1,6 +1,4 @@
 /**
- * Tests for useSwipeReveal hook.
- *
  * Covers:
  * - Left swipe reveals action buttons (translateX goes negative)
  * - Right swipe triggers callback

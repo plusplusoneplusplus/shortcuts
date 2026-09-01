@@ -1,7 +1,3 @@
-/**
- * Tests for CommentCard React component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { CommentCard } from '../../../../src/server/spa/client/react/tasks/comments/CommentCard';

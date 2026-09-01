@@ -1,6 +1,4 @@
 /**
- * Tests for useLongPress hook.
- *
  * Covers:
  * - Happy path: long press fires after delay
  * - Move threshold: cancels when finger moves beyond threshold

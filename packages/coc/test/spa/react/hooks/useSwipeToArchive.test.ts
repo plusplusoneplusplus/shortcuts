@@ -1,6 +1,4 @@
 /**
- * Tests for useSwipeToArchive hook.
- *
  * Covers:
  * - Swipe beyond threshold fires onSwipeConfirm
  * - Swipe below threshold snaps back (offset resets to 0)

@@ -1,7 +1,3 @@
-/**
- * Tests for useTurnPerformanceStats hook.
- */
-
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useTurnPerformanceStats } from '../../../../src/server/spa/client/react/features/stats/hooks/useTurnPerformanceStats';

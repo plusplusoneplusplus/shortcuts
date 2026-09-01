@@ -1,6 +1,4 @@
 /**
- * Tests for useCommitCommentTotals hook.
- *
  * Verifies initial fetch, re-fetch on dependency change, WebSocket subscription,
  * and silent failure on error. Mocks fetch and WebSocket globally.
  */

@@ -1,5 +1,4 @@
 /**
- * Tests for DbBrowserSection inline editing UI.
  * Validates edit button rendering, edit mode transitions, save/cancel,
  * PK column read-only behavior, and API integration.
  */

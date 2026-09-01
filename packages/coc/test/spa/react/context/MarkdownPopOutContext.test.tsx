@@ -1,6 +1,3 @@
-/**
- * Tests for MarkdownPopOutContext.
- */
 /* @vitest-environment jsdom */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
