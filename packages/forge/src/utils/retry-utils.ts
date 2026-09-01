@@ -1,7 +1,5 @@
 /**
  * Retry utilities for pipeline execution.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 export interface RetryPolicy {
@@ -14,7 +12,6 @@ export interface RetryPolicy {
  *
  * @param fn - Function to execute; receives the attempt index (0-based).
  * @param policy - Retry policy (maxAttempts, optional shouldRetry predicate).
- * @returns Resolves with the function's result on success.
  * @throws The last error thrown by `fn` when all attempts are exhausted.
  */
 export async function withRetry<T>(

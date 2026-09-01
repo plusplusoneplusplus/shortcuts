@@ -3,18 +3,8 @@
  * 
  * Provides common text matching and manipulation functions used by
  * anchor systems in both markdown-comments and git-diff-comments.
- * 
- * These pure functions handle:
- * - Text hashing (djb2 algorithm)
- * - Levenshtein distance calculation
- * - Similarity scoring
- * - Text normalization
- * - Line/offset conversions
  */
 
-/**
- * Configuration for anchor matching operations
- */
 export interface AnchorMatchConfig {
     /** Number of characters to capture before the selection */
     contextCharsBefore: number;
@@ -26,9 +16,6 @@ export interface AnchorMatchConfig {
     maxLineSearchDistance: number;
 }
 
-/**
- * Default anchor matching configuration
- */
 export const DEFAULT_ANCHOR_MATCH_CONFIG: AnchorMatchConfig = {
     contextCharsBefore: 100,
     contextCharsAfter: 100,
@@ -116,9 +103,6 @@ export function normalizeText(text: string): string {
         .trim();
 }
 
-/**
- * Split document content into lines
- */
 export function splitIntoLines(content: string): string[] {
     return content.split(/\r?\n/);
 }

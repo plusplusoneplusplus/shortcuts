@@ -3,8 +3,6 @@
  *
  * AI-powered input generation for pipeline items.
  * Constructs prompts from user configuration and parses AI responses into items.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { GenerateInputConfig } from '@plusplusoneplusplus/coc-workflow/workflow';
@@ -12,9 +10,6 @@ import type { PromptItem, AIInvoker } from '../ai/types';
 import { extractJSON } from '../utils/ai-response-parser';
 import { PipelineCoreError, ErrorCode } from '../errors';
 
-/**
- * Error thrown when input generation fails
- */
 export class InputGenerationError extends PipelineCoreError {
     constructor(
         message: string,
@@ -28,9 +23,6 @@ export class InputGenerationError extends PipelineCoreError {
     }
 }
 
-/**
- * Result of generating input items
- */
 export interface GenerateInputResult {
     /** Whether generation was successful */
     success: boolean;
@@ -63,9 +55,6 @@ export type GenerateState =
 
 /**
  * Build the AI prompt for generating input items
- * 
- * @param config The generate configuration from the pipeline
- * @returns The constructed prompt to send to AI
  */
 export function buildGeneratePrompt(config: GenerateInputConfig): string {
     const { prompt, schema } = config;
@@ -95,9 +84,6 @@ IMPORTANT: Return ONLY the JSON array, no additional text or explanation.`;
 /**
  * Parse the AI response into generated items
  * 
- * @param response The raw AI response
- * @param schema The expected field names
- * @returns Parsed items array
  * @throws InputGenerationError if parsing fails
  */
 export function parseGenerateResponse(
@@ -163,10 +149,6 @@ export function parseGenerateResponse(
 
 /**
  * Generate input items using AI
- * 
- * @param config The generate configuration
- * @param aiInvoker Function to invoke AI
- * @returns Generation result with items or error
  */
 export async function generateInputItems(
     config: GenerateInputConfig,
@@ -208,11 +190,8 @@ export async function generateInputItems(
 }
 
 /**
- * Convert generated items to GeneratedItem array with selection state
- * All items are selected by default
- * 
- * @param items The generated items
- * @returns Items wrapped with selection state
+ * Convert generated items to GeneratedItem array with selection state.
+ * All items are selected by default.
  */
 export function toGeneratedItems(items: PromptItem[]): GeneratedItem[] {
     return items.map(data => ({
@@ -221,12 +200,6 @@ export function toGeneratedItems(items: PromptItem[]): GeneratedItem[] {
     }));
 }
 
-/**
- * Filter generated items to only those that are selected
- * 
- * @param items The generated items with selection state
- * @returns Only the selected item data
- */
 export function getSelectedItems(items: GeneratedItem[]): PromptItem[] {
     return items.filter(item => item.selected).map(item => item.data);
 }
@@ -234,7 +207,6 @@ export function getSelectedItems(items: GeneratedItem[]): PromptItem[] {
 /**
  * Create an empty item matching the schema
  * 
- * @param schema The field names
  * @returns Empty item with all fields set to empty string
  */
 export function createEmptyItem(schema: string[]): PromptItem {
@@ -248,7 +220,6 @@ export function createEmptyItem(schema: string[]): PromptItem {
 /**
  * Validate that a generate config is well-formed
  * 
- * @param config The config to validate
  * @returns Validation result with errors if invalid
  */
 export function validateGenerateConfig(

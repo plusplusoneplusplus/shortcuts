@@ -1,10 +1,6 @@
 /**
- * Template Engine
- *
  * Simple template substitution for pipeline prompts.
  * Replaces {{column}} placeholders with values from pipeline items.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { PromptItem } from '../ai/types';
@@ -41,9 +37,6 @@ export class TemplateError extends PipelineCoreError {
     }
 }
 
-/**
- * Options for template substitution
- */
 export interface SubstituteTemplateOptions {
     /** If true, throws on missing variables; if false, leaves as empty string */
     strict?: boolean;
@@ -57,10 +50,7 @@ export interface SubstituteTemplateOptions {
  * Supports special variable {{ITEMS}} which is replaced with JSON array of all items.
  * This allows prompts to reference the full context of all items being processed.
  * 
- * @param template Template string with {{variable}} placeholders
- * @param item Pipeline item containing values
  * @param strictOrOptions If boolean, strict mode; if object, full options
- * @returns Substituted string
  */
 export function substituteTemplate(
     template: string,
@@ -108,7 +98,6 @@ export function substituteTemplate(
 
 /**
  * Extract all variable names from a template
- * @param template Template string
  * @param excludeSpecial If true, excludes special system variables (ITEMS, RESULTS, etc.)
  * @returns Array of unique variable names
  */
@@ -118,8 +107,6 @@ export function extractVariables(template: string, excludeSpecial: boolean = tru
 
 /**
  * Validate that a pipeline item has all required template variables
- * @param template Template string
- * @param item Pipeline item to validate
  * @returns Object with validation result and missing variables
  */
 export function validateItemForTemplate(
@@ -132,7 +119,6 @@ export function validateItemForTemplate(
 /**
  * Build the full prompt for AI by appending output field instructions
  * @param userPrompt User's prompt template (already substituted)
- * @param outputFields Field names expected in AI response
  * @returns Full prompt with JSON output instruction
  */
 export function buildFullPrompt(userPrompt: string, outputFields: string[]): string {
@@ -149,11 +135,6 @@ Return JSON with these fields: ${fieldsStr}`;
 /**
  * Build a complete prompt from template, item, and output fields
  * Combines template substitution and output instruction appending
- * @param template Prompt template with {{variable}} placeholders
- * @param item Pipeline item with values
- * @param outputFields Expected output field names
- * @param strict Strict mode for variable validation
- * @returns Complete prompt ready for AI
  */
 export function buildPromptFromTemplate(
     template: string,
@@ -168,8 +149,6 @@ export function buildPromptFromTemplate(
 /**
  * Parse JSON response from AI, extracting only the declared fields
  * Wrapper that adds TemplateError for backward compatibility
- * @param response AI response string
- * @param outputFields Expected field names
  * @returns Object with extracted fields (missing fields become null)
  */
 export function parseAIResponse(
@@ -184,20 +163,13 @@ export function parseAIResponse(
 }
 
 /**
- * Extract JSON from a response string
- * Re-exported from shared utilities
- * @param response Response string
- * @returns Extracted JSON string or null
+ * Extract JSON from a response string.
+ * Re-exported from shared utilities.
  */
 export function extractJSON(response: string): string | null {
     return sharedExtractJSON(response);
 }
 
-/**
- * Escape special characters in a value for safe template use
- * @param value Value to escape
- * @returns Escaped value
- */
 export function escapeTemplateValue(value: string): string {
     return value
         .replace(/\\/g, '\\\\')
@@ -207,11 +179,7 @@ export function escapeTemplateValue(value: string): string {
 
 /**
  * Preview how a template will render with sample values
- * @param template Template string
- * @param item Sample item
- * @param maxLength Maximum output length
  * @param allItems Optional array of all items (for {{ITEMS}} variable preview)
- * @returns Preview string
  */
 export function previewTemplate(
     template: string,

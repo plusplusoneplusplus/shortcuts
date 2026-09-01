@@ -3,8 +3,6 @@
  *
  * Parses CSV files into pipeline items. Handles various CSV formats
  * and edge cases like quoted values, escaped characters, etc.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -17,18 +15,12 @@ import {
 } from '../config/defaults';
 import { PipelineCoreError, ErrorCode } from '../errors';
 
-/**
- * Default CSV parsing options
- */
 export const DEFAULT_CSV_OPTIONS: Required<CSVParseOptions> = {
     delimiter: DEFAULT_CSV_DELIMITER,
     hasHeaders: DEFAULT_CSV_HAS_HEADER,
     encoding: 'utf-8'
 };
 
-/**
- * Error thrown for CSV parsing issues
- */
 export class CSVParseError extends PipelineCoreError {
     /** Line number where the error occurred */
     readonly lineNumber?: number;
@@ -55,9 +47,6 @@ export class CSVParseError extends PipelineCoreError {
 
 /**
  * Parse a CSV string into an array of pipeline items
- * @param content CSV content as string
- * @param options Parsing options
- * @returns Parsed CSV result with items and headers
  */
 export function parseCSVContent(content: string, options?: CSVParseOptions): CSVParseResult {
     const filteredOptions = options ? Object.fromEntries(
@@ -182,12 +171,6 @@ function parseCSVRows(content: string, delimiter: string): string[][] {
     return rows;
 }
 
-/**
- * Read and parse a CSV file
- * @param filePath Path to CSV file
- * @param options Parsing options
- * @returns Parsed CSV result
- */
 export async function readCSVFile(
     filePath: string,
     options?: CSVParseOptions
@@ -209,12 +192,6 @@ export async function readCSVFile(
     }
 }
 
-/**
- * Read and parse a CSV file synchronously
- * @param filePath Path to CSV file
- * @param options Parsing options
- * @returns Parsed CSV result
- */
 export function readCSVFileSync(
     filePath: string,
     options?: CSVParseOptions
@@ -260,8 +237,6 @@ export function resolveCSVPath(csvPath: string, baseDirectory: string): string {
 
 /**
  * Validate CSV headers against expected columns
- * @param headers Actual headers from CSV
- * @param expectedColumns Expected column names
  * @returns Object with validation result and missing columns
  */
 export function validateCSVHeaders(
@@ -279,9 +254,7 @@ export function validateCSVHeaders(
 
 /**
  * Get a preview of CSV data (first N rows)
- * @param result CSV parse result
  * @param maxRows Maximum rows to preview (default: 5)
- * @returns Preview items
  */
 export function getCSVPreview(
     result: CSVParseResult,

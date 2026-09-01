@@ -3,8 +3,6 @@
  *
  * Implements rule-based, AI-based, and hybrid filtering for pipeline items.
  * The filter phase reduces the number of items before the expensive map phase.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type {
@@ -23,9 +21,6 @@ import type {
 import { substituteTemplate } from './pipeline-template';
 import { getLogger, LogCategory } from '../logger';
 
-/**
- * Options for filter execution
- */
 export interface FilterExecuteOptions {
     /** AI invoker function (required for ai/hybrid filters) */
     aiInvoker?: AIInvoker;
@@ -37,9 +32,6 @@ export interface FilterExecuteOptions {
     isCancelled?: () => boolean;
 }
 
-/**
- * Progress information for filter execution
- */
 export interface FilterProgress {
     /** Current phase */
     phase: 'rule' | 'ai';
@@ -56,9 +48,6 @@ export interface FilterProgress {
 /**
  * Execute filter phase on input items
  * 
- * @param items Input items to filter
- * @param filterConfig Filter configuration
- * @param options Execution options
  * @returns Filtered items with metadata
  */
 export async function executeFilter(
@@ -97,7 +86,7 @@ export async function executeFilter(
 }
 
 /**
- * Execute rule-based filter (synchronous, fast)
+ * Execute rule-based filter. Rules are evaluated in-process; no AI calls.
  */
 export async function executeRuleFilter(
     items: PromptItem[],
@@ -148,7 +137,7 @@ export async function executeRuleFilter(
 }
 
 /**
- * Execute AI-based filter (asynchronous, uses AI calls)
+ * Execute AI-based filter (one AI call per item).
  */
 export async function executeAIFilter(
     items: PromptItem[],
@@ -252,9 +241,6 @@ export async function executeHybridFilter(
     }
 }
 
-/**
- * Evaluate all rules for an item
- */
 function evaluateAllRules(item: PromptItem, config: RuleFilterConfig): boolean {
     const mode = config.mode ?? 'all';
     
@@ -267,9 +253,6 @@ function evaluateAllRules(item: PromptItem, config: RuleFilterConfig): boolean {
     }
 }
 
-/**
- * Evaluate a single rule against an item
- */
 function evaluateRule(item: PromptItem, rule: FilterRule): boolean {
     const fieldValue = getNestedValue(item, rule.field);
     
@@ -331,8 +314,7 @@ function getNestedValue(item: any, path: string): any {
 }
 
 /**
- * Evaluate an item using AI
- * Returns true if item should be included
+ * Returns true if the item should be included.
  */
 async function evaluateAIRule(
     item: PromptItem,

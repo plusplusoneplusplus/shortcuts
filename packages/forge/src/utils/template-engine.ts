@@ -3,8 +3,6 @@
  *
  * Shared template variable substitution logic for prompts across the codebase.
  * Provides a centralized implementation of {{variable}} placeholder replacement.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { PipelineCoreError, ErrorCode } from '../errors';
@@ -35,9 +33,6 @@ export const SPECIAL_VARIABLES = new Set([
     'FAILURE_COUNT'
 ]);
 
-/**
- * Options for template variable substitution
- */
 export interface SubstituteVariablesOptions {
     /**
      * If true, throws on missing variables; if false, behavior depends on missingValueBehavior.
@@ -83,10 +78,6 @@ export class TemplateVariableError extends PipelineCoreError {
 /**
  * Substitute template variables in a string with values from a variables object.
  *
- * @param template Template string with {{variable}} placeholders
- * @param variables Object containing variable values (key-value pairs)
- * @param options Substitution options
- * @returns String with variables substituted
  * @throws TemplateVariableError if strict mode is enabled and a variable is missing
  *
  * @example
@@ -157,7 +148,6 @@ export function substituteVariables(
 /**
  * Extract all variable names from a template string.
  *
- * @param template Template string to analyze
  * @param excludeSpecial If true, excludes special system variables (ITEMS, RESULTS, etc.)
  * @returns Array of unique variable names found in the template
  *
@@ -189,23 +179,10 @@ export function extractVariables(template: string, excludeSpecial: boolean = tru
     return Array.from(variables);
 }
 
-/**
- * Check if a template contains any variables.
- *
- * @param template Template string to check
- * @returns True if the template contains at least one {{variable}} placeholder
- */
 export function hasVariables(template: string): boolean {
     return TEMPLATE_VARIABLE_REGEX.test(template);
 }
 
-/**
- * Check if a template contains any of the specified variables.
- *
- * @param template Template string to check
- * @param variableNames Variable names to look for
- * @returns True if the template contains any of the specified variables
- */
 export function containsVariables(template: string, variableNames: string[]): boolean {
     const found = extractVariables(template, false);
     return variableNames.some(name => found.includes(name));
@@ -214,8 +191,6 @@ export function containsVariables(template: string, variableNames: string[]): bo
 /**
  * Validate that all required variables are present in a variables object.
  *
- * @param template Template string
- * @param variables Variables object to validate
  * @returns Object with validation result and missing variables
  */
 export function validateVariables(

@@ -1,15 +1,10 @@
 /**
- * Terminal Types (Pure Node.js)
- * 
  * Types for terminal detection and external terminal launching.
  * These types are editor-independent and can be used in CLI tools.
  */
 
 import { InteractiveToolType } from '../ai/types';
 
-/**
- * Supported terminal types across platforms
- */
 export type TerminalType =
     // macOS
     | 'terminal.app'
@@ -26,9 +21,6 @@ export type TerminalType =
     // Generic
     | 'unknown';
 
-/**
- * Status of an interactive session
- */
 export type InteractiveSessionStatus = 'starting' | 'active' | 'ended' | 'error';
 
 /**
@@ -60,9 +52,6 @@ export interface InteractiveSession {
     customName?: string;
 }
 
-/**
- * Options for launching an external terminal
- */
 export interface ExternalTerminalLaunchOptions {
     /** Working directory for the terminal */
     workingDirectory: string;
@@ -78,9 +67,6 @@ export interface ExternalTerminalLaunchOptions {
     resumeSessionId?: string;
 }
 
-/**
- * Result of launching an external terminal
- */
 export interface ExternalTerminalLaunchResult {
     /** Whether the launch was successful */
     success: boolean;
@@ -92,9 +78,6 @@ export interface ExternalTerminalLaunchResult {
     error?: string;
 }
 
-/**
- * Result of a window focus operation
- */
 export interface WindowFocusResult {
     /** Whether the focus operation was successful */
     success: boolean;

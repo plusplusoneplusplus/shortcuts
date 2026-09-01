@@ -4,9 +4,6 @@
  * Handles large pasted content by saving it to temp files and providing
  * file-path references for AI prompts. This avoids blowing up the context
  * window when users paste large logs, JSON, or stack traces.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -111,8 +108,6 @@ export interface SavePasteResult {
  * Save large pasted content to a temp file under the repo's paste-context dir.
  *
  * @param dataDir      - Root data directory (e.g. ~/.coc).
- * @param workspaceId  - Workspace identifier for repo-scoped storage.
- * @param content      - The large content to externalize.
  * @returns The absolute file path and a cleanup function.
  */
 export async function savePasteContent(
@@ -146,10 +141,6 @@ export async function savePasteContent(
 
 /**
  * Build a replacement prompt snippet that references the externalized file.
- *
- * @param filePath         - Absolute path to the saved paste file.
- * @param charCount        - Character count of the externalized content.
- * @param questionPrefix   - Optional short question that preceded the paste.
  */
 export function buildPasteFileReference(
     filePath: string,
@@ -173,10 +164,6 @@ export function buildPasteFileReference(
  * and return a rewritten prompt with a file-path reference.
  *
  * Returns undefined if no rewriting was needed (prompt is small enough).
- *
- * @param prompt       - The original prompt string.
- * @param dataDir      - Root data directory.
- * @param workspaceId  - Workspace identifier.
  */
 export async function rewriteLargePrompt(
     prompt: string,

@@ -2,7 +2,6 @@
  * File Utilities
  *
  * Centralized file I/O utilities with consistent error handling.
- * Cross-platform compatible (Linux/Mac/Windows).
  * 
  * These utilities provide:
  * - Consistent error handling across all file operations
@@ -16,7 +15,6 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 
 /**
- * Result type for file operations that may fail.
  * Provides explicit success/failure states with error information.
  */
 export interface FileOperationResult<T> {
@@ -26,17 +24,11 @@ export interface FileOperationResult<T> {
     errorCode?: string;
 }
 
-/**
- * Options for file reading operations
- */
 export interface ReadFileOptions {
     /** Encoding to use (default: 'utf8') */
     encoding?: BufferEncoding;
 }
 
-/**
- * Options for file writing operations
- */
 export interface WriteFileOptions {
     /** Encoding to use (default: 'utf8') */
     encoding?: BufferEncoding;
@@ -44,9 +36,6 @@ export interface WriteFileOptions {
     createDirs?: boolean;
 }
 
-/**
- * Options for YAML operations
- */
 export interface YAMLOptions {
     /** Indentation level (default: 2) */
     indent?: number;
@@ -58,9 +47,6 @@ export interface YAMLOptions {
 
 /**
  * Safely checks if a file or directory exists.
- * 
- * @param filePath - Path to check
- * @returns True if the path exists, false otherwise
  * 
  * @example
  * ```typescript
@@ -78,12 +64,6 @@ export function safeExists(filePath: string): boolean {
     }
 }
 
-/**
- * Safely checks if a path is a directory.
- * 
- * @param dirPath - Path to check
- * @returns True if the path is a directory, false otherwise
- */
 export function safeIsDirectory(dirPath: string): boolean {
     try {
         const stats = fs.statSync(dirPath);
@@ -93,12 +73,6 @@ export function safeIsDirectory(dirPath: string): boolean {
     }
 }
 
-/**
- * Safely checks if a path is a file.
- * 
- * @param filePath - Path to check
- * @returns True if the path is a file, false otherwise
- */
 export function safeIsFile(filePath: string): boolean {
     try {
         const stats = fs.statSync(filePath);
@@ -110,10 +84,6 @@ export function safeIsFile(filePath: string): boolean {
 
 /**
  * Safely reads a file and returns its contents.
- * 
- * @param filePath - Path to the file to read
- * @param options - Optional read options
- * @returns FileOperationResult with the file contents or error information
  * 
  * @example
  * ```typescript
@@ -143,11 +113,6 @@ export function safeReadFile(
 
 /**
  * Safely writes content to a file.
- * 
- * @param filePath - Path to the file to write
- * @param content - Content to write
- * @param options - Optional write options
- * @returns FileOperationResult indicating success or failure
  * 
  * @example
  * ```typescript
@@ -184,9 +149,6 @@ export function safeWriteFile(
 /**
  * Ensures a directory exists, creating it recursively if necessary.
  * 
- * @param dirPath - Path to the directory
- * @returns FileOperationResult indicating success or failure
- * 
  * @example
  * ```typescript
  * const result = ensureDirectoryExists('/path/to/new/directory');
@@ -211,9 +173,7 @@ export function ensureDirectoryExists(dirPath: string): FileOperationResult<void
 /**
  * Safely reads a directory and returns its entries.
  * 
- * @param dirPath - Path to the directory to read
  * @param withFileTypes - If true, returns Dirent objects with file type info
- * @returns FileOperationResult with directory entries or error information
  * 
  * @example
  * ```typescript
@@ -253,12 +213,6 @@ export function safeReadDir(
     }
 }
 
-/**
- * Safely gets file stats.
- * 
- * @param filePath - Path to the file
- * @returns FileOperationResult with fs.Stats or error information
- */
 export function safeStats(filePath: string): FileOperationResult<fs.Stats> {
     try {
         const stats = fs.statSync(filePath);
@@ -272,9 +226,6 @@ export function safeStats(filePath: string): FileOperationResult<fs.Stats> {
 
 /**
  * Reads and parses a YAML file.
- * 
- * @param filePath - Path to the YAML file
- * @returns FileOperationResult with parsed YAML content or error information
  * 
  * @example
  * ```typescript
@@ -313,11 +264,6 @@ export function readYAML<T = unknown>(filePath: string): FileOperationResult<T> 
 /**
  * Writes data to a YAML file.
  * 
- * @param filePath - Path to the YAML file
- * @param data - Data to serialize and write
- * @param options - Optional YAML serialization options
- * @returns FileOperationResult indicating success or failure
- * 
  * @example
  * ```typescript
  * const config = { name: 'MyApp', version: 1 };
@@ -347,10 +293,7 @@ export function writeYAML<T>(
 /**
  * Safely copies a file from source to destination.
  * 
- * @param srcPath - Source file path
- * @param destPath - Destination file path
  * @param createDirs - Create parent directories if they don't exist (default: true)
- * @returns FileOperationResult indicating success or failure
  */
 export function safeCopyFile(
     srcPath: string,
@@ -376,10 +319,6 @@ export function safeCopyFile(
 
 /**
  * Safely renames/moves a file or directory.
- * 
- * @param oldPath - Current path
- * @param newPath - New path
- * @returns FileOperationResult indicating success or failure
  */
 export function safeRename(
     oldPath: string,
@@ -397,10 +336,6 @@ export function safeRename(
 
 /**
  * Safely removes a file or directory.
- * 
- * @param targetPath - Path to remove
- * @param options - Options for removal
- * @returns FileOperationResult indicating success or failure
  */
 export function safeRemove(
     targetPath: string,
@@ -503,7 +438,6 @@ export async function safeReadFileAsync(
 /**
  * Extracts error code from a Node.js error.
  * 
- * @param error - The error to extract code from
  * @returns The error code or 'UNKNOWN'
  */
 function extractErrorCode(error: Error): string {
@@ -514,10 +448,6 @@ function extractErrorCode(error: Error): string {
 
 /**
  * Gets a user-friendly error message for common file operation errors.
- * 
- * @param errorCode - The error code from a file operation
- * @param context - Optional context about what operation was being performed
- * @returns A user-friendly error message
  */
 export function getFileErrorMessage(errorCode: string, context?: string): string {
     const prefix = context ? `${context}: ` : '';

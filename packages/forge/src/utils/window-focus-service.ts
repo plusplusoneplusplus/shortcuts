@@ -13,8 +13,6 @@ import { spawn, SpawnOptions } from 'child_process';
 import { InteractiveSession, TerminalType, WindowFocusResult } from './terminal-types';
 
 /**
- * Window Focus Service
- *
  * Handles platform-specific window focusing for interactive sessions.
  * Currently only implemented for Windows.
  */
@@ -165,9 +163,6 @@ export class WindowFocusService {
  */
 let defaultService: WindowFocusService | undefined;
 
-/**
- * Get the default WindowFocusService instance
- */
 export function getWindowFocusService(): WindowFocusService {
     if (!defaultService) {
         defaultService = new WindowFocusService();
