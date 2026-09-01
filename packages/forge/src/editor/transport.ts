@@ -1,14 +1,6 @@
-/**
- * Transport abstraction for the Markdown Review Editor.
- *
- * Abstracts the bidirectional message channel between the review UI and the
- * backend host.
- */
-
 import type { Disposable } from '../utils/process-monitor';
 import type { BackendToWebviewMessage, WebviewToBackendMessage } from './messages';
 
-/** Callback for receiving messages */
 export type MessageListener<T> = (message: T) => void;
 
 /** Abstracts the bidirectional message channel between UI and backend */

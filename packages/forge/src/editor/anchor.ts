@@ -1,6 +1,4 @@
 /**
- * Anchor Utilities
- *
  * Provides shared anchor-based tracking for comment locations.
  * When document content changes, anchors allow relocating comments
  * by matching surrounding context using fuzzy matching algorithms.

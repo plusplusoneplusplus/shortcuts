@@ -13,17 +13,11 @@ import { CodeBlock, ParsedTable, getLanguageDisplayName } from './markdown-parse
 // Options
 // ---------------------------------------------------------------------------
 
-/**
- * Options for table rendering
- */
 export interface TableRenderOptions {
     /** Custom cell content formatter (e.g., inline markdown). Defaults to `escapeHtml`. */
     formatCell?: (text: string) => string;
 }
 
-/**
- * Options for code block rendering
- */
 export interface CodeBlockRenderOptions {
     /** Syntax highlighter callback. Receives raw code and language, returns HTML.
      *  When omitted the code is HTML-escaped as plain text. */

@@ -1,18 +1,11 @@
 /**
- * Content extraction utilities for the webview editor
- * 
- * This module contains pure functions for extracting plain text content
- * from the contenteditable editor DOM. These functions handle the various
- * DOM mutations that browsers create during editing (br, div, p elements).
- * 
- * These functions are designed to be testable in Node.js with mock DOM structures.
+ * Extracts plain text from the contenteditable editor DOM, absorbing the
+ * br/div/p mutations browsers create during editing. Written against mock DOM
+ * structures so it stays testable in Node.js.
  */
 
 import { MockNode, NODE_TYPES } from './cursor-management';
 
-/**
- * Result of content extraction including line-by-line breakdown
- */
 export interface ContentExtractionResult {
     /** The extracted plain text content */
     content: string;
@@ -41,9 +34,6 @@ export function normalizeExtractedLine(line: string): string {
     return line.replace(/^\u00a0+/, '').replace(/\u00a0+$/, '');
 }
 
-/**
- * Context for processing content extraction
- */
 export interface ExtractionContext {
     /** Current list of extracted lines */
     lines: string[];
@@ -79,9 +69,6 @@ export const DEFAULT_SKIP_CLASSES = new Set([
     'context-menu-arrow'
 ]);
 
-/**
- * Create a new extraction context
- */
 export function createExtractionContext(
     skipClasses: Set<string> = DEFAULT_SKIP_CLASSES
 ): ExtractionContext {
@@ -92,9 +79,6 @@ export function createExtractionContext(
     };
 }
 
-/**
- * Check if an element should be skipped during extraction
- */
 export function shouldSkipElement(node: MockNode, skipClasses: Set<string>): boolean {
     if (node.nodeType !== NODE_TYPES.ELEMENT_NODE) return false;
     if (!node.classList) return false;
@@ -130,9 +114,6 @@ export function isLineContentElement(node: MockNode): boolean {
         Boolean(node.hasAttribute?.('data-line'));
 }
 
-/**
- * Check if a node is a line-row wrapper element
- */
 export function isLineRowElement(node: MockNode): boolean {
     if (node.nodeType !== NODE_TYPES.ELEMENT_NODE) return false;
     return Boolean(node.classList?.contains('line-row')) ||
@@ -147,9 +128,6 @@ export function isBlockContentElement(node: MockNode): boolean {
     return Boolean(node.classList?.contains('block-content'));
 }
 
-/**
- * Check if a node is a BR element
- */
 export function isBrElement(node: MockNode): boolean {
     if (node.nodeType !== NODE_TYPES.ELEMENT_NODE) return false;
     return (node.tagName || '').toLowerCase() === 'br';
@@ -167,16 +145,13 @@ export function processTextNode(node: MockNode, context: ExtractionContext): voi
     }
 }
 
-/**
- * Add a new line to the context
- */
 export function addNewLine(context: ExtractionContext): void {
     context.lines.push('');
 }
 
 /**
  * Extract text from a block-content element (code blocks, tables)
- * This handles pre/code elements and table reconstructions
+ * Handles pre/code elements and table reconstructions
  */
 export function extractBlockText(node: MockNode): string {
     // For pre/code blocks, get the text content
@@ -206,9 +181,6 @@ export function extractTableText(tableNode: MockNode): string {
     return tableNode.textContent || '';
 }
 
-/**
- * Check if a BR element is followed by meaningful content
- */
 export function hasMeaningfulContentAfterBr(node: MockNode): boolean {
     // Find next sibling
     const parent = node.parentNode;
@@ -237,7 +209,7 @@ export function hasMeaningfulContentAfterBr(node: MockNode): boolean {
 
 /**
  * Process a single node for content extraction
- * This is the core recursive function that handles all node types
+ * The recursive core that handles all node types
  */
 export function processNode(
     node: MockNode,
@@ -344,12 +316,7 @@ export function processNode(
 }
 
 /**
- * Extract plain text content from an editor wrapper element
- * This is the main entry point for content extraction
- * 
- * @param editorWrapper - The root editor element
- * @param skipClasses - Optional set of classes to skip
- * @returns ContentExtractionResult with extracted content
+ * Main entry point for content extraction
  */
 export function extractPlainTextContent(
     editorWrapper: MockNode,
@@ -371,13 +338,10 @@ export function extractPlainTextContent(
 
 /**
  * Apply a content change (insertion) and return the updated content
- * This is useful for simulating edits in tests
- * 
- * @param originalLines - Array of original content lines
+ * Useful for simulating edits in tests
+ *
  * @param insertLine - Line number to insert at (1-based)
  * @param insertColumn - Column to insert at (0-based)
- * @param insertText - Text to insert
- * @returns Updated lines array
  */
 export function applyInsertion(
     originalLines: string[],
@@ -422,14 +386,10 @@ export function applyInsertion(
 }
 
 /**
- * Apply a content deletion and return the updated content
- * 
- * @param originalLines - Array of original content lines
  * @param startLine - Start line of deletion (1-based)
  * @param startColumn - Start column of deletion (0-based)
  * @param endLine - End line of deletion (1-based)
  * @param endColumn - End column of deletion (0-based)
- * @returns Updated lines array
  */
 export function applyDeletion(
     originalLines: string[],
@@ -469,9 +429,6 @@ export function applyDeletion(
     return lines;
 }
 
-/**
- * Get the total character count of content
- */
 export function getTotalCharacterCount(lines: string[]): number {
     // Characters in lines plus newlines between them
     return lines.reduce((sum, line) => sum + line.length, 0) +
