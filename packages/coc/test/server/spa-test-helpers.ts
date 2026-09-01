@@ -1,10 +1,3 @@
-/**
- * Shared test helpers for SPA dashboard tests.
- *
- * Provides common imports and utility functions used across
- * the split SPA test files.
- */
-
 import * as fs from 'fs';
 import * as path from 'path';
 

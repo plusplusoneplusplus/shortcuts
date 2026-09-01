@@ -1,6 +1,4 @@
 /**
- * Skills Config API Endpoint Tests
- *
  * Tests for the skills-config API routes:
  * - GET /api/workspaces/:id/skills-config
  * - PUT /api/workspaces/:id/skills-config

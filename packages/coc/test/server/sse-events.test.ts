@@ -1,10 +1,6 @@
 /**
- * SSE Handler — message-queued / message-steering Event Tests
- *
  * Verifies that emitMessageQueued and emitMessageSteering correctly
  * emit ProcessOutputEvents through the store.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi } from 'vitest';

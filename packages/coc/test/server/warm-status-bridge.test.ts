@@ -1,6 +1,4 @@
 /**
- * WarmStatusBridge Tests
- *
  * Verifies the bridge that relays WarmClientRegistry transitions
  * (service.onWarmStatusChange) onto interested processes' SSE channels as
  * `warm-status` ProcessOutputEvents (AC-01).

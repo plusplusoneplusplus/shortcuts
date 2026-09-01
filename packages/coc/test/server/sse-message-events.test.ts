@@ -1,6 +1,4 @@
 /**
- * SSE Message Event Tests
- *
  * Tests that the SSE handler correctly relays message-queued events
  * including the optimisticId field for client-side reconciliation.
  */

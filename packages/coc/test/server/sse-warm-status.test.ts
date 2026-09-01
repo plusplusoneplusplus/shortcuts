@@ -1,14 +1,10 @@
 /**
- * SSE Handler — warm_status Event Tests
- *
  * Verifies that:
  *   - emitWarmStatus emits a `warm-status` ProcessOutputEvent through the store;
  *   - handleProcessStream relays a `warm-status` output event to the SPA as a
  *     `warm_status` SSE frame carrying `{ status }` (AC-01);
  *   - handleProcessStream registers/unregisters warm-status interest with the
  *     WarmStatusBridge over the life of the stream.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

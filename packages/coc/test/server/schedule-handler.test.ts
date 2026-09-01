@@ -1,6 +1,4 @@
 /**
- * Schedule Handler Tests
- *
  * Tests for the Schedule REST API endpoints:
  * CRUD, trigger, history.
  *

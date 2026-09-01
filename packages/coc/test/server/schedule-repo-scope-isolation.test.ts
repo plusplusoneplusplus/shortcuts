@@ -1,6 +1,4 @@
 /**
- * Repo-schedule runtime scope isolation
- *
  * Repo schedules derive deterministic IDs from their filename, so two clones
  * that both ship `.github/schedules/daily.yaml` produce the same `repo:daily`
  * ID. Every piece of runtime state — timers, in-flight runs, run history —
@@ -8,8 +6,6 @@
  *
  * These tests drive two workspaces that share a schedule ID and assert that
  * operating on one never touches the other.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Storage Snapshot Domain Contract Harness
- *
  * Every registered snapshot domain must pass the same lifecycle contract:
  * collect (export), restoreReplace + restoreMerge (import), planWipe (dry-run),
  * and executeWipe (destructive). This harness runs each domain through that

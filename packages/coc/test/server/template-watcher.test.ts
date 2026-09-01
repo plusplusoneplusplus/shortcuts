@@ -1,11 +1,8 @@
 /**
- * TemplateWatcher Unit Tests
- *
  * Tests for the TemplateWatcher class which watches `.vscode/templates/`
  * directories for file changes and fires debounced callbacks.
  *
  * Uses temporary directories for isolation.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';

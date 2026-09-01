@@ -1,6 +1,4 @@
 /**
- * SSE Replay Tests
- *
  * Tests that the SSE handler replays persisted conversationTurns as a
  * conversation-snapshot event when a client connects, before streaming
  * any live output.

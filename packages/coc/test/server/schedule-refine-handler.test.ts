@@ -1,6 +1,4 @@
 /**
- * Schedule Instruction Refine Handler Tests
- *
  * Tests for POST /api/workspaces/:id/schedules/refine (AI prompt-instruction
  * refinement used by the New/Edit Prompt Routine form).
  *

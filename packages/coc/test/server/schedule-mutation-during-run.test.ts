@@ -1,6 +1,4 @@
 /**
- * Schedule Mutation During Run Tests
- *
  * Covers Sections 2 & 3 of test-plan-schedule-system.md:
  * - Schedule Modified While Running (Section 2)
  * - Schedule Deleted While Running (Section 3)
@@ -9,8 +7,6 @@
  * terminal state, "during run" tests rely on fake queueManagers that don't
  * emit completion events — leaving the executor waiting — so state-mutation
  * side effects are tested without waiting for the run to finish.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

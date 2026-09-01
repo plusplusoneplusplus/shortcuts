@@ -1,6 +1,4 @@
 /**
- * SqliteQueuePersistence Tests
- *
  * Covers: incremental change handling (no debounce), restore with restart
  * policies, pause state persistence, repo path tracking, dispose/cleanup,
  * and integration with createQueueInfrastructure.

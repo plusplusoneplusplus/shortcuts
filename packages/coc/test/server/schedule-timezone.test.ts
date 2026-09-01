@@ -1,6 +1,4 @@
 /**
- * Schedule Timezone and DST Tests
- *
  * Covers Section 8 of test-plan-schedule-system.md:
  * - nextRun API response is in UTC ISO format regardless of schedule timezone
  * - Schedule fires at correct wall-clock time for explicit cron expressions
@@ -9,8 +7,6 @@
  * @sinonjs/fake-timers which supports timezone simulation, unlike vi.useFakeTimers().
  * The cron implementation uses system local time (no timezone parameter), so
  * timezone-aware scheduling is a known gap documented below as TODO.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi } from 'vitest';

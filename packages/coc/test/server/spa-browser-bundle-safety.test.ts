@@ -1,6 +1,4 @@
 /**
- * SPA Dashboard Tests — browser bundle safety checks.
- *
  * Regression coverage: ensure browser bundle does not include Node-only dynamic
  * requires caused by importing server-side AI barrels into React components.
  */

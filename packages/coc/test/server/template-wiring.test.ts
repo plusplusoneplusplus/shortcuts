@@ -1,6 +1,4 @@
 /**
- * Template Wiring Integration Tests
- *
  * Verifies that template routes (read, write, replicate-apply) and the
  * TemplateWatcher are correctly wired into createExecutionServer().
  *
@@ -11,7 +9,6 @@
  * - templates-changed WebSocket events are broadcast on file changes
  *
  * Uses port 0 (OS-assigned) and temp directories for test isolation.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, afterAll, beforeAll } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Tool Event Capture Tests
- *
  * Tests that CopilotSDKService.sendWithStreaming() correctly captures tool
  * execution events (start, complete, progress) and builds ToolCall objects,
  * and that queue-executor-bridge attaches them to conversation turns.

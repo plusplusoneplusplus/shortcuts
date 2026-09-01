@@ -1,6 +1,4 @@
 /**
- * Tasks Handler Write Tests
- *
  * Comprehensive tests for the Task write REST API endpoints:
  * create, rename, status update, delete, archive/unarchive.
  *

@@ -1,6 +1,4 @@
 /**
- * Task Comments Handler Tests
- *
  * Comprehensive tests for the task comments REST API:
  * - TaskCommentsManager unit tests (CRUD, hashing, storage)
  * - REST API integration tests (GET, POST, PATCH, DELETE)

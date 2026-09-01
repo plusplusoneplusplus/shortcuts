@@ -1,6 +1,4 @@
 /**
- * Tasks Handler Tests
- *
  * Comprehensive tests for the Task read-only REST API endpoints:
  * hierarchy, content, and settings.
  *
@@ -56,7 +54,6 @@ function request(
     });
 }
 
-/** POST JSON helper. */
 function postJSON(url: string, data: unknown) {
     return request(url, {
         method: 'POST',
@@ -454,7 +451,6 @@ describe('Tasks Handler', () => {
     // PATCH /api/workspaces/:id/tasks/content — Write content
     // ========================================================================
 
-    /** PATCH JSON helper. */
     function patchJSON(url: string, data: unknown) {
         return request(url, {
             method: 'PATCH',

@@ -1,6 +1,4 @@
 /**
- * Turn Performance Route — Live HTTP Round-Trip
- *
  * Functional test standing in for the manual curl check: binds a real HTTP
  * server on an ephemeral port, registers the real stats routes backed by a
  * real SQLite `TurnPerformanceStore` (in-memory processes.db), records rows

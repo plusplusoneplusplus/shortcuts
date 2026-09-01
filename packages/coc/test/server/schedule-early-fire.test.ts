@@ -1,6 +1,4 @@
 /**
- * Schedule Early-Fire Guard Tests
- *
  * Verifies that JavaScript timer imprecision (setTimeout firing ~1s early)
  * does not cause cron-scheduled jobs to double-fire.
  *

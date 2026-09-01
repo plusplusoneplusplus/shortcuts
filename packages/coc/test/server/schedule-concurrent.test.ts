@@ -1,12 +1,9 @@
 /**
- * Schedule Concurrent Tests
- *
  * Covers Sections 4 & 5 of test-plan-schedule-system.md:
  * - Two Schedules With Same Cron Expression (Section 4)
  * - Schedule Concurrency With Queue (Section 5)
  *
  * Uses fake timers to control time and trigger scheduled fires.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

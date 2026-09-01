@@ -1,6 +1,4 @@
 /**
- * Task Generation Queue Tests
- *
  * Tests for the `task-generation` queue task type:
  * - isTaskGenerationPayload type guard
  * - CLITaskExecutor routing for task-generation tasks

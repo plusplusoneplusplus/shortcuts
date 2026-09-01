@@ -1,6 +1,4 @@
 /**
- * Workspace Description Field API Tests
- *
  * Tests for the description field on PATCH /api/workspaces/:id.
  */
 
