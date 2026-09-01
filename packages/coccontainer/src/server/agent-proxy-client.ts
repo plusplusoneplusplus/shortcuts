@@ -1,6 +1,4 @@
 /**
- * Agent proxy client.
- *
  * Encapsulates the single inbound-vs-HTTP transport policy shared by
  * workspace/process aggregation (buffered text) and the `/api/agent/:id/*`
  * route (streamed request/response). Inbound agents (connected via the

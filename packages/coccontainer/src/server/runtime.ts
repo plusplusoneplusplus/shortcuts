@@ -1,6 +1,4 @@
 /**
- * Container runtime.
- *
  * Owns the lifetime of every long-lived container service: the agent store,
  * tunnel/SSH bridges, SSE/WS relays, the web-client bridge, the health monitor,
  * the inbound agent manager, and the optional WhatsApp/Teams messaging bridges.

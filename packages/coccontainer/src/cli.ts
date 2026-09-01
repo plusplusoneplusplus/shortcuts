@@ -1,6 +1,4 @@
 /**
- * CoCContainer CLI
- *
  * Commander setup for the coccontainer CLI.
  * Routes commands to handlers for agent management, serve, and proxied operations.
  */

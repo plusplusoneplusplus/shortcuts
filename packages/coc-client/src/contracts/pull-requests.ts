@@ -194,7 +194,6 @@ export interface PullRequestChecksResponse {
 
 // ── PR chat bindings ───────────────────────────────────────────────
 
-/** A single pull-request → chat task binding. */
 export interface PullRequestChatBinding {
   prId: string;
   taskId: string;
@@ -270,7 +269,6 @@ export interface HunkClassification {
   critical?: CriticalHunkMetadata;
 }
 
-/** Full classification result for a PR diff. */
 export interface DiffClassificationResult {
   classifications: HunkClassification[];
 }

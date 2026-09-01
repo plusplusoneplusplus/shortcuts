@@ -585,14 +585,12 @@ export interface WorkItemRollup {
   byStatus: Record<KnownWorkItemStatus, number> & Record<string, number>;
 }
 
-/** A node in the work item hierarchy tree. */
 export interface WorkItemTreeNode {
   item: WorkItem;
   children: WorkItemTreeNode[];
   rollup: WorkItemRollup;
 }
 
-/** Response from the work item tree endpoint. */
 export interface WorkItemTreeResponse {
   roots: WorkItemTreeNode[];
   total: number;
@@ -600,7 +598,6 @@ export interface WorkItemTreeResponse {
   disabled?: boolean;
 }
 
-/** Filter options for the tree endpoint. */
 export interface WorkItemTreeFilter {
   q?: string;
   type?: WorkItemType;
@@ -658,7 +655,6 @@ export interface WorkItemAiDraftResult {
   childTasks?: WorkItemChildTaskDraft[];
 }
 
-/** Union of all possible AI draft API responses. */
 export type WorkItemAiGenerationResponse = WorkItemAiClarificationResponse | WorkItemAiDraftResult;
 
 /** Request body for POST /api/origins/:originId/work-items/ai-draft */

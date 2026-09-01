@@ -1,6 +1,4 @@
 /**
- * WebClient Bridge
- *
  * Manages browser WebSocket clients connected to the CoCContainer.
  * Symmetric to TeamsBridge — subscribes to WSRelay for agent events
  * and forwards them to connected browser clients.
@@ -70,12 +68,10 @@ export class WebClientBridge {
         });
     }
 
-    /** Number of connected browser clients. */
     get clientCount(): number {
         return this.clients.size;
     }
 
-    /** Stop all connections and clean up. */
     stop(): void {
         for (const ws of this.clients) {
             ws.close();

@@ -1,6 +1,4 @@
 /**
- * Workspace aggregation service.
- *
  * Aggregates workspace lists across all registered agents. Owns a per-server
  * cache (keyed by agent address) so transient fetch failures fall back to the
  * last known workspaces without leaking state across server instances or tests.

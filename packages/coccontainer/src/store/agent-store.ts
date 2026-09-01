@@ -1,6 +1,4 @@
 /**
- * Agent Store
- *
  * SQLite-backed registry for CoC agent addresses.
  * Stored at ~/.coccontainer/agents.db
  */

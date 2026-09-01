@@ -1,6 +1,4 @@
 /**
- * Tunnel Bridge
- *
  * Creates local HTTP proxy servers for devtunnel agents. Each tunnel agent
  * gets a local port (auto-assigned from a configurable base) that forwards
  * all requests to the remote devtunnel URL.
@@ -129,7 +127,6 @@ export class TunnelBridge {
         return localUrl;
     }
 
-    /** Stop a bridge for an agent. */
     stop(agentId: string): void {
         const entry = this.bridges.get(agentId);
         if (entry) {
@@ -138,7 +135,6 @@ export class TunnelBridge {
         }
     }
 
-    /** Stop all bridges. */
     stopAll(): void {
         for (const entry of this.bridges.values()) {
             entry.server.close();
@@ -151,7 +147,6 @@ export class TunnelBridge {
         return this.bridges.get(agentId)?.localUrl;
     }
 
-    /** Get all active bridges info. */
     list(): Array<{ agentId: string; tunnelId: string; localPort: number; localUrl: string; remoteUrl: string }> {
         return Array.from(this.bridges.values()).map(({ agentId, tunnelId, localPort, localUrl, remoteUrl }) => ({
             agentId, tunnelId, localPort, localUrl, remoteUrl,

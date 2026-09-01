@@ -248,7 +248,6 @@ export class TeamsBridge {
         await this.persistTeamsConfig(patch as Record<string, string | boolean | undefined>);
     }
 
-    /** Reconnect to Teams. */
     async reconnect(): Promise<void> {
         await this.bot?.stop();
 
@@ -363,7 +362,6 @@ export class TeamsBridge {
         }
     }
 
-    /** Save Teams config fields to the config file. */
     private async persistTeamsConfig(fields: Record<string, string | boolean | undefined>): Promise<void> {
         try {
             const fs = await import('fs');
@@ -794,9 +792,6 @@ export class TeamsBridge {
         }
     }
 
-    /**
-     * Send a message to Teams for a given process.
-     */
     private async sendToTeams(
         processId: string,
         role: string,
@@ -913,7 +908,6 @@ export class TeamsBridge {
         return lines.join('<br>');
     }
 
-    /** Resolve a workspace ID to a human-readable name. */
     private async resolveWorkspaceName(
         wsEventName: string | undefined,
         metadataName: string | undefined,

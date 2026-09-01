@@ -1,6 +1,4 @@
 /**
- * WebSocket upgrade router.
- *
  * Owns one reusable `noServer` WebSocketServer per registered path so upgrade
  * events don't allocate a fresh server instance each time, and exposes explicit
  * cleanup on shutdown. Unmatched upgrade paths destroy the socket.

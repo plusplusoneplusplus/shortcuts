@@ -130,7 +130,6 @@ export class TeamsCommandExecutor {
         return this.userStates.get(userKey)!;
     }
 
-    /** Update user state fields. */
     updateUserState(userKey: string, patch: Partial<UserState>): void {
         const state = this.getUserState(userKey);
         Object.assign(state, patch);

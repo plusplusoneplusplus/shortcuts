@@ -1,6 +1,4 @@
 /**
- * CoCContainer Server
- *
  * Thin wrapper that serves CoC's SPA in containerMode and proxies
  * API calls to registered CoC agents. The container has NO SPA of
  * its own — it reuses CoC's dashboard bundle.

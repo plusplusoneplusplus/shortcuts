@@ -40,12 +40,10 @@ export class RouteTable {
         return this;
     }
 
-    /** Register a route matched by exact method + pathname. */
     on(method: string, pathname: string, handle: RouteHandler): this {
         return this.when((m, url) => m === method && url.pathname === pathname, handle);
     }
 
-    /** Register a route matched by method + pathname prefix. */
     onPrefix(method: string, prefix: string, handle: RouteHandler): this {
         return this.when((m, url) => m === method && url.pathname.startsWith(prefix), handle);
     }
@@ -65,7 +63,6 @@ export class RouteTable {
     }
 }
 
-/** Write a JSON response with the given status code. */
 export function sendJson(res: http.ServerResponse, data: unknown, status = 200): void {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(data));
