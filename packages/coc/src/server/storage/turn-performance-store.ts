@@ -1,6 +1,4 @@
 /**
- * Turn Performance Store — SQLite Persistence
- *
  * One row per completed agent turn in the `turn_performance` table of the
  * shared `processes.db`: TTFT/TPS timestamps and derived metrics. Follows the
  * same pattern as `WakeupStore`: receives a shared Database handle, uses

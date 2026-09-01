@@ -1,6 +1,4 @@
 /**
- * Wakeup Store — SQLite Persistence
- *
  * CRUD operations for `WakeupEntry` records in the shared `processes.db`.
  * Follows the same pattern as `CronStore`: receives a shared Database handle,
  * uses prepared statements for hot paths, and self-creates its table so it

@@ -8,8 +8,6 @@
  * - Heartbeat using ws-level ping/pong with dead-connection pruning
  * - Workspace-scoped subscription filtering
  * - Process event broadcasting
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';

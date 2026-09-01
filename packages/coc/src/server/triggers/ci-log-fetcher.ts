@@ -16,8 +16,6 @@
  * no resolvable run ids, `gh` not installed, non-zero exit, timeout) resolves to
  * `undefined` so the evaluator falls back to an excerpt-less prompt and the fix
  * still fires.
- *
- * Pure Node.js with built-ins only. Cross-platform.
  */
 
 import { execFile } from 'child_process';

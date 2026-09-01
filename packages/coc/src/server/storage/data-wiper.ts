@@ -1,6 +1,4 @@
 /**
- * Data Wiper
- *
  * Wipes all runtime/persistent data while preserving system configuration
  * files. Dry-run and execution share the same storage-domain wipe plan.
  */

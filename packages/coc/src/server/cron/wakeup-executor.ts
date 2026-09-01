@@ -1,6 +1,4 @@
 /**
- * Wakeup Executor
- *
  * Owns the one-shot lifecycle of durable wakeups:
  * - Arms a single timer per pending wakeup via `ScheduleTimerRegistry`, keyed
  *   `wakeup:<id>` so it survives per-turn executor teardown (the executor never

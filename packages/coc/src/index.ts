@@ -10,8 +10,6 @@
  *   coc run <path>       Execute a pipeline
  *   coc validate <path>  Validate a pipeline YAML
  *   coc list [dir]       List pipeline packages
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { createProgram, EXIT_CODES } from './cli';

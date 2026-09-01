@@ -1,6 +1,4 @@
 /**
- * Storage Migration Engine
- *
  * 6-phase pipeline that reads existing JSON process/workspace/wiki files
  * from ~/.coc/repos/ and writes them into a new SQLite database.
  *

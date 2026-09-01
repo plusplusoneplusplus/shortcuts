@@ -5,7 +5,7 @@
  * - pino-pretty to stderr in TTY mode
  * - Optional .ndjson file destinations under logDir
  * - Exports child loggers for ai-service and coc-service stores
- * - Exports a pipeline-core Logger adapter via createPinoAdapter
+ * - Exports a coc-workflow Logger adapter via createPinoAdapter
  */
 
 import path from 'path';
@@ -181,7 +181,7 @@ export function createCLIPinoLogger(resolved: ResolvedLoggingConfig): CLIPinoLog
 // ============================================================================
 
 /**
- * Wrap a Pino logger in the pipeline-core Logger interface.
+ * Wrap a Pino logger in the coc-workflow Logger interface.
  */
 export function pinoAdapterForPipelineCore(pinoLogger: pino.Logger): Logger {
     return createPinoAdapter(pinoLogger);

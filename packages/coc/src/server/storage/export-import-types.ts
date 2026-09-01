@@ -1,10 +1,6 @@
 /**
- * Export/Import Types and Schema
- *
  * Defines the versioned JSON payload structure for CoC admin export/import,
  * including validation helpers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AIProcess, WorkspaceInfo, WikiInfo, QueuedTask, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';

@@ -1,6 +1,4 @@
 /**
- * Cron Executor
- *
  * Owns the per-tick lifecycle of cron entries:
  * - Schedules timer ticks via `ScheduleTimerRegistry`
  * - On tick: checks process status, skips if process is running, checks TTL/circuit breakers

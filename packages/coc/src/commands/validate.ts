@@ -1,10 +1,6 @@
 /**
- * Validate Command
- *
  * Validates a pipeline YAML file without executing it.
  * Checks structure, input sources, template variables, and filter configuration.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -32,9 +28,6 @@ import {
 // Types
 // ============================================================================
 
-/**
- * Result of a validation check
- */
 export interface ValidationCheck {
     label: string;
     status: 'pass' | 'warn' | 'fail';
@@ -55,8 +48,6 @@ export interface ValidationResult {
 // ============================================================================
 
 /**
- * Execute the validate command
- *
  * @param pipelinePath Path to pipeline.yaml or the directory containing it
  * @returns exit code (0 = valid, 2 = invalid)
  */
@@ -95,9 +86,6 @@ export function resolvePipelinePath(input: string): string | undefined {
     return undefined;
 }
 
-/**
- * Validate a pipeline YAML file and return structured results
- */
 export function validatePipeline(yamlPath: string): ValidationResult {
     const checks: ValidationCheck[] = [];
     let pipelineName = 'Unknown';

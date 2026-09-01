@@ -9,8 +9,6 @@
  *
  * <source> can be a GitHub URL (https://github.com/user/repo) or a local path
  * (absolute, relative, or home-directory path) containing skills.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as os from 'os';

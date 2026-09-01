@@ -1,11 +1,7 @@
 /**
- * CLI Options Resolver
- *
  * Dedicated resolver functions that merge CLI options with config defaults
  * for each command. Eliminates inline type assertions and manual field mapping
  * from command handlers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ResolvedCLIConfig } from '../config';
@@ -15,7 +11,6 @@ import type { OutputFormat } from '../output-formatter';
 import type { ServeCommandOptions } from '../server/types';
 
 /**
- * Resolve options for the run command.
  * CLI flags take precedence over config file values.
  */
 export function resolveRunOptions(
@@ -41,9 +36,6 @@ export function resolveRunOptions(
     };
 }
 
-/**
- * Resolve options for the list command.
- */
 export function resolveListOptions(
     opts: Record<string, unknown>,
     config: ResolvedCLIConfig
@@ -53,9 +45,6 @@ export function resolveListOptions(
     };
 }
 
-/**
- * Resolve options for the serve command.
- */
 export function resolveServeOptions(
     opts: Record<string, unknown>,
     config: ResolvedCLIConfig
@@ -79,9 +68,6 @@ export function resolveServeOptions(
     };
 }
 
-/**
- * Resolve options for the admin wipe-data command.
- */
 export function resolveWipeDataOptions(
     opts: Record<string, unknown>,
     config: ResolvedCLIConfig

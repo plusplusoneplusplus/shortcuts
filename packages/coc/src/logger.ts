@@ -1,8 +1,5 @@
 /**
- * CLI Logger
- *
  * Provides colored console output with spinner/progress support for the CLI.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================
@@ -33,16 +30,10 @@ const COLORS = {
 
 let colorEnabled = true;
 
-/**
- * Enable or disable colored output
- */
 export function setColorEnabled(enabled: boolean): void {
     colorEnabled = enabled;
 }
 
-/**
- * Check if colors are enabled
- */
 export function isColorEnabled(): boolean {
     return colorEnabled;
 }
@@ -84,9 +75,6 @@ export const SYMBOLS = {
 // Spinner
 // ============================================================================
 
-/**
- * Simple CLI spinner for showing progress
- */
 export class Spinner {
     private frameIndex = 0;
     private timer: ReturnType<typeof setInterval> | null = null;
@@ -181,9 +169,6 @@ export class Spinner {
 // Progress Display
 // ============================================================================
 
-/**
- * Options for creating a progress display
- */
 export interface ProgressOptions {
     /** Total number of items */
     total: number;

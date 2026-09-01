@@ -1,6 +1,4 @@
 /**
- * Claude Skill Mirror
- *
  * Mirrors globally-installed bundled CoC skills from ~/.coc/skills to
  * ~/.claude/commands (or $CLAUDE_HOME/commands) so Claude Code can load
  * them as slash commands.
@@ -56,9 +54,6 @@ export function getClaudeHome(): string {
     return process.env.CLAUDE_HOME || path.join(os.homedir(), '.claude');
 }
 
-/**
- * Get the Claude Code global commands directory.
- */
 export function getClaudeCommandsDir(): string {
     return path.join(getClaudeHome(), 'commands');
 }
@@ -180,9 +175,7 @@ function shouldReplaceByVersion(sourceSkillMd: string, targetMdPath: string): bo
  * distinguish its own commands from user-authored ones.
  *
  * @param cocSkillsDir  CoC global skills directory (e.g. ~/.coc/skills)
- * @param skillName     Name of the skill to mirror
  * @param replace       If true, replace existing user-managed commands
- * @returns Mirror result with status
  */
 export async function mirrorBundledSkillToClaude(
     cocSkillsDir: string,
@@ -280,9 +273,7 @@ export async function mirrorBundledSkillToClaude(
  * Mirror multiple bundled skills to Claude Code.
  *
  * @param cocSkillsDir  CoC global skills directory
- * @param skillNames    Names of skills to mirror
  * @param replace       If true, replace existing user-managed commands
- * @returns Array of mirror results
  */
 export async function mirrorBundledSkillsToClaude(
     cocSkillsDir: string,
@@ -302,7 +293,6 @@ export async function mirrorBundledSkillsToClaude(
  * Called during server initialization when the Claude provider is enabled.
  *
  * @param cocSkillsDir  CoC global skills directory (e.g. ~/.coc/skills)
- * @returns Sync results
  */
 export async function syncInstalledSkillsToClaude(cocSkillsDir: string): Promise<{
     synced: string[];

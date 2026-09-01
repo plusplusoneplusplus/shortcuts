@@ -1,11 +1,7 @@
 /**
- * Admin Wipe-Data Command
- *
  * Implements the `coc admin wipe-data` CLI command.
  * Deletes all runtime data (processes, workspaces, wikis, queues, preferences)
  * while preserving system configuration files.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -111,9 +107,6 @@ function printSummary(result: WipeResult, dryRun: boolean): void {
 // Command Execution
 // ============================================================================
 
-/**
- * Execute the admin wipe-data command.
- */
 export async function executeWipeData(options: WipeDataCommandOptions): Promise<number> {
     const dataDir = resolveDataDir(options.dataDir ?? '~/.coc');
 

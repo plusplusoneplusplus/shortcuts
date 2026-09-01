@@ -1,6 +1,4 @@
 /**
- * Codex Skill Mirror
- *
  * Mirrors globally-installed bundled CoC skills from ~/.coc/skills to
  * ~/.codex/skills (or $CODEX_HOME/skills) so Codex can load them.
  *
@@ -53,9 +51,6 @@ export function getCodexHome(): string {
     return process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 }
 
-/**
- * Get the Codex skills directory.
- */
 export function getCodexSkillsDir(): string {
     return path.join(getCodexHome(), 'skills');
 }
@@ -203,9 +198,7 @@ async function copyDirectory(source: string, dest: string): Promise<void> {
  * Mirror a bundled skill from CoC global skills to Codex skills directory.
  *
  * @param cocSkillsDir  CoC global skills directory (e.g. ~/.coc/skills)
- * @param skillName     Name of the skill to mirror
  * @param replace       If true, replace existing user-managed skills
- * @returns Mirror result with status
  */
 export async function mirrorBundledSkillToCodex(
     cocSkillsDir: string,
@@ -304,9 +297,7 @@ export async function mirrorBundledSkillToCodex(
  * Mirror multiple bundled skills to Codex.
  *
  * @param cocSkillsDir  CoC global skills directory
- * @param skillNames    Names of skills to mirror
  * @param replace       If true, replace existing user-managed skills
- * @returns Array of mirror results
  */
 export async function mirrorBundledSkillsToCodex(
     cocSkillsDir: string,
@@ -326,7 +317,6 @@ export async function mirrorBundledSkillsToCodex(
  * Called during server initialization when Codex is enabled.
  *
  * @param cocSkillsDir  CoC global skills directory (e.g. ~/.coc/skills)
- * @returns Sync results
  */
 export async function syncInstalledSkillsToCodex(cocSkillsDir: string): Promise<{
     synced: string[];

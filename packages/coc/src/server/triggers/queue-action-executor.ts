@@ -1,6 +1,4 @@
 /**
- * Queue-backed Action Executor
- *
  * The default `ActionExecutor` for the trigger framework. It delivers a
  * trigger's `send-message` action into its target conversation by REUSING the
  * existing follow-up plumbing rather than inventing new delivery:

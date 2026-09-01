@@ -1,6 +1,4 @@
 /**
- * Directory History Importer
- *
  * Reads file-based process history from a repos/ directory and imports
  * it into an existing SQLite database. Additive import — does not delete
  * source files or require a server restart.

@@ -1,6 +1,4 @@
 /**
- * CI-Failure Fix Prompt Template
- *
  * Builds the fixed template message the `ci-failure` condition monitor injects
  * into the originating conversation when it fires. The prompt names the PR
  * number and each failing check with its details URL, then asks the AI to

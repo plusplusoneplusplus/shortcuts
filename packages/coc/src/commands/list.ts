@@ -1,10 +1,6 @@
 /**
- * List Command
- *
  * Lists pipeline packages in a directory.
  * Discovers subdirectories containing pipeline.yaml files.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -28,9 +24,6 @@ import type { OutputFormat } from '../output-formatter';
 // Types
 // ============================================================================
 
-/**
- * Information about a discovered pipeline package
- */
 export interface PipelinePackageInfo {
     /** Pipeline package name (directory name) */
     name: string;
@@ -49,10 +42,7 @@ export interface PipelinePackageInfo {
 // ============================================================================
 
 /**
- * Execute the list command
- *
  * @param dirPath Directory to scan for pipeline packages
- * @param format Output format
  * @returns exit code (0 = success)
  */
 export function executeList(dirPath: string, format: OutputFormat = 'table'): number {
@@ -81,9 +71,6 @@ export function executeList(dirPath: string, format: OutputFormat = 'table'): nu
     return 0;
 }
 
-/**
- * Discover pipeline packages in a directory
- */
 export function discoverPipelines(dirPath: string): PipelinePackageInfo[] {
     const packages: PipelinePackageInfo[] = [];
 

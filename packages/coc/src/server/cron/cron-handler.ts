@@ -1,11 +1,7 @@
 /**
- * Cron REST API Handler
- *
  * HTTP API routes for cron management: CRUD, pause/resume/cancel.
  * Workspace-scoped primary routes at `/api/workspaces/:id/crons`,
  * secondary server-wide route at `/api/crons`.
- *
- * Pure Node.js; uses only built-in modules.
  */
 
 import type * as http from 'http';

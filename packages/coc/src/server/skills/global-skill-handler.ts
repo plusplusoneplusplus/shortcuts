@@ -1,11 +1,6 @@
 /**
- * Global Skill Management REST API Handler
- *
  * HTTP API routes for managing skills in the global ~/.coc/skills/ directory.
  * Provides listing, scanning, installing, and deleting global skills.
- *
- * Pure Node.js; uses pipeline-core skill utilities.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -136,9 +131,6 @@ function persistGlobalSkillFolderConfig(
 // Route Registration
 // ============================================================================
 
-/**
- * Register global skill management API routes on the given route table.
- */
 export function registerGlobalSkillRoutes(
     routes: Route[],
     store: ProcessStore,
