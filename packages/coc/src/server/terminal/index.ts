@@ -1,7 +1,3 @@
-/**
- * Terminal module — PTY session management and WebSocket server for terminals.
- */
-
 // Types
 export type {
     IPty,

@@ -1,6 +1,4 @@
 /**
- * Workflow utility functions and types.
- *
  * Extracted from workflows-handler.ts to keep each module focused.
  */
 

@@ -1,6 +1,4 @@
 /**
- * Workflow constants, templates, and schema reference.
- *
  * Extracted from workflows-handler.ts to keep each module focused.
  */
 

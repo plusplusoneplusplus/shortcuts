@@ -1,11 +1,7 @@
 /**
- * Server Log Capture
- *
  * In-process ring buffer + EventEmitter for live server log streaming.
  * All coc-server log calls are captured here so the /api/logs endpoints
  * can serve real-time SSE streams and history without requiring a log file.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';
@@ -25,7 +21,6 @@ export interface LogEntry {
     component?: string;
     /** AI session identifier (present on SDK wrapper logs) */
     sessionId?: string;
-    /** Log message */
     msg: string;
     /** Any extra structured fields from the log call */
     [key: string]: unknown;
@@ -135,7 +130,6 @@ export function getLogHistory(opts: LogHistoryOptions = {}): LogEntry[] {
 }
 
 /**
- * Returns the EventEmitter for live log subscriptions.
  * Subscribers listen for 'log-entry' events with LogEntry payloads.
  */
 export function getLogEmitter(): EventEmitter {

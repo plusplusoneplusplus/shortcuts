@@ -1,6 +1,4 @@
 /**
- * Logs Routes
- *
  * Registers the /api/logs/* REST and SSE endpoints.
  *
  * GET /api/logs/stream   — SSE: live log streaming (text/event-stream)
@@ -9,8 +7,6 @@
  *
  * Live streaming uses the in-process EventEmitter from server-log-capture.ts.
  * No log files are required for live streaming; file-based history is optional.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';
@@ -44,10 +40,8 @@ function parseLevel(raw: unknown): LogLevel | undefined {
 // ============================================================================
 
 /**
- * Register all /api/logs/* routes on the given route table.
  * Mutates the `routes` array in-place.
  *
- * @param routes  - Shared route table
  * @param logDir  - Optional log file directory (enables "files configured" in /sources)
  */
 export function registerLogsRoutes(routes: Route[], logDir?: string): void {

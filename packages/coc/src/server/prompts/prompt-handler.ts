@@ -1,12 +1,6 @@
 /**
- * Skill Discovery REST API Handler
- *
  * HTTP API route for discovering skills available in a workspace.
  * Consumed by the SPA dashboard to populate the skill selection dialogs.
- *
- * Pure Node.js — uses only Node.js built-in modules
- * and pipeline-core exports.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -20,7 +14,6 @@ import type { Route } from '../types';
 // ============================================================================
 
 /**
- * Register skill discovery API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
 export function registerPromptRoutes(routes: Route[], store: ProcessStore): void {

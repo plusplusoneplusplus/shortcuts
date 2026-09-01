@@ -20,9 +20,6 @@
  *
  * All workspace-scoped routes are gated by prefs.memoryV2.enabled. Returns 404 when
  * disabled. The "global" wsId is gated by global preferences.memoryV2.enabled.
- *
- * Pure Node.js.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -139,10 +136,8 @@ async function getScopeCounts(
 // ============================================================================
 
 /**
- * Register all memory v2 routes (global scopes + workspace-scoped).
  * Mutates `routes` in place.
  *
- * @param routes  Route table to add to.
  * @param dataDir CoC data root.
  * @param store   Optional process store; used by the scopes endpoint to include workspace labels.
  */

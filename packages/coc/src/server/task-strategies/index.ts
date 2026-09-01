@@ -1,6 +1,4 @@
 /**
- * Task Strategy Pattern
- *
  * Defines the `TaskStrategy` interface and `TaskStrategyRegistry` used by
  * CLITaskExecutor to dispatch tasks to dedicated strategy implementations.
  *
@@ -21,7 +19,6 @@ export interface ExecutionContext {
     processId: string;
     /** Process store for status updates and SSE event emission. */
     store: ProcessStore;
-    /** Whether to auto-approve AI permission requests. */
     approvePermissions: boolean;
     /** Resolved working directory for the task (may be undefined). */
     workingDirectory: string | undefined;

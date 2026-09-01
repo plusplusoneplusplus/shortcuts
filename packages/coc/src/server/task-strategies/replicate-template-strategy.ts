@@ -1,6 +1,4 @@
 /**
- * ReplicateTemplateStrategy
- *
  * Executes a commit-replication task using `replicateCommit` from forge.
  * Extracted from CLITaskExecutor.executeReplicateTemplate.
  */

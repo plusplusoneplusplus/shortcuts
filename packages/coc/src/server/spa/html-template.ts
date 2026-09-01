@@ -1,11 +1,7 @@
 /**
- * SPA HTML Template
- *
  * Main HTML generator for the CoC (Copilot Of Copilot) dashboard.
  * Returns a complete <!DOCTYPE html> string with inlined <style> and <script>.
  * No external CDN dependencies — everything is inline.
- *
- * Mirrors packages/deep-wiki/src/server/spa/html-template.ts pattern.
  */
 
 import * as crypto from 'crypto';

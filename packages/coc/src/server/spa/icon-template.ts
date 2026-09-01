@@ -1,6 +1,4 @@
 /**
- * CoC Favicon Icon Template
- *
  * Generates a deterministic SVG icon for the CoC dashboard.
  * Colors are derived from the machine hostname so each machine
  * gets a unique, visually distinct icon — making it easy to tell
