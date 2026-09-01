@@ -1,6 +1,4 @@
 /**
- * ToolCall Type & Serialization Tests
- *
  * Tests for the ToolCall interface and its serialization/deserialization
  * via serializeProcess / deserializeProcess, including permission handling,
  * edge cases, and backward compatibility.

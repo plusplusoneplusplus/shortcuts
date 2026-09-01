@@ -1,7 +1,3 @@
-/**
- * Tests for matchCommitsByIdentity utility.
- */
-
 import { describe, it, expect } from 'vitest';
 import {
     buildBranchRangeSkillPrompt,

@@ -1,6 +1,4 @@
 /**
- * ConversationArea mode-change divider tests.
- *
  * Verifies that a visual divider appears between turns when the chat mode
  * (ask | autopilot) changes. Legacy plan turn metadata is displayed as Ask.
  *

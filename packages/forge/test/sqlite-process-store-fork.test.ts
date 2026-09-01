@@ -1,6 +1,4 @@
 /**
- * SqliteProcessStore.forkProcess() Tests
- *
  * Validates forking a process: new process creation, turn copying,
  * metadata linkage, and edge cases.
  */

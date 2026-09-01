@@ -1,6 +1,4 @@
 /**
- * FileProcessStore Per-Workspace Pruning Tests
- *
  * Tests for pruneWorkspaceIfNeeded: per-workspace cap,
  * file deletion, onPrune callback, and cross-workspace isolation.
  */

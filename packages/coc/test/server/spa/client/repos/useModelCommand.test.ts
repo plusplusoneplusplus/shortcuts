@@ -1,6 +1,4 @@
 /**
- * useModelCommand hook tests.
- *
  * Covers state transitions, model selection, keyboard navigation,
  * and isModelCommandPrefix utility.
  *

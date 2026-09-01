@@ -1,6 +1,4 @@
 /**
- * FileProcessStore Tests — Per-Workspace Layout
- *
  * Validates per-workspace directory layout (repos/<workspaceId>/processes/<id>.json),
  * index-scan semantics, and the getProcess(id, workspaceId?) hint parameter.
  * All tests use a temp directory cleaned up in afterEach.

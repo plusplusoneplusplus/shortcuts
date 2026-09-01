@@ -1,6 +1,4 @@
 /**
- * ItemProcessEventData Type Tests
- *
  * Compile-time + runtime shape tests for the ItemProcessEventData interface
  * and its integration with ProcessOutputEvent.
  */

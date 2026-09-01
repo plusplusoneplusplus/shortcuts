@@ -1,6 +1,4 @@
 /**
- * SqliteProcessStore — Turn Actions Tests
- *
  * Validates per-message delete, pin, and archive operations on conversation turns.
  */
 

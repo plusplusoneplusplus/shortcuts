@@ -1,7 +1,5 @@
 /**
  * @vitest-environment jsdom
- *
- * Component tests for the notes-git NotesGitTab.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

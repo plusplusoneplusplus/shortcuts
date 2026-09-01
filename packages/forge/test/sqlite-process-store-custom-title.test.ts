@@ -1,6 +1,4 @@
 /**
- * SqliteProcessStore Tests — customTitle + lastMessagePreview
- *
  * Validates the rename-session feature columns added in schema v16:
  *   - custom_title: user-set name, separate from AI-generated title.
  *   - last_message_preview: denormalized snapshot of the newest turn.

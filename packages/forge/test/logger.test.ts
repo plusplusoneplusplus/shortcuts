@@ -1,7 +1,5 @@
 /**
- * Logger Tests
- *
- * Tests for the pipeline-core logger: formatTimestamp, consoleLogger timestamps,
+ * Tests for the forge logger: formatTimestamp, consoleLogger timestamps,
  * Logger interface, setLogger, getLogger, resetLogger, nullLogger.
  */
 

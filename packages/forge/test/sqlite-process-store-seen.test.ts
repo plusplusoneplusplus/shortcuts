@@ -1,6 +1,4 @@
 /**
- * SqliteProcessStore — Seen State Tests
- *
  * Validates getSeenMap, markSeen, markManySeen, markUnseen, getUnseenCount
  * methods for read/unread tracking.
  */

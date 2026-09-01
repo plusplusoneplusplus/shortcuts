@@ -1,6 +1,4 @@
 /**
- * SqliteProcessStore Tests — Main Suite
- *
  * Validates process CRUD, filtering, summaries, workspace/wiki management,
  * event bus, and storage stats through the ProcessStore interface.
  * All tests use a temp directory with an isolated SQLite database.

@@ -1,6 +1,4 @@
 /**
- * Tests for task-comments-types.ts
- *
  * Validates that the exported types are structurally correct and
  * that objects conforming to the interfaces satisfy expected shapes.
  */

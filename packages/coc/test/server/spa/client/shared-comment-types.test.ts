@@ -1,6 +1,4 @@
 /**
- * Tests for shared-comment-types.ts
- *
  * Validates the AnyComment union type, type guards, and category helpers
  * work correctly with both TaskComment and DiffComment.
  */

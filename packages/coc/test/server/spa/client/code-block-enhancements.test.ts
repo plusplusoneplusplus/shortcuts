@@ -1,6 +1,4 @@
 /**
- * Tests for code block enhancements in the CoC SPA task preview.
- *
  * Verifies line numbers, copy button, language display name,
  * collapse/expand for long blocks, comment highlights, and edge cases.
  */
