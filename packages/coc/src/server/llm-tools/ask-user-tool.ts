@@ -1,6 +1,4 @@
 /**
- * Ask User Tool
- *
  * Factory that creates an `ask_user` custom tool for the Copilot SDK.
  * The model calls this tool to pose a structured question to the user and
  * await their response. The tool handler blocks (returns a Promise) until

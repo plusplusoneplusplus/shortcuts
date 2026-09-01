@@ -14,9 +14,6 @@
  * resume task was restored by the queue persistence layer (or already
  * re-enqueued by an earlier invocation) is skipped, so repeated restarts never
  * stack duplicate concurrent resumes.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AIProcess, CreateTaskInput, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';

@@ -1,6 +1,4 @@
 /**
- * Search Conversations Tool
- *
  * Factory that creates a `search_conversations` custom tool for the Copilot SDK.
  * The model calls this tool to search past AI conversation history using FTS5
  * full-text search. Requires a SQLite-backed ProcessStore.
@@ -46,9 +44,6 @@ export type Summarizer = (
     meta: SessionMeta,
 ) => Promise<string | null>;
 
-/**
- * Options for `createSearchConversationsTool`.
- */
 export interface SearchConversationsToolOptions {
     /** ProcessStore instance (must support `searchConversations` for keyword search). */
     store: ProcessStore;
@@ -115,8 +110,6 @@ function findMatchPositions(transcript: string, query: string): number[] {
  * Truncate a transcript around the best match cluster.
  * Keeps up to `maxLength` chars, biased 25% before / 75% after the first match cluster.
  *
- * @param transcript Full conversation transcript.
- * @param query      The search query.
  * @param maxLength  Maximum output length (default 100k).
  * @returns Truncated transcript with ellipsis markers if truncated.
  */
@@ -151,9 +144,6 @@ export function truncateAroundMatches(
 // Transcript Formatting
 // ============================================================================
 
-/**
- * Format conversation turns into a plain-text transcript.
- */
 function formatTranscript(turns: ConversationTurn[]): string {
     return turns
         .map(t => `[${t.role === 'user' ? 'User' : 'Assistant'}]: ${t.content}`)

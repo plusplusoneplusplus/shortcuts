@@ -1,6 +1,4 @@
 /**
- * Chat Folder REST API Handler
- *
  * HTTP API routes for user-created chat folders — a manual organizing layer
  * over the chat list. Folders are stored as `task_groups` rows of type
  * `chat-folder`; membership is one `task_group_members` row per filed process.

@@ -1,6 +1,4 @@
 /**
- * Seen State REST API Handler
- *
  * HTTP API routes for managing read/unread (seen/unseen) state of processes.
  * Delegates to SqliteProcessStore's seen-state methods.
  */

@@ -1,6 +1,4 @@
 /**
- * Canvas file sandbox
- *
  * The read-only data an extension canvas may look at, under the canvas's own
  * `files/` directory. This is the security-sensitive half of canvas storage —
  * path shape rules, traversal defense, symlink containment, listing bounds,

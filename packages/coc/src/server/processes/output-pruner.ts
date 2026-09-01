@@ -1,11 +1,6 @@
 /**
- * Output Pruner
- *
  * Cleans up orphaned output files under per-repo outputs/ directories when
  * processes are removed, cleared, or pruned. Also purges stale queue.json entries.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs/promises';

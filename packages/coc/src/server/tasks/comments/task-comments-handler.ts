@@ -1,15 +1,10 @@
 /**
- * Task Comments REST API Handler
- *
  * HTTP API routes for CRUD operations on task file comments.
  * Stores comments in JSON files under the CoC data directory,
  * compatible with the extension's comment storage format.
  *
  * Storage layout:
  *   {dataDir}/repos/{workspaceId}/tasks-comments/{sha256(filePath)}.json
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';

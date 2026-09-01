@@ -1,6 +1,4 @@
 /**
- * Canvas LLM Tools
- *
  * Per-invocation tool factories for the chat canvas — a live artifact the AI
  * maintains in a side panel next to the conversation (ChatGPT Canvas / Claude
  * Artifacts / GitHub Copilot app canvases genre).
@@ -19,9 +17,6 @@
  * Canvases persist via `CanvasStore` under `~/.coc/repos/<workspaceId>/canvases/`.
  * Every successful create/update emits a `canvas-updated` SSE event on the
  * process channel so the dashboard panel re-renders live.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';

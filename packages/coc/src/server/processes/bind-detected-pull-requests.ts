@@ -10,8 +10,6 @@
  *
  * Deliberately best-effort: every failure is swallowed and logged at debug. A
  * task must never fail because its PR could not be recorded.
- *
- * Pure Node.js; cross-platform (Linux/macOS/Windows).
  */
 
 import type Database from 'better-sqlite3';

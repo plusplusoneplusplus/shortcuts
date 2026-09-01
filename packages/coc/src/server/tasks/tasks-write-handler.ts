@@ -3,9 +3,6 @@
  *
  * HTTP API routes for task write operations (create, rename, delete,
  * move, archive) for a given workspace.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';

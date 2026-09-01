@@ -1,12 +1,8 @@
 /**
- * ScheduleSnapshotRepository
- *
  * Owns schedule-specific export/import/wipe behavior for the admin storage
  * snapshot: per-repo `schedules/*.yaml` files on disk plus `schedule_runs`
  * rows in the SQLite process store. Kept next to schedule persistence so
  * schedule schema changes stay paired with their backup/restore behavior.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

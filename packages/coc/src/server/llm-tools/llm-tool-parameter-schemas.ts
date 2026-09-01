@@ -1,6 +1,4 @@
 /**
- * LLM tool parameter schemas (display-only mirror)
- *
  * A compact, structural mirror of each toggleable LLM tool's input-schema
  * `parameters`, used purely to derive the additive `params` display metadata
  * surfaced on the workspace LLM Tools settings page.

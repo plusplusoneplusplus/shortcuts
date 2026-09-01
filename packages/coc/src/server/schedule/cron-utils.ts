@@ -1,10 +1,6 @@
 /**
- * Cron Utilities
- *
  * Pure-function cron parser, next-time calculator, and human-readable describer.
  * Supports standard 5-field cron expressions: min hour dom month dow.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================
@@ -66,10 +62,7 @@ export function parseCron(expr: string): CronFields {
     };
 }
 
-/**
- * Compute the next occurrence of a cron expression after `after`.
- * Returns null if no valid time is found within 1 year.
- */
+/** Returns null if no valid time is found within 1 year. */
 export function nextCronTime(expr: string, after: Date = new Date()): Date | null {
     const fields = parseCron(expr);
     const limit = new Date(after.getTime() + 366 * 24 * 60 * 60 * 1000);
@@ -101,9 +94,6 @@ export function nextCronTime(expr: string, after: Date = new Date()): Date | nul
     return null;
 }
 
-/**
- * Convert a cron expression to a human-readable description.
- */
 export function describeCron(expr: string): string {
     try {
         const parts = expr.trim().split(/\s+/);
@@ -156,7 +146,6 @@ export function describeCron(expr: string): string {
 }
 
 /**
- * Convert a schedule name to a filesystem-safe slug.
  * Lowercase, non-alphanumeric chars become hyphens, trimmed and collapsed.
  */
 export function slugifyName(name: string): string {

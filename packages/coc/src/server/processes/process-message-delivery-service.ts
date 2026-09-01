@@ -1,6 +1,4 @@
 /**
- * Process Follow-Up Message Delivery Service
- *
  * Owns the follow-up delivery state machine that decides — for a single
  * `POST /api/processes/:id/message` request — whether a message is steered into
  * a live SDK session, buffered as a pending message for server-side drain, or

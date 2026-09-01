@@ -1,10 +1,6 @@
 /**
- * In-Memory Process Store
- *
  * Minimal in-memory ProcessStore used when no store is injected.
  * Supports event emission for SSE streaming and process tracking.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';

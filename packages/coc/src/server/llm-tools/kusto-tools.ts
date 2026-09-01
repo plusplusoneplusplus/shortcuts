@@ -13,9 +13,6 @@
  * persistence all funnel through the shared Kusto service.
  *
  * Gated by the `kusto.enabled` feature flag (AC-08) at the addon level.
- *
- * Pure Node.js; uses only built-in modules plus the canvas/Kusto server
- * helpers. Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';

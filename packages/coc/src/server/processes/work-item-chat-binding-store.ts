@@ -1,6 +1,4 @@
 /**
- * WorkItemChatBindingStore
- *
  * Origin-scoped SQLite store mapping workItemId -> taskId for the Work Item
  * chat feature. Uses the shared `processes.db` database.
  */

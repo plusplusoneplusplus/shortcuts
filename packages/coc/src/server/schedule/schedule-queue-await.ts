@@ -1,6 +1,4 @@
 /**
- * schedule-queue-await
- *
  * Shared queue-terminal waiting kernel for scheduled runs.  Both plain
  * scheduled tasks and Ralph-backed scheduled tasks need the same
  * subscribe-then-recheck lifecycle to avoid a task-completion race: a queued

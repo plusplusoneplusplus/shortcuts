@@ -1,6 +1,4 @@
 /**
- * Task Migration Utility
- *
  * One-time migration that copies task files from the legacy `.vscode/tasks/`
  * location to the new `~/.coc/repos/<repoId>/tasks/` directory.
  * Also remaps comment file hashes from old-prefix to new-prefix paths.

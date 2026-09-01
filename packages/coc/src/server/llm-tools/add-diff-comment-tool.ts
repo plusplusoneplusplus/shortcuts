@@ -1,6 +1,4 @@
 /**
- * Add Diff Comment Tool
- *
  * Factory that creates a per-invocation `add_diff_comment` custom tool
  * for commit chat. The AI calls this tool to leave persistent, anchored
  * review comments on specific lines of a commit diff.
@@ -8,9 +6,6 @@
  * Per-invocation factory pattern: each AI call gets its own state,
  * avoiding cross-request contamination. Pre-bound context (workspace,
  * commit, parent) is closed over so the AI only provides per-call values.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { DiffCommentContext, DiffCommentSelection } from '@plusplusoneplusplus/forge';

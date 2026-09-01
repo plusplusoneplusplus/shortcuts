@@ -1,6 +1,4 @@
 /**
- * Resolve Comment Tool
- *
  * Factory that creates a per-invocation `resolve_comment` custom tool
  * and a resolution tracker. The tool is registered on the AI session
  * so AI can explicitly mark each comment it addresses.

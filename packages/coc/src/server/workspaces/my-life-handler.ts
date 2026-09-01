@@ -3,8 +3,6 @@
  *
  * Provides endpoints for syncing personal items
  * and generating weekly summaries from notes.
- *
- * Pure Node.js; uses only built-in modules.
  */
 
 import * as path from 'path';

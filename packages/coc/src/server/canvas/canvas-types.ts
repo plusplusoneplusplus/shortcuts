@@ -1,6 +1,4 @@
 /**
- * Canvas types
- *
  * The shapes every canvas persistence service speaks: descriptors, records,
  * edits, version snapshots, extension documents, and comments. Kept free of
  * `fs` so the repositories, the sandbox, and the store facade can all import

@@ -1,6 +1,4 @@
 /**
- * Canvas Capability Worker
- *
  * The program an ASYNC extension-canvas capability runs inside. It is shipped
  * as a SOURCE STRING and started with `new Worker(source, { eval: true })`
  * rather than as a file on disk: the server runs from `dist/` in production and
@@ -29,7 +27,6 @@
  * the caller cannot choose, which removes that exposure outright.
  *
  * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /** `workerData` handed to the worker at start. Structured-cloneable only. */

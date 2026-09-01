@@ -1,6 +1,4 @@
 /**
- * LLM tool parameter summarization
- *
  * Pure, display-only helpers that compress a tool's JSON-schema `parameters`
  * into a compact, scannable list for the workspace LLM tools settings UI.
  *

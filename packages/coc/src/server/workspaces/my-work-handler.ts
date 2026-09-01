@@ -3,8 +3,6 @@
  *
  * Provides endpoints for syncing action items from Work IQ (via MCP)
  * and generating weekly summaries from notes + cross-repo data.
- *
- * Pure Node.js; uses only built-in modules.
  */
 
 import * as path from 'path';

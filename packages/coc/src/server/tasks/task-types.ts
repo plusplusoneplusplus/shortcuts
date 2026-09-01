@@ -1,6 +1,4 @@
 /**
- * Domain-Specific Task Types
- *
  * Unified task type model with mode-based AI dispatch for chat tasks.
  *
  *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'pr-classification' | 'dream-run'
@@ -538,12 +536,10 @@ export type PostAction =
 /** Supported AI provider IDs for per-chat routing. */
 export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
-/** Supported ChatProvider values (for runtime validation). */
 export const VALID_CHAT_PROVIDERS: ReadonlySet<ChatProvider> = new Set(['copilot', 'codex', 'claude', 'opencode']);
 
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
-/** Supported reasoning-effort override values (for runtime validation). */
 export const VALID_REASONING_EFFORTS: ReadonlySet<ReasoningEffort> = new Set(['low', 'medium', 'high', 'xhigh']);
 
 export const STOPPED_CHAT_STRICT_RESUME_FAILED_REASON = 'strict-resume-failed' as const;
@@ -720,42 +716,34 @@ export function isDreamRunPayload(payload: Record<string, unknown>): payload is 
     return payload.kind === 'dream-run';
 }
 
-/** Check whether a chat payload carries task-generation context. */
 export function hasTaskGenerationContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.taskGeneration;
 }
 
-/** Check whether a chat payload carries resolve-comments context. */
 export function hasResolveCommentsContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.resolveComments;
 }
 
-/** Check whether a chat payload carries resolve-diff-comments-multi context. */
 export function hasResolveDiffCommentsMultiContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.resolveDiffCommentsMulti;
 }
 
-/** Check whether a chat payload carries replication context. */
 export function hasReplicationContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.replication;
 }
 
-/** Check whether a chat payload carries commit-chat context. */
 export function hasCommitChatContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.commitChat;
 }
 
-/** Check whether a chat payload carries pull-request-chat context. */
 export function hasPullRequestChatContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.pullRequestChat;
 }
 
-/** Check whether a chat payload carries note-chat context. */
 export function hasNoteChatContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.noteChat;
 }
 
-/** Check whether a chat payload carries note-create context. */
 export function hasNoteCreateContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.noteCreate;
 }
@@ -767,19 +755,16 @@ export function isInheritedLensChatMode(value: unknown): value is InheritedLensC
     return candidate.inherited === true && candidate.source === 'features.commitChatLens';
 }
 
-/** Check whether a chat payload carries Ralph-mode orchestration context. */
 export function hasRalphContext(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && !!payload.context?.ralph;
 }
 
-/** Check whether a chat payload carries PR diff classification context. */
 export function hasClassifyDiffContext(payload: Record<string, unknown>): boolean {
     if (!isChatPayload(payload)) return false;
     const ctx = payload.context?.classifyDiff;
     return !!ctx && typeof ctx.repoId === 'string' && typeof ctx.prId === 'string' && typeof ctx.headSha === 'string';
 }
 
-/** Check whether a chat payload is in Ralph mode. */
 export function isRalphMode(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && payload.mode === 'ralph';
 }

@@ -17,9 +17,6 @@ import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/forge
 // Types
 // ============================================================================
 
-/**
- * A reply to a diff comment.
- */
 export interface DiffCommentReply {
     /** Unique identifier (UUID). */
     id: string;
@@ -33,9 +30,6 @@ export interface DiffCommentReply {
     isAI?: boolean;
 }
 
-/**
- * Storage format for diff comments.
- */
 export interface DiffCommentsStorage {
     comments: DiffComment[];
     settings: {

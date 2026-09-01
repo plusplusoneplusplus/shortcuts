@@ -1,14 +1,10 @@
 /**
- * Memory V2 LLM Tools
- *
  * Exposes two AI-callable tools for the redesigned coc-memory system (AC-05):
  *   - `save_memory`   — explicitly store a new fact (global by default)
  *   - `recall_memory` — search for relevant facts across all enabled scopes
  *
  * Both tools require a fully wired MemoryV2ToolDeps bundle injected at
  * executor construction time.
- *
- * Pure Node.js; uses only built-in modules.
  */
 
 import {

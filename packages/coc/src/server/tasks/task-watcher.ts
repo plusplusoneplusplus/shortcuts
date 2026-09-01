@@ -1,13 +1,10 @@
 /**
- * Task Watcher
- *
  * Watches `.vscode/tasks/` directories for registered workspaces and
  * fires a debounced callback when task files change.  Uses Node.js
  * built-in `fs.watch` with the `recursive` option (supported natively
  * on macOS and Windows; on Linux requires Node 19+).
  *
  * Zero external dependencies.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

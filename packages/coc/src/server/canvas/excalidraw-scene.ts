@@ -22,7 +22,6 @@
  *   normalization is the render ceiling.
  *
  * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================

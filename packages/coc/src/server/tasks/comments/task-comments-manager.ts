@@ -54,9 +54,6 @@ export interface TaskComment {
     aiResponse?: string;
 }
 
-/**
- * A reply to a comment.
- */
 export interface TaskCommentReply {
     /** Unique identifier (UUID). */
     id: string;

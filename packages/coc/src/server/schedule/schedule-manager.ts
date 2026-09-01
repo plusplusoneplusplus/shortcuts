@@ -1,6 +1,4 @@
 /**
- * ScheduleManager
- *
  * Thin orchestrator over four focused collaborators:
  *
  *   - ScheduleTimerRegistry  — owns (repoId, scheduleId) → setTimeout handle map
@@ -11,8 +9,6 @@
  * Manager itself handles user-schedule CRUD, repo-schedule loading,
  * schedule-move operations, and the EventEmitter bus.  All disk I/O on
  * `.github/schedules/` uses `fs.promises` (non-blocking).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';

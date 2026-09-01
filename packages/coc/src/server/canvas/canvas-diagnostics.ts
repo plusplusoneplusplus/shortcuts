@@ -1,6 +1,4 @@
 /**
- * Canvas persistence diagnostics
- *
  * A corrupt descriptor, artifact, snapshot, extension document, or comments
  * file used to be swallowed by a bare `catch {}`, so a canvas simply vanished
  * or lost its history with nothing to look at afterwards. Every such skip now
