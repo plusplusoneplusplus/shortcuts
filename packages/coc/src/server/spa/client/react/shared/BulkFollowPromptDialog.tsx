@@ -1,7 +1,8 @@
 /**
  * BulkFollowPromptDialog — modal for running a skill on every task file
- * inside a folder. Collects all markdown files (excluding context files like
- * CONTEXT.md) and enqueues a separate skill-based task for each one.
+ * inside a folder. Collects the markdown files (skipping context files like
+ * CONTEXT.md and anything marked done or future) and enqueues a separate
+ * skill-based task for each one.
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';

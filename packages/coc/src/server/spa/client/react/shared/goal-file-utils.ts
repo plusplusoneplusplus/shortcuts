@@ -1,5 +1,4 @@
 /**
- * Utility to detect goal.md files by path.
  * Shared between the notes editor (Run Ralph button) and ChatDetail goal detection.
  */
 

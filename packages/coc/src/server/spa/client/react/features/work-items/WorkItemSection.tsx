@@ -31,7 +31,6 @@ interface StatusConfig {
     label: string;
     badgeColor: string;
     icon: string;
-    /** Start collapsed by default */
     defaultCollapsed?: boolean;
 }
 

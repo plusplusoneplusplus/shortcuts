@@ -1,7 +1,5 @@
 /**
  * Hook that polls the sync status endpoint at a regular interval.
- * Returns the current sync status (enabled, inProgress, lastSyncTime, lastError).
- * Stops polling when sync is not enabled.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,7 +10,6 @@ const POLL_INTERVAL_MS = 30_000; // 30 seconds
 
 export interface UseSyncStatusResult {
     status: SyncStatus | null;
-    /** Force a refresh of the sync status. */
     refresh: () => void;
 }
 

@@ -1,5 +1,4 @@
 /**
- * Thin hook exposing fetchApi(path) for React components.
  * Delegates transport behavior to @plusplusoneplusplus/coc-client.
  */
 

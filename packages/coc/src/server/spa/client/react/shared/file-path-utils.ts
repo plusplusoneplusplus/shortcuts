@@ -35,7 +35,6 @@ export function getImageMimeType(filePath: string): string | null {
     return IMAGE_MIME_TYPES[ext] ?? null;
 }
 
-/** Shorten common prefixes for display. */
 export function shortenFilePath(p: string): string {
     if (!p) return '';
     return p

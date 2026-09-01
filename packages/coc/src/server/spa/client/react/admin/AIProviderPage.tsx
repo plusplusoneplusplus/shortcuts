@@ -2,7 +2,7 @@
  * AIProviderPage — redesigned AI provider admin page.
  *
  * Replaces the old card-based layout with a summary-grid + routing-table +
- * model-catalog design (matching the `admin-agents-redesign.html` mockup).
+ * model-catalog design.
  *
  * This component is pure UI — all state, handlers, and API calls remain in
  * `AdminPanel.tsx` and are passed as props.

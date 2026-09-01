@@ -26,11 +26,9 @@ export interface RunSkillPanelProps {
 
     /** Currently toggled skills (only meaningful in 'multi' mode). */
     selectedSkills: string[];
-    /** Value of the additional-info textarea. */
     additionalInfo: string;
     /** Currently selected model ID (empty string = default). */
     model: string;
-    /** True while a submission is in progress. */
     submitting: boolean;
     /** Extra disabled flag (e.g. no files to queue). */
     disabled?: boolean;

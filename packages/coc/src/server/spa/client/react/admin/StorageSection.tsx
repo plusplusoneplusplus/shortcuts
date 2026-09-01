@@ -3,7 +3,7 @@
  * the SQLite migration flow (confirm → stream progress → done/error).
  * Also provides "Import History from Directory" for SQLite backends.
  *
- * Loaded lazily in AdminPanel via React.lazy.
+ * Loaded lazily in DataOperationsPanel via React.lazy.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
