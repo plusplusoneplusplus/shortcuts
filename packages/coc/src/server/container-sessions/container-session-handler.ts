@@ -1,6 +1,4 @@
 /**
- * Container Session Handler
- *
  * REST API routes for container sessions:
  *   POST   /api/container/sessions          — Create a new container session
  *   GET    /api/container/sessions           — List container sessions

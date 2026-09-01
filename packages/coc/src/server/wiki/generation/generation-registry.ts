@@ -1,14 +1,10 @@
 /**
- * Wiki Generation Registry
- *
  * Owns per-wiki generation state and the start/cancel/finish transitions.
  * State lives on an instance rather than a module-level Map, so a server can
  * hold its own registry and tests can run in parallel without cross-talk.
  *
  * Cancellation is exposed as a token (`GenerationHandle.isCancelled`) rather
  * than a raw mutable flag shared with callers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================

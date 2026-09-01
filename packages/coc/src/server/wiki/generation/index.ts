@@ -1,6 +1,4 @@
 /**
- * Wiki Generation Domain Layer
- *
  * Generation lifecycle split away from HTTP:
  *   - WikiGenerationRegistry  — per-wiki state, cancellation tokens
  *   - DeepWikiAdapter         — the only place deep-wiki is imported

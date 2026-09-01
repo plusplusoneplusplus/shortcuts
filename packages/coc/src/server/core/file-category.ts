@@ -8,7 +8,6 @@
  * carrying their own copy of the extension list.
  *
  * Pure Node.js; no imports at all.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 export type FileCategory = 'image' | 'text' | 'binary';

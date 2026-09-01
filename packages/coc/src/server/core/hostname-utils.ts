@@ -1,6 +1,4 @@
 /**
- * Hostname display utilities.
- *
  * Shortens raw OS hostnames for use in the dashboard title bar.
  * The full hostname is still used for icon color derivation (gradient hash)
  * so that colors remain stable across the rename.

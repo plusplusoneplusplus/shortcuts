@@ -1,11 +1,7 @@
 /**
- * Wiki Generation Runner
- *
  * Executes the five-phase deep-wiki workflow as a state machine that emits
  * typed generation events. It has no knowledge of HTTP — the caller supplies a
  * sink (SSE in production, an array in tests).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

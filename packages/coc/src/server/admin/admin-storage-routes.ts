@@ -1,6 +1,4 @@
 /**
- * Admin Storage Routes
- *
  * Storage backend status, SQLite migration (SSE + cancel), and directory
  * history import (scan + SSE import). Owns the private `activeMigration` state
  * and its own confirmation token managers.
@@ -22,7 +20,6 @@ import type { AdminRouteOptions } from './admin-route-types';
 import { resolveConfigPath } from './admin-route-types';
 import { TokenManager } from './token-manager';
 
-/** Register storage status / migration / directory-import routes. */
 export function registerStorageRoutes(routes: Route[], options: AdminRouteOptions): void {
     const { store, dataDir, getWsServer, configFunctions } = options;
     const resolvedConfigPath = resolveConfigPath(options);

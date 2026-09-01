@@ -1,6 +1,4 @@
 /**
- * Built-in Prompt Catalogue
- *
  * Pure metadata + override projection/validation for the admin prompt editor.
  * No route or HTTP concerns live here.
  */
@@ -26,7 +24,6 @@ export interface BuiltInPrompt {
     hasOverride?: boolean;
 }
 
-/** Return all built-in prompts as a record keyed by prompt id. */
 export function getBuiltInPrompts(): Record<string, BuiltInPrompt> {
     return {
         'read-only-mode': {

@@ -1,11 +1,6 @@
 /**
- * Cleanup Infrastructure Builder
- *
  * Creates and wires up the OutputPruner and StaleTaskDetector used by the
  * execution server.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { OutputPruner } from '../processes/output-pruner';
@@ -28,12 +23,7 @@ export interface CleanupInfrastructure {
 // ============================================================================
 
 /**
- * Creates and wires up the cleanup infrastructure (OutputPruner +
- * StaleTaskDetector) required by the execution server.
- *
- * @param store       - Process store for task tracking.
  * @param dataDir     - Root data directory (e.g. `~/.coc/`).
- * @param queueFacade - Aggregate queue facade for stale task detection.
  */
 export function createCleanupInfrastructure(
     store: ProcessStore,

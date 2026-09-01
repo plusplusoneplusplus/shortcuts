@@ -1,6 +1,4 @@
 /**
- * MCP OAuth REST API Handler
- *
  * Routes:
  *   GET    /api/mcp-oauth/pending          List pending OAuth requests
  *   GET    /api/mcp-oauth/pending/:id      Fetch a specific pending request

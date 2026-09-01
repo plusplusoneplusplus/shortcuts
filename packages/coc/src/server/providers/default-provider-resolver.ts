@@ -1,6 +1,4 @@
 /**
- * DefaultProviderResolver - Encapsulates provider/default-model policy.
- *
  * Resolves the concrete default AI provider and handles Auto provider routing
  * (with quota cache integration, availability checking, effort tier lookup).
  *
@@ -36,7 +34,6 @@ export class DefaultProviderResolver {
         this.quotaCache = options.quotaCache;
     }
 
-    /** Get the configured concrete default provider (concrete, no Auto routing). */
     getConcreteDefaultProvider(): ChatProvider {
         const defaultProvider = this.runtimeConfigService?.config.defaultProvider
             ?? this.resolvedConfig?.defaultProvider;
@@ -45,7 +42,6 @@ export class DefaultProviderResolver {
         return 'copilot';
     }
 
-    /** Check if Auto provider routing is currently enabled. */
     isAutoProviderRoutingActive(): boolean {
         const config = this.runtimeConfigService?.config ?? this.resolvedConfig;
         return config?.features.autoAgentProviderRouting === true;

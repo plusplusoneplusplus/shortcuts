@@ -1,6 +1,4 @@
 /**
- * Teams Messaging Manager
- *
  * Manages the MS Teams bot lifecycle (connect, disconnect, poll).
  * Persists Teams configuration (team name, channel name, resolved IDs, botName).
  * On "connect", ensures the MCP server entry exists in ~/.copilot/mcp-config.json,
@@ -63,7 +61,6 @@ export class TeamsMessagingManager {
         this.config = this.loadConfig();
     }
 
-    /** Register a callback for inbound messages from Teams. */
     setMessageHandler(handler: (msg: InboundTeamsMessage) => Promise<void>): void {
         this.onInboundMessage = handler;
     }
@@ -215,7 +212,6 @@ export class TeamsMessagingManager {
         return { teamId, channelId };
     }
 
-    /** Disconnect the bot. */
     async disconnect(): Promise<void> {
         if (this.bot) {
             await this.bot.stop();

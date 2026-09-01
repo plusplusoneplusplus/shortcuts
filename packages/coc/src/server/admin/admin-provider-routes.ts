@@ -1,6 +1,4 @@
 /**
- * Admin Provider Routes
- *
  * Per-provider SDK availability checks.
  */
 
@@ -8,7 +6,6 @@ import { sendJSON } from '../core/api-handler';
 import type { Route } from '../types';
 import type { AdminRouteOptions } from './admin-route-types';
 
-/** Register SDK provider availability route. */
 export function registerProviderRoutes(routes: Route[], options: AdminRouteOptions): void {
     // ------------------------------------------------------------------
     // GET /api/admin/providers/availability — per-provider SDK install check

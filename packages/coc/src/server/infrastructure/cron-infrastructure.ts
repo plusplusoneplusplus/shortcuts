@@ -1,13 +1,8 @@
 /**
- * Cron Infrastructure Builder
- *
  * Creates and wires up the cron-related objects (CronStore, CronExecutor,
  * ScheduleTimerRegistry) used by the execution server.
  *
  * Follows the same pattern as `schedule-infrastructure.ts`.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import DatabaseConstructor from 'better-sqlite3';
@@ -70,8 +65,6 @@ export interface CronInfrastructureOptions {
  * Creates and wires up the cron infrastructure required by the execution
  * server. Active crons are re-armed from persisted `nextTickAt` so they
  * continue across server restarts.
- *
- * @returns CronInfrastructure with store, executor, and dispose function.
  */
 export async function createCronInfrastructure(options: CronInfrastructureOptions): Promise<CronInfrastructure> {
     const { dataDir, queueFacade, store, emit, resolveWorkspaceId, executeFollowUp, emitWakeup } = options;

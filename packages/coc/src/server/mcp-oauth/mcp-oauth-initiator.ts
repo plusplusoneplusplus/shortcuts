@@ -1,6 +1,4 @@
 /**
- * Generic MCP OAuth flow initiator.
- *
  * Today, OAuth for an MCP server only kicks off as a side-effect of a chat
  * session: the Copilot SDK emits `mcp.oauth_required`, and the chat executor
  * registers a pending entry. That's good when the user is mid-message, but it

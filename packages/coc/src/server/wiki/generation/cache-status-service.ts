@@ -1,6 +1,4 @@
 /**
- * Wiki Cache Status Service
- *
  * Reads the on-disk `.wiki-cache` layout to answer "which phases have cached
  * output, and how much of it is there". Pure filesystem inspection — it carries
  * no generation state, so it is reusable outside the status endpoint.
@@ -8,8 +6,6 @@
  * The phase → file mapping mirrors the prerequisites the generation runner
  * loads when a phase is skipped, so status and execution agree on what counts
  * as "already generated".
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

@@ -1,13 +1,8 @@
 /**
- * Turn Performance Infrastructure Builder
- *
  * Creates the {@link TurnPerformanceStore} against the shared `processes.db`
  * SQLite database, following the same handle-resolution pattern as the
  * schedule infrastructure: reuse the handle from `SqliteProcessStore`, or
  * open `processes.db` in the data directory for non-SQLite stores.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -33,9 +28,6 @@ export interface TurnPerformanceInfrastructure {
 // ============================================================================
 
 /**
- * Creates the turn-performance metric store backed by the shared
- * `processes.db`.
- *
  * @param dataDir - Root data directory (e.g. `~/.coc/`).
  * @param store   - Process store instance (SQLite DB handle is reused from
  *                  SqliteProcessStore when available).

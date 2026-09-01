@@ -1,15 +1,10 @@
 /**
- * Queue Infrastructure Builder
- *
  * Creates the three queue-related objects (RepoQueueRegistry,
  * MultiRepoQueueRouter, SqliteQueuePersistence) used by the
  * execution server and returns them as a plain object.
  *
  * Queue state is persisted via SqliteQueuePersistence — incremental,
  * synchronous writes to the shared processes.db.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { RepoQueueRegistry, SqliteProcessStore } from '@plusplusoneplusplus/forge';
@@ -46,7 +41,6 @@ export interface QueueInfrastructure {
  * Uses the shared DB handle from SqliteProcessStore when available.
  * Falls back to an in-memory SQLite database for non-SQLite stores (tests).
  *
- * @param store             - Process store for task tracking.
  * @param dataDir           - Root data directory (e.g. `~/.coc/`).
  * @param options           - Subset of ExecutionServerOptions relevant to the queue.
  * @param queueConfig       - Live config port for queue-owned settings. Backed
