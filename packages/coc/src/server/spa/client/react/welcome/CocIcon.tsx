@@ -12,11 +12,8 @@ export interface CocIconProps {
     size?: number;
     /** Unique prefix for SVG `defs` ids when multiple icons share a page. */
     idPrefix?: string;
-    /** Optional extra class names. */
     className?: string;
-    /** Optional aria-label for screen readers. */
     'aria-label'?: string;
-    /** Optional data-testid for tests. */
     'data-testid'?: string;
 }
 

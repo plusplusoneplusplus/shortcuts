@@ -37,9 +37,6 @@ export type PreviewDAGResult =
 
 const previewState: DAGNodeState = 'waiting';
 
-/**
- * Parse YAML content and build a preview DAG suitable for visualization.
- */
 export function buildPreviewDAG(yamlContent: string): PreviewDAGResult {
     let config: any;
     try {

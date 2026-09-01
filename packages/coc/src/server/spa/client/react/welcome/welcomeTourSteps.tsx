@@ -18,7 +18,6 @@ export interface WelcomeTourStep {
     bullets: ReactNode[];
     /** Footer note under the bullets. */
     footNote: ReactNode;
-    /** Right-pane illustration. */
     visual: ReactNode;
 }
 

@@ -3,9 +3,7 @@ export interface DAGErrorPinProps {
     x: number;
     /** Absolute Y of the node's top edge (node y) */
     y: number;
-    /** Error messages to display */
     errors: string[];
-    /** Dark mode flag */
     isDark: boolean;
 }
 

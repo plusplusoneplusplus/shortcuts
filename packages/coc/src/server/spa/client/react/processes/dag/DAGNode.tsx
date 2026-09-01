@@ -22,7 +22,6 @@ export interface DAGNodeProps {
     totalDurationMs?: number;
     /** Whether this node supports expand/collapse (shows chevron indicator). */
     expandable?: boolean;
-    /** Whether this node is currently expanded. */
     expanded?: boolean;
 }
 

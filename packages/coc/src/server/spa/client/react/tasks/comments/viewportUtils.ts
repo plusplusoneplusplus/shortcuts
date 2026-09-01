@@ -1,12 +1,7 @@
-/**
- * Shared viewport utilities for floating popup positioning.
- */
-
 export const VIEWPORT_MARGIN = 8;
 
 /**
  * Clamp a popup rect so it stays fully inside the viewport.
- * Returns adjusted { top, left } values.
  */
 export function clampToViewport(
     position: { top: number; left: number },
