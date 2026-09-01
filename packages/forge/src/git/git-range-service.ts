@@ -47,9 +47,6 @@ const DEFAULT_CONFIG: ResolvedGitRangeConfig = {
     showOnDefaultBranch: false,
 };
 
-/**
- * Service for calculating and managing commit ranges.
- */
 export class GitRangeService {
     private config: ResolvedGitRangeConfig;
 

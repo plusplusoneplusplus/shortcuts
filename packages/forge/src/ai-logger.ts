@@ -1,6 +1,4 @@
 /**
- * AI Service Logger
- *
  * Provides a structured Pino logger for the AI/SDK domain.
  * Call `initAIServiceLogger()` once at startup (e.g., when the CoC CLI
  * initialises its root Pino logger). All AI-domain modules import
@@ -22,8 +20,6 @@ import type { PinoLoggerOptions } from './pino-logger';
 let aiServiceLogger: pino.Logger | null = null;
 
 /**
- * Initialize the AI service logger.
- *
  * @param rootOrOptions - Either an existing Pino root logger or `PinoLoggerOptions`.
  *   - Pino logger: a child logger bound to `store='ai-service'` is derived from it.
  *   - PinoLoggerOptions: a new root logger is created, then a child is derived.
@@ -42,8 +38,6 @@ export function initAIServiceLogger(
 }
 
 /**
- * Get the AI service logger.
- *
  * Returns the initialized logger when `initAIServiceLogger()` has been called.
  * Falls back to a silent (no-op) Pino logger if not yet initialized, so callers
  * never crash due to a missing logger.
@@ -61,8 +55,6 @@ export function getAIServiceLogger(): pino.Logger {
  * Every log entry produced by the returned logger will carry `{ sessionId }`
  * as a top-level field, making it trivial to filter per-session events from
  * an ndjson log stream.
- *
- * @param sessionId - The session identifier to bind to every log record.
  */
 export function createSessionLogger(sessionId: string): pino.Logger {
     return getAIServiceLogger().child({ sessionId });

@@ -22,7 +22,6 @@ export const STATUS_SHORT: Record<GitChangeStatus, string> = {
 
 /**
  * Stage prefix for description display.
- * Makes the stage visually clear with symbols.
  */
 export const STAGE_PREFIX: Record<GitChangeStage, string> = {
     'staged': '\u2713',      // ✓ checkmark
@@ -32,7 +31,6 @@ export const STAGE_PREFIX: Record<GitChangeStage, string> = {
 
 /**
  * Stage labels for display.
- * Human-readable labels for each stage.
  */
 export const STAGE_LABEL: Record<GitChangeStage, string> = {
     'staged': 'Staged',

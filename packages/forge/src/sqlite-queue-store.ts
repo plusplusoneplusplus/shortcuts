@@ -1,6 +1,4 @@
 /**
- * SQLite-backed Queue Store
- *
  * Persists queue tasks and per-repo queue state in the existing SQLite
  * database.  All methods are synchronous (better-sqlite3).
  */

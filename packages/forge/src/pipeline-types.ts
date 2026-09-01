@@ -1,5 +1,4 @@
 /**
- * Pipeline execution phase and event types.
  * Used by process-store and server-side event streaming.
  */
 
@@ -8,10 +7,8 @@ import type { FilterStats } from '@plusplusoneplusplus/coc-workflow/workflow';
 /** Pipeline execution phase. Mirrors the inline union in PipelineExecutionError.phase. */
 export type PipelinePhase = 'input' | 'filter' | 'map' | 'reduce' | 'job';
 
-/** Status of a pipeline phase. */
 export type PipelinePhaseStatus = 'started' | 'completed' | 'failed';
 
-/** Event emitted when a pipeline phase starts, completes, or fails. */
 export interface PipelinePhaseEvent {
     phase: PipelinePhase;
     status: PipelinePhaseStatus;

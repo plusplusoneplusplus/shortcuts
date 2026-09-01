@@ -1,11 +1,9 @@
 /**
- * SQLite-backed ProcessStore Implementation
- *
  * Single-file process store using better-sqlite3.
  * All methods are synchronous at the SQLite level, wrapped in async
  * to satisfy the ProcessStore interface's Promise return types.
  *
- * Pure Node.js; designed for the standalone CoC server.
+ * Designed for the standalone CoC server.
  */
 
 import * as fs from 'fs';

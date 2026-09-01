@@ -149,9 +149,6 @@ export async function parsePorcelainV2BranchStatus(output: string): Promise<GitR
     return toGitRepositoryStatus(await loadNativeGit().parseGitBranchStatus(output));
 }
 
-/**
- * Per-call overrides for one git command (internal).
- */
 interface RunGitOptions {
     /** Milliseconds before the command is killed. Defaults to 30 000. */
     timeout?: number;
@@ -159,10 +156,6 @@ interface RunGitOptions {
     env?: Record<string, string>;
 }
 
-/**
- * Service for branch-related git operations.
- * Handles branch listing, switching, creating, and deleting.
- */
 export class BranchService {
 
     /**
