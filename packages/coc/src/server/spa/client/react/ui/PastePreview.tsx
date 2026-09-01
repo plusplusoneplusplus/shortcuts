@@ -2,15 +2,12 @@ import { useState } from 'react';
 import { cn } from './cn';
 
 export interface PastePreviewProps {
-    /** Character count of the pasted content */
     charCount: number;
     /** First N lines of pasted content */
     previewLines: string[];
     /** Called to dismiss the preview and clear paste state */
     onDismiss: () => void;
-    /** Optional additional className */
     className?: string;
-    /** data-testid for testing */
     'data-testid'?: string;
 }
 

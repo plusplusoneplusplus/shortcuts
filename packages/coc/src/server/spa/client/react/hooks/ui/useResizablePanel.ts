@@ -36,7 +36,6 @@ export interface UseResizablePanelReturn {
     handleMouseDown: (e: React.MouseEvent) => void;
     /** Attach to the resize handle element for touch devices. */
     handleTouchStart: (e: React.TouchEvent) => void;
-    /** Reset width to initial value. */
     resetWidth: () => void;
     /**
      * Apply a size in px without persisting to localStorage. Clamps to min/max.

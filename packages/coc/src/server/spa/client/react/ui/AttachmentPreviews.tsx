@@ -5,13 +5,11 @@ import type { ChatAttachment } from '../types/attachments';
 import { getAttachmentIcon, formatFileSize } from '../types/attachments';
 
 export interface AttachmentPreviewsProps {
-    /** Attachments to show as previews */
     attachments: ChatAttachment[];
     /** Called with the attachment id to remove */
     onRemove: (id: string) => void;
     /** Optional additional className on the outer container */
     className?: string;
-    /** data-testid for testing */
     'data-testid'?: string;
 }
 

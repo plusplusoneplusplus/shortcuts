@@ -236,7 +236,6 @@ export function filterServers(
     return list;
 }
 
-/** Fully-derived display data for one server row. */
 export interface McpServerRowModel {
     server: McpServerEntry;
     enabled: boolean;

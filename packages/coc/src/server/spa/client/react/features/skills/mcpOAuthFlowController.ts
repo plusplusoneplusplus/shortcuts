@@ -116,7 +116,6 @@ export class McpOAuthFlowController {
         this.pollers.clear();
     }
 
-    /** Whether a poller is currently active for `key`. */
     isPolling(key: string): boolean {
         return this.pollers.has(key);
     }
