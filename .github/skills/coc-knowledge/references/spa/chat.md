@@ -157,7 +157,10 @@ Members reuse the existing nested-row treatment (`isGroupChild`: indent guide, m
 pill, `data-group-child`) rather than a second nesting style. Collapse state is client-side
 in `chat-folder-view-state.ts`, keyed per workspace (`coc-chat-folder-collapsed:{workspaceId}`),
 default expanded. The folder list itself comes from `useChatFolders`, which only fetches
-when the flag is on.
+when the flag is on and resolves its client with
+`getCocClientForWorkspace(workspaceId)` — as do `useChatFolderMutations` and
+`useChatFolderAssignment`, so folders work on a remote clone
+(see [clone-routing.md](clone-routing.md)).
 
 **Managing folders.** The ＋folder / collapse-all pair (`chat-list-new-folder-btn`,
 `chat-list-collapse-all-folders-btn`) lives on the FOLDERS section header itself, left of

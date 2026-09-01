@@ -12,7 +12,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import type { ChatFolder, ChatFolderColor } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import {
     applyFolderPatch,
     collectFolderMemberIds,
@@ -79,8 +79,13 @@ export interface UseChatFolderMutationsResult {
     dismissUndo: () => void;
 }
 
-function processesApi(): any {
-    const client = getSpaCocClient() as any;
+/**
+ * The processes API of the CoC server that owns `workspaceId`. Workspace-scoped
+ * folder writes must follow the clone — a remote workspace lives on an
+ * SSH-forwarded origin, and the page-origin client would 404 on its id.
+ */
+function processesApi(workspaceId: string | undefined): any {
+    const client = getCocClientForWorkspace(workspaceId) as any;
     return client?.processes;
 }
 
@@ -115,7 +120,7 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
     const commitCreate = useCallback(async (name: string, color: ChatFolderColor): Promise<ChatFolder | null> => {
         setCreating(false);
         if (!workspaceId) {return null;}
-        const api = processesApi();
+        const api = processesApi(workspaceId);
         if (typeof api?.createChatFolder !== 'function') {return null;}
         try {
             const res = await api.createChatFolder(workspaceId, { name, color });
@@ -139,7 +144,7 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
     const commitRename = useCallback(async (folderId: string, name: string): Promise<void> => {
         setRenamingFolderId(null);
         if (!workspaceId) {return;}
-        const api = processesApi();
+        const api = processesApi(workspaceId);
         if (typeof api?.updateChatFolder !== 'function') {return;}
         setFolders(prev => applyFolderPatch(prev, folderId, { name }));
         try {
@@ -152,7 +157,7 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
     // ── Recolor ─────────────────────────────────────────────────────────────
     const recolorFolder = useCallback(async (folderId: string, color: ChatFolderColor): Promise<void> => {
         if (!workspaceId) {return;}
-        const api = processesApi();
+        const api = processesApi(workspaceId);
         if (typeof api?.updateChatFolder !== 'function') {return;}
         setFolders(prev => applyFolderPatch(prev, folderId, { color }));
         try {
@@ -180,7 +185,7 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
         if (!next) {return;}
         const changed = diffFolderSortIndexes(before, next);
         if (changed.length === 0) {return;}
-        const api = processesApi();
+        const api = processesApi(workspaceId);
         if (typeof api?.updateChatFolder !== 'function') {return;}
         setFolders(next);
         try {
@@ -196,7 +201,7 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
     // ── Delete + undo ───────────────────────────────────────────────────────
     const deleteNow = useCallback(async (folder: ChatFolder, memberIds: string[]): Promise<void> => {
         if (!workspaceId) {return;}
-        const api = processesApi();
+        const api = processesApi(workspaceId);
         if (typeof api?.deleteChatFolder !== 'function') {return;}
         setFolders(prev => removeFolderFromList(prev, folder.id));
         // The tree already treats a folderId with no matching folder as unfiled,
@@ -243,7 +248,7 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
         const snapshot = undoSnapshot;
         setUndoSnapshot(null);
         if (!snapshot || !workspaceId) {return;}
-        const api = processesApi();
+        const api = processesApi(workspaceId);
         if (typeof api?.createChatFolder !== 'function') {return;}
         try {
             const res = await api.createChatFolder(workspaceId, {

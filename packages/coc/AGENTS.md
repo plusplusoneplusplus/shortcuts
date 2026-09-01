@@ -262,6 +262,15 @@ all have their own `references/*.md`.
   and uses it for both the process fetch and the SSE stream URL. Remote rows get
   their workflow list from the per-server `/summary` fetch in
   `remoteWorkspaceAggregation`; the local queue WebSocket stays local.
+- **Chat list and chat-folder REST** is clone-routed: `queue/hooks/pinArchiveApi`
+  (pin/archive and their batch forms) and all three chat-folder hooks
+  (`useChatFolders`, `useChatFolderMutations`, `useChatFolderAssignment`) resolve
+  their client with `getCocClientForWorkspace(workspaceId)`.
+  `useChatFolderAssignment` takes `workspaceId` only to route — its own work is
+  process-scoped — and `ChatListPane` passes the same id its sibling folder hooks
+  get. The folder routes start with `resolveWorkspaceOrFail`, so a local-origin
+  call for a remote clone 404s: the create shows "Could not create folder" and
+  the list fetch's catch leaves the Folders section silently empty.
 - **Shared dialogs that take a workspace id** (`ResolveContextDialog`,
   `ModalJobAiControls`, `MarkdownReviewDialog`) route through
   `getCocClientForWorkspace(wsId)` — or, for reveal-in-explorer, through

@@ -8,10 +8,12 @@
  * seam AC-05's undo uses — and reconciled by the next summaries fetch.
  */
 import { useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { resolveMoveTargets } from '../chat-folder-assignment';
 
 export interface UseChatFolderAssignmentOptions {
+    /** The workspace the rows belong to; routes the write at its clone's server. */
+    workspaceId: string | undefined;
     /** `processId -> folderId` for the rows currently on screen. */
     folderIdByProcess: ReadonlyMap<string, string>;
     /** Patch the process-summary index so the move shows before the refetch. */
@@ -28,15 +30,20 @@ export interface UseChatFolderAssignmentResult {
     moveToFolder: (ids: readonly string[], folderId: string | null) => Promise<void>;
 }
 
-function processesApi(): any {
-    const client = getSpaCocClient() as any;
+/**
+ * The processes API of the CoC server that owns `workspaceId`. Filing is a write
+ * against process ids that only exist on that clone's server, so it must follow
+ * the clone rather than the page origin.
+ */
+function processesApi(workspaceId: string | undefined): any {
+    const client = getCocClientForWorkspace(workspaceId) as any;
     return client?.processes;
 }
 
 export function useChatFolderAssignment(
     options: UseChatFolderAssignmentOptions,
 ): UseChatFolderAssignmentResult {
-    const { folderIdByProcess, onProcessFoldersChanged, onError } = options;
+    const { workspaceId, folderIdByProcess, onProcessFoldersChanged, onError } = options;
     // Read membership at click time, not render time — a background refresh
     // between opening the menu and picking a folder must not stale the diff.
     const folderIdByProcessRef = useRef(folderIdByProcess);
@@ -46,7 +53,7 @@ export function useChatFolderAssignment(
         const before = folderIdByProcessRef.current;
         const targets = resolveMoveTargets(ids, before, folderId);
         if (targets.length === 0) {return;}
-        const api = processesApi();
+        const api = processesApi(workspaceId);
         // Snapshot the prior placement so a failed write can be rolled back
         // row by row rather than left showing a move that never landed.
         const previous = targets.map(id => ({ id, folderId: before.get(id) ?? null }));
@@ -66,7 +73,7 @@ export function useChatFolderAssignment(
             }
             onError?.(folderId === null ? 'Could not remove from folder' : 'Could not move to folder');
         }
-    }, [onProcessFoldersChanged, onError]);
+    }, [workspaceId, onProcessFoldersChanged, onError]);
 
     return { moveToFolder };
 }
