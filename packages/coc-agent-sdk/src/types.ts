@@ -1,8 +1,6 @@
 /**
- * Copilot SDK Wrapper Types
- *
- * Re-exports SDK types where possible, defines forge-specific types
- * for features that extend or wrap the SDK's surface.
+ * Re-exports Copilot SDK types where possible, and defines local types for the
+ * features that extend or wrap the SDK's surface.
  */
 
 import type { ToolCall } from './tool-call';
@@ -342,9 +340,9 @@ export type UserInputHandler = (
  * Accumulated from provider usage events:
  * - Copilot `assistant.usage` events (per-turn) and `session.usage_info`
  *   events (session-level quota info)
- * - Codex `turn.completed.usage` events (per-turn totals only — Codex exposes
- *   no native context-window signal, so it never populates the
- *   `tokenLimit`/`currentTokens` breakdown; deriving one is out of scope)
+ * - Codex `turn.completed.usage` events (per-turn totals; Codex has no native
+ *   context-window signal, so `tokenLimit`/`currentTokens` are derived from the
+ *   model registry and the thread's rollout `token_count` event)
  * - Claude `result.usage` events plus optional `getContextUsage()` context
  *   window data
  */

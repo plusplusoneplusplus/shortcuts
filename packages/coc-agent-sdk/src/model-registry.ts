@@ -18,9 +18,6 @@ import { ModelInfo } from './model-info';
 // Model Definition Interface
 // ============================================================================
 
-/**
- * Complete definition of an AI model.
- */
 export interface ModelDefinition {
     /** Unique model identifier sent to the API (e.g., 'claude-sonnet-4.6') */
     readonly id: string;
@@ -97,9 +94,6 @@ const MODEL_DEFINITIONS: readonly ModelDefinition[] = [
     },
 ] as const;
 
-/**
- * The model registry indexed by model ID for fast lookups.
- */
 export const MODEL_REGISTRY: ReadonlyMap<string, ModelDefinition> = new Map(
     MODEL_DEFINITIONS.map(m => [m.id, m])
 );
@@ -108,10 +102,7 @@ export const MODEL_REGISTRY: ReadonlyMap<string, ModelDefinition> = new Map(
 // Derived Constants (used across the codebase)
 // ============================================================================
 
-/**
- * All valid model IDs as a tuple. Derived from MODEL_REGISTRY.
- * This replaces the previously hand-maintained VALID_MODELS array.
- */
+/** All valid model IDs as a tuple, derived from MODEL_DEFINITIONS. */
 export const VALID_MODELS = MODEL_DEFINITIONS.map(m => m.id) as unknown as readonly [
     'claude-sonnet-4.6',
     'claude-haiku-4.5',
@@ -121,40 +112,24 @@ export const VALID_MODELS = MODEL_DEFINITIONS.map(m => m.id) as unknown as reado
     'gemini-3-pro-preview',
 ];
 
-/**
- * Union type of all valid model IDs.
- */
 export type AIModel = typeof VALID_MODELS[number];
 
-/**
- * The default/recommended model ID (first entry in registry).
- */
 export const DEFAULT_MODEL_ID: AIModel = MODEL_DEFINITIONS[0].id as AIModel;
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-/**
- * Get the display label for a model ID.
- * @returns The label, or the raw ID if not found in registry
- */
+/** The display label for a model ID, or the raw ID when unknown. */
 export function getModelLabel(modelId: string): string {
     return MODEL_REGISTRY.get(modelId)?.label ?? modelId;
 }
 
-/**
- * Get the description for a model ID.
- * @returns The description, or empty string if not found
- */
+/** The description for a model ID, or an empty string when unknown. */
 export function getModelDescription(modelId: string): string {
     return MODEL_REGISTRY.get(modelId)?.description ?? '';
 }
 
-/**
- * Get the full model definition for a model ID.
- * @returns The definition, or undefined if not found
- */
 export function getModelDefinition(modelId: string): ModelDefinition | undefined {
     return MODEL_REGISTRY.get(modelId);
 }
@@ -173,23 +148,14 @@ export function getActiveModels(): readonly ModelDefinition[] {
     return MODEL_DEFINITIONS.filter(m => !m.deprecated);
 }
 
-/**
- * Check if a string is a valid model ID.
- */
 export function isValidModelId(id: string): id is AIModel {
     return MODEL_REGISTRY.has(id);
 }
 
-/**
- * Get model count.
- */
 export function getModelCount(): number {
     return MODEL_DEFINITIONS.length;
 }
 
-/**
- * Get models filtered by tier.
- */
 export function getModelsByTier(tier: ModelDefinition['tier']): readonly ModelDefinition[] {
     return MODEL_DEFINITIONS.filter(m => m.tier === tier);
 }
@@ -224,7 +190,6 @@ export interface IModelListClient {
  * calls `listModels()`, and stops the client in a `finally` block.
  *
  * @param client - A fresh, not-yet-started client instance.
- * @returns Array of ModelInfo objects from the SDK.
  */
 export async function fetchModelsFromClient(client: IModelListClient): Promise<ModelInfo[]> {
     // Pre-emptively suppress EPIPE re-throws from the SDK's connectViaStdio() stdin

@@ -129,8 +129,8 @@ export class SDKServiceRegistry {
 }
 
 /**
- * Module-level registry singleton.
- * The public Forge entrypoint registers the default Copilot SDK provider on
- * load, and `CopilotSDKService.getInstance()` re-registers it if absent.
+ * Module-level registry singleton. Importing `copilot-sdk-service` registers the
+ * default Copilot provider on load, and `CopilotSDKService.getInstance()`
+ * re-registers it if absent.
  */
 export const sdkServiceRegistry = new SDKServiceRegistry();

@@ -23,10 +23,7 @@ const CONFIG_FILE = 'config.json';
 /** Override for home directory (used for testing) */
 let homeDirectoryOverride: string | null = null;
 
-/**
- * Set an override for the home directory.
- * Primarily used for testing purposes.
- */
+/** Testing override for the home directory. */
 export function setTrustedFolderHomeOverride(dir: string | null): void {
     homeDirectoryOverride = dir;
 }
@@ -43,16 +40,10 @@ function getConfigDir(): string {
     return process.env['XDG_CONFIG_HOME'] ?? path.join(os.homedir(), CONFIG_DIR);
 }
 
-/**
- * Get the Copilot config directory path.
- */
 export function getCopilotConfigDir(): string {
     return getConfigDir();
 }
 
-/**
- * Get the full path to the Copilot config file.
- */
 export function getCopilotConfigPath(): string {
     return path.join(getConfigDir(), CONFIG_FILE);
 }
@@ -133,8 +124,6 @@ export function isFolderTrusted(folder: string): boolean {
  *
  * This prevents the Copilot CLI from showing the interactive
  * "Confirm folder trust" dialog when creating sessions for new directories.
- *
- * @param folder - The folder path to trust
  */
 export function ensureFolderTrusted(folder: string): void {
     const aiLog = getAIServiceLogger();

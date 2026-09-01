@@ -11,8 +11,8 @@ import type { IStreamableSession } from './streaming-session';
 
 /**
  * Minimal interface for a session that can be tracked and aborted.
- * ICopilotSession in copilot-sdk-service.ts is a strict superset and is
- * structurally compatible via TypeScript's structural typing.
+ * The SDK's `CopilotSession` is a strict superset and is structurally
+ * compatible.
  */
 export interface IAbortableSession {
     sessionId: string;
