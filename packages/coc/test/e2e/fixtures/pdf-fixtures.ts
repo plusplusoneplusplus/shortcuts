@@ -1,6 +1,4 @@
 /**
- * Real-PDF fixtures for E2E tests.
- *
  * Builds small but genuinely valid PDF byte buffers with an extractable text
  * layer, so tests can drive the pdf.js `PdfJsRenderer` path (canvas + selectable
  * `.textLayer`) rather than the native `<iframe>` fallback. The tiny placeholder

@@ -1,6 +1,4 @@
 /**
- * Note Editor Toolbar — Strikethrough E2E Regression Test
- *
  * Verifies that the Strikethrough (and other formatting) toolbar buttons
  * correctly apply marks to selected text in the NoteEditor.
  *

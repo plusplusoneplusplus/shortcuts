@@ -1,6 +1,4 @@
 /**
- * Schedule Seed Utilities for E2E Tests
- *
  * Helpers to create schedules via the REST API.
  */
 

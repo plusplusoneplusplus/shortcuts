@@ -1,6 +1,4 @@
 /**
- * Comment Sidebar Advanced E2E Tests
- *
  * Covers: Combined status+category filter, empty filter result placeholder,
  * copy prompt button feedback, orphaned comment badge, show all replies.
  */

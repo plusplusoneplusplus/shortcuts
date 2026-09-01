@@ -1,13 +1,10 @@
 /**
- * Metadata Popover Log Link E2E Tests
- *
  * Verifies the "🔍 logs" link in the ConversationMetadataPopover:
  * - Grid layout remains intact (2-column alignment) when a session ID link is present
  * - The link navigates to #logs?sessionId=...
  * - The session filter chip appears in the Logs view
  *
- * Note: The `view-logs-btn` in ProcessDetail.tsx is dead code (component is never
- * imported/rendered). Queue tasks use ChatDetail → ChatHeader which renders
+ * Note: queue tasks use ChatDetail → ChatHeader which renders
  * ConversationMetadataPopover but has no standalone logs button.
  */
 

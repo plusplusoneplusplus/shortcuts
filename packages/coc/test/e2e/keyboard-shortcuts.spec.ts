@@ -1,6 +1,4 @@
 /**
- * Keyboard Shortcuts E2E Tests
- *
  * Tests keyboard shortcuts that operate when on the Repos tab with a repo selected:
  *   Alt+A → navigate to Activity sub-tab
  *   Alt+I → navigate to Wiki sub-tab

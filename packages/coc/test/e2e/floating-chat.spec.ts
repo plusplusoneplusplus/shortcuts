@@ -1,6 +1,4 @@
 /**
- * FloatingChat E2E Tests
- *
  * Tests the FloatingChatManager and PopOutChatShell:
  *   - Float button appears in a completed queue task chat
  *   - Clicking float button opens a FloatingDialog overlay

@@ -1,6 +1,4 @@
 /**
- * MarkdownReviewDialog E2E Tests
- *
  * Tests the full lifecycle of the MarkdownReviewDialog opened by clicking
  * a `.file-path-link` in a user message for a non-markdown file: open →
  * display → minimize → chip (pill) → restore → close.

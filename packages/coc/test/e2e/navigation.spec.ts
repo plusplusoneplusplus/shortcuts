@@ -1,6 +1,4 @@
 /**
- * Navigation E2E Tests
- *
  * Tests tab switching, sidebar toggle, and navigation bar behavior.
  *
  * Note: the legacy global "Processes" top-level tab was removed. Activity

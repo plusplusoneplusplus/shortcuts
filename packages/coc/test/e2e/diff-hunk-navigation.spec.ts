@@ -1,6 +1,4 @@
 /**
- * Per-file diff view — hunk navigation regression tests.
- *
  * Verifies that the ▲/▼ (prev/next hunk) buttons in CommitDetail (per-file view)
  * correctly scroll between diff hunks when a file-specific diff is rendered.
  *

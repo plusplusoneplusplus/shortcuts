@@ -1,6 +1,4 @@
 /**
- * Wiki Content Rendering E2E Tests
- *
  * Tests markdown rendering, syntax highlighting, mermaid diagrams,
  * table of contents, and dependency graph visualization.
  *

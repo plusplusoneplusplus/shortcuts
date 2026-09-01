@@ -1,6 +1,4 @@
 /**
- * Server Fixture for Playwright E2E Tests
- *
  * Wraps createExecutionServer() into a Playwright test fixture that:
  * 1. Creates a temp dataDir
  * 2. Starts server on port 0

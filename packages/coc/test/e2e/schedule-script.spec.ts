@@ -1,6 +1,4 @@
 /**
- * Schedule Script E2E Tests
- *
  * Tests for script-based schedule creation, manual runs, and execution
  * results for the CoC server's schedule feature.
  *

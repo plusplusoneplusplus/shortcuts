@@ -1,6 +1,4 @@
 /**
- * Queue Conversation Mock AI E2E Tests
- *
  * Focused Playwright spec exercising 5 conversation scenarios using Mock AI:
  * 1. Basic conversation rendering (user/assistant bubbles, timestamps)
  * 2. Tool call rendering (single card, nested explore sub-tasks)

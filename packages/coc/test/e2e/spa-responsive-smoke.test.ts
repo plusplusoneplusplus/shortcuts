@@ -2,7 +2,7 @@
  * E2E smoke test — loads the SPA at desktop viewport and asserts basic rendering.
  *
  * This is intentionally minimal: it establishes a regression baseline for the
- * responsive work. Subsequent commits will add mobile/tablet E2E tests.
+ * responsive work.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';

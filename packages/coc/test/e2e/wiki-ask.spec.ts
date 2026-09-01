@@ -1,6 +1,4 @@
 /**
- * Wiki Ask AI Widget E2E Tests
- *
  * Tests the Ask AI floating widget: expand/collapse, send question,
  * conversation rendering, streaming responses, clear, error handling,
  * and context awareness.

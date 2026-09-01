@@ -1,6 +1,4 @@
 /**
- * Notes tree — file-explorer selection & file operations E2E.
- *
  * Exercises the four Notes-sidebar flows end-to-end against a real server with
  * an on-disk note tree (no route mocking): the notes API actually moves/renames/
  * duplicates files, so every assertion is verified against the filesystem as well

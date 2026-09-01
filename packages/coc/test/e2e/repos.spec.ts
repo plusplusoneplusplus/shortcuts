@@ -1,6 +1,4 @@
 /**
- * Repos E2E Tests
- *
  * Tests the Repos tab: add repo, list repos, select repo, delete repo.
  * Repos are fetched via REST when the tab is switched, so data seeded
  * before page.goto() is available once the tab is clicked.

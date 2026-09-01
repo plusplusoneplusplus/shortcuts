@@ -1,6 +1,4 @@
 /**
- * Miller Column Overflow & Navigation E2E Tests
- *
  * Tests column overflow indicator, navigate-back, deep-link via URL hash,
  * file-click column collapse, and idempotent folder click.
  *

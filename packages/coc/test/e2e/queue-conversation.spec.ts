@@ -1,6 +1,4 @@
 /**
- * Queue Task Conversation E2E Tests
- *
  * Comprehensive Playwright tests for the queue task conversation UI:
  * - Basic conversation rendering
  * - Streaming response

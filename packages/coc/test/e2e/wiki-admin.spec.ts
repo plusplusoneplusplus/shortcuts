@@ -1,6 +1,4 @@
 /**
- * Wiki Admin Panel E2E Tests
- *
  * Tests the admin panel: toggle show/hide, tab switching,
  * seeds/config editing, save/reset, generate phases, error handling.
  *

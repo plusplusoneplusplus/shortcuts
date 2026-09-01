@@ -1,6 +1,4 @@
 /**
- * Git-specific Fixture Helpers for E2E Tests
- *
  * Creates repos with multiple commits, dirty working trees, and feature
  * branches so the Git sub-tab components have realistic data to render.
  */

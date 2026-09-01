@@ -1,6 +1,4 @@
 /**
- * Skills E2E Tests
- *
  * Tests the #skills route: SkillsView sub-tab navigation, SkillsInstalledPanel
  * (empty state, list with items), SkillsBundledPanel (bundled items render,
  * install-all button), and SkillsConfigPanel (global dir display).

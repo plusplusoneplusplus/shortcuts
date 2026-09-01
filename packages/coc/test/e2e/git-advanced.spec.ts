@@ -1,6 +1,4 @@
 /**
- * Git Advanced E2E Tests
- *
  * Tests advanced git sub-tab interactions:
  *   Unpushed commits separator   — visual separator when unpushedCount > 0
  *   Branch inline diff           — expand/collapse inline diff in BranchChanges (mock-based)

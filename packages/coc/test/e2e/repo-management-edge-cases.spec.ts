@@ -1,6 +1,4 @@
 /**
- * Repo Management Edge Cases E2E Tests
- *
  * Coverage gap: repos.spec.ts covers add, edit, remove, and basic validation
  * (empty path), but does not test:
  *   - API error responses for invalid/non-existent paths (server-side 400)

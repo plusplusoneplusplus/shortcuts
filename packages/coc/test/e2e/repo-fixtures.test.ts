@@ -1,6 +1,4 @@
 /**
- * Tests for repo-fixtures.ts
- *
  * Verifies that createRepoFixture() and createTasksFixture() produce the
  * expected on-disk structures for E2E tests.
  */

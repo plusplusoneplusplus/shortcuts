@@ -1,6 +1,4 @@
 /**
- * Wiki Management E2E Tests
- *
  * Tests the Wiki tab: add wiki, list wikis, select wiki, delete wiki.
  * Wikis are fetched via REST when the tab is switched, so data seeded
  * before page.goto() is available once the tab is clicked.

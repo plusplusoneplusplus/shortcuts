@@ -1,6 +1,4 @@
 /**
- * Chat-List Group Seed Utilities for E2E Tests
- *
  * Extends the base `seed.ts` helpers with the four grouped-row kinds the chat
  * list renders — Ralph sessions, For Each runs, Map Reduce runs, and spawned
  * sub-conversation trees — plus plain interleaved chats. These fixtures back the

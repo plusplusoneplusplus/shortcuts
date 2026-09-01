@@ -1,6 +1,4 @@
 /**
- * Git Sub-Tab E2E Tests
- *
  * Tests the three sub-components rendered by RepoGitTab:
  *   CommitList  — commit history, expand/collapse, lazy file loading
  *   WorkingTree — staged/unstaged/untracked sections, stage/unstage/discard

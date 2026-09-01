@@ -1,6 +1,4 @@
 /**
- * Miller Column Interaction E2E Tests
- *
  * Tests context menus, file double-click, empty folder placeholder,
  * and archived/future file styling.
  *

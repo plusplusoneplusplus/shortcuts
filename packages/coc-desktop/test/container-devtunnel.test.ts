@@ -1,6 +1,4 @@
 /**
- * Tests for CoCContainer DevTunnel helpers.
- *
  * These tests exercise the pure, Electron-free logic that underpins the
  * CoCContainer DevTunnel feature:
  *   - the container-specific tunnel suffix (`coccontainer`) produces a distinct

@@ -1,6 +1,4 @@
 /**
- * Wiki Component Browser E2E Tests
- *
  * Tests the component tree rendering, navigation, group collapse/expand,
  * detail panel content, home view, and edge cases.
  *
