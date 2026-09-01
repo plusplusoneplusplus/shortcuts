@@ -1,10 +1,6 @@
 /**
- * Task Prompt Builder
- *
- * Pure-Node prompt-building functions for AI task generation in CLI tools and
+ * Prompt-building functions for AI task generation in CLI tools and
  * the CoC server.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -102,9 +98,6 @@ function buildImportantSection(
 - Do NOT use your session state or any other directory${extraPart}`;
 }
 
-/**
- * Build prompt for creating a task from scratch (no name provided).
- */
 export function buildCreateTaskPrompt(description: string, targetPath: string): string {
     targetPath = toForwardSlashes(targetPath);
     const important = buildImportantSection(
@@ -118,7 +111,6 @@ ${important}`;
 }
 
 /**
- * Build prompt for creating a task with a specific name.
  * If name is empty/undefined, prompts AI to generate a filename.
  * If autoFolderContext is provided, replaces the fixed save-path block with
  * folder-selection instructions so the AI picks or creates the best subfolder.
@@ -202,12 +194,7 @@ ${important}`;
 }
 
 /**
- * Build prompt for creating a task from feature context.
- *
- * @param context - The selected feature context
- * @param focus - Task focus/description
  * @param name - Optional task name for the filename
- * @param targetPath - Target directory path
  */
 export function buildCreateFromFeaturePrompt(
     context: SelectedContext,
@@ -275,8 +262,7 @@ export function applyDeepModePrefix(prompt: string): string {
 }
 
 /**
- * Build prompt for deep mode task creation.
- * Prepends instruction to use go-deep skill.
+ * Prepends the instruction to use the go-deep skill.
  */
 export function buildDeepModePrompt(
     context: SelectedContext,
@@ -290,8 +276,7 @@ export function buildDeepModePrompt(
 }
 
 /**
- * Gather context from a feature folder (related.yaml, plan.md, spec.md).
- * Pure Node.js.
+ * Reads related.yaml, plan.md and spec.md from the feature folder.
  */
 export async function gatherFeatureContext(
     folderPath: string,
@@ -343,12 +328,10 @@ export async function gatherFeatureContext(
 }
 
 /**
- * Parse created file path from AI response.
  * Looks for markdown file paths in the response text.
  *
- * @param response - AI response text
  * @param targetFolder - Expected target folder for path matching
- * @returns Absolute file path if found and exists, otherwise undefined
+ * @returns Absolute file path if found and it exists, otherwise undefined
  */
 export function parseCreatedFilePath(
     response: string | undefined,
@@ -387,9 +370,6 @@ export function parseCreatedFilePath(
 // System Prompt for Plan Generation
 // ============================================================================
 
-/**
- * Options for building the plan-generation system prompt.
- */
 export interface PlanSystemPromptOptions {
     /** Absolute path to the target directory for the plan file. */
     targetPath: string;
@@ -447,7 +427,7 @@ export function buildAutoFolderLocationBlock(tasksRoot: string, existingFolders:
 }
 
 /**
- * Clean AI response — strip code fences if present.
+ * Strips code fences if present.
  */
 export function cleanAIResponse(response: string): string {
     let cleaned = response.trim();

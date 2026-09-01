@@ -1,6 +1,5 @@
 /**
- * Task parsing utilities for task management.
- * Pure Node.js functions with no editor dependencies.
+ * Task parsing utilities. No editor dependencies.
  */
 
 import * as fs from 'fs';
@@ -19,9 +18,9 @@ export const COMMON_DOC_TYPES: string[] = [
 ];
 
 /**
- * Parse frontmatter from a markdown file and extract task status
+ * Reads the file's frontmatter.
  * @param filePath - Absolute path to the markdown file
- * @returns TaskStatus or undefined if no valid status found
+ * @returns undefined if no valid status was found
  */
 export function parseTaskStatus(filePath: string): TaskStatus | undefined {
     try {
@@ -62,10 +61,8 @@ export function parseTaskStatus(filePath: string): TaskStatus | undefined {
 }
 
 /**
- * Update the status field in a markdown file's frontmatter.
  * Creates frontmatter if it doesn't exist.
  * @param filePath - Absolute path to the markdown file
- * @param status - New status to set
  */
 export async function updateTaskStatus(filePath: string, status: TaskStatus): Promise<void> {
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -104,7 +101,6 @@ export async function updateTaskStatus(filePath: string, status: TaskStatus): Pr
 }
 
 /**
- * Parse a filename to extract base name and document type.
  * Examples:
  *   "task1.md" -> { baseName: "task1", docType: undefined }
  *   "task1.plan.md" -> { baseName: "task1", docType: "plan" }
@@ -133,7 +129,6 @@ export function parseFileName(fileName: string): { baseName: string; docType?: s
 }
 
 /**
- * Sanitize a file name to remove invalid characters.
  * Replaces invalid filename characters and whitespace with hyphens,
  * collapses consecutive hyphens, and trims leading/trailing hyphens.
  */

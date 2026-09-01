@@ -1,6 +1,5 @@
 /**
- * Task scanning and grouping utilities for task management.
- * Pure Node.js functions with no editor dependencies.
+ * Task scanning and grouping utilities. No editor dependencies.
  * All scanning functions use async I/O via fs.promises.
  */
 
@@ -27,9 +26,6 @@ const CONTEXT_FILES = new Set([
 ]);
 
 
-/**
- * Check if a filename is a context/documentation file that should be excluded from task scanning.
- */
 export function isContextFile(fileName: string): boolean {
     return CONTEXT_FILES.has(fileName.toLowerCase());
 }

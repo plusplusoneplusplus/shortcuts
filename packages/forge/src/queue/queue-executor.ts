@@ -1,10 +1,6 @@
 /**
- * QueueExecutor
- *
  * Executes tasks from the queue with configurable concurrency.
  * Uses ConcurrencyLimiter for execution control.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';
@@ -20,9 +16,6 @@ import {
     DEFAULT_TASK_CONFIG,
 } from './types';
 
-/**
- * Executor that processes tasks from a queue
- */
 export class QueueExecutor extends EventEmitter {
     /** The queue manager to pull tasks from */
     private readonly queueManager: TaskQueueManager;
@@ -511,9 +504,6 @@ export class QueueExecutor extends EventEmitter {
     }
 }
 
-/**
- * Create a new QueueExecutor instance
- */
 export function createQueueExecutor(
     queueManager: TaskQueueManager,
     taskExecutor: TaskExecutor,
@@ -523,8 +513,7 @@ export function createQueueExecutor(
 }
 
 /**
- * A simple pass-through executor for testing
- * Executes tasks by calling a provided function
+ * A simple pass-through executor for testing.
  */
 export class SimpleTaskExecutor implements TaskExecutor {
     private readonly executeFn: (task: QueuedTask) => Promise<unknown>;
@@ -566,9 +555,6 @@ export class SimpleTaskExecutor implements TaskExecutor {
     }
 }
 
-/**
- * Create a simple task executor
- */
 export function createSimpleTaskExecutor(
     executeFn: (task: QueuedTask) => Promise<unknown>
 ): SimpleTaskExecutor {

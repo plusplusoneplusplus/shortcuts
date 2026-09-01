@@ -1,13 +1,7 @@
 /**
- * TaskQueueManager
- *
  * Manages a queue of tasks with priority-based ordering.
- * Provides operations for enqueue, dequeue, reorder, and queue control.
  *
- * Uses Node.js EventEmitter for cross-platform compatibility.
  * In-memory storage only - queue resets when process restarts.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';
@@ -36,9 +30,6 @@ function isPauseMarker(item: QueueItem): item is PauseMarker {
     return (item as PauseMarker).kind === 'pause-marker';
 }
 
-/**
- * Task queue manager for managing AI task execution queue
- */
 export class TaskQueueManager extends EventEmitter {
     /** Queue of pending tasks and pause markers (sorted by priority for tasks; markers at absolute positions) */
     private queue: Array<QueueItem> = [];
@@ -1262,9 +1253,6 @@ export class TaskQueueManager extends EventEmitter {
     }
 }
 
-/**
- * Create a new TaskQueueManager instance
- */
 export function createTaskQueueManager(
     options?: TaskQueueManagerOptions
 ): TaskQueueManager {

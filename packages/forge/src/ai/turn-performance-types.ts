@@ -1,6 +1,4 @@
 /**
- * Turn Performance Types
- *
  * The raw per-turn latency/throughput metric event recorded for every agent
  * turn: time to first token (TTFT), tokens per second (TPS), and the
  * timestamps they are derived from.

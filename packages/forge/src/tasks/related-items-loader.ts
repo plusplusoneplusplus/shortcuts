@@ -1,6 +1,4 @@
 /**
- * Related Items Loader
- * 
  * Handles reading and writing of related.yaml files in feature folders for CLI
  * tools and other Node.js consumers.
  */
@@ -15,9 +13,8 @@ import { getLogger, LogCategory } from '../logger';
 export const RELATED_ITEMS_FILENAME = 'related.yaml';
 
 /**
- * Load related items config from a feature folder
  * @param folderPath Absolute path to the feature folder
- * @returns RelatedItemsConfig or undefined if file doesn't exist
+ * @returns undefined if the file doesn't exist
  */
 export async function loadRelatedItems(folderPath: string): Promise<RelatedItemsConfig | undefined> {
     const filePath = path.join(folderPath, RELATED_ITEMS_FILENAME);
@@ -48,9 +45,7 @@ export async function loadRelatedItems(folderPath: string): Promise<RelatedItems
 }
 
 /**
- * Save related items config to a feature folder
  * @param folderPath Absolute path to the feature folder
- * @param config Configuration to save
  */
 export async function saveRelatedItems(folderPath: string, config: RelatedItemsConfig): Promise<void> {
     const filePath = path.join(folderPath, RELATED_ITEMS_FILENAME);
@@ -65,7 +60,6 @@ export async function saveRelatedItems(folderPath: string, config: RelatedItemsC
 }
 
 /**
- * Check if a feature folder has related items
  * @param folderPath Absolute path to the feature folder
  * @returns true if related.yaml exists
  */
@@ -75,7 +69,6 @@ export function hasRelatedItems(folderPath: string): boolean {
 }
 
 /**
- * Delete related items file from a feature folder
  * @param folderPath Absolute path to the feature folder
  */
 export async function deleteRelatedItems(folderPath: string): Promise<void> {
@@ -87,10 +80,9 @@ export async function deleteRelatedItems(folderPath: string): Promise<void> {
 }
 
 /**
- * Remove a single item from related items config
  * @param folderPath Absolute path to the feature folder
  * @param itemPath Path of the file item or commit hash to remove
- * @returns true if item was removed, false if not found
+ * @returns false if the item was not found
  */
 export async function removeRelatedItem(folderPath: string, itemPath: string): Promise<boolean> {
     const config = await loadRelatedItems(folderPath);
@@ -119,12 +111,8 @@ export async function removeRelatedItem(folderPath: string, itemPath: string): P
 }
 
 /**
- * Merge new items into existing related items config
- * Deduplicates by path for files and hash for commits
+ * Deduplicates by path for files and hash for commits.
  * @param folderPath Absolute path to the feature folder
- * @param newItems New items to merge
- * @param newDescription Optional new description
- * @returns Updated config
  */
 export async function mergeRelatedItems(
     folderPath: string, 
@@ -193,9 +181,6 @@ function generateYamlContent(config: RelatedItemsConfig, featureName: string): s
     return header + yamlContent;
 }
 
-/**
- * Get the path to related.yaml for a feature folder
- */
 export function getRelatedItemsPath(folderPath: string): string {
     return path.join(folderPath, RELATED_ITEMS_FILENAME);
 }

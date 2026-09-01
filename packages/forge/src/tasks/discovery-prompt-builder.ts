@@ -1,11 +1,7 @@
 /**
- * Discovery Prompt Builder
- *
  * Pure-Node prompt builder for feature-folder discovery.
  * Builds a discovery request prompt from a feature description,
  * keywords, and scope parameters.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================
@@ -66,12 +62,6 @@ const DEFAULT_SCOPE: Required<DiscoveryScope> = {
 // Prompt Builder
 // ============================================================================
 
-/**
- * Build a discovery prompt for finding related files and commits.
- *
- * @param input - Discovery request parameters
- * @returns The prompt string to send to the AI
- */
 export function buildDiscoveryPrompt(input: DiscoveryPromptInput): string {
     const scope = { ...DEFAULT_SCOPE, ...input.scope };
 
@@ -104,10 +94,7 @@ Return ONLY the JSON array, no other text.`;
 }
 
 /**
- * Parse discovery results from an AI response.
- *
- * @param response - Raw AI response string
- * @returns Array of discovered items (empty array on parse failure)
+ * Returns an empty array on parse failure.
  */
 export function parseDiscoveryResponse(response: string): DiscoveredItem[] {
     if (!response) {

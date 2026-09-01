@@ -1,6 +1,4 @@
 /**
- * AI Service Types (Pure Node.js)
- *
  * Core types for AI service operations. These types are editor-independent
  * and can be used in CLI tools, tests, and other Node.js environments.
  */
@@ -36,9 +34,6 @@ export {
     getModelContextWindow
 } from '@plusplusoneplusplus/coc-agent-sdk';
 
-/**
- * Result of an AI invocation
- */
 export interface AIInvocationResult {
     /** Whether the invocation was successful */
     success: boolean;
@@ -48,9 +43,6 @@ export interface AIInvocationResult {
     error?: string;
 }
 
-/**
- * Default prompt templates for different instruction types
- */
 export const DEFAULT_PROMPTS = {
     clarify: `Please clarify the following snippet with more depth.
 
@@ -76,9 +68,6 @@ Snippet`,
     customDefault: 'Please explain the following snippet'
 } as const;
 
-/**
- * Supported CLI tools for interactive sessions
- */
 export type InteractiveToolType = 'copilot' | 'claude';
 
 // ============================================================================
@@ -93,14 +82,8 @@ export interface PromptItem {
     [key: string]: string;
 }
 
-/**
- * AI invocation function type
- */
 export type AIInvoker = (prompt: string, options?: AIInvokerOptions) => Promise<AIInvokerResult>;
 
-/**
- * Options for AI invocation
- */
 export interface AIInvokerOptions {
     /** Model to use (optional, uses default if not specified) */
     model?: string;
@@ -120,9 +103,6 @@ export interface AIInvokerOptions {
     systemMessage?: SystemMessageConfig;
 }
 
-/**
- * Result from AI invocation
- */
 export interface AIInvokerResult {
     /** Whether the invocation succeeded */
     success: boolean;
@@ -136,9 +116,6 @@ export interface AIInvokerResult {
     tokenUsage?: TokenUsage;
 }
 
-/**
- * Session metadata for session resume functionality
- */
 export interface SessionMetadata {
     /** SDK session ID for resuming sessions */
     sessionId?: string;
@@ -203,9 +180,6 @@ export interface ProcessTracker {
     ): void;
 }
 
-/**
- * Progress information during job execution
- */
 export interface JobProgress {
     /** Current phase of execution */
     phase: 'splitting' | 'mapping' | 'reducing' | 'complete';

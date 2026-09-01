@@ -1,6 +1,4 @@
 /**
- * AI Module - Public API
- * 
  * Exports AI service components for interacting with the Copilot SDK.
  * SDK integration is delegated to the copilot-sdk-wrapper module.
  */

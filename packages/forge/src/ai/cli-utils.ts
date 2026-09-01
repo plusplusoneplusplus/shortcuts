@@ -1,6 +1,4 @@
 /**
- * CLI Utilities
- *
  * Shared utility functions for building and executing CLI commands
  * across the AI service module.
  */
@@ -45,9 +43,7 @@ export const COPILOT_BASE_FLAGS = '--allow-all-tools --allow-all-paths --disable
  * - Percent signs (%) are escaped by doubling (%%)
  * - Carriage returns (\r) are removed
  *
- * @param str - The string to escape
  * @param platform - Optional platform override for testing (defaults to process.platform)
- * @returns The escaped string safe for shell use
  */
 export function escapeShellArg(str: string, platform?: NodeJS.Platform): string {
     const isWindows = (platform ?? process.platform) === 'win32';
@@ -94,9 +90,6 @@ export function escapeShellArg(str: string, platform?: NodeJS.Platform): string 
  * Uses file-based delivery when:
  * - Prompt is long (over PROMPT_LENGTH_THRESHOLD)
  * - OR contains any shell-problematic characters
- *
- * @param prompt - The prompt to evaluate
- * @returns true if file-based delivery should be used, false for direct prompt
  */
 export function shouldUseFileDelivery(prompt: string): boolean {
     if (prompt.length > PROMPT_LENGTH_THRESHOLD) {
@@ -111,9 +104,6 @@ export function shouldUseFileDelivery(prompt: string): boolean {
  *
  * File naming includes timestamp and random suffix to avoid collisions.
  * Uses UTF-8 encoding for proper Unicode support.
- *
- * @param prompt - The prompt content to write
- * @returns The absolute path to the created temp file
  */
 export function writePromptToTempFile(prompt: string): string {
     const tmpDir = os.tmpdir();
@@ -137,9 +127,6 @@ export interface BuildCliCommandResult {
     tempFilePath?: string;
 }
 
-/**
- * Options for building a CLI command
- */
 export interface BuildCliCommandOptions {
     /** Initial prompt to send */
     prompt?: string;
@@ -152,19 +139,15 @@ export interface BuildCliCommandOptions {
 }
 
 /**
- * Build the CLI command string for the specified tool.
+ * Shared command builder for both interactive (terminal) and
+ * non-interactive (child process) modes.
  *
- * This is the shared command builder used by both interactive (terminal)
- * and non-interactive (child process) modes.
- *
- * Uses smart prompt delivery:
+ * Prompt delivery:
  * - Direct: For short, simple prompts without shell-problematic characters
  * - File-based: For long prompts or those containing special characters
  * - Resume: For resuming an existing session with --resume flag
  *
  * @param tool - The CLI tool to use ('copilot' or 'claude')
- * @param options - Optional command options
- * @returns Object containing the command string and delivery metadata
  */
 export function buildCliCommand(
     tool: InteractiveToolType,
