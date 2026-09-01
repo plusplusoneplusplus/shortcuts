@@ -1,6 +1,4 @@
 /**
- * Ralph-specific queue routes.
- *
  * POST /api/processes/:id/ralph-start — validate a completed grilling-phase
  * process, initialize the per-session journal, and enqueue the first Ralph
  * execution task.

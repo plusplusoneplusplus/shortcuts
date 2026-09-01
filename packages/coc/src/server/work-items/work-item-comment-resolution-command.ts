@@ -1,6 +1,4 @@
 /**
- * Work Item Comment Resolution Commands
- *
  * Owns `POST .../work-items/:wid/resolve-comments`. Plan comments and commit
  * diff comments use different storage and keying models, so they are separate
  * resolvers here; they share only the leaf-type guard and the cache/broadcast

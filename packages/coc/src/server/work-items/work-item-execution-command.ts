@@ -1,6 +1,4 @@
 /**
- * Work Item Execution Command
- *
  * Owns everything the `POST .../work-items/:wid/execute` route used to do
  * inline: item lookup and type policy, git HEAD capture, the placeholder task
  * file, Ralph eligibility, worktree feature gating, executor invocation, and

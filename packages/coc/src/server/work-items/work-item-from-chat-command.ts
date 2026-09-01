@@ -1,6 +1,4 @@
 /**
- * Work Item From-Chat Command
- *
  * Owns `POST /api/workspaces/:id/work-items/from-chat`: builds the Work Item
  * from a chat process, seeds plan version 1 (AI-extracted or the generated
  * template), persists it, and settles cache/broadcast across every workspace id

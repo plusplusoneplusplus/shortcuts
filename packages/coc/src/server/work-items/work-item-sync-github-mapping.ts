@@ -4,7 +4,6 @@ import {
     type WorkItemStatus,
 } from './types';
 
-/** The two states a GitHub issue can be in. */
 export type GitHubIssueState = 'open' | 'closed';
 
 /**

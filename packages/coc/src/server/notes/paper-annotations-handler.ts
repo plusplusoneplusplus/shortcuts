@@ -15,8 +15,6 @@
  *   POST   /api/workspaces/:id/notes/paper-annotations/annotation            → create one
  *   PATCH  /api/workspaces/:id/notes/paper-annotations/annotation/:id        → resolve/reopen or update turns
  *   DELETE /api/workspaces/:id/notes/paper-annotations/annotation/:id?path=  → remove one
- *
- * Pure Node.js; cross-platform (Linux/Mac/Windows).
  */
 
 import * as crypto from 'crypto';

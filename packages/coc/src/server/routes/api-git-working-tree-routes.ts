@@ -1,6 +1,4 @@
 /**
- * Git Working-Tree REST API Routes
- *
  * Endpoints for listing working-tree changes, staging, unstaging, discarding,
  * batch stage/unstage, deleting untracked files, and per-file working-tree diffs.
  */

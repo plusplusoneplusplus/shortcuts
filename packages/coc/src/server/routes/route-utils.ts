@@ -1,6 +1,4 @@
 /**
- * Route creation utilities
- *
  * `createRoute` eliminates the repeated try/catch + url.parse + sendJSON boilerplate
  * found in route handlers. Typed query-parser helpers (`asString`, `asInt`, `asBool`)
  * replace ad-hoc casts from ParsedUrlQuery values.

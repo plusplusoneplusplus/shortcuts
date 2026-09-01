@@ -4,9 +4,6 @@
  * Default root: images stored under `<notesRoot>/.attachments/<uuid>.<ext>`.
  * Repo-folder roots: images stored co-located at `<repoRoot>/.images/<uuid>.<ext>`.
  * Markdown references use relative paths: `.attachments/<uuid>.<ext>` or `.images/<uuid>.<ext>`.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';

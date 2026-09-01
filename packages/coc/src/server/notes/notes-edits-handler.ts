@@ -1,6 +1,4 @@
 /**
- * Notes Edit REST API Handler
- *
  * HTTP API routes for retrieving note edit snapshots and undoing AI edits.
  * Snapshots are stored in process.metadata.noteEdits by NoteChatExecutor
  * and FollowUpExecutor.

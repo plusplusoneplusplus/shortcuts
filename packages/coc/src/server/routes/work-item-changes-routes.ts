@@ -1,6 +1,4 @@
 /**
- * Work Item Changes REST API Routes
- *
  * A "Change" bundles a plan version with the git commits produced during
  * the corresponding execution cycle.
  *

@@ -1,6 +1,4 @@
 /**
- * Work Item Executor
- *
  * Bridges work items to the task queue for execution.
  * When a work item is executed, creates a queue task from its plan,
  * transitions the work item to 'executing', and tracks the result.

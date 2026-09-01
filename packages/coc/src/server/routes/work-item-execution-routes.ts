@@ -1,6 +1,4 @@
 /**
- * Work Item Execution & Chat Integration Routes
- *
  * Routes:
  *   POST /api/workspaces/:id/work-items/:wid/execute             — Execute work item as queue task
  *   POST /api/workspaces/:id/work-items/:wid/submit-pr           — Submit execution commits as a PR

@@ -1,14 +1,10 @@
 /**
- * NoteChatBindingStore
- *
  * Per-workspace SQLite store mapping notePath → taskId for the per-note chat
  * feature in the Notes view. Uses the shared `processes.db` database
  * (same pattern as CommitChatBindingStore / SqliteQueuePersistence).
  *
  * Note paths are stored relative to the notes root, with forward-slash
  * separators (callers must normalize before invoking).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type Database from 'better-sqlite3';

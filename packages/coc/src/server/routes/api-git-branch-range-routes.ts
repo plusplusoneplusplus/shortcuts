@@ -1,6 +1,4 @@
 /**
- * Git Branch-Range REST API Routes
- *
  * Endpoints for detecting the feature-branch commit range, listing changed files
  * in the range, full range diff, and per-file range diff.
  */

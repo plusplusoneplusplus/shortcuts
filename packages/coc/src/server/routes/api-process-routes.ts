@@ -1,6 +1,4 @@
 /**
- * Process REST API Routes
- *
  * Process CRUD, SSE streaming, conversation output, children, cancel, follow-up message,
  * and aggregate stats.
  * Extracted from `api-handler.ts` to keep each route module focused on one domain.

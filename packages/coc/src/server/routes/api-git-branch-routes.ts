@@ -1,6 +1,4 @@
 /**
- * Git Branch Management REST API Routes
- *
  * HTTP adapter over the git operation kernel in `../git`:
  * - `GitOperationRunner` owns background-job lifecycle, cache invalidation, and broadcasts
  * - `GitPatchTransferService` owns patch export/apply and provenance metadata

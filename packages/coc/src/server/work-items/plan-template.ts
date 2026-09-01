@@ -1,6 +1,4 @@
 /**
- * Work Item Plan Template
- *
  * Provides a standard markdown template for work item plans.
  * Used when creating work items from chat to ensure a consistent,
  * actionable plan structure.
@@ -47,9 +45,7 @@ export const WORK_ITEM_PLAN_TEMPLATE = [
 /**
  * Build a plan populated with context from a work item's title and description.
  *
- * @param title       - Work item title (used as the objective).
- * @param description - Optional description / background context.
- * @returns Markdown string suitable for use as an initial work item plan.
+ * @param title - Work item title (used as the objective).
  */
 export function buildPlanFromContext(title: string, description?: string): string {
     const backgroundSection = description && description.trim()

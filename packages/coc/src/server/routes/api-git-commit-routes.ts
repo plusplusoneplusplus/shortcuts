@@ -1,6 +1,4 @@
 /**
- * Git Commit REST API Routes
- *
  * Endpoints for listing commits, viewing commit details, files changed,
  * diffs, per-file diffs, and file content at a given commit.
  */

@@ -1,6 +1,4 @@
 /**
- * Git Auto-Pull REST API Routes
- *
  * Read-only view of a repo's server-side auto-pull schedule (AC-05). The
  * interval itself is still written through the per-repo preferences endpoint;
  * this route only reports what the server's `AutoPullManager` is doing with it,
@@ -11,8 +9,6 @@
  * preference (`enabled`, `intervalMinutes`) with live scheduler state
  * (`nextRunAt`) and persisted run state (`lastRunAt`, `outcome`, `message`),
  * none of which belongs in the preferences document.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';

@@ -1,6 +1,4 @@
 /**
- * FileWorkItemStore — file-backed implementation of WorkItemStore.
- *
  * Storage layout (per origin when a scope resolver is configured):
  *   <dataDir>/repos/<originId>/work-items/
  *     index.json              — WorkItemIndexEntry[] (lightweight listing)

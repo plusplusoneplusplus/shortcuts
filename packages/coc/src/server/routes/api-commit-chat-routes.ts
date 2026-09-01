@@ -1,6 +1,4 @@
 /**
- * Commit-Chat Binding REST API Routes
- *
  * CRUD operations on commit→chat bindings, plus a rebind endpoint
  * for when commit hashes change (e.g. after rebase/amend).
  * Workspace-scoped, following the `/api/workspaces/:id/...` pattern.

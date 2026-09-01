@@ -1,6 +1,4 @@
 /**
- * Notes Roots Management REST API Handler
- *
  * Dedicated endpoints for listing, adding, and removing additional notes roots
  * for a workspace. The default managed root is always present and cannot be removed.
  *
@@ -44,9 +42,6 @@ export interface NotesRootEntry {
 // Route Registration
 // ============================================================================
 
-/**
- * Register notes roots management API routes on the given route table.
- */
 export function registerNotesRootsRoutes(
     routes: Route[],
     store: ProcessStore,

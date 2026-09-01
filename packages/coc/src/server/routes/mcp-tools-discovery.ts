@@ -1,6 +1,4 @@
 /**
- * MCP Tools Discovery
- *
  * Eager, live discovery of the tools exposed by a workspace's *enabled* MCP
  * servers. Resolves the effective (global + workspace) MCP config, filters it
  * by the workspace `enabledMcpServers` allow-list, then connects to each server

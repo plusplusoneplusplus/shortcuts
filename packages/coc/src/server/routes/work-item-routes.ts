@@ -1,6 +1,4 @@
 /**
- * Work Item REST API Routes
- *
  * CRUD operations for CoC work items. Create and update operations delegate
  * to the shared work-item command service (`work-item-commands.ts`) for
  * hierarchy validation, provider sync, cache invalidation, and broadcast

@@ -1,12 +1,7 @@
 /**
- * Notes Git Service
- *
  * Manages a standalone git repository inside the notes directory
  * (`~/.coc/repos/<wsId>/notes/`). Completely separate from the source code repo —
  * tracks markdown files only.
- *
- * Pure Node.js; uses built-in modules and forge git helpers.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

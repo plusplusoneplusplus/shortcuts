@@ -1,6 +1,4 @@
 /**
- * Aggregated route registration for the CoC execution server.
- *
  * `registerAllRoutes` consolidates all registerXxxRoutes calls so that
  * `createExecutionServer` only deals with infrastructure setup.
  */

@@ -1,6 +1,4 @@
 /**
- * Workspace REST API Routes
- *
  * Workspace CRUD, discovery, git-info (single + batch), MCP config, and skills config.
  * Extracted from `api-handler.ts` to keep each route module focused on one domain.
  */

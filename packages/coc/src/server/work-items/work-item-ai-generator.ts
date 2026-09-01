@@ -1,6 +1,4 @@
 /**
- * Work Item AI Generator
- *
  * Implements the `GenerateNewItemDraftFn` and `GenerateImproveItemDraftFn`
  * contracts defined in `work-item-ai-routes.ts`.
  *

@@ -1,11 +1,6 @@
 /**
- * Notes Git REST API Handler
- *
  * HTTP API routes for notes git operations (init, status, log, diff, commit)
  * for a given workspace's notes directory.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';

@@ -1,6 +1,4 @@
 /**
- * Git REST API Routes — Aggregator
- *
  * Delegates to domain-focused route modules: commits, branch-range,
  * branch management, and working-tree endpoints.
  */

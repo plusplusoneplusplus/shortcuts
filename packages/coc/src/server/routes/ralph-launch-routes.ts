@@ -1,6 +1,4 @@
 /**
- * Ralph direct-launch route.
- *
  * POST /api/ralph-launch — launch a Ralph execution loop directly from a
  * goal spec (e.g. read from a goal.md file), skipping the grilling/synthesis
  * phase entirely. Mints a new session, initialises the journal, and enqueues

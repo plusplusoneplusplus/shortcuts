@@ -15,8 +15,6 @@
  * Access control runs on the *note* path, not the sidecar path: the question is
  * whether this workspace may annotate that file. Allowed areas are the workspace
  * data dir, `~/.copilot`, and the workspace git root.
- *
- * Pure Node.js; cross-platform (Linux/Mac/Windows).
  */
 
 import * as os from 'os';
