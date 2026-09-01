@@ -10,7 +10,14 @@ import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
 // @ts-expect-error — a .mjs build script with no type declarations.
-import { checkStaleness, ensureNative, listRustSources, resolveCargo } from '../scripts/ensure-native.mjs';
+import {
+    checkStaleness,
+    ensureNative,
+    installRust,
+    listRustSources,
+    resolveCargo,
+    rustupTarget,
+} from '../scripts/ensure-native.mjs';
 
 const BINARY = '/pkg/coc-native.linux-x64-gnu.node';
 const RUST = '/pkg/rust';
@@ -132,6 +139,17 @@ describe('resolveCargo', () => {
         expect(found).toBe(path.join('/home/me', '.cargo', 'bin', 'cargo'));
     });
 
+    it('honours CARGO_HOME when rediscovering an installed toolchain', () => {
+        const found = resolveCargo({
+            env: { PATH: '/empty', CARGO_HOME: '/opt/cargo' },
+            exists: (p: string) => p === path.join('/opt/cargo', 'bin', 'cargo'),
+            platform: 'linux',
+            homedir: () => '/home/me',
+        });
+
+        expect(found).toBe(path.join('/opt/cargo', 'bin', 'cargo'));
+    });
+
     it('returns null when cargo is nowhere', () => {
         expect(
             resolveCargo({
@@ -155,6 +173,120 @@ describe('resolveCargo', () => {
     });
 });
 
+describe('installRust', () => {
+    it.each([
+        ['win32', 'x64', 'x86_64-pc-windows-msvc', 'rustup-init.exe'],
+        ['linux', 'x64', 'x86_64-unknown-linux-gnu', 'rustup-init'],
+        ['linux', 'arm64', 'aarch64-unknown-linux-gnu', 'rustup-init'],
+        ['darwin', 'arm64', 'aarch64-apple-darwin', 'rustup-init'],
+    ])('downloads and runs rustup for %s-%s', (platform, arch, target, executable) => {
+        const calls: Array<{ command: string; args: string[] }> = [];
+        const removed: string[] = [];
+        const chmods: Array<{ file: string; mode: number }> = [];
+        const status = installRust({
+            platform,
+            arch,
+            tmpdir: '/tmp',
+            mkdtemp: () => '/tmp/coc-rustup-test',
+            chmod: (file: string, mode: number) => chmods.push({ file, mode }),
+            remove: (dir: string) => removed.push(dir),
+            readFile: () => `${'a'.repeat(64)}  ${executable}`,
+            sha256: () => 'a'.repeat(64),
+            run: (command: string, args: string[]) => {
+                calls.push({ command, args });
+                return 0;
+            },
+            logger: silentLogger,
+        });
+
+        expect(status).toBe(0);
+        expect(rustupTarget(platform, arch)).toBe(target);
+        expect(calls[0].command).toBe('curl');
+        expect(calls[0].args.at(-1)).toBe(
+            `https://static.rust-lang.org/rustup/dist/${target}/${executable}`,
+        );
+        expect(calls[1].args.at(-1)).toBe(
+            `https://static.rust-lang.org/rustup/dist/${target}/${executable}.sha256`,
+        );
+        expect(path.basename(calls[2].command)).toBe(executable);
+        expect(calls[2].args).toEqual(['-y', '--profile', 'minimal', '--no-modify-path']);
+        expect(chmods).toHaveLength(platform === 'win32' ? 0 : 1);
+        expect(removed).toEqual(['/tmp/coc-rustup-test']);
+    });
+
+    it('returns the download failure and still removes the temporary directory', () => {
+        const removed: string[] = [];
+        const status = installRust({
+            platform: 'linux',
+            arch: 'x64',
+            tmpdir: '/tmp',
+            mkdtemp: () => '/tmp/coc-rustup-test',
+            remove: (dir: string) => removed.push(dir),
+            run: () => 22,
+            logger: silentLogger,
+        });
+
+        expect(status).toBe(22);
+        expect(removed).toEqual(['/tmp/coc-rustup-test']);
+    });
+
+    it('refuses to execute an installer whose checksum does not match', () => {
+        const calls: string[] = [];
+        const status = installRust({
+            platform: 'linux',
+            arch: 'x64',
+            tmpdir: '/tmp',
+            mkdtemp: () => '/tmp/coc-rustup-test',
+            remove: () => {},
+            readFile: () => 'a'.repeat(64),
+            sha256: () => 'b'.repeat(64),
+            run: (command: string) => {
+                calls.push(command);
+                return 0;
+            },
+            logger: silentLogger,
+        });
+
+        expect(status).toBe(1);
+        expect(calls).toEqual(['curl', 'curl']);
+    });
+
+    it('does not turn a successful install into a failure when cleanup is blocked', () => {
+        const status = installRust({
+            platform: 'linux',
+            arch: 'x64',
+            tmpdir: '/tmp',
+            mkdtemp: () => '/tmp/coc-rustup-test',
+            chmod: () => {},
+            remove: () => {
+                throw new Error('EBUSY');
+            },
+            readFile: () => 'a'.repeat(64),
+            sha256: () => 'a'.repeat(64),
+            run: () => 0,
+            logger: silentLogger,
+        });
+
+        expect(status).toBe(0);
+    });
+
+    it('rejects an unsupported target without downloading anything', () => {
+        let runs = 0;
+        const status = installRust({
+            platform: 'freebsd',
+            arch: 'x64',
+            run: () => {
+                runs += 1;
+                return 0;
+            },
+            logger: silentLogger,
+        });
+
+        expect(status).toBe(1);
+        expect(runs).toBe(0);
+    });
+});
+
 describe('ensureNative', () => {
     /** Collects the calls that matter: did we build, and what did we say? */
     function harness(overrides: Record<string, unknown> = {}) {
@@ -171,6 +303,7 @@ describe('ensureNative', () => {
                 exists: () => true,
                 checkStale: stale,
                 findCargo: () => '/usr/local/bin/cargo',
+                installRust: () => 0,
                 runBuild: (cargo: string) => {
                     builds.push(cargo);
                     return 0;
@@ -237,19 +370,65 @@ describe('ensureNative', () => {
         expect(h.errors.join('\n')).toMatch(/failed to build/);
     });
 
-    it('warns but succeeds when cargo is missing and a binary exists', () => {
-        const h = harness({ findCargo: () => null });
+    it('installs Rust, rediscovers cargo and builds', () => {
+        let lookups = 0;
+        let installs = 0;
+        const h = harness({
+            findCargo: () => (++lookups === 1 ? null : '/home/me/.cargo/bin/cargo'),
+            installRust: () => {
+                installs += 1;
+                return 0;
+            },
+        });
+
+        expect(ensureNative(h.options)).toBe(0);
+        expect(installs).toBe(1);
+        expect(h.builds).toEqual(['/home/me/.cargo/bin/cargo']);
+    });
+
+    it('warns but succeeds when automatic installation fails and a binary exists', () => {
+        const h = harness({ findCargo: () => null, installRust: () => 1 });
 
         expect(ensureNative(h.options)).toBe(0);
         expect(h.builds).toEqual([]);
-        expect(h.warnings.join('\n')).toMatch(/cargo not found/);
+        expect(h.warnings.join('\n')).toMatch(/Automatic Rust installation/);
     });
 
-    it('fails with an actionable message when cargo is missing and no binary exists', () => {
-        const h = harness({ exists: () => false, findCargo: () => null });
+    it('keeps an existing binary when the installer throws', () => {
+        const h = harness({
+            findCargo: () => null,
+            installRust: () => {
+                throw new Error('EACCES');
+            },
+        });
+
+        expect(ensureNative(h.options)).toBe(0);
+        expect(h.builds).toEqual([]);
+        expect(h.errors.join('\n')).toMatch(/EACCES/);
+    });
+
+    it('fails when automatic installation fails and no binary exists', () => {
+        const h = harness({ exists: () => false, findCargo: () => null, installRust: () => 1 });
 
         expect(ensureNative(h.options)).toBe(1);
         expect(h.builds).toEqual([]);
         expect(h.errors.join('\n')).toMatch(/rustup\.rs/);
+    });
+
+    it('respects the automatic installation opt-out', () => {
+        let installs = 0;
+        const h = harness({
+            exists: () => false,
+            findCargo: () => null,
+            autoInstallRust: false,
+            installRust: () => {
+                installs += 1;
+                return 0;
+            },
+        });
+
+        expect(ensureNative(h.options)).toBe(1);
+        expect(installs).toBe(0);
+        expect(h.errors.join('\n')).toMatch(/COC_NATIVE_AUTO_INSTALL_RUST=0/);
     });
 });

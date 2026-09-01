@@ -30,21 +30,15 @@
 | `-Follow` | off | Follow log output. |
 | `-TaskName` | `CoCServer` | Task Scheduler entry name. |
 
-## Native Addon Prerequisite
+## Native Addon Bootstrap
 
 The install command's initial build runs `npm run ensure:native` before
-`coc:link` and before task registration. A fresh checkout therefore needs a
-Rust toolchain available to the installing user (`cargo` on `PATH` or under
-`~/.cargo/bin`). On Windows, install it with:
-
-```
-winget install --id Rustlang.Rustup --exact
-```
-
-Open a new shell after installation, then rerun
-`.\scripts\Manage-CoCService.ps1 install`. The generated N-API binary remains
-in the repository, so a SYSTEM-mode task can start without access to the
-installing user's Cargo directory.
+`coc:link` and before task registration. On a fresh checkout, `ensure:native`
+downloads the official Windows `rustup-init`, installs the minimal toolchain
+under the installing account, and builds the addon. Set
+`COC_NATIVE_AUTO_INSTALL_RUST=0` to require manual provisioning. The generated
+N-API binary remains in the repository, so a SYSTEM-mode task can start
+without access to the installing user's Cargo directory.
 
 ## Tunnel Setup
 

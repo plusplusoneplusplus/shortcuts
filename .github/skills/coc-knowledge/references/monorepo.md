@@ -32,7 +32,7 @@ The Notes index exposes asynchronous initial build, bounded search, full rebuild
 
 TS glue (`npm run build`) needs no Rust; only `build:native` does, driving `@napi-rs/cli` to compile the addon and regenerate `src/native-bindings.ts` — the `#[napi]` type surface, committed so `tsc` never needs cargo, aliased by capability modules, and CI-gated by a regenerate-and-diff step. Binaries resolve from a locally built `coc-native.<triple>.node`, then `prebuilt/<triple>/`, and are ABI-stable across Node and Electron.
 
-`ensure:native` keeps a machine's binary current by rebuilding only when the `.node` is missing or older than a file under `rust/`. The serve loops run it before `coc:link`, and the Windows service installer runs it during the initial build before registering a task that skips its first loop build. A failed build or missing cargo keeps the daemon on an existing binary; it fails when there is no binary to use.
+`ensure:native` keeps a machine's binary current by rebuilding only when the `.node` is missing or older than a file under `rust/`. The serve loops run it before `coc:link`, and the Windows service installer runs it during the initial build before registering a task that skips its first loop build. When cargo is absent, it downloads the official target-specific `rustup-init`, installs the minimal toolchain without changing shell profiles, and continues; `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning. A failed install or build keeps the daemon on an existing binary and fails when there is no binary to use.
 
 ### coc-connector
 
