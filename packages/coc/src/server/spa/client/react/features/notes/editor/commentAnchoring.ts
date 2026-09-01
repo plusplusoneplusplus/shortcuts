@@ -33,9 +33,6 @@ export function textOffsetToPos(doc: ProseMirrorNode, offset: number): number {
     return pos;
 }
 
-/**
- * Convert a ProseMirror position to a plain-text character offset.
- */
 export function posToTextOffset(doc: ProseMirrorNode, targetPos: number): number {
     let textSoFar = 0;
     let result = 0;
@@ -64,8 +61,8 @@ export function posToTextOffset(doc: ProseMirrorNode, targetPos: number): number
 const CONTEXT_CHARS = 50;
 
 /**
- * Create a TextAnchor from the editor's current selection.
- * Extracts the selected text plus surrounding context for relocation.
+ * The selected text plus ~50 chars either side, for later relocation. Null
+ * when the selection is empty.
  */
 export function createTextAnchorFromSelection(editor: Editor): TextAnchor | null {
     const { from, to } = editor.state.selection;
@@ -147,10 +144,7 @@ export function findAnchorInDoc(
     return { from, to };
 }
 
-/**
- * Apply a comment mark to a specific range in the editor for a given thread ID.
- * Preserves the user's current selection afterward.
- */
+/** Marks the range, then restores the user's selection. */
 export function applyCommentMark(
     editor: Editor,
     threadId: string,
@@ -262,8 +256,8 @@ function scrollCommentSpanIntoView(editor: Editor, threadId: string): void {
 }
 
 /**
- * Re-create a fresh TextAnchor for a thread whose mark is still in the editor.
- * Returns null if the mark can't be found.
+ * A fresh TextAnchor read off a thread's live comment mark; null once the mark
+ * is gone (e.g. the thread was resolved).
  */
 export function buildAnchorFromMark(
     editor: Editor,

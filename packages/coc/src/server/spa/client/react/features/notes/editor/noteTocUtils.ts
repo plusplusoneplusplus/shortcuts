@@ -11,8 +11,9 @@ export interface TocEntry {
 }
 
 /**
- * Walk editor.state.doc and collect all heading nodes (H1/H2/H3).
- * Returns a flat list ordered by document position.
+ * H1-H3 headings with non-empty text, in document order. Empty headings are
+ * skipped, so the entry list does not line up with a `querySelectorAll` of the
+ * rendered headings.
  */
 export function extractHeadings(editor: Editor): TocEntry[] {
     const entries: TocEntry[] = [];

@@ -1,7 +1,7 @@
 /**
  * Word-level diff for AI edit decorations.
  *
- * Tokenizes two strings on word/punctuation boundaries and runs a Myers
+ * Tokenizes two strings on word/punctuation boundaries and runs an O(n*m)
  * LCS diff to produce a flat list of DiffChunk objects, each typed as
  * 'equal', 'add', or 'remove'. Used by AiEditDecorationExtension to
  * render GitHub-style word-diff decorations in the Tiptap editor.
@@ -25,10 +25,7 @@ function tokenize(text: string): string[] {
     return text.split(/(\s+|[^\w\s]+)/g).filter(t => t.length > 0);
 }
 
-/**
- * Compute Myers LCS-based word diff between oldStr and newStr.
- * Returns a flat list of DiffChunk objects.
- */
+/** Adjacent chunks of the same type come back merged into one. */
 export function wordDiff(oldStr: string, newStr: string): DiffChunk[] {
     const aTokens = tokenize(oldStr);
     const bTokens = tokenize(newStr);

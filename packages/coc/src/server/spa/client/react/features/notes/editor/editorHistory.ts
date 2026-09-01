@@ -7,11 +7,10 @@
  * stack when a new note is loaded, Ctrl+Z would walk back across notes and
  * replace the visible note's content with a previously loaded note.
  *
- * This module provides a single helper, `resetEditorHistory`, which rebuilds
- * the editor's `EditorState` from scratch. Plugin state fields are
- * reinitialized via `state.init()`, which gives the history plugin a fresh,
- * empty undo/redo stack while preserving the current document, selection,
- * and stored marks.
+ * `resetEditorHistory` rebuilds the editor's `EditorState` from scratch. That
+ * reinitializes every plugin's state field, which gives the history plugin an
+ * empty undo/redo stack while the document, selection, and stored marks carry
+ * over.
  */
 
 import type { Editor } from '@tiptap/core';

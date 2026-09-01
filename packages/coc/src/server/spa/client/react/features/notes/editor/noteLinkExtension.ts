@@ -15,8 +15,7 @@ import { Node, mergeAttributes, nodePasteRule } from '@tiptap/core';
 export const NOTE_LINK_PASTE_RE = () => /\[\[(?:[^\]|]+\|)?note:([^\]#]+?)(?:#([^\]]*))?\]\]/g;
 
 /**
- * Derive a display label from a note path.
- * Strips the `.md` extension and returns only the file basename.
+ * The basename without `.md`, plus ` § heading` when a heading is given.
  */
 export function noteLinkLabel(path: string, heading?: string | null): string {
     const basename = path.split('/').pop()?.replace(/\.md$/i, '') ?? path;
