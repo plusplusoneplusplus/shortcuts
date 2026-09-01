@@ -19,9 +19,6 @@ import type {
 } from './types';
 import { createReviewComment, buildReviewResult, type CreateReviewCommentInput } from './utils';
 
-/**
- * Configuration for the HumanReviewer.
- */
 export interface HumanReviewerConfig {
     /** The human author identity. */
     author: ReviewAuthor;
@@ -191,9 +188,6 @@ export class HumanReviewer implements IDiffReviewer {
     }
 }
 
-/**
- * Extended review options for HumanReviewer.
- */
 export interface HumanReviewOptions extends ReviewOptions {
     /**
      * Callback that receives a `ReviewSession` for interactive comment management.

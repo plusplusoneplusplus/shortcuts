@@ -1,7 +1,3 @@
-/**
- * Provider for bundled skills that ship with pipeline-core
- */
-
 import * as path from 'path';
 import * as fs from 'fs';
 import { BundledSkill, DiscoveredSkill, InstallResult, InstallDetail } from './types';
@@ -12,15 +8,11 @@ import { BUNDLED_SKILLS_REGISTRY } from './bundled-skills-registry';
 import { parseVersionFromFrontmatter } from './skill-version-parser';
 import { compareVersions } from '../utils/version-compare';
 
-/**
- * Get the path to the bundled skills directory
- */
 export function getBundledSkillsPath(): string {
     return path.join(__dirname, '../../resources/bundled-skills');
 }
 
 /**
- * Get all available bundled skills
  * @param installPath Target installation path to check for existing skills
  */
 export function getBundledSkills(installPath: string): DiscoveredSkill[] {
@@ -176,9 +168,7 @@ function shouldReplaceForNewerVersion(
 }
 
 /**
- * Install bundled skills to the target directory
  * @param skills Skills to install (from getBundledSkills)
- * @param installPath Target installation path
  * @param handleConflict Callback to handle skill conflicts (returns true to replace)
  */
 export async function installBundledSkills(
@@ -193,12 +183,9 @@ export async function installBundledSkills(
 }
 
 /**
- * Parse the version of a bundled skill from its SKILL.md frontmatter.
+ * Reads `resources/bundled-skills/<skillName>/SKILL.md`.
  *
- * Reads the SKILL.md file in `resources/bundled-skills/<skillName>/` and
- * extracts the `metadata.version` field from the YAML frontmatter.
- *
- * @returns The version string, or undefined if not found or unparseable.
+ * @returns undefined when the file is missing or carries no parseable version.
  */
 export function parseBundledSkillVersion(skillName: string): string | undefined {
     const skillMdPath = path.join(getBundledSkillsPath(), skillName, 'SKILL.md');
@@ -206,8 +193,6 @@ export function parseBundledSkillVersion(skillName: string): string | undefined 
 }
 
 /**
- * Parse the version from a SKILL.md file's frontmatter.
- *
  * Supports both top-level `version:` and nested `metadata:\n  version:`.
  */
 export function parseSkillVersionFromFile(skillMdPath: string): string | undefined {
@@ -221,17 +206,12 @@ export function parseSkillVersionFromFile(skillMdPath: string): string | undefin
 }
 
 /**
- * Parse the version from SKILL.md content string.
- *
  * Supports both top-level `version:` and nested `metadata:\n  version:`.
  */
 export function parseSkillVersionFromContent(content: string): string | undefined {
     return parseVersionFromFrontmatter(content);
 }
 
-/**
- * Get a read-only copy of the bundled skills registry.
- */
 export function getBundledSkillsRegistry(): readonly BundledSkill[] {
     return BUNDLED_SKILLS_REGISTRY;
 }
@@ -240,7 +220,6 @@ export function getBundledSkillsRegistry(): readonly BundledSkill[] {
 // Auto-install default skills
 // ============================================================================
 
-/** Result of an auto-install default skills run */
 export interface AutoInstallResult {
     installed: string[];
     skipped: string[];

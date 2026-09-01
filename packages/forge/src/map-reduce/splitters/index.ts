@@ -1,9 +1,3 @@
-/**
- * Splitters Module
- *
- * Exports all splitter implementations and utilities.
- */
-
 // File splitter
 export {
     FileSplitter,

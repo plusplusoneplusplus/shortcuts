@@ -1,10 +1,6 @@
 /**
- * Chunk Splitter
- *
  * Splits large content into smaller chunks for processing.
  * Useful for processing large files or texts that exceed model context limits.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { Splitter, WorkItem } from '../types';
@@ -15,9 +11,6 @@ import {
     DEFAULT_CHUNK_PRESERVE_BOUNDARIES
 } from '../../config/defaults';
 
-/**
- * Input for chunk splitter
- */
 export interface ChunkInput {
     /** The content to split into chunks */
     content: string;
@@ -27,9 +20,6 @@ export interface ChunkInput {
     context?: Record<string, unknown>;
 }
 
-/**
- * Work item data for chunk processing
- */
 export interface ChunkWorkItemData {
     /** The chunk content */
     content: string;
@@ -47,9 +37,6 @@ export interface ChunkWorkItemData {
     endOffset?: number;
 }
 
-/**
- * Options for chunk splitter
- */
 export interface ChunkSplitterOptions {
     /**
      * Maximum size of each chunk (in characters)
@@ -82,9 +69,6 @@ export interface ChunkSplitterOptions {
     preserveBoundaries: boolean;
 }
 
-/**
- * Default chunk splitter options
- */
 const DEFAULT_CHUNK_OPTIONS: ChunkSplitterOptions = {
     maxChunkSize: DEFAULT_CHUNK_MAX_SIZE,
     overlapSize: DEFAULT_CHUNK_OVERLAP_SIZE,
@@ -92,9 +76,6 @@ const DEFAULT_CHUNK_OPTIONS: ChunkSplitterOptions = {
     preserveBoundaries: DEFAULT_CHUNK_PRESERVE_BOUNDARIES
 };
 
-/**
- * Splitter that divides content into smaller chunks
- */
 export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
     private options: ChunkSplitterOptions;
 
@@ -379,16 +360,10 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
     }
 }
 
-/**
- * Factory function to create a chunk splitter
- */
 export function createChunkSplitter(options?: Partial<ChunkSplitterOptions>): ChunkSplitter {
     return new ChunkSplitter(options);
 }
 
-/**
- * Create a line-based chunk splitter
- */
 export function createLineChunkSplitter(
     maxChunkSize: number = 4000,
     overlapSize: number = 200
@@ -401,9 +376,6 @@ export function createLineChunkSplitter(
     });
 }
 
-/**
- * Create a paragraph-based chunk splitter
- */
 export function createParagraphChunkSplitter(maxChunkSize: number = 4000): ChunkSplitter {
     return new ChunkSplitter({
         maxChunkSize,

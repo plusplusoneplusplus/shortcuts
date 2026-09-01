@@ -1,10 +1,6 @@
 /**
- * Prompt Template
- *
  * Lightweight template system for building prompts from templates with variable substitution.
  * Supports required variables validation and optional response parsing.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { PromptRenderOptions, PromptTemplate } from './types';
@@ -17,9 +13,6 @@ import { PipelineCoreError, ErrorCode } from '../errors';
 // Re-export PromptTemplate for convenience
 export type { PromptTemplate } from './types';
 
-/**
- * Error thrown when a required variable is missing
- */
 export class MissingVariableError extends PipelineCoreError {
     /** Name of the missing variable */
     readonly variableName: string;
@@ -44,9 +37,6 @@ export class MissingVariableError extends PipelineCoreError {
     }
 }
 
-/**
- * Error thrown when template rendering fails
- */
 export class TemplateRenderError extends PipelineCoreError {
     constructor(
         message: string,
@@ -61,10 +51,6 @@ export class TemplateRenderError extends PipelineCoreError {
 }
 
 /**
- * Render a prompt template with the given variables
- * @param template The prompt template to render
- * @param options Render options including variables
- * @returns The rendered prompt string
  * @throws MissingVariableError if a required variable is missing
  * @throws TemplateRenderError if rendering fails
  */
@@ -102,11 +88,6 @@ export function renderTemplate(
     }
 }
 
-/**
- * Create a new prompt template
- * @param config Template configuration
- * @returns PromptTemplate instance
- */
 export function createTemplate(config: {
     template: string;
     requiredVariables?: string[];
@@ -123,21 +104,11 @@ export function createTemplate(config: {
     };
 }
 
-/**
- * Extract variable names from a template string
- * @param template The template string
- * @returns Array of variable names found in the template
- */
 export function extractVariables(template: string): string[] {
     // Use shared implementation but don't exclude any variables
     return extractTemplateVariables(template, false);
 }
 
-/**
- * Validate that a template has all required variables defined
- * @param template The template to validate
- * @returns Object with valid flag and any missing variables
- */
 export function validateTemplate(template: PromptTemplate): {
     valid: boolean;
     missingInTemplate: string[];
@@ -159,10 +130,7 @@ export function validateTemplate(template: PromptTemplate): {
 }
 
 /**
- * Compose multiple templates into one
- * @param templates Array of templates to compose
  * @param separator Separator between templates (default: '\n\n')
- * @returns Combined template
  */
 export function composeTemplates(
     templates: PromptTemplate[],
@@ -182,9 +150,6 @@ export function composeTemplates(
     };
 }
 
-/**
- * Built-in template helpers
- */
 export const TemplateHelpers = {
     /**
      * Escape special characters in a string for use in templates
@@ -239,9 +204,6 @@ export const TemplateHelpers = {
     }
 };
 
-/**
- * Common response parsers
- */
 export const ResponseParsers = {
     /**
      * Parse JSON from a response

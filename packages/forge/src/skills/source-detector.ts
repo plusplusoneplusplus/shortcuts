@@ -1,16 +1,8 @@
-/**
- * Source detection for skill installation
- * Determines whether input is a GitHub URL or local filesystem path
- */
-
 import * as path from 'path';
 import * as os from 'os';
 import { ParsedSource, SkillSourceType } from './types';
 import { safeExists, httpDownload } from '../utils';
 
-/**
- * Error messages for source detection
- */
 export const SourceDetectionErrors = {
     AMBIGUOUS: 'Could not determine source type. Use full GitHub URL or absolute/relative path.',
     INVALID_GITHUB_URL: 'Invalid GitHub URL. Expected: https://github.com/owner/repo/tree/branch/path',
@@ -20,10 +12,7 @@ export const SourceDetectionErrors = {
 } as const;
 
 /**
- * Detect the source type from user input
- * @param input User-provided source string
  * @param workspaceRoot Workspace root for resolving relative paths
- * @returns Parsed source information or error
  */
 export function detectSource(input: string, workspaceRoot?: string): { success: true; source: ParsedSource } | { success: false; error: string } {
     const trimmed = input.trim();
@@ -77,9 +66,6 @@ export function detectSource(input: string, workspaceRoot?: string): { success: 
     return { success: false, error: SourceDetectionErrors.AMBIGUOUS };
 }
 
-/**
- * Check if input looks like a GitHub URL
- */
 function isGitHubUrl(input: string): boolean {
     return (
         input.startsWith('https://github.com') ||
@@ -88,9 +74,6 @@ function isGitHubUrl(input: string): boolean {
     );
 }
 
-/**
- * Check if input looks like a local path
- */
 function isLocalPath(input: string): boolean {
     // Unix absolute path
     if (input.startsWith('/')) {
@@ -177,9 +160,6 @@ function parseGitHubUrl(url: string): { owner: string; repo: string; branch: str
     return { owner, repo, branch, path: repoPath };
 }
 
-/**
- * Resolve a local path to an absolute path
- */
 function resolveLocalPath(input: string, workspaceRoot?: string): string {
     let resolved = input;
 
@@ -197,9 +177,6 @@ function resolveLocalPath(input: string, workspaceRoot?: string): string {
     return path.normalize(resolved);
 }
 
-/**
- * Check if input looks like a ClawHub URL
- */
 export function isClawHubUrl(input: string): boolean {
     return (
         input.startsWith('https://clawhub.ai') ||

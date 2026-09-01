@@ -1,10 +1,6 @@
 /**
- * Template Job
- *
  * Helper for creating list + template prompt workflows.
  * Applies a prompt template to each item in a list.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -22,9 +18,6 @@ import { PromptTemplate } from '../types';
 import { BaseReducer, FlattenReducer } from '../reducers';
 import { BaseMapper } from './base-mapper';
 
-/**
- * A single item in the template job input
- */
 export interface TemplateItem {
     /** Unique identifier for this item */
     id?: string;
@@ -34,9 +27,6 @@ export interface TemplateItem {
     metadata?: Record<string, unknown>;
 }
 
-/**
- * Input for template job
- */
 export interface TemplateJobInput {
     /** Items to process */
     items: TemplateItem[];
@@ -44,9 +34,6 @@ export interface TemplateJobInput {
     globalVariables?: Record<string, string | number | boolean>;
 }
 
-/**
- * Work item data for template processing
- */
 export interface TemplateWorkItemData {
     /** The template item */
     item: TemplateItem;
@@ -54,9 +41,6 @@ export interface TemplateWorkItemData {
     globalVariables?: Record<string, string | number | boolean>;
 }
 
-/**
- * Result from processing a single template item
- */
 export interface TemplateItemResult<TOutput = string> {
     /** Item ID */
     itemId: string;
@@ -70,9 +54,6 @@ export interface TemplateItemResult<TOutput = string> {
     rawResponse?: string;
 }
 
-/**
- * Options for template job
- */
 export interface TemplateJobOptions<TOutput = string> {
     /** AI invoker function */
     aiInvoker: AIInvoker;
@@ -91,7 +72,7 @@ export interface TemplateJobOptions<TOutput = string> {
 }
 
 /**
- * Splitter for template jobs - creates a work item for each input item
+ * Creates one work item per input item.
  */
 class TemplateSplitter implements Splitter<TemplateJobInput, TemplateWorkItemData> {
     split(input: TemplateJobInput): WorkItem<TemplateWorkItemData>[] {
@@ -111,7 +92,7 @@ class TemplateSplitter implements Splitter<TemplateJobInput, TemplateWorkItemDat
 }
 
 /**
- * Mapper for template jobs - applies template and invokes AI
+ * Applies the template, then invokes AI.
  */
 class TemplateMapper<TOutput> extends BaseMapper<TemplateWorkItemData, TemplateItemResult<TOutput>> {
     private promptTemplate: PromptTemplate;
@@ -195,7 +176,7 @@ class TemplateMapper<TOutput> extends BaseMapper<TemplateWorkItemData, TemplateI
 }
 
 /**
- * Default reducer for template jobs - collects all results
+ * Default reducer: collects all results.
  */
 class TemplateResultsReducer<TOutput> extends BaseReducer<TemplateItemResult<TOutput>, TemplateItemResult<TOutput>[]> {
     async reduce(
@@ -223,9 +204,6 @@ class TemplateResultsReducer<TOutput> extends BaseReducer<TemplateItemResult<TOu
     }
 }
 
-/**
- * Create a template job
- */
 export function createTemplateJob<TOutput = string>(
     options: TemplateJobOptions<TOutput>
 ): MapReduceJob<TemplateJobInput, TemplateWorkItemData, TemplateItemResult<TOutput>, TemplateItemResult<TOutput>[]> {
@@ -251,7 +229,7 @@ export function createTemplateJob<TOutput = string>(
 }
 
 /**
- * Create a simple string template job (no custom parsing)
+ * String template job, no custom parsing.
  */
 export function createSimpleTemplateJob(
     aiInvoker: AIInvoker,
@@ -271,7 +249,7 @@ export function createSimpleTemplateJob(
 }
 
 /**
- * Create a JSON template job with type-safe parsing
+ * JSON template job with type-safe parsing.
  */
 export function createJsonTemplateJob<TOutput>(
     aiInvoker: AIInvoker,
@@ -310,8 +288,7 @@ export function createJsonTemplateJob<TOutput>(
 }
 
 /**
- * Create a list processing template job
- * Useful for processing a list of items and getting structured results
+ * Processes a list of items and returns structured results.
  */
 export function createListProcessingJob<TInput, TOutput>(
     aiInvoker: AIInvoker,

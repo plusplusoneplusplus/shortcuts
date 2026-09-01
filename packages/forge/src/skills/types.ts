@@ -1,15 +1,5 @@
-/**
- * Types and interfaces for the Skills module
- */
-
-/**
- * Source type for skill installation
- */
 export type SkillSourceType = 'github' | 'local' | 'bundled' | 'clawhub';
 
-/**
- * Represents a discovered skill from a source
- */
 export interface DiscoveredSkill {
     /** Skill name (directory name) */
     name: string;
@@ -21,9 +11,6 @@ export interface DiscoveredSkill {
     alreadyExists?: boolean;
 }
 
-/**
- * Result of parsing a source input
- */
 export interface ParsedSource {
     /** Type of source */
     type: SkillSourceType;
@@ -43,9 +30,6 @@ export interface ParsedSource {
     };
 }
 
-/**
- * Result of scanning a source for skills
- */
 export interface ScanResult {
     /** Whether the scan was successful */
     success: boolean;
@@ -55,9 +39,6 @@ export interface ScanResult {
     skills: DiscoveredSkill[];
 }
 
-/**
- * Result of installing skills
- */
 export interface InstallResult {
     /** Number of skills successfully installed */
     installed: number;
@@ -69,9 +50,6 @@ export interface InstallResult {
     details: InstallDetail[];
 }
 
-/**
- * Detail about a single skill installation
- */
 export interface InstallDetail {
     /** Skill name */
     name: string;
@@ -83,24 +61,15 @@ export interface InstallDetail {
     action: 'installed' | 'replaced' | 'skipped' | 'failed';
 }
 
-/**
- * Settings for skills installation
- */
 export interface SkillsSettings {
     /** Path to install skills (relative to workspace root) */
     installPath: string;
 }
 
-/**
- * Default settings
- */
 export const DEFAULT_SKILLS_SETTINGS: SkillsSettings = {
     installPath: '.github/skills'
 };
 
-/**
- * Represents a bundled skill that ships with the package
- */
 export interface BundledSkill {
     /** Skill name (directory name) */
     name: string;

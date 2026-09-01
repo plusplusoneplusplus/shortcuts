@@ -1,17 +1,10 @@
 /**
- * File Splitter
- *
  * Splits input by files for file-based processing.
  * Handles both arrays of files and file-containing objects.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { Splitter, WorkItem } from '../types';
 
-/**
- * A file item with path and optional content
- */
 export interface FileItem {
     /** File path (relative or absolute) */
     path: string;
@@ -21,9 +14,6 @@ export interface FileItem {
     metadata?: Record<string, unknown>;
 }
 
-/**
- * Input for file splitter
- */
 export interface FileInput {
     /** Array of files to process */
     files: FileItem[];
@@ -31,9 +21,6 @@ export interface FileInput {
     context?: Record<string, unknown>;
 }
 
-/**
- * Work item data for file processing
- */
 export interface FileWorkItemData {
     /** The file being processed */
     file: FileItem;
@@ -41,9 +28,6 @@ export interface FileWorkItemData {
     context?: Record<string, unknown>;
 }
 
-/**
- * Options for file splitter
- */
 export interface FileSplitterOptions {
     /**
      * Function to generate work item ID from file
@@ -63,9 +47,6 @@ export interface FileSplitterOptions {
     batchSize?: number;
 }
 
-/**
- * Splitter that creates a work item for each file
- */
 export class FileSplitter implements Splitter<FileInput, FileWorkItemData> {
     constructor(private options: FileSplitterOptions = {}) {}
 
@@ -145,16 +126,10 @@ export class FileSplitter implements Splitter<FileInput, FileWorkItemData> {
     }
 }
 
-/**
- * Factory function to create a file splitter
- */
 export function createFileSplitter(options?: FileSplitterOptions): FileSplitter {
     return new FileSplitter(options);
 }
 
-/**
- * Create a file splitter with extension filter
- */
 export function createExtensionFilteredSplitter(
     extensions: string[],
     options?: Omit<FileSplitterOptions, 'filter'>
@@ -172,9 +147,6 @@ export function createExtensionFilteredSplitter(
     });
 }
 
-/**
- * Get the file extension from a path
- */
 function getFileExtension(path: string): string {
     const lastDot = path.lastIndexOf('.');
     if (lastDot === -1 || lastDot === path.length - 1) {
@@ -183,9 +155,6 @@ function getFileExtension(path: string): string {
     return path.slice(lastDot);
 }
 
-/**
- * Batched file splitter that groups multiple files into single work items
- */
 export interface BatchedFileWorkItemData {
     /** Array of files in this batch */
     files: FileItem[];
@@ -195,9 +164,6 @@ export interface BatchedFileWorkItemData {
     batchIndex: number;
 }
 
-/**
- * Splitter that creates work items with batches of files
- */
 export class BatchedFileSplitter implements Splitter<FileInput, BatchedFileWorkItemData> {
     constructor(
         private batchSize: number = 5,
@@ -240,9 +206,6 @@ export class BatchedFileSplitter implements Splitter<FileInput, BatchedFileWorkI
     }
 }
 
-/**
- * Factory function to create a batched file splitter
- */
 export function createBatchedFileSplitter(
     batchSize: number,
     options?: Omit<FileSplitterOptions, 'batchSize'>

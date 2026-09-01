@@ -1,10 +1,6 @@
 /**
- * AI-Powered Reducer
- *
  * A reducer that uses AI to intelligently synthesize and deduplicate results.
  * Falls back to deterministic reduction on failure.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -18,9 +14,6 @@ import { BaseReducer } from './reducer';
 import { ResponseParsers } from '../prompt-template';
 import { getAIServiceLogger } from '../../ai-logger';
 
-/**
- * Options for the AI reducer
- */
 export interface AIReducerOptions<TMapOutput, TReduceOutput> {
     /**
      * AI invoker function for making the reduce call
@@ -132,19 +125,12 @@ export class AIReducer<TMapOutput, TReduceOutput> extends BaseReducer<TMapOutput
     }
 }
 
-/**
- * Factory function to create an AI reducer
- */
 export function createAIReducer<TMapOutput, TReduceOutput>(
     options: AIReducerOptions<TMapOutput, TReduceOutput>
 ): AIReducer<TMapOutput, TReduceOutput> {
     return new AIReducer(options);
 }
 
-/**
- * Generic AI synthesis reducer for text outputs
- * Synthesizes multiple text outputs into a single coherent summary
- */
 export interface TextSynthesisOutput {
     /** Synthesized summary */
     summary: string;
@@ -154,9 +140,6 @@ export interface TextSynthesisOutput {
     originalCount: number;
 }
 
-/**
- * Options for text synthesis reducer
- */
 export interface TextSynthesisOptions {
     /** AI invoker function */
     aiInvoker: AIInvoker;
@@ -166,9 +149,6 @@ export interface TextSynthesisOptions {
     model?: string;
 }
 
-/**
- * Create a text synthesis reducer that combines text outputs using AI
- */
 export function createTextSynthesisReducer(
     options: TextSynthesisOptions
 ): AIReducer<string, TextSynthesisOutput> {
