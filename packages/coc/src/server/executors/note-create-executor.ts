@@ -6,9 +6,6 @@
  *
  * Returns `{ path, title, notebook }` in the process metadata for the
  * SPA client to navigate to the newly created note.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

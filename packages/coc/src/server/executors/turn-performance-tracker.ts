@@ -13,7 +13,7 @@
  *
  * State is keyed by processId (one in-flight turn per process at a time),
  * and every derived event carries its own processId + turnIndex — never
- * global. Pure Node.js; cross-platform.
+ * global.
  */
 
 import type { ConversationTurn, TokenUsage, TurnPerformanceEvent, TurnPerformanceStatus } from '@plusplusoneplusplus/forge';

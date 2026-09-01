@@ -10,9 +10,6 @@
  * The `execute(task)` override builds the enriched prompt before calling
  * `super.execute(task, aiPrompt)`, and `buildModeOptions()` injects the
  * plan-generation system message stored in a per-task Map.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

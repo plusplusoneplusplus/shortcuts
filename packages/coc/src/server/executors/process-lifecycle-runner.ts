@@ -15,9 +15,6 @@
  * Extracted from CLITaskExecutor so the bridge becomes a thin routing facade.
  * Extends BaseExecutor for shared streaming/session plumbing (sessions map,
  * cleanupSession, flushConversationTurn, persistOutput).
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';

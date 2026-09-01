@@ -27,9 +27,6 @@
  * Types are declared here rather than imported from concrete executors so the
  * queue layer never has to reach into an executor implementation for a
  * contract.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';

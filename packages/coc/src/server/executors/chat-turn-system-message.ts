@@ -22,9 +22,6 @@
  * Callers decide *whether* a block applies (e.g. grilling suppresses the
  * auto-folder block, and follow-ups only pass it in ask mode) by passing
  * `undefined`; they do not decide where it lands.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AutoFolderContext, SystemMessageConfig } from '@plusplusoneplusplus/forge';

@@ -8,9 +8,6 @@
  * Pre-binds commit context (commitHash, parentHash, workspaceId) at
  * construction time so the AI only provides per-call values (filePath,
  * lineStart, side, comment).
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { execGitAsync } from '@plusplusoneplusplus/forge/git';

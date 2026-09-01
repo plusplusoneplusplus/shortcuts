@@ -9,9 +9,6 @@
  * Extends ChatBaseExecutor so that the shared execute() lifecycle is reused.
  * The `buildModeOptions()` creates the resolve-comment tool and stores
  * `getResolvedIds` in a per-process Map for retrieval after the AI call.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
