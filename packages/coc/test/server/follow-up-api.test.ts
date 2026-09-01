@@ -1,6 +1,4 @@
 /**
- * Follow-Up API Tests
- *
  * Tests for the POST /api/processes/:id/message REST endpoint:
  * success path, 404/400/409/410 error paths, and turn appending.
  *

@@ -1,6 +1,4 @@
 /**
- * DB Browser Handler Tests
- *
  * Tests for the database browser admin API endpoints (read + edit + delete).
  */
 

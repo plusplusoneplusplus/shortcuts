@@ -1,10 +1,6 @@
 /**
- * API Handler — Image Persistence Tests
- *
  * Verifies that POST /api/processes/:id/message validates image data
  * URLs and passes them through to the bridge (executeFollowUp).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

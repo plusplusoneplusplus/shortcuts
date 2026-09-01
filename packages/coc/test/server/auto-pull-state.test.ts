@@ -6,7 +6,7 @@
  * to a full interval, and a missing/corrupt file degrades to "never run"
  * instead of throwing.
  *
- * Real filesystem under a temp dir; no git, no timers. Cross-platform.
+ * Real filesystem under a temp dir; no git, no timers.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

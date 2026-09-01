@@ -1,16 +1,3 @@
-/**
- * Prompt Builder Tests (executors/prompt-builder)
- *
- * Unit tests for all exported pure functions:
- * - buildModeSystemMessage
- * - withRepoInstructions
- * - findContextFileSuffix
- * - extractPrompt
- * - applySkillContent
- * - buildConversationHistoryContext
- * - buildFollowUpSuggestionsAddon
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';

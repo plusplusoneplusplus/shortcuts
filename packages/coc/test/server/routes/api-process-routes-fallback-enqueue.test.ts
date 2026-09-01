@@ -1,6 +1,4 @@
 /**
- * Fallback Enqueue Path — workspaceId Propagation Test
- *
  * Verifies that when a follow-up message falls through to the fallback enqueue
  * path (no parent task found), the workspaceId is propagated from process metadata
  * into the new task payload so ChatExecutor can inject work item tools.

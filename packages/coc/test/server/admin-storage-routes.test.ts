@@ -1,6 +1,4 @@
 /**
- * Admin Storage Routes Tests
- *
  * Tests for the four storage migration admin endpoints:
  *   - GET /api/admin/storage/status
  *   - GET /api/admin/storage/migrate-token

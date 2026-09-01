@@ -1,10 +1,6 @@
 /**
- * API Handler — deliveryMode Tests
- *
  * Verifies that POST /api/processes/:id/message accepts, validates, and
  * defaults the `deliveryMode` field, and emits `message-queued` SSE events.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';

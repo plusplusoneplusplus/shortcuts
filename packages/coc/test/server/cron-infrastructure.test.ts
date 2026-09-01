@@ -1,7 +1,3 @@
-/**
- * Tests for cron infrastructure builder.
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';

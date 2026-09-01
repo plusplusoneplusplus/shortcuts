@@ -1,11 +1,8 @@
 /**
- * Cron Executor Tests
- *
  * Unit tests for `CronExecutor` — timer scheduling, tick execution,
  * circuit breakers, concurrency guards, and lifecycle management.
  *
  * Uses in-memory SQLite databases and stubs for external dependencies.
- * Cross-platform safe (no file I/O, no OS-specific paths).
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';

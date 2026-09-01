@@ -1,6 +1,4 @@
 /**
- * Tests for effort-tier routes on agent-providers.
- *
  * Validates GET/PUT /api/agent-providers/:provider/effort-tiers endpoints
  * using in-process HTTP.
  */

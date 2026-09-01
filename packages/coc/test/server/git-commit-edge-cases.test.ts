@@ -1,6 +1,4 @@
 /**
- * Git Commit Edge Cases Tests
- *
  * Section 7: Commit Diff Edge Cases
  * - GET /commits/:hash/diff for initial commit (no parent) → all files shown as added
  * - GET /commits/:hash/diff for merge commit (2 parents) → shows merge diff
@@ -11,7 +9,7 @@
  * - GET /commits with ?skip=N → skips N commits
  * - GET /commits with ?since=<date> → includes since param in git log command
  *
- * Mocks execSync/execFileSync. Cross-platform compatible.
+ * Mocks execSync/execFileSync.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

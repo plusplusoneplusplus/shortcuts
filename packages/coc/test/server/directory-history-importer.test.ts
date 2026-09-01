@@ -1,6 +1,4 @@
 /**
- * Directory History Importer Tests
- *
  * Validates the scan, match, and import pipeline:
  * - Scan a directory with multiple workspace subdirectories
  * - Scan with auto-detect (repos/ subdirectory inside given path)

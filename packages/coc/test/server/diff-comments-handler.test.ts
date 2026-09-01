@@ -1,6 +1,4 @@
 /**
- * Diff Comments Handler Tests
- *
  * Comprehensive tests for the diff comments REST API:
  * - DiffCommentsManager unit tests (CRUD, hashing, storage, ephemeral)
  * - REST API integration tests (GET, POST, PATCH, DELETE)

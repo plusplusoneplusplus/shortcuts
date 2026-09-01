@@ -1,6 +1,4 @@
 /**
- * Tests for provider-scoped model routes on agent-providers.
- *
  * Validates GET/PUT /api/agent-providers/:provider/models/* endpoints
  * using in-process HTTP.
  */

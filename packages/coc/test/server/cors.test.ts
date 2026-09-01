@@ -4,8 +4,6 @@
  * Verifies that the shared router sets the correct CORS headers on every
  * HTTP response and that OPTIONS preflight requests are handled correctly
  * without triggering any side effects.
- *
- * Cross-platform compatible (Linux/macOS/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

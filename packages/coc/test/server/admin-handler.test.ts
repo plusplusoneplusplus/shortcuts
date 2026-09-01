@@ -1,6 +1,4 @@
 /**
- * Admin Handler Tests
- *
  * Tests for admin API endpoints: wipe token generation, data stats,
  * and data wipe with token confirmation.
  */

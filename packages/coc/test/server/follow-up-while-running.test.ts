@@ -1,6 +1,4 @@
 /**
- * Follow-Up While Running Tests
- *
  * Tests for the duplicate chat session bug fix:
  * - Follow-up messages while parent task is running should NOT create new tasks
  * - Follow-up messages while parent task is queued should NOT create new tasks

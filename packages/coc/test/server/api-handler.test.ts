@@ -1,6 +1,4 @@
 /**
- * API Handler Tests
- *
  * Comprehensive tests for the Process REST API endpoints:
  * workspace registration, process CRUD, filtering, pagination,
  * cancel, bulk delete, stats, and helper functions.
@@ -60,7 +58,6 @@ function request(
     });
 }
 
-/** POST JSON helper. */
 function postJSON(url: string, data: unknown) {
     return request(url, {
         method: 'POST',
@@ -69,7 +66,6 @@ function postJSON(url: string, data: unknown) {
     });
 }
 
-/** PATCH JSON helper. */
 function patchJSON(url: string, data: unknown) {
     return request(url, {
         method: 'PATCH',

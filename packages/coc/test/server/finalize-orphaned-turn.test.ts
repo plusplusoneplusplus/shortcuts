@@ -1,7 +1,3 @@
-/**
- * Tests for the finalize-orphaned-turn helper.
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
     finalizeOrphanedProcess,

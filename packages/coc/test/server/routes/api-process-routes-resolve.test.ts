@@ -1,6 +1,4 @@
 /**
- * Process ID resolution fallback tests.
- *
  * Validates that GET /api/processes/:id (and other routes) correctly resolve
  * processes when the client sends a queue_-prefixed ID but the process was
  * stored with a bare UUID (e.g. forked processes).

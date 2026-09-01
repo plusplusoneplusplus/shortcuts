@@ -1,6 +1,4 @@
 /**
- * Data Wiper Tests
- *
  * Tests for the DataWiper class: wipe logic, dry-run, error handling,
  * and SQLite queue row deletion.
  */

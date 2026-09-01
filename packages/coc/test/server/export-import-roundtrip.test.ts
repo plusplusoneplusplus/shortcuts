@@ -1,6 +1,4 @@
 /**
- * Export/Import Round-Trip Fidelity Tests
- *
  * Section 8: Verifies that an export-wipe-import-re-export cycle preserves all
  * data fields without truncation, corruption, or inadvertent resets.
  */

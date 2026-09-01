@@ -7,8 +7,6 @@
  * Also verifies:
  *   - 500 errors do not leak stack traces
  *   - All error responses have Content-Type: application/json
- *
- * Cross-platform compatible (Linux/macOS/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

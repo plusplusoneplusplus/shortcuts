@@ -1,6 +1,4 @@
 /**
- * Data Importer Tests
- *
  * Validates importData():
  * - Invalid payload throws error
  * - Replace mode wipes and restores processes, workspaces, wikis

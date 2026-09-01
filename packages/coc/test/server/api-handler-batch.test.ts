@@ -1,12 +1,8 @@
 /**
- * API Handler — Batch Endpoint Tests
- *
  * Tests for:
  * - POST /api/git-info/batch — batch git-info fetch
  * - POST /api/workspaces/:id/git/changes/stage-batch — batch stage
  * - POST /api/workspaces/:id/git/changes/unstage-batch — batch unstage
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

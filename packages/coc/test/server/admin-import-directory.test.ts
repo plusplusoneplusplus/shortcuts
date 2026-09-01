@@ -1,6 +1,4 @@
 /**
- * Admin Directory Import API Tests
- *
  * Integration tests for the directory import endpoints:
  * - POST /api/admin/storage/scan-directory
  * - GET /api/admin/storage/import-directory-token
