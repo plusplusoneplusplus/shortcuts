@@ -12,6 +12,8 @@ import type { McpServerEntry } from '../../../../src/server/spa/client/react/fea
 
 const discoverMcpTools = vi.hoisted(() => vi.fn());
 const updateMcpConfig = vi.hoisted(() => vi.fn());
+/** The field-specific tool command injected by the policy owner. */
+const onSaveEnabledMcpTools = vi.hoisted(() => vi.fn());
 const getMcpServerDetail = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -39,7 +41,7 @@ function renderPanel(overrides: Partial<Parameters<typeof McpServersPanel>[0]> =
             saving={false}
             availableServers={servers}
             isEnabled={() => true}
-            enabledMcpServers={null}
+            onSaveEnabledMcpTools={onSaveEnabledMcpTools}
             onToggle={vi.fn()}
             {...overrides}
         />
@@ -128,31 +130,34 @@ describe('McpServersPanel — Tools tab discovery', () => {
     });
 });
 
-describe('McpServersPanel — Tools tab persistence (allow-list)', () => {
-    it('persists a toggle-off as the complement of discovered tools', async () => {
+/**
+ * The panel no longer writes the allow-list itself. It hands the next map to the
+ * policy owner's tool-only command (`onSaveEnabledMcpTools`), which is what keeps
+ * a tool save from carrying — and reverting — a stale `enabledMcpServers`
+ * snapshot. These assert the map handed over; the write itself is covered by
+ * useWorkspaceMcpConfigController.test.tsx.
+ */
+describe('McpServersPanel — Tools tab allow-list command', () => {
+    it('hands over the complement of discovered tools on a toggle-off', async () => {
         renderPanel();
         await waitFor(() => expect(screen.getByTestId('mcp-tools-count-github-mcp').textContent).toBe('2'));
         const user = await openToolsTab('github-mcp');
 
         await user.click(await screen.findByTestId('mcp-tool-toggle-create_issue'));
-        await waitFor(() => expect(updateMcpConfig).toHaveBeenCalled());
-        expect(updateMcpConfig).toHaveBeenCalledWith('ws-1', {
-            enabledMcpServers: null,
-            enabledMcpTools: { 'github-mcp': ['list_issues'] },
-        });
+        await waitFor(() => expect(onSaveEnabledMcpTools).toHaveBeenCalled());
+        expect(onSaveEnabledMcpTools).toHaveBeenCalledWith({ 'github-mcp': ['list_issues'] });
+        // No server-list snapshot rides along with a tool mutation.
+        expect(updateMcpConfig).not.toHaveBeenCalled();
     });
 
-    it('Disable all writes an empty allow-list for the server', async () => {
+    it('Disable all hands over an empty allow-list for the server', async () => {
         renderPanel();
         await waitFor(() => expect(screen.getByTestId('mcp-tools-count-github-mcp').textContent).toBe('2'));
         const user = await openToolsTab('github-mcp');
 
         await user.click(await screen.findByTestId('mcp-tools-disable-all'));
-        await waitFor(() => expect(updateMcpConfig).toHaveBeenCalled());
-        expect(updateMcpConfig).toHaveBeenCalledWith('ws-1', {
-            enabledMcpServers: null,
-            enabledMcpTools: { 'github-mcp': [] },
-        });
+        await waitFor(() => expect(onSaveEnabledMcpTools).toHaveBeenCalled());
+        expect(onSaveEnabledMcpTools).toHaveBeenCalledWith({ 'github-mcp': [] });
     });
 
     it('Enable all clears the server entry (no entry = all on)', async () => {
@@ -161,11 +166,9 @@ describe('McpServersPanel — Tools tab persistence (allow-list)', () => {
         const user = await openToolsTab('github-mcp');
 
         await user.click(await screen.findByTestId('mcp-tools-enable-all'));
-        await waitFor(() => expect(updateMcpConfig).toHaveBeenCalled());
-        expect(updateMcpConfig).toHaveBeenCalledWith('ws-1', {
-            enabledMcpServers: null,
-            enabledMcpTools: null,
-        });
+        await waitFor(() => expect(onSaveEnabledMcpTools).toHaveBeenCalled());
+        // Dropping the entry entirely is "all on"; the owner normalizes {} to null.
+        expect(onSaveEnabledMcpTools).toHaveBeenCalledWith({});
     });
 
     it('reflects a pre-existing allow-list in the tool toggles', async () => {

@@ -33,7 +33,6 @@ import {
     applyMcpToolToggle,
     enableAllMcpTools,
     disableAllMcpTools,
-    normalizeEnabledMcpTools,
     type EnabledMcpToolsMap,
 } from './mcpToolsAllowList';
 import { McpOAuthFlowController } from './mcpOAuthFlowController';
@@ -41,12 +40,20 @@ import type { DiscoveryState, InspectorTab, McpAuthFlowState } from './mcp-serve
 
 export interface McpInspectorControllerOptions {
     /**
-     * Raw enabled-server allow-list. Sent alongside per-tool toggles through the
-     * same `PUT /mcp-config` call so tool saves never clobber the server list.
+     * Canonical per-repo enabled-tools allow-list (server → enabled tool names),
+     * owned by `useWorkspaceMcpConfigController`. This controller renders and
+     * optimistically edits it but does not persist it.
      */
-    enabledMcpServers?: string[] | null;
-    /** Per-repo enabled-tools allow-list (server → enabled tool names). */
     enabledMcpTools?: Record<string, string[]> | null;
+    /**
+     * Field-specific tool command from the policy owner. It patches ONLY
+     * `enabledMcpTools`, so a tool save can never carry — and therefore never
+     * revert — a stale `enabledMcpServers` snapshot. Rollback on failure belongs
+     * to the owner and arrives back through `enabledMcpTools`.
+     */
+    onSaveTools?: (next: EnabledMcpToolsMap) => void;
+    /** Whether the policy owner has a write queued or in flight. */
+    toolsSaving?: boolean;
     /** Called after an OAuth flow completes or a mutation lands. */
     onRefresh?: () => void;
     /** Called after a server is added or deleted so the parent can refresh. */
@@ -93,7 +100,7 @@ export function useMcpServerInspectorController(
     workspaceId: string,
     options: McpInspectorControllerOptions,
 ): McpInspectorController {
-    const { enabledMcpServers, enabledMcpTools, onRefresh, onMutate } = options;
+    const { enabledMcpTools, onSaveTools, toolsSaving = false, onRefresh, onMutate } = options;
 
     const [expandedServer, setExpandedServer] = useState<string | null>(null);
     const [inspectorTab, setInspectorTab] = useState<InspectorTab>('overview');
@@ -104,7 +111,6 @@ export function useMcpServerInspectorController(
     const [discoveryError, setDiscoveryError] = useState<string | null>(null);
 
     const [toolsAllowList, setToolsAllowList] = useState<EnabledMcpToolsMap>(() => ({ ...(enabledMcpTools ?? {}) }));
-    const [toolsSaving, setToolsSaving] = useState(false);
 
     const [authFlow, setAuthFlow] = useState<Record<string, McpAuthFlowState>>({});
 
@@ -144,7 +150,6 @@ export function useMcpServerInspectorController(
         setDiscovery({});
         setDiscoveryState('idle');
         setDiscoveryError(null);
-        setToolsSaving(false);
         setAuthFlow({});
         setExpandedServer(null);
         setInspectorTab('overview');
@@ -160,26 +165,14 @@ export function useMcpServerInspectorController(
     // Tear down pollers on unmount.
     useEffect(() => () => { oauthRef.current?.stopAll(); }, []);
 
-    const persistToolsAllowList = useCallback(async (nextMap: EnabledMcpToolsMap) => {
+    // Apply locally for an immediate render, then hand the write to the policy
+    // owner. The owner serializes it, sends only `enabledMcpTools`, and pushes
+    // the canonical (or rolled-back) map back through `enabledMcpTools`.
+    const applyToolsAllowList = useCallback((nextMap: EnabledMcpToolsMap) => {
         if (!workspaceId) return;
-        const gen = genRef.current;
-        let prev: EnabledMcpToolsMap = {};
-        setToolsAllowList(curr => { prev = curr; return nextMap; }); // optimistic
-        setToolsSaving(true);
-        try {
-            await getCocClientForWorkspace(workspaceId).workspaces.updateMcpConfig(workspaceId, {
-                enabledMcpServers: enabledMcpServers ?? null,
-                enabledMcpTools: normalizeEnabledMcpTools(nextMap),
-            });
-        } catch (e) {
-            if (genRef.current === gen) {
-                setToolsAllowList(prev); // revert only within the same workspace
-                setDiscoveryError(getSpaCocClientErrorMessage(e, 'Failed to save tool settings'));
-            }
-        } finally {
-            setToolsSaving(false);
-        }
-    }, [workspaceId, enabledMcpServers]);
+        setToolsAllowList(nextMap);
+        onSaveTools?.(nextMap);
+    }, [workspaceId, onSaveTools]);
 
     const discoveredToolNames = useCallback((serverName: string): string[] => {
         const r = discovery[serverName];
@@ -187,18 +180,18 @@ export function useMcpServerInspectorController(
     }, [discovery]);
 
     const toggleTool = useCallback((serverName: string, toolName: string, on: boolean) => {
-        void persistToolsAllowList(
+        applyToolsAllowList(
             applyMcpToolToggle(toolsAllowList, serverName, discoveredToolNames(serverName), toolName, on),
         );
-    }, [persistToolsAllowList, toolsAllowList, discoveredToolNames]);
+    }, [applyToolsAllowList, toolsAllowList, discoveredToolNames]);
 
     const enableAllTools = useCallback((serverName: string) => {
-        void persistToolsAllowList(enableAllMcpTools(toolsAllowList, serverName));
-    }, [persistToolsAllowList, toolsAllowList]);
+        applyToolsAllowList(enableAllMcpTools(toolsAllowList, serverName));
+    }, [applyToolsAllowList, toolsAllowList]);
 
     const disableAllTools = useCallback((serverName: string) => {
-        void persistToolsAllowList(disableAllMcpTools(toolsAllowList, serverName));
-    }, [persistToolsAllowList, toolsAllowList]);
+        applyToolsAllowList(disableAllMcpTools(toolsAllowList, serverName));
+    }, [applyToolsAllowList, toolsAllowList]);
 
     // ── Detail cache ─────────────────────────────────────────────────────────
     const fetchDetail = useCallback(async (name: string) => {

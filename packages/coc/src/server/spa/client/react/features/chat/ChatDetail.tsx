@@ -16,6 +16,7 @@ import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatSt
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
+import { resolveWorkspaceRemoteUrl } from '../../repos/originScope';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import type { ChatHeaderMetadata } from './conversation/ChatMetadataButton';
@@ -431,10 +432,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
         return typeof workspace?.rootPath === 'string' ? workspace.rootPath : '';
     }, [appState.workspaces, workspaceId]);
-    const workspaceRemoteUrl = useMemo(() => {
-        const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
-        return typeof workspace?.remoteUrl === 'string' ? workspace.remoteUrl : null;
-    }, [appState.workspaces, workspaceId]);
+    // `undefined` while the workspace list has not loaded (remote identity
+    // UNKNOWN), `null` once it has loaded and this workspace has no remote.
+    // Origin-scoped consumers must not treat the pre-load window as "no remote":
+    // that resolves to `local_<workspaceId>`, an origin no PR data lives under.
+    const workspaceRemoteUrl = useMemo(
+        () => resolveWorkspaceRemoteUrl(appState.workspaces, workspaceId),
+        [appState.workspaces, workspaceId],
+    );
 
     // ── Implement-plan target repos (AC-02/AC-06) ──────────────────────────
     // Build the selectable target list from the dashboard repo list: current repo

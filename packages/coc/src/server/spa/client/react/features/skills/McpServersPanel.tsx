@@ -38,12 +38,15 @@ interface McpServersPanelProps {
     availableServers: McpServerEntry[];
     sources?: McpServerSources;
     /**
-     * Raw enabled-server allow-list. Needed so per-tool toggles can be persisted
-     * through the same `PUT /mcp-config` call without clobbering the server list.
+     * Canonical per-repo enabled-tools allow-list (server → enabled tool names),
+     * owned by `useWorkspaceMcpConfigController`.
      */
-    enabledMcpServers?: string[] | null;
-    /** Initial per-repo enabled-tools allow-list (server → enabled tool names). */
     enabledMcpTools?: Record<string, string[]> | null;
+    /**
+     * Field-specific tool command from that owner. It patches ONLY
+     * `enabledMcpTools`, so a tool save never carries a server-list snapshot.
+     */
+    onSaveEnabledMcpTools?: (next: Record<string, string[]>) => void;
     isEnabled: (name: string) => boolean;
     onToggle: (serverName: string, checked: boolean) => void;
     onRefresh?: () => void;
@@ -1103,8 +1106,8 @@ export function McpServersPanel({
     saving,
     availableServers,
     sources,
-    enabledMcpServers,
     enabledMcpTools,
+    onSaveEnabledMcpTools,
     isEnabled,
     onToggle,
     onRefresh,
@@ -1117,8 +1120,9 @@ export function McpServersPanel({
     // expanded row, inspector tab) plus mutation actions all live in the
     // controller so switching workspaces never reuses another repo's state.
     const controller = useMcpServerInspectorController(workspaceId, {
-        enabledMcpServers,
         enabledMcpTools,
+        onSaveTools: onSaveEnabledMcpTools,
+        toolsSaving: saving,
         onRefresh,
         onMutate,
     });

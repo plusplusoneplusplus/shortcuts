@@ -256,3 +256,55 @@ describe('WorkspacesClient', () => {
     expect(response.submitIndex).toBe(2);
   });
 });
+
+/**
+ * `updateMcpConfig` is a PARTIAL patch: the enabled-server list and the
+ * enabled-tools allow-list have separate persistence owners on the server, and
+ * each is applied by property PRESENCE. A caller mutating only tools must be
+ * able to leave the server list out entirely — sending a stale server snapshot
+ * alongside a tool save is what let an older write revert a newer toggle.
+ */
+describe('WorkspacesClient.updateMcpConfig — partial MCP policy patch', () => {
+  const bodyOf = async (request: Parameters<WorkspacesClient['updateMcpConfig']>[1]) => {
+    const adapter = createMockAdapter({});
+    await new WorkspacesClient(adapter).updateMcpConfig('repo/a', request);
+    return adapter.calls[0].options?.body as Record<string, unknown>;
+  };
+
+  it('omits enabledMcpServers entirely for a tools-only patch', async () => {
+    const body = await bodyOf({ enabledMcpTools: { github: ['create_issue'] } });
+    expect(Object.prototype.hasOwnProperty.call(body, 'enabledMcpServers')).toBe(false);
+    expect(body).toEqual({ enabledMcpTools: { github: ['create_issue'] } });
+  });
+
+  it('omits enabledMcpTools entirely for a servers-only patch', async () => {
+    const body = await bodyOf({ enabledMcpServers: ['github'] });
+    expect(Object.prototype.hasOwnProperty.call(body, 'enabledMcpTools')).toBe(false);
+    expect(body).toEqual({ enabledMcpServers: ['github'] });
+  });
+
+  it('distinguishes an explicit null from an omitted field', async () => {
+    const body = await bodyOf({ enabledMcpServers: null, enabledMcpTools: null });
+    expect(body).toEqual({ enabledMcpServers: null, enabledMcpTools: null });
+  });
+
+  it('preserves an empty array and an empty allow-list entry', async () => {
+    // [] means "no server enabled" and must not collapse to null; a [] entry
+    // means "every tool of that server disabled".
+    const body = await bodyOf({ enabledMcpServers: [], enabledMcpTools: { github: [] } });
+    expect(body).toEqual({ enabledMcpServers: [], enabledMcpTools: { github: [] } });
+  });
+
+  it('copies the server list rather than sending the caller’s array by reference', async () => {
+    const servers = ['github'];
+    const body = await bodyOf({ enabledMcpServers: servers });
+    expect(body.enabledMcpServers).toEqual(['github']);
+    expect(body.enabledMcpServers).not.toBe(servers);
+  });
+
+  it('rejects an empty patch instead of sending a no-op write', async () => {
+    const adapter = createMockAdapter({});
+    expect(() => new WorkspacesClient(adapter).updateMcpConfig('repo/a', {})).toThrow(/at least one/);
+    expect(adapter.calls).toHaveLength(0);
+  });
+});

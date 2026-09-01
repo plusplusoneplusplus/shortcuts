@@ -19,6 +19,11 @@ const mocks = vi.hoisted(() => ({
         getWorkspaceConfig: vi.fn(),
         listWorkspace: vi.fn(),
     },
+    // RepoSettingsTab loads its MCP policy through the typed workspaces domain.
+    workspaces: {
+        getMcpConfig: vi.fn(),
+        updateMcpConfig: vi.fn(),
+    },
 }));
 
 const mockFetchApi = vi.fn();
@@ -27,7 +32,9 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ preferences: mocks.preferences, skills: mocks.skills }),
+    getSpaCocClient: () => ({ preferences: mocks.preferences, skills: mocks.skills, workspaces: mocks.workspaces }),
+    getSpaCocClientErrorMessage: (error: unknown, fallback: string) =>
+        error instanceof Error ? error.message : fallback,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
@@ -82,6 +89,8 @@ beforeEach(() => {
     mocks.preferences.updateTaskSettings.mockImplementation((_workspaceId: string, data: { folderPaths: string[] }) =>
         Promise.resolve(mockPatchOk(data.folderPaths))
     );
+    mocks.workspaces.getMcpConfig.mockResolvedValue({ availableServers: [], enabledMcpServers: null });
+    mocks.workspaces.updateMcpConfig.mockResolvedValue({});
     mocks.skills.getWorkspaceConfig.mockResolvedValue({ disabledSkills: [], extraSkillFolders: [] });
     mocks.skills.listWorkspace.mockResolvedValue([]);
 });

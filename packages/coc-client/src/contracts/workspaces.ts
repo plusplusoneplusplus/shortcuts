@@ -120,13 +120,32 @@ export interface WorkspaceMcpConfigResponse {
   enabledMcpTools?: Record<string, string[]> | null;
 }
 
+/**
+ * A PARTIAL patch of a workspace's MCP policy. The two fields have separate
+ * persistence owners (the workspace record vs. the per-repo preference file),
+ * so each is patched independently:
+ *
+ *   - omit a field  → leave it unchanged
+ *   - `null`        → clear it (no allow-list: everything enabled)
+ *   - a value       → replace it
+ *
+ * A caller mutating only tools must NOT have to send a server-list snapshot;
+ * doing so is what let a stale snapshot revert a newer server toggle.
+ * At least one field must be present.
+ */
 export interface UpdateWorkspaceMcpConfigRequest {
-  enabledMcpServers: string[] | null;
-  /**
-   * Optional per-repo enabled-tools allow-list. Omit to leave unchanged; pass
-   * `null` to clear it; pass a `Record<server, toolNames[]>` to replace it.
-   */
+  enabledMcpServers?: string[] | null;
   enabledMcpTools?: Record<string, string[]> | null;
+}
+
+/**
+ * The canonical MCP policy AFTER the patch was applied, so a client can adopt
+ * the server's view rather than re-deriving it from its own optimistic state.
+ */
+export interface UpdateWorkspaceMcpConfigResponse {
+  workspace: WorkspaceInfo;
+  enabledMcpServers: string[] | null;
+  enabledMcpTools: Record<string, string[]> | null;
 }
 
 /** A single tool reported by an MCP server's live `tools/list`. */

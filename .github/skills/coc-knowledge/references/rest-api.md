@@ -440,7 +440,7 @@ See [mcp-settings.md](mcp-settings.md).
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/mcp-config` | Effective + source-separated MCP servers. `?forceReload=true` bypasses cache |
-| PUT | `/api/workspaces/:id/mcp-config` | Store name-based `enabledMcpServers` allow-list |
+| PUT | `/api/workspaces/:id/mcp-config` | Partial patch of the MCP policy: `enabledMcpServers` and/or `enabledMcpTools`, applied by property presence. Returns the canonical resulting policy |
 
 ## Work Items
 

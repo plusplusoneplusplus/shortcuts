@@ -46,7 +46,12 @@ export interface UsePrChatStatusItemsOptions {
     turns: readonly ClientConversationTurn[] | undefined;
     /** Chat's owning workspace id (origin resolution + binding scope). */
     workspaceId: string | undefined;
-    /** Workspace remote URL — resolves the chat's canonical origin for bindings. */
+    /**
+     * Workspace remote URL — resolves the chat's canonical origin for bindings.
+     * `null` = the workspace is known to have no remote (`local_` origin);
+     * `undefined` = not known yet, so no origin is resolved and the hook stays
+     * idle until the caller supplies one.
+     */
     remoteUrl: string | null | undefined;
     /** Chat's task id — scopes the persisted bindings (`task_id`). */
     taskId: string | undefined;
@@ -220,8 +225,15 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         (association: PrAssociation, repoId: string, generation: number, opts?: FetchOptions) => Promise<void>
     >(() => Promise.resolve());
 
+    // `remoteUrl === undefined` means the chat's remote identity is not known yet
+    // (the workspace list is still loading), NOT that the workspace has no remote.
+    // Resolving an origin from it yields `local_<workspaceId>`, which reads and
+    // writes bindings under an origin the chat's PRs do not live under and makes
+    // `unionAssociations` drop every detected PR as "another repo's". Hold the
+    // origin empty until it is known — the effect below already clears on `''`
+    // and re-runs once the real origin arrives.
     const chatOriginId = useMemo(
-        () => (workspaceId ? resolveCanonicalOriginId({ workspaceId, remoteUrl: remoteUrl ?? null }) : ''),
+        () => (workspaceId && remoteUrl !== undefined ? resolveCanonicalOriginId({ workspaceId, remoteUrl }) : ''),
         [workspaceId, remoteUrl],
     );
     // Scope detection to the chat's own repo: a PR URL from any other repo that

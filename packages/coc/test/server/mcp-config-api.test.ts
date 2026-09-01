@@ -395,7 +395,7 @@ describe('MCP Config API endpoints', () => {
             expect(res.status).toBe(404);
         });
 
-        it('returns 400 with MISSING_FIELDS when enabledMcpServers field is absent', async () => {
+        it('returns 400 with MISSING_FIELDS when neither policy field is present', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`, {
                 method: 'PUT',
                 body: JSON.stringify({ other: 'field' }),
@@ -403,6 +403,17 @@ describe('MCP Config API endpoints', () => {
             expect(res.status).toBe(400);
             const data = res.json();
             expect(data.code).toBe('MISSING_FIELDS');
+        });
+
+        it('returns the canonical resulting policy', async () => {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/mcp-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ enabledMcpServers: ['github'] }),
+            });
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.enabledMcpServers).toEqual(['github']);
+            expect(data).toHaveProperty('enabledMcpTools');
         });
 
         it('returns 400 with BAD_REQUEST when enabledMcpServers is non-array non-null', async () => {

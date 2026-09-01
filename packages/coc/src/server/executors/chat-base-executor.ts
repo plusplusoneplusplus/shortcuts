@@ -56,6 +56,8 @@ import {
 import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
 import { EMPTY_EXECUTOR_RUNTIME } from './executor-runtime-contracts';
 import type { ChatExecutorRuntime } from './executor-runtime-contracts';
+import { createFixedQueueRuntimeConfig } from '../queue/queue-runtime-config';
+import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext, suppressesAutoFolder } from './auto-folder-utils';
@@ -143,11 +145,22 @@ export interface ChatModeExecutorOptions {
     approvePermissions?: boolean;
     /** The AI service instance to use for sending messages */
     aiService: ISDKService;
-    /** Default timeout in ms for tasks that do not specify their own timeoutMs */
-    defaultTimeoutMs: number;
-    /** Follow-up suggestions configuration */
-    followUpSuggestions: { enabled: boolean; count: number };
-    /** Ask-user interactive tool configuration */
+    /**
+     * Live configuration port for queue-owned settings (timeout, follow-up
+     * suggestions, Ask User). Supplied by the server composition layer, where
+     * it is backed by the authoritative `RuntimeConfigService`.
+     *
+     * When omitted, the three direct options below are folded into a fixed
+     * adapter instead. That fallback never touches disk, so a caller without a
+     * config service gets exactly the values it passed — never an unrelated
+     * `~/.coc/config.yaml`.
+     */
+    queueConfig?: QueueRuntimeConfig;
+    /** Default timeout in ms for tasks that do not specify their own timeoutMs. Ignored when `queueConfig` is supplied. */
+    defaultTimeoutMs?: number;
+    /** Follow-up suggestions configuration. Ignored when `queueConfig` is supplied. */
+    followUpSuggestions?: { enabled: boolean; count: number };
+    /** Ask-user interactive tool configuration. Ignored when `queueConfig` is supplied. */
     askUser?: { enabled: boolean };
     /** Resolve skill configuration for a workspace */
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
@@ -214,9 +227,22 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly approvePermissions: boolean;
     protected readonly defaultWorkingDirectory?: string;
     protected readonly aiService: ISDKService;
-    protected readonly defaultTimeoutMs: number;
-    protected readonly followUpSuggestions: { enabled: boolean; count: number };
-    protected readonly askUser: { enabled: boolean };
+    /**
+     * Configuration port for the queue-owned settings below. Held by identity,
+     * never snapshotted, so an admin edit reaches the next turn without a
+     * restart.
+     */
+    protected readonly queueConfig: QueueRuntimeConfig;
+    /**
+     * Live reads of the queue-owned settings. These are accessors rather than
+     * fields so every call site — here and in the ten subclasses — resolves the
+     * value at the point it takes effect (turn build / execution start) instead
+     * of at construction. All three are classified `live` in
+     * `admin-setting-definitions.ts`.
+     */
+    protected get defaultTimeoutMs(): number { return this.queueConfig.getDefaultTimeoutMs(); }
+    protected get followUpSuggestions(): { enabled: boolean; count: number } { return this.queueConfig.getFollowUpSuggestions(); }
+    protected get askUser(): { enabled: boolean } { return this.queueConfig.getAskUser(); }
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
     /**
@@ -241,9 +267,14 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService;
-        this.defaultTimeoutMs = options.defaultTimeoutMs;
-        this.followUpSuggestions = options.followUpSuggestions;
-        this.askUser = options.askUser ?? { enabled: false };
+        // A caller that supplies no port keeps exactly the values it passed.
+        // `askUser` stays opt-in here (rather than following DEFAULT_CONFIG)
+        // because a caller with no config service has not enabled the feature.
+        this.queueConfig = options.queueConfig ?? createFixedQueueRuntimeConfig({
+            defaultTimeoutMs: options.defaultTimeoutMs,
+            followUpSuggestions: options.followUpSuggestions,
+            askUser: options.askUser ?? { enabled: false },
+        });
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
         this.runtime = options.runtime ?? EMPTY_EXECUTOR_RUNTIME;
