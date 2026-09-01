@@ -109,9 +109,6 @@ export function useTaskContext() {
     return ctx;
 }
 
-/**
- * Convenience hook for task panel UI state.
- */
 export function useTaskPanel() {
     const { state, dispatch } = useTaskContext();
     return {

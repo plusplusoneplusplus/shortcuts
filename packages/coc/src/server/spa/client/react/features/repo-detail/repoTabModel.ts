@@ -147,9 +147,6 @@ export function computeVisibleAgentIds(
     return visible;
 }
 
-/**
- * Flatten grouped repos into a flat ordered list of repo IDs.
- */
 export function flattenGroups(groups: RepoGroup[]): string[] {
     const ids: string[] = [];
     for (const g of groups) {

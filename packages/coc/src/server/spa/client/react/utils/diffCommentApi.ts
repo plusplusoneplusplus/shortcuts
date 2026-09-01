@@ -63,7 +63,6 @@ export async function listDiffCommentsForRange(
     return (data.comments ?? []) as DiffComment[];
 }
 
-/** PATCH a diff comment. Returns the updated DiffComment. */
 export async function patchDiffComment(
     wsId: string,
     storageKey: string,
@@ -76,7 +75,6 @@ export async function patchDiffComment(
     return data.comment as DiffComment;
 }
 
-/** DELETE a diff comment. */
 export async function deleteDiffCommentById(
     wsId: string,
     storageKey: string,

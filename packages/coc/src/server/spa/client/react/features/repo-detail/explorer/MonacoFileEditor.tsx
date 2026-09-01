@@ -71,7 +71,6 @@ export function revealEditorLine(
     editor.setSelection({ startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 });
 }
 
-/** Map file extensions to Monaco language IDs. */
 const EXT_TO_MONACO_LANG: Record<string, string> = {
     ts: 'typescript',
     tsx: 'typescript',
@@ -125,7 +124,6 @@ const EXT_TO_MONACO_LANG: Record<string, string> = {
     cmd: 'bat',
 };
 
-/** Resolve a Monaco language ID from a file name extension. */
 export function getMonacoLanguage(fileName: string): string {
     // Handle special filenames first
     const baseName = fileName.toLowerCase();

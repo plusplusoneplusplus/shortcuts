@@ -436,9 +436,6 @@ export function computeNetDiff(
     };
 }
 
-/**
- * Returns aggregate totals across an array of FileEdit entries.
- */
 export function computeFileEditTotals(
     fileEdits: FileEdit[],
 ): { totalInsertions: number; totalDeletions: number } {

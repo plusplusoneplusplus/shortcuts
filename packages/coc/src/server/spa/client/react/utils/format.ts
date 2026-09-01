@@ -1,5 +1,4 @@
 /**
- * Pure utility functions for the dashboard SPA (React).
  * Ported from the vanilla utils.ts — same implementations.
  */
 

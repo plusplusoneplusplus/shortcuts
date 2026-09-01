@@ -1,5 +1,4 @@
 /**
- * Workspace resolution utilities for the dashboard SPA.
  * Resolves workspace IDs to human-readable names using the AppContext workspace list.
  */
 
@@ -29,9 +28,6 @@ export function getProcessWorkspaceId(process: any): string | null {
         || null;
 }
 
-/**
- * Extract workspace name from a process object.
- */
 export function getProcessWorkspaceName(process: any): string | null {
     return process?.workspaceName
         || process?.metadata?.workspaceName

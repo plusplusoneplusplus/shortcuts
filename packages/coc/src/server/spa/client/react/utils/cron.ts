@@ -1,5 +1,3 @@
-/** Pure cron utility functions and constants. */
-
 /** Try to reverse-parse a cron expression into a simple interval. */
 export function parseCronToInterval(cron: string): { mode: 'interval'; value: string; unit: string } | { mode: 'cron' } {
     const parts = cron.trim().split(/\s+/);
