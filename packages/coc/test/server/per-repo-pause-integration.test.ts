@@ -1,6 +1,4 @@
 /**
- * Per-Repo Pause State Integration Tests
- *
  * End-to-end tests validating per-repo queue pause functionality:
  * - Server restart preserves pause states
  * - Paused repo tasks don't dequeue, active repo tasks do

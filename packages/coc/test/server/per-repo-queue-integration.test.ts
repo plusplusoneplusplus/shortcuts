@@ -1,13 +1,9 @@
 /**
- * Per-Repo Queue Integration Tests
- *
  * End-to-end tests validating per-repository queue isolation, parallel execution,
  * queue state management, and persistence with multi-repo scenarios.
  *
  * Uses real server with createExecutionServer and temporary file storage to test
  * the full integration from HTTP API through queue execution to persistence.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -26,7 +22,6 @@ import { safeRmSync } from '../helpers/safe-rm';
 // Helpers
 // ============================================================================
 
-/** HTTP request helper */
 function request(
     url: string,
     options: { method?: string; body?: string; headers?: Record<string, string> } = {}
@@ -62,7 +57,6 @@ function request(
     });
 }
 
-/** POST JSON helper */
 function postJSON(url: string, data: unknown) {
     return request(url, {
         method: 'POST',
@@ -88,7 +82,6 @@ function makeTask(workingDirectory?: string, overrides: Record<string, any> = {}
     };
 }
 
-/** Wait for async operations */
 function waitFor(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }

@@ -1,6 +1,4 @@
 /**
- * Notes Order Integration Tests
- *
  * Tests for the .order.json-based custom sort order:
  *   - buildTree respects .order.json
  *   - PUT /notes/order endpoint

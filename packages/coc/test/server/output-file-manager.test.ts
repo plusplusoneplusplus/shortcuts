@@ -1,6 +1,4 @@
 /**
- * Output File Manager Tests
- *
  * Tests for OutputFileManager static methods:
  * - saveOutput: writes file to per-repo path, creates directory, handles empty content, _shared fallback
  * - loadOutput: reads saved file, returns undefined for missing file

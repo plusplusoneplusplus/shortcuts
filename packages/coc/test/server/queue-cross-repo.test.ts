@@ -1,6 +1,4 @@
 /**
- * Queue Cross-Repo Pause Isolation Tests
- *
  * Covers Section 1 & 2 of test-plan-queue-advanced.md:
  * - Section 1: Per-repo pause isolation
  * - Section 2: Global pause vs per-repo pause precedence

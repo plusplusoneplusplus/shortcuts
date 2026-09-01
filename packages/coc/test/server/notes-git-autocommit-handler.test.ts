@@ -1,6 +1,4 @@
 /**
- * Notes Git Auto-Commit Handler Tests
- *
  * Tests for the three REST API endpoints: enable/update (POST), disable (DELETE),
  * and status (GET).
  *

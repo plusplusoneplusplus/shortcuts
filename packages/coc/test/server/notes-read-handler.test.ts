@@ -1,6 +1,4 @@
 /**
- * Notes Read Handler Tests
- *
  * Tests for GET /api/workspaces/:id/notes/content path resolution:
  * - Relative paths resolve against notesRoot (~/.coc/repos/<wsId>/notes/)
  * - Absolute paths inside wsDataDir or ~/.copilot are allowed

@@ -1,11 +1,7 @@
 /**
- * Repository Path Utilities Tests
- *
  * Tests for extractRepoId, findGitRoot, normalizeRepoPath, and getWorkingDirectory.
  * Includes both unit tests (using the host repo) and integration tests
  * (using temporary git repos created in os.tmpdir()).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

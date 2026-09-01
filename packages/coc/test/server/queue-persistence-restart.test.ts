@@ -1,6 +1,4 @@
 /**
- * Queue Persistence Across Server Restart Tests
- *
  * Covers Section 10 of test-plan-queue-advanced.md.
  * Uses the pattern from per-repo-pause-integration.test.ts:
  *   start server → enqueue tasks into global queue → close → restart → verify state.

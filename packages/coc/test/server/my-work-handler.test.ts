@@ -1,6 +1,4 @@
 /**
- * My Work Handler Tests
- *
  * Tests for the My Work REST API endpoints:
  * - POST /api/my-work/sync — append Work IQ data to notes
  * - POST /api/my-work/generate-summary — generate weekly summary

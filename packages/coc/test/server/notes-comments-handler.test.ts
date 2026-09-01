@@ -1,6 +1,4 @@
 /**
- * Notes Comments Handler Tests
- *
  * Comprehensive tests for the Notes Comments REST API endpoints:
  * sidecar CRUD for threads and comments.
  *

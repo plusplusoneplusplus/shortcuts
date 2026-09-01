@@ -1,6 +1,4 @@
 /**
- * Queue Executor Bridge — Ask Mode System Message Tests
- *
  * Tests for read-only system message injection in ask mode:
  * - Initial chat in ask mode includes READ_ONLY_SYSTEM_MESSAGE
  * - Legacy plan mode is normalized to ask and includes READ_ONLY_SYSTEM_MESSAGE

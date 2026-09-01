@@ -1,6 +1,4 @@
 /**
- * Queue Executor Bridge — Follow-Up Skill Resolution Tests
- *
  * Verifies that `executeFollowUp` resolves `skillDirectories` and
  * `disabledSkills` and passes them to `sendMessage`, mirroring the behaviour
  * already present in `executeWithAI`.

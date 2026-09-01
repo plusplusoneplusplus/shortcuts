@@ -1,6 +1,4 @@
 /**
- * Replicate Apply Handler Tests
- *
  * Tests for POST /api/workspaces/:id/replicate/:processId/apply
  */
 

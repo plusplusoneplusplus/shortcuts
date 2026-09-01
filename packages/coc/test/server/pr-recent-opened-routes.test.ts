@@ -1,7 +1,3 @@
-/**
- * Tests for the recent-opened pull-request HTTP routes.
- */
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';

@@ -1,6 +1,4 @@
 /**
- * Queue Handler Tests
- *
  * Comprehensive tests for the Queue REST API endpoints:
  * enqueue, list, get, cancel, reorder, pause/resume, clear,
  * stats, history, and WebSocket queue events.
@@ -62,7 +60,6 @@ function request(
     });
 }
 
-/** POST JSON helper. */
 function postJSON(url: string, data: unknown) {
     return request(url, {
         method: 'POST',

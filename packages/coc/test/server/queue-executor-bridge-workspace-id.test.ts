@@ -1,6 +1,4 @@
 /**
- * Queue Executor Bridge — Workspace ID Resolution Tests
- *
  * Tests for the fix that prevents workspaceId from falling back to absolute
  * paths when passed to resolveTaskRoot(). Covers:
  * - resolveWorkspaceIdForPath() helper method

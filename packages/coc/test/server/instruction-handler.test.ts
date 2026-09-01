@@ -1,6 +1,4 @@
 /**
- * Instruction Handler Tests
- *
  * Tests for:
  *   GET    /api/workspaces/:id/instructions
  *   GET    /api/workspaces/:id/instructions/:mode

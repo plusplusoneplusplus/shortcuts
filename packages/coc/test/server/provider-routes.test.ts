@@ -1,6 +1,4 @@
 /**
- * Provider Routes Tests (coc-server)
- *
  * HTTP route tests for:
  * - GET /api/providers/config — returns sanitized config (tokens masked)
  * - PUT /api/providers/config — validates and persists provider credentials

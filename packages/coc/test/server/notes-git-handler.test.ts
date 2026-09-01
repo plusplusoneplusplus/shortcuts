@@ -1,6 +1,4 @@
 /**
- * Notes Git Handler Tests
- *
  * Tests for the notes git REST API endpoints. Uses a real HTTP server
  * with an OS-assigned port for test isolation.
  */

@@ -1,6 +1,4 @@
 /**
- * Image Blob Store Tests
- *
  * Tests for ImageBlobStore static methods:
  * - saveImages: writes file to correct path, atomic write, handles empty/null
  * - loadImages: reads saved file, returns [] for missing/corrupt/non-array

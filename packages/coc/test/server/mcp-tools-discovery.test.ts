@@ -1,6 +1,4 @@
 /**
- * MCP Tools Discovery Unit Tests
- *
  * Covers:
  *  - configToTestRequest mapping (stdio/http, invalid)
  *  - resolveEnabledMcpServers (effective merge + enabled allow-list filter)

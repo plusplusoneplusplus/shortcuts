@@ -1,6 +1,4 @@
 /**
- * Server Integration Tests
- *
  * End-to-end tests validating the full server lifecycle, WebSocket broadcasts,
  * SSE streaming, multi-workspace isolation, concurrent access, and error handling.
  *

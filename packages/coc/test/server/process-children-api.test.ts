@@ -4,8 +4,6 @@
  * Verifies GET /api/processes/:id returns embedded children and
  * GET /api/processes?parentProcessId=X query parameter support.
  * Also verifies that the old /children sub-route no longer exists.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

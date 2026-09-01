@@ -1,6 +1,4 @@
 /**
- * Queue History Retention Tests
- *
  * Covers Section 6 of test-plan-queue-advanced.md:
  * - Completed tasks added in chronological order
  * - GET /api/queue/history returns newest-first (descending)

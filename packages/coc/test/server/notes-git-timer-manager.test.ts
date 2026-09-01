@@ -1,6 +1,4 @@
 /**
- * NotesGitTimerManager — Unit Tests
- *
  * Tests for workspace-scoped timer management: start, stop, update, startAll, dispose.
  */
 

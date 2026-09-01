@@ -1,6 +1,4 @@
 /**
- * NotesGitService Tests
- *
  * Integration tests that exercise the NotesGitService against a real git repo
  * in a temporary directory. Each test creates a fresh temp dir and cleans up.
  */

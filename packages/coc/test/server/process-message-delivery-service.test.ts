@@ -1,6 +1,4 @@
 /**
- * ProcessMessageDeliveryService Tests
- *
  * Unit coverage for the extracted follow-up delivery state machine:
  *  - normalizeFollowUpInput: mode / deliveryMode / skills / model / effort behavior.
  *  - deliver: every branch (steered, steering-failed buffer, running/queued buffer,

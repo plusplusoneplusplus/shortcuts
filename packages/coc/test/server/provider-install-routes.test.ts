@@ -1,6 +1,4 @@
 /**
- * Provider Install Routes Tests
- *
  * HTTP route tests for:
  * - GET  /api/providers/sdk/:provider/install-status
  * - POST /api/providers/sdk/:provider/install

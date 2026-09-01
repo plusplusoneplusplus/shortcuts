@@ -1,6 +1,4 @@
 /**
- * Notes Multi-Root Tests
- *
  * Tests for the `root` query parameter on read-only notes endpoints:
  * - GET /api/workspaces/:id/notes/tree?root=...
  * - GET /api/workspaces/:id/notes/content?path=...&root=...

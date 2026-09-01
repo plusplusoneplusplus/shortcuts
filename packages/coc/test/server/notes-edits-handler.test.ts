@@ -1,6 +1,4 @@
 /**
- * Notes Edits Handler Tests
- *
  * Tests for GET /api/processes/:id/note-edits and POST .../undo endpoints.
  * Uses SqliteProcessStore for integration testing.
  */

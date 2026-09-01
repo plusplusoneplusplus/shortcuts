@@ -1,6 +1,4 @@
 /**
- * Notes Roots Management API Tests
- *
  * Tests for the dedicated roots management endpoints:
  *   GET    /api/workspaces/:id/notes/roots       — list roots
  *   POST   /api/workspaces/:id/notes/roots       — add a root

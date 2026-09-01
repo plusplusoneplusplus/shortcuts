@@ -1,7 +1,5 @@
 /**
- * MCP Config CRUD API Endpoint Tests
- *
- * Tests for the new MCP server management REST endpoints:
+ * Tests for the MCP server management REST endpoints:
  * - GET  /api/workspaces/:id/mcp-config/:server/detail
  * - POST /api/workspaces/:id/mcp-config  (create)
  * - PUT  /api/workspaces/:id/mcp-config/:server  (update)

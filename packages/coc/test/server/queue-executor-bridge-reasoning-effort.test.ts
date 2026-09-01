@@ -1,6 +1,4 @@
 /**
- * Queue Executor Bridge — reasoningEffort Wiring Tests
- *
  * Regression tests ensuring that:
  * - executeWithAI() resolves reasoningEffort from live model metadata
  * - executeFollowUp() resolves reasoningEffort from process/task model metadata

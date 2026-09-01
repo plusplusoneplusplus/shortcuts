@@ -1,6 +1,4 @@
 /**
- * Pending Messages API Tests
- *
  * Tests that:
  * 1. POST /api/processes/:id/pending-messages appends a message and returns 201
  * 2. DELETE /api/processes/:id/pending-messages/:msgId removes the message and returns 204

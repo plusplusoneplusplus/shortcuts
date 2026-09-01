@@ -1,6 +1,4 @@
 /**
- * route-utils unit tests
- *
  * Covers: asString, asInt, asBool, and the createRoute() wrapper.
  */
 

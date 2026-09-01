@@ -1,6 +1,4 @@
 /**
- * Health Endpoint Tests
- *
  * Verifies GET /api/health uses getProcessCount() instead of
  * loading all processes into memory.
  */

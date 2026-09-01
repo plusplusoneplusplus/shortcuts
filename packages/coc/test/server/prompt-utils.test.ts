@@ -1,6 +1,4 @@
 /**
- * Prompt Utils Tests
- *
  * Tests for prompt file discovery and reading.
  * Uses temp directories for isolation.
  */

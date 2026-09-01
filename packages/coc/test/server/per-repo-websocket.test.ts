@@ -1,10 +1,6 @@
 /**
- * Per-Repo WebSocket Tests
- *
  * Verifies that queue-updated WS messages are scoped per repo (carrying repoId),
  * and that a secondary global broadcast (no repoId) is also emitted.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';

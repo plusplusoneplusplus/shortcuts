@@ -1,6 +1,4 @@
 /**
- * My Work timeline parser tests.
- *
  * The note this parses is written by an AI sweep and hand-edited by the user,
  * so most of what is asserted here is degradation: a line the parser cannot
  * read is dropped, and nothing in the file can make it throw.
