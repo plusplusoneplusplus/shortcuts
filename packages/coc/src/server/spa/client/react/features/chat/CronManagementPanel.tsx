@@ -1,8 +1,6 @@
 /**
- * CronManagementPanel — dropdown/popover panel for managing crons on a conversation.
- *
- * Shows a list of crons with status, description, and action buttons
- * (pause/resume/cancel). Rendered as a positioned panel below the CronBadge.
+ * CronManagementPanel — pause/resume/cancel list for a conversation's crons,
+ * positioned below the CronBadge that opens it.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '../../ui/cn';

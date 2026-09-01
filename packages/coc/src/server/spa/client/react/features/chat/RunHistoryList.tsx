@@ -6,7 +6,6 @@ import type { RunRecord } from '../schedules/scheduleTypes';
 
 export const HISTORY_PAGE_SIZE = 20;
 
-/** Format milliseconds as a short duration string. */
 function formatDuration(ms: number): string {
     if (ms < 1000) return `${ms}ms`;
     const s = Math.round(ms / 1000);

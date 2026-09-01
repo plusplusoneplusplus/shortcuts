@@ -1,7 +1,7 @@
 /**
- * CronBadge — compact badge showing manageable cron count in the chat header.
- *
- * Renders a small pill with a cron icon (🔁) and the count of non-cancelled crons.
+ * CronBadge — cron-count pill in the chat header. Renders nothing at count 0,
+ * and tints green when any cron is active, amber when they are all paused.
+ * The caller decides which crons are counted.
  */
 import React from 'react';
 import { CronIcon } from './icons/CronIcon';

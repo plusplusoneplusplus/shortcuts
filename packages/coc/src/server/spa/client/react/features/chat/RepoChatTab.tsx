@@ -1,9 +1,7 @@
 /**
- * RepoChatTab — unified Activity tab combining a queue-style left rail
- * with conditional right-pane rendering for chat tasks versus other queue tasks.
+ * RepoChatTab — Activity tab: a queue-style left rail plus a right pane.
  *
- * Top-level chat tasks are rendered inline via ChatDetail.
- * All task types are handled by the unified ChatDetail component.
+ * Every task type, chat or not, goes through the one ChatDetailPane.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef, cloneElement } from 'react';

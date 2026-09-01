@@ -1,9 +1,7 @@
 /**
- * McpOAuthPrompt
- *
- * Renders an inline OAuth authentication prompt within the chat conversation
- * when an MCP server requires authorization. Auto-opens the auth URL and
- * polls for completion, then triggers auto-retry.
+ * McpOAuthPrompt — inline OAuth prompt shown in the conversation when an MCP
+ * server needs authorization. Auto-opens the auth URL, polls for completion,
+ * then triggers auto-retry.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

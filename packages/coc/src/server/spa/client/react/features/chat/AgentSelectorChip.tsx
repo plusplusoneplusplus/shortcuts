@@ -1,9 +1,9 @@
 /**
  * AgentSelectorChip — compact toolbar chip for selecting the AI agent provider.
  *
- * Renders a small button in the chat input toolbar that shows the active agent
- * ("Copilot", "Codex", or "Claude") and opens a popover menu to switch providers.
- * Codex and Claude appear disabled when not available, with a short explanation.
+ * Shows the active agent (Auto / Copilot / Codex / Claude) and opens a popover
+ * to switch. A provider the caller marks disabled-by-admin or unavailable is
+ * greyed out, with its reason in the row's tooltip.
  *
  * Visual style mirrors the existing model picker chip in NewChatArea/FollowUpInputArea.
  */
@@ -30,7 +30,6 @@ export interface AgentSelectorChipProps {
     iconOnly?: boolean;
 }
 
-/** Bot icon for Codex — small hexagon outline, matching the existing provider badge. */
 function CodexIcon() {
     return (
         <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
@@ -44,7 +43,6 @@ function CodexIcon() {
     );
 }
 
-/** Person icon for Copilot — simple circle + arc. */
 function CopilotIcon() {
     return (
         <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
@@ -54,7 +52,6 @@ function CopilotIcon() {
     );
 }
 
-/** Spark/diamond icon for Claude — distinct geometric glyph. */
 function ClaudeIcon() {
     return (
         <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
