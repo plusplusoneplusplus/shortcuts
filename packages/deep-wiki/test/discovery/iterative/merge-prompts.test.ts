@@ -1,6 +1,4 @@
 /**
- * Merge Prompts Tests
- *
  * Tests for merge prompt template generation.
  * Verifies probe results inclusion, existing graph handling, and convergence criteria.
  */

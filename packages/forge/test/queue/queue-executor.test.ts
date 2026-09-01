@@ -1,9 +1,3 @@
-/**
- * Tests for QueueExecutor
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
     QueueExecutor,

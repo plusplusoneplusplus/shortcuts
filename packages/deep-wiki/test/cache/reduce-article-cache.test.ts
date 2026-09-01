@@ -1,6 +1,4 @@
 /**
- * Reduce Article Cache Tests
- *
  * Tests for Phase 4 reduce-phase article caching:
  * - Save/load reduce articles (index, architecture, getting-started)
  * - Domain-scoped reduce articles (domain-index, domain-architecture)

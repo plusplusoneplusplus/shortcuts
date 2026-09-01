@@ -1,13 +1,11 @@
 /**
- * AI Invoker Factory Tests
- *
  * Tests for the analysis and writing invoker factories.
  * Verifies MCP tool configuration, permission handling, timeout, model, and pool settings.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock pipeline-core before imports
+// Mock forge before imports
 const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
 

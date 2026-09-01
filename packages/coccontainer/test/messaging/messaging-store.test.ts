@@ -1,7 +1,3 @@
-/**
- * Tests for MessagingStore.
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MessagingStore } from '../../src/messaging/messaging-store';
 import * as fs from 'fs';

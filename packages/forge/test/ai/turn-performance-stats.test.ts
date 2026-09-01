@@ -1,6 +1,4 @@
 /**
- * Turn Performance Stats Aggregation Tests
- *
  * Pure-function tests for aggregateTurnPerformance:
  * - empty input
  * - single row

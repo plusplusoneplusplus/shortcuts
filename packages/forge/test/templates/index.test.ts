@@ -1,8 +1,6 @@
 /**
- * Tests for Templates module exports
- *
  * Verifies all symbols are properly exported from both the barrel
- * and the main index. Cross-platform compatible (Linux/Mac/Windows).
+ * and the main index.
  */
 
 import { describe, it, expect } from 'vitest';

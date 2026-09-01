@@ -1,8 +1,5 @@
 /**
- * Tests for Template Engine
- *
  * Comprehensive tests for template substitution and prompt building.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect } from 'vitest';

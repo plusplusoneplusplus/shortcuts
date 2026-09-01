@@ -1,6 +1,4 @@
 /**
- * Tests for review module types.
- *
  * Verifies type-level contracts, discriminated unions, and interface shapes.
  */
 

@@ -1,6 +1,4 @@
 /**
- * Tests for filter-executor.ts
- *
  * Covers rule-based, AI-based, and hybrid filtering with all operators,
  * combine modes, cancellation, parallel batching, and fail-safe behavior.
  */

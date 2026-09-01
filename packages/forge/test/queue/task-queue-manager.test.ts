@@ -1,9 +1,3 @@
-/**
- * Tests for TaskQueueManager
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
     TaskQueueManager,

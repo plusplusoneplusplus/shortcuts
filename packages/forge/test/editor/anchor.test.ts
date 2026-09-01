@@ -1,5 +1,5 @@
 /**
- * Tests for the anchor utilities extracted to pipeline-core.
+ * Tests for the anchor utilities in the editor module.
  *
  * Covers all 5 relocation strategies, anchor creation, text extraction,
  * relocation-check detection, and batch relocation.

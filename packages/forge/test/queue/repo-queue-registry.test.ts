@@ -1,8 +1,5 @@
 /**
- * RepoQueueRegistry Tests
- *
  * Comprehensive tests for per-repository queue management.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

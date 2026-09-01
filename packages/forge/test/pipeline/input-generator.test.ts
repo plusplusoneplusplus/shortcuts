@@ -1,8 +1,5 @@
 /**
- * Tests for Input Generator
- *
  * Comprehensive tests for AI-powered input generation.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Hierarchical Wiki Output Tests
- *
  * Tests for 3-level hierarchical wiki output for large repos:
  * - Area-aware cross-link generation
  * - Hierarchical file writer (domain directory creation + path routing)

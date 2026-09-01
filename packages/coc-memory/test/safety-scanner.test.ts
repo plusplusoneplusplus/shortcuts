@@ -1,6 +1,4 @@
 /**
- * Tests for the memory safety scanner.
- *
  * Covers: prompt injection, exfiltration, credential patterns,
  * invisible Unicode, redaction, and clean-content pass-through.
  */

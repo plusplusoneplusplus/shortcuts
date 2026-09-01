@@ -1,6 +1,4 @@
 /**
- * Workflow Validator — Unit Tests
- *
  * Tests for validate() and WorkflowValidationError.
  */
 

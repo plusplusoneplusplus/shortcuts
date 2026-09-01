@@ -1,6 +1,4 @@
 /**
- * SessionManager unit tests.
- *
  * Exercises track / untrack / abort / has / count / abortAll in isolation,
  * without any CopilotSDKService dependency.
  */

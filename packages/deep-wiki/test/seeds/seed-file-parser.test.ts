@@ -1,6 +1,4 @@
 /**
- * Seed File Parser Tests
- *
  * Tests for parsing seed files in YAML and CSV formats.
  */
 

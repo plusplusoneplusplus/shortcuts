@@ -1,8 +1,5 @@
 /**
- * Tests for CSV Reader
- *
  * Comprehensive tests for CSV parsing functionality.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Trusted Folder Tests
- *
  * Tests for the trusted folder management that auto-registers working
  * directories in ~/.copilot/config.json to bypass the folder trust dialog.
  *

@@ -1,6 +1,4 @@
 /**
- * Merge Response Parser Tests
- *
  * Tests for parsing AI responses into MergeResult.
  * Verifies graph parsing, newThemes extraction, and convergence detection.
  */

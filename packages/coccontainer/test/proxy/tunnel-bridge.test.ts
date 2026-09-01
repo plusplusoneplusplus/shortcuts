@@ -1,7 +1,3 @@
-/**
- * Tests for TunnelBridge
- */
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as childProcess from 'child_process';

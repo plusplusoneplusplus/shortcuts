@@ -1,6 +1,4 @@
 /**
- * Task Prompt Builder Tests
- *
  * Tests for the pure-Node prompt-building functions used by CoC task
  * generation.
  */

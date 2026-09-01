@@ -1,7 +1,3 @@
-/**
- * Tests for CLI setup.
- */
-
 import { describe, it, expect } from 'vitest';
 import { createProgram } from '../src/cli';
 

@@ -1,6 +1,4 @@
 /**
- * Article Cache Tests
- *
  * Tests for Phase 4 per-module article caching:
  * save/load single article, save/load all, scan for crash recovery,
  * clear cache, corrupted cache handling, git hash validation,

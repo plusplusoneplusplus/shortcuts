@@ -1,6 +1,4 @@
 /**
- * Bundle Configuration Tests
- *
  * Tests for esbuild bundling configuration and npm publishing readiness.
  * Validates that:
  * - esbuild config exists and defines correct externals

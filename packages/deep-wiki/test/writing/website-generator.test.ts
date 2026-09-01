@@ -1,6 +1,4 @@
 /**
- * Website Generator Tests
- *
  * Comprehensive tests for the website generation phase:
  *   - Data embedding with special characters and deterministic output
  *   - HTML template generation with theme/search/title options
@@ -8,8 +6,6 @@
  *   - Full website generation flow
  *   - Custom template support
  *   - Flat and hierarchical layout support
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

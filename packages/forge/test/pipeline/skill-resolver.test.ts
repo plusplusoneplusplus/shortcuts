@@ -1,8 +1,5 @@
 /**
- * Tests for Skill Resolver
- *
  * Comprehensive tests for skill resolution from .github/skills/ directory.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

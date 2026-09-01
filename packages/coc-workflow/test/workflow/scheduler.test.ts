@@ -1,6 +1,4 @@
 /**
- * Scheduler module — Unit Tests
- *
  * Tests for schedule(), getExecutionOrder(), and getTierIndex().
  */
 

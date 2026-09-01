@@ -1,6 +1,4 @@
 /**
- * Theme Cache Tests
- *
  * Tests for theme generation artifact caching:
  * probe results, outlines, analyses, per-article incremental saves,
  * cache invalidation, clear operations, and corrupted file handling.

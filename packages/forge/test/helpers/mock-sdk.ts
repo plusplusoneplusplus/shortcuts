@@ -28,7 +28,6 @@ export interface MockStreamingSession extends MockSession {
     send: ReturnType<typeof vi.fn>;
 }
 
-/** Return type of createStreamingMockSession() */
 export interface StreamingMockSessionResult {
     session: MockStreamingSession;
     dispatchEvent: (event: { type: string; data?: any }) => void;
@@ -48,7 +47,6 @@ export interface MockSDKModule {
     };
 }
 
-/** Extended return type for streaming SDK module */
 export interface StreamingMockSDKModule extends MockSDKModule {
     sessions: StreamingMockSessionResult[];
 }

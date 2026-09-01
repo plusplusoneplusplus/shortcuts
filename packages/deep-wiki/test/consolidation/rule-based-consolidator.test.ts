@@ -1,7 +1,3 @@
-/**
- * Tests for rule-based component consolidation.
- */
-
 import { describe, it, expect } from 'vitest';
 import { consolidateByDirectory, getComponentDirectory } from '../../src/consolidation/rule-based-consolidator';
 import type { ComponentGraph, ComponentInfo } from '../../src/types';

@@ -1,10 +1,6 @@
 /**
- * Discovery Session Tests
- *
  * Tests for the discovery session orchestration, focusing on
  * SDK call configuration (MCP config, tools, permissions).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

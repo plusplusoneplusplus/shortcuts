@@ -1,7 +1,3 @@
-/**
- * Tests for source-detector skill logic.
- */
-
 import { describe, it, expect } from 'vitest';
 import { detectSource, SourceDetectionErrors, isClawHubUrl, parseClawHubUrl, resolveClawHubToGitHub } from '../../src/skills/source-detector';
 import * as path from 'path';

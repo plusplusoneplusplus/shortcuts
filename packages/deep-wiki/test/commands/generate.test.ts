@@ -1,6 +1,4 @@
 /**
- * Generate Command Tests
- *
  * Tests for the full five-phase generate command orchestration:
  * Phase 1→2→3→4→5 flow, --phase skipping, --force bypass, --skip-website, and error handling.
  *

@@ -1,6 +1,4 @@
 /**
- * Large Repo Handler Tests
- *
  * Tests for multi-round discovery logic: file count threshold,
  * structural scanning, per-domain drill-down, and sub-graph merging.
  */

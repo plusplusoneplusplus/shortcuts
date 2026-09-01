@@ -1,6 +1,4 @@
 /**
- * Analysis Executor Tests
- *
  * Tests for the analysis map-reduce orchestration: component→PromptItem conversion,
  * executor integration, progress callbacks, and failure handling.
  */

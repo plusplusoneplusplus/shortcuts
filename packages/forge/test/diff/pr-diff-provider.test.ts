@@ -1,6 +1,4 @@
 /**
- * Tests for pr-diff-provider: pull-request and pull-request-iteration factories.
- *
  * Verifies the remote diff provider logic: parsing unified diffs into
  * file entries, splitting by file, and the factory wiring for both
  * PR and PR-iteration sources.

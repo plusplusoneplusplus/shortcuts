@@ -1,8 +1,5 @@
 /**
- * Tests for MCP Config Loader
- *
  * Comprehensive tests for loading MCP server configuration from global and workspace files.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

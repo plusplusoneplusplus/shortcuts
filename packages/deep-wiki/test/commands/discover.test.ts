@@ -1,6 +1,4 @@
 /**
- * Discover Command Tests
- *
  * Tests for the discover command's path validation, header output,
  * and exit code behavior. SDK calls are mocked to avoid timeouts.
  */

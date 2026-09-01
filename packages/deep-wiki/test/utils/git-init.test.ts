@@ -1,6 +1,4 @@
 /**
- * Git Init Utility Tests
- *
  * Tests for initializing wiki output directories as Git repositories
  * and writing default `.gitignore` files.
  */

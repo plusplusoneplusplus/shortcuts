@@ -1,6 +1,4 @@
 /**
- * Template Engine Tests
- *
  * Tests for the shared template variable substitution logic.
  */
 

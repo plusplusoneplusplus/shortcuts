@@ -1,7 +1,3 @@
-/**
- * Tests for agent-store module.
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createAgentStore, type AgentStore } from '../../src/store';
 import * as fs from 'fs';

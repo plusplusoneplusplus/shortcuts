@@ -1,6 +1,4 @@
 /**
- * DeliveryMode — Type Guard & Option Extension Tests
- *
  * Verifies:
  * - Runtime type narrowing for DeliveryMode values
  * - SendMessageOptions accepts deliveryMode field without TypeScript error
@@ -26,7 +24,6 @@ function isDeliveryMode(value: unknown): value is DeliveryMode {
 }
 
 /**
- * Resolves the effective delivery mode from SendMessageOptions.
  * Mirrors the `options.deliveryMode ?? 'enqueue'` default in api-handler.ts.
  */
 function resolveDeliveryMode(options: Pick<SendMessageOptions, 'deliveryMode'>): DeliveryMode {

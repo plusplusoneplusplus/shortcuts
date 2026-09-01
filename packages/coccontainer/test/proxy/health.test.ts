@@ -1,7 +1,3 @@
-/**
- * Tests for health check proxy.
- */
-
 import { describe, it, expect, afterEach } from 'vitest';
 import * as http from 'http';
 import { checkAgentHealth } from '../../src/proxy/health';

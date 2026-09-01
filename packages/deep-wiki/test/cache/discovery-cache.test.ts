@@ -1,6 +1,4 @@
 /**
- * Discovery Cache Tests
- *
  * Tests for Phase 1 intermediate discovery caching:
  * seeds, probe results, structural scan, domain sub-graphs,
  * metadata, and cleanup.

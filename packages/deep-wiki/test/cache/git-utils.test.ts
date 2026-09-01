@@ -1,6 +1,4 @@
 /**
- * Git Utilities Tests
- *
  * Tests for git hash detection, change detection, git root detection,
  * subfolder-scoped hash, and git availability checks.
  * Uses the actual git repository for integration tests.

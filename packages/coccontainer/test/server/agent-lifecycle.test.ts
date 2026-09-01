@@ -1,5 +1,4 @@
 /**
- * Tests for agent lifecycle management in the container server.
  * Ensures agents are properly registered, tracked, and marked offline on disconnection.
  */
 

@@ -1,7 +1,3 @@
-/**
- * Tests for task-operations.ts - Pure Node.js task CRUD operations.
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
