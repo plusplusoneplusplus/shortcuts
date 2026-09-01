@@ -1,11 +1,7 @@
 /**
- * Wiki Admin Handlers
- *
  * REST API handlers for wiki admin endpoints (seeds, config).
  * Adapted from deep-wiki's admin-handlers for multi-wiki CoC server.
  * Each endpoint is a flat Route — no sub-router pattern.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';

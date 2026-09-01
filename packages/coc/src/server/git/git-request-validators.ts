@@ -7,8 +7,6 @@
  *
  * Validators throw `APIError`s — `createRoute` turns those into responses via
  * `handleAPIError`, so handlers stay free of early-return plumbing.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import type * as http from 'http';

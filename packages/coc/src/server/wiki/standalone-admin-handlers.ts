@@ -1,6 +1,4 @@
 /**
- * Admin Handlers (Standalone Wiki)
- *
  * REST API handlers for the standalone wiki admin portal.
  * Provides read/write access to seeds (seeds.json) and
  * config (deep-wiki.config.yaml) files.
@@ -10,8 +8,6 @@
  *   PUT  /api/admin/seeds  — Write seeds.json to wiki directory
  *   GET  /api/admin/config — Read deep-wiki.config.yaml from repo root
  *   PUT  /api/admin/config — Write deep-wiki.config.yaml to repo root
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';

@@ -1,6 +1,4 @@
 /**
- * Queue Runtime Config Port
- *
  * The single configuration boundary between the server's authoritative
  * {@link RuntimeConfigService} and the queue/executor graph.
  *
@@ -22,9 +20,6 @@
  * - **Explicit source.** Every composition root supplies an adapter. There is
  *   no implicit home-directory fallback, so a server started with an explicit
  *   config path can never execute tasks against a different file.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';

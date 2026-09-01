@@ -1,6 +1,4 @@
 /**
- * WebSocket Server
- *
  * Uses the `ws` library in noServer mode, attached to an existing HTTP server.
  * Used for live-reload notifications when --watch is enabled.
  *
@@ -37,9 +35,6 @@ export type WSMessageHandler = (client: WSClient, message: WSMessage) => void;
 // WebSocketServer
 // ============================================================================
 
-/**
- * Minimal WebSocket server that attaches to an existing HTTP server.
- */
 export class WebSocketServer {
     private wss: WS.WebSocketServer;
     private clients: Set<WSClient> = new Set();

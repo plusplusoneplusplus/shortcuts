@@ -1,10 +1,3 @@
-/**
- * Wiki Module — Barrel Export
- *
- * Re-exports all public types, classes, and functions from the wiki data layer
- * and wiki HTTP route handlers.
- */
-
 // Types
 export type {
     // Domain types

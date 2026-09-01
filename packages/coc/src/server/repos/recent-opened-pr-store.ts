@@ -1,6 +1,4 @@
 /**
- * Recent Opened Pull Requests Store
- *
  * File-based persistence for the Pull Requests tab's "Recently opened" list.
  *
  * Layout:

@@ -7,7 +7,7 @@
  * length-capped, stripped of newlines, and screened for local filesystem paths
  * that would leak someone's directory layout.
  *
- * Pure functions only — no I/O, no git. Cross-platform compatible.
+ * Pure functions only — no I/O, no git.
  */
 
 import { normalizeRemoteUrl } from '@plusplusoneplusplus/forge';

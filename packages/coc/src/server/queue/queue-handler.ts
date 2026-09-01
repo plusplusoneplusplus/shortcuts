@@ -1,6 +1,4 @@
 /**
- * Queue REST API Handler
- *
  * Thin router that delegates to focused route modules under routes/.
  * Each module owns one HTTP concern (enqueue, stats, control, follow-up, images).
  */

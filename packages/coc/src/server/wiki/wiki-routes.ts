@@ -1,10 +1,6 @@
 /**
- * Wiki Routes
- *
  * Registers all wiki API endpoints under /api/wikis/* using the CoC Route[] pattern.
  * Each route uses a RegExp pattern with wikiId in match[1].
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -71,10 +67,6 @@ export interface WikiRouteOptions {
 // Route Registration
 // ============================================================================
 
-/**
- * Register all wiki routes on the given route table.
- * Returns the WikiManager instance for external access.
- */
 export function registerWikiRoutes(
     routes: Route[],
     options: WikiRouteOptions,

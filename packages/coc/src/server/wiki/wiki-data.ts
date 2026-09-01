@@ -1,10 +1,6 @@
 /**
- * Wiki Data Layer
- *
  * Reads and caches wiki data (component graph, markdown articles, analyses)
  * from the wiki output directory on disk.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -45,9 +41,6 @@ export interface SpecialPage {
     markdown: string;
 }
 
-/**
- * Single theme article content.
- */
 export interface ThemeArticleContent {
     slug: string;
     title: string;

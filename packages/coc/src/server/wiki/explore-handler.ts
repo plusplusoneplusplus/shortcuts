@@ -1,13 +1,9 @@
 /**
- * Wiki Explore Handler
- *
  * POST /api/wikis/:wikiId/explore/:componentId — On-demand deep-dive.
  * Adapted from deep-wiki's explore-handler for multi-wiki CoC server.
  *
  * The shared core logic lives in `handleExploreCore()`, which is also used by
  * the deep-wiki standalone handler (`dw-explore-handler.ts`).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { IncomingMessage, ServerResponse } from 'http';
@@ -27,7 +23,6 @@ export interface ExploreRequest {
     depth?: 'normal' | 'deep';
 }
 
-/** Options for the explore handler. */
 export interface WikiExploreHandlerOptions {
     wikiManager: WikiManager;
     aiSendMessage?: AskAIFunction;
@@ -89,7 +84,7 @@ export async function handleWikiExploreRequest(
  *   - Validating wiki access and AI availability
  *   - Resolving the explore context
  *
- * This function handles:
+ * Handles:
  *   - Component lookup and validation
  *   - Body parsing
  *   - SSE header setup and streaming
@@ -158,9 +153,6 @@ export async function handleExploreCore(
 // Prompt Building
 // ============================================================================
 
-/**
- * Build the AI prompt for deep-dive exploration.
- */
 export function buildExplorePrompt(
     mod: { id: string; name: string; category: string; path: string; purpose: string; keyFiles: string[]; dependencies: string[]; dependents: string[] },
     existingMarkdown: string,

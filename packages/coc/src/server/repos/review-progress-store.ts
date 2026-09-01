@@ -1,6 +1,4 @@
 /**
- * PR Review Progress Store
- *
  * File-based persistence for PR popout reviewer progress (AC-04).
  *
  * One JSON file per (origin, pr) tuple when an origin scope is supplied. Legacy
@@ -12,8 +10,6 @@
  *
  * Layout:
  *   ~/.coc/repos/<originId>/review-progress/<prId>.json
- *
- * Pure Node.js. Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

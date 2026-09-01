@@ -1,6 +1,4 @@
 /**
- * Pull Request Routes
- *
  * Registers /api/origins/:originId/pull-requests/* endpoints.
  * Uses ProviderFactory to resolve the correct adapter per repo.
  *
@@ -26,8 +24,6 @@
  * GET  /api/origins/:originId/pull-requests/suggestions — get cached suggestions
  * POST /api/origins/:originId/pull-requests/suggestions/refresh — rank/cache suggestions through a selected workspace
  * POST /api/origins/:originId/pull-requests/team-auto-classification — enqueue bounded Team PR classifications through a selected workspace
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';
@@ -1306,10 +1302,8 @@ function isTeamAutoClassificationEnabled(options?: PullRequestAutoClassification
 // ============================================================================
 
 /**
- * Register all pull-request API routes on the given route table.
  * Mutates the `routes` array in-place.
  *
- * @param routes  - Shared route table
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */

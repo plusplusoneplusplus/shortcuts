@@ -1,10 +1,5 @@
 /**
- * API Handlers
- *
- * Handles all /api/* routes for the deep-wiki server.
- * Provides REST endpoints for component graph, components, and special pages.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
+ * Handles all /api/* routes for the standalone deep-wiki server.
  */
 
 import * as http from 'http';
@@ -46,9 +41,6 @@ export interface ApiHandlerContext {
 // Main API Router
 // ============================================================================
 
-/**
- * Route an API request to the appropriate handler.
- */
 export function handleApiRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,

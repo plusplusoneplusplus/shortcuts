@@ -1,6 +1,4 @@
 /**
- * Classification Prompt
- *
  * Keeps per-invocation target context in code while the `classify-diff` skill
  * owns all classification instructions, schema, categories, and tool contract.
  */

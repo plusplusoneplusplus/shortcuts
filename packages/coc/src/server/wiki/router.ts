@@ -1,11 +1,6 @@
 /**
- * HTTP Router
- *
  * Simple request routing for the deep-wiki server.
  * Routes requests to static file serving or API handlers.
- * Uses only Node.js built-in modules (http, fs, path, url).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';
@@ -49,9 +44,6 @@ const DEFAULT_MIME = 'application/octet-stream';
 // Router
 // ============================================================================
 
-/**
- * Options for the router.
- */
 export interface RouterOptions {
     /** Wiki data layer */
     wikiData: WikiData;
@@ -74,8 +66,6 @@ export interface RouterOptions {
 }
 
 /**
- * Create a request handler (listener) for the HTTP server.
- *
  * Routes:
  *   GET /            → SPA shell (modified index.html)
  *   GET /api/*       → API handlers
@@ -179,9 +169,6 @@ function serveStaticFile(filePath: string, res: http.ServerResponse): boolean {
 // Helpers
 // ============================================================================
 
-/**
- * Send a JSON response.
- */
 export function sendJson(res: http.ServerResponse, data: unknown, statusCode = 200): void {
     const body = JSON.stringify(data);
     res.writeHead(statusCode, {
@@ -191,30 +178,18 @@ export function sendJson(res: http.ServerResponse, data: unknown, statusCode = 2
     res.end(body);
 }
 
-/**
- * Send a 404 Not Found response.
- */
 export function send404(res: http.ServerResponse, message = 'Not Found'): void {
     sendJson(res, { error: message }, 404);
 }
 
-/**
- * Send a 400 Bad Request response.
- */
 export function send400(res: http.ServerResponse, message = 'Bad Request'): void {
     sendJson(res, { error: message }, 400);
 }
 
-/**
- * Send a 500 Internal Server Error response.
- */
 export function send500(res: http.ServerResponse, message = 'Internal Server Error'): void {
     sendJson(res, { error: message }, 500);
 }
 
-/**
- * Read the request body as a string.
- */
 export function readBody(req: http.IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {
         const chunks: Buffer[] = [];
