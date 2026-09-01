@@ -1,5 +1,4 @@
 /**
- * Unit tests for WikiView component.
  * WikiView is the top-level router that delegates to WikiList or WikiDetail
  * based on whether a wiki is selected in AppContext.
  */

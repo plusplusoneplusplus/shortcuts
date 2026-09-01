@@ -1,7 +1,3 @@
-/**
- * Tests for TruncatedPath shared component.
- */
-
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { TruncatedPath } from '../../../../src/server/spa/client/react/ui/TruncatedPath';

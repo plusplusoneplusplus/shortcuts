@@ -1,6 +1,4 @@
 /**
- * Tests for diffCommentApi shared utilities.
- *
  * Verifies computeStorageKey, buildDiffCommentUrl, patchDiffComment,
  * and deleteDiffCommentById.
  */

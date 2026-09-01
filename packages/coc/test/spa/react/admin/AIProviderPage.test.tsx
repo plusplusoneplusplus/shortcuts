@@ -1,5 +1,4 @@
 /**
- * Dedicated mock-based tests for the AIProviderPage component.
  * Tests the redesigned AI Provider admin page in isolation from AdminPanel.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';

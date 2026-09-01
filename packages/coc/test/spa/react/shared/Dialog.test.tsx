@@ -1,6 +1,4 @@
 /**
- * Tests for Dialog shared component.
- *
  * Dialog uses useBreakpoint internally. In jsdom, matchMedia is not available,
  * so useBreakpoint falls back to desktop mode (isMobile=false). This means the
  * portal overlay is rendered with a backdrop.

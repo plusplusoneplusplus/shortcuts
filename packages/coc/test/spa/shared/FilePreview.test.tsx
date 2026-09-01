@@ -1,6 +1,4 @@
 /**
- * Tests for FilePreview component.
- *
  * Verifies:
  * - Row-based line rendering (not legacy pre+join)
  * - Word wrap styles on line content

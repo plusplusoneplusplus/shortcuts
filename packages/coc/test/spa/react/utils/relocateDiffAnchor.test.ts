@@ -1,6 +1,4 @@
 /**
- * Unit tests for relocateDiffAnchor utility.
- *
  * Covers all three matching strategies and edge cases.
  */
 

@@ -1,7 +1,3 @@
-/**
- * Tests for PreviewPane readOnly mode.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';

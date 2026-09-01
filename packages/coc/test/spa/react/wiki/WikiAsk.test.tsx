@@ -1,5 +1,4 @@
 /**
- * Unit tests for WikiAsk component.
  * Covers SSE streaming, keyboard shortcuts, message handling, and session continuity.
  */
 

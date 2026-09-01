@@ -1,6 +1,4 @@
 /**
- * Tests for WikiList component.
- *
  * WikiList uses useWiki (which depends on AppContext) and useApp.
  * We mock both hooks to control the wiki data without real API calls.
  */

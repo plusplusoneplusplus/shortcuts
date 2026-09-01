@@ -1,7 +1,3 @@
-/**
- * Mobile-specific wiki view tests.
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { BreakpointState } from '../../../../src/server/spa/client/react/hooks/ui/useBreakpoint';

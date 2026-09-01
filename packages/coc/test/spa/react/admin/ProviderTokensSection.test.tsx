@@ -1,7 +1,3 @@
-/**
- * Tests for ProviderTokensSection component.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 

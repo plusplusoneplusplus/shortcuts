@@ -1,5 +1,4 @@
 /**
- * Tests for Explorer context menu integration.
  * Verifies that TreeNode, FileTree, and ExplorerPanel correctly
  * support right-click context menus.
  */
