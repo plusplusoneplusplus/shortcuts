@@ -38,7 +38,6 @@ import { getLogger, LogCategory } from '../logger';
 // ── mapping helpers ──────────────────────────────────────────
 
 /**
- * Resolve the browser-friendly web URL for a pull request.
  * Priority: _links.web.href > constructed from repository.webUrl > converted from API URL > empty.
  */
 function resolveWebUrl(pr: GitPullRequest): string {
@@ -110,7 +109,6 @@ function reviewedAtFromAdoPullRequest(pr: GitPullRequest): Date {
     return pr.closedDate ? new Date(pr.closedDate) : pr.creationDate ? new Date(pr.creationDate) : new Date(0);
 }
 
-/** Normalize an ADO merge strategy into the canonical merge-method vocabulary. */
 function mapAdoMergeMethod(options: GitPullRequestCompletionOptions | undefined): string | undefined {
     if (!options) { return undefined; }
     switch (options.mergeStrategy) {
@@ -345,10 +343,6 @@ function mapAdoThread(t: GitPullRequestCommentThread): CommentThread {
 
 // ── adapter ──────────────────────────────────────────────────
 
-/**
- * Adapter that wraps `AdoPullRequestsService` and implements the
- * provider-agnostic `IPullRequestsService` interface.
- */
 export class AdoPullRequestsAdapter implements IPullRequestsService {
     constructor(
         private readonly service: AdoPullRequestsService,

@@ -1,6 +1,4 @@
 /**
- * Shared utilities for diff providers.
- *
  * Extracted from git-diff-provider and pr-diff-provider to eliminate
  * duplication of `makeDiffContent`, `computeSummary`, and diff-splitting logic.
  */
@@ -10,9 +8,6 @@ import type { DiffContent, DiffFileEntry, DiffSummary } from './types';
 
 // ── DiffContent construction ─────────────────────────────────
 
-/**
- * Wrap a raw diff string into a `DiffContent` object.
- */
 export function makeDiffContent(raw: string): DiffContent {
     const totalLines = raw ? raw.split('\n').length : 0;
     return { raw, truncated: false, totalLines };
@@ -21,8 +16,7 @@ export function makeDiffContent(raw: string): DiffContent {
 // ── Truncation ───────────────────────────────────────────────
 
 /**
- * Truncate a `DiffContent` to at most `maxLines` lines.
- * Returns the original object unchanged if the diff fits within the limit.
+ * Returns the original object unchanged when the diff already fits `maxLines`.
  */
 export function truncateDiffContent(content: DiffContent, maxLines: number): DiffContent {
     if (maxLines <= 0) return { raw: '', truncated: true, totalLines: content.totalLines };
@@ -37,9 +31,6 @@ export function truncateDiffContent(content: DiffContent, maxLines: number): Dif
 
 // ── Summary computation ──────────────────────────────────────
 
-/**
- * Compute aggregate `DiffSummary` from a list of file entries.
- */
 export function computeSummary(files: DiffFileEntry[]): DiffSummary {
     let additions = 0;
     let deletions = 0;
@@ -91,9 +82,6 @@ export function inferStatusFromDiffChunk(chunk: string): GitChangeStatus {
     return 'modified';
 }
 
-/**
- * Count additions/deletions from unified diff hunk lines.
- */
 export function countAdditionsDeletions(chunk: string): { additions: number; deletions: number } {
     let additions = 0;
     let deletions = 0;
@@ -107,10 +95,8 @@ export function countAdditionsDeletions(chunk: string): { additions: number; del
 // ── Full diff parsing ────────────────────────────────────────
 
 /**
- * Parse a full unified diff string into per-file entries and content map.
- *
- * This is the primary function for remote diff providers that receive
- * the entire diff as a single string and need to split it into per-file data.
+ * For remote diff providers that receive the entire diff as one string and
+ * need it split into per-file data.
  */
 export function parseFullDiff(fullDiff: string): {
     files: DiffFileEntry[];

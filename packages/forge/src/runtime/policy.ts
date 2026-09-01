@@ -1,8 +1,6 @@
 /**
- * Policy Runner
- *
- * Composes timeout, retry, and cancellation into a single unified policy.
- * This is the top-level API for running operations with cross-cutting concerns.
+ * Composes timeout, retry, and cancellation into one policy — the top-level
+ * API for running operations with those cross-cutting concerns.
  */
 
 import { ErrorMetadata } from '../errors';
@@ -10,9 +8,6 @@ import { IsCancelledFn, throwIfCancelled } from './cancellation';
 import { withTimeout, TimeoutOptions } from './timeout';
 import { withRetry, RetryOptions, BackoffStrategy } from './retry';
 
-/**
- * Unified policy options combining timeout, retry, and cancellation
- */
 export interface PolicyOptions {
     // =========================================================================
     // Timeout Configuration
@@ -49,7 +44,6 @@ export interface PolicyOptions {
     meta?: ErrorMetadata;
 }
 
-/** Default policy options */
 export const DEFAULT_POLICY_OPTIONS: Partial<PolicyOptions> = {
     retryOnFailure: false,
     retryAttempts: 3,

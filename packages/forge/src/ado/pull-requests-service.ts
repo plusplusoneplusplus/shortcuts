@@ -45,7 +45,6 @@ function getReviewHistoryTimestamp(pr: GitPullRequest): number {
     return Number.isFinite(createdDate) ? createdDate : 0;
 }
 
-/** Error class for pull-request operations. */
 export class AdoPullRequestError extends Error {
     constructor(message: string, public readonly cause?: unknown) {
         super(message);

@@ -1,11 +1,3 @@
-/**
- * Unified diff provider types.
- *
- * Defines the canonical types for the `IDiffProvider` abstraction that
- * unifies five diff source kinds: single commit, commit range,
- * working tree, pull request, and pull request iteration.
- */
-
 import type { GitChangeStatus } from '../git/types';
 
 // ── Diff source discriminant ─────────────────────────────────
@@ -63,9 +55,6 @@ export interface DiffContent {
 
 // ── Diff summary (aggregate stats) ───────────────────────────
 
-/**
- * Aggregate statistics for the entire diff.
- */
 export interface DiffSummary {
     /** Total files changed. */
     filesChanged: number;
