@@ -130,9 +130,35 @@ test('both serve loops refresh the addon before building the packages', () => {
     }
 });
 
+test('the Windows service installer builds the addon before registering a build-skipping task', () => {
+    const script = readFileSync(new URL('./Manage-CoCService.ps1', import.meta.url), 'utf8');
+    const initialBuild = script.indexOf('=== Running initial build ===');
+    const ensure = script.indexOf('npm run ensure:native', initialBuild);
+    const link = script.indexOf('npm run coc:link', initialBuild);
+    const register = script.indexOf('Register-ScheduledTask', initialBuild);
+
+    assert.notEqual(initialBuild, -1, 'Manage-CoCService.ps1 must have an initial build');
+    assert.notEqual(ensure, -1, 'the initial build must build or verify the mandatory addon');
+    assert.notEqual(link, -1, 'the initial build must link the CoC packages');
+    assert.notEqual(register, -1, 'the installer must register the scheduled task');
+    assert.ok(ensure < link, 'the addon must be ready before coc:link');
+    assert.ok(link < register, 'the complete build must finish before task registration');
+});
+
 test('the root package exposes the ensure:native passthrough the loops call', () => {
     const root = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
     assert.equal(root.scripts['ensure:native'], 'npm run ensure:native -w packages/coc-native');
+});
+
+test('coc:link builds coc-native before packages that import it', () => {
+    const root = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    const link = root.scripts['coc:link'];
+    const native = link.indexOf('cd packages/coc-native && npm run build');
+    const sdk = link.indexOf('cd ../coc-agent-sdk && npm run build');
+
+    assert.notEqual(native, -1, 'coc:link must build the coc-native TypeScript package');
+    assert.notEqual(sdk, -1, 'coc:link must build coc-agent-sdk');
+    assert.ok(native < sdk, 'coc-native dist must exist before coc-agent-sdk compiles against it');
 });
 
 // The invariant `build-native.mjs` documents in its header: the TypeScript
