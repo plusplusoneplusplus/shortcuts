@@ -1,6 +1,4 @@
 /**
- * Cancellation Utilities
- *
  * Provides a standard way to check for and handle cancellation across async operations.
  * Works with the existing ConcurrencyLimiter's isCancelled pattern.
  */

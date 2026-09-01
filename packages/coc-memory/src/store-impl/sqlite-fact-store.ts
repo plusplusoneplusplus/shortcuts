@@ -1,6 +1,4 @@
 /**
- * SQLite-backed fact store
- *
  * Uses FTS5 for BM25 full-text search. Vector search columns are reserved
  * here (BLOB `embedding`) but the ranking blending logic is added in AC-03
  * when the EmbeddingProvider is wired in.

@@ -1,6 +1,4 @@
 /**
- * Memory scope resolver
- *
  * Resolves and caches the correct store handle for a given workspace,
  * depending on whether the workspace is in global (default) or isolated mode.
  *

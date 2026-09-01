@@ -1,6 +1,4 @@
 /**
- * Skill Resolver
- *
  * Resolves and loads skill prompts from the .github/skills/ directory.
  * Skills are organized as directories containing a SKILL.md file.
  *
@@ -12,8 +10,6 @@
  * │   └── SKILL.md
  *
  * Resolution: skill: "go-deep" → .github/skills/go-deep/SKILL.md
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -30,9 +26,6 @@ export const DEFAULT_SKILLS_DIRECTORY = SKILLS_DIR_DEFAULT;
  */
 export const SKILL_PROMPT_FILENAME = 'SKILL.md';
 
-/**
- * Error thrown for skill resolution issues
- */
 export class SkillResolverError extends PipelineCoreError {
     /** Name of the skill that failed to resolve */
     readonly skillName: string;
@@ -57,9 +50,6 @@ export class SkillResolverError extends PipelineCoreError {
     }
 }
 
-/**
- * Result of skill resolution
- */
 export interface SkillResolutionResult {
     /** The resolved prompt content (frontmatter stripped) */
     content: string;
@@ -94,7 +84,6 @@ export interface SkillMetadata {
 /**
  * Get the skills directory path
  * 
- * @param workspaceRoot The workspace root directory
  * @param customPath Optional custom skills directory path (relative or absolute)
  * @returns Absolute path to the skills directory
  */
@@ -111,9 +100,6 @@ export function getSkillsDirectory(workspaceRoot: string, customPath?: string): 
 /**
  * Get the path to a specific skill's directory
  * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
  * @returns Absolute path to the skill directory
  */
 export function getSkillDirectory(
@@ -128,9 +114,6 @@ export function getSkillDirectory(
 /**
  * Get the path to a skill's SKILL.md file
  * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
  * @returns Absolute path to the skill's SKILL.md file
  */
 export function getSkillPromptPath(
@@ -144,11 +127,6 @@ export function getSkillPromptPath(
 
 /**
  * Check if a skill exists
- * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
- * @returns True if the skill's SKILL.md exists
  */
 export function skillExists(
     skillName: string,
@@ -161,10 +139,6 @@ export function skillExists(
 
 /**
  * List all available skills
- * 
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
- * @returns Array of skill names
  */
 export function listSkills(
     workspaceRoot: string,
@@ -195,9 +169,6 @@ export function listSkills(
 
 /**
  * Parse skill metadata from SKILL.md content
- * 
- * @param content Raw SKILL.md content
- * @returns Parsed metadata
  */
 function parseSkillMetadata(content: string): SkillMetadata {
     const metadata: SkillMetadata = { raw: content };
@@ -248,7 +219,6 @@ function parseSkillMetadata(content: string): SkillMetadata {
 /**
  * Load skill metadata from SKILL.md file content
  * 
- * @param fileContent The content of the SKILL.md file
  * @returns Skill metadata parsed from frontmatter
  */
 function loadSkillMetadataFromContent(fileContent: string): SkillMetadata | undefined {
@@ -464,9 +434,6 @@ export function resolveSkillWithDetailsSync(
 /**
  * Validate that a skill can be resolved (for config validation)
  * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
  * @returns Validation result with error message if invalid
  */
 export function validateSkill(

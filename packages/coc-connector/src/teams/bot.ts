@@ -15,9 +15,6 @@ import { GraphTransport } from './transport-graph';
 import { McpTransport } from './transport-mcp';
 import { acquireTokenViaAzCli } from './auth';
 
-/**
- * Create a TeamsTransport for the given mode.
- */
 export function createTransport(mode: TeamsTransportMode, opts: { mcpServerUrl?: string }): TeamsTransport {
     if (mode === 'mcp') {
         if (!opts.mcpServerUrl) throw new Error('mcpServerUrl is required for MCP mode');

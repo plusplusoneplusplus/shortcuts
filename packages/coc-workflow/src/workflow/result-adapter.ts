@@ -1,10 +1,6 @@
 /**
- * WorkflowResult → Flat Display Adapter
- *
  * Converts the Map-based WorkflowResult into a flat structure suitable for
  * CLI output formatting and SPA display.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { WorkflowResult, NodeResult, Items, WorkflowConfig } from './types';

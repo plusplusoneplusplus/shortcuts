@@ -1,6 +1,4 @@
 /**
- * Memory store factory
- *
  * Creates a pair of SQLite-backed stores (facts + episodes) for a given
  * data directory. The calling layer (CoC server or tests) is responsible for
  * providing the resolved path; this module does not import CoC server code.

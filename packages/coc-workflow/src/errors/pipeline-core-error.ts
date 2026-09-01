@@ -1,6 +1,4 @@
 /**
- * PipelineCoreError
- *
  * Base error class for workflow engine errors.
  * Provides structured error information with:
  * - code: Well-known error code for programmatic handling
@@ -114,9 +112,6 @@ export class PipelineCoreError extends Error {
     }
 }
 
-/**
- * Type guard to check if an error is a PipelineCoreError
- */
 export function isPipelineCoreError(error: unknown): error is PipelineCoreError {
     return error instanceof PipelineCoreError;
 }

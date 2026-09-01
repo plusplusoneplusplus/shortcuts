@@ -24,7 +24,6 @@ export interface InboundMessage {
     raw?: unknown;
 }
 
-/** Options accepted by a connector's send(). */
 export interface SendOptions {
     replyToId?: string;
     mentions?: Array<{ id: string; displayName: string }>;

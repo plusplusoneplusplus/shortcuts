@@ -1,9 +1,3 @@
-/**
- * Errors Module - Public API
- *
- * Exports all error types and utilities for the workflow package.
- */
-
 // Error codes
 export {
     ErrorCode,

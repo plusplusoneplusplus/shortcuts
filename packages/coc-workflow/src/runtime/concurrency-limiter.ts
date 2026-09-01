@@ -1,12 +1,8 @@
 /**
- * ConcurrencyLimiter
- *
  * Controls parallel execution of async tasks with a configurable concurrency limit.
  * Prevents overwhelming APIs with too many simultaneous requests.
  *
  * This is the canonical implementation. Other modules re-export from here.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { CancellationError as RuntimeCancellationError, IsCancelledFn } from './cancellation';

@@ -1,6 +1,4 @@
 /**
- * Memory Safety Scanner
- *
  * Stateless functions that scan memory content for security threats before
  * any fact or episode is persisted.  Extended from the forge implementation
  * with additional credential-detection patterns required by AC-07.

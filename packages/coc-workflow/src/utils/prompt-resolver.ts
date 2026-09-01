@@ -1,6 +1,4 @@
 /**
- * Prompt File Resolver
- *
  * Resolves and loads prompt files for YAML pipelines.
  * Supports relative paths, search order for bare filenames, and frontmatter stripping.
  *
@@ -8,17 +6,12 @@
  * - Relative paths: resolved from pipeline package directory
  * - Absolute paths: used as-is
  * - Bare filenames: searched in order (pipeline dir, prompts/ subfolder, shared prompts)
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { PipelineCoreError, ErrorCode } from '../errors';
 
-/**
- * Error thrown for prompt file resolution issues
- */
 export class PromptResolverError extends PipelineCoreError {
     /** Paths that were searched when resolving the prompt */
     readonly searchedPaths?: string[];
@@ -306,10 +299,6 @@ export async function resolvePromptFileWithDetails(
 
 /**
  * Check if a prompt file exists (without loading it)
- * 
- * @param promptFile Path or filename from config
- * @param pipelineDirectory Pipeline package directory
- * @returns True if the file exists at any of the search locations
  */
 export function promptFileExists(promptFile: string, pipelineDirectory: string): boolean {
     try {
@@ -322,10 +311,6 @@ export function promptFileExists(promptFile: string, pipelineDirectory: string):
 
 /**
  * Validate that a prompt file can be resolved (for config validation)
- * 
- * @param promptFile Path or filename from config
- * @param pipelineDirectory Pipeline package directory
- * @returns Validation result with error message if invalid
  */
 export function validatePromptFile(
     promptFile: string,
