@@ -60,8 +60,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Produces a human-readable summary string, e.g. `"4 read operations (glob×1, view×3)"`.
- * @param category - the group category
- * @param counts   - map of toolName → occurrence count within the group
+ * @param counts map of toolName → occurrence count within the group
  */
 export function getCategoryLabel(
     category: ToolGroupCategory,
