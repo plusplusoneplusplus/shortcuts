@@ -1,11 +1,7 @@
 /**
- * Cache Types — Interfaces for cached artifacts.
- *
  * These types define the shape of data stored in the .wiki-cache/ directory.
  * Each cached item wraps its payload with metadata (git hash, timestamp)
  * for invalidation and version tracking.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ComponentGraph, ComponentAnalysis, GeneratedArticle, ThemeSeed, StructuralScanResult, ThemeOutline, ThemeAnalysis, ThemeArticle } from '../types';
@@ -16,9 +12,6 @@ import type { EnrichedProbeResult } from '../theme/theme-probe';
 // Graph Cache Types
 // ============================================================================
 
-/**
- * Metadata stored alongside cached results.
- */
 export interface CacheMetadata {
     /** Git HEAD hash when the cache was created */
     gitHash: string;
@@ -30,9 +23,6 @@ export interface CacheMetadata {
     focus?: string;
 }
 
-/**
- * A cached module graph with metadata.
- */
 export interface CachedGraph {
     /** Cache metadata */
     metadata: CacheMetadata;
@@ -44,9 +34,6 @@ export interface CachedGraph {
 // Analysis Cache Types
 // ============================================================================
 
-/**
- * Metadata for cached analyses.
- */
 export interface AnalysisCacheMetadata {
     /** Git HEAD hash when analyses were created */
     gitHash: string;
@@ -58,9 +45,6 @@ export interface AnalysisCacheMetadata {
     componentCount: number;
 }
 
-/**
- * A cached per-module analysis result.
- */
 export interface CachedAnalysis {
     /** The analysis result */
     analysis: ComponentAnalysis;
@@ -74,9 +58,6 @@ export interface CachedAnalysis {
 // Article Cache Types
 // ============================================================================
 
-/**
- * A cached per-module generated article.
- */
 export interface CachedArticle {
     /** The generated article */
     article: GeneratedArticle;
@@ -112,9 +93,6 @@ export interface CachedConsolidation {
 // Discovery Cache Types
 // ============================================================================
 
-/**
- * A cached probe result.
- */
 export interface CachedProbeResult {
     /** The probe result */
     probeResult: ThemeProbeResult;
@@ -124,9 +102,6 @@ export interface CachedProbeResult {
     timestamp: number;
 }
 
-/**
- * Cached seeds from auto-generation.
- */
 export interface CachedSeeds {
     /** The generated seeds */
     seeds: ThemeSeed[];
@@ -188,9 +163,6 @@ export interface DiscoveryProgressMetadata {
 // Theme Cache Types
 // ============================================================================
 
-/**
- * A cached theme probe result (enriched).
- */
 export interface CachedThemeProbe {
     /** The enriched probe result */
     result: EnrichedProbeResult;
@@ -200,9 +172,6 @@ export interface CachedThemeProbe {
     timestamp: number;
 }
 
-/**
- * A cached theme outline.
- */
 export interface CachedThemeOutline {
     /** The theme outline */
     outline: ThemeOutline;
@@ -212,9 +181,6 @@ export interface CachedThemeOutline {
     timestamp: number;
 }
 
-/**
- * A cached theme analysis.
- */
 export interface CachedThemeAnalysis {
     /** The theme analysis */
     analysis: ThemeAnalysis;

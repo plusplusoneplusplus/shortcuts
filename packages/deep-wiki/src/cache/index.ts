@@ -1,9 +1,4 @@
 /**
- * Cache Layer — Barrel Re-export
- *
- * Re-exports all cache functions from domain-specific modules.
- * Consumers can import everything from 'cache/' or 'cache/index'.
- *
  * Also contains cross-domain functions (getComponentsNeedingReanalysis, clearCache,
  * hasCachedGraph) that depend on multiple cache domains.
  */
@@ -74,9 +69,6 @@ import { getAnalysesCacheMetadata } from './analysis-cache';
  * 2. For each component, check if any changed file falls under component.path or matches module.keyFiles
  * 3. Return affected component IDs
  *
- * @param graph - Component graph
- * @param outputDir - Output directory (for cache access)
- * @param repoPath - Path to the git repository
  * @returns Array of component IDs that need re-analysis, or null if full rebuild needed
  */
 export async function getComponentsNeedingReanalysis(
@@ -151,7 +143,6 @@ export async function getComponentsNeedingReanalysis(
 /**
  * Clear the graph cache for a given output directory.
  *
- * @param outputDir - Output directory containing the cache
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearCache(outputDir: string): boolean {
@@ -161,8 +152,6 @@ export function clearCache(outputDir: string): boolean {
 /**
  * Check if a valid graph cache exists for the given configuration.
  *
- * @param repoPath - Path to the git repository
- * @param outputDir - Output directory
  * @returns True if a valid (non-expired) cache exists
  */
 export async function hasCachedGraph(repoPath: string, outputDir: string): Promise<boolean> {

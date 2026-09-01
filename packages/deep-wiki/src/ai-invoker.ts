@@ -1,13 +1,3 @@
-/**
- * AI Invoker Factory
- *
- * Creates AIInvoker instances for different phases of deep-wiki generation.
- * Phase 3 (Analysis) uses direct sessions with MCP tools for code investigation.
- * Phase 4 (Writing) uses direct sessions without tools for article generation.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import {
     sdkServiceRegistry,
     SDK_PROVIDER_COPILOT,
@@ -27,7 +17,6 @@ import { resolveWorkingDirectory } from './utils/resolve-working-directory';
 
 /**
  * Options for creating an analysis invoker (Phase 3).
- * Uses direct sessions with MCP tools for code investigation.
  */
 export interface AnalysisInvokerOptions {
     /** Absolute path to the repository (working directory for MCP tools) */
@@ -40,7 +29,6 @@ export interface AnalysisInvokerOptions {
 
 /**
  * Options for creating a writing invoker (Phase 4).
- * Uses direct sessions without tools for article generation.
  */
 export interface WritingInvokerOptions {
     /** Absolute path to the repository (working directory for SDK session) */
@@ -51,9 +39,6 @@ export interface WritingInvokerOptions {
     timeoutMs?: number;
 }
 
-/**
- * Result from checking AI availability.
- */
 export interface AIAvailabilityResult {
     available: boolean;
     reason?: string;
@@ -97,8 +82,6 @@ export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
 // ============================================================================
 
 /**
- * Create an AIInvoker for Phase 3 (Deep Analysis).
- *
  * Uses direct sessions with read-only MCP tools
  * (view, grep, glob) so the AI can investigate source code.
  * Permissions: approve reads, deny everything else.
@@ -146,11 +129,8 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
 // ============================================================================
 
 /**
- * Create an AIInvoker for Phase 4 (Article Writing).
- *
- * Uses direct sessions without tools for
- * article generation. No MCP tools are needed since all context
- * is provided in the prompt.
+ * Uses direct sessions without tools. No MCP tools are needed since all
+ * context is provided in the prompt.
  */
 export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker {
     const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
@@ -193,7 +173,6 @@ export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker 
 
 /**
  * Options for creating a consolidation invoker (Phase 2).
- * Uses direct sessions without tools for semantic clustering.
  */
 export interface ConsolidationInvokerOptions {
     /** Working directory for SDK session (typically the output directory) */
@@ -206,10 +185,8 @@ export interface ConsolidationInvokerOptions {
 
 
 /**
- * Create an AIInvoker for Phase 2 (Component Consolidation).
- *
- * Uses direct sessions without tools.
- * The AI only needs to analyze the component list and return clusters.
+ * Uses direct sessions without tools. The AI only needs to analyze the
+ * component list and return clusters.
  */
 export function createConsolidationInvoker(options: ConsolidationInvokerOptions): AIInvoker {
     const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);

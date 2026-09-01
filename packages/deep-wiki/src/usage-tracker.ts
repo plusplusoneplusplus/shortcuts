@@ -1,10 +1,6 @@
 /**
- * Token Usage Tracker
- *
  * Accumulates TokenUsage data across multiple AI calls, organized by phase.
  * Produces a per-phase and total summary for CLI display and JSON export.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { TokenUsage } from '@plusplusoneplusplus/forge';
@@ -13,10 +9,8 @@ import type { TokenUsage } from '@plusplusoneplusplus/forge';
 // Types
 // ============================================================================
 
-/** Phases tracked by the UsageTracker */
 export type TrackedPhase = 'discovery' | 'consolidation' | 'analysis' | 'writing';
 
-/** Per-phase accumulated usage data */
 export interface PhaseUsage {
     inputTokens: number;
     outputTokens: number;
@@ -28,7 +22,6 @@ export interface PhaseUsage {
     cached: boolean;
 }
 
-/** JSON report structure */
 export interface UsageReport {
     timestamp: string;
     model?: string;
@@ -48,9 +41,6 @@ export interface UsageReport {
 // UsageTracker
 // ============================================================================
 
-/**
- * Accumulates TokenUsage across multiple AI calls, grouped by phase.
- */
 export class UsageTracker {
     private phases: Map<TrackedPhase, PhaseUsage> = new Map();
 

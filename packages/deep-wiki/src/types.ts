@@ -1,15 +1,10 @@
 /**
- * Deep Wiki Generator — Core Types
- *
- * All shared interfaces for the deep-wiki CLI.
- * These types define the data model for the five-phase pipeline:
+ * The data model for the five-phase pipeline:
  *   Phase 1: Discovery      → ComponentGraph
  *   Phase 2: Consolidation  → Reduced ComponentGraph
  *   Phase 3: Analysis       → ComponentAnalysis[]
  *   Phase 4: Writing        → Wiki articles on disk
  *   Phase 5: Website        → Static HTML site
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { TokenUsage } from '@plusplusoneplusplus/forge';
@@ -109,9 +104,6 @@ export interface ComponentGraph {
     themes?: ThemeMeta[];
 }
 
-/**
- * Options for the discovery phase.
- */
 export interface DiscoveryOptions {
     /** Absolute path to the local repository */
     repoPath: string;
@@ -133,9 +125,6 @@ export interface DiscoveryOptions {
     largeRepoThreshold?: number;
 }
 
-/**
- * Result of the discovery phase.
- */
 export interface DiscoveryResult {
     /** The discovered component graph */
     graph: ComponentGraph;
@@ -149,9 +138,6 @@ export interface DiscoveryResult {
 // CLI Configuration
 // ============================================================================
 
-/**
- * Full configuration for the deep-wiki CLI.
- */
 export interface DeepWikiConfig {
     /** Output directory for generated wiki */
     output: string;
@@ -351,14 +337,8 @@ export interface AnalysisResult {
 // Phase 4: Writing Types
 // ============================================================================
 
-/**
- * Type of generated article.
- */
 export type ArticleType = 'component' | 'index' | 'architecture' | 'getting-started' | 'domain-index' | 'domain-architecture';
 
-/**
- * A single generated wiki article.
- */
 export interface GeneratedArticle {
     /** Article type */
     type: ArticleType;
@@ -408,14 +388,8 @@ export interface WikiOutput {
 // Phase 5: Website Generation Types
 // ============================================================================
 
-/**
- * Theme for the generated website.
- */
 export type WebsiteTheme = 'light' | 'dark' | 'auto';
 
-/**
- * Options for the website generation phase.
- */
 export interface WebsiteOptions {
     /** Theme for the generated website (default: 'auto') */
     theme?: WebsiteTheme;
@@ -453,9 +427,6 @@ export interface PhaseConfig {
     skipAI?: boolean;
 }
 
-/**
- * Map of phase-specific configuration overrides.
- */
 export type PhasesConfig = Partial<Record<PhaseName, PhaseConfig>>;
 
 // ============================================================================
@@ -556,9 +527,6 @@ export interface SeedsCommandOptions {
 // Theme Generation Types
 // ============================================================================
 
-/**
- * User-provided theme request.
- */
 export interface ThemeRequest {
     /** kebab-case ID (e.g., "compaction") */
     theme: string;
@@ -580,9 +548,6 @@ export interface ThemeCoverageCheck {
     relatedComponents: ThemeRelatedComponent[];
 }
 
-/**
- * A component related to a theme with relevance scoring.
- */
 export interface ThemeRelatedComponent {
     /** ID of the related component */
     componentId: string;
@@ -610,9 +575,6 @@ export interface ThemeOutline {
     involvedComponents: ThemeInvolvedComponent[];
 }
 
-/**
- * Plan for a single article within a theme.
- */
 export interface ThemeArticlePlan {
     /** URL-safe slug for the article */
     slug: string;
@@ -628,9 +590,6 @@ export interface ThemeArticlePlan {
     coveredFiles: string[];
 }
 
-/**
- * A component involved in a theme with its role.
- */
 export interface ThemeInvolvedComponent {
     /** Module ID */
     componentId: string;
@@ -640,9 +599,6 @@ export interface ThemeInvolvedComponent {
     keyFiles: string[];
 }
 
-/**
- * Cross-cutting theme analysis result.
- */
 export interface ThemeAnalysis {
     /** Theme identifier */
     themeId: string;
@@ -654,9 +610,6 @@ export interface ThemeAnalysis {
     crossCutting: ThemeCrossCuttingAnalysis;
 }
 
-/**
- * Analysis for a single article within a theme.
- */
 export interface ThemeArticleAnalysis {
     /** Article slug */
     slug: string;
@@ -670,9 +623,6 @@ export interface ThemeArticleAnalysis {
     internalDetails: string;
 }
 
-/**
- * Cross-cutting analysis across all articles in a theme.
- */
 export interface ThemeCrossCuttingAnalysis {
     /** Architecture overview */
     architecture: string;

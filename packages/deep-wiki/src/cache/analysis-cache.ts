@@ -1,6 +1,4 @@
 /**
- * Analysis Cache — Per-Module Analysis Results
- *
  * Caches per-module analysis results from Phase 3.
  * Supports individual and bulk operations, crash recovery scanning,
  * and metadata-based validation.
@@ -23,23 +21,14 @@ import { getCacheDir, CACHE_VERSION, ANALYSES_DIR, ANALYSES_METADATA_FILE } from
 // Paths
 // ============================================================================
 
-/**
- * Get the analyses cache directory.
- */
 export function getAnalysesCacheDir(outputDir: string): string {
     return path.join(getCacheDir(outputDir), ANALYSES_DIR);
 }
 
-/**
- * Get the path to a single cached analysis file.
- */
 export function getAnalysisCachePath(outputDir: string, componentId: string): string {
     return path.join(getAnalysesCacheDir(outputDir), `${componentId}.json`);
 }
 
-/**
- * Get the path to the analyses metadata file.
- */
 export function getAnalysesMetadataPath(outputDir: string): string {
     return path.join(getAnalysesCacheDir(outputDir), ANALYSES_METADATA_FILE);
 }
@@ -51,8 +40,6 @@ export function getAnalysesMetadataPath(outputDir: string): string {
 /**
  * Get a single cached module analysis.
  *
- * @param componentId - Module ID to look up
- * @param outputDir - Output directory
  * @returns The cached analysis, or null if not found
  */
 export function getCachedAnalysis(componentId: string, outputDir: string): ComponentAnalysis | null {
@@ -66,7 +53,6 @@ export function getCachedAnalysis(componentId: string, outputDir: string): Compo
 /**
  * Get all cached analyses if the cache is valid.
  *
- * @param outputDir - Output directory
  * @returns Array of cached analyses, or null if cache is invalid/missing
  */
 export function getCachedAnalyses(outputDir: string): ComponentAnalysis[] | null {
@@ -104,9 +90,6 @@ export function getCachedAnalyses(outputDir: string): ComponentAnalysis[] | null
     return analyses.length > 0 ? analyses : null;
 }
 
-/**
- * Get the analyses cache metadata (for hash checking).
- */
 export function getAnalysesCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
     return readCacheFile<AnalysisCacheMetadata>(getAnalysesMetadataPath(outputDir));
 }
@@ -118,9 +101,6 @@ export function getAnalysesCacheMetadata(outputDir: string): AnalysisCacheMetada
 /**
  * Save a single module analysis to the cache.
  *
- * @param componentId - Module ID
- * @param analysis - The analysis to cache
- * @param outputDir - Output directory
  * @param gitHash - Git hash when the analysis was produced
  */
 export function saveAnalysis(
@@ -139,10 +119,6 @@ export function saveAnalysis(
 /**
  * Save all analyses to the cache (bulk save with metadata).
  * Prunes stale analysis files that no longer correspond to current components.
- *
- * @param analyses - All module analyses
- * @param outputDir - Output directory
- * @param repoPath - Path to the git repository
  */
 export async function saveAllAnalyses(
     analyses: ComponentAnalysis[],
@@ -179,8 +155,6 @@ export async function saveAllAnalyses(
  * retains orphaned files for the old component IDs. This function deletes them
  * so that cache counts and scans reflect the actual component set.
  *
- * @param outputDir - Output directory
- * @param validComponentIds - Set of component IDs that should be kept
  * @returns Number of stale files removed
  */
 export function pruneStaleAnalyses(outputDir: string, validComponentIds: Set<string>): number {
@@ -224,8 +198,6 @@ export function pruneStaleAnalyses(outputDir: string, validComponentIds: Set<str
  * `saveAllAnalyses` wrote the metadata file, individual per-module files
  * may still exist from incremental saves via `onItemComplete`.
  *
- * @param componentIds - Module IDs to look for in the cache
- * @param outputDir - Output directory
  * @param currentGitHash - Current git hash for validation (modules cached with
  *                         a different hash are considered stale and excluded)
  * @returns Object with `found` (valid cached analyses) and `missing` (module IDs not found or stale)
@@ -246,8 +218,6 @@ export function scanIndividualAnalysesCache(
 /**
  * Scan for individually cached analyses, ignoring git hash validation.
  *
- * @param componentIds - Module IDs to look for in the cache
- * @param outputDir - Output directory
  * @returns Object with `found` (valid cached analyses) and `missing` (module IDs not found)
  */
 export function scanIndividualAnalysesCacheAny(
@@ -269,7 +239,6 @@ export function scanIndividualAnalysesCacheAny(
 /**
  * Clear all cached analyses.
  *
- * @param outputDir - Output directory
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearAnalysesCache(outputDir: string): boolean {

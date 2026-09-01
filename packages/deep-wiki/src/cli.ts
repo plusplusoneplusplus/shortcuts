@@ -1,12 +1,3 @@
-/**
- * CLI Argument Parser
- *
- * Defines the CLI commands and options using Commander.
- * Routes parsed arguments to the appropriate command handlers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import * as path from 'path';
 import { Command } from 'commander';
 import { getErrorMessage } from './utils/error-utils';
@@ -31,9 +22,6 @@ export const EXIT_CODES = {
 // CLI Setup
 // ============================================================================
 
-/**
- * Create and configure the CLI program
- */
 export function createProgram(): Command {
     const program = new Command();
 
@@ -298,10 +286,6 @@ export function createProgram(): Command {
  * Resolve the repository path from CLI positional arg or config file.
  *
  * Priority: CLI arg > config file repoPath > undefined
- *
- * @param cliRepoPath - Positional argument from CLI (may be undefined)
- * @param configPath - Explicit config file path (may be undefined)
- * @returns Resolved repo path, or undefined if neither source provides one
  */
 export function resolveRepoPath(cliRepoPath: string | undefined, configPath: string | undefined): string | undefined {
     if (cliRepoPath) {
@@ -349,10 +333,6 @@ function applyGlobalOptions(opts: Record<string, unknown>): void {
 /**
  * Determine which CLI option fields were explicitly set by the user (not defaults).
  * Uses Commander's internal state to distinguish user-provided values from defaults.
- *
- * @param cmd - The Commander Command instance
- * @param opts - The parsed options object
- * @returns Set of field names that were explicitly provided
  */
 function getExplicitFields(cmd: Command, opts: Record<string, unknown>): Set<string> {
     const explicit = new Set<string>();
