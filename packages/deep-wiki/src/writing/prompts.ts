@@ -1,11 +1,7 @@
 /**
- * Article Writing Prompt Templates
- *
  * Prompt templates for Phase 4 (Article Generation). Each component's analysis
  * is converted into a markdown article. Templates include cross-link
  * information and Mermaid diagram integration.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ComponentAnalysis, ComponentGraph, ComponentInfo, DomainInfo } from '../types';
@@ -79,9 +75,6 @@ Write a thorough, detailed article (1500-3000 words) following this exact sectio
 // Component Article Prompt
 // ============================================================================
 
-/**
- * Get the style guide for a given depth.
- */
 export function getArticleStyleGuide(depth: 'shallow' | 'normal' | 'deep'): string {
     switch (depth) {
         case 'shallow': return SHALLOW_STYLE;
@@ -90,14 +83,6 @@ export function getArticleStyleGuide(depth: 'shallow' | 'normal' | 'deep'): stri
     }
 }
 
-/**
- * Build the prompt for generating a single component article.
- *
- * @param analysis The component's analysis data
- * @param graph The full component graph (for cross-linking)
- * @param depth Article depth
- * @returns Complete prompt string
- */
 export function buildComponentArticlePrompt(
     analysis: ComponentAnalysis,
     graph: ComponentGraph,
@@ -162,7 +147,6 @@ Do NOT write, create, or save any files to disk. Return ONLY the markdown conten
  * Build cross-linking rules based on whether domains exist (hierarchical layout).
  *
  * @param domainId - The area this component belongs to (undefined for flat layout)
- * @returns Cross-linking rules string for prompt
  */
 export function buildCrossLinkRules(domainId?: string): string {
     if (!domainId) {
@@ -190,10 +174,6 @@ export function buildCrossLinkRules(domainId?: string): string {
 /**
  * Build the prompt template for the map-reduce framework.
  * Uses {{variable}} placeholders for template substitution.
- *
- * @param depth Article depth
- * @param domainId Optional domain ID for hierarchical cross-linking
- * @returns Prompt template string
  */
 export function buildComponentArticlePromptTemplate(depth: 'shallow' | 'normal' | 'deep', domainId?: string): string {
     const styleGuide = getArticleStyleGuide(depth);

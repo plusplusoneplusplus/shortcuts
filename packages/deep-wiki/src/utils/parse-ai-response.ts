@@ -1,10 +1,6 @@
 /**
- * Shared AI Response Parsing Utility
- *
  * Consolidates the repeated JSON extraction + validation pattern
  * used across multiple response parsers in deep-wiki.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { extractJSON } from '@plusplusoneplusplus/forge';

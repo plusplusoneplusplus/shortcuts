@@ -1,6 +1,4 @@
 /**
- * Shared Mermaid Zoom/Pan Module
- *
  * Provides unified CSS, HTML, and JS strings for mermaid diagram
  * zoom/pan controls used by both the SPA template (serve mode) and
  * the static website generator.
@@ -14,8 +12,6 @@
  *   - Transition: 0.15s ease-out (smoother)
  *   - Dragging: `transition: none` on `.mermaid-svg-wrapper` during drag
  *   - CSS vars: Uses shared deep-wiki CSS var names
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================
@@ -135,9 +131,7 @@ export function getMermaidZoomStyles(): string {
  * The `mermaidCode` is placed inside a `<pre class="mermaid">` element within the
  * viewport's svg-wrapper.
  *
- * @param mermaidCode - The raw mermaid diagram source code
  * @param label - The toolbar label (default: "Diagram")
- * @returns HTML string for the mermaid container
  */
 export function getMermaidContainerHtml(mermaidCode: string, label = 'Diagram'): string {
     return '<div class="mermaid-container">' +

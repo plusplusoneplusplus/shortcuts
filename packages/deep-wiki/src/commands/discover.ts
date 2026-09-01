@@ -1,10 +1,6 @@
 /**
- * Discover Command
- *
  * Implements the `deep-wiki discover <repo-path>` command.
  * Runs Phase 1 (Discovery) to produce a ComponentGraph JSON.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -48,7 +44,6 @@ import { initWikiGitRepo } from '../utils/git-init';
  * Execute the discover command.
  *
  * @param repoPath - Path to the local git repository
- * @param options - Command options
  * @returns Exit code
  */
 export async function executeDiscover(

@@ -1,6 +1,4 @@
 /**
- * Website Generator
- *
  * Generates a standalone HTML website from the wiki output.
  * The generated website includes:
  *   - Embedded component graph and markdown data (no CORS issues with file://)
@@ -11,8 +9,6 @@
  *   - Dark/light/auto theme support
  *   - Copy buttons for code blocks
  *   - Anchor links for headings
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -43,14 +39,10 @@ const EMBEDDED_DATA_FILENAME = 'embedded-data.js';
 // ============================================================================
 
 /**
- * Generate a standalone HTML website from wiki output.
- *
  * Reads component-graph.json and all component markdown files from the wiki directory,
  * then generates index.html with embedded data for offline viewing.
  *
  * @param wikiDir - Path to the wiki output directory (contains component-graph.json and components/)
- * @param options - Website generation options
- * @returns Paths to the generated files
  */
 export function generateWebsite(wikiDir: string, options?: WebsiteOptions): string[] {
     const resolvedDir = path.resolve(wikiDir);
@@ -98,9 +90,6 @@ interface TemplateOptions {
 
 /**
  * Generate the index.html content from the built-in template.
- *
- * @param options - Template options
- * @returns Complete HTML content
  */
 export function generateHtmlTemplate(options: TemplateOptions): string {
     const { theme, title, enableSearch } = options;

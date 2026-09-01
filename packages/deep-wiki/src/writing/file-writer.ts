@@ -1,6 +1,4 @@
 /**
- * File Writer
- *
  * Writes generated wiki articles to disk in a structured directory layout:
  *   wiki/
  *   ├── index.md
@@ -10,8 +8,6 @@
  *       ├── auth.md
  *       ├── database.md
  *       └── ...
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -34,19 +30,12 @@ const DOMAINS_DIR = 'domains';
 // ============================================================================
 
 /**
- * Write all wiki articles to the output directory.
- *
- * Creates the directory structure and writes each article as a .md file.
  * UTF-8 encoding with LF line endings. Overwrites existing files.
  *
  * Supports both flat layout (small repos):
  *   wiki/components/auth.md
  * And hierarchical layout (large repos with domains):
  *   wiki/domains/core/components/auth.md
- *
- * @param output The wiki output containing all articles
- * @param outputDir The output directory path
- * @returns Array of written file paths
  */
 export function writeWikiOutput(output: WikiOutput, outputDir: string): string[] {
     const resolvedDir = path.resolve(outputDir);
@@ -91,8 +80,6 @@ export function writeWikiOutput(output: WikiOutput, outputDir: string): string[]
 // ============================================================================
 
 /**
- * Get the file path for an article based on its type, slug, and optional domainId.
- *
  * For articles with domainId set (hierarchical layout):
  *   - component → domains/{domainId}/components/{slug}.md
  *   - area-index → domains/{domainId}/index.md
@@ -129,7 +116,6 @@ export function getArticleFilePath(article: GeneratedArticle, outputDir: string)
 }
 
 /**
- * Slugify a string for use as a filename.
  * Converts to lowercase, replaces non-alphanumeric chars with hyphens,
  * and trims leading/trailing hyphens.
  */

@@ -1,10 +1,6 @@
 /**
- * Init Command
- *
  * Generates a template `deep-wiki.config.yaml` configuration file.
  * Writes to the current directory or a specified output path.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -94,10 +90,8 @@ export interface InitCommandOptions {
 /**
  * Execute the `deep-wiki init` command.
  *
- * @param options - Command options
  * @returns Exit code (0 = success, 1 = error)
  */
-/** Default configuration file name */
 export const DEFAULT_CONFIG_FILENAME = 'deep-wiki.config.yaml';
 
 export async function executeInit(options: InitCommandOptions): Promise<number> {

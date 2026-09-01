@@ -1,15 +1,8 @@
 /**
- * Analysis Detail Types — Sub-interfaces for ComponentAnalysis.
- *
  * These types are used exclusively by the analysis response parser
  * to normalize raw AI output into structured ComponentAnalysis objects.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-/**
- * A key concept identified in a component.
- */
 export interface KeyConcept {
     /** Concept name */
     name: string;
@@ -19,9 +12,6 @@ export interface KeyConcept {
     codeRef?: string;
 }
 
-/**
- * A public API entry point of a component.
- */
 export interface PublicAPIEntry {
     /** Function/class/constant name */
     name: string;
@@ -31,9 +21,6 @@ export interface PublicAPIEntry {
     description: string;
 }
 
-/**
- * An illustrative code example from a component.
- */
 export interface CodeExample {
     /** Short title for the example */
     title: string;

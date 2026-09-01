@@ -1,11 +1,7 @@
 /**
- * Analysis Module — Public API
- *
  * Phase 3 (Deep Analysis) entry point. Converts ComponentGraph components
  * into PromptItems and runs parallel AI sessions with MCP tools
  * to produce detailed ComponentAnalysis results.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AnalysisOptions, AnalysisResult, ComponentAnalysis } from '../types';
@@ -25,13 +21,6 @@ export type { AnalysisExecutorOptions, AnalysisExecutorResult, AnalysisProgress,
 
 /**
  * Analyze all components in the graph using AI with MCP tool access.
- *
- * @param options Analysis options
- * @param aiInvoker Configured AI invoker for analysis (with MCP tools)
- * @param onProgress Optional progress callback
- * @param isCancelled Optional cancellation check
- * @param onItemComplete Optional per-item completion callback for incremental saving
- * @returns Analysis results
  */
 export async function analyzeComponents(
     options: AnalysisOptions,

@@ -1,11 +1,7 @@
 /**
- * Analysis Response Parser
- *
  * Parses AI responses from Phase 3 analysis into structured ComponentAnalysis objects.
  * Handles JSON extraction from markdown code blocks, field validation, default filling,
  * and Mermaid diagram validation.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type {
@@ -125,9 +121,6 @@ function ensureArray<T>(value: unknown): T[] {
     return [];
 }
 
-/**
- * Normalize a KeyConcept from raw data.
- */
 function normalizeKeyConcept(raw: unknown): KeyConcept | null {
     if (!raw || typeof raw !== 'object') { return null; }
     const obj = raw as Record<string, unknown>;
@@ -140,9 +133,6 @@ function normalizeKeyConcept(raw: unknown): KeyConcept | null {
     };
 }
 
-/**
- * Normalize a PublicAPIEntry from raw data.
- */
 function normalizePublicAPIEntry(raw: unknown): PublicAPIEntry | null {
     if (!raw || typeof raw !== 'object') { return null; }
     const obj = raw as Record<string, unknown>;
@@ -155,9 +145,6 @@ function normalizePublicAPIEntry(raw: unknown): PublicAPIEntry | null {
     };
 }
 
-/**
- * Normalize a CodeExample from raw data.
- */
 function normalizeCodeExample(raw: unknown): CodeExample | null {
     if (!raw || typeof raw !== 'object') { return null; }
     const obj = raw as Record<string, unknown>;
@@ -183,9 +170,6 @@ function normalizeCodeExample(raw: unknown): CodeExample | null {
     return example;
 }
 
-/**
- * Normalize an InternalDependency from raw data.
- */
 function normalizeInternalDependency(raw: unknown): InternalDependency | null {
     if (!raw || typeof raw !== 'object') { return null; }
     const obj = raw as Record<string, unknown>;
@@ -199,9 +183,6 @@ function normalizeInternalDependency(raw: unknown): InternalDependency | null {
     };
 }
 
-/**
- * Normalize an ExternalDependency from raw data.
- */
 function normalizeExternalDependency(raw: unknown): ExternalDependency | null {
     if (!raw || typeof raw !== 'object') { return null; }
     const obj = raw as Record<string, unknown>;

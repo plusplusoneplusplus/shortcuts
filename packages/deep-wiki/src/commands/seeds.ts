@@ -1,10 +1,6 @@
 /**
- * Seeds Command
- *
  * Implements the `deep-wiki seeds <repo-path>` command.
  * Generates theme seeds for breadth-first discovery (Phase 0).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -42,7 +38,6 @@ const DEEP_WIKI_VERSION = '1.0.0';
  * Execute the seeds command.
  *
  * @param repoPath - Path to the local git repository
- * @param options - Command options
  * @returns Exit code
  */
 export async function executeSeeds(

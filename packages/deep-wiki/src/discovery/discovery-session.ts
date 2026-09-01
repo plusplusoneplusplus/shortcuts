@@ -1,11 +1,7 @@
 /**
- * Discovery Phase — SDK Session Orchestration
- *
  * Orchestrates the Copilot SDK session for repository discovery.
  * Creates a direct session with MCP tools (grep, glob, view),
  * sends the discovery prompt, and parses the response.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -169,9 +165,6 @@ function mergeTokenUsage(a?: TokenUsage, b?: TokenUsage): TokenUsage | undefined
 // Error Types
 // ============================================================================
 
-/**
- * Error type for discovery phase failures.
- */
 export class DiscoveryError extends Error {
     constructor(
         message: string,

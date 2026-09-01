@@ -1,11 +1,7 @@
 /**
- * Seeds Phase — Response Parser
- *
  * Parses and validates AI JSON responses into ThemeSeed structures.
  * Handles JSON extraction from markdown, validation, normalization,
  * and error recovery.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ThemeSeed } from '../types';
@@ -44,9 +40,6 @@ export function parseSeedsResponse(response: string): ThemeSeed[] {
 // Themes Array Parsing
 // ============================================================================
 
-/**
- * Parse and validate an array of ThemeSeed objects.
- */
 function parseThemesArray(raw: unknown): ThemeSeed[] {
     if (!Array.isArray(raw)) {
         throw new Error("'themes' field must be an array");

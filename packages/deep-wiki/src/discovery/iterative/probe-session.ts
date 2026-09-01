@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Probe Session
- *
  * Runs a single theme probe session using the Copilot SDK.
  * Creates a direct session with MCP tools and parses the response.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -39,8 +35,6 @@ const PROBE_TOOLS = ['view', 'grep', 'glob'];
  * Run a single theme probe session.
  *
  * @param repoPath - Absolute path to the repository
- * @param theme - The theme seed to probe
- * @param options - Probe options (model, timeout, focus)
  * @returns ThemeProbeResult (empty result on failure, doesn't throw)
  */
 export async function runThemeProbe(

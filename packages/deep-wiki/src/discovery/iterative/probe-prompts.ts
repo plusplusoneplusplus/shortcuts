@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Probe Prompts
- *
  * Prompt templates for per-theme probe sessions.
  * Each probe searches the codebase for evidence of a specific theme.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ThemeSeed } from '../../types';
@@ -13,9 +9,6 @@ import type { ThemeSeed } from '../../types';
 // Theme Probe Prompt
 // ============================================================================
 
-/**
- * JSON schema for ThemeProbeResult.
- */
 const THEME_PROBE_RESULT_SCHEMA = `{
   "theme": "string — the theme that was probed",
   "foundComponents": [
@@ -45,9 +38,7 @@ const THEME_PROBE_RESULT_SCHEMA = `{
  * Build the prompt for a per-theme probe session.
  *
  * @param repoPath - Absolute path to the repository
- * @param theme - The theme seed to probe
  * @param focus - Optional subtree to focus on
- * @returns The rendered prompt string
  */
 export function buildProbePrompt(
     repoPath: string,

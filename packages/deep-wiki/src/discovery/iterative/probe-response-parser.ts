@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Probe Response Parser
- *
  * Parses AI responses from theme probe sessions into ThemeProbeResult.
  * Handles JSON extraction, validation, and normalization.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ThemeProbeResult, ProbeFoundComponent, DiscoveredTheme } from './types';

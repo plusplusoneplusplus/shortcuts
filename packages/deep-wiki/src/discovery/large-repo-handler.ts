@@ -1,10 +1,6 @@
 /**
- * Discovery Phase — Large Repo Handler
- *
  * Handles multi-round discovery for large repositories (3000+ files).
  * First pass identifies top-level structure, second pass drills into each domain.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -60,7 +56,6 @@ const DISCOVERY_TOOLS = ['view', 'grep', 'glob'];
  * Estimate the number of files in a repository by counting glob results.
  * Uses a fast glob pattern to avoid reading file contents.
  *
- * @param repoPath - Path to the repository
  * @returns Estimated file count, or -1 if estimation fails
  */
 export async function estimateFileCount(repoPath: string): Promise<number> {
@@ -93,9 +88,7 @@ export async function estimateFileCount(repoPath: string): Promise<number> {
 /**
  * Check if a repository is large enough to require multi-round discovery.
  *
- * @param repoPath - Path to the repository
  * @param threshold - Custom file count threshold (defaults to LARGE_REPO_THRESHOLD)
- * @returns True if the repo has more files than the threshold
  */
 export async function isLargeRepo(repoPath: string, threshold?: number): Promise<boolean> {
     const count = await estimateFileCount(repoPath);
@@ -107,14 +100,9 @@ export async function isLargeRepo(repoPath: string, threshold?: number): Promise
 // ============================================================================
 
 /**
- * Perform multi-round discovery for a large repository.
- *
  * Round 1: Structural scan — identify top-level domains
  * Round 2: Per-domain drill-down — focused discovery for each domain (sequential)
  * Final:   Merge all sub-graphs into a unified ComponentGraph
- *
- * @param options - Discovery options
- * @returns Merged ComponentGraph
  */
 export async function discoverLargeRepo(options: DiscoveryOptions): Promise<ComponentGraph> {
     const cacheEnabled = !!options.outputDir;

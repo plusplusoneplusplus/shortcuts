@@ -1,6 +1,4 @@
 /**
- * Wiki Integrator
- *
  * Updates existing wiki files to integrate a new theme area:
  * - module-graph.json — adds/updates ThemeMeta entry
  * - index.md — adds/updates "Themes" navigation section

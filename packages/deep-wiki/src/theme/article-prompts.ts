@@ -1,11 +1,7 @@
 /**
- * Theme Article — Prompt Templates
- *
  * Prompt templates for generating theme sub-articles and index pages.
  * Sub-article prompts return raw markdown (not JSON).
  * Index page prompts synthesize all sub-article summaries into an overview.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type {

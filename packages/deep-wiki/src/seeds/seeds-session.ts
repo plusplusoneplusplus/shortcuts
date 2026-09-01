@@ -1,11 +1,7 @@
 /**
- * Seeds Phase — SDK Session Orchestration
- *
  * Orchestrates the Copilot SDK session for theme seed generation.
  * Creates a direct session with MCP tools (grep, glob, view),
  * sends the seeds prompt, and parses the response.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -67,9 +63,6 @@ export function isTransientSDKError(errorMessage: string): boolean {
     return EXTRA_TRANSIENT_PATTERNS.some(pattern => lower.includes(pattern.toLowerCase()));
 }
 
-/**
- * Sleep for a given number of milliseconds.
- */
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -216,9 +209,6 @@ async function sendWithRetry(
 // Error Types
 // ============================================================================
 
-/**
- * Error type for seeds phase failures.
- */
 export class SeedsError extends Error {
     constructor(
         message: string,

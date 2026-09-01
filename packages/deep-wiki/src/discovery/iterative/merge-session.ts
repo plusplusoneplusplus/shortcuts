@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Merge Session
- *
  * Runs the merge + gap analysis session using the Copilot SDK.
  * Merges probe results, identifies gaps, and determines convergence.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -42,7 +38,6 @@ const MERGE_TOOLS = ['view', 'grep', 'glob'];
  * @param repoPath - Absolute path to the repository
  * @param probeResults - All probe results from the current round
  * @param existingGraph - Existing partial graph (if any, from prior rounds)
- * @param options - Merge options (model, timeout)
  * @returns MergeResult (partial result on failure, doesn't throw)
  */
 export async function mergeProbeResults(

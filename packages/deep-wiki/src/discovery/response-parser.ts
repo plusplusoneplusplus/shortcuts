@@ -1,11 +1,7 @@
 /**
- * Discovery Phase — Response Parser
- *
  * Parses and validates AI JSON responses into ComponentGraph structures.
  * Handles JSON extraction from markdown, validation, normalization,
  * and error recovery.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { extractJSON } from '@plusplusoneplusplus/forge';
@@ -186,9 +182,6 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ComponentGraph
     };
 }
 
-/**
- * Parse and validate ProjectInfo.
- */
 function parseProjectInfo(raw: unknown): ProjectInfo {
     if (typeof raw !== 'object' || raw === null) {
         throw new Error("Missing or invalid 'project' field in component graph");
@@ -212,9 +205,6 @@ function parseProjectInfo(raw: unknown): ProjectInfo {
     };
 }
 
-/**
- * Parse and validate an array of ComponentInfo.
- */
 function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
     if (!Array.isArray(raw)) {
         throw new Error("'components' field must be an array");
@@ -275,9 +265,6 @@ function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
     return components;
 }
 
-/**
- * Parse and validate an array of CategoryInfo.
- */
 function parseCategories(raw: unknown, warnings: string[]): CategoryInfo[] {
     if (!Array.isArray(raw)) {
         warnings.push("'categories' is not an array, using empty default");
@@ -301,9 +288,6 @@ function parseCategories(raw: unknown, warnings: string[]): CategoryInfo[] {
     return categories;
 }
 
-/**
- * Parse domains from structural scan response.
- */
 function parseDomains(raw: unknown): TopLevelDomain[] {
     if (!Array.isArray(raw)) { return []; }
 
@@ -322,9 +306,6 @@ function parseDomains(raw: unknown): TopLevelDomain[] {
     return domains;
 }
 
-/**
- * Parse partial ProjectInfo from structural scan response.
- */
 function parsePartialProjectInfo(raw: unknown): Partial<ProjectInfo> {
     if (typeof raw !== 'object' || raw === null) { return {}; }
     const obj = raw as Record<string, unknown>;

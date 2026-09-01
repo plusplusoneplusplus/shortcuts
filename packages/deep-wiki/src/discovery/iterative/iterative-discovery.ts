@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Main Convergence Loop
- *
  * Implements breadth-first iterative discovery using theme seeds.
  * Runs parallel probes, merges results, and iterates until convergence.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ComponentGraph, ThemeSeed } from '../../types';
@@ -27,9 +23,6 @@ import {
 /**
  * Run tasks in parallel with a concurrency limit.
  *
- * @param items - Items to process
- * @param concurrency - Maximum parallel tasks
- * @param fn - Function to run for each item
  * @returns Array of results (in order)
  */
 async function runParallel<T, R>(
@@ -76,17 +69,12 @@ async function runParallel<T, R>(
 // ============================================================================
 
 /**
- * Run iterative breadth-first discovery.
- *
  * Flow:
  * 1. Load seeds (already provided in options)
  * 2. Run N parallel probe sessions (one per theme)
  * 3. Merge probe results + identify gaps + discover new themes
  * 4. Iterate until convergence (no new themes, good coverage, or max rounds)
  * 5. Return final ComponentGraph
- *
- * @param options - Iterative discovery options
- * @returns Final ComponentGraph
  */
 export async function runIterativeDiscovery(
     options: IterativeDiscoveryOptions

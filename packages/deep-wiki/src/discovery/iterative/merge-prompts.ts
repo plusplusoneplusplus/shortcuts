@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Merge Prompts
- *
  * Prompt templates for the merge + gap analysis session.
  * Merges probe results, identifies gaps, and determines convergence.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ComponentGraph } from '../../types';
@@ -15,9 +11,6 @@ import { COMPONENT_GRAPH_SCHEMA } from '../../schemas';
 // Merge Prompt
 // ============================================================================
 
-/**
- * JSON schema for MergeResult.
- */
 const MERGE_RESULT_SCHEMA = `{
   "graph": ${COMPONENT_GRAPH_SCHEMA.replace(/\n/g, '\n  ')},
   "newThemes": [
@@ -38,7 +31,6 @@ const MERGE_RESULT_SCHEMA = `{
  * @param repoPath - Absolute path to the repository
  * @param probeResults - All probe results from the current round
  * @param existingGraph - Existing partial graph (if any, from prior rounds)
- * @returns The rendered prompt string
  */
 export function buildMergePrompt(
     repoPath: string,

@@ -1,12 +1,8 @@
 /**
- * Article Executor
- *
  * Orchestrates Phase 4 (Article Generation) using direct AI invocation
  * with concurrency-limited map and AI-powered reduce phases:
  * 1. Map: Generate per-component markdown articles (text mode, no structured output)
  * 2. Reduce: AI generates index, architecture, and getting-started pages
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -38,7 +34,6 @@ import type { DomainInfo } from '../types';
 // Types
 // ============================================================================
 
-/** Progress information for article generation. */
 export interface ArticleProgress {
     phase: 'mapping' | 'reducing';
     completedItems: number;
@@ -46,7 +41,6 @@ export interface ArticleProgress {
     percentage: number;
 }
 
-/** Result of a single mapped item. */
 interface MapItemResult {
     item: PromptItem;
     success: boolean;
@@ -57,9 +51,6 @@ interface MapItemResult {
 /** Callback invoked after each individual item completes during the map phase. */
 export type ArticleItemCompleteCallback = (item: PromptItem, result: MapItemResult) => void;
 
-/**
- * Options for the article executor.
- */
 export interface ArticleExecutorOptions {
     /** AI invoker for writing (session pool, no tools) */
     aiInvoker: AIInvoker;
@@ -86,9 +77,6 @@ export interface ArticleExecutorOptions {
     onItemComplete?: ArticleItemCompleteCallback;
 }
 
-/**
- * Result of the article executor.
- */
 export interface ArticleExecutorResult {
     /** Generated articles (component + index pages) */
     articles: GeneratedArticle[];
@@ -103,7 +91,6 @@ export interface ArticleExecutorResult {
 // ============================================================================
 
 /**
- * Convert an analysis into a PromptItem for the article template.
  * Uses text mode (no output fields) so the AI returns raw markdown.
  */
 export function analysisToPromptItem(
@@ -127,7 +114,6 @@ export function analysisToPromptItem(
 
 /**
  * Run a prompt-map phase: substitute template variables per item, invoke AI concurrently.
- * Returns per-item results with the original item, success flag, and text.
  */
 async function runPromptMap(
     items: PromptItem[],
@@ -238,13 +224,9 @@ async function runAIReduce(
 // ============================================================================
 
 /**
- * Run the article executor to generate wiki articles.
  * Detects if `graph.domains` exists (large repo mode) and switches to hierarchical execution:
  * - If domains: group analyses by domain → per-domain map-reduce → project-level reduce
  * - If no domains: existing flat map-reduce (backward compat)
- *
- * @param options Executor options
- * @returns Generated articles
  */
 export async function runArticleExecutor(
     options: ArticleExecutorOptions
@@ -397,29 +379,22 @@ async function runFlatArticleExecutor(
 // Hierarchical Article Executor (Large Repos with Areas)
 // ============================================================================
 
-/** Result of grouping analyses by domain. */
 export interface DomainGrouping {
     componentDomainMap: Map<string, string>;
     analysesByDomain: Map<string, ComponentAnalysis[]>;
     unassignedAnalyses: ComponentAnalysis[];
 }
 
-/** Result of the component map phase. */
 interface ComponentMapResult {
     articles: GeneratedArticle[];
     failedIds: Set<string>;
 }
 
-/** Result of a single domain reduce phase. */
 interface DomainReduceResult {
     articles: GeneratedArticle[];
     domainSummary: { domainId: string; name: string; description: string; summary: string; componentCount: number };
 }
 
-/**
- * Group analyses by their domain assignment.
- * Builds component→domain mapping and buckets analyses accordingly.
- */
 export function groupAnalysesByDomain(
     analyses: ComponentAnalysis[],
     domains: DomainInfo[]

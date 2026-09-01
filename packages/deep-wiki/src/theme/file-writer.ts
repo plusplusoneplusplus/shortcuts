@@ -1,6 +1,4 @@
 /**
- * Theme File Writer
- *
  * Writes generated theme articles to the wiki directory.
  *
  * Layout logic:
@@ -11,7 +9,6 @@
  *                         └── {slug2}.md
  *
  * Creates themes/ directory if it doesn't exist.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -49,8 +46,6 @@ export interface ThemeWriteResult {
 // ============================================================================
 
 /**
- * Write theme articles to the wiki directory.
- *
  * Creates themes/ directory if it doesn't exist.
  * Overwrites existing files.
  */

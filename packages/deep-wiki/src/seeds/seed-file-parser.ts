@@ -1,10 +1,6 @@
 /**
- * Seeds Phase — Seed File Parser
- *
  * Parses seed files in YAML or CSV format into ThemeSeed arrays.
  * Supports YAML format with a 'themes' array and CSV with theme,description,hints columns.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -57,9 +53,6 @@ export function parseSeedFile(filePath: string): ThemeSeed[] {
 // YAML Parsing
 // ============================================================================
 
-/**
- * Parse a YAML seed file.
- */
 function parseYamlSeedFile(content: string, filePath: string): ThemeSeed[] {
     let parsed: unknown;
     try {
@@ -81,9 +74,6 @@ function parseYamlSeedFile(content: string, filePath: string): ThemeSeed[] {
     return parseThemesArray(obj.themes, filePath);
 }
 
-/**
- * Parse an array of theme objects into ThemeSeed array.
- */
 function parseThemesArray(raw: unknown[], filePath: string): ThemeSeed[] {
     const seeds: ThemeSeed[] = [];
 

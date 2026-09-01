@@ -1,10 +1,6 @@
 /**
- * Website Data
- *
  * Data reading, serialization, and utility functions for the website generator.
  * Extracted from website-generator.ts for maintainability.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -17,8 +13,6 @@ import type { ComponentGraph } from '../types';
 
 /**
  * Read component-graph.json from the wiki directory.
- * @param wikiDir - Resolved wiki directory path
- * @returns Parsed component graph
  */
 export function readComponentGraph(wikiDir: string): ComponentGraph {
     const graphPath = path.join(wikiDir, 'component-graph.json');
@@ -43,10 +37,6 @@ export function readComponentGraph(wikiDir: string): ComponentGraph {
  *
  * Also reads top-level markdown files (index.md, architecture.md, getting-started.md)
  * and area-level index/architecture files.
- *
- * @param wikiDir - Resolved wiki directory path
- * @param componentGraph - The component graph (for component ID mapping)
- * @returns Map of component ID to markdown content
  */
 export function readMarkdownFiles(
     wikiDir: string,
@@ -157,10 +147,6 @@ export function readMarkdownFiles(
  *   - MARKDOWN_DATA: Map of component ID to markdown content
  *
  * Uses JSON.stringify with sorted keys for deterministic output.
- *
- * @param componentGraph - The component graph
- * @param markdownData - Map of component ID to markdown content
- * @returns JavaScript source code
  */
 export function generateEmbeddedData(
     componentGraph: ComponentGraph,
@@ -184,9 +170,6 @@ export function stableStringify(value: unknown): string {
     return JSON.stringify(value, sortedReplacer, 2);
 }
 
-/**
- * JSON replacer that sorts object keys.
- */
 function sortedReplacer(_key: string, value: unknown): unknown {
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
         const sorted: Record<string, unknown> = {};
@@ -203,7 +186,6 @@ function sortedReplacer(_key: string, value: unknown): unknown {
 // ============================================================================
 
 /**
- * Find a component ID by its slug.
  * Matches by normalizing the component ID to a slug.
  */
 function findComponentIdBySlug(slug: string, componentGraph: ComponentGraph): string | null {
@@ -217,9 +199,6 @@ function findComponentIdBySlug(slug: string, componentGraph: ComponentGraph): st
     return null;
 }
 
-/**
- * Escape HTML special characters.
- */
 export function escapeHtml(str: string): string {
     return str
         .replace(/&/g, '&amp;')

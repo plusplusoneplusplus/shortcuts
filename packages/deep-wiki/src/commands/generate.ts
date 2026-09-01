@@ -1,6 +1,4 @@
 /**
- * Generate Command
- *
  * Implements the `deep-wiki generate <repo-path>` command.
  * Full pipeline wiki generation:
  *   Phase 1: Discovery      → ComponentGraph
@@ -10,7 +8,6 @@
  *   Phase 5: Website        → Static HTML website
  *
  * Phase runner functions are in `./phases/`.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -54,7 +51,6 @@ import {
  * Execute the generate command — full pipeline wiki generation.
  *
  * @param repoPath - Path to the local git repository
- * @param options - Command options
  * @returns Exit code
  */
 export async function executeGenerate(
