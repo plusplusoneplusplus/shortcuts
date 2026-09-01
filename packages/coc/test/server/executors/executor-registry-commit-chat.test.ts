@@ -1,6 +1,4 @@
 /**
- * Executor Registry — Commit Chat Routing Tests
- *
  * Verifies that tasks with commit chat context are routed to the
  * CommitChatExecutor instead of the default ChatExecutor.
  */

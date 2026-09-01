@@ -1,6 +1,4 @@
 /**
- * RequestRunner Tests
- *
  * Unit tests for RequestRunner.send() and RequestRunner.transform().
  * Tests are isolated from CopilotSDKService by injecting mock dependencies.
  */

@@ -1,10 +1,3 @@
-/**
- * Copilot SDK Service Tests (pipeline-core)
- *
- * Tests for the CopilotSDKService internals, focusing on client initialization,
- * automatic folder trust registration, and streaming event handling.
- */
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CopilotSDKService, resetCopilotSDKService, TokenUsage } from '../../src/copilot-sdk-service';
 import { initSDKLogger, resetSDKLogger } from '../../src/logger';

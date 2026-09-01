@@ -1,6 +1,4 @@
 /**
- * Paste Context Rewriting Integration Tests
- *
  * Tests that ChatBaseExecutor rewrites large prompts to file-path references
  * and cleans up temp files after execution.
  */

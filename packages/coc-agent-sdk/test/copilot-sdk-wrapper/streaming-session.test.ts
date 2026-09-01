@@ -1,6 +1,4 @@
 /**
- * Tests for StreamingSession
- *
  * Verifies state transitions, event handling, timer behaviour, and the
  * full cancellation / settlement paths using a mock event emitter that
  * drives SDK events synchronously.

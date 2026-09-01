@@ -1,6 +1,4 @@
 /**
- * Copilot SDK Service — Delivery Mode Tests
- *
  * Tests for the `deliveryMode` option in `sendMessage()`:
  * - sendWithStreaming forwards deliveryMode to session.send()
  * - One-shot session warning when deliveryMode is set without sessionId

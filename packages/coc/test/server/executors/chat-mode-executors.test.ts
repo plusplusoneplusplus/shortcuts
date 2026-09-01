@@ -1,6 +1,4 @@
 /**
- * Chat Mode Executor Unit Tests
- *
  * Tests for ChatExecutor, AutopilotExecutor, and ClassificationExecutor.
  *
  * Verified for each executor:

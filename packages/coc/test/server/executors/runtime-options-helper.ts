@@ -6,8 +6,6 @@
  * Most test helpers build a flat option bag and spread caller overrides into
  * it, so this adapter moves any capability keys found at the top level into
  * `runtime`, merging with an explicit `runtime` when both are present.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /** Every key that belongs to the runtime capability contract. */

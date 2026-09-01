@@ -14,7 +14,6 @@ import type { CopilotSDKService } from '../../src/copilot-sdk-service';
 // Interfaces
 // ---------------------------------------------------------------------------
 
-/** Shape of a non-streaming mock session */
 export interface MockSession {
     sessionId: string;
     sendAndWait: ReturnType<typeof vi.fn>;
@@ -22,13 +21,11 @@ export interface MockSession {
     setModel: ReturnType<typeof vi.fn>;
 }
 
-/** Shape of a streaming mock session (extends MockSession with event support) */
 export interface MockStreamingSession extends MockSession {
     on: ReturnType<typeof vi.fn>;
     send: ReturnType<typeof vi.fn>;
 }
 
-/** Return type of createStreamingMockSession() */
 export interface StreamingMockSessionResult {
     session: MockStreamingSession;
     dispatchEvent: (event: { type: string; id?: string; data?: any }) => void;
@@ -48,7 +45,6 @@ export interface MockSDKModule {
     };
 }
 
-/** Extended return type for streaming SDK module */
 export interface StreamingMockSDKModule extends MockSDKModule {
     sessions: StreamingMockSessionResult[];
 }
@@ -59,9 +55,6 @@ export interface StreamingMockSDKModule extends MockSDKModule {
 
 /**
  * Create a non-streaming mock session.
- *
- * Accepts optional overrides for sessionId, sendAndWaitResponse, and
- * sendAndWaitError.
  */
 export function createMockSession(overrides?: Partial<{
     sessionId: string;

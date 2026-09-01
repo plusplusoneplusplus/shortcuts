@@ -1,7 +1,3 @@
-/**
- * Plan Template Tests
- */
-
 import { describe, it, expect } from 'vitest';
 import { WORK_ITEM_PLAN_TEMPLATE, buildPlanFromContext } from '../../../src/server/work-items/plan-template';
 

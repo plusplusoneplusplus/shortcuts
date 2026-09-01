@@ -1,6 +1,4 @@
 /**
- * StreamErrorGuard Tests
- *
  * Unit tests for:
  * - isStreamDestroyedError() standalone helper
  * - isConnectionDisposedError() standalone helper

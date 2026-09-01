@@ -1,6 +1,4 @@
 /**
- * Note Create Executor Tests
- *
  * Tests for the AI response parser and tree compaction logic
  * in NoteCreateExecutor.
  */

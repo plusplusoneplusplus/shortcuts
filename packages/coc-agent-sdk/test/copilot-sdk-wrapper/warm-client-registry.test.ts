@@ -1,6 +1,4 @@
 /**
- * Tests for WarmClientRegistry
- *
  * Verifies the provider-agnostic warm-client lifecycle that underpins the
  * session-prewarming feature:
  *   - cold-miss → park → warm-hit reuse (one factory call across two turns)

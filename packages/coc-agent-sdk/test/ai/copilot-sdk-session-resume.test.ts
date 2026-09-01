@@ -1,6 +1,4 @@
 /**
- * Copilot SDK Service — Session Resume Tests
- *
  * Tests for the `sessionId` option in `sendMessage()`:
  * - When `sessionId` is provided, calls `client.resumeSession()` instead of `createSession()`
  * - When `resumeSession()` fails, falls back to `createSession()`

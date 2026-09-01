@@ -1,6 +1,4 @@
 /**
- * WorkflowExecutor Unit Tests
- *
  * Verifies WorkflowExecutor.execute():
  * - Reading pipeline YAML and delegating to executeWorkflow
  * - Emitting pipeline-phase and pipeline-progress SSE events

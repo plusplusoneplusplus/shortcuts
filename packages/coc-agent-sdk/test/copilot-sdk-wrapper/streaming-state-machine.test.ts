@@ -1,6 +1,4 @@
 /**
- * Tests for StreamingStateMachine
- *
  * Verifies all state transitions and guards for the pure state machine.
  */
 

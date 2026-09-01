@@ -1,6 +1,4 @@
 /**
- * Tests for sdk-client-factory.ts
- *
  * Verifies that createSdkClient() correctly handles working-directory
  * validation, folder-trust registration, and client instantiation.
  *
