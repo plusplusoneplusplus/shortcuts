@@ -14,7 +14,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export const DEFAULT_TOAST_MS = 3000;
 
 export interface UseTransientToastReturn {
-    /** The message currently showing, or null. */
     toast: string | null;
     /** Show `message`, auto-dismissing after `durationMs`. */
     showToast: (message: string, durationMs?: number) => void;

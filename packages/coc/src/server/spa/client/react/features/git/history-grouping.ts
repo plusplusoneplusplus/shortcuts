@@ -25,7 +25,6 @@ function normalizePlanPath(p: string): string {
     return p.replace(/\\/g, '/').toLowerCase();
 }
 
-/** Extract basename from a file path. */
 function basename(p: string): string {
     const normalized = p.replace(/\\/g, '/');
     const lastSlash = normalized.lastIndexOf('/');

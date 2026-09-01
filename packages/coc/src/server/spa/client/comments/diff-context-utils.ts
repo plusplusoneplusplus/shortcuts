@@ -1,6 +1,4 @@
 /**
- * Diff Context Utilities
- *
  * Shared helpers for building context strings from diff selections.
  * Used by both "Ask AI" and "Copy as Context" flows.
  */

@@ -1,8 +1,5 @@
 /**
- * Diff Comment Utilities
- *
  * Browser-compatible helpers for diff comments.
- * Browser-compatible with no platform dependencies.
  */
 
 /**

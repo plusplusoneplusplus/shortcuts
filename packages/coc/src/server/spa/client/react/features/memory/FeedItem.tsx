@@ -1,7 +1,3 @@
-/**
- * FeedItem — a single row in the memory feed.
- */
-
 import React, { useState } from 'react';
 import { formatRelativeTime } from '../../utils/format';
 import type { FeedItem as FeedItemType } from './memoryApi';

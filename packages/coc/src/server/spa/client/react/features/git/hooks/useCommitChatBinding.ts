@@ -25,9 +25,7 @@ export interface ReviewChatComposerSendOptions {
 export interface UseCommitChatBindingReturn {
     /** The queue task ID bound to this commit, or null if no chat exists */
     taskId: string | null;
-    /** True while fetching the binding */
     loading: boolean;
-    /** Error message if binding fetch failed */
     error: string | null;
     /** Create a new chat for this commit. Returns the new taskId. */
     createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;

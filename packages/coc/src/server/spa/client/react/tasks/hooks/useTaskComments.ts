@@ -1,7 +1,3 @@
-/**
- * useTaskComments — hook for CRUD operations on task comments.
- */
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWsPath } from '../../utils/config';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';

@@ -1,9 +1,7 @@
 /**
  * Shared SPA markdown renderer.
  *
- * Delegates to pipeline-core's rendering and parsing functions so that
- * both the task preview (tasks.ts) and process detail (detail.ts) use
- * the same, richer markdown rendering pipeline.
+ * Delegates to forge's editor parsing and rendering primitives.
  */
 
 import {
@@ -56,7 +54,7 @@ export interface RenderOptions {
 }
 
 /**
- * Convert markdown content to HTML using pipeline-core's rendering primitives.
+ * Convert markdown content to HTML using forge's rendering primitives.
  *
  * Handles code blocks (with hljs syntax highlighting when available), tables,
  * mermaid diagram containers, headings with anchor IDs, lists, blockquotes,
@@ -405,9 +403,6 @@ function applyInlineMarkdownFromLine(text: string): string {
     return restoreLineMath(result.html, protectedLine.restores);
 }
 
-/**
- * Reconstruct the original markdown source from a `ParsedTable`.
- */
 export function reconstructTableMarkdown(table: ParsedTable): string {
     const lines: string[] = [];
 
