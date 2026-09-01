@@ -1,7 +1,3 @@
-/**
- * Tests for Codex Skill Mirror
- */
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';

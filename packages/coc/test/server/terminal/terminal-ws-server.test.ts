@@ -1,6 +1,4 @@
 /**
- * Terminal WebSocket Server Tests
- *
  * Tests for TerminalWebSocketServer: connection handshake, PTY I/O
  * forwarding, resize, close, PTY exit, error handling, closeAll,
  * and heartbeat pruning.

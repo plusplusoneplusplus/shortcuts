@@ -1,8 +1,5 @@
 /**
- * Tests for ScheduleManager
- *
  * Tests for cron parsing, nextCronTime, describeCron, and core manager logic.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';

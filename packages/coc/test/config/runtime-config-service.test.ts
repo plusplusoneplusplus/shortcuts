@@ -1,6 +1,4 @@
 /**
- * Runtime Config Service Tests
- *
  * Tests for the central runtime config service that owns config loading,
  * validation, persistence, resolved snapshots, source metadata, and revisioning.
  */

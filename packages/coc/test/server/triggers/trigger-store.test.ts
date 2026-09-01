@@ -1,6 +1,4 @@
 /**
- * Trigger Store Tests
- *
  * Unit tests for `TriggerStore` — SQLite CRUD for the generic trigger
  * framework. Uses in-memory SQLite (no file I/O, cross-platform safe).
  */

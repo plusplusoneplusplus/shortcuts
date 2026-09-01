@@ -1,6 +1,4 @@
 /**
- * List Command Tests
- *
  * Tests for pipeline package discovery and listing.
  */
 

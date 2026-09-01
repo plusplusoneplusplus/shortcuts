@@ -1,7 +1,5 @@
 /**
- * Anchor Integration Tests
- *
- * Verifies that pipeline-core's anchor module works correctly in the
+ * Verifies that forge's anchor module works correctly in the
  * CoC SPA context after replacing the inlined task-comment-anchor.ts.
  *
  * Covers:

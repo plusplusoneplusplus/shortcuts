@@ -1,6 +1,4 @@
 /**
- * Get Conversation Tool Tests
- *
  * Unit tests for createGetConversationTool and the underlying compactTranscript driver.
  * Covers each of the 5 compaction levels, paging, prose-only mode, and error paths.
  */

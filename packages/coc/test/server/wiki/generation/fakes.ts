@@ -1,9 +1,3 @@
-/**
- * Test doubles for the wiki generation domain layer.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { vi } from 'vitest';

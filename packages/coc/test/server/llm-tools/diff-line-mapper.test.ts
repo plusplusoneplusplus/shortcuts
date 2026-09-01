@@ -1,6 +1,4 @@
 /**
- * Diff Line Mapper Tests
- *
  * Unit tests for unified diff parsing and line-index computation.
  */
 

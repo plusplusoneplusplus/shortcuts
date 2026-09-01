@@ -1,6 +1,4 @@
 /**
- * Wakeup Store Tests
- *
  * Unit tests for `WakeupStore` — SQLite CRUD for durable one-shot wakeups.
  * Uses in-memory SQLite databases (no file I/O, cross-platform safe).
  */

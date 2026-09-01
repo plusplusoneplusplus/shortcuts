@@ -1,9 +1,3 @@
-/**
- * Tests for ScheduleYamlPersistence
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';

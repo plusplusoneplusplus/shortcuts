@@ -7,7 +7,7 @@
  * mapping, the post-subscribe race window (TOCTOU recheck), resolve-exactly-once
  * with listener cleanup, and the typed event-bus adapter guards.
  *
- * Cross-platform compatible (Linux/Mac/Windows) — no filesystem or timers.
+ * No filesystem or timers.
  */
 
 import { EventEmitter } from 'events';

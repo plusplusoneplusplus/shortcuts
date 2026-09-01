@@ -1,6 +1,4 @@
 /**
- * DebouncedWatcherRegistry Unit Tests
- *
  * Tests for the generic registry that manages fs.FSWatcher instances with
  * debounced callbacks and per-key changed-file accumulation.
  *

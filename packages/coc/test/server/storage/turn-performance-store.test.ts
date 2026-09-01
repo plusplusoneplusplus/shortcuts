@@ -1,6 +1,4 @@
 /**
- * TurnPerformanceStore Unit Tests
- *
  * Verifies the SQLite persistence for per-turn TTFT/TPS metric events:
  * - insert → query round-trip including NULL columns
  * - upsert idempotency (retried settlement cannot double-count)

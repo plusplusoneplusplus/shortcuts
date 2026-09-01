@@ -1,6 +1,4 @@
 /**
- * Run Command Tests
- *
  * Tests for pipeline execution, progress handling, and result formatting.
  * Note: These tests use dry-run mode since actual AI is not available in test.
  */

@@ -1,6 +1,4 @@
 /**
- * Resolve Comment Tool Tests
- *
  * Unit tests for the createResolveCommentTool factory.
  */
 

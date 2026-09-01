@@ -1,6 +1,4 @@
 /**
- * Tests for MCP OAuth REST routes (mcp-oauth-routes.ts).
- *
  * Uses in-memory stubs to exercise route logic without HTTP I/O.
  */
 

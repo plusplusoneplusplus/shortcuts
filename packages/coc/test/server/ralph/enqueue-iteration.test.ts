@@ -1,6 +1,3 @@
-/**
- * Unit tests for Ralph iteration task construction.
- */
 import { describe, expect, it } from 'vitest';
 import { buildRalphIterationTask } from '../../../src/server/ralph/enqueue-iteration';
 

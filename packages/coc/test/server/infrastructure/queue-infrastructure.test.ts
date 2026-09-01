@@ -1,6 +1,4 @@
 /**
- * createQueueInfrastructure Tests
- *
  * Regression coverage for the extracted queue infrastructure builder.
  * Verifies that createQueueInfrastructure returns correctly configured
  * instances equivalent to the inline setup it replaced in index.ts.

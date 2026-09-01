@@ -34,13 +34,11 @@ export interface MockTavilyResponseConfig {
 export interface MockTavilyServer {
     /** The base URL (e.g. `http://127.0.0.1:54321`) — pass to `createTavilyWebSearchTool({ baseUrl })`. */
     baseUrl: string;
-    /** Port the server is bound to. */
     port: number;
     /** All requests received, in order. */
     requests: CapturedRequest[];
     /** Replace the response config used for subsequent requests. */
     setResponse: (cfg: MockTavilyResponseConfig) => void;
-    /** Stop the server. */
     close: () => Promise<void>;
 }
 

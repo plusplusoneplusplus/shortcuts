@@ -1,6 +1,4 @@
 /**
- * createTriggerInfrastructure Tests
- *
  * Verifies the trigger infrastructure builder wires the store, manager,
  * ci-failure evaluator, queue-backed action executor, and timer registry
  * together correctly:

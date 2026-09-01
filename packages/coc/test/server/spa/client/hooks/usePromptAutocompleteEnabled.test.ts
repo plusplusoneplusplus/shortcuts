@@ -1,8 +1,6 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for hooks/usePromptAutocompleteEnabled.ts
- *
  * Regression: the inline ghost-text feature is OFF by default. It is enabled
  * only when the server explicitly reports `promptAutocomplete.enabled === true`.
  */

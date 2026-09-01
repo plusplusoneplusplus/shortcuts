@@ -1,5 +1,4 @@
 /**
- * Tests for container link config persistence.
  * Verifies that container link settings survive server restarts.
  */
 

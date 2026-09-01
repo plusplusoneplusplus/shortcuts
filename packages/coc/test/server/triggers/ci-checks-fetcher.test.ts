@@ -1,6 +1,4 @@
 /**
- * createCiChecksFetcher Tests
- *
  * Verifies the production CI-checks fetcher adapts the headless server-side
  * checks snapshot (`fetchOriginPullRequestChecksHeadless`) into the evaluator's
  * `CiPrChecksSnapshot` shape: field projection only, identical status vocab,

@@ -1,7 +1,5 @@
 /**
  * Tests for ScheduleYamlPersistence.migrateAllFromJson()
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

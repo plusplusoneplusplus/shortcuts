@@ -1,9 +1,5 @@
 /**
- * Shared Filesystem Utilities Tests
- *
  * Unit tests for atomicWriteJSON, getErrorMessage, and resolveCollision.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

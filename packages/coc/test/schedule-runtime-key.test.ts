@@ -1,9 +1,3 @@
-/**
- * Tests for the schedule runtime key encoder.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import { describe, it, expect } from 'vitest';
 import {
     parseScheduleRuntimeKey,

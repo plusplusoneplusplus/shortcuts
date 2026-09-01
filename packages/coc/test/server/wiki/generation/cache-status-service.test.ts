@@ -1,10 +1,6 @@
 /**
- * WikiCacheStatusService Tests
- *
  * Phase cache status mirrors the prerequisites the runner loads when a phase
  * is skipped, so these tests pin the file each phase is judged by.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

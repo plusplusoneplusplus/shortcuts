@@ -1,6 +1,4 @@
 /**
- * Tests for infrastructure/terminal-infrastructure.ts
- *
  * Verifies:
  * - Returns undefined when terminal.enabled is false
  * - Returns undefined when node-pty is unavailable (logs warning)

@@ -1,11 +1,7 @@
 /**
- * WikiGenerationRunner Tests
- *
  * Characterizes the five-phase state machine: event sequence, skipped-phase
  * prerequisite loading, cancellation before each phase, failure handling, and
  * the post-generation wiki reload.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

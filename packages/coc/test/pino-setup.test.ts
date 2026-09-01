@@ -1,6 +1,4 @@
 /**
- * pino-setup Tests
- *
  * Tests for createCLIPinoLogger and pinoAdapterForPipelineCore.
  */
 
@@ -12,7 +10,6 @@ import { createCLIPinoLogger, pinoAdapterForPipelineCore } from '../src/pino-set
 import type { ResolvedLoggingConfig } from '../src/config';
 import { setColorEnabled } from '../src/logger';
 
-/** Helper to build a ResolvedLoggingConfig with defaults */
 function makeResolved(overrides: Partial<ResolvedLoggingConfig> = {}): ResolvedLoggingConfig {
     return { level: 'info', pretty: false, stores: {}, ...overrides };
 }

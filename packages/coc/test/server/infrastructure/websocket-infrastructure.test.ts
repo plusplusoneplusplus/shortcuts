@@ -1,6 +1,4 @@
 /**
- * createWebSocketInfrastructure Tests
- *
  * Regression coverage for the extracted WebSocket infrastructure builder.
  * Verifies that createWebSocketInfrastructure correctly:
  * - Creates and returns a ProcessWebSocketServer
