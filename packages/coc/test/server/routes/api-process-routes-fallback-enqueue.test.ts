@@ -241,9 +241,12 @@ describe('api-process-routes fallback enqueue — workspaceId propagation', () =
         const pendingMessage = store.processes.get('proc-claude-running')?.pendingMessages?.[0] as any;
         expect(pendingMessage).toEqual(expect.objectContaining({
             content: 'queued follow-up',
-            displayContent: 'queued follow-up',
+            // displayContent is what the bubble renders, so it also carries the
+            // mode directive this turn will be sent with.
+            displayContent: expect.stringContaining('queued follow-up'),
             reasoningEffort: 'high',
         }));
+        expect(pendingMessage.displayContent).toContain('<coc-read-only-mode>');
         expect(pendingMessage.model).toBeUndefined();
     });
 });

@@ -15,8 +15,10 @@ import {
     CHAT_MODE_DIRECTIVE_TAG,
     MODE_SWITCHED_TO_AUTOPILOT_NOTE,
     buildChatModeDirective,
+    buildChatModeDisplayBlock,
     loadChatModeInstructions,
     prependChatModeDirective,
+    resolveFirstTurnDirectiveMode,
 } from '../../../src/server/executors/chat-mode-directive';
 
 // ============================================================================
@@ -149,5 +151,79 @@ describe('loadChatModeInstructions', () => {
         } finally {
             fs.rmSync(emptyRepo, { recursive: true, force: true });
         }
+    });
+});
+
+// ============================================================================
+// Chat-visible disclosure
+// ============================================================================
+
+describe('buildChatModeDisplayBlock', () => {
+    it('discloses the mode prose but not the repo mode instructions', () => {
+        const block = buildChatModeDisplayBlock({ mode: 'ask' })!;
+
+        expect(block).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+        // Repo configuration is not conversation content — it would bury the
+        // user's message in the bubble.
+        expect(block).toBe(buildChatModeDirective({ mode: 'ask' }));
+        expect(block).not.toBe(buildChatModeDirective({ mode: 'ask', modeInstructions: 'ASK-RULES' }));
+    });
+
+    it('has nothing to disclose on a fresh autopilot turn', () => {
+        expect(buildChatModeDisplayBlock({ mode: 'autopilot' })).toBeUndefined();
+    });
+});
+
+describe('resolveFirstTurnDirectiveMode', () => {
+    /** A queued chat task, as `ProcessLifecycleRunner` sees it. */
+    const chat = (extra: Record<string, unknown> = {}) => ({
+        type: 'chat',
+        payload: { kind: 'chat', prompt: 'hi', ...extra },
+    });
+
+    it('returns the chat mode for a plain chat', () => {
+        expect(resolveFirstTurnDirectiveMode(chat({ mode: 'ask' }))).toBe('ask');
+        expect(resolveFirstTurnDirectiveMode(chat({ mode: 'plan' }))).toBe('ask');
+        expect(resolveFirstTurnDirectiveMode(chat({ mode: 'autopilot' }))).toBe('autopilot');
+        // No mode at all is ask, matching normalizeChatModeOrDefault.
+        expect(resolveFirstTurnDirectiveMode(chat())).toBe('ask');
+    });
+
+    it('pins the executors that hardcode ask, whatever the payload mode says', () => {
+        expect(resolveFirstTurnDirectiveMode(chat({
+            mode: 'autopilot',
+            context: { commitChat: { sha: 'abc' } },
+        }))).toBe('ask');
+        expect(resolveFirstTurnDirectiveMode(chat({
+            mode: 'autopilot',
+            context: { classifyDiff: { repoId: 'r', prId: '1', headSha: 'sha' } },
+        }))).toBe('ask');
+        expect(resolveFirstTurnDirectiveMode(chat({
+            mode: 'autopilot',
+            context: { resolveComments: { documentUri: 'a.md', commentIds: ['c1'] } },
+        }))).toBe('ask');
+        expect(resolveFirstTurnDirectiveMode({
+            type: 'pr-classification',
+            payload: { kind: 'pr-classification', prompt: 'Classify' },
+        })).toBe('ask');
+    });
+
+    it('returns undefined for the executors that send no directive', () => {
+        // Over-claiming here would put a constraint in the transcript that the
+        // model was never told.
+        expect(resolveFirstTurnDirectiveMode(chat({ context: { noteChat: { notePath: 'n.md' } } }))).toBeUndefined();
+        expect(resolveFirstTurnDirectiveMode(chat({ context: { noteCreate: { root: 'Notes' } } }))).toBeUndefined();
+        expect(resolveFirstTurnDirectiveMode(chat({ context: { taskGeneration: { workspaceId: 'ws' } } }))).toBeUndefined();
+        expect(resolveFirstTurnDirectiveMode(chat({ context: { replication: { templateId: 't' } } }))).toBeUndefined();
+        expect(resolveFirstTurnDirectiveMode(chat({ context: { resolveDiffCommentsMulti: true } }))).toBeUndefined();
+        expect(resolveFirstTurnDirectiveMode(chat({ mode: 'ralph' }))).toBeUndefined();
+        expect(resolveFirstTurnDirectiveMode({ type: 'run-script', payload: { kind: 'run-script', script: 'ls' } })).toBeUndefined();
+        expect(resolveFirstTurnDirectiveMode(undefined)).toBeUndefined();
+        // Dreams runs its own internal steps through ProcessLifecycleRunner with
+        // a chat-shaped payload, but never reaches a chat executor.
+        expect(resolveFirstTurnDirectiveMode({
+            type: 'dream-analyzer',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Analyze these conversations.' },
+        })).toBeUndefined();
     });
 });

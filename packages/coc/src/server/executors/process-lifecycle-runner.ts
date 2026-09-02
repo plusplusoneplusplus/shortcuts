@@ -44,6 +44,11 @@ import {
     prependChatStyleBlock,
     shouldInjectChatStyle,
 } from './chat-style-prompt';
+import {
+    buildChatModeDisplayBlock,
+    prependChatModeDirective,
+    resolveFirstTurnDirectiveMode,
+} from './chat-mode-directive';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import {
@@ -588,9 +593,20 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         // The style block stays the outermost prefix of the stored user message
         // so the chat bubble opens with it (AC-05), even when a skills directive
         // is also present.
-        const displayPrompt = injectChatStyle
-            ? prependChatStyleBlock(prependSelectedSkillsDirective(rawPrompt, selectedSkills), taskChatStyle)
-            : prependSelectedSkillsDirective(rawPrompt, selectedSkills);
+        const composeDisplay = (inner: string): string => injectChatStyle
+            ? prependChatStyleBlock(prependSelectedSkillsDirective(inner, selectedSkills), taskChatStyle)
+            : prependSelectedSkillsDirective(inner, selectedSkills);
+        const displayPrompt = composeDisplay(rawPrompt);
+        // The mode directive is part of the message the model receives, so the
+        // transcript shows it too. It goes innermost — AC-05 keeps the style
+        // block as the outermost prefix — and stays out of `promptPreview` /
+        // `fullPrompt`, which record what the user asked. `undefined` for the
+        // executors that send no directive; see `resolveFirstTurnDirectiveMode`.
+        const firstTurnDirectiveMode = resolveFirstTurnDirectiveMode(task);
+        const displayTurnContent = composeDisplay(prependChatModeDirective(
+            rawPrompt,
+            firstTurnDirectiveMode ? buildChatModeDisplayBlock({ mode: firstTurnDirectiveMode }) : undefined,
+        ));
         const workingDirectory = opts.getWorkingDirectoryFn(task);
         const taskProvider = await resolveExecutionProvider(task, opts, this.provider);
         applyEffortTierForProvider(task, taskProvider, opts);
@@ -712,7 +728,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const initialTurns: ConversationTurn[] = [
             {
                 role: 'user',
-                content: displayPrompt,
+                content: displayTurnContent,
                 timestamp: process.startTime,
                 turnIndex: 0,
                 timeline: [],
