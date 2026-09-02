@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
     INSTRUCTION_DIR,
     MAX_INSTRUCTION_SIZE,
@@ -157,5 +157,62 @@ describe('loadInstructions', () => {
         });
         const result = await loadInstructions(repoDir, 'ask');
         expect(result).toBe('<custom_instruction>\nHello\n</custom_instruction>');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// loadInstructions() — scope
+// ---------------------------------------------------------------------------
+
+// Callers split the set so the shared half can sit in the (session-invariant)
+// system prompt while the mode half rides the user turn.
+describe('loadInstructions scope', () => {
+    let repoDir: string;
+
+    beforeEach(() => {
+        repoDir = makeRepo({
+            [path.join(INSTRUCTION_DIR, 'instructions.md')]: 'BASE',
+            [path.join(INSTRUCTION_DIR, 'instructions-ask.md')]: 'ASK',
+            [path.join(INSTRUCTION_DIR, 'instructions-autopilot.md')]: 'AUTOPILOT',
+        });
+    });
+
+    afterEach(() => cleanup(repoDir));
+
+    it("scope 'base' loads only the shared file, whatever the mode", async () => {
+        for (const mode of ['ask', 'autopilot'] as const) {
+            const result = await loadInstructions(repoDir, mode, { scope: 'base' });
+            expect(result).toBe('<custom_instruction>\nBASE\n</custom_instruction>');
+        }
+    });
+
+    it("scope 'mode' loads only the mode-specific file", async () => {
+        const ask = await loadInstructions(repoDir, 'ask', { scope: 'mode' });
+        expect(ask).toBe('<custom_instruction>\nASK\n</custom_instruction>');
+
+        const autopilot = await loadInstructions(repoDir, 'autopilot', { scope: 'mode' });
+        expect(autopilot).toBe('<custom_instruction>\nAUTOPILOT\n</custom_instruction>');
+    });
+
+    it("scope 'both' is the default and matches the two halves concatenated", async () => {
+        const explicit = await loadInstructions(repoDir, 'ask', { scope: 'both' });
+        const implicit = await loadInstructions(repoDir, 'ask');
+        expect(explicit).toBe(implicit);
+        expect(implicit).toContain('BASE');
+        expect(implicit).toContain('ASK');
+    });
+
+    it('returns undefined when the requested half is missing', async () => {
+        cleanup(repoDir);
+        repoDir = makeRepo({
+            [path.join(INSTRUCTION_DIR, 'instructions.md')]: 'BASE',
+        });
+        expect(await loadInstructions(repoDir, 'ask', { scope: 'mode' })).toBeUndefined();
+
+        cleanup(repoDir);
+        repoDir = makeRepo({
+            [path.join(INSTRUCTION_DIR, 'instructions-ask.md')]: 'ASK',
+        });
+        expect(await loadInstructions(repoDir, 'ask', { scope: 'base' })).toBeUndefined();
     });
 });

@@ -34,6 +34,21 @@ export function findInstructionFiles(rootDir: string): InstructionFileSet {
     return result;
 }
 
+/** Which half of the instruction set to load. */
+export type InstructionScope = 'base' | 'mode' | 'both';
+
+export interface LoadInstructionsOptions {
+    /**
+     * `'base'` loads only `instructions.md`, `'mode'` only the mode-specific
+     * file, `'both'` (default) concatenates them.
+     *
+     * The split exists so callers can keep the session-invariant half in the
+     * system prompt and carry the mode-specific half on the user turn, where a
+     * mode switch cannot invalidate the conversation's prefix cache.
+     */
+    scope?: InstructionScope;
+}
+
 /**
  * Load and concatenate instructions for the given repo root and chat mode.
  *
@@ -45,13 +60,18 @@ export function findInstructionFiles(rootDir: string): InstructionFileSet {
  */
 export async function loadInstructions(
     rootDir: string,
-    mode: InstructionMode
+    mode: InstructionMode,
+    options?: LoadInstructionsOptions
 ): Promise<string | undefined> {
+    const scope = options?.scope ?? 'both';
     const fileSet = findInstructionFiles(rootDir);
     const parts: string[] = [];
 
-    for (const key of ['base', mode] as InstructionMode[]) {
-        if (key === mode && key === 'base') continue; // avoid duplicating 'base' if mode === 'base'
+    const keys: InstructionMode[] =
+        scope === 'base' ? ['base'] : scope === 'mode' ? [mode] : ['base', mode];
+
+    for (const key of keys) {
+        if (scope === 'both' && key === mode && key === 'base') continue; // avoid duplicating 'base' if mode === 'base'
         const filePath = fileSet[key];
         if (!filePath) continue;
         try {
