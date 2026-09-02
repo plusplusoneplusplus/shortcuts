@@ -157,6 +157,24 @@ describe('ask mode system message — initial chat', () => {
         expect(callArgs.systemMessage?.content ?? '').not.toContain(READ_ONLY_DIRECTIVE);
     });
 
+    it('keeps the directive out of the user turn the chat UI renders', async () => {
+        // The directive is a ride-along on the wire, not something the user
+        // typed: the persisted turn 0 is what the chat bubble shows, so it must
+        // stay the raw prompt.
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask('ask', 'Hello');
+
+        await executor.execute(task);
+
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
+
+        const stored = await store.getProcess(task.processId!);
+        const userTurn = stored?.conversationTurns?.[0];
+        expect(userTurn?.role).toBe('user');
+        expect(userTurn?.content).toBe('Hello');
+    });
+
     it('should include For Each generation guidance without changing the visible user prompt', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task = chatTask('ask', 'Split this work into three tasks');

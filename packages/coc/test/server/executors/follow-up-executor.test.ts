@@ -1348,6 +1348,11 @@ describe('FollowUpExecutor', () => {
         expect(cronUserTurn).toBeDefined();
         expect(cronUserTurn!.content).toBe('Check status');
         expect(cronUserTurn!.turnSource).toEqual({ source: 'cron', cronId: 'cron_abc' });
+        // The mode directive is a wire-only ride-along: it goes to the provider
+        // but must never land in the turn the chat UI renders.
+        const sent = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(sent.prompt).toContain('<coc-chat-mode>');
+        expect(cronUserTurn!.content).not.toContain('<coc-chat-mode>');
     });
 
     it('tags assistant turn with turnSource for cron follow-ups', async () => {
