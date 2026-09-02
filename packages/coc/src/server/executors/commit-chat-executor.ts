@@ -25,13 +25,13 @@ import { createAddDiffCommentTool } from '../llm-tools/add-diff-comment-tool';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import {
-    buildModeSystemMessage,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
     applyLlmToolPreferences,
     buildSourceLocationMarkdownLinkSystemMessage,
 } from './prompt-builder';
+import { buildChatModeDirective, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -106,9 +106,8 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         toolGuidance += filteredGuidance;
 
         const systemMessage = await systemMessageBuilder()
-            .append(buildModeSystemMessage('ask')?.content)
             .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
-            .withRepoInstructions(workingDirectory, 'ask')
+            .withBaseRepoInstructions(workingDirectory)
             .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendToolGuidance(toolGuidance)
             .build();
@@ -117,7 +116,13 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             agentMode: 'interactive' as AgentMode,
             systemMessage,
             tools,
-            effectivePrompt: prompt,
+            effectivePrompt: prependChatModeDirective(
+                prompt,
+                buildChatModeDirective({
+                    mode: 'ask',
+                    modeInstructions: await loadChatModeInstructions(workingDirectory, 'ask'),
+                }),
+            ),
             dispose: undefined,
         };
     }

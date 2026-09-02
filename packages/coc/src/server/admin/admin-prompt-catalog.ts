@@ -30,8 +30,8 @@ export function getBuiltInPrompts(): Record<string, BuiltInPrompt> {
             id: 'read-only-mode',
             title: 'Read-only Mode',
             group: 'Pipeline',
-            source: 'forge/copilot-sdk-wrapper/types.ts',
-            description: 'System message injected in Ask-mode sessions blocking file edits',
+            source: 'coc-agent-sdk/src/types.ts',
+            description: 'Directive prepended to Ask-mode user turns blocking file edits',
             text: READ_ONLY_SYSTEM_MESSAGE,
         },
         'task-creation': {

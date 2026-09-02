@@ -61,6 +61,7 @@ import { resolveAutoFolderContext, suppressesAutoFolder } from './auto-folder-ut
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
+import { buildChatModeDirective, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import { buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
@@ -521,6 +522,54 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         };
     }
 
+    /**
+     * Assemble the first-turn system message for a chat task.
+     *
+     * Shared by every first-turn path (ask and autopilot) so a chat's session
+     * prefix is the same whichever executor opened it. Whichever executor runs
+     * turn 1 defines the prefix the follow-up path must reproduce; if the two
+     * builders disagree, the first follow-up rewrites the prefix and the
+     * conversation's cache is lost.
+     *
+     * The message carries no mode input by design — see
+     * `chat-turn-system-message.ts`.
+     */
+    protected async buildFirstTurnSystemMessage(input: {
+        task: QueuedTask;
+        workingDirectory: string | undefined;
+        autoFolderContext: AutoFolderContext | undefined;
+        memoryV2: MemoryV2Addon;
+        toolGuidance: string;
+    }): Promise<SystemMessageConfig | undefined> {
+        const payload = input.task.payload as unknown as ChatPayload;
+        // During grilling, the user-message directive owns the output contract
+        // (Notes goal file for general Ralph, Work Item versioning for Goal items).
+        // Suppress the generic auto-folder system block so the model does not
+        // receive a contradictory `.plan.md` save target. Artifact-bound chats
+        // (PR chats route through here) drop the block outright - see
+        // `suppressesAutoFolder`.
+        const autoFolderSuppressed =
+            payload.context?.ralph?.phase === 'grilling'
+            || suppressesAutoFolder({ payload: input.task.payload });
+        return buildChatTurnSystemMessage({
+            workingDirectory: input.workingDirectory,
+            provider: payload.provider ?? this.provider,
+            globalSystemPrompt: this.resolveGlobalSystemPrompt(),
+            forEachGeneration: (() => {
+                const context = getForEachContext({ payload });
+                return isForEachGenerationContext(context) ? context : null;
+            })(),
+            mapReduceGeneration: (() => {
+                const context = getMapReduceContext({ payload });
+                return isMapReduceGenerationContext(context) ? context : null;
+            })(),
+            memoryV2: input.memoryV2,
+            toolGuidance: input.toolGuidance,
+            autoFolderContext: autoFolderSuppressed ? undefined : input.autoFolderContext,
+            notePath: payload.context?.noteChat?.notePath,
+        });
+    }
+
     protected async buildStandardModeOptions(
         task: QueuedTask,
         prompt: string,
@@ -534,7 +583,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             : undefined;
 
         const processId = toQueueProcessId(task.id);
-        const notePath = payload.context?.noteChat?.notePath;
 
         const cronDeps = this.buildCronToolDeps(processId);
 
@@ -569,42 +617,33 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const ralphGrillSetup = this.ralphMultiAgentGrillEnabled
             ? payload.context?.ralph?.grill
             : undefined;
-        const forEachGeneration = (() => {
-            const context = getForEachContext({ payload });
-            return isForEachGenerationContext(context) ? context : null;
-        })();
-        const mapReduceGeneration = (() => {
-            const context = getMapReduceContext({ payload });
-            return isMapReduceGenerationContext(context) ? context : null;
-        })();
 
-        // During grilling, the user-message directive owns the output contract
-        // (Notes goal file for general Ralph, Work Item versioning for Goal items).
-        // Suppress the generic auto-folder system block so the model does not
-        // receive a contradictory `.plan.md` save target. Artifact-bound chats
-        // (PR chats route through here) drop the block outright - see
-        // `suppressesAutoFolder`.
-        const systemMessage = await buildChatTurnSystemMessage({
-            mode,
+        const systemMessage = await this.buildFirstTurnSystemMessage({
+            task,
             workingDirectory,
-            provider: payload.provider ?? this.provider,
-            globalSystemPrompt: this.resolveGlobalSystemPrompt(),
-            forEachGeneration,
-            mapReduceGeneration,
+            autoFolderContext,
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
-            autoFolderContext: isGrilling || suppressesAutoFolder({ payload: task.payload })
-                ? undefined
-                : autoFolderContext,
-            notePath,
         });
 
         // When this is a Ralph grilling session, prepend the grilling directive
         // (skill pointer, machine contract, and output destination) to the user
         // prompt so the model receives it on every grilling turn.
-        const effectivePrompt = isGrilling
+        const grilledPrompt = isGrilling
             ? `${buildRalphGrillSuffix(autoFolderContext, { workItemGoal: workItemGoalGrilling, grill: ralphGrillSetup })}\n\n${prompt}`
             : prompt;
+
+        // The read-only constraint and the mode-specific repo instructions ride
+        // the user turn, not the system prompt, so a mid-chat mode switch does
+        // not invalidate the conversation's prefix cache. Follow-ups re-send the
+        // directive every turn (see `chat-mode-directive.ts`).
+        const effectivePrompt = prependChatModeDirective(
+            grilledPrompt,
+            buildChatModeDirective({
+                mode,
+                modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
+            }),
+        );
 
         return {
             agentMode: 'interactive' as AgentMode,

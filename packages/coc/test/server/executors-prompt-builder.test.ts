@@ -44,7 +44,6 @@ vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
 
 import {
     buildForEachGenerationSystemMessage,
-    buildModeSystemMessage,
     buildSourceLocationMarkdownLinkSystemMessage,
     SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE,
     appendAutoFolderBlock,
@@ -60,42 +59,18 @@ import {
 } from '../../src/server/executors/prompt-builder';
 
 // ============================================================================
-// buildModeSystemMessage
+// READ_ONLY_SYSTEM_MESSAGE content contract
 // ============================================================================
 
-describe('buildModeSystemMessage', () => {
-    it('returns undefined for autopilot mode', () => {
-        expect(buildModeSystemMessage('autopilot')).toBeUndefined();
-    });
-
-    it('returns undefined for undefined mode', () => {
-        expect(buildModeSystemMessage(undefined)).toBeUndefined();
-    });
-
-    it('returns system message for ask mode', () => {
-        const result = buildModeSystemMessage('ask');
-        expect(result).toBeDefined();
-        expect(result!.mode).toBe('append');
-        expect(result!.content).toContain('READ_ONLY');
-    });
-
-    it('returns system message for plan mode', () => {
-        const result = buildModeSystemMessage('plan');
-        expect(result).toBeDefined();
-        expect(result!.mode).toBe('append');
-    });
-
-    it('does NOT include auto-folder block (use appendAutoFolderBlock separately)', () => {
-        const result = buildModeSystemMessage('ask');
-        expect(result!.content).not.toContain('auto-folder-block');
-    });
-
-    it('ask-mode read-only message does not permit arbitrary file writes', () => {
-        // The READ_ONLY_SYSTEM_MESSAGE must restrict general writes; only the plan
-        // file and the attached note file are allowed exceptions.  This test is a
-        // regression guard: if someone widens the message to allow broad writes the
-        // real READ_ONLY_SYSTEM_MESSAGE (not the mock) should still contain the
-        // restriction.  We verify the exported constant directly.
+// The constant now rides the user turn (see chat-mode-directive.ts), but its
+// content contract is unchanged and still load-bearing.
+describe('READ_ONLY_SYSTEM_MESSAGE', () => {
+    it('does not permit arbitrary file writes', () => {
+        // The message must restrict general writes; only the plan file, the
+        // attached note file, and .goal.md specs are allowed exceptions. This
+        // test is a regression guard: if someone widens the message to allow
+        // broad writes the real constant (not the mock) should still contain
+        // the restriction. We verify the exported constant directly.
         const { READ_ONLY_SYSTEM_MESSAGE: realMsg } =
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             require('@plusplusoneplusplus/forge') as { READ_ONLY_SYSTEM_MESSAGE: string };
@@ -152,7 +127,7 @@ describe('buildForEachGenerationSystemMessage', () => {
 describe('appendAutoFolderBlock — ask mode uses notes/Plans path', () => {
     it('forwards notes/Plans tasksRoot when ask-mode auto-folder context is provided', () => {
         mockBuildAutoFolderLocationBlock.mockReturnValueOnce('ask-plan-save-block');
-        const msg = buildModeSystemMessage('ask');
+        const msg = { mode: 'append' as const, content: 'base' };
         // Simulate the context that resolveAutoFolderContext now returns for ask mode
         const ctx = { tasksRoot: '/home/user/.coc/repos/ws/notes/Plans', existingFolders: [] };
         const result = appendAutoFolderBlock(msg, ctx);
@@ -192,7 +167,7 @@ describe('appendAutoFolderBlock', () => {
         const ctx = { tasksRoot: '/tasks', existingFolders: ['feat1'] };
 
         const withRepo = await withRepoInstructions(
-            buildModeSystemMessage('plan'),
+            { mode: 'append' as const, content: 'base' },
             '/some/dir',
             'plan',
         );

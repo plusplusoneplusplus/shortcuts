@@ -26,10 +26,10 @@ import {
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
-    buildModeSystemMessage,
     applyLlmToolPreferences,
     buildSourceLocationMarkdownLinkSystemMessage,
 } from './prompt-builder';
+import { buildChatModeDirective, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import { createSaveClassificationTool } from '../llm-tools/save-classification-tool';
@@ -96,9 +96,8 @@ export class ClassificationExecutor extends ChatBaseExecutor {
         toolGuidance += filteredGuidance;
 
         const systemMessage = await systemMessageBuilder()
-            .append(buildModeSystemMessage('ask')?.content)
             .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
-            .withRepoInstructions(workingDirectory, 'ask')
+            .withBaseRepoInstructions(workingDirectory)
             .append(buildSourceLocationMarkdownLinkSystemMessage(readProvider(task.payload, this.provider))?.content)
             .appendToolGuidance(toolGuidance)
             .build();
@@ -107,7 +106,13 @@ export class ClassificationExecutor extends ChatBaseExecutor {
             agentMode: 'interactive' as AgentMode,
             systemMessage,
             tools,
-            effectivePrompt: prompt,
+            effectivePrompt: prependChatModeDirective(
+                prompt,
+                buildChatModeDirective({
+                    mode: 'ask',
+                    modeInstructions: await loadChatModeInstructions(workingDirectory, 'ask'),
+                }),
+            ),
             dispose: undefined,
         };
     }

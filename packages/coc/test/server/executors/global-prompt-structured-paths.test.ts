@@ -80,14 +80,16 @@ describe('global admin system prompt — contested user-facing structured paths 
             headSha: 'deadbeef',
         });
 
-        it('injects the labeled global block while keeping the read-only ask block', async () => {
+        it('injects the labeled global block while the read-only block rides the user turn', async () => {
             const executor = new ClassificationExecutor(store, makeOptions({ getGlobalSystemPrompt: () => GLOBAL_PROMPT }));
             const opts = await buildModeOptions(executor, task(), 'Classify PR #42', '/fake/ws');
             expect(opts.systemMessage?.mode).toBe('append');
             expect(opts.systemMessage?.content).toContain(`<${GLOBAL_SYSTEM_PROMPT_TAG}>`);
             expect(opts.systemMessage?.content).toContain(GLOBAL_PROMPT);
-            // Supplements, does not override, the runtime read-only constraint.
-            expect(opts.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+            // Supplements, does not override, the runtime read-only constraint —
+            // which now travels on the outgoing prompt.
+            expect(opts.systemMessage?.content).not.toContain('<coc-read-only-mode>');
+            expect(opts.effectivePrompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
         });
 
         it('is inert when no global prompt is configured', async () => {
@@ -177,19 +179,21 @@ describe('global admin system prompt — contested user-facing structured paths 
             context: { resolveDiffCommentsMulti: true },
         });
 
-        it('injects the global block into single-file (interactive) sessions alongside the ask block', async () => {
+        it('injects the global block into single-file (interactive) sessions while the ask block rides the prompt', async () => {
             const executor = new ResolveCommentsExecutor(store, makeOptions({ getGlobalSystemPrompt: () => GLOBAL_PROMPT }));
             const opts = await buildModeOptions(executor, singleFileTask(), 'Resolve comments');
             expect(opts.systemMessage?.content).toContain(GLOBAL_PROMPT);
-            expect(opts.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+            expect(opts.systemMessage?.content).not.toContain('<coc-read-only-mode>');
+            expect(opts.effectivePrompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
         });
 
         it('injects the global block into multi-file (autopilot) sessions that previously had no system message', async () => {
             const executor = new ResolveCommentsExecutor(store, makeOptions({ getGlobalSystemPrompt: () => GLOBAL_PROMPT }));
             const opts = await buildModeOptions(executor, multiFileTask(), 'Resolve comments');
             expect(opts.systemMessage?.content).toContain(GLOBAL_PROMPT);
-            // Multi-file is autopilot: no read-only directive is added.
-            expect(opts.systemMessage?.content ?? '').not.toContain(READ_ONLY_SYSTEM_MESSAGE);
+            // Multi-file is autopilot: no read-only directive on either channel.
+            expect(opts.systemMessage?.content ?? '').not.toContain('<coc-read-only-mode>');
+            expect(opts.effectivePrompt).not.toContain('<coc-read-only-mode>');
         });
 
         it('multi-file remains undefined (inert) when no global prompt is configured', async () => {

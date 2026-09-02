@@ -279,7 +279,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-group', 'next question', undefined, 'ask');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toBe(`next question\n\n${expectedBlock()}`);
+            expect(call.prompt.endsWith(`next question\n\n${expectedBlock()}`)).toBe(true);
             expect(call.additionalDirectories).toEqual([repoA, repoB]);
         });
 
@@ -290,7 +290,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-group-repeat', 'next question', undefined, 'ask');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toBe('next question');
+            expect(call.prompt.endsWith('next question')).toBe(true);
             // additionalDirectories is a permission option, not conversation
             // state — it must still ride every turn.
             expect(call.additionalDirectories).toEqual([repoA, repoB]);
@@ -304,7 +304,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-group-rebuild', 'next question', undefined, 'ask');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toBe(`next question\n\n${expectedBlock()}`);
+            expect(call.prompt.endsWith(`next question\n\n${expectedBlock()}`)).toBe(true);
         });
 
         it('re-appends a refreshed block when membership drifted mid-conversation', async () => {
@@ -335,7 +335,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-group-compacted', 'next question', undefined, 'ask');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toBe(`next question\n\n${expectedBlock()}`);
+            expect(call.prompt.endsWith(`next question\n\n${expectedBlock()}`)).toBe(true);
         });
 
         it('re-appends the block after a compaction recorded only in process metadata', async () => {
@@ -353,7 +353,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-group-compact-meta', 'next question', undefined, 'ask');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toBe(`next question\n\n${expectedBlock()}`);
+            expect(call.prompt.endsWith(`next question\n\n${expectedBlock()}`)).toBe(true);
         });
 
         it('skips stale members on follow-ups too', async () => {
@@ -440,7 +440,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-plain', 'next question', undefined, 'ask');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toBe('next question');
+            expect(call.prompt.endsWith('next question')).toBe(true);
             expect(call.additionalDirectories).toBeUndefined();
         });
     });
