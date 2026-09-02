@@ -1,6 +1,4 @@
 /**
- * Config Loader
- *
  * Loads and validates a YAML configuration file for the `deep-wiki generate` command.
  * Merges config-file values with CLI flags, resolving per-phase overrides.
  *
@@ -9,8 +7,6 @@
  *   2. Phase-specific config (phases.analysis.model)
  *   3. Global config (model)
  *   4. Defaults (existing defaults in code)
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -62,9 +58,6 @@ export function loadConfig(configPath: string): DeepWikiConfigFile {
 /**
  * Try to auto-discover a config file in the given directory.
  * Looks for `deep-wiki.config.yaml` or `deep-wiki.config.yml`.
- *
- * @param dir - Directory to search (typically the repo root)
- * @returns Absolute path to config file, or undefined if not found
  */
 export function discoverConfigFile(dir: string): string | undefined {
     const candidates = ['deep-wiki.config.yaml', 'deep-wiki.config.yml'];
@@ -85,10 +78,7 @@ export function discoverConfigFile(dir: string): string | undefined {
  * Merge a config file with CLI options.
  * CLI flags override config file values. Config file fills in unset fields.
  *
- * @param config - Parsed config file
- * @param cliOptions - Options from CLI flags
- * @param cliExplicit - Set of field names explicitly provided via CLI (not defaults)
- * @returns Merged GenerateCommandOptions
+ * @param cliExplicit - Field names explicitly provided via CLI (not defaults)
  */
 export function mergeConfigWithCLI(
     config: DeepWikiConfigFile,
@@ -150,8 +140,6 @@ export function mergeConfigWithCLI(
 // ============================================================================
 
 /**
- * Resolve the AI model for a specific phase.
- *
  * Resolution order:
  *   1. Phase-specific config (options.phases[phase].model)
  *   2. Global option (options.model)
@@ -165,9 +153,7 @@ export function resolvePhaseModel(
 }
 
 /**
- * Resolve the timeout (in seconds) for a specific phase.
- *
- * Resolution order:
+ * Timeout in seconds. Resolution order:
  *   1. Phase-specific config (options.phases[phase].timeout)
  *   2. Global option (options.timeout)
  *   3. undefined (use phase default)
@@ -180,8 +166,6 @@ export function resolvePhaseTimeout(
 }
 
 /**
- * Resolve the concurrency for a specific phase.
- *
  * Resolution order:
  *   1. Phase-specific config (options.phases[phase].concurrency)
  *   2. Global option (options.concurrency)
@@ -195,8 +179,6 @@ export function resolvePhaseConcurrency(
 }
 
 /**
- * Resolve the depth for a specific phase.
- *
  * Resolution order:
  *   1. Phase-specific config (options.phases[phase].depth)
  *   2. Global option (options.depth)

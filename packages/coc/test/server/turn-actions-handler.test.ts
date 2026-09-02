@@ -1,6 +1,4 @@
 /**
- * Turn Actions Handler Tests
- *
  * Tests the REST API endpoints for per-message pin and archive on conversation turns.
  * Uses a real SqliteProcessStore for integration testing.
  */

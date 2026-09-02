@@ -1,6 +1,4 @@
 /**
- * Config Tests
- *
  * Tests for CLI configuration loading, validation, and resolution.
  */
 

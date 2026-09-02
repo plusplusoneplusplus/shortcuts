@@ -24,7 +24,6 @@ describe('ImageGallery', () => {
         expect(loading).toBeTruthy();
         const skeletons = screen.getAllByTestId('image-gallery-skeleton');
         expect(skeletons).toHaveLength(3);
-        // Verify animate-pulse class
         expect(skeletons[0].className).toContain('animate-pulse');
     });
 

@@ -91,7 +91,6 @@ export interface UseNotesChatReturn {
      * rejects the move.
      */
     moveChatNote: (notePath: string, noteTitle?: string) => Promise<boolean>;
-    /** Current active scope. */
     scope: ChatScope;
     /**
      * Switch between per-note, per-section, and per-workspace scope. Widening a

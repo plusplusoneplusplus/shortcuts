@@ -21,9 +21,6 @@ export interface SSEEvent {
 export class SSERelay extends EventEmitter {
     private connections = new Map<string, http.IncomingMessage>();
 
-    /**
-     * Start listening to an agent's SSE stream.
-     */
     connect(agentId: string, agentName: string, agentAddress: string, path: string = '/api/events'): void {
         if (this.connections.has(agentId)) {
             this.disconnect(agentId);
@@ -88,9 +85,6 @@ export class SSERelay extends EventEmitter {
         });
     }
 
-    /**
-     * Disconnect from an agent's SSE stream.
-     */
     disconnect(agentId: string): void {
         const conn = this.connections.get(agentId);
         if (conn) {
@@ -99,9 +93,6 @@ export class SSERelay extends EventEmitter {
         }
     }
 
-    /**
-     * Disconnect all agents.
-     */
     disconnectAll(): void {
         for (const [id] of this.connections) {
             this.disconnect(id);

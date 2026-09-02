@@ -1,6 +1,4 @@
 /**
- * Tests for useAllCommitComments hook.
- *
  * Verifies:
  *  - initial fetch on mount
  *  - resolve / unresolve / delete / update operations dispatch correct PATCH/DELETE calls

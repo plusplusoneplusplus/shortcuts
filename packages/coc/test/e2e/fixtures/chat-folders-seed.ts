@@ -1,6 +1,4 @@
 /**
- * Chat Folder Seed Utilities for E2E Tests
- *
  * The folder REST surface (AC-02) is the fastest way to put a workspace into a
  * known folder state before the SPA loads, so the browser part of a spec can
  * stay focused on the interaction under test rather than on setup clicking.

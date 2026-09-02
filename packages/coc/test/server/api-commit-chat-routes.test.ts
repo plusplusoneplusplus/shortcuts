@@ -1,6 +1,4 @@
 /**
- * Commit-Chat Binding API Route Tests
- *
  * HTTP-level tests for the 5 commit-chat API endpoints:
  *   - GET  /api/workspaces/:id/commit-chat-bindings          (list)
  *   - GET  /api/workspaces/:id/commit-chat-bindings/:hash     (get)
@@ -9,7 +7,6 @@
  *   - POST /api/workspaces/:id/commit-chat-bindings/rebind    (rebind)
  *
  * Uses a real http.Server with registerApiRoutes + a temp dataDir.
- * Cross-platform (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
@@ -230,7 +227,6 @@ describe('Commit-Chat Binding API endpoints', () => {
             const res = await request(api('commit-chat-bindings/cafe1234'), { method: 'DELETE' });
             expect(res.status).toBe(204);
 
-            // Verify it's gone
             const verify = await request(api('commit-chat-bindings/cafe1234'));
             expect(verify.status).toBe(404);
         });

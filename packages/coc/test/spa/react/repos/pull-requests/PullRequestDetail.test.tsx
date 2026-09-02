@@ -1,7 +1,3 @@
-/**
- * Tests for PullRequestDetail component.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { mockViewport } from '../../../helpers/viewport-mock';

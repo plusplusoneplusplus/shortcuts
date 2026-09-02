@@ -1,6 +1,4 @@
 /**
- * Send To Conversation Tool
- *
  * Factory that creates a single dual-mode `send_to_conversation` custom tool for
  * the Copilot SDK. The `processId` argument is the mode switch:
  *

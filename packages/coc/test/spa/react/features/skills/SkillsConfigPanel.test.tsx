@@ -1,6 +1,4 @@
 /**
- * Tests for SkillsConfigPanel component.
- *
  * Covers: initial load, global directory display + fallback, disabled-skills
  * badges, add/remove disabled skill, duplicate prevention, Enter-key support,
  * empty state, error handling, global extra skill folders (add/remove/dup),

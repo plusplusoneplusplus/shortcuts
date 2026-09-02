@@ -1,7 +1,3 @@
-/**
- * Work-Item-Chat Binding API Route Tests
- */
-
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import * as http from 'http';
 import Database from 'better-sqlite3';

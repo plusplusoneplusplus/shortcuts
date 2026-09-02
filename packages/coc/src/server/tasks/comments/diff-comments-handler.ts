@@ -1,6 +1,4 @@
 /**
- * Diff Comments REST API Handler
- *
  * HTTP API routes for CRUD operations on git diff view comments.
  * Stores comments in JSON files under the CoC data directory.
  *
@@ -9,9 +7,6 @@
  *
  * For working-tree diffs (newRef === 'working-tree'), the storage key is
  *   sha256(repoId+filePath+'working-tree') and every comment is ephemeral.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { sendJSON, sendError, parseBody } from '../../core/api-handler';
@@ -590,7 +585,6 @@ export function registerDiffCommentsRoutes(
                     return sendError(res, 400, 'No open comments found');
                 }
 
-                // Group by storageKey
                 const grouped = new Map<string, { storageKey: string; commentIds: string[]; filePath: string }>();
                 for (const tc of targetComments) {
                     const sk = tc.storageKey;

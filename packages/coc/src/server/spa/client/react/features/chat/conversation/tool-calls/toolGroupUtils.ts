@@ -60,8 +60,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * Produces a human-readable summary string, e.g. `"4 read operations (glob×1, view×3)"`.
- * @param category - the group category
- * @param counts   - map of toolName → occurrence count within the group
+ * @param counts map of toolName → occurrence count within the group
  */
 export function getCategoryLabel(
     category: ToolGroupCategory,
@@ -437,9 +436,6 @@ export function computeNetDiff(
     };
 }
 
-/**
- * Returns aggregate totals across an array of FileEdit entries.
- */
 export function computeFileEditTotals(
     fileEdits: FileEdit[],
 ): { totalInsertions: number; totalDeletions: number } {
@@ -755,7 +751,6 @@ export function filterWhisperChunks(
         }
     }
 
-    // Collect memory tool invocations
     const memoryActions: Array<{ action: string; target: string; content?: string }> = [];
     for (const tc of allToolCalls) {
         if (tc.toolName === 'memory' && isRecord(tc.args)) {

@@ -1,12 +1,3 @@
-/**
- * Base Reducer Interface and Abstract Class
- *
- * Defines the core reducer interface and provides a base implementation
- * for creating custom reducers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import {
     MapResult,
     ReduceContext,
@@ -15,10 +6,6 @@ import {
     Reducer
 } from '../types';
 
-/**
- * Abstract base class for reducers
- * Provides common functionality and a template for implementing reducers
- */
 export abstract class BaseReducer<TMapOutput, TReduceOutput> implements Reducer<TMapOutput, TReduceOutput> {
     /**
      * Reduce multiple map outputs into a single result

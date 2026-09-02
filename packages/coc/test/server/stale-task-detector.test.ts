@@ -1,8 +1,5 @@
 /**
- * StaleTaskDetector Tests
- *
  * Tests for automatic detection and force-fail of stale running tasks.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

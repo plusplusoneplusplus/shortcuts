@@ -1,6 +1,4 @@
 /**
- * Seeds Heuristic Fallback Tests
- *
  * Tests for directory-name-based theme seed generation.
  */
 

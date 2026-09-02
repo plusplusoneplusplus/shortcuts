@@ -1,8 +1,6 @@
 /**
- * Stale Task Detector Extended Tests
- *
  * Covers Section 9 of test-plan-schedule-system.md:
- * Extends stale-task-detector.test.ts with additional edge cases and the new
+ * Extends stale-task-detector.test.ts with additional edge cases and the
  * detectAndMarkStale() soft-stale marking feature.
  *
  * Key additions:
@@ -14,8 +12,6 @@
  * Note: WebSocket process-updated events on stale marking require wsServer
  * injection into StaleTaskDetector, which is not yet implemented. That test
  * is marked TODO below.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

@@ -38,10 +38,6 @@ export function createTextAnchor(
     };
 }
 
-/**
- * Find the best position for `anchor` inside `text`.
- * Returns an AnchorMatch with confidence level.
- */
 export function resolveAnchor(text: string, anchor: TextAnchor): AnchorMatch {
     const { quotedText, prefix, suffix } = anchor;
 
@@ -98,9 +94,8 @@ export function resolveAnchor(text: string, anchor: TextAnchor): AnchorMatch {
 }
 
 /**
- * Batch-resolve an array of { threadId, anchor } tuples.
- * Returns a Map<threadId, AnchorMatch>.
- * When two anchors overlap, the earlier one wins (later one is shifted or orphaned).
+ * When two anchors overlap, the earlier one wins — the later one is shifted or
+ * orphaned.
  */
 export function resolveAnchors(
     text: string,

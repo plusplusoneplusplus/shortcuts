@@ -1,6 +1,4 @@
 /**
- * Terminal WebSocket Server
- *
  * Dedicated WebSocket server for terminal I/O over `/ws/terminal`.
  * Each connection is scoped to a workspace; clients create, interact with,
  * and close PTY sessions via typed JSON messages.

@@ -1,6 +1,4 @@
 /**
- * Shared Notes-API mock fixtures for E2E tests.
- *
  * Provides an in-memory notes store and a Playwright `page.route` layer that
  * serves the notes read/write endpoints from mocked data — no real note files
  * on disk. This is the mock-data tier: it mirrors the request/response shapes of
@@ -103,7 +101,7 @@ const DEFAULT_NOTES_ROOT = '/mock/notes';
 /** Deterministic attachment path returned by the mocked image upload (POST). */
 export const MOCK_UPLOADED_PDF_PATH = '.attachments/uploaded.pdf';
 
-/** A tiny but valid PDF served by the mocked image GET route. */
+/** A tiny, deliberately unparseable PDF served by the mocked image GET route. */
 const MOCK_PDF_BYTES = Buffer.from(
     '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
     'utf-8',

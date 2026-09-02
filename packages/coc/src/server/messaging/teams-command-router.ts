@@ -1,6 +1,4 @@
 /**
- * Teams Command Router
- *
  * Parses inbound Teams messages into structured commands and dispatches them.
  * Manages per-user state (selected repo, selected chat topic).
  *
@@ -65,9 +63,6 @@ const COMMAND_PATTERNS: Array<{ pattern: RegExp; type: ParsedCommand['type'] }> 
 /** Matches `[chatid] message` syntax. */
 const EXPLICIT_CHAT_PATTERN = /^\[([^\]]+)\]\s*(.+)$/s;
 
-/**
- * Parse raw message text into a structured command.
- */
 export function parseCommand(text: string): ParsedCommand {
     const trimmed = text.trim();
 
@@ -101,9 +96,6 @@ export class TeamsCommandRouter {
         this.userState = new TeamsUserStateStore(deps.dataDir);
     }
 
-    /**
-     * Handle an inbound Teams message.
-     */
     async handle(msg: InboundTeamsMessage): Promise<void> {
         const command = parseCommand(msg.text);
         const userKey = msg.senderAadId ?? msg.senderName ?? 'anonymous';
@@ -310,7 +302,6 @@ export class TeamsCommandRouter {
         }
 
         if (targetId) {
-            // Follow-up on existing topic
             await this.deps.executeFollowUp(targetId, message);
             this.userState.update(userKey, { lastActiveTopic: targetId });
             await this.deps.sendReply(

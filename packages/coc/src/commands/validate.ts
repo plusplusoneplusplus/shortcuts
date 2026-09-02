@@ -1,10 +1,6 @@
 /**
- * Validate Command
- *
  * Validates a pipeline YAML file without executing it.
  * Checks structure, input sources, template variables, and filter configuration.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -32,9 +28,6 @@ import {
 // Types
 // ============================================================================
 
-/**
- * Result of a validation check
- */
 export interface ValidationCheck {
     label: string;
     status: 'pass' | 'warn' | 'fail';
@@ -55,8 +48,6 @@ export interface ValidationResult {
 // ============================================================================
 
 /**
- * Execute the validate command
- *
  * @param pipelinePath Path to pipeline.yaml or the directory containing it
  * @returns exit code (0 = valid, 2 = invalid)
  */
@@ -85,7 +76,6 @@ export function resolvePipelinePath(input: string): string | undefined {
         return resolved;
     }
 
-    // If it's a directory, look for pipeline.yaml inside
     if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
         const yamlPath = path.join(resolved, 'pipeline.yaml');
         if (fs.existsSync(yamlPath)) {
@@ -96,9 +86,6 @@ export function resolvePipelinePath(input: string): string | undefined {
     return undefined;
 }
 
-/**
- * Validate a pipeline YAML file and return structured results
- */
 export function validatePipeline(yamlPath: string): ValidationResult {
     const checks: ValidationCheck[] = [];
     let pipelineName = 'Unknown';
@@ -321,7 +308,6 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
 
     // Check prompt source
     if (map?.prompt) {
-        // Extract template variables
         const variables = extractTemplateVars(map.prompt);
         if (variables.length > 0) {
             checks.push({
@@ -348,7 +334,6 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
         });
     }
 
-    // Check output fields
     if (map?.output && map.output.length > 0) {
         checks.push({
             label: `Map output fields: ${map.output.join(', ')}`,
@@ -361,7 +346,6 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
         });
     }
 
-    // Check batch size
     if (map?.batchSize !== undefined) {
         if (map.batchSize > 1) {
             checks.push({
@@ -377,7 +361,6 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
         }
     }
 
-    // Check parallel
     if (map?.parallel !== undefined && map.parallel < 1) {
         checks.push({
             label: 'Map: parallel',
@@ -386,7 +369,6 @@ function validateMap(config: PipelineConfig, checks: ValidationCheck[]): void {
         });
     }
 
-    // Check skill
     if (map?.skill) {
         checks.push({
             label: `Map: skill "${map.skill}"`,

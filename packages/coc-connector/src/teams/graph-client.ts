@@ -281,7 +281,6 @@ export class GraphClient {
      * Returns the resolved IDs.
      */
     async resolveOrCreateTeamAndChannel(teamName: string, channelName: string): Promise<{ teamId: string; channelId: string }> {
-        // Resolve team
         let team = await this.findTeamByName(teamName);
         if (!team) {
             console.log(`[graph-client] Team "${teamName}" not found, creating...`);
@@ -293,7 +292,6 @@ export class GraphClient {
             this.teamId = team.id;
         }
 
-        // Resolve channel
         let channel = await this.findChannelByName(channelName, this.teamId!);
         if (!channel) {
             console.log(`[graph-client] Channel "${channelName}" not found, creating...`);

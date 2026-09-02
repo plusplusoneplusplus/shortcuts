@@ -1,6 +1,4 @@
 /**
- * Terminal Session Manager
- *
  * Manages server-side PTY terminal sessions. Each session wraps a
  * node-pty process and tracks dimensions, activity timestamps, and
  * workspace association.

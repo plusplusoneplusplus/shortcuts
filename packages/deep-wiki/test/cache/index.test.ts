@@ -1,6 +1,4 @@
 /**
- * Cache Manager Tests
- *
  * Tests for cache read/write, invalidation, and path management.
  * Uses temporary directories for isolation.
  */

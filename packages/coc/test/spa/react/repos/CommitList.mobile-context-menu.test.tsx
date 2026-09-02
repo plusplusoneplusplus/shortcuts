@@ -192,9 +192,7 @@ describe('CommitList — mobile context menu behavior', () => {
         const event = onCommitContextMenu.mock.calls[0][0];
         expect(event.clientX).toBe(150);
         expect(event.clientY).toBe(200);
-        // Should pass the commit hash
         expect(onCommitContextMenu.mock.calls[0][1]).toBe(COMMIT_A.hash);
-        // Should NOT enter multi-select
         expect(onMultiSelect).not.toHaveBeenCalled();
 
         restoreTouchOnly();

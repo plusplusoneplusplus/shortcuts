@@ -1,9 +1,3 @@
-/**
- * Container Link — Module Index
- *
- * Exports the container-link client and protocol types.
- */
-
 export { ContainerLinkClient, type ContainerLinkOptions, type ContainerLinkStatus } from './container-client';
 export { registerContainerLinkRoutes, type ContainerLinkRouteContext, type ContainerLinkStatusResponse } from './container-link-routes';
 export {

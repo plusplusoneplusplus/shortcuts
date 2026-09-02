@@ -1,6 +1,4 @@
 /**
- * Turn Performance Stats Aggregation
- *
  * Pure aggregation over raw {@link TurnPerformanceEvent} rows: groups events
  * by one or more dimensions and computes TTFT / TPS distributions
  * (p50/p90/p99/mean/min/max) per group. Percentiles are computed here rather

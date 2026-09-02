@@ -1,13 +1,9 @@
 /**
- * Wiki Ask Handler
- *
  * POST /api/wikis/:wikiId/ask — AI Q&A endpoint with SSE streaming.
  * Adapted from deep-wiki's ask-handler for multi-wiki CoC server.
  *
  * The shared core logic lives in `handleAskCore()`, which is also used by
  * the deep-wiki standalone handler (`dw-ask-handler.ts`).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { IncomingMessage, ServerResponse } from 'http';
@@ -20,7 +16,6 @@ import { send400, readJsonBody } from '../shared/router';
 // Types
 // ============================================================================
 
-/** A single message in a conversation turn. */
 export interface ConversationMessage {
     role: 'user' | 'assistant';
     content: string;
@@ -33,7 +28,6 @@ export interface AskRequest {
     conversationHistory?: ConversationMessage[];
 }
 
-/** Options for the ask handler. */
 export interface WikiAskHandlerOptions {
     wikiManager: WikiManager;
     aiSendMessage?: AskAIFunction;
@@ -108,7 +102,7 @@ export async function handleWikiAskRequest(
  *   - Resolving the context (WikiManager lookup or flat injection)
  *   - Parsing and validating the request body
  *
- * This function handles:
+ * Handles:
  *   - SSE header setup
  *   - Context retrieval via ContextBuilder
  *   - Session management (create/reuse/fallback)
@@ -129,7 +123,6 @@ export async function handleAskCore(
     });
 
     try {
-        // Retrieve context
         const retrieved = context.contextBuilder.retrieve(askReq.question);
         sendSSE(res, {
             type: 'context',
@@ -213,9 +206,6 @@ export async function handleAskCore(
 // Prompt Building
 // ============================================================================
 
-/**
- * Build the AI prompt for Q&A.
- */
 export function buildAskPrompt(
     question: string,
     contextText: string,
@@ -279,7 +269,6 @@ export function sendSSE(res: ServerResponse, data: Record<string, unknown>): boo
     }
 }
 
-/** Read the raw request body as a string. */
 export function readBody(req: IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {
         let body = '';

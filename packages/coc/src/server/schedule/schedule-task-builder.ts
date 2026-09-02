@@ -1,6 +1,4 @@
 /**
- * Schedule task builders
- *
  * Pure transformations from a `(repoId, ScheduleEntry, run)` triple into the
  * queue payload that executes it.  Kept free of queue, disk, and timer side
  * effects so the prompt / Ralph / script payload shapes can be fixture-tested
@@ -8,8 +6,6 @@
  *
  * `ScheduleExecutor` owns the side effects: it calls these builders, then
  * enqueues the returned descriptor and records the resulting task ID.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';

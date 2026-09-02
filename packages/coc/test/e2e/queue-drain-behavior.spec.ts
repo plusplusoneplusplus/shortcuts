@@ -1,6 +1,4 @@
 /**
- * Queue Drain Behavior – E2E Tests
- *
  * Verifies the core queue drain behavior: multiple tasks enqueued while the AI
  * is slow are eventually picked up and completed in order (FIFO).
  *

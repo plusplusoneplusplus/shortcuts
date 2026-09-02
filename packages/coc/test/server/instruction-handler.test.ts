@@ -1,6 +1,4 @@
 /**
- * Instruction Handler Tests
- *
  * Tests for:
  *   GET    /api/workspaces/:id/instructions
  *   GET    /api/workspaces/:id/instructions/:mode
@@ -72,7 +70,6 @@ const WS = {
 };
 
 beforeAll(async () => {
-    // Create a temp repo dir
     repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instr-handler-test-'));
     WS.rootPath = repoDir;
 

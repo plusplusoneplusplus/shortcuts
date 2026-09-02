@@ -1,6 +1,4 @@
 /**
- * Startup Machine-Scoped Workspace-ID Migration
- *
  * Re-keys legacy path-only physical workspace IDs (`ws-<base36hash>`) to the
  * machine-scoped scheme (`ws-v2-<hash>` over raw OS hostname + normalized root
  * path). This lets the dashboard tell two machines that registered the same

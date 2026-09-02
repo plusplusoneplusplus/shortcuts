@@ -1,6 +1,4 @@
 /**
- * Process Types Tests
- *
  * Round-trip serialization tests for ConversationTurn images field.
  */
 

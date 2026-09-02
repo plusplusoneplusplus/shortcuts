@@ -1,17 +1,5 @@
-/**
- * Iterative Discovery Types — Phase 1 seed-based discovery interfaces.
- *
- * These types define the structures for the iterative breadth-first
- * discovery mode that uses theme seeds to probe the codebase.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import type { ComponentGraph, ThemeSeed } from '../../types';
 
-/**
- * Result of probing a single theme in the codebase.
- */
 export interface ThemeProbeResult {
     /** The theme that was probed */
     theme: string;
@@ -25,9 +13,6 @@ export interface ThemeProbeResult {
     confidence: number;
 }
 
-/**
- * A component found during theme probing.
- */
 export interface ProbeFoundComponent {
     /** Suggested component ID (kebab-case) */
     id: string;
@@ -59,9 +44,6 @@ export interface DiscoveredTheme {
     source: string;
 }
 
-/**
- * Options for iterative discovery.
- */
 export interface IterativeDiscoveryOptions {
     /** Absolute path to the repository */
     repoPath: string;

@@ -1,6 +1,4 @@
 /**
- * Git Stash, Push, and Pull Edge Cases Tests
- *
  * Section 5: Stash Operations
  * - POST /stash with no changes → service returns "nothing to stash"
  * - POST /stash with changes → working tree clean after stash
@@ -17,7 +15,7 @@
  * - POST /fetch with unreachable remote → error result
  * - POST /fetch with valid remote → 200, success
  *
- * Mocks BranchService. Cross-platform compatible.
+ * Mocks BranchService.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

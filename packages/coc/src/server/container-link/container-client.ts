@@ -1,6 +1,4 @@
 /**
- * Container Link Client
- *
  * WebSocket client that connects outbound to a CoCContainer server.
  * Handles registration, heartbeats, event forwarding, and request proxying.
  */
@@ -49,9 +47,6 @@ export interface ContainerLinkOptions {
 
 export type ContainerLinkStatus = 'disconnected' | 'connecting' | 'connected' | 'registered';
 
-/**
- * Manages the outbound WebSocket connection to a container.
- */
 export class ContainerLinkClient extends EventEmitter {
     private ws: WebSocket.WebSocket | null = null;
     private options: Required<Pick<ContainerLinkOptions, 'containerUrl' | 'heartbeatIntervalMs' | 'reconnectBaseMs' | 'reconnectMaxMs'>> & ContainerLinkOptions;
@@ -80,9 +75,6 @@ export class ContainerLinkClient extends EventEmitter {
         return this._assignedAgentId;
     }
 
-    /**
-     * Start connecting to the container.
-     */
     start(): void {
         this.stopped = false;
         this.connect();
@@ -97,9 +89,6 @@ export class ContainerLinkClient extends EventEmitter {
         this.setStatus('disconnected');
     }
 
-    /**
-     * Forward a WebSocket broadcast event to the container.
-     */
     forwardEvent(data: string): void {
         if (this._status !== 'registered') {
             process.stderr.write(`[container-link] forwardEvent skipped (status=${this._status})\n`);
@@ -117,9 +106,6 @@ export class ContainerLinkClient extends EventEmitter {
         this.send(createMessage('event', payload));
     }
 
-    /**
-     * Forward an SSE event to the container for a given subscription.
-     */
     forwardSSEEvent(subscriptionId: string, event: string | undefined, data: string, id?: string): void {
         if (this._status !== 'registered') return;
         const payload: SSEEventPayload = { subscriptionId, event, data, id };
@@ -301,7 +287,6 @@ export class ContainerLinkClient extends EventEmitter {
         const port = this.options.localPort;
         if (!port) return;
 
-        // Cancel existing subscription if any
         this.cancelSSESubscription(payload.subscriptionId);
 
         const req = http.get({
@@ -401,7 +386,6 @@ export class ContainerLinkClient extends EventEmitter {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
-        // Close all SSE subscriptions
         for (const [id, res] of this.sseSubscriptions) {
             res.destroy();
         }

@@ -527,7 +527,6 @@ describe('executeWorkflow', () => {
         const onProgress = vi.fn((e: WorkflowProgressEvent) => events.push(e));
         await executeWorkflow(config, makeOptions({ onProgress }));
 
-        // 'bad' node should emit running → warned (not completed)
         const badEvents = events.filter(e => e.nodeId === 'bad');
         expect(badEvents.map(e => e.phase)).toEqual(['running', 'warned']);
         const warned = badEvents.find(e => e.phase === 'warned')!;
@@ -557,7 +556,6 @@ describe('executeWorkflow', () => {
 
         await expect(executeWorkflow(config, makeOptions({ onProgress }))).rejects.toThrow();
 
-        // 'bad' node should emit running → failed
         const badEvents = events.filter(e => e.nodeId === 'bad');
         expect(badEvents.map(e => e.phase)).toEqual(['running', 'failed']);
         const failed = badEvents.find(e => e.phase === 'failed')!;

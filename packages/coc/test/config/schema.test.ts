@@ -1,6 +1,4 @@
 /**
- * Schema validation tests
- *
  * Tests for CLIConfigSchema Zod validation and validateConfigWithSchema().
  */
 

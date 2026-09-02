@@ -1,12 +1,9 @@
 /**
- * Schedule Persistence Restart Tests
- *
  * Covers Section 6 of test-plan-schedule-system.md:
  * Persistence Across Server Restart — schedule restoration, nextRun
  * recalculation, run history preservation, and disabled-schedule behaviour.
  *
  * Uses the HTTP server stop()+start() pattern with a shared dataDir.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

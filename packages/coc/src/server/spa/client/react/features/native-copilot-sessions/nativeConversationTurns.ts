@@ -60,7 +60,6 @@ function mapTimelineItem(item: ReconstructedTimelineItem): ClientTimelineItem {
     };
 }
 
-/** Map a single reconstructed turn into the SPA chat turn shape. */
 export function toClientConversationTurn(turn: ReconstructedConversationTurn): ClientConversationTurn {
     const timeline: ClientTimelineItem[] = Array.isArray(turn.timeline)
         ? turn.timeline.map(mapTimelineItem)

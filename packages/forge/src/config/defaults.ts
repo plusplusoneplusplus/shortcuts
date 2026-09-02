@@ -1,10 +1,5 @@
 /**
- * Centralized Defaults
- *
- * Single source of truth for all DEFAULT_* constants used across the pipeline-core package.
- * This consolidates scattered defaults for better discoverability and maintainability.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
+ * Single source of truth for all DEFAULT_* constants across the forge package.
  */
 
 // ============================================================================
@@ -57,43 +52,22 @@ export const DEFAULT_CHUNK_MAX_SIZE = 4000;
  */
 export const DEFAULT_CHUNK_OVERLAP_SIZE = 200;
 
-/**
- * Default chunk strategy.
- */
 export const DEFAULT_CHUNK_STRATEGY: 'character' | 'line' | 'paragraph' = 'character';
 
-/**
- * Default setting for preserving boundaries in chunk splitting.
- */
 export const DEFAULT_CHUNK_PRESERVE_BOUNDARIES = true;
 
 // ============================================================================
 // CSV Reader
 // ============================================================================
 
-/**
- * Default CSV delimiter.
- */
 export const DEFAULT_CSV_DELIMITER = ',';
 
-/**
- * Default CSV quote character.
- */
 export const DEFAULT_CSV_QUOTE = '"';
 
-/**
- * Default setting for CSV header presence.
- */
 export const DEFAULT_CSV_HAS_HEADER = true;
 
-/**
- * Default setting for skipping empty lines in CSV.
- */
 export const DEFAULT_CSV_SKIP_EMPTY_LINES = true;
 
-/**
- * Default setting for trimming fields in CSV.
- */
 export const DEFAULT_CSV_TRIM_FIELDS = true;
 
 // ============================================================================
@@ -115,28 +89,16 @@ export const DEFAULT_RETRY_DELAY_MS = 1000;
  */
 export const DEFAULT_QUEUE_MAX_CONCURRENT = 3;
 
-/**
- * Default process on startup setting.
- */
 export const DEFAULT_QUEUE_PROCESS_ON_STARTUP = true;
 
-/**
- * Default auto-start setting for queue manager.
- */
 export const DEFAULT_QUEUE_AUTO_START = true;
 
-/**
- * Default setting for automatic queue persistence.
- */
 export const DEFAULT_QUEUE_AUTO_PERSIST = true;
 
 // ============================================================================
 // Skills
 // ============================================================================
 
-/**
- * Default directory for skill definitions.
- */
 export const DEFAULT_SKILLS_DIRECTORY = '.github/skills';
 
 // ============================================================================
@@ -153,7 +115,4 @@ export const DEFAULT_FUZZY_MATCH_THRESHOLD = 0.7;
  */
 export const DEFAULT_CONTEXT_LINES = 3;
 
-/**
- * Default case sensitivity for text matching.
- */
 export const DEFAULT_CASE_SENSITIVE = false;

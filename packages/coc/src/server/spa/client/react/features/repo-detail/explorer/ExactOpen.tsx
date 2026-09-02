@@ -20,13 +20,11 @@ export interface ExactOpenProps {
     onFileSelect: (filePath: string) => void;
 }
 
-/** Extract file name from a path. */
 export function fileName(p: string): string {
     const idx = p.lastIndexOf('/');
     return idx < 0 ? p : p.slice(idx + 1);
 }
 
-/** Extract directory portion from a path. */
 function dirName(p: string): string {
     const idx = p.lastIndexOf('/');
     return idx < 0 ? '' : p.slice(0, idx);

@@ -1,10 +1,6 @@
 /**
- * CLI Configuration
- *
  * Resolves CLI configuration from config files and environment variables.
  * Configuration file: ~/.coc/config.yaml
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -750,7 +746,6 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'dream',
 ];
 
-/** Default configuration values */
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     parallel: 5,
     output: 'table',
@@ -1113,9 +1108,6 @@ export function resolveConfig(configPath?: string, preloaded?: CLIConfig): Resol
     return mergeConfig(DEFAULT_CONFIG, fileConfig);
 }
 
-/**
- * Merge a partial config on top of a base config
- */
 export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): ResolvedCLIConfig {
     if (!override) {
         return { ...base };

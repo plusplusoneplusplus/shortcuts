@@ -1,6 +1,4 @@
 /**
- * Sync Kernel Tests
- *
  * Unit coverage for the kernels the sync engine was split into — exercised in
  * isolation from the full git-backed transaction:
  *   - SyncMirrorCopier: ignore semantics and baseline-gated mirror deletes

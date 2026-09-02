@@ -1,6 +1,4 @@
 /**
- * RunScriptStrategy
- *
  * Spawns a shell command as a child process and streams stdout/stderr.
  * Extracted from CLITaskExecutor.executeRunScript.
  */

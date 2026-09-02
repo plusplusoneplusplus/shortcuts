@@ -1,6 +1,4 @@
 /**
- * Notes Comments Multi-Root Tests
- *
  * Tests for the `root` parameter on comment endpoints, verifying:
  * - Default root sidecar remains co-located (backward compat)
  * - Repo-folder root sidecars are stored in managed area (~/.coc/repos/<wsId>/notes-comments/)

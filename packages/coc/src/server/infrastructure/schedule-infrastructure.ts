@@ -1,12 +1,7 @@
 /**
- * Schedule Infrastructure Builder
- *
  * Creates the schedule-related objects (ScheduleYamlPersistence,
  * SqliteScheduleRunPersistence, RepoScheduleOverrideStore, ScheduleManager)
  * used by the execution server and returns them as a plain object.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import DatabaseConstructor from 'better-sqlite3';

@@ -1,6 +1,4 @@
 /**
- * Pull-Request-Chat Binding REST API Routes
- *
  * CRUD operations on pullRequest -> chat bindings. Persistent bindings are
  * scoped by canonical origin. Legacy workspace rows migrate on origin access.
  */

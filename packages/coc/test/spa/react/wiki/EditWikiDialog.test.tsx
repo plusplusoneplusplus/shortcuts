@@ -1,7 +1,3 @@
-/**
- * Tests for EditWikiDialog.
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { EditWikiDialog } from '../../../../src/server/spa/client/react/wiki/EditWikiDialog';

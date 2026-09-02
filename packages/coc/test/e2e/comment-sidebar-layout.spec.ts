@@ -1,6 +1,4 @@
 /**
- * Comment Sidebar Layout E2E Tests
- *
  * Verifies that the comment header ("Comments (N)") and filter controls
  * (status tabs, category chips) are rendered inside the comment sidebar
  * rather than in the main content area.

@@ -1,6 +1,4 @@
 /**
- * Writing Prompt Tests
- *
  * Tests for article writing prompt generation, depth variants,
  * cross-linking, and component graph simplification.
  */

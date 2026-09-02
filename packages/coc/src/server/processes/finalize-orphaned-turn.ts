@@ -15,9 +15,6 @@
  * If the process has no orphaned streaming turn — or the store does not
  * expose `getConversationTurns` — falls back to a simple status-only
  * `updateProcess()` call.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';

@@ -15,9 +15,6 @@
  *   setLogger(myCustomLogger);
  */
 
-/**
- * Log categories for different subsystems
- */
 export enum LogCategory {
     /** AI Service operations (Copilot SDK, sessions) */
     AI = 'AI Service',
@@ -124,11 +121,6 @@ export function setLogger(logger: Logger): void {
     globalLogger = logger;
 }
 
-/**
- * Get the current global logger instance.
- * 
- * @returns The current logger
- */
 export function getLogger(): Logger {
     return globalLogger;
 }

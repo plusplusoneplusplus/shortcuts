@@ -1,11 +1,8 @@
 /**
- * Cron Executor Tests
- *
  * Unit tests for `CronExecutor` — timer scheduling, tick execution,
  * circuit breakers, concurrency guards, and lifecycle management.
  *
  * Uses in-memory SQLite databases and stubs for external dependencies.
- * Cross-platform safe (no file I/O, no OS-specific paths).
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
@@ -290,7 +287,6 @@ describe('CronExecutor', () => {
             const executor = new CronExecutor(deps);
             executor.armAll();
 
-            // Fire the timer callback
             await timerRegistry._fire('cron_tick');
 
             // Should have tried to enqueue
@@ -387,7 +383,6 @@ describe('CronExecutor', () => {
 
             await timerRegistry._fire('cron_skip_running');
 
-            // Should NOT enqueue
             expect(queueManager.enqueue).not.toHaveBeenCalled();
             expect(queueManager.requeueFromHistory).not.toHaveBeenCalled();
 

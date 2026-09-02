@@ -1,6 +1,4 @@
 /**
- * Search Conversations Tool Tests
- *
  * Unit tests for the createSearchConversationsTool factory and stripMarkTags helper.
  */
 

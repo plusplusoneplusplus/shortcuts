@@ -30,7 +30,6 @@ test.describe('Mobile Repos', () => {
         await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
         await page.locator('.repo-item').first().tap();
 
-        // Detail content should be visible
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
     });
 

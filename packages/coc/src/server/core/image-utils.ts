@@ -1,11 +1,6 @@
 /**
- * Image Utilities
- *
  * Shared image helpers for decoding base64 data URL images into temp files
  * and producing SDK Attachment objects. Pure Node.js.
- *
- * Replicates the pattern from src/shortcuts/tasks-viewer/ai-task-commands.ts
- * adapted for server context.
  */
 
 import * as fs from 'fs';
@@ -28,7 +23,6 @@ import type { Attachment } from '@plusplusoneplusplus/forge';
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 /**
- * Parse a base64 data URL into its components.
  * Returns null for invalid or non-image data URLs.
  */
 export function parseDataUrl(

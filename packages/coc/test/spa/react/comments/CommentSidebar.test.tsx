@@ -1,7 +1,3 @@
-/**
- * Tests for CommentSidebar React component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { CommentSidebar } from '../../../../src/server/spa/client/react/tasks/comments/CommentSidebar';
@@ -71,7 +67,6 @@ describe('CommentSidebar', () => {
                 onAskAI={noop} onCommentClick={noop}
             />
         );
-        // Click Open filter
         fireEvent.click(screen.getByTestId('status-filter-open'));
         expect(screen.getByText('open one')).toBeTruthy();
         expect(screen.queryByText('resolved one')).toBeNull();

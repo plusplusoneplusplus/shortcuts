@@ -1,9 +1,3 @@
-/**
- * Memory System
- *
- * Re-exports all memory types, interfaces, store implementations,
- * and security scanner.
- */
 export type {
     RepoInfo,
     GitRemoteInfo,

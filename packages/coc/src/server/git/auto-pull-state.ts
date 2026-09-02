@@ -11,8 +11,6 @@
  *
  * A missing or corrupt file is "never run", never an error — auto-pull is a
  * convenience and must not be able to break server startup.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import * as fs from 'fs';

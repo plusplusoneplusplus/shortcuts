@@ -1,10 +1,6 @@
 /**
- * Consolidation Types — Phase 2 component consolidation interfaces.
- *
  * These types define the options, results, and intermediate structures
  * for the component consolidation pipeline (rule-based + AI clustering).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ComponentGraph } from '../types';
@@ -23,9 +19,6 @@ export interface ConsolidationOptions {
     skipAI?: boolean;
 }
 
-/**
- * Result of the consolidation phase.
- */
 export interface ConsolidationResult {
     /** The consolidated component graph */
     graph: ComponentGraph;

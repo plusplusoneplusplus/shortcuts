@@ -1,11 +1,9 @@
 /**
- * Commit-Chat Metadata Backfill Tests
- *
  * Covers the startup data repair that gives binding-only commit chats their
  * `metadata.commitChat` back: bare vs `queue_` task IDs, idempotency, workspace
  * isolation, and the file-backed store no-op.
  *
- * Cross-platform (Linux/Mac/Windows) — uses an in-memory SQLite database and a
+ * Uses an in-memory SQLite database and a
  * temp dataDir created with os.tmpdir()/path.join.
  */
 

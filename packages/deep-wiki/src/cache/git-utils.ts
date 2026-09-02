@@ -52,7 +52,6 @@ function rethrowIfAddonUnavailable(err: unknown): void {
  * repository reached through a symlink (`os.tmpdir()` on macOS is the everyday
  * one) used to produce a relative path that pointed outside the repository.
  *
- * @param repoPath - Path inside a git repository
  * @returns The absolute path to the git root, or null if not inside a git repo
  */
 export async function getGitRoot(repoPath: string): Promise<string | null> {
@@ -79,7 +78,6 @@ export async function getGitRoot(repoPath: string): Promise<string | null> {
  * commit reader: that reader builds a `%D` decoration map over every ref, which
  * costs more on a real repository than the one child process it would remove.
  *
- * @param repoPath - Path to the git repository
  * @returns The HEAD hash string, or null if not a git repo
  */
 export async function getRepoHeadHash(repoPath: string): Promise<string | null> {
@@ -108,7 +106,6 @@ export async function getRepoHeadHash(repoPath: string): Promise<string | null> 
  * When `repoPath` IS the git root, falls back to `git rev-parse HEAD`
  * (same as `getRepoHeadHash`).
  *
- * @param repoPath - Path to the git repository or subfolder
  * @returns The scoped hash string, or null if not a git repo
  */
 export async function getFolderHeadHash(repoPath: string): Promise<string | null> {
@@ -164,8 +161,6 @@ export async function getFolderHeadHash(repoPath: string): Promise<string | null
  * cache invalidation where module paths in the graph are relative to the
  * subfolder, not the git root.
  *
- * @param repoPath - Path to the git repository
- * @param sinceHash - Git hash to compare against
  * @param scopePath - Optional subfolder to scope results to. When provided,
  *                    only files under this path are returned, with paths
  *                    relative to it.
@@ -223,8 +218,6 @@ export async function getChangedFiles(
 /**
  * Check if a repository has any changes since a given hash.
  *
- * @param repoPath - Path to the git repository
- * @param sinceHash - Git hash to compare against
  * @returns True if there are changes, false if unchanged, null on error
  */
 export async function hasChanges(repoPath: string, sinceHash: string): Promise<boolean | null> {
@@ -242,8 +235,6 @@ export async function hasChanges(repoPath: string, sinceHash: string): Promise<b
  * `-C <cwd>` — which is where the shell command this replaced ran it anyway.
  * (Spelling the old command line out here would put a git shell string back
  * into the inventory grep that has to stay empty.)
- *
- * @returns True if git command is available
  */
 export async function isGitAvailable(): Promise<boolean> {
     try {
@@ -263,9 +254,6 @@ export async function isGitAvailable(): Promise<boolean> {
  * answers `true`. Nothing asks that question — the callers pass a repository or
  * a source subfolder — and the alternative is teaching this module where a git
  * directory lives.
- *
- * @param dirPath - Path to check
- * @returns True if inside a git repo
  */
 export async function isGitRepo(dirPath: string): Promise<boolean> {
     return (await getGitRoot(dirPath)) !== null;

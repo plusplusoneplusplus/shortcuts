@@ -1,6 +1,4 @@
 /**
- * Seen State REST API Handler
- *
  * HTTP API routes for managing read/unread (seen/unseen) state of processes.
  * Delegates to SqliteProcessStore's seen-state methods.
  */
@@ -53,7 +51,6 @@ export function registerSeenStateRoutes(routes: Route[], store: SeenStateStore):
                 return;
             }
 
-            // Validate each entry
             for (const entry of entries) {
                 if (typeof entry.processId !== 'string' || typeof entry.seenAt !== 'string') {
                     sendJSON(res, 400, { error: 'Each entry must have "processId" and "seenAt" strings' });

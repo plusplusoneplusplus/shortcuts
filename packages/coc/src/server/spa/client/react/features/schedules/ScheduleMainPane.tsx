@@ -39,7 +39,6 @@ export type ScheduleMainPaneRoute =
     | { kind: 'new' }
     | { kind: 'detail'; scheduleId: string };
 
-/** Parse the schedule main-pane route out of a location hash, scoped to `workspaceId`. */
 export function parseScheduleMainPaneRoute(hash: string, workspaceId: string): ScheduleMainPaneRoute | null {
     const clean = hash.replace(/^#/, '').split('?')[0];
     const parts = clean.split('/');

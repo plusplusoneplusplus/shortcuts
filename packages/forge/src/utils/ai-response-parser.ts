@@ -7,9 +7,6 @@
  * Used by both yaml-pipeline and map-reduce jobs.
  */
 
-/**
- * Configuration for bracket matching operations
- */
 interface BracketConfig {
     open: string;   // Opening bracket character: '{' or '['
     close: string;  // Closing bracket character: '}' or ']'
@@ -22,9 +19,6 @@ const OBJECT_BRACKET_CONFIG: BracketConfig = { open: '{', close: '}', name: 'obj
 /** Configuration for JSON array extraction */
 const ARRAY_BRACKET_CONFIG: BracketConfig = { open: '[', close: ']', name: 'array' };
 
-/**
- * Check if a string has balanced brackets for the given configuration
- */
 function hasBalanced(str: string, config: BracketConfig): boolean {
     let depth = 0;
     for (const char of str) {
@@ -35,9 +29,6 @@ function hasBalanced(str: string, config: BracketConfig): boolean {
     return depth === 0;
 }
 
-/**
- * Find all matching bracket positions for the given configuration
- */
 function findAllBracketPositions(str: string, config: BracketConfig): Array<{start: number, end: number}> {
     const positions: Array<{start: number, end: number}> = [];
     let depth = 0;
@@ -60,8 +51,6 @@ function findAllBracketPositions(str: string, config: BracketConfig): Array<{sta
 
 /**
  * Try to extract a JSON structure (object or array) from text
- * @param text Text to search in
- * @param config Bracket configuration
  * @param additionalValidation Optional additional validation (e.g., objects must contain ':')
  */
 function tryExtractStructure(
@@ -89,7 +78,6 @@ function tryExtractStructure(
                     continue;
                 }
             }
-            // Return candidate if balanced (and passes additional validation if provided)
             if (hasBalanced(candidate, config) && (!additionalValidation || additionalValidation(candidate))) {
                 return candidate;
             }
@@ -99,9 +87,8 @@ function tryExtractStructure(
 }
 
 /**
- * Extract JSON from a response string with comprehensive edge case handling
+ * Extract JSON from a response string.
  * Handles JSON in markdown code blocks, inline, malformed responses, and various AI quirks
- * @param response Response string from AI
  * @returns Extracted JSON string or null if no valid JSON found
  */
 export function extractJSON(response: string): string | null {
@@ -164,9 +151,7 @@ export function extractJSON(response: string): string | null {
 
 /**
  * Parse AI response and extract only the declared output fields
- * Includes comprehensive error recovery, type coercion, and natural language fallback
- * @param response AI response string
- * @param outputFields Expected field names
+ * Includes error recovery, type coercion, and natural language fallback
  * @returns Object with extracted fields (missing fields become null)
  */
 export function parseAIResponse(
@@ -271,9 +256,6 @@ function extractKeyValuePairs(response: string): string | null {
     return foundAny ? JSON.stringify(kvPairs) : null;
 }
 
-/**
- * Attempt to fix common JSON formatting errors
- */
 function attemptJSONFix(jsonStr: string): string | null {
     try {
         let fixed = jsonStr.replace(/'/g, '"');
@@ -288,7 +270,7 @@ function attemptJSONFix(jsonStr: string): string | null {
 }
 
 /**
- * Coerce values to appropriate types (convert strings to numbers/booleans where obvious)
+ * Convert strings to numbers/booleans where obvious.
  */
 function coerceValue(value: unknown): unknown {
     if (value === null || value === undefined) return null;

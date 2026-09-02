@@ -3,9 +3,6 @@
  * Pure TypeScript types with no editor dependencies.
  */
 
-/**
- * Represents a task markdown file
- */
 export interface Task {
     /** Filename without .md extension */
     name: string;
@@ -73,9 +70,6 @@ export type TaskSortBy = 'name' | 'modifiedDate';
  */
 export type TaskStatus = 'pending' | 'in-progress' | 'done' | 'future';
 
-/**
- * Represents a folder containing task files
- */
 export interface TaskFolder {
     /** Folder name */
     name: string;
@@ -150,9 +144,6 @@ export type RelatedItemCategory = 'source' | 'test' | 'doc' | 'config' | 'commit
 /** Type of a related item */
 export type RelatedItemType = 'file' | 'commit';
 
-/**
- * Represents a related item stored in related.yaml
- */
 export interface RelatedItem {
     /** Display name */
     name: string;
@@ -170,9 +161,6 @@ export interface RelatedItem {
     hash?: string;
 }
 
-/**
- * Configuration stored in related.yaml
- */
 export interface RelatedItemsConfig {
     /** Feature description used for discovery */
     description: string;
@@ -189,7 +177,7 @@ export type TaskCreationMode = 'create' | 'from-feature';
 export type TaskGenerationDepth = 'simple' | 'deep';
 
 /**
- * Options for creating an AI-generated task via the dialog (create mode)
+ * Create mode.
  */
 export interface AITaskCreateOptions {
     /** Task name (used as filename) - optional, AI will generate if empty */
@@ -203,7 +191,7 @@ export interface AITaskCreateOptions {
 }
 
 /**
- * Options for creating a task from feature context (from-feature mode)
+ * from-feature mode.
  */
 export interface AITaskFromFeatureOptions {
     /** Task name (used as filename) - optional, AI will generate if empty */
@@ -218,9 +206,6 @@ export interface AITaskFromFeatureOptions {
     model: string;
 }
 
-/**
- * Unified options for AI task creation dialog
- */
 export interface AITaskCreationOptions {
     /** Creation mode */
     mode: TaskCreationMode;
@@ -230,9 +215,6 @@ export interface AITaskCreationOptions {
     fromFeatureOptions?: AITaskFromFeatureOptions;
 }
 
-/**
- * Result from the AI Task creation dialog
- */
 export interface AITaskDialogResult {
     /** The creation options if not cancelled */
     options: AITaskCreationOptions | null;
@@ -262,14 +244,8 @@ export interface FeatureContext {
 // Review Status Tracking Types
 // ============================================================================
 
-/**
- * Review status states for task documents
- */
 export type ReviewStatus = 'reviewed' | 'unreviewed' | 'needs-re-review';
 
-/**
- * Record storing review status for a single file
- */
 export interface ReviewStatusRecord {
     /** Current review status */
     status: 'reviewed' | 'unreviewed';

@@ -1,6 +1,4 @@
 /**
- * Types Tests
- *
  * Tests for type validation, schema helpers, and module ID normalization.
  */
 

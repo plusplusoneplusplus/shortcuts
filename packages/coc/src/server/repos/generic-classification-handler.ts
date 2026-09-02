@@ -1,6 +1,4 @@
 /**
- * Generic Diff Classification Routes
- *
  * A single generic endpoint that dispatches classification to the correct
  * handler based on `ClassificationKey.type`. Replaces the need for
  * type-specific classification routes on the client side.

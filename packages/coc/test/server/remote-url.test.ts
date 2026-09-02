@@ -1,6 +1,4 @@
 /**
- * Remote URL utility tests
- *
  * Tests for normalizeRemoteUrl and detectRemoteUrl helper functions
  * used by the workspace registration and clone grouping features.
  */

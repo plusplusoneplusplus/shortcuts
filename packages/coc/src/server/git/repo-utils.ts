@@ -1,10 +1,6 @@
 /**
- * Repository Path Utilities
- *
  * Extract and normalize repository identifiers from task payloads.
  * Provides consistent repo identification for per-repo queue partitioning.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -27,7 +23,6 @@ import {
  * Returns a normalized path string as the repo identifier, or null
  * if no valid git repository is found.
  *
- * @param payload - The task payload to extract from
  * @returns Normalized repo path (absolute, lowercase on Windows), or null
  */
 export async function extractRepoId(payload: TaskPayload): Promise<string | null> {
@@ -148,9 +143,6 @@ export async function findGitRoot(pathLike: string): Promise<string | null> {
  * - Converts to lowercase on Windows (case-insensitive file systems)
  * - Resolves symlinks on Unix (best-effort)
  * - Removes trailing slashes
- *
- * @param repoPath - Repository path to normalize
- * @returns Normalized absolute path string
  */
 export function normalizeRepoPath(repoPath: string): string {
     const executionContext = resolveWorkspaceExecutionContext(repoPath);
@@ -171,15 +163,6 @@ export function normalizeRepoPath(repoPath: string): string {
     return normalizeExecutionPath(normalized);
 }
 
-/**
- * Extract the working directory from a task payload.
- *
- * Simple helper that returns the `workingDirectory` field if present,
- * or null otherwise.
- *
- * @param payload - The task payload
- * @returns The working directory path, or null
- */
 export function getWorkingDirectory(payload: TaskPayload): string | null {
     if ('workingDirectory' in payload && typeof payload.workingDirectory === 'string') {
         return payload.workingDirectory;

@@ -1,6 +1,4 @@
 /**
- * Discovery Cache — Intermediate Discovery Artifacts
- *
  * Caches intermediate results from the discovery phase (Phase 1):
  * seeds, probe results, structural scans, domain sub-graphs, and
  * round progress metadata. Enables crash recovery and avoids
@@ -21,8 +19,6 @@
  *
  * Each file wraps its payload with { data, gitHash, timestamp } for invalidation.
  * Follows the same pattern as saveAnalysis() / scanIndividualAnalysesCache().
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -48,66 +44,42 @@ import { readCacheFile, readCacheFileIf, writeCacheFile, clearCacheDir, scanCach
 // Constants
 // ============================================================================
 
-/** Name of the cache directory (must match index.ts) */
+/** Name of the cache directory (must match cache-constants.ts) */
 const CACHE_DIR_NAME = '.wiki-cache';
 
-/** Subdirectory for discovery cache */
 const DISCOVERY_DIR = 'discovery';
 
-/** Subdirectory for per-theme probe results */
 const PROBES_DIR = 'probes';
 
-/** Subdirectory for per-domain sub-graphs */
 const DOMAINS_DIR = 'domains';
 
-/** File name for discovery progress metadata */
 const METADATA_FILE = '_metadata.json';
 
-/** File name for cached seeds */
 const SEEDS_FILE = 'seeds.yaml';
 
-/** File name for cached structural scan */
 const STRUCTURAL_SCAN_FILE = 'structural-scan.json';
 
 // ============================================================================
 // Cache Paths
 // ============================================================================
 
-/**
- * Get the discovery cache directory path.
- *
- * @param outputDir - Output directory (the cache is stored inside it)
- * @returns Absolute path to the discovery cache directory
- */
 export function getDiscoveryCacheDir(outputDir: string): string {
     return path.join(path.resolve(outputDir), CACHE_DIR_NAME, DISCOVERY_DIR);
 }
 
-/**
- * Get the probes cache directory.
- */
 function getProbesCacheDir(outputDir: string): string {
     return path.join(getDiscoveryCacheDir(outputDir), PROBES_DIR);
 }
 
-/**
- * Get the domains cache directory.
- */
 function getDomainsCacheDir(outputDir: string): string {
     return path.join(getDiscoveryCacheDir(outputDir), DOMAINS_DIR);
 }
 
-/**
- * Get the path to a single cached probe result.
- */
 function getProbeCachePath(outputDir: string, theme: string): string {
     const slug = normalizeComponentId(theme);
     return path.join(getProbesCacheDir(outputDir), `${slug}.json`);
 }
 
-/**
- * Get the path to a single cached domain sub-graph.
- */
 function getDomainCachePath(outputDir: string, domainId: string): string {
     const slug = normalizeComponentId(domainId);
     return path.join(getDomainsCacheDir(outputDir), `${slug}.json`);
@@ -122,10 +94,6 @@ function getDomainCachePath(outputDir: string, domainId: string): string {
 
 /**
  * Save auto-generated seeds to the cache.
- *
- * @param seeds - The generated theme seeds
- * @param outputDir - Output directory
- * @param gitHash - Current git hash
  */
 export function saveSeedsCache(
     seeds: ThemeSeed[],
@@ -142,8 +110,6 @@ export function saveSeedsCache(
 /**
  * Get cached seeds if valid (git hash matches).
  *
- * @param outputDir - Output directory
- * @param gitHash - Current git hash for validation
  * @returns Cached seeds, or null if cache miss
  */
 export function getCachedSeeds(
@@ -160,7 +126,6 @@ export function getCachedSeeds(
 /**
  * Get cached seeds regardless of git hash (--use-cache mode).
  *
- * @param outputDir - Output directory
  * @returns Cached seeds, or null if not found
  */
 export function getCachedSeedsAny(
@@ -179,11 +144,6 @@ export function getCachedSeedsAny(
 
 /**
  * Save a single probe result to the cache.
- *
- * @param theme - The theme that was probed
- * @param result - The probe result
- * @param outputDir - Output directory
- * @param gitHash - Current git hash
  */
 export function saveProbeResult(
     theme: string,
@@ -201,9 +161,6 @@ export function saveProbeResult(
 /**
  * Get a cached probe result if valid (git hash matches).
  *
- * @param theme - The theme to look up
- * @param outputDir - Output directory
- * @param gitHash - Current git hash for validation
  * @returns Cached probe result, or null if cache miss
  */
 export function getCachedProbeResult(
@@ -221,9 +178,6 @@ export function getCachedProbeResult(
 /**
  * Scan for cached probe results across multiple themes.
  *
- * @param themes - Theme names to scan
- * @param outputDir - Output directory
- * @param gitHash - Current git hash for validation
  * @returns Object with `found` (valid cached probes) and `missing` (themes not found or stale)
  */
 export function scanCachedProbes(
@@ -260,10 +214,6 @@ export function scanCachedProbesAny(
 
 /**
  * Save a structural scan result to the cache.
- *
- * @param scan - The structural scan result
- * @param outputDir - Output directory
- * @param gitHash - Current git hash
  */
 export function saveStructuralScan(
     scan: StructuralScanResult,
@@ -280,8 +230,6 @@ export function saveStructuralScan(
 /**
  * Get a cached structural scan if valid (git hash matches).
  *
- * @param outputDir - Output directory
- * @param gitHash - Current git hash for validation
  * @returns Cached scan result, or null if cache miss
  */
 export function getCachedStructuralScan(
@@ -314,11 +262,6 @@ export function getCachedStructuralScanAny(
 
 /**
  * Save an domain sub-graph to the cache.
- *
- * @param domainId - The domain identifier (path or slug)
- * @param graph - The domain's sub-graph
- * @param outputDir - Output directory
- * @param gitHash - Current git hash
  */
 export function saveDomainSubGraph(
     domainId: string,
@@ -336,9 +279,6 @@ export function saveDomainSubGraph(
 /**
  * Get a cached domain sub-graph if valid (git hash matches).
  *
- * @param domainId - The domain identifier
- * @param outputDir - Output directory
- * @param gitHash - Current git hash for validation
  * @returns Cached sub-graph, or null if cache miss
  */
 export function getCachedDomainSubGraph(
@@ -356,9 +296,6 @@ export function getCachedDomainSubGraph(
 /**
  * Scan for cached domain sub-graphs across multiple domain IDs.
  *
- * @param domainIds - Domain identifiers to scan
- * @param outputDir - Output directory
- * @param gitHash - Current git hash for validation
  * @returns Object with `found` (valid cached graphs) and `missing` (domain IDs not found or stale)
  */
 export function scanCachedDomains(
@@ -395,9 +332,6 @@ export function scanCachedDomainsAny(
 
 /**
  * Save discovery progress metadata for round resumption.
- *
- * @param metadata - The progress metadata
- * @param outputDir - Output directory
  */
 export function saveDiscoveryMetadata(
     metadata: DiscoveryProgressMetadata,
@@ -409,7 +343,6 @@ export function saveDiscoveryMetadata(
 /**
  * Get discovery progress metadata.
  *
- * @param outputDir - Output directory
  * @returns Metadata, or null if not found or corrupted
  */
 export function getDiscoveryMetadata(
@@ -425,7 +358,6 @@ export function getDiscoveryMetadata(
 /**
  * Clear all discovery cache artifacts.
  *
- * @param outputDir - Output directory
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearDiscoveryCache(outputDir: string): boolean {

@@ -1,10 +1,6 @@
 /**
- * Providers Config
- *
  * Read/write ~/.coc/providers.json for storing provider credentials.
  * Atomic write pattern: write to .tmp then rename (matches FileProcessStore pattern).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs/promises';

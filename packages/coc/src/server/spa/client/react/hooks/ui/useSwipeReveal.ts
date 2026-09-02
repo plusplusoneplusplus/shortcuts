@@ -44,7 +44,6 @@ export interface UseSwipeRevealResult {
     translateX: number;
     /** Whether action buttons are fully revealed (snap-open state). */
     isRevealed: boolean;
-    /** Whether a swipe gesture is actively in progress. */
     isSwiping: boolean;
     /** Touch event handlers to attach to the row element. */
     handlers: {

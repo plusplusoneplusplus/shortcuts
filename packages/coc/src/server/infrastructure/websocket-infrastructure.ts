@@ -1,13 +1,8 @@
 /**
- * WebSocket Infrastructure Builder
- *
  * Creates the ProcessWebSocketServer and wires all event sources
  * (drain events, process-store changes, queue changes, schedule changes)
  * to it. Extracted from createExecutionServer to keep index.ts focused
  * on composition.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';
@@ -27,12 +22,10 @@ import type { TerminalWebSocketServer } from '../terminal/index';
  * Creates a ProcessWebSocketServer, attaches it to the HTTP server, and wires
  * all event sources to it.
  *
- * @param server          - The HTTP server to attach the WebSocket server to.
  * @param store           - Process store whose changes are forwarded over WS.
  * @param bridge          - Multi-repo bridge for drain and queue-change events.
  * @param registry        - Queue registry used to build aggregate queue snapshots.
  * @param scheduleManager - Schedule manager for schedule-change events.
- * @returns The configured ProcessWebSocketServer instance.
  */
 export function createWebSocketInfrastructure(
     server: http.Server,
@@ -46,7 +39,6 @@ export function createWebSocketInfrastructure(
     wsServer.attachConnectionHandler();
     attachWebSocketUpgradeHandler(server, wsServer, terminalWsServer);
 
-    // Invalidate the git-info cache whenever a git mutation event is broadcast
     wsServer.onGitChanged((workspaceId) => {
         gitInfoCache.invalidate(workspaceId);
     });

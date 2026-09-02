@@ -1,6 +1,4 @@
 /**
- * MCP Config Writer
- *
  * Utilities for reading raw JSON and writing to MCP config files:
  *  - Global:    ~/.copilot/mcp-config.json   (key: "mcpServers")
  *  - Workspace: <repo>/.vscode/mcp.json      (key: "servers")

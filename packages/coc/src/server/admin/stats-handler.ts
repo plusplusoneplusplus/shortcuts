@@ -1,11 +1,6 @@
 /**
- * Token Usage Stats REST API Handler
- *
  * Provides GET /api/stats/token-usage, which aggregates per-day per-model
  * token consumption across all persisted processes.
- *
- * Pure Node.js; uses only built-ins.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -25,8 +20,6 @@ import type { TurnPerformanceStore } from '../storage/turn-performance-store';
  * Register stats routes (token usage + turn performance) on the given route
  * table. Mutates the `routes` array in-place.
  *
- * @param routes - Shared route table
- * @param store  - Process store to read process history from
  * @param getTurnPerformanceStore - Late-bound accessor for the turn-performance
  *   metric store; when absent or returning undefined, the turn-performance
  *   route serves an empty aggregate instead of erroring.

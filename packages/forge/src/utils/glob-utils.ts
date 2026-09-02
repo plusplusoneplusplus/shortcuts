@@ -1,20 +1,7 @@
-/**
- * Glob Utilities
- * 
- * Simple glob pattern matching for file discovery.
- * Uses Node.js built-in modules for compatibility.
- */
-
 import * as fs from 'fs';
 import * as path from 'path';
 import { getLogger, LogCategory } from '../logger';
 
-/**
- * Check if a filename matches a simple extension pattern
- * @param filename The filename to check
- * @param extension The extension to match (e.g., ".md")
- * @returns True if the filename ends with the extension
- */
 function matchesExtension(filename: string, extension: string): boolean {
     return filename.toLowerCase().endsWith(extension.toLowerCase());
 }
@@ -22,7 +9,6 @@ function matchesExtension(filename: string, extension: string): boolean {
 /**
  * Extract the extension pattern from a glob pattern
  * For patterns like "**\/*.md", returns ".md"
- * @param pattern The glob pattern
  * @returns The extension or null if not a simple extension pattern
  */
 function extractExtension(pattern: string): string | null {
@@ -42,7 +28,6 @@ function extractExtension(pattern: string): string | null {
 /**
  * Find all files matching a glob pattern in a directory
  * @param pattern The glob pattern (e.g., "**\/*.md")
- * @param baseDir The base directory to search from
  * @returns Array of absolute file paths matching the pattern
  */
 export function glob(pattern: string, baseDir: string): string[] {
@@ -90,7 +75,6 @@ export function glob(pattern: string, baseDir: string): string[] {
 
 /**
  * Get all files with a specific extension in a directory (recursive)
- * @param dir The directory to search
  * @param extension The file extension (e.g., ".md")
  * @returns Array of absolute file paths
  */

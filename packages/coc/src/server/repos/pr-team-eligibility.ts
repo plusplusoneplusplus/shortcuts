@@ -1,6 +1,4 @@
 /**
- * Pull Requests Team auto-classification eligibility.
- *
  * Eligibility is intentionally based on the persisted Team roster for the
  * requested workspace/repo. Transient SPA chip state is not stored and must not
  * affect automatic background work.

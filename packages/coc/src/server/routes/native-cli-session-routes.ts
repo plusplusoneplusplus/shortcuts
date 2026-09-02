@@ -1,6 +1,4 @@
 /**
- * Unified native CLI session routes.
- *
  * Read-only, workspace-scoped views over native Copilot, Codex, and Claude Code
  * CLI session stores. The route delegates all provider-specific store access to
  * short-lived read-only providers and never mutates external CLI data.

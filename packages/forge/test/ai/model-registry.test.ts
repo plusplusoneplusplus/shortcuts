@@ -1,6 +1,4 @@
 /**
- * Model Registry Tests
- *
  * Comprehensive tests for the central AI model registry.
  * Ensures the registry is the single source of truth for model definitions,
  * and that all derived constants and helper functions work correctly.

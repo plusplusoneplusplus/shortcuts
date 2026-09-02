@@ -1,10 +1,6 @@
 /**
- * Run Command
- *
  * Executes a pipeline from a YAML file.
  * Handles input loading, AI invocation, progress display, and output formatting.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -51,9 +47,6 @@ import { resolvePipelinePath } from './validate';
 // Types
 // ============================================================================
 
-/**
- * Options for the run command
- */
 export interface RunCommandOptions {
     /** Override AI model */
     model?: string;
@@ -92,11 +85,7 @@ export interface RunCommandOptions {
 // ============================================================================
 
 /**
- * Execute the run command
- *
  * @param pipelinePath Path to pipeline.yaml or directory
- * @param options Run options
- * @returns exit code
  */
 export async function executeRun(
     pipelinePath: string,
@@ -268,7 +257,6 @@ function handleResults(
     elapsed: number,
     cancelled: boolean,
 ): number {
-    // Print summary to stderr
     const summary = formatSummary(result);
     process.stderr.write(summary + '\n');
     process.stderr.write(`\n  ${green(bold('Done'))} in ${formatDuration(elapsed)}\n`);
@@ -301,7 +289,6 @@ function handleResults(
             process.stdout.write(formatted + '\n');
         }
     } else {
-        // Write formatted results to stdout
         process.stdout.write(formatted + '\n');
     }
 

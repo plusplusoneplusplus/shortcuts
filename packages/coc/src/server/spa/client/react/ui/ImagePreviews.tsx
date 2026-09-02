@@ -11,7 +11,6 @@ export interface ImagePreviewsProps {
     showHint?: boolean;
     /** Optional additional className on the outer container */
     className?: string;
-    /** data-testid for testing */
     'data-testid'?: string;
 }
 

@@ -1,15 +1,10 @@
 /**
- * Watcher Infrastructure Builder
- *
- * Creates TaskWatcher, WorkflowWatcher, and TemplateWatcher instances,
+ * Creates TaskWatcher, WorkflowWatcher, TemplateWatcher and NotesWatcher instances,
  * bootstraps them for already-registered workspaces (server restart scenario),
  * and monkey-patches store.registerWorkspace / store.removeWorkspace so watchers
  * stay in sync as workspaces are added or removed at runtime.
  *
  * Extracted from createExecutionServer to keep index.ts focused on composition.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { TaskWatcher } from '../tasks/task-watcher';
@@ -41,14 +36,11 @@ export interface WatcherInfrastructure {
 // ============================================================================
 
 /**
- * Creates all three file watchers, bootstraps them for pre-existing workspaces,
- * and wires store registration/removal hooks so watchers track workspace changes.
- *
  * @param store     - Process store (for workspace enumeration and hook interception).
  * @param dataDir   - Root data directory used to resolve per-repo task roots.
  * @param wsServer  - WebSocket server that receives file-change broadcasts.
  * @param bridge    - Multi-repo bridge for registering repo IDs on workspace add.
- * @returns The three watcher instances for use during server shutdown.
+ * @returns The watcher instances, used during server shutdown.
  */
 export async function createWatcherInfrastructure(
     store: ProcessStore,

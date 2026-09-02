@@ -1,6 +1,4 @@
 /**
- * Queue Executor Bridge — deliveryMode Tests
- *
  * Verifies that:
  * - executeFollowUp passes deliveryMode to sendMessage options
  * - deliveryMode: 'immediate' triggers a message-steering SSE event

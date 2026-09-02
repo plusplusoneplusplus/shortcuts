@@ -1,6 +1,4 @@
 /**
- * Notes System Folder Protection Tests
- *
  * Tests for the systemFolders concept in the Notes REST API:
  * - GET /notes/tree exposes systemFolders and auto-creates Plans
  * - PATCH /notes/path returns 403 when renaming a system folder

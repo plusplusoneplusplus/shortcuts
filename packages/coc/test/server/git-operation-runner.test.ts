@@ -5,7 +5,7 @@
  * job creation, the already-running guard, terminal status mapping, mutable
  * cache invalidation, and the gitChanged broadcast.
  *
- * Pure unit tests — no HTTP, no git, no filesystem. Cross-platform compatible.
+ * Pure unit tests — no HTTP, no git, no filesystem.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Skill Auto-Updater
- *
  * Compares bundled skill versions against globally-installed copies
  * and updates stale installations when the bundled version is higher.
  */
@@ -19,14 +17,12 @@ import { getLogger, LogCategory } from '../logger';
 // by importing fs directly — the copy logic is simple enough to inline.
 import * as fs from 'fs';
 
-/** Information about a skill that was updated */
 export interface SkillUpdateInfo {
     name: string;
     previousVersion: string;
     newVersion: string;
 }
 
-/** Information about a skill that was skipped */
 export interface SkillSkipInfo {
     name: string;
     reason: 'not-installed' | 'no-bundled-version' | 'up-to-date' | 'installed-newer';
@@ -34,13 +30,11 @@ export interface SkillSkipInfo {
     installedVersion?: string;
 }
 
-/** Information about a skill update that failed */
 export interface SkillErrorInfo {
     name: string;
     error: string;
 }
 
-/** Result of an auto-update run */
 export interface AutoUpdateResult {
     updated: SkillUpdateInfo[];
     skipped: SkillSkipInfo[];
@@ -83,7 +77,6 @@ export async function autoUpdateBundledSkills(
             continue;
         }
 
-        // Parse bundled version from SKILL.md
         const bundledSkillMd = path.join(bundledPath, skill.relativePath, 'SKILL.md');
         const bundledVersion = parseSkillVersionFromFile(bundledSkillMd);
         if (!bundledVersion) {
@@ -97,7 +90,6 @@ export async function autoUpdateBundledSkills(
         const installedVersion = parseSkillVersionFromFile(installedSkillMd);
         const effectiveInstalledVersion = installedVersion ?? '0.0.0';
 
-        // Compare versions
         const cmp = compareVersions(bundledVersion, effectiveInstalledVersion);
         if (cmp === undefined) {
             result.skipped.push({

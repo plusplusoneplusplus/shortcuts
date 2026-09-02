@@ -1,6 +1,4 @@
 /**
- * Task Comments Anchor Relocation Tests
- *
  * Tests for server-side anchor relocation in the GET /api/comments/:wsId/:taskPath endpoint.
  * Validates that comments with anchors are relocated when file content drifts,
  * and that edge cases (no anchor, missing file, no drift, unfound text) are handled correctly.

@@ -1,10 +1,6 @@
 /**
- * Large Repo Handler — MCP Config Tests
- *
  * Tests that all sendMessage calls in large-repo-handler pass
  * loadDefaultMcpConfig: false to avoid user MCP config issues.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

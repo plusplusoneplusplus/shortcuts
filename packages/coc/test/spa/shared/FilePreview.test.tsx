@@ -1,6 +1,4 @@
 /**
- * Tests for FilePreview component.
- *
  * Verifies:
  * - Row-based line rendering (not legacy pre+join)
  * - Word wrap styles on line content
@@ -699,7 +697,6 @@ describe('FilePreview', () => {
 
             await waitFor(() => {
                 expect(document.querySelector('.file-preview-lines')).not.toBeNull();
-                // Not using markdown-body
                 expect(document.querySelector('.markdown-body')).toBeNull();
             });
         });

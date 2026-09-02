@@ -1,6 +1,4 @@
 /**
- * SSH Bridge
- *
  * Thin wrapper around forge's SshConnector for the container server.
  * Reuses the exact same SSH tunnel mechanism: spawns `ssh -N <host>`,
  * which relies on ~/.ssh/config having a LocalForward entry, then

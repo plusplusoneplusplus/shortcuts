@@ -363,7 +363,6 @@ export function getGroupBadgeStyle(group: AttentionGroup): GroupBadgeStyle {
     }
 }
 
-/** Maps a reviewer vote string to a display icon + label. */
 export function reviewVoteIcon(vote?: string | null): { icon: string; label: string } {
     switch (vote) {
         case 'approved': return { icon: '✅', label: 'Approved' };

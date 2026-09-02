@@ -1,6 +1,4 @@
 /**
- * Shared Comment Test Fixtures for E2E Tests
- *
  * Reusable helpers for seeding comments via API, navigating to task preview,
  * and interacting with the inline comment creation flow.
  */

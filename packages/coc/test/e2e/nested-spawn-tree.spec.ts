@@ -1,6 +1,4 @@
 /**
- * Nested / Spawned Chat-Tree E2E Tests
- *
  * Covers the `SpawnedTreeRow` feature: when a chat spawns a child conversation
  * (server-side `send_to_conversation` tool → `AIProcess.parentProcessId`), the
  * child renders nested under its parent in the dashboard chat list, with

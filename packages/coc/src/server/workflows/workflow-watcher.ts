@@ -1,14 +1,10 @@
 /**
- * Workflow Watcher
- *
  * Watches `.vscode/workflows/` directories for registered workspaces and
  * fires a debounced callback when workflow files change.  Uses Node.js
  * built-in `fs.watch` with the `recursive` option (supported natively
  * on macOS and Windows; on Linux requires Node 19+).
  *
  * Mirrors task-watcher.ts pattern.
- * Zero external dependencies.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -65,9 +61,6 @@ export class WorkflowWatcher {
         );
     }
 
-    /**
-     * Stop watching a workspace's workflows directory.
-     */
     unwatchWorkspace(workspaceId: string): void {
         this.registry.unwatch(workspaceId);
     }
@@ -79,9 +72,6 @@ export class WorkflowWatcher {
         this.registry.closeAll();
     }
 
-    /**
-     * Returns whether a workspace is currently being watched.
-     */
     isWatching(workspaceId: string): boolean {
         return this.registry.isWatching(workspaceId);
     }

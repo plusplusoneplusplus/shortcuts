@@ -1,6 +1,4 @@
 /**
- * Task Comments Ask-AI Endpoint Tests
- *
  * Tests for the enriched POST /api/comments/:wsId/:taskPath/:id/ask-ai endpoint.
  * Covers commandId branching, document context, custom questions, and fallback logic.
  *

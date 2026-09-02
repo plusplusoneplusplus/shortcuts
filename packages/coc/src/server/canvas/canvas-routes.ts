@@ -1,6 +1,4 @@
 /**
- * Canvas REST Routes
- *
  * Workspace-scoped canvas API consumed by the dashboard canvas side panel:
  *   GET    /api/workspaces/:wsId/canvases?processId=...           — list descriptors
  *   GET    /api/workspaces/:wsId/canvases/:canvasId               — full record

@@ -1,6 +1,4 @@
 /**
- * Repo Routes
- *
  * Registers all /api/repos/* REST endpoints for browsing
  * registered workspace repositories.
  *
@@ -12,8 +10,6 @@
  * GET  /api/repos/:repoId/blob           — read file content
  * PUT  /api/repos/:repoId/blob           — write file content
  * GET  /api/repos/:repoId/reveal         — reveal file/folder in OS file manager
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';
@@ -93,10 +89,8 @@ function globParam(query: Query, name: string): string[] | undefined {
 // ============================================================================
 
 /**
- * Register all repo API routes on the given route table.
  * Mutates the `routes` array in-place.
  *
- * @param routes  - Shared route table
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  * @param service - Shared RepoTreeService instance (singleton)
  */

@@ -1,6 +1,4 @@
 /**
- * Run Command Persistence Tests
- *
  * Tests for persisting pipeline execution results to the process store.
  */
 

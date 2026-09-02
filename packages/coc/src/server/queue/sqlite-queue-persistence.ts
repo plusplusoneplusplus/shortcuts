@@ -1,6 +1,4 @@
 /**
- * SqliteQueuePersistence
- *
  * Replaces the debounce+full-file-rewrite approach of the former JSON-based
  * queue persistence with incremental, synchronous SQLite row upserts via
  * SqliteQueueStore.
@@ -11,9 +9,6 @@
  * - No image blob externalisation — images stay inline in the payload JSON.
  * - History IS persisted — completed/failed/cancelled tasks are kept in SQLite
  *   and cleaned up on restart (served from the process store instead).
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type Database from 'better-sqlite3';

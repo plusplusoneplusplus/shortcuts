@@ -1,6 +1,4 @@
 /**
- * Queue Statistics Tests
- *
  * Covers Section 8 of test-plan-queue-advanced.md:
  * - GET /api/queue/stats returns { queued, running, completed, failed, cancelled, total, isPaused, isDraining }
  * - Stats after enqueue → pendingCount increments

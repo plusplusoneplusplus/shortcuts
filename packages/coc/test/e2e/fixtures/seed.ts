@@ -1,6 +1,4 @@
 /**
- * Seed Utilities for E2E Tests
- *
  * Helpers to populate processes and workspaces via the REST API.
  */
 
@@ -223,7 +221,6 @@ export async function seedWiki(
     return JSON.parse(res.body);
 }
 
-/** Seed a workspace via POST /api/workspaces. */
 export function normalizeTestWorkspacePath(rootPath: string): string {
     // On Windows the root paths /tmp and /ws cannot exist literally, so we
     // remap them under os.tmpdir(). On Linux/macOS CI runners the user

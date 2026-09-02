@@ -1,6 +1,4 @@
 /**
- * ConversationArea model-change divider tests.
- *
  * Verifies that a visual divider appears between turns when the model changes.
  *
  * @vitest-environment jsdom

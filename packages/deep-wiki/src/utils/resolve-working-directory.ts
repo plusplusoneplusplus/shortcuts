@@ -1,13 +1,9 @@
 /**
- * Resolve Working Directory
- *
  * Ensures the working directory passed to the Copilot SDK session
  * is valid (i.e. exists on disk). The SDK spawns a child process
  * with `cwd` set to this directory; if the directory does not
  * exist, `child_process.spawn` throws ENOENT which surfaces as
  * an opaque ERR_STREAM_DESTROYED crash.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

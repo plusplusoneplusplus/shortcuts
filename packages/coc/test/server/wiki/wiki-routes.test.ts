@@ -1,6 +1,4 @@
 /**
- * Wiki Routes Tests
- *
  * Comprehensive tests for the wiki HTTP API endpoints:
  * - Route pattern matching (all regex patterns)
  * - Wiki CRUD (list, register, remove, update, get)

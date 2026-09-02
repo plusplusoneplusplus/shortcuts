@@ -384,7 +384,6 @@ describe('TeamsBot', () => {
             });
 
             it('should strip HTML tags from polled messages', async () => {
-                // Mock initialize
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     headers: new Map(),
@@ -433,7 +432,6 @@ describe('TeamsBot', () => {
             });
 
             it('should skip bot-formatted messages (Agent:/Repo:/Message: pattern)', async () => {
-                // Mock initialize
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     headers: new Map(),
@@ -479,7 +477,6 @@ describe('TeamsBot', () => {
             });
 
             it('should infer replyToMessageId from preceding bot message in DM mode', async () => {
-                // Mock initialize
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     headers: new Map(),

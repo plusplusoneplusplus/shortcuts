@@ -4,9 +4,6 @@
  * Concrete executor for note-chat tasks. Extends ChatBaseExecutor.
  * The note path is prepended to the user's first message by the client;
  * the AI reads the note file via its file-reading tools as needed.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -67,7 +64,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
             task = { ...task, config: { ...task.config, model: noteModel } };
         }
 
-        // Capture pre-edit content
         const preEditContent = notePath
             ? await this.readNoteContentForWs(wsId, notePath)
             : undefined;

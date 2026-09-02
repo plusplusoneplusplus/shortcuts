@@ -1,6 +1,4 @@
 /**
- * Canvas Capability Completion
- *
  * Backs `host.complete(prompt, { model? })` inside an async extension-canvas
  * capability with the same one-shot invoker the Quick Ask side-notes use
  * (`createCLIAIInvoker` with `approvePermissions: false` and a timeout). No new
@@ -15,9 +13,6 @@
  * Every call is logged with the workspace, canvas, capability and owning
  * process, because a completion an artifact triggered on its own is otherwise
  * invisible: it appears in no conversation transcript.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { CapabilityCompleteFn, CapabilityCompletionRequest } from './canvas-capability-runner';

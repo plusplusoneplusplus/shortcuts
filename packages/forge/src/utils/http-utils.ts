@@ -14,11 +14,6 @@ export interface HttpResponse {
 
 /**
  * Make an HTTP GET request using native Node.js modules
- * Works on all platforms without external dependencies
- * 
- * @param url The URL to fetch
- * @param options Optional request options
- * @returns Promise resolving to the response
  */
 export function httpGet(url: string, options?: {
     headers?: Record<string, string>;
@@ -73,12 +68,8 @@ export function httpGet(url: string, options?: {
 }
 
 /**
- * Download a file from a URL and return its contents as a string
- * Follows redirects automatically
- * 
- * @param url The URL to download from
- * @param options Optional request options
- * @returns Promise resolving to the file contents
+ * Download a file from a URL and return its contents as a string.
+ * Follows redirects automatically.
  */
 export async function httpDownload(url: string, options?: {
     headers?: Record<string, string>;
@@ -109,13 +100,6 @@ export async function httpDownload(url: string, options?: {
     throw new Error(`Too many redirects (max: ${maxRedirects})`);
 }
 
-/**
- * Fetch JSON from a URL
- * 
- * @param url The URL to fetch
- * @param options Optional request options
- * @returns Promise resolving to the parsed JSON
- */
 export async function httpGetJson<T = unknown>(url: string, options?: {
     headers?: Record<string, string>;
     timeout?: number;
@@ -132,7 +116,6 @@ export async function httpGetJson<T = unknown>(url: string, options?: {
         return JSON.parse(response.body);
     }
 
-    // Try to parse error message from JSON response
     try {
         const errorBody = JSON.parse(response.body);
         if (errorBody.message) {

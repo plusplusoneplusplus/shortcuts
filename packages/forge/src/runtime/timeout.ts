@@ -1,16 +1,13 @@
 /**
- * Timeout Utilities
- *
- * Provides a standard way to apply timeouts to async operations.
- * Produces structured PipelineCoreError with TIMEOUT code.
+ * Timeouts for async operations.
+ * Produces a structured PipelineCoreError with the TIMEOUT code.
  */
 
 import { PipelineCoreError, ErrorCode, ErrorMetadata } from '../errors';
 import { IsCancelledFn, throwIfCancelled } from './cancellation';
 
 /**
- * Error thrown when an operation times out.
- * Extends PipelineCoreError with TIMEOUT code.
+ * Carries the TIMEOUT code.
  */
 export class TimeoutError extends PipelineCoreError {
     constructor(message: string, meta?: ErrorMetadata) {
@@ -22,9 +19,6 @@ export class TimeoutError extends PipelineCoreError {
     }
 }
 
-/**
- * Options for withTimeout
- */
 export interface TimeoutOptions {
     /** Timeout in milliseconds */
     timeoutMs: number;
@@ -68,7 +62,6 @@ export async function withTimeout<T>(
         let completed = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-        // Set up timeout
         timeoutId = setTimeout(() => {
             if (!completed) {
                 completed = true;
@@ -107,9 +100,6 @@ export async function withTimeout<T>(
     });
 }
 
-/**
- * Check if an error is a timeout error
- */
 export function isTimeoutError(error: unknown): error is TimeoutError {
     if (error instanceof TimeoutError) {
         return true;
@@ -142,9 +132,6 @@ export function createTimeoutPromise(
     });
 }
 
-/**
- * Options for withTimeoutDoubling
- */
 export interface TimeoutDoublingOptions {
     /** Base timeout in milliseconds. If omitted or ≤ 0, no timeout is applied. */
     timeoutMs?: number;

@@ -1,7 +1,3 @@
-/**
- * Tests for pr-utils helpers.
- */
-
 import { describe, it, expect } from 'vitest';
 import { AttentionGroup } from '../../../../../src/server/spa/client/react/features/pull-requests/pr-attention-groups';
 import {

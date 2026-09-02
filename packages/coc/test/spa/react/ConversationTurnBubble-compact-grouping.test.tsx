@@ -112,7 +112,6 @@ describe('ConversationTurnBubble — compact tool grouping', () => {
                 turn={makeTurn({ timeline: makeLeafReadTimeline(['t1', 't2', 't3']) })}
             />
         );
-        // No group view
         expect(container.querySelector('[data-testid="tool-call-group-view"]')).toBeNull();
     });
 

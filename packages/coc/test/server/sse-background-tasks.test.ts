@@ -1,6 +1,4 @@
 /**
- * SSE Handler — background-tasks Event Tests
- *
  * Verifies that the SSE handler correctly maps 'background-tasks'
  * ProcessOutputEvents to SSE events.
  */

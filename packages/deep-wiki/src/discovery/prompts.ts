@@ -1,10 +1,6 @@
 /**
- * Discovery Phase — Prompt Templates
- *
  * Prompt templates for the discovery phase. These guide the AI to explore
  * a repository and produce a structured ComponentGraph JSON.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { COMPONENT_GRAPH_SCHEMA, STRUCTURAL_SCAN_SCHEMA } from '../schemas';
@@ -18,7 +14,6 @@ import { COMPONENT_GRAPH_SCHEMA, STRUCTURAL_SCAN_SCHEMA } from '../schemas';
  *
  * @param repoPath - Absolute path to the repository
  * @param focus - Optional subtree to focus on
- * @returns The rendered prompt string
  */
 export function buildDiscoveryPrompt(repoPath: string, focus?: string): string {
     const focusSection = focus
@@ -97,11 +92,9 @@ ${COMPONENT_GRAPH_SCHEMA}
 // ============================================================================
 
 /**
- * Build the structural scan prompt for large repositories.
- * This is the first pass that identifies top-level domains without deep-diving.
+ * First pass for large repositories: identifies top-level domains without deep-diving.
  *
  * @param repoPath - Absolute path to the repository
- * @returns The rendered prompt string
  */
 export function buildStructuralScanPrompt(repoPath: string): string {
     return `You are a senior software architect performing a quick structural scan of a large codebase.
@@ -152,10 +145,6 @@ ${STRUCTURAL_SCAN_SCHEMA}
  * Used in the second pass where each top-level domain gets its own session.
  *
  * @param repoPath - Absolute path to the repository
- * @param domainPath - Path of the domain to focus on
- * @param domainDescription - Description of the domain
- * @param projectName - Name of the overall project
- * @returns The rendered prompt string
  */
 export function buildFocusedDiscoveryPrompt(
     repoPath: string,

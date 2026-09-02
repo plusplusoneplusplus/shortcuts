@@ -1,10 +1,6 @@
 /**
- * Swagger / OpenAPI Route Tests
- *
  * Tests for GET /api/openapi.json and GET /api/docs routes.
  * Uses vi.mock('fs') to avoid filesystem dependencies.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Queue Handler Tests
- *
  * Comprehensive tests for the Queue REST API endpoints:
  * enqueue, list, get, cancel, reorder, pause/resume, clear,
  * stats, history, and WebSocket queue events.
@@ -62,7 +60,6 @@ function request(
     });
 }
 
-/** POST JSON helper. */
 function postJSON(url: string, data: unknown) {
     return request(url, {
         method: 'POST',
@@ -1735,10 +1732,8 @@ describe('Queue Handler', () => {
             const createRes = await postJSON(`${srv.url}/api/queue`, makeTask());
             const taskId = JSON.parse(createRes.body).task.id;
 
-            // Cancel the task
             await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
 
-            // Check history
             const historyRes = await request(`${srv.url}/api/queue/history`);
             expect(historyRes.status).toBe(200);
             const body = JSON.parse(historyRes.body);
@@ -1753,10 +1748,8 @@ describe('Queue Handler', () => {
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Task 1' }));
             await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'Task 2' }));
 
-            // Clear the queue
             await request(`${srv.url}/api/queue`, { method: 'DELETE' });
 
-            // Check history
             const historyRes = await request(`${srv.url}/api/queue/history`);
             const body = JSON.parse(historyRes.body);
             expect(body.history).toHaveLength(2);
@@ -1773,7 +1766,6 @@ describe('Queue Handler', () => {
             const taskId = JSON.parse(createRes.body).task.id;
             await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
 
-            // Clear history
             const clearRes = await request(`${srv.url}/api/queue/history`, { method: 'DELETE' });
             expect(clearRes.status).toBe(200);
 
@@ -1795,7 +1787,6 @@ describe('Queue Handler', () => {
                 const historyBefore = JSON.parse((await request(`${srv.url}/api/queue/history`)).body);
                 expect(historyBefore.history).toHaveLength(1);
 
-                // Delete the history entry
                 const deleteRes = await request(`${srv.url}/api/queue/history/${taskId}`, { method: 'DELETE' });
                 expect(deleteRes.status).toBe(200);
                 const deleteBody = JSON.parse(deleteRes.body);

@@ -1,6 +1,4 @@
 /**
- * CoCContainer Configuration
- *
  * Resolves configuration from ~/.coccontainer/config.yaml with CLI overrides.
  */
 
@@ -201,9 +199,6 @@ function loadConfigFile(): ContainerConfig {
     }
 }
 
-/**
- * Ensure the data directory exists.
- */
 export function ensureDataDir(dataDir: string = DEFAULT_DATA_DIR): void {
     fs.mkdirSync(dataDir, { recursive: true });
 }

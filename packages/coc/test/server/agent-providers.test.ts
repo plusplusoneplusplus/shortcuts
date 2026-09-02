@@ -1,6 +1,4 @@
 /**
- * Agent Providers Route Tests
- *
  * Unit tests for the GET /api/agent-providers endpoint logic.
  */
 

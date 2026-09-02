@@ -96,7 +96,6 @@ describe('WorkflowDetail — AI sidebar', () => {
         await renderAndWaitForLoad();
         fireEvent.click(screen.getByText('Edit with AI ✨'));
 
-        // Sidebar is rendered
         expect(screen.getByTestId('ai-sidebar')).toBeDefined();
         // Panel is rendered inside sidebar
         expect(screen.getByTestId('pipeline-ai-refine-panel')).toBeDefined();
@@ -231,7 +230,6 @@ describe('WorkflowDetail — AI sidebar', () => {
 
         fireEvent.click(screen.getByText('Edit'));
 
-        // Sidebar is closed
         expect(screen.queryByTestId('ai-sidebar')).toBeNull();
         // Manual edit textarea is visible
         const textarea = document.querySelector('textarea');
@@ -263,7 +261,6 @@ describe('WorkflowDetail — AI sidebar', () => {
             fireEvent.click(screen.getByTestId('mock-apply'));
         });
 
-        // Close sidebar
         fireEvent.click(screen.getByText('Close AI ✨'));
 
         // Switch to manual edit

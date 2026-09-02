@@ -1,10 +1,6 @@
 /**
- * Server Types
- *
  * Shared type definitions for the CoC execution server module.
  * Mirrors packages/deep-wiki/src/server/types.ts pattern.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type * as http from 'http';
@@ -48,7 +44,6 @@ export interface ServeCommandOptions {
     containerAgentName?: string;
 }
 
-/** Options for the wiki module within the execution server. */
 export interface WikiServerOptions {
     /** Enable wiki API endpoints. */
     enabled?: boolean;
@@ -58,9 +53,8 @@ export interface WikiServerOptions {
     aiEnabled?: boolean;
 }
 
-/** Options accepted by `createExecutionServer()`. */
 export interface ExecutionServerOptions {
-    /** Injected process store (FileProcessStore from pipeline-core). */
+    /** Injected process store (FileProcessStore from forge). */
     store?: ProcessStore;
     /** TCP port (default `4000`). */
     port?: number;
@@ -111,7 +105,6 @@ export interface ServerCloseOptions {
     drainTimeoutMs?: number;
 }
 
-/** A running execution server instance. */
 export interface ExecutionServer {
     server: http.Server;
     store: ProcessStore;

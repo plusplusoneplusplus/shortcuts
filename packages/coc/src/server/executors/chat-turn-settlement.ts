@@ -8,9 +8,6 @@
  * These were previously inlined at the end of the follow-up path, which made
  * them impossible to test without driving a full SDK invocation. They are
  * pure/narrow functions here so completion semantics have one home.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AIProcess, ConversationTurn, ProcessStore, TokenUsage } from '@plusplusoneplusplus/forge';

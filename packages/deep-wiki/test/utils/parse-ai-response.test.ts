@@ -1,6 +1,4 @@
 /**
- * Tests for shared AI response parsing utility.
- *
  * Covers happy path, error cases, JSON repair, and context in error messages.
  */
 

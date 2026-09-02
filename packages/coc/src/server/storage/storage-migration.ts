@@ -1,6 +1,4 @@
 /**
- * Storage Migration Engine
- *
  * 6-phase pipeline that reads existing JSON process/workspace/wiki files
  * from ~/.coc/repos/ and writes them into a new SQLite database.
  *
@@ -777,7 +775,6 @@ export class StorageMigrationEngine {
     private cleanup(): void {
         this.emit({ phase: 6, status: 'running', message: 'Updating configuration and cleaning up...' });
 
-        // Update config.yaml
         const configPath = path.join(this.options.dataDir, 'config.yaml');
         const existingConfig = loadConfigFile(configPath) ?? {};
         existingConfig.store = { ...existingConfig.store, backend: 'sqlite' };

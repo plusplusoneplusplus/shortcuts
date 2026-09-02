@@ -1,6 +1,4 @@
 /**
- * Chat Folder Handler Tests
- *
  * Tests the REST API for user-created chat folders against a real
  * SqliteProcessStore + SqliteTaskGroupStore, through the actual server.
  */

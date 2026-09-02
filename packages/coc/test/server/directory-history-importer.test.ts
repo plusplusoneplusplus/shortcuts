@@ -1,6 +1,4 @@
 /**
- * Directory History Importer Tests
- *
  * Validates the scan, match, and import pipeline:
  * - Scan a directory with multiple workspace subdirectories
  * - Scan with auto-detect (repos/ subdirectory inside given path)
@@ -315,7 +313,6 @@ describe('DirectoryHistoryImporter', () => {
             const archived = (db.prepare('SELECT COUNT(*) AS cnt FROM processes WHERE archived = 1').get() as { cnt: number }).cnt;
             expect(archived).toBe(1);
 
-            // Verify conversation turns
             const turnCount = (db.prepare('SELECT COUNT(*) AS cnt FROM conversation_turns').get() as { cnt: number }).cnt;
             expect(turnCount).toBe(2);
 

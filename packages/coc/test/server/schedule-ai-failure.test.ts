@@ -1,11 +1,9 @@
 /**
- * Schedule AI Failure Tests
- *
  * Covers Section 1 of test-plan-schedule-system.md:
  * AI unavailable at fire time — run records, error storage, next-fire resilience.
  *
  * Uses ScheduleManager directly with a mock queueManager so the tests are
- * fast and deterministic. Cross-platform compatible (Linux/Mac/Windows).
+ * fast and deterministic.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -281,7 +279,6 @@ describe('Schedule AI Failure (integration — HTTP server)', () => {
         // Trigger a run (it completes because there's no real AI in test env)
         await postJSON(`${schedulesUrl()}/${scheduleId}/run`, {});
 
-        // Get history
         const histRes = await request(`${schedulesUrl()}/${scheduleId}/history`);
         expect(histRes.status).toBe(200);
         const { history } = JSON.parse(histRes.body);

@@ -4,9 +4,7 @@ import { AdoPullRequestsService } from './pull-requests-service';
 import { AdoPullRequestsAdapter } from './ado-pull-requests-adapter';
 
 /**
- * Create an AdoPullRequestsAdapter from token and org config.
  * Always uses a bearer auth handler (Azure CLI-issued access token).
- * Encapsulates WebApi and AdoPullRequestsService creation.
  */
 export function createAdoPullRequestsAdapter(params: {
     orgUrl: string;

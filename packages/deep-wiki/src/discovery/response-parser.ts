@@ -1,11 +1,7 @@
 /**
- * Discovery Phase — Response Parser
- *
  * Parses and validates AI JSON responses into ComponentGraph structures.
  * Handles JSON extraction from markdown, validation, normalization,
  * and error recovery.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { extractJSON } from '@plusplusoneplusplus/forge';
@@ -120,16 +116,12 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ComponentGraph
         }
     }
 
-    // Parse project info
     const project = parseProjectInfo(raw.project);
 
-    // Parse components
     const components = parseComponents(raw.components, warnings);
 
-    // Parse categories
     const categories = parseCategories(raw.categories, warnings);
 
-    // Parse architecture notes
     const architectureNotes = typeof raw.architectureNotes === 'string'
         ? raw.architectureNotes
         : '';
@@ -138,7 +130,6 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ComponentGraph
     const categoryNames = new Set(categories.map(c => c.name));
     for (const comp of components) {
         if (comp.category && !categoryNames.has(comp.category)) {
-            // Auto-add missing category
             categories.push({ name: comp.category, description: `Auto-generated category for ${comp.category}` });
             categoryNames.add(comp.category);
             warnings.push(`Auto-added missing category '${comp.category}'`);
@@ -191,9 +182,6 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ComponentGraph
     };
 }
 
-/**
- * Parse and validate ProjectInfo.
- */
 function parseProjectInfo(raw: unknown): ProjectInfo {
     if (typeof raw !== 'object' || raw === null) {
         throw new Error("Missing or invalid 'project' field in component graph");
@@ -217,9 +205,6 @@ function parseProjectInfo(raw: unknown): ProjectInfo {
     };
 }
 
-/**
- * Parse and validate an array of ComponentInfo.
- */
 function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
     if (!Array.isArray(raw)) {
         throw new Error("'components' field must be an array");
@@ -236,7 +221,6 @@ function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
 
         const obj = item as Record<string, unknown>;
 
-        // Check required fields
         let hasRequired = true;
         for (const field of COMPONENT_INFO_REQUIRED_FIELDS) {
             if (!(field in obj) || typeof obj[field] !== 'string') {
@@ -247,7 +231,6 @@ function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
         }
         if (!hasRequired) { continue; }
 
-        // Normalize component ID
         let id = String(obj.id);
         if (!isValidComponentId(id)) {
             const normalized = normalizeComponentId(id);
@@ -282,9 +265,6 @@ function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
     return components;
 }
 
-/**
- * Parse and validate an array of CategoryInfo.
- */
 function parseCategories(raw: unknown, warnings: string[]): CategoryInfo[] {
     if (!Array.isArray(raw)) {
         warnings.push("'categories' is not an array, using empty default");
@@ -308,9 +288,6 @@ function parseCategories(raw: unknown, warnings: string[]): CategoryInfo[] {
     return categories;
 }
 
-/**
- * Parse domains from structural scan response.
- */
 function parseDomains(raw: unknown): TopLevelDomain[] {
     if (!Array.isArray(raw)) { return []; }
 
@@ -329,9 +306,6 @@ function parseDomains(raw: unknown): TopLevelDomain[] {
     return domains;
 }
 
-/**
- * Parse partial ProjectInfo from structural scan response.
- */
 function parsePartialProjectInfo(raw: unknown): Partial<ProjectInfo> {
     if (typeof raw !== 'object' || raw === null) { return {}; }
     const obj = raw as Record<string, unknown>;

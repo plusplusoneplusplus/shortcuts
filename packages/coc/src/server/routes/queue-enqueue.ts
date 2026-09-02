@@ -1,6 +1,4 @@
 /**
- * Queue enqueue routes.
- *
  * POST /api/queue — Enqueue new task
  * POST /api/queue/:id/retry — Re-run a failed/cancelled task as a fresh copy
  * POST /api/queue/bulk — Bulk enqueue

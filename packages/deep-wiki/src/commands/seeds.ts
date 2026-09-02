@@ -1,10 +1,6 @@
 /**
- * Seeds Command
- *
  * Implements the `deep-wiki seeds <repo-path>` command.
  * Generates theme seeds for breadth-first discovery (Phase 0).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -42,17 +38,14 @@ const DEEP_WIKI_VERSION = '1.0.0';
  * Execute the seeds command.
  *
  * @param repoPath - Path to the local git repository
- * @param options - Command options
  * @returns Exit code
  */
 export async function executeSeeds(
     repoPath: string,
     options: SeedsCommandOptions
 ): Promise<number> {
-    // Resolve to absolute path
     const absoluteRepoPath = path.resolve(repoPath);
 
-    // Validate the repo path exists
     if (!fs.existsSync(absoluteRepoPath)) {
         printError(`Repository path does not exist: ${absoluteRepoPath}`);
         return EXIT_CODES.CONFIG_ERROR;
@@ -63,7 +56,6 @@ export async function executeSeeds(
         return EXIT_CODES.CONFIG_ERROR;
     }
 
-    // Print header
     printHeader('Deep Wiki — Seeds Generation (Phase 0)');
     printKeyValue('Repository', absoluteRepoPath);
     printKeyValue('Output File', options.output);
@@ -90,7 +82,6 @@ export async function executeSeeds(
 
         spinner.succeed('Seeds generation complete');
 
-        // Print summary to stderr
         process.stderr.write('\n');
         printHeader('Seeds Summary');
         printKeyValue('Themes Found', String(seeds.length));

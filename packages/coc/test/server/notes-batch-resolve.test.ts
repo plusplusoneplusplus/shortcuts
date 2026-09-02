@@ -1,6 +1,4 @@
 /**
- * Notes Batch Resolve Tests
- *
  * Tests for the batch-resolve endpoint: POST /api/workspaces/:wsId/notes/batch-resolve?path=<notePath>
  *
  * Endpoint behavior:

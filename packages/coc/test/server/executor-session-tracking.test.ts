@@ -1,6 +1,4 @@
 /**
- * Executor Session Tracking Tests
- *
  * Tests for session tracking in the CLITaskExecutor:
  * sdkSessionId storage, initial conversationTurns population,
  * follow-up turn appending, streaming chunk forwarding,

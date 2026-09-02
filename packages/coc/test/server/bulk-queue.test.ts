@@ -1,6 +1,4 @@
 /**
- * Bulk Queue API Tests
- *
  * Comprehensive tests for POST /api/queue/bulk endpoint:
  * validation, limits, atomic fail-fast, success paths,
  * and regression for existing single-task POST /api/queue.
@@ -56,7 +54,6 @@ function request(
     });
 }
 
-/** POST JSON helper. */
 function postJSON(url: string, data: unknown) {
     return request(url, {
         method: 'POST',

@@ -17,9 +17,6 @@ import type { DiffComment, DiffCommentContext } from '@plusplusoneplusplus/forge
 // Types
 // ============================================================================
 
-/**
- * A reply to a diff comment.
- */
 export interface DiffCommentReply {
     /** Unique identifier (UUID). */
     id: string;
@@ -33,9 +30,6 @@ export interface DiffCommentReply {
     isAI?: boolean;
 }
 
-/**
- * Storage format for diff comments.
- */
 export interface DiffCommentsStorage {
     comments: DiffComment[];
     settings: {
@@ -185,7 +179,6 @@ export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCo
                     });
                 }
 
-                // Filter by status when requested
                 if (options?.statuses && options.statuses.length > 0) {
                     comments = comments.filter(c => options.statuses!.includes(c.status));
                 }
@@ -236,7 +229,6 @@ export class DiffCommentsManager extends BaseCommentsManager<DiffComment, DiffCo
                 const storage: DiffCommentsStorage = JSON.parse(content);
                 let comments = storage.comments || [];
 
-                // Filter by status when requested
                 if (options?.statuses && options.statuses.length > 0) {
                     comments = comments.filter(c => options.statuses!.includes(c.status));
                 }

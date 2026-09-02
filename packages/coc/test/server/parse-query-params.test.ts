@@ -4,8 +4,6 @@
  * Tests the `parseQueryParams` utility exported from api-handler.ts.
  * Documents current behaviour: unknown/invalid values are silently
  * ignored (filter field left undefined) rather than throwing.
- *
- * Cross-platform compatible (Linux/macOS/Windows).
  */
 
 import { describe, it, expect } from 'vitest';

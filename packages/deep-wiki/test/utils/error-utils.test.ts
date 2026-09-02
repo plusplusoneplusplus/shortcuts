@@ -1,7 +1,5 @@
 /**
  * Tests for getErrorMessage utility.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect } from 'vitest';

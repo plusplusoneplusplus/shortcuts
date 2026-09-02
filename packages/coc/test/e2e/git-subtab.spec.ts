@@ -1,6 +1,4 @@
 /**
- * Git Sub-Tab E2E Tests
- *
  * Tests the three sub-components rendered by RepoGitTab:
  *   CommitList  — commit history, expand/collapse, lazy file loading
  *   WorkingTree — staged/unstaged/untracked sections, stage/unstage/discard
@@ -342,10 +340,8 @@ test.describe('Git sub-tab — BranchChanges', () => {
             const repoDir = createFeatureBranchRepo(tmpDir);
             await navigateToGitTab(page, serverUrl, 'ws-bc-1', 'bc-feature', repoDir);
 
-            // BranchChanges should be visible
             await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
 
-            // Summary should mention 2 commits ahead
             const summary = page.getByTestId('branch-changes-summary');
             await expect(summary).toContainText('2 commits ahead');
         } finally {

@@ -1,6 +1,4 @@
 /**
- * Editor Abstractions
- *
  * Platform-agnostic interfaces and types for the Markdown Review Editor.
  * CoC dashboard and server-side hosts implement these contracts.
  */

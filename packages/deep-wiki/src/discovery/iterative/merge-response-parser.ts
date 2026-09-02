@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Merge Response Parser
- *
  * Parses AI responses from merge sessions into MergeResult.
  * Handles JSON extraction, validation, and normalization.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ComponentGraph, ThemeSeed } from '../../types';

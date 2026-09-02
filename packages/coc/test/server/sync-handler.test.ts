@@ -1,6 +1,4 @@
 /**
- * Sync Handler Tests
- *
  * Unit tests for the per-workspace sync REST routes:
  *   GET  /api/workspaces/:workspaceId/sync/status   — current sync status
  *   POST /api/workspaces/:workspaceId/sync/trigger  — force an immediate sync

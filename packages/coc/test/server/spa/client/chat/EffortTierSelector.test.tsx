@@ -1,7 +1,5 @@
 /**
  * @vitest-environment jsdom
- *
- * Tests for the EffortTierSelector component.
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';

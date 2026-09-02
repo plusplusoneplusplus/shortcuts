@@ -23,9 +23,6 @@
  * The two paths differ only in their warning text and in how they react to a
  * model that does not support the requested effort. Both are injected, so this
  * module changes no observable behavior on either path.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ModelInfo } from '@plusplusoneplusplus/forge';

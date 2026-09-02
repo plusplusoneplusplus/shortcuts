@@ -1,6 +1,4 @@
 /**
- * Admin Data Routes
- *
  * Destructive/data-movement operations: storage stats preview, data wipe,
  * full export, and import (preview + execute). Wipe and import are guarded by
  * one-time confirmation tokens and broadcast a WebSocket event on success.
@@ -19,7 +17,6 @@ import type { Route } from '../types';
 import type { AdminRouteOptions } from './admin-route-types';
 import { TokenManager } from './token-manager';
 
-/** Register data stats / wipe / export / import routes. */
 export function registerDataRoutes(routes: Route[], options: AdminRouteOptions): void {
     const { store, dataDir, getWsServer, configFunctions } = options;
     const wiper = new DataWiper(dataDir, store);

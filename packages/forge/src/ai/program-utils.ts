@@ -1,8 +1,5 @@
 /**
- * Program Utilities
- *
- * Pure Node.js utilities for checking program availability and parsing CLI output.
- * Pure Node.js.
+ * Checking program availability and parsing CLI output.
  */
 
 import { execSync } from 'child_process';
@@ -21,7 +18,6 @@ const programExistsCache = new Map<string, { exists: boolean; path?: string; err
  * 
  * @param programName - The name of the program to check (e.g., 'copilot', 'git')
  * @param platform - Optional platform override for testing (defaults to process.platform)
- * @returns Object with exists boolean and optional path where program was found
  */
 export function checkProgramExists(
     programName: string,
@@ -30,7 +26,6 @@ export function checkProgramExists(
     // Create cache key that includes platform to handle cross-platform testing
     const cacheKey = `${programName}:${platform ?? process.platform}`;
 
-    // Return cached result if available
     const cached = programExistsCache.get(cacheKey);
     if (cached !== undefined) {
         return cached;
@@ -70,13 +65,11 @@ export function checkProgramExists(
         aiLog.debug({ programName }, 'Program not found');
     }
 
-    // Cache the result
     programExistsCache.set(cacheKey, result);
     return result;
 }
 
 /**
- * Clear the program existence cache.
  * Useful for testing or when the user installs a program and wants to retry.
  * 
  * @param programName - Optional program name to clear. If not provided, clears entire cache.
@@ -95,11 +88,7 @@ export function clearProgramExistsCache(programName?: string): void {
 }
 
 /**
- * Parse the copilot CLI output to extract the response text.
  * Removes the status lines, tool operations, and usage statistics.
- * 
- * @param output - Raw output from copilot CLI
- * @returns The extracted response text
  */
 export function parseCopilotOutput(output: string): string {
     const lines = output.split('\n');

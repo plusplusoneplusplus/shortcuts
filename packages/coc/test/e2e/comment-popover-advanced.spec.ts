@@ -1,6 +1,4 @@
 /**
- * CommentPopover Advanced E2E Tests
- *
  * Covers: Popover inline edit, Escape key close, AI command from popover.
  */
 

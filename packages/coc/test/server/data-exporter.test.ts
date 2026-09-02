@@ -1,6 +1,4 @@
 /**
- * Data Exporter Tests
- *
  * Validates exportAllData():
  * - Empty store returns valid payload with zero counts
  * - Seeded processes/workspaces/wikis are included

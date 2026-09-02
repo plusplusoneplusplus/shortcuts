@@ -13,17 +13,11 @@ import { CodeBlock, ParsedTable, getLanguageDisplayName } from './markdown-parse
 // Options
 // ---------------------------------------------------------------------------
 
-/**
- * Options for table rendering
- */
 export interface TableRenderOptions {
     /** Custom cell content formatter (e.g., inline markdown). Defaults to `escapeHtml`. */
     formatCell?: (text: string) => string;
 }
 
-/**
- * Options for code block rendering
- */
 export interface CodeBlockRenderOptions {
     /** Syntax highlighter callback. Receives raw code and language, returns HTML.
      *  When omitted the code is HTML-escaped as plain text. */
@@ -184,7 +178,6 @@ export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptio
         highlightedLines = codeLines.map(line => escapeHtml(line));
     }
 
-    // Build per-line HTML
     const linesHtml = highlightedLines.map((lineHtml, idx) => {
         const lineNum = idx + 1;
         const commentId = commentsMap?.get(lineNum);
@@ -197,7 +190,6 @@ export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptio
             lineNumberSpan + lineHtml + '</span>';
     }).join('');
 
-    // Container data attributes
     let containerAttrs = ' data-start-line="' + block.startLine +
         '" data-end-line="' + block.endLine +
         '" data-block-id="' + block.id +
@@ -210,7 +202,6 @@ export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptio
         containerAttrs += ' data-collapsible="true" data-collapsed="' + collapsed + '"';
     }
 
-    // Header
     let headerHtml = '<div class="code-block-header">';
     headerHtml += '<span class="code-block-language">' + escapeHtml(langDisplay) + '</span>';
     headerHtml += '<span class="code-line-count">(' + lineCount + ' line' + (lineCount !== 1 ? 's' : '') + ')</span>';
@@ -224,11 +215,9 @@ export function renderCodeBlock(block: CodeBlock, options?: CodeBlockRenderOptio
     }
     headerHtml += '</div>';
 
-    // Code body
     const codeHtml = '<pre class="code-block-content"><code class="hljs language-' + escapeHtml(langRaw) + '">' +
         linesHtml + '</code></pre>';
 
-    // Collapsed indicator
     const collapsedIndicator = isCollapsible
         ? '<div class="code-block-collapsed-indicator">Show ' + (lineCount - 5) + ' more lines</div>'
         : '';

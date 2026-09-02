@@ -1,10 +1,6 @@
 /**
- * SSE Handler — message-queued / message-steering Dispatch Tests
- *
  * Verifies that handleProcessStream correctly relays message-queued and
  * message-steering ProcessOutputEvents to SSE clients as named events.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PassThrough } from 'node:stream';

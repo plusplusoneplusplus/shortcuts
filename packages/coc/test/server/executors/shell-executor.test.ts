@@ -1,6 +1,4 @@
 /**
- * ShellExecutor Unit Tests
- *
  * Verifies shell-script spawning, output capture, timeout handling,
  * exit-code propagation, and output-file persistence in ShellExecutor.
  */

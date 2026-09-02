@@ -1,14 +1,9 @@
 /**
- * Markdown parsing utilities
- *
  * Pure TypeScript structural parsing functions for markdown content.
  * Every function takes strings/arrays and returns parsed structures —
  * no side effects, no state, no DOM or editor-host dependencies.
  */
 
-/**
- * Interface for a parsed code block
- */
 export interface CodeBlock {
     /** Programming language identifier */
     language: string;
@@ -24,9 +19,6 @@ export interface CodeBlock {
     isMermaid: boolean;
 }
 
-/**
- * Interface for markdown line highlighting result
- */
 export interface MarkdownHighlightResult {
     /** The HTML-formatted line */
     html: string;
@@ -40,9 +32,6 @@ export interface MarkdownHighlightResult {
     isCodeFenceEnd?: boolean;
 }
 
-/**
- * Parsed table structure
- */
 export interface ParsedTable {
     /** Starting line number (1-based, inclusive) */
     startLine: number;
@@ -58,9 +47,6 @@ export interface ParsedTable {
     id: string;
 }
 
-/**
- * Parse code blocks from markdown content
- */
 export function parseCodeBlocks(content: string): CodeBlock[] {
     // Normalize line endings for robust parsing across LF/CRLF/CR.
     const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -119,22 +105,15 @@ export function parseCodeBlocks(content: string): CodeBlock[] {
     return blocks;
 }
 
-/**
- * Check if content contains mermaid blocks
- */
 export function hasMermaidBlocks(content: string): boolean {
     return /```mermaid[\s\S]*?```/.test(content);
 }
 
-/**
- * Parse mermaid blocks from content
- */
 export function parseMermaidBlocks(content: string): CodeBlock[] {
     return parseCodeBlocks(content).filter(block => block.isMermaid);
 }
 
 /**
- * Detect markdown heading level from a line
  * Returns 0 if not a heading, 1-6 for heading levels
  */
 export function detectHeadingLevel(line: string): number {
@@ -142,37 +121,22 @@ export function detectHeadingLevel(line: string): number {
     return match ? match[1].length : 0;
 }
 
-/**
- * Check if a line is a blockquote
- */
 export function isBlockquote(line: string): boolean {
     return /^>\s*/.test(line);
 }
 
-/**
- * Check if a line is an unordered list item
- */
 export function isUnorderedListItem(line: string): boolean {
     return /^\s*[-*+]\s+/.test(line);
 }
 
-/**
- * Check if a line is an ordered list item
- */
 export function isOrderedListItem(line: string): boolean {
     return /^\s*\d+\.\s+/.test(line);
 }
 
-/**
- * Check if a line is a horizontal rule
- */
 export function isHorizontalRule(line: string): boolean {
     return /^(---+|\*\*\*+|___+)\s*$/.test(line);
 }
 
-/**
- * Check if a line is a task list item (checkbox)
- */
 export function isTaskListItem(line: string): { isTask: boolean; checked: boolean } {
     const match = line.match(/^\s*[-*+]\s+\[([ xX])\]/);
     if (match) {
@@ -184,9 +148,6 @@ export function isTaskListItem(line: string): { isTask: boolean; checked: boolea
     return { isTask: false, checked: false };
 }
 
-/**
- * Extract link information from markdown link syntax
- */
 export function extractLinks(text: string): Array<{ text: string; url: string; start: number; end: number }> {
     const links: Array<{ text: string; url: string; start: number; end: number }> = [];
     const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -204,9 +165,6 @@ export function extractLinks(text: string): Array<{ text: string; url: string; s
     return links;
 }
 
-/**
- * Extract inline code spans from text
- */
 export function extractInlineCode(text: string): Array<{ code: string; start: number; end: number }> {
     const codeSpans: Array<{ code: string; start: number; end: number }> = [];
     const regex = /`([^`]+)`/g;
@@ -223,9 +181,6 @@ export function extractInlineCode(text: string): Array<{ code: string; start: nu
     return codeSpans;
 }
 
-/**
- * Check if a line starts a code fence
- */
 export function isCodeFenceStart(line: string): { isFence: boolean; language: string } {
     // Allow any amount of leading whitespace before the fence.
     // CommonMark spec only allows 0-3 spaces, but we're lenient here to handle
@@ -240,9 +195,6 @@ export function isCodeFenceStart(line: string): { isFence: boolean; language: st
     return { isFence: false, language: '' };
 }
 
-/**
- * Check if a line ends a code fence
- */
 export function isCodeFenceEnd(line: string): boolean {
     // Allow any amount of leading whitespace before the fence.
     // CommonMark spec only allows 0-3 spaces, but we're lenient here to handle
@@ -298,18 +250,12 @@ export function detectEmphasis(text: string): {
     return result;
 }
 
-/**
- * Parse a table row into cells
- */
 export function parseTableRow(line: string): string[] {
     // Remove leading/trailing pipes and split
     const trimmed = line.replace(/^\|/, '').replace(/\|$/, '');
     return trimmed.split('|').map(cell => cell.trim());
 }
 
-/**
- * Parse table alignments from a separator line
- */
 export function parseTableAlignments(line: string): Array<'left' | 'center' | 'right'> {
     const cells = parseTableRow(line);
     return cells.map(cell => {
@@ -321,23 +267,14 @@ export function parseTableAlignments(line: string): Array<'left' | 'center' | 'r
     });
 }
 
-/**
- * Check if a line could be a table separator
- */
 export function isTableSeparator(line: string): boolean {
     return /^\|?[\s\-:|]+\|[\s\-:|]*$/.test(line);
 }
 
-/**
- * Check if a line could be a table row
- */
 export function isTableRow(line: string): boolean {
     return line.includes('|');
 }
 
-/**
- * Parse a markdown table starting at a specific line and return structured data
- */
 export function parseTable(lines: string[], startIndex: number): {
     headers: string[];
     rows: string[][];
@@ -370,10 +307,6 @@ export function parseTable(lines: string[], startIndex: number): {
     };
 }
 
-/**
- * Parse all markdown tables from content.
- * Scans through the content and returns a `ParsedTable` for every table found.
- */
 export function parseTables(content: string): ParsedTable[] {
     // Normalize line endings for consistent parsing across LF/CRLF/CR.
     const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -437,9 +370,6 @@ function parseTableAt(lines: string[], startIndex: number): ParsedTable | null {
     };
 }
 
-/**
- * Extract image information from markdown image syntax
- */
 export function extractImages(text: string): Array<{ alt: string; url: string; start: number; end: number }> {
     const images: Array<{ alt: string; url: string; start: number; end: number }> = [];
     const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -464,16 +394,10 @@ export function isExternalImageUrl(url: string): boolean {
     return /^https?:\/\//i.test(url);
 }
 
-/**
- * Check if an image URL is a data URL
- */
 export function isDataUrl(url: string): boolean {
     return /^data:/i.test(url);
 }
 
-/**
- * Detect the type of markdown element a line represents
- */
 export type MarkdownLineType =
     | 'heading'
     | 'blockquote'
@@ -515,9 +439,6 @@ export function detectLineType(line: string, inCodeBlock: boolean): MarkdownLine
     return 'paragraph';
 }
 
-/**
- * Get the language display name for a code block
- */
 export function getLanguageDisplayName(language: string): string {
     const displayNames: Record<string, string> = {
         'js': 'JavaScript',

@@ -1,6 +1,4 @@
 /**
- * Process Tracker Adapter for Map-Reduce Execution
- *
  * Wraps an optional ProcessTracker with null-safe convenience methods,
  * eliminating repetitive `if (tracker && processId)` guards from the executor.
  */

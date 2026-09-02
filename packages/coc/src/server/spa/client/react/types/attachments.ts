@@ -19,7 +19,6 @@ export interface ChatAttachment {
     size: number;
     /** Base64 data URL for upload */
     dataUrl: string;
-    /** Category for AI handling */
     category: AttachmentCategory;
 }
 
@@ -74,7 +73,6 @@ const TEXT_EXTENSIONS = new Set([
     'proto', 'thrift', 'avsc', 'prisma',
 ]);
 
-/** Determine the attachment category from MIME type and file name */
 export function getAttachmentCategory(mimeType: string, fileName: string): AttachmentCategory {
     if (mimeType.startsWith('image/')) return 'image';
 

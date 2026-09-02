@@ -1,8 +1,5 @@
 /**
- * Tests for Skill Resolver
- *
  * Comprehensive tests for skill resolution from .github/skills/ directory.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -411,11 +408,9 @@ This is a test skill.`;
 
     describe('Custom skills directory', () => {
         it('resolves from custom skills directory', async () => {
-            // Create custom skills directory
             const customSkillsDir = path.join(tempDir, 'custom', 'skills');
             await fs.promises.mkdir(customSkillsDir, { recursive: true });
             
-            // Create skill in custom directory
             const skillDir = path.join(customSkillsDir, 'custom-skill');
             await fs.promises.mkdir(skillDir, { recursive: true });
             await fs.promises.writeFile(

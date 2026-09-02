@@ -36,7 +36,6 @@ export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type ClassificationStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface ClassificationState {
-    /** Current status of the classification process. */
     status: ClassificationStatus;
     /** Human-readable error message (set when status === 'error'). */
     error?: string;
@@ -60,13 +59,11 @@ export interface UseClassificationReturn {
     state: ClassificationState;
     /** Trigger classification via REST API. */
     classify: () => void;
-    /** Toggle a filter category on/off. */
     toggleFilter: (cat: HunkCategory) => void;
     /** Set all filter categories at once. */
     setFilters: (cats: Set<HunkCategory>) => void;
     /** Look up the badge for a file path (undefined if not classified). */
     getFileBadge: (filePath: string) => FileBadge | undefined;
-    /** Look up a specific hunk's classification. */
     getHunkClassification: (filePath: string, hunkIndex: number) => HunkClassification | undefined;
     /** Whether a hunk should be dimmed (classified but not in active filters). */
     isHunkDimmed: (filePath: string, hunkIndex: number) => boolean;

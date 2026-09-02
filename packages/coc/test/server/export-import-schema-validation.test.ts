@@ -1,6 +1,4 @@
 /**
- * Export/Import Schema Validation Tests
- *
  * Section 1: validateExportPayload — Schema Version checks
  * Section 2: validateExportPayload — Required Fields checks
  *

@@ -1,8 +1,6 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for hooks/useLinkHandlers.ts
- *
  * Covers:
  * - Default state (all enabled)
  * - Fetching server config on mount via cocClient

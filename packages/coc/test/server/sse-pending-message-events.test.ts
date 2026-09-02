@@ -1,10 +1,6 @@
 /**
- * SSE Handler — pending-message-added Event Tests
- *
  * Verifies that emitPendingMessageAdded correctly emits
  * ProcessOutputEvents through the store.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Tests for server-logger.ts
- *
  * Covers: set/get logger injection, silent fallback, child logger factories.
  */
 

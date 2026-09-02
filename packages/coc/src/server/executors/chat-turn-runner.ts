@@ -11,9 +11,6 @@
  * object stays at the call site. What is shared is the *callback* behavior,
  * which is what actually drives live UI: streaming output, and MCP OAuth
  * dispatch. Those live here so a change to either lands on both paths at once.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';

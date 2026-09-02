@@ -1,6 +1,4 @@
 /**
- * Work Item Executor
- *
  * Bridges work items to the task queue for execution.
  * When a work item is executed, creates a queue task from its plan,
  * transitions the work item to 'executing', and tracks the result.
@@ -285,7 +283,6 @@ export async function executeWorkItem(
         });
     }
 
-    // Record the execution
     const aiSettings = buildAiSettings(options);
     const execution: WorkItemExecution = {
         taskId,
@@ -327,7 +324,6 @@ export async function executeWorkItem(
         await store.addChange(workItemId, change, storageRepoId);
     }
 
-    // Transition to executing
     await store.updateWorkItem(workItemId, { status: 'executing' }, storageRepoId);
 
     return {

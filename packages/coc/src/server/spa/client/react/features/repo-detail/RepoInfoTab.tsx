@@ -44,7 +44,6 @@ function formatSkillValue(val: string | string[] | undefined): string {
     return val || 'none';
 }
 
-/** Check if a skill value(string or string[]) has any content. */
 function hasSkillValue(val: string | string[] | undefined): boolean {
     if (!val) return false;
     if (Array.isArray(val)) return val.length > 0;

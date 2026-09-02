@@ -1,6 +1,4 @@
 /**
- * Notes Git Auto-Commit — Unit Tests
- *
  * Tests for `NotesAutoCommitTimer` and the migration helper `findAutoCommitSchedule`.
  */
 

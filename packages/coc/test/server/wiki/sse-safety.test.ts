@@ -1,12 +1,8 @@
 /**
- * SSE Safety Tests
- *
  * Tests for safe Server-Sent Event writing when the response stream
  * is destroyed or ended (e.g., client disconnect).
  *
  * Also tests handleGenerateSeeds client disconnect handling.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

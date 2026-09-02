@@ -9,8 +9,6 @@
  * This is a leaf module with no local imports so any prompt-assembly file can
  * use it without risking a circular dependency (notably `prompt-builder.ts`
  * re-exports from `memory-v2-addon.ts`, and both consume these helpers).
- *
- * Pure string helpers. Cross-platform compatible.
  */
 
 /** Wrap `body` in a `<tag>…</tag>` block on its own lines. */

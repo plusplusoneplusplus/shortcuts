@@ -1,10 +1,6 @@
 /**
- * WikiGenerationRegistry Tests
- *
  * Covers per-wiki isolation, the already-running guard, cancellation tokens,
  * and the reset/dispose lifecycle hooks.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect } from 'vitest';

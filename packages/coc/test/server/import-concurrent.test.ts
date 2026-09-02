@@ -1,6 +1,4 @@
 /**
- * Concurrent Import Request Tests
- *
  * Section 6: Validates behavior when multiple import requests arrive simultaneously.
  *
  * KNOWN CONCURRENCY GAP:

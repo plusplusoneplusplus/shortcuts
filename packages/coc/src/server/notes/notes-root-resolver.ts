@@ -1,6 +1,4 @@
 /**
- * Notes Root Resolver
- *
  * Centralizes notes root resolution logic for multi-root support.
  * The "default" root is the managed `~/.coc/repos/<workspaceId>/notes/` directory.
  * Additional roots are subfolders inside the workspace git repository.
@@ -83,7 +81,6 @@ export function canonicalizeExistingNotesDirectory(directoryPath: string): strin
  * Resolve the notes root for a given workspace.
  *
  * @param dataDir - The CoC data directory (~/.coc)
- * @param workspaceId - The workspace identifier
  * @param workspaceRoot - Absolute path to the workspace git root
  * @param rootParam - The `root` query parameter value (undefined or 'default' = default root)
  * @param additionalRoots - The configured additional roots from preferences
@@ -130,7 +127,6 @@ export function resolveNotesRoot(
         };
     }
 
-    // Validate workspace root is available
     if (!workspaceRoot) {
         return {
             error: 'Workspace root path is not available. Cannot resolve repo-folder root.',
@@ -138,7 +134,6 @@ export function resolveNotesRoot(
         };
     }
 
-    // Resolve to absolute path under workspace root
     const absolutePath = path.resolve(workspaceRoot, normalized);
 
     // Security: ensure the resolved path is within the workspace root
@@ -175,9 +170,6 @@ export function resolveNotesRoot(
     };
 }
 
-/**
- * Type guard to check if the result is an error.
- */
 export function isRootResolveError(
     result: ResolvedNotesRoot | { error: string; statusCode: number },
 ): result is { error: string; statusCode: number } {

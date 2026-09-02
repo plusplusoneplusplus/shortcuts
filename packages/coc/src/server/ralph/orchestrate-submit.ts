@@ -34,8 +34,6 @@ export interface OrchestrateSubmitInput {
 }
 
 /**
- * Orchestrate the outcome of a completed PR-submit AI task.
- *
  * Intentionally async-void from the bridge's perspective: all errors are
  * logged and do not propagate.
  */

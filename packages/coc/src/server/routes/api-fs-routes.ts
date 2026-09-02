@@ -1,6 +1,4 @@
 /**
- * Filesystem REST API Routes
- *
  * Directory browsing and trusted-path blob reading for the dashboard UI.
  * Extracted from `api-handler.ts` to keep each route module focused on one domain.
  */

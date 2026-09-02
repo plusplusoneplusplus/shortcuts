@@ -6,7 +6,7 @@
  * operation, non-repo, detached HEAD), the success job record, and the
  * dirty/conflict result taxonomy.
  *
- * Cross-platform compatible — no git, no filesystem.
+ * No git, no filesystem.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

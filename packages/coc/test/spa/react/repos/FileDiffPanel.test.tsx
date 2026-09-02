@@ -246,7 +246,6 @@ describe('FileDiffPanel', () => {
         mockViewMode = 'unified';
         mockUseDiffComments.mockReturnValue(makeCommentsHook());
         mockUseFileDiff.mockReturnValue(makeFileDiffHook());
-        // Reset localStorage
         try { localStorage.removeItem('coc.commitChat.open'); } catch { /* ignore */ }
     });
 
@@ -687,7 +686,6 @@ describe('FileDiffPanel', () => {
 
         render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource()} />);
 
-        // Trigger add comment
         await act(async () => {
             fireEvent.click(screen.getByTestId('trigger-add-comment'));
         });
@@ -798,7 +796,6 @@ describe('FileDiffPanel', () => {
         const prSource = makePrSource();
         const { rerender } = render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={prSource} />);
 
-        // Enable full-context
         await act(async () => {
             fireEvent.click(screen.getByTestId('full-context-toggle-btn'));
         });

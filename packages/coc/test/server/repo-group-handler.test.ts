@@ -1,6 +1,4 @@
 /**
- * Repo-Group Handler Tests
- *
  * Tests for the repo-group REST API endpoints:
  * - POST /api/repo-groups — create a group from registered repo workspaces
  * - GET /api/repo-groups/:id — membership file + registry-resolved members

@@ -1,15 +1,10 @@
 /**
- * SqliteScheduleRunPersistence
- *
  * SQLite-backed persistence for schedule run history. Replaces the
  * file-based ScheduleRunPersistence with incremental row upserts in
  * the shared `processes.db` database.
  *
  * Follows the same pattern as SqliteQueuePersistence: receives a
  * shared Database handle, uses prepared statements for hot paths.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type Database from 'better-sqlite3';

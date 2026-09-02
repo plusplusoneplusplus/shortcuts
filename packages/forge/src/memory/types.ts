@@ -1,10 +1,6 @@
 /**
- * Memory System Types
- *
  * Core type definitions shared by the bounded memory store and tool-call
  * cache subsystems.
- *
- * Pure Node.js types for pipeline-core.
  */
 
 // ---------------------------------------------------------------------------

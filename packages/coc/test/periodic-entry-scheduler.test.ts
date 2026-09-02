@@ -7,7 +7,7 @@
  * reschedule (advance → persist → re-arm ordering), shutdown clearing with
  * domain cleanup, and clock injection.
  *
- * Cross-platform compatible (Linux/Mac/Windows) — no filesystem, no real timers.
+ * No filesystem, no real timers.
  */
 
 import { describe, it, expect, vi } from 'vitest';

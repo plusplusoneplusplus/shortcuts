@@ -278,7 +278,6 @@ describe('suggest_follow_ups onToolEvent orchestration', () => {
         const result = await executor.execute(task, 'Hello') as any;
 
         expect(result.pendingSuggestions).toBeUndefined();
-        // emitProcessEvent should NOT have been called with a 'suggestions' event
         const suggestionCalls = (store.emitProcessEvent as any).mock.calls.filter(
             (c: any[]) => c[1]?.type === 'suggestions',
         );

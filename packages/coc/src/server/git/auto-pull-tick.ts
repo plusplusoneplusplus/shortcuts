@@ -24,8 +24,6 @@
  *
  * A tick never throws: every failure path resolves to an outcome, so a rejected
  * promise can't kill the interval that scheduled it.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import type { GitChange } from '@plusplusoneplusplus/forge';

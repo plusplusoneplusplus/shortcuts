@@ -4,9 +4,8 @@
  *
  * The 001 refactor introduces this config so the giant `activeTab === 'chats'`
  * and `!activeTab` JSX branches inside `ChatListPane` can collapse into a
- * single config-driven renderer. This file currently only defines the types
- * and the {@link getListModeConfig} factory; subsequent steps wire it into
- * the renderer.
+ * single config-driven renderer. Only the grouping flags are wired up so far;
+ * the section list and the other knobs are declared ahead of that work.
  *
  * No React, no DOM, no side effects — pure data.
  */

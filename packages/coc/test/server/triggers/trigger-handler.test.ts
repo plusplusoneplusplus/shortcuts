@@ -1,6 +1,4 @@
 /**
- * Tests for Trigger REST API handler (trigger-handler.ts).
- *
  * Uses in-memory stubs to exercise route logic without HTTP I/O, mirroring
  * cron-handler.test.ts.
  */

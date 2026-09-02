@@ -1,6 +1,4 @@
 /**
- * Schedule Script E2E Tests
- *
  * Tests for script-based schedule creation, manual runs, and execution
  * results for the CoC server's schedule feature.
  *
@@ -241,7 +239,6 @@ test.describe('Schedule Script', () => {
             workspaceId: 'ws-sched-api4',
         });
 
-        // Trigger run
         const runRes = await request(
             `${serverUrl}/api/workspaces/ws-sched-api4/schedules/${schedule.id}/run`,
             { method: 'POST' },

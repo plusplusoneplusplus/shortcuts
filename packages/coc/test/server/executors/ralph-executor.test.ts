@@ -1,6 +1,4 @@
 /**
- * Ralph Executor Tests
- *
  * Tests for RalphExecutor — verifies the zero-system-prompt-injection design:
  * - system message contains NO Ralph-specific content (AC-01, AC-02)
  * - execution user prompt contains the skill pointer, progress/context paths,

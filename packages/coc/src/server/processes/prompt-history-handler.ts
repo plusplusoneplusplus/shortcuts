@@ -1,6 +1,4 @@
 /**
- * Prompt History REST API Handler
- *
  * Serves the user's recent unique initial prompts in a workspace, ordered
  * most-recent first. Powers the up/down arrow history navigation in chat
  * inputs (NewChatArea, FollowUpInputArea, EnqueueDialog).

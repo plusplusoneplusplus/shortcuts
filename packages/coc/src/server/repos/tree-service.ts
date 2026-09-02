@@ -566,7 +566,6 @@ export class RepoTreeService {
         const truncated = filteredEntries.length > this.maxEntries;
         const sliced = truncated ? filteredEntries.slice(0, this.maxEntries) : filteredEntries;
 
-        // Build TreeEntry[]
         const entries: TreeEntry[] = [];
         for (const { dirent, isDir } of sliced) {
             const fullPath = path.join(absPath, dirent.name);

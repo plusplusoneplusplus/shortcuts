@@ -1,16 +1,3 @@
-/**
- * MCP Config Loader
- *
- * Utility for loading MCP server configuration from the user's home directory
- * and from workspace MCP configuration.
- * 
- * Features:
- * - Cross-platform home directory resolution
- * - Graceful handling of missing files
- * - JSON parsing with error handling
- * - Path-keyed config caching to avoid repeated file reads across workspaces
- */
-
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -33,9 +20,6 @@ export interface VSCodeMCPConfigFile {
     servers?: Record<string, MCPServerConfig>;
 }
 
-/**
- * Result of loading the MCP config
- */
 export interface MCPConfigLoadResult {
     /** Whether the config was loaded successfully */
     success: boolean;
@@ -49,7 +33,7 @@ export interface MCPConfigLoadResult {
     fileExists: boolean;
 }
 
-/** Default config file path relative to home directory */
+/** Config directory name under the home directory */
 const CONFIG_DIR = '.copilot';
 const CONFIG_FILE = 'mcp-config.json';
 const WORKSPACE_CONFIG_DIR = '.vscode';
@@ -62,10 +46,7 @@ const cachedConfigs = new Map<string, MCPConfigLoadResult>();
 let homeDirectoryOverride: string | null = null;
 
 /**
- * Set an override for the home directory.
- * This is primarily used for testing purposes.
- * 
- * @param dir - The directory to use as home, or null to use the system default
+ * Testing seam; `null` restores the system default. Clears the config cache.
  */
 export function setHomeDirectoryOverride(dir: string | null): void {
     homeDirectoryOverride = dir;
@@ -73,12 +54,7 @@ export function setHomeDirectoryOverride(dir: string | null): void {
     cachedConfigs.clear();
 }
 
-/**
- * Get the user's home directory in a cross-platform manner.
- * If a home directory override is set (for testing), that is returned instead.
- * 
- * @returns The home directory path
- */
+/** The testing override when one is set, otherwise `os.homedir()`. */
 export function getHomeDirectory(): string {
     // Return override if set (for testing)
     if (homeDirectoryOverride !== null) {
@@ -90,21 +66,12 @@ export function getHomeDirectory(): string {
     return os.homedir();
 }
 
-/**
- * Get the path to the MCP config file.
- * 
- * @returns The full path to ~/.copilot/mcp-config.json
- */
+/** Path to `~/.copilot/mcp-config.json`. */
 export function getMcpConfigPath(): string {
     return path.join(getHomeDirectory(), CONFIG_DIR, CONFIG_FILE);
 }
 
-/**
- * Get the path to a workspace MCP config file.
- *
- * @param workingDirectory - Workspace directory for the request
- * @returns The full path to <workingDirectory>/.vscode/mcp.json
- */
+/** Path to `<workingDirectory>/.vscode/mcp.json`. */
 export function getWorkspaceMcpConfigPath(workingDirectory: string): string {
     return path.join(workingDirectory, WORKSPACE_CONFIG_DIR, WORKSPACE_MCP_CONFIG_FILE);
 }
@@ -289,11 +256,8 @@ function loadMcpConfigFromPath(
 }
 
 /**
- * Load MCP server configuration from the default config file.
- * Results are cached after the first successful load.
- *
- * @param forceReload - If true, bypass the cache and reload from disk
- * @returns The load result with MCP server configurations
+ * Load MCP servers from `~/.copilot/mcp-config.json`. Results are cached after
+ * the first successful load; `forceReload` bypasses the cache.
  */
 export function loadDefaultMcpConfig(forceReload = false): MCPConfigLoadResult {
     const configPath = getMcpConfigPath();
@@ -306,12 +270,9 @@ export function loadDefaultMcpConfig(forceReload = false): MCPConfigLoadResult {
 }
 
 /**
- * Load MCP server configuration from <workingDirectory>/.vscode/mcp.json.
- * The workspace top-level `servers` map is normalized to Forge's mcpServers shape.
- *
- * @param workingDirectory - Workspace directory for the request
- * @param forceReload - If true, bypass the cache and reload from disk
- * @returns The load result with MCP server configurations
+ * Load MCP servers from `<workingDirectory>/.vscode/mcp.json`, normalizing the
+ * file's top-level `servers` map to the `mcpServers` shape. `forceReload`
+ * bypasses the cache.
  */
 export function loadWorkspaceMcpConfig(workingDirectory: string, forceReload = false): MCPConfigLoadResult {
     const configPath = getWorkspaceMcpConfigPath(workingDirectory);
@@ -323,30 +284,16 @@ export function loadWorkspaceMcpConfig(workingDirectory: string, forceReload = f
     );
 }
 
-/**
- * Load MCP config asynchronously.
- * This is a convenience wrapper for async contexts.
- * 
- * @param forceReload - If true, bypass the cache and reload from disk
- * @returns Promise resolving to the load result
- */
+/** Convenience wrapper for async contexts; the load itself is synchronous. */
 export async function loadDefaultMcpConfigAsync(forceReload = false): Promise<MCPConfigLoadResult> {
     return loadDefaultMcpConfig(forceReload);
 }
 
-/**
- * Merge MCP server configurations.
- * Explicit configurations take precedence over default configurations.
- * 
- * @param defaultConfig - Default MCP servers from config file
- * @param explicitConfig - Explicit MCP servers passed in options
- * @returns Merged configuration with explicit taking precedence
- */
+/** Merge default and explicit MCP servers; explicit entries win. */
 export function mergeMcpConfigs(
     defaultConfig: Record<string, MCPServerConfig>,
     explicitConfig?: Record<string, MCPServerConfig>
 ): Record<string, MCPServerConfig> {
-    // If no explicit config, return default
     if (!explicitConfig) {
         return { ...defaultConfig };
     }
@@ -452,31 +399,19 @@ export function invalidateCachedConfig(configPath: string): void {
     cachedConfigs.delete(configPath);
 }
 
-/**
- * Clear the cached MCP config.
- * Useful for testing or when the config file might have changed.
- */
+/** Drop every cached config — for tests, or after an external file change. */
 export function clearMcpConfigCache(): void {
     const aiLog = getAIServiceLogger();
     aiLog.debug('Clearing MCP config cache');
     cachedConfigs.clear();
 }
 
-/**
- * Check if an MCP config file exists at the default location.
- * 
- * @returns True if the config file exists
- */
+/** Whether a config file exists at the default location. */
 export function mcpConfigExists(): boolean {
     return fs.existsSync(getMcpConfigPath());
 }
 
-/**
- * Get the cached config without loading from disk.
- * Returns null if no config has been loaded yet.
- * 
- * @returns The cached config or null
- */
+/** The cached entry for `configPath`, or null when nothing has been loaded. */
 export function getCachedMcpConfig(configPath = getMcpConfigPath()): MCPConfigLoadResult | null {
     return cachedConfigs.get(configPath) ?? null;
 }

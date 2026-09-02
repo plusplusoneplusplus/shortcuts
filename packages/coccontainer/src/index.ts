@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
 /**
- * CoCContainer CLI Entry Point
- *
  * Multi-agent CoC aggregation dashboard and CLI proxy.
  * Manages multiple remote CoC agents and proxies operations to them.
  *
@@ -13,8 +11,6 @@
  *   coccontainer agent list           List registered agents
  *   coccontainer run <path>           Execute workflow on a remote agent
  *   coccontainer status               Show status of all agents
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { createProgram, EXIT_CODES } from './cli';

@@ -1,11 +1,7 @@
 /**
- * CoC Execution Server
- *
  * Creates and manages an HTTP server for the `coc serve` command.
- * Uses only Node.js built-in modules (http, fs, path, os).
  *
  * Mirrors packages/deep-wiki/src/server/index.ts pattern.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';

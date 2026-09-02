@@ -1,6 +1,4 @@
 /**
- * Playwright-Compatible Mock AI Service for E2E Tests
- *
  * Re-bases the e2e fixture onto the single canonical ISDKService mock
  * (`createMockSDKService` from `@plusplusoneplusplus/coc-agent-sdk/testing`).
  * The fixture no longer defines its own service object or mock-fn; it only
@@ -134,9 +132,7 @@ export type MockToolEvent = ToolEvent & {
 export interface E2EMockAIControls {
     /** The mock service object injected into the server (full ISDKService). */
     service: MockSDKService;
-    /** Mock for sendMessage */
     mockSendMessage: MockFnHandle;
-    /** Mock for isAvailable */
     mockIsAvailable: MockFnHandle;
     /** Reset all mocks to their default state */
     resetAll: () => void;

@@ -1,11 +1,8 @@
 /**
- * TemplateWatcher Unit Tests
- *
  * Tests for the TemplateWatcher class which watches `.vscode/templates/`
  * directories for file changes and fires debounced callbacks.
  *
  * Uses temporary directories for isolation.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -69,7 +66,6 @@ describe('TemplateWatcher', () => {
         // Let the watcher fully register (macOS FSEvents can be slow)
         await wait(200);
 
-        // Create a file
         const templatesDir = path.join(root, '.vscode', 'templates');
         fs.writeFileSync(path.join(templatesDir, 'test.yaml'), 'name: test');
 
@@ -93,7 +89,6 @@ describe('TemplateWatcher', () => {
 
         await wait(100);
 
-        // Modify the file
         fs.writeFileSync(path.join(templatesDir, 'existing.yaml'), 'name: updated');
 
         await wait(600);

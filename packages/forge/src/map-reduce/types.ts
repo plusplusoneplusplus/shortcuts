@@ -1,20 +1,13 @@
 /**
- * Map-Reduce Framework Types
- *
  * Core types and interfaces for the map-reduce AI workflow framework.
  * Provides a reusable execution pipeline for AI map-reduce jobs with support
  * for pluggable splitters, mappers, reducers, and prompt templates.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // Shared AI types — canonical definitions in ai/types.ts, re-exported for backward compat.
 import type { AIInvoker, AIInvokerOptions, AIInvokerResult, SessionMetadata, ProcessTracker, JobProgress } from '../ai/types';
 export type { AIInvoker, AIInvokerOptions, AIInvokerResult, SessionMetadata, ProcessTracker, JobProgress } from '../ai/types';
 
-/**
- * A single work item to be processed by the mapper
- */
 export interface WorkItem<TInput> {
     /** Unique identifier for this work item */
     id: string;
@@ -24,9 +17,6 @@ export interface WorkItem<TInput> {
     metadata?: Record<string, unknown>;
 }
 
-/**
- * Context provided to mapper functions during execution
- */
 export interface MapContext {
     /** Unique ID for this map execution */
     executionId: string;
@@ -40,9 +30,6 @@ export interface MapContext {
     isCancelled?: () => boolean;
 }
 
-/**
- * Result from a single map operation
- */
 export interface MapResult<TMapOutput> {
     /** Work item ID this result corresponds to */
     workItemId: string;
@@ -58,9 +45,6 @@ export interface MapResult<TMapOutput> {
     processId?: string;
 }
 
-/**
- * Context provided to reducer functions during execution
- */
 export interface ReduceContext {
     /** Unique ID for this reduce execution */
     executionId: string;
@@ -78,9 +62,6 @@ export interface ReduceContext {
     parentGroupId?: string;
 }
 
-/**
- * Result from the reduce operation
- */
 export interface ReduceResult<TReduceOutput> {
     /** The final output from the reducer */
     output: TReduceOutput;
@@ -88,9 +69,6 @@ export interface ReduceResult<TReduceOutput> {
     stats: ReduceStats;
 }
 
-/**
- * Statistics about the reduce phase
- */
 export interface ReduceStats {
     /** Number of inputs before deduplication/reduction */
     inputCount: number;
@@ -104,14 +82,8 @@ export interface ReduceStats {
     usedAIReduce: boolean;
 }
 
-/**
- * Mode for the reduce phase
- */
 export type ReduceMode = 'deterministic' | 'ai' | 'hybrid';
 
-/**
- * Options for map-reduce job execution
- */
 export interface MapReduceOptions {
     /** Maximum number of concurrent map operations (default: 5) */
     maxConcurrency: number;
@@ -146,9 +118,6 @@ export const DEFAULT_MAP_REDUCE_OPTIONS: MapReduceOptions = {
     timeoutMs: DEFAULT_AI_TIMEOUT_MS
 };
 
-/**
- * Interface for a splitter that divides input into work items
- */
 export interface Splitter<TInput, TWorkItemData> {
     /**
      * Split the input into work items
@@ -158,9 +127,6 @@ export interface Splitter<TInput, TWorkItemData> {
     split(input: TInput): WorkItem<TWorkItemData>[];
 }
 
-/**
- * Interface for a mapper that processes individual work items
- */
 export interface Mapper<TWorkItemData, TMapOutput> {
     /**
      * Process a single work item
@@ -171,9 +137,6 @@ export interface Mapper<TWorkItemData, TMapOutput> {
     map(item: WorkItem<TWorkItemData>, context: MapContext): Promise<TMapOutput>;
 }
 
-/**
- * Interface for a reducer that aggregates map outputs
- */
 export interface Reducer<TMapOutput, TReduceOutput> {
     /**
      * Reduce multiple map outputs into a single result
@@ -187,9 +150,6 @@ export interface Reducer<TMapOutput, TReduceOutput> {
     ): Promise<ReduceResult<TReduceOutput>>;
 }
 
-/**
- * Interface for a complete map-reduce job
- */
 export interface MapReduceJob<TInput, TWorkItemData, TMapOutput, TReduceOutput> {
     /** Unique identifier for this job type */
     id: string;
@@ -207,14 +167,8 @@ export interface MapReduceJob<TInput, TWorkItemData, TMapOutput, TReduceOutput> 
     options?: Partial<MapReduceOptions>;
 }
 
-/**
- * Progress callback for tracking job execution
- */
 export type ProgressCallback = (progress: JobProgress) => void;
 
-/**
- * Result of a map-reduce job execution
- */
 export interface MapReduceResult<TMapOutput, TReduceOutput> {
     /** Whether the overall job succeeded */
     success: boolean;
@@ -232,9 +186,6 @@ export interface MapReduceResult<TMapOutput, TReduceOutput> {
     error?: string;
 }
 
-/**
- * Execution statistics for the job
- */
 export interface ExecutionStats {
     /** Total number of work items */
     totalItems: number;
@@ -250,9 +201,6 @@ export interface ExecutionStats {
     maxConcurrency: number;
 }
 
-/**
- * Prompt template for generating prompts from work items
- */
 export interface PromptTemplate {
     /** The template string with {{variable}} placeholders */
     template: string;
@@ -264,9 +212,6 @@ export interface PromptTemplate {
     responseParser?: (response: string) => unknown;
 }
 
-/**
- * Options for prompt rendering
- */
 export interface PromptRenderOptions {
     /** Variables to substitute in the template */
     variables: Record<string, string | number | boolean>;
@@ -283,9 +228,6 @@ export type ItemCompleteCallback<TWorkItemData = unknown, TMapOutput = unknown> 
     result: MapResult<TMapOutput>
 ) => void;
 
-/**
- * Executor options that combine job options with runtime options
- */
 export interface ExecutorOptions extends MapReduceOptions {
     /** AI invoker function for map operations */
     aiInvoker: AIInvoker;

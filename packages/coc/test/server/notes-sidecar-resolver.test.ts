@@ -1,6 +1,4 @@
 /**
- * Sidecar placement + access control tests.
- *
  * Covers where a note's `.comments.json` / `.paper-annotations.json` file lands
  * and which note paths a workspace may annotate at all.
  */

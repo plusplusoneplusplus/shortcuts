@@ -1,6 +1,4 @@
 /**
- * LLM Tool Registry
- *
  * Central registry of all toggleable LLM tools available in chat executor
  * sessions. Each entry describes a tool name, human-readable label,
  * description, and whether it is enabled by default.

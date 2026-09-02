@@ -85,7 +85,6 @@ describe('ResponsiveSidebar', () => {
         const drawer = document.querySelector('[data-testid="sidebar-drawer"]') as HTMLElement;
         expect(drawer).not.toBeNull();
         expect(screen.getByText('child content')).toBeDefined();
-        // Child is inside the drawer
         expect(drawer.contains(screen.getByText('child content'))).toBe(true);
     });
 

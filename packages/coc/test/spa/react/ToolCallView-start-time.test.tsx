@@ -28,7 +28,6 @@ function getHeader(container: HTMLElement) {
     return container.querySelector('.tool-call-header')!;
 }
 
-/** Compute the expected local-time label for a given ISO string. */
 function expectedLocalLabel(iso: string): string {
     const d = new Date(iso);
     const MM = String(d.getMonth() + 1).padStart(2, '0');

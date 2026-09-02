@@ -1,6 +1,4 @@
 /**
- * Dashboard E2E Tests
- *
  * Tests the per-repo Tasks/Chats tab queue UI: queue task list rendering,
  * filtering, detail panel, pause/resume, deep links, and frozen task visuals.
  *

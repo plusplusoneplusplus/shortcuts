@@ -1,6 +1,4 @@
 /**
- * Wakeup Subsystem Types
- *
  * A **wakeup** is a one-shot, durable counterpart to a cron: the
  * `scheduleWakeup` tool records a single future follow-up into a conversation
  * (identified by `processId`) and it fires exactly once. Unlike crons, wakeups

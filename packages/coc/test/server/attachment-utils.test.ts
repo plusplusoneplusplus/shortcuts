@@ -1,6 +1,4 @@
 /**
- * Attachment Utilities Tests
- *
  * Unit tests for validateAttachments, saveAttachmentsToTempFiles,
  * buildTextAttachmentContext, parseGenericDataUrl, and processMessageAttachments.
  */

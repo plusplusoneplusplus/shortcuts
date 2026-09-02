@@ -1,6 +1,4 @@
 /**
- * Admin Config Field Registry Tests
- *
  * Verifies that ADMIN_CONFIG_FIELDS covers every expected key, that validators
  * accept valid values and reject invalid ones, and that apply() correctly
  * mutates a CLIConfig object.
@@ -275,7 +273,6 @@ describe('validate()', () => {
         });
     });
 
-    // All plain boolean fields
     const booleanFields = [
         'showReportIntent', 'groupSingleLineMessages',
         'chat.followUpSuggestions.enabled', 'chat.askUser.enabled',

@@ -1,7 +1,7 @@
 /**
- * useCodeBlockActions — attaches click handlers for code block copy,
- * collapse/expand, and collapsed-indicator buttons rendered by
- * pipeline-core's renderCodeBlock().
+ * useCodeBlockActions — attaches click handlers for the code-block copy,
+ * collapse/expand, collapsed-indicator and table-copy buttons that
+ * `diff/markdown-renderer.ts` emits.
  *
  * Delegates to the container ref so it works with dangerouslySetInnerHTML
  * content that has no React event bindings.

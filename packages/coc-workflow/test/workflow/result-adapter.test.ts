@@ -1,6 +1,3 @@
-/**
- * Tests for WorkflowResult → Flat Display Adapter
- */
 import { describe, it, expect } from 'vitest';
 import { flattenWorkflowResult } from '../../src/workflow/result-adapter';
 import type { WorkflowResult, WorkflowConfig, NodeResult, Items } from '../../src/workflow/types';

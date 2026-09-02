@@ -1,7 +1,3 @@
-/**
- * Tests for AI-assisted component consolidation.
- */
-
 import { describe, it, expect } from 'vitest';
 import { buildClusteringPrompt, parseClusterResponse, applyClusterMerge } from '../../src/consolidation/ai-consolidator';
 import type { ComponentInfo, ComponentGraph, ClusterGroup } from '../../src/types';

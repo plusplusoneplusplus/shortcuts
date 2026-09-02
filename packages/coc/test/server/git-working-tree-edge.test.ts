@@ -1,6 +1,4 @@
 /**
- * Git Working Tree Edge Cases Tests
- *
  * Section 8: Working Tree Operations
  * - GET /changes/files/binary-image.png/diff → binary diff string (no isBinary field in current API)
  * - GET /changes/files/new-untracked.txt/diff → shows full file content as added
@@ -13,7 +11,7 @@
  * - POST /changes/stage-batch with nonexistent file → service reports partial success / error
  * - Concurrent POST /changes/stage requests → both complete without index corruption
  *
- * Mocks WorkingTreeService. Cross-platform compatible.
+ * Mocks WorkingTreeService.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

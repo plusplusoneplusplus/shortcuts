@@ -1,6 +1,4 @@
 /**
- * Git Ops Tracking Tests
- *
  * Section 10: Long-Running Git Ops Tracking
  * - POST /pull initiates async operation → returns { jobId } immediately with 202
  * - GET /ops/:jobId for in-progress op → returns { status: 'running' }
@@ -12,7 +10,7 @@
  * - GET /ops/latest?op=rebase-autosquash → filters by op type
  * - Multiple workspaces → ops are isolated per workspace
  *
- * Mocks BranchService and child_process. Cross-platform compatible.
+ * Mocks BranchService and child_process.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

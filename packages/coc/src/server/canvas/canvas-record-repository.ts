@@ -1,6 +1,4 @@
 /**
- * Canvas record persistence
- *
  * Owns the three files that make up a canvas revision — the descriptor, the
  * artifact, and the version snapshot — plus snapshot listing and pruning.
  *

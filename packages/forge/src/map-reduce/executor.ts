@@ -1,11 +1,7 @@
 /**
- * Map-Reduce Executor
- *
  * Orchestrates map-reduce jobs: split → parallel map → reduce.
  * Delegates concurrency, timeout, retry, progress, and process tracking
  * to focused collaborators from `runtime/` and local helper modules.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { ConcurrencyLimiter, CancellationError } from '../runtime/concurrency-limiter';
@@ -31,11 +27,9 @@ function generateExecutionId(): string {
 }
 
 /**
- * MapReduceExecutor
- *
  * Executes map-reduce jobs with configurable concurrency, timeout (with
  * automatic doubling on first timeout), retry, progress reporting, and
- * optional AI process tracker integration.
+ * optional AI process tracking integration.
  */
 export class MapReduceExecutor {
     private limiter: ConcurrencyLimiter;
@@ -315,9 +309,6 @@ export class MapReduceExecutor {
     }
 }
 
-/**
- * Create a new MapReduceExecutor with the given options
- */
 export function createExecutor(options: ExecutorOptions): MapReduceExecutor {
     return new MapReduceExecutor(options);
 }

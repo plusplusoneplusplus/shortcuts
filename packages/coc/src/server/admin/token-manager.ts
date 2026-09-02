@@ -1,12 +1,9 @@
 /**
- * Admin Confirmation Token Manager
- *
  * Time-limited, one-time-use tokens guarding destructive admin operations.
  * Exposes a `TokenManager` class plus a set of legacy singleton managers and
  * thin helper functions preserved for backward compatibility.
  *
  * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as crypto from 'crypto';
@@ -30,7 +27,6 @@ export class TokenManager {
     /** Token TTL in ms (for response headers). */
     get ttl(): number { return this.ttlMs; }
 
-    /** Generate a fresh confirmation token. */
     generate(): TokenData {
         const token = crypto.randomBytes(16).toString('hex');
         this.active = { token, createdAt: Date.now() };

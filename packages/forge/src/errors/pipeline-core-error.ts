@@ -1,19 +1,6 @@
-/**
- * PipelineCoreError
- *
- * Base error class for all pipeline-core errors.
- * Provides structured error information with:
- * - code: Well-known error code for programmatic handling
- * - cause: Original error that caused this error (error chaining)
- * - meta: Additional context metadata
- */
-
 import { ErrorCode, ErrorCodeType, mapSystemErrorCode } from './error-codes';
 import { getLogger, LogCategory } from '../logger';
 
-/**
- * Metadata that can be attached to errors for debugging and telemetry
- */
 export interface ErrorMetadata {
     /** Unique identifier for the execution context */
     executionId?: string;
@@ -114,16 +101,12 @@ export class PipelineCoreError extends Error {
     }
 }
 
-/**
- * Type guard to check if an error is a PipelineCoreError
- */
 export function isPipelineCoreError(error: unknown): error is PipelineCoreError {
     return error instanceof PipelineCoreError;
 }
 
 /**
- * Convert any error to a PipelineCoreError.
- * If already a PipelineCoreError, returns as-is.
+ * If already a PipelineCoreError, returns it as-is.
  * Otherwise wraps the error with appropriate code detection.
  */
 export function toPipelineCoreError(
@@ -131,9 +114,7 @@ export function toPipelineCoreError(
     defaultCode: ErrorCodeType = ErrorCode.UNKNOWN,
     meta?: ErrorMetadata
 ): PipelineCoreError {
-    // Already a PipelineCoreError
     if (isPipelineCoreError(error)) {
-        // Merge additional meta if provided
         if (meta) {
             return new PipelineCoreError(error.message, {
                 code: error.code,
@@ -144,7 +125,6 @@ export function toPipelineCoreError(
         return error;
     }
 
-    // Regular Error
     if (error instanceof Error) {
         // Try to detect code from Node.js system errors
         const nodeCode = (error as NodeJS.ErrnoException).code;
@@ -157,7 +137,6 @@ export function toPipelineCoreError(
         });
     }
 
-    // String or other primitive
     const message = typeof error === 'string' ? error : String(error);
     return new PipelineCoreError(message, {
         code: defaultCode,
@@ -215,7 +194,6 @@ export function getErrorCauseMessage(error: unknown, maxDepth = 5): string {
 }
 
 /**
- * Log an error with structured information.
  * Uses the global logger and formats PipelineCoreError specially.
  */
 export function logError(
@@ -243,5 +221,4 @@ export function logError(
     }
 }
 
-// Re-export for convenience
 export { ErrorCode, ErrorCodeType, mapSystemErrorCode } from './error-codes';

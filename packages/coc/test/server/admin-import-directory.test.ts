@@ -1,6 +1,4 @@
 /**
- * Admin Directory Import API Tests
- *
  * Integration tests for the directory import endpoints:
  * - POST /api/admin/storage/scan-directory
  * - GET /api/admin/storage/import-directory-token
@@ -169,7 +167,6 @@ describe('Admin Directory Import API', () => {
         it('should scan a valid directory and return match result', async () => {
             const srv = await startSqliteServer();
 
-            // Register a workspace
             await srv.store.registerWorkspace({
                 id: 'ws-test1',
                 name: 'Test Workspace',
@@ -279,7 +276,6 @@ describe('Admin Directory Import API', () => {
         it('should import processes end-to-end', async () => {
             const srv = await startSqliteServer();
 
-            // Register workspace
             await srv.store.registerWorkspace({
                 id: 'ws-e2e',
                 name: 'E2E Workspace',
@@ -288,11 +284,9 @@ describe('Admin Directory Import API', () => {
 
             buildFixtureData('ws-e2e', ['proc-a', 'proc-b']);
 
-            // Get token
             const tokenRes = await request(`${srv.url}/api/admin/storage/import-directory-token`);
             const { token } = JSON.parse(tokenRes.body);
 
-            // Import
             const importRes = await request(
                 `${srv.url}/api/admin/storage/import-directory?confirm=${encodeURIComponent(token)}`,
                 {

@@ -1,6 +1,4 @@
 /**
- * Tests for repo-schedule-loader.ts
- *
  * Covers: parsing YAML files, applying overrides, invalid files,
  * missing directory, source field, ID generation.
  */

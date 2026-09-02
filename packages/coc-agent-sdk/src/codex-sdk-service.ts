@@ -13,8 +13,9 @@
  *
  * Optional peer dependency
  * ─────────────────────────
- * `@openai/codex-sdk` is declared as an optional peer dependency of forge.
- * The module is loaded lazily with a try/catch so forge works fine without it.
+ * `@openai/codex-sdk` is declared as an optional peer dependency.
+ * The module is loaded lazily with a try/catch so the rest of the SDK works
+ * fine without it.
  */
 
 import type { SendMessageOptions, SystemMessageConfig, TokenUsage } from './types';
@@ -54,8 +55,7 @@ import * as fs from 'fs/promises';
 // ============================================================================
 
 /**
- * Returns true when forge is running from a global npm install.
- * When installed globally, __dirname contains 'node_modules'.
+ * A global npm install puts this file under a `node_modules` path.
  */
 function isGlobalInstall(): boolean {
     return __dirname.includes('node_modules');
@@ -2382,7 +2382,6 @@ function addCodexWindowSnapshot(
  *
  * @param authChecker Optional host-provided auth checker. When provided,
  *   sendMessage gates on auth status before loading the Codex SDK.
- * @returns The newly created service instance.
  */
 export function registerCodexSDKService(authChecker?: CodexAuthChecker): CodexSDKService {
     const svc = new CodexSDKService();

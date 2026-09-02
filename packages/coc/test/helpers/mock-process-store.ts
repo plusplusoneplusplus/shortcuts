@@ -23,11 +23,8 @@ export interface MockProcessStore extends ProcessStore {
     completions: Map<string, { status: string; duration: string }>;
 }
 
-/** Configuration for process store mock behavior */
 export interface MockProcessStoreOptions {
-    /** Pre-populate the store with these processes */
     initialProcesses?: AIProcess[];
-    /** Pre-populate workspaces */
     initialWorkspaces?: WorkspaceInfo[];
 }
 
@@ -36,7 +33,6 @@ export interface MockProcessStoreOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * Creates an in-memory mock ProcessStore backed by Map instances.
  * Every method is a vi.fn() with a working in-memory implementation.
  *
  * Identical behavior to the inline createMockStore() in

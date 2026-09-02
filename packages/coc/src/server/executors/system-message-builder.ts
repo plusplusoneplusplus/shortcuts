@@ -11,9 +11,6 @@
  *       .build();
  *
  * `build()` is always async and resolves deferred steps in insertion order.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AutoFolderContext, SystemMessageConfig } from '@plusplusoneplusplus/forge';

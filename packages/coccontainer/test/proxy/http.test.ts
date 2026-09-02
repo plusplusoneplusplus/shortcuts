@@ -1,7 +1,3 @@
-/**
- * Tests for HTTP proxy utilities.
- */
-
 import { describe, it, expect, afterEach } from 'vitest';
 import * as http from 'http';
 import { proxyRequest } from '../../src/proxy/http';

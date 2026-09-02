@@ -1,6 +1,4 @@
 /**
- * API Route Aggregator
- *
  * Thin router that delegates to focused route modules under routes/.
  * Each module owns one HTTP concern (workspaces, git, processes, filesystem).
  *
@@ -116,9 +114,6 @@ const VALID_INCLUDE_FIELDS: Set<string> = new Set(['children', 'fullPrompt', 're
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
 
-/**
- * Extract filter parameters from URL query string into a typed ProcessFilter.
- */
 export function parseQueryParams(reqUrl: string): ProcessFilter {
     const parsed = url.parse(reqUrl, true);
     const query = parsed.query;
@@ -231,7 +226,6 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
 // ============================================================================
 
 /**
- * Register all API routes on the given route table.
  * Mutates the `routes` array in-place.
  */
 export function registerApiRoutes(

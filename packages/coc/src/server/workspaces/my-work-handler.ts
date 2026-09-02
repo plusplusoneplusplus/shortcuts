@@ -3,8 +3,6 @@
  *
  * Provides endpoints for syncing action items from Work IQ (via MCP)
  * and generating weekly summaries from notes + cross-repo data.
- *
- * Pure Node.js; uses only built-in modules.
  */
 
 import * as path from 'path';
@@ -185,7 +183,6 @@ export function registerMyWorkRoutes(
                 const dateLabel = formatSyncDate();
                 const syncHeader = `\n## Synced ${dateLabel}\n`;
 
-                // Append action items
                 const actionItemsPath = path.join(notesRoot, 'Action Items.md');
                 const actionLines = syncItemsToLines(body.actionItems);
                 if (actionLines.length > 0) {

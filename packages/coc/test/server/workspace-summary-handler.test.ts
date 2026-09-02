@@ -1,6 +1,4 @@
 /**
- * Workspace Summary Handler Tests
- *
  * Tests for GET /api/workspaces/:id/summary which returns both
  * workflows and tasks in a single response.
  *

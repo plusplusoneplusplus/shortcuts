@@ -58,7 +58,6 @@ function mapGitHubReviewVote(state: GitHubReview['state']): ReviewVote {
     }
 }
 
-/** Normalize the GitHub `merge_method` to the canonical merge-method vocabulary. */
 function mapGitHubMergeMethod(method: string | null | undefined): string | undefined {
     switch (method) {
         case 'merge':  return 'merge';

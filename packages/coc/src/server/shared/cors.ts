@@ -1,14 +1,10 @@
 /**
- * Shared CORS Utilities
- *
  * Single source of truth for CORS header logic.
  * Reflects the request Origin only when it is a loopback origin (or explicitly
  * configured in the policy). Non-loopback cross-origin requests receive NO
  * `Access-Control-Allow-Origin` header, so browsers block them; `*` is never
  * emitted. Same-origin and no-Origin requests are unaffected (browsers do not
  * require the header for those).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';

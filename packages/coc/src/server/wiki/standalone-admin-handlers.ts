@@ -1,6 +1,4 @@
 /**
- * Admin Handlers (Standalone Wiki)
- *
  * REST API handlers for the standalone wiki admin portal.
  * Provides read/write access to seeds (seeds.json) and
  * config (deep-wiki.config.yaml) files.
@@ -10,8 +8,6 @@
  *   PUT  /api/admin/seeds  — Write seeds.json to wiki directory
  *   GET  /api/admin/config — Read deep-wiki.config.yaml from repo root
  *   PUT  /api/admin/config — Write deep-wiki.config.yaml to repo root
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';
@@ -59,13 +55,11 @@ export function handleAdminRequest(
     method: string,
     context: AdminHandlerContext
 ): boolean {
-    // GET /api/admin/seeds
     if (method === 'GET' && pathname === '/api/admin/seeds') {
         handleGetSeeds(res, context);
         return true;
     }
 
-    // PUT /api/admin/seeds
     if (method === 'PUT' && pathname === '/api/admin/seeds') {
         handlePutSeeds(req, res, context).catch(() => {
             if (!res.headersSent) {
@@ -75,13 +69,11 @@ export function handleAdminRequest(
         return true;
     }
 
-    // GET /api/admin/config
     if (method === 'GET' && pathname === '/api/admin/config') {
         handleGetConfig(res, context);
         return true;
     }
 
-    // PUT /api/admin/config
     if (method === 'PUT' && pathname === '/api/admin/config') {
         handlePutConfig(req, res, context).catch(() => {
             if (!res.headersSent) {

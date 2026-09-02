@@ -1,6 +1,4 @@
 /**
- * Wiki Data Layer Tests
- *
  * Tests for WikiData, ContextBuilder, ConversationSessionManager,
  * FileWatcher, and barrel exports.
  *

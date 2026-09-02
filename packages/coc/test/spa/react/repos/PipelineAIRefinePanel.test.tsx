@@ -280,7 +280,6 @@ describe('error handling', () => {
         });
 
         expect(screen.getByText('Edit with AI')).toBeTruthy();
-        // No error banner
         expect(screen.queryByTestId('refine-error')).toBeNull();
     });
 });

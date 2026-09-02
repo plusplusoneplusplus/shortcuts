@@ -1,6 +1,3 @@
-/**
- * Barrel for the docked source-file canvas panel.
- */
 export { SourceCanvasPanel } from './SourceCanvasPanel';
 export type { SourceCanvasPanelProps } from './SourceCanvasPanel';
 export { SourceCanvasDock } from './SourceCanvasDock';

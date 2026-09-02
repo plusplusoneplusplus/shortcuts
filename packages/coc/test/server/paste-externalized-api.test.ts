@@ -1,6 +1,4 @@
 /**
- * Paste Externalized Metadata Tests
- *
  * Tests that the follow-up message API correctly sets pasteExternalized
  * on conversation turns and includes it in the 202 response when the
  * message content exceeds the paste threshold.

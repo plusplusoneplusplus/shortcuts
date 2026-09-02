@@ -32,9 +32,6 @@ export interface WorktreeMetadataStoreOptions {
     dataDir: string;
 }
 
-/**
- * File-backed store for worktree metadata records, scoped per workspace.
- */
 export class WorktreeMetadataStore {
     constructor(private readonly options: WorktreeMetadataStoreOptions) {}
 

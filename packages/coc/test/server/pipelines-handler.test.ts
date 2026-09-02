@@ -175,7 +175,6 @@ describe('Workflows Handler', () => {
         }
     }
 
-    // Valid pipeline YAML for testing
     const VALID_YAML = `name: "Test Workflow"
 description: "A test workflow"
 

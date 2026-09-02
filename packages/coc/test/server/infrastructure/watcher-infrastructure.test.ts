@@ -1,6 +1,4 @@
 /**
- * createWatcherInfrastructure Tests
- *
  * Regression coverage for the extracted watcher infrastructure builder.
  * Verifies that createWatcherInfrastructure returns correctly wired instances
  * equivalent to the inline setup it replaced in index.ts.

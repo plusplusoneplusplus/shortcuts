@@ -600,7 +600,6 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
 
         const { container } = renderActivity([ralphWithPlan, ralphWithPlan2, standalonePlan, standalonePlan2]);
 
-        // Exactly one ralph session row.
         expect(screen.getAllByTestId('ralph-session-row')).toHaveLength(1);
         // The plan group for /plans/bar.md still renders for the non-ralph items.
         const planGroups = container.querySelectorAll('[data-testid="history-group"]');

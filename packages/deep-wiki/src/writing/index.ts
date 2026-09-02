@@ -1,10 +1,6 @@
 /**
- * Writing Component — Public API
- *
  * Phase 4 (Article Generation) entry point. Converts ComponentAnalysis results
  * into markdown wiki articles and generates index/architecture overview pages.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { WritingOptions, WikiOutput } from '../types';
@@ -30,13 +26,6 @@ export type { ArticleExecutorOptions, ArticleExecutorResult, ArticleProgress, Ar
  * Runs a map-reduce job:
  * - Map: Per-component article generation (text mode, raw markdown)
  * - Reduce: AI-generated index, architecture, and getting-started pages
- *
- * @param options Writing options
- * @param aiInvoker Configured AI invoker for writing (session pool)
- * @param onProgress Optional progress callback
- * @param isCancelled Optional cancellation check
- * @param onItemComplete Optional per-item completion callback for incremental saving
- * @returns Wiki output with all articles
  */
 export async function generateArticles(
     options: WritingOptions,

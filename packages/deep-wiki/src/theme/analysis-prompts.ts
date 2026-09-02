@@ -1,11 +1,7 @@
 /**
- * Theme Analysis — Prompt Templates
- *
  * Prompt templates for per-article and cross-cutting theme analysis.
  * Per-article prompts scope the AI to the article's covered files.
  * Cross-cutting prompts synthesize all article analyses into a holistic view.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================

@@ -1,6 +1,4 @@
 /**
- * FloatingChat E2E Tests
- *
  * Tests the FloatingChatManager and PopOutChatShell:
  *   - Float button appears in a completed queue task chat
  *   - Clicking float button opens a FloatingDialog overlay
@@ -117,7 +115,6 @@ test.describe('FloatingChat – Float button', () => {
 
             await page.locator('[data-testid="activity-chat-float-btn"]').click();
 
-            // FloatingDialog is rendered with id="floating-chat-{processId}"
             const processId = `queue_${taskId}`;
             await expect(page.locator(`#floating-chat-${processId}`)).toBeVisible({ timeout: 5_000 });
         } finally {
@@ -139,7 +136,6 @@ test.describe('FloatingChat – Float button', () => {
             const floatingDialog = page.locator(`#floating-chat-${processId}`);
             await expect(floatingDialog).toBeVisible({ timeout: 5_000 });
 
-            // The floating dialog should contain an activity-chat-detail inside it
             await expect(floatingDialog.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 5_000 });
         } finally {
             cleanup();
@@ -233,7 +229,6 @@ test.describe('FloatingChat – Conversation retention', () => {
             const floatingDialog = page.locator(`#floating-chat-${processId}`);
             await expect(floatingDialog).toBeVisible({ timeout: 5_000 });
 
-            // The chat should contain the user message with the prompt
             await expect(floatingDialog.locator('.chat-message.user')).toBeVisible({ timeout: 5_000 });
         } finally {
             cleanup();

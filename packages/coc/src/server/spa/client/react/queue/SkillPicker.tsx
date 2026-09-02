@@ -65,7 +65,6 @@ export function SkillPickerPanel({
         return { repoSkills: repo, globalSkills: global };
     }, [skills]);
 
-    // Filter skills by search query
     const filterSkills = useCallback((list: SkillOption[]) => {
         if (!search.trim()) return list;
         const q = search.trim().toLowerCase();

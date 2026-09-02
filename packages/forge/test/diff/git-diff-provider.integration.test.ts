@@ -377,7 +377,6 @@ describe('contextLines option (integration)', () => {
         const defaultDiff = await provider.getFileDiff(filePath);
         const zeroDiff = await provider.getFileDiff(filePath, { contextLines: 0 });
 
-        // Zero context should produce fewer or equal lines
         expect(zeroDiff.totalLines).toBeLessThanOrEqual(defaultDiff.totalLines);
     });
 
@@ -390,7 +389,6 @@ describe('contextLines option (integration)', () => {
         const zeroDiff = await provider.getFileDiff(modifiedFile.path, { contextLines: 0 });
         const largeDiff = await provider.getFileDiff(modifiedFile.path, { contextLines: 10 });
 
-        // More context means more or equal lines
         expect(largeDiff.totalLines).toBeGreaterThanOrEqual(zeroDiff.totalLines);
     });
 

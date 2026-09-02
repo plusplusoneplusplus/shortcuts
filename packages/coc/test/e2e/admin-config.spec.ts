@@ -361,7 +361,6 @@ test.describe('Admin: Chat settings', () => {
         await gotoSettingsSubTab(page, 'chat');
         await expect(page.locator('[data-testid="input-chat-followup-count"]')).toHaveValue('3', { timeout: 5000 });
 
-        // Change count to 5
         await page.fill('[data-testid="input-chat-followup-count"]', '5');
 
         const putPromise = page.waitForRequest(req =>

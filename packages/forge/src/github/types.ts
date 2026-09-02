@@ -1,5 +1,3 @@
-/** Minimal GitHub REST API types used by the GitHub adapters. */
-
 export interface GitHubUser {
     id: number;
     login: string;

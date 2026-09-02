@@ -1,13 +1,10 @@
 /**
- * Notes Watcher
- *
  * Watches `~/.coc/repos/<workspaceId>/notes/` directories for registered
  * workspaces and fires a debounced callback when note files change.
  * This enables auto-refresh of the NoteEditor when the AI modifies a
  * note file on disk.
  *
  * Mirrors the TaskWatcher pattern — uses Node.js built-in `fs.watch`.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

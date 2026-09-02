@@ -1,6 +1,4 @@
 /**
- * Memory Store Interfaces
- *
  * Abstract contracts for the fact and episode stores.
  * Concrete implementations (SQLite) live in store-impl/ and are injected at
  * runtime by the CoC server. UI code never imports the concrete stores.

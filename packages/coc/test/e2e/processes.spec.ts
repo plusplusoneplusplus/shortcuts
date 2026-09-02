@@ -1,6 +1,4 @@
 /**
- * ProcessesView E2E Tests
- *
  * Tests the queue/activity UI: split-panel layout, task list rendering,
  * filter dropdown, detail-pane rendering, conversation turns, tool-call
  * view, ConversationMiniMap, and WorkflowResultCard.

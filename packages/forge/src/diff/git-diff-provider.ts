@@ -266,9 +266,6 @@ export function createRangeDiffProvider(
 
 // ── Working tree diff provider ───────────────────────────────
 
-/**
- * Create a diff provider for working tree changes.
- */
 export function createWorkingTreeDiffProvider(
     repositoryRoot: string,
     scope: 'all' | 'staged' | 'unstaged' = 'all',

@@ -1,6 +1,4 @@
 /**
- * SSE Edge Cases Tests
- *
  * Section 4: Two Concurrent Sessions for Same Process
  * Section 6: Cancellation & Error States
  * Section 7: Token Usage Events

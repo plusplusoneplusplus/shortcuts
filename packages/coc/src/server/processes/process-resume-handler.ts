@@ -1,6 +1,4 @@
 /**
- * Process Resume Handler
- *
  * Adds endpoint to launch an interactive Copilot CLI resume session
  * from an existing process/session ID.
  */

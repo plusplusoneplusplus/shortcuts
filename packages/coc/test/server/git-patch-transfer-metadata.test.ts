@@ -5,7 +5,7 @@
  * privacy: local absolute paths (POSIX, Windows drive, UNC) must never survive
  * into a persisted, rendered git-op record.
  *
- * Pure functions — no I/O. Cross-platform compatible.
+ * Pure functions — no I/O.
  */
 
 import { describe, it, expect } from 'vitest';

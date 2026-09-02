@@ -1,14 +1,12 @@
 /**
- * Diff Comment Types
- *
  * Core TypeScript types for diff comments in the web UI.
  * Browser-compatible with no platform dependencies.
  *
- * Selection and context types are re-exported from pipeline-core.
+ * Selection and context types are re-exported from forge.
  * CoC-specific types (DiffComment, DiffCommentsData) are defined here.
  */
 
-// Re-export diff selection/context types from pipeline-core
+// Re-export diff selection/context types from forge
 export type { DiffCommentSelection, DiffCommentContext } from '@plusplusoneplusplus/forge/editor/types';
 
 import type { CommentCategory } from './comment-constants';
@@ -18,10 +16,8 @@ import { ALL_COMMENT_CATEGORIES, resolveCommentCategory } from './comment-consta
 // Diff Comment Types
 // ============================================================================
 
-/** Comment status values. */
 export type DiffCommentStatus = 'open' | 'resolved' | 'orphaned';
 
-/** Comment categories. */
 export type DiffCommentCategory = CommentCategory;
 
 export const ALL_DIFF_CATEGORIES: DiffCommentCategory[] = [...ALL_COMMENT_CATEGORIES];
@@ -41,19 +37,15 @@ export interface DiffComment {
     context: import('@plusplusoneplusplus/forge/editor/types').DiffCommentContext;
     /** Selection range within the rendered diff */
     selection: import('@plusplusoneplusplus/forge/editor/types').DiffCommentSelection;
-    /** The actual selected text */
     selectedText: string;
     /** User's comment content */
     comment: string;
-    /** Current status */
     status: DiffCommentStatus;
     /** ISO timestamp when created */
     createdAt: string;
     /** ISO timestamp when last updated */
     updatedAt: string;
-    /** Optional author name */
     author?: string;
-    /** Optional comment category */
     category?: DiffCommentCategory;
     /** Optional anchor for robust location tracking after diff changes */
     anchor?: import('@plusplusoneplusplus/forge/editor/types').CommentAnchor;
@@ -63,15 +55,10 @@ export interface DiffComment {
     aiResponse?: string;
 }
 
-/**
- * A reply to a diff comment.
- */
 export interface DiffCommentReply {
     /** Unique identifier (UUID) */
     id: string;
-    /** Author name */
     author: string;
-    /** Reply text content */
     text: string;
     /** ISO timestamp when created */
     createdAt: string;
@@ -85,7 +72,6 @@ export interface DiffCommentReply {
 export interface DiffCommentsData {
     /** Stable key identifying the diff (e.g. "<repositoryId>:<filePath>:<oldRef>..<newRef>") */
     diffId: string;
-    /** Array of comments */
     comments: DiffComment[];
     /** Schema version for forward compatibility */
     version: number;

@@ -1,6 +1,4 @@
 /**
- * Options Resolver Tests
- *
  * Tests for the CLI options resolver functions that merge
  * CLI flags with config file defaults.
  */

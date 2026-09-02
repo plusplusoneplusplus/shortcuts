@@ -1,13 +1,7 @@
-/**
- * Utility functions for executing shell commands
- */
-
 import { exec, execFile, ExecFileOptions, ExecOptions } from 'child_process';
 
 /**
  * Execute a shell command asynchronously
- * @param command Command to execute
- * @param options Execution options
  * @returns Promise with stdout and stderr
  */
 export function execAsync(
@@ -39,9 +33,6 @@ export function execAsync(
 
 /**
  * Execute a binary asynchronously without shell parsing.
- * @param file Executable path
- * @param args Argument list
- * @param options Execution options
  * @returns Promise with stdout and stderr
  */
 export function execFileAsync(

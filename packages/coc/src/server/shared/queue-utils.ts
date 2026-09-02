@@ -1,8 +1,3 @@
-/**
- * Shared queue utilities used across bridge classes.
- * Pure Node.js; uses only built-in modules.
- */
-
 import type { TaskQueueManager, Attachment } from '@plusplusoneplusplus/forge';
 
 /**

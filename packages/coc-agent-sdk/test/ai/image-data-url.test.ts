@@ -468,7 +468,6 @@ describe('CopilotSDKService - view tool image interception', () => {
         const result = await resultPromise;
         expect(result.success).toBe(true);
 
-        // The captured tool call should have a data URL result
         const toolCall = result.toolCalls?.find((tc: any) => tc.id === 'tc-img');
         expect(toolCall).toBeDefined();
         expect(toolCall!.result).toMatch(/^data:image\/png;base64,/);

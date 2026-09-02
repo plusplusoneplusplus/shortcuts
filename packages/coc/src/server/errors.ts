@@ -1,11 +1,6 @@
 /**
- * Centralized API Error Handling
- *
  * Provides a structured APIError class, factory functions for common HTTP errors,
  * and a handleAPIError function for consistent error responses across all API routes.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';

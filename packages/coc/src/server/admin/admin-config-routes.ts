@@ -1,6 +1,4 @@
 /**
- * Admin Config Routes
- *
  * GET/PUT for editable runtime settings. Prefers the central
  * `RuntimeConfigService` when provided; otherwise falls back to the injected
  * `configFunctions` file path.
@@ -15,7 +13,6 @@ import { ADMIN_CONFIG_FIELDS, ADMIN_EDITABLE_KEYS, getAdminFieldMetadata } from 
 import type { AdminRouteOptions } from './admin-route-types';
 import { resolveConfigPath } from './admin-route-types';
 
-/** Register admin config read/update routes. */
 export function registerConfigRoutes(routes: Route[], options: AdminRouteOptions): void {
     const { configPath, configFunctions, runtimeConfigService } = options;
     const resolvedConfigPath = resolveConfigPath(options);

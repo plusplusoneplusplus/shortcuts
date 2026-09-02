@@ -1,6 +1,4 @@
 /**
- * AI Invoker Tests
- *
  * Tests for the CLI AI invoker factory, dry-run invoker, and availability checking.
  */
 

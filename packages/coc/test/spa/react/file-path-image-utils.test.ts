@@ -1,6 +1,4 @@
 /**
- * Tests for image file detection utilities.
- *
  * Covers isImageFile() and getImageMimeType() from file-path-utils.
  */
 

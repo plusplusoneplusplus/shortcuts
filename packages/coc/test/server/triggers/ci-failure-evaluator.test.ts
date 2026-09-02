@@ -1,6 +1,4 @@
 /**
- * CI-Failure Evaluator Tests
- *
  * Unit tests for `CiFailureEvaluator` transition detection and auto-disarm.
  * The checks fetcher is faked, so these tests are pure (no provider/HTTP/file
  * I/O) and cross-platform safe.

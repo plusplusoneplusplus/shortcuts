@@ -338,7 +338,6 @@ export function TaskTree({
         return items;
     };
 
-    // Build a DragItem for a given node
     const nodeToDragItem = (node: TaskNode): DragItem | null => {
         if (isTaskFolder(node)) {
             const folder = node as TaskFolder;

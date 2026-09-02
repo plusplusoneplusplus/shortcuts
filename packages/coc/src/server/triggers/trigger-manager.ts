@@ -1,6 +1,4 @@
 /**
- * Trigger Manager
- *
  * Owns the per-trigger lifecycle of the generic `event → action` framework:
  *  - Arms/disarms timers via `ScheduleTimerRegistry` (no new timer plumbing).
  *  - On each tick, evaluates the trigger's event through a pluggable

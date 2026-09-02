@@ -1,6 +1,4 @@
 /**
- * WebSocket Server Tests
- *
  * Comprehensive tests for the ProcessWebSocketServer:
  * handshake, welcome message, process event broadcasting,
  * workspace subscription filtering, heartbeat, shutdown,
@@ -64,7 +62,6 @@ function waitForMessages(messages: string[], count: number, timeoutMs = 2000): P
     });
 }
 
-/** Wait a small amount of time. */
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }

@@ -1,10 +1,6 @@
 /**
- * Seeds Phase — Heuristic Fallback
- *
  * Directory-name-based fallback for generating theme seeds when AI
  * under-generates or fails. Creates seeds from top-level directory names.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -67,9 +63,6 @@ const EXCLUDED_DIRS = new Set([
  *
  * Scans top-level directories in the repository and creates a ThemeSeed
  * for each directory that isn't in the exclusion list.
- *
- * @param repoPath - Absolute path to the repository
- * @returns Array of ThemeSeed objects generated from directory names
  */
 export function generateHeuristicSeeds(repoPath: string): ThemeSeed[] {
     const seeds: ThemeSeed[] = [];
@@ -97,7 +90,6 @@ export function generateHeuristicSeeds(repoPath: string): ThemeSeed[] {
                 continue;
             }
 
-            // Normalize directory name to theme ID
             const themeId = normalizeComponentId(dirName);
 
             // Skip if normalization resulted in empty or invalid ID

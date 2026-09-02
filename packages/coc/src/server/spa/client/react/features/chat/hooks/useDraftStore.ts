@@ -47,16 +47,12 @@ function writeMap(map: DraftMap): void {
     }
 }
 
-/** Return the draft for a given taskId, or null if none exists. */
 export function getDraft(taskId: string): Draft | null {
     const map = readMap();
     return map[taskId] ?? null;
 }
 
-/**
- * Persist a draft for the given taskId.
- * If text is empty, delegates to clearDraft instead.
- */
+/** Empty text delegates to clearDraft instead of storing a blank entry. */
 export function setDraft(
     taskId: string,
     text: string,
@@ -79,7 +75,6 @@ export function setDraft(
     writeMap(map);
 }
 
-/** Remove the draft for the given taskId. */
 export function clearDraft(taskId: string): void {
     const map = readMap();
     if (!(taskId in map)) return;

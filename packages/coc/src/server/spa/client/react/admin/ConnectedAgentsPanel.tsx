@@ -1,8 +1,8 @@
 /**
- * ConnectedAgentsPanel — Read-only view of agents connected to this container.
+ * ConnectedAgentsPanel — the agents connected to this container.
  *
- * Agents self-register via the call-home WebSocket protocol.
- * This panel simply lists them with their status, name, and connection info.
+ * Agents self-register via the call-home WebSocket protocol. The panel lists
+ * them with status, name and connection info, and can unregister one.
  */
 
 import { useContainerAgents, type ContainerAgent } from '../contexts/ContainerAgentContext';

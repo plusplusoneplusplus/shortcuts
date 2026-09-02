@@ -1,6 +1,4 @@
 /**
- * Token Usage Serialization Tests
- *
  * Tests that tokenUsage on ConversationTurn and token tracking fields on
  * AIProcess are correctly preserved through serializeProcess / deserializeProcess.
  */

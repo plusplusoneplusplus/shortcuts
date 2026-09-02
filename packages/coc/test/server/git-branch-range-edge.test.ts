@@ -1,6 +1,4 @@
 /**
- * Git Branch Range Edge Cases Tests
- *
  * Section 9: Branch Range Operations
  * - GET /branch-range?base=main&head=main (same ref) → 200, empty/onDefaultBranch response
  * - GET /branch-range?base=nonexistent&head=main → onDefaultBranch (service returns null or throws)
@@ -10,7 +8,7 @@
  * - GET /branch-range/files/:file/diff for nonexistent file → 200 with empty diff (service returns empty)
  * - GET /branch-range/files when range has no changed files → 200, empty files list
  *
- * Mocks GitRangeService. Cross-platform compatible.
+ * Mocks GitRangeService.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

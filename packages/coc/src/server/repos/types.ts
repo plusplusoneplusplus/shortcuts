@@ -1,4 +1,4 @@
-/** Metadata about a registered workspace/repo, derived from WorkspaceInfo in pipeline-core. */
+/** Metadata about a registered workspace/repo, derived from WorkspaceInfo in @plusplusoneplusplus/forge. */
 export interface RepoInfo {
     /** Stable ID — the WorkspaceInfo.id (hash of rootPath). */
     id: string;

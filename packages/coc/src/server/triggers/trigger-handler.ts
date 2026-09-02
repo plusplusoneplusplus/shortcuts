@@ -1,6 +1,4 @@
 /**
- * Trigger REST API Handler
- *
  * HTTP API routes for the generic `event → action` trigger framework.
  * Workspace-scoped primary routes at `/api/workspaces/:id/triggers`, plus a
  * secondary server-wide route at `/api/triggers`.
@@ -8,8 +6,6 @@
  * Mirrors `cron-handler.ts` (same in-process route shape, validation, and
  * best-effort emit). Only the `condition-monitor` / `ci-failure` event and the
  * `send-message` action are implemented this iteration.
- *
- * Pure Node.js; uses only built-in modules.
  */
 
 import * as crypto from 'crypto';

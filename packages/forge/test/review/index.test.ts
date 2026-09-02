@@ -1,9 +1,3 @@
-/**
- * Tests for review module barrel exports.
- *
- * Ensures all expected symbols are re-exported from the index.
- */
-
 import { describe, it, expect } from 'vitest';
 import * as review from '../../src/review';
 

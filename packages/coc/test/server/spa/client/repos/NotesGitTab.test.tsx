@@ -1,7 +1,5 @@
 /**
  * @vitest-environment jsdom
- *
- * Component tests for the notes-git NotesGitTab.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -429,9 +427,7 @@ describe('NotesGitTab (notes-git)', () => {
             expect(screen.getByTestId('notes-git-commit-meta')).toBeDefined();
         });
 
-        // Verify diff viewer is rendered
         expect(screen.getByTestId('notes-git-diff-viewer')).toBeDefined();
-        // Verify file badges
         expect(screen.getByTestId('notes-git-changed-files')).toBeDefined();
     });
 
@@ -484,7 +480,6 @@ describe('NotesGitTab (notes-git)', () => {
 
         render(<NotesGitTab workspaceId="ws-1" />);
 
-        // Toggle message input
         fireEvent.click(screen.getByTestId('notes-git-toggle-msg-btn'));
 
         const input = screen.getByTestId('notes-git-commit-msg-input');

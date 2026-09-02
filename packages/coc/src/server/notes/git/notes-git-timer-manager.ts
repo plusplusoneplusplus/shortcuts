@@ -1,12 +1,3 @@
-/**
- * NotesGitTimerManager — owns one `NotesAutoCommitTimer` per workspace.
- *
- * Manages the lifecycle of in-process auto-commit timers: start, stop,
- * update interval, and bulk-restore on server startup.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { NotesAutoCommitTimer } from './notes-git-autocommit';
 import { getRepoDataPath } from '../../paths';

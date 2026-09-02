@@ -1,7 +1,3 @@
-/**
- * Tests for CommentPopover React component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { CommentPopover } from '../../../../src/server/spa/client/react/tasks/comments/CommentPopover';

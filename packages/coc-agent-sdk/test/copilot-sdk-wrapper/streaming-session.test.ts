@@ -1,6 +1,4 @@
 /**
- * Tests for StreamingSession
- *
  * Verifies state transitions, event handling, timer behaviour, and the
  * full cancellation / settlement paths using a mock event emitter that
  * drives SDK events synchronously.
@@ -71,7 +69,6 @@ describe('StreamingSession — state transitions', () => {
         emit({ type: 'session.idle' });
         await promise;
 
-        // After settling, state is Settled
         expect((ss as any).state).toBe(StreamingState.Settled);
     });
 
@@ -269,7 +266,6 @@ describe('StreamingSession — cancellation', () => {
         const ss = new StreamingSession();
         const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
 
-        // Emit some content, then abort
         emit({ type: 'assistant.message', data: { content: 'partial response' } });
         emit({ type: 'abort', data: { reason: 'user cancelled' } });
 

@@ -1,6 +1,4 @@
 /**
- * Admin Token Lifecycle E2E Tests
- *
  * Coverage gap: admin.spec.ts only tests the two-step wipe UI flow and
  * mocked failure scenarios. No test exercises the real token lifecycle:
  *   - Token one-time use (consumed after first valid DELETE)

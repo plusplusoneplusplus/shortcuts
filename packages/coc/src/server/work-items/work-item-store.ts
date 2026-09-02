@@ -1,6 +1,4 @@
 /**
- * FileWorkItemStore — file-backed implementation of WorkItemStore.
- *
  * Storage layout (per origin when a scope resolver is configured):
  *   <dataDir>/repos/<originId>/work-items/
  *     index.json              — WorkItemIndexEntry[] (lightweight listing)
@@ -524,7 +522,6 @@ export class FileWorkItemStore implements WorkItemStore {
             if (index.some(e => e.id === item.id)) {
                 throw new Error(`Work item already exists: ${item.id}`);
             }
-            // Assign sequential work item number
             if (item.workItemNumber == null) {
                 item.workItemNumber = await this.nextWorkItemNumber(storageRepoId);
             }
@@ -594,7 +591,6 @@ export class FileWorkItemStore implements WorkItemStore {
 
             await this.writeItem(repos, updated);
 
-            // Update index
             const index = await this.readIndex(repos);
             const idx = index.findIndex(e => e.id === id);
             if (idx !== -1) {
@@ -632,7 +628,6 @@ export class FileWorkItemStore implements WorkItemStore {
                 await fs.rm(this.planDir(storageRepoId, id), { recursive: true, force: true });
             } catch { /* ignore */ }
 
-            // Remove from index
             const filtered = index.filter(e => e.id !== id);
             await this.writeIndex(storageRepoId, filtered);
 
@@ -701,7 +696,6 @@ export class FileWorkItemStore implements WorkItemStore {
         const filterWithoutStatus = filter ? { ...filter, status: undefined } : undefined;
         let filtered = this.applyFilter(entries, filterWithoutStatus);
 
-        // Apply search
         if (filter?.search) {
             const q = filter.search.toLowerCase();
             filtered = filtered.filter(e => {

@@ -1,6 +1,4 @@
 /**
- * SqliteProcessStore — Seen State Tests
- *
  * Validates getSeenMap, markSeen, markManySeen, markUnseen, getUnseenCount
  * methods for read/unread tracking.
  */
@@ -142,7 +140,6 @@ describe('Seen state', () => {
             metadata: { type: 'ai', workspaceId: 'ws1' },
         }));
 
-        // Mark as seen at original end time
         store.markSeen('p1', originalEnd);
         expect(store.getUnseenCount('ws1')).toBe(0);
 

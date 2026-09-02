@@ -133,7 +133,6 @@ describe('initAIServiceLogger — from PinoLoggerOptions', () => {
         initAIServiceLogger({ level: 'silent' });
         const logger = getAIServiceLogger();
         expect(typeof logger.debug).toBe('function');
-        // Should not throw
         expect(() => logger.info({ key: 'val' }, 'from options')).not.toThrow();
     });
 });

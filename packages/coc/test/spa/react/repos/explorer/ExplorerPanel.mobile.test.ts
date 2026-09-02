@@ -1,5 +1,4 @@
 /**
- * Tests for ExplorerPanel mobile responsiveness.
  * Verifies the "show file tree OR preview" toggle pattern,
  * mobile back bar, and touch-friendly sizing.
  */

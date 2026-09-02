@@ -211,7 +211,6 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 prevCommitsRef.current = commitsRef.current;
                 // Clear stale branch range cache so the next fetch returns current branch
                 clearBranchRangeCache(workspaceId);
-                // Re-fetch commits, working tree, and branch range
                 Promise.all([
                     data.fetchCommits(true, 0, data.searchQuery),
                     data.fetchBranchRange(false),
@@ -445,7 +444,6 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         }, 0);
     }, []);
 
-    // Hide the search bar and clear its query.
     const hideSearch = useCallback(() => {
         setSearchVisible(false);
         data.setSearchQuery('');

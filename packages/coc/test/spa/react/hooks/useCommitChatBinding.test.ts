@@ -1,6 +1,4 @@
 /**
- * Tests for useCommitChatBinding hook — binding fetch, createChat, state management.
- *
  * Validates binding lookup on commitHash change, 404 → empty state,
  * createChat task creation + binding POST, diff inclusion in context blocks,
  * and error handling.

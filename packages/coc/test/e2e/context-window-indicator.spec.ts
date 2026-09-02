@@ -1,6 +1,4 @@
 /**
- * ContextWindowIndicator E2E Tests
- *
  * Tests the ContextWindowIndicator component inside ChatDetail:
  *   - Indicator is hidden by default (no token data)
  *   - Indicator appears when SSE delivers token-usage events

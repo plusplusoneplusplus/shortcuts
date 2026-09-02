@@ -1,6 +1,4 @@
 /**
- * Tests for SessionTelemetry
- *
  * Verifies token usage accumulation, tool-call tracking, and response handling.
  */
 

@@ -1,8 +1,5 @@
 /**
  * SqliteProcessStore Tests — getConversationTurns and listRecentProcesses
- *
- * Validates the new lightweight conversation turn accessor and
- * recent process listing methods.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

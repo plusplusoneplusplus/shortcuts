@@ -25,9 +25,7 @@ export interface ReviewChatComposerSendOptions {
 export interface UseCommitChatBindingReturn {
     /** The queue task ID bound to this commit, or null if no chat exists */
     taskId: string | null;
-    /** True while fetching the binding */
     loading: boolean;
-    /** Error message if binding fetch failed */
     error: string | null;
     /** Create a new chat for this commit. Returns the new taskId. */
     createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;
@@ -88,7 +86,6 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
         return () => { cancelled = true; };
     }, [workspaceId, commitHash]);
 
-    // Create a new chat for this commit
     const createChat = useCallback(async (prompt: string, options: ReviewChatComposerSendOptions = {}): Promise<string | null> => {
         if (!commitHash) return null;
         const requestedWorkspaceId = workspaceId;
@@ -122,7 +119,6 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
             const newTaskId = res.task?.id ?? (res as { id?: string }).id;
             if (!newTaskId) throw new Error('Failed to create commit chat task');
 
-            // Save binding
             await getCocClientForWorkspace(workspaceId).git.createCommitChatBinding(workspaceId, commitHash, newTaskId);
 
             if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {

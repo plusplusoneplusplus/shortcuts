@@ -1,6 +1,4 @@
 /**
- * Data Importer Tests
- *
  * Validates importData():
  * - Invalid payload throws error
  * - Replace mode wipes and restores processes, workspaces, wikis
@@ -454,7 +452,6 @@ describe('importData', () => {
         it('merges queue files — deduplicates by task ID', async () => {
             const rootPath = '/projects/frontend';
             const repoId = 'ws-frontend';
-            // Write existing queue file
             const existingFilePath = getRepoQueueFilePath(dataDir, repoId);
             writeJSON(existingFilePath, {
                 version: 3,

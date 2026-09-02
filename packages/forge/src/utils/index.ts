@@ -1,10 +1,3 @@
-/**
- * Utils Module - Public API
- * 
- * Exports all utility functions for file operations, HTTP requests,
- * text matching, and AI response parsing.
- */
-
 // File utilities
 export {
     FileOperationResult,

@@ -1,7 +1,7 @@
 /**
  * Regression guard for the Electron E2E suites' skip contract.
  *
- * Both `test/e2e/*.e2e.test.ts` files are gated by `describe.skipIf(skip)` so a
+ * The `test/e2e/*.e2e.test.ts` files are gated by `describe.skipIf(skip)` so a
  * flaky or half-installed Electron binary never wedges the desktop unit-test
  * job — on CI without `COC_DESKTOP_E2E=1` they must simply skip. That contract
  * is defeated if `require('electron')` runs at module *import* time, because a

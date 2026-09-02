@@ -1,12 +1,8 @@
 /**
- * Wiki Manager
- *
  * Manages per-wiki runtime state (WikiData, ContextBuilder,
  * ConversationSessionManager, FileWatcher) with register/unregister
  * lifecycle.  Follows the TaskWatcher pattern — a Map-based registry
  * keyed by wiki ID.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -21,9 +17,6 @@ import type { AskAIFunction } from './types';
 // Types
 // ============================================================================
 
-/**
- * Parameters for registering a wiki with the manager.
- */
 export interface WikiRegistration {
     /** Unique identifier for this wiki */
     wikiId: string;
@@ -45,9 +38,6 @@ export interface WikiRegistration {
     theme?: 'light' | 'dark' | 'auto';
 }
 
-/**
- * Runtime state for a single registered wiki.
- */
 export interface WikiRuntime {
     registration: WikiRegistration;
     wikiData: WikiData;
@@ -56,9 +46,6 @@ export interface WikiRuntime {
     fileWatcher: FileWatcher | null;
 }
 
-/**
- * Options for the WikiManager constructor.
- */
 export interface WikiManagerOptions {
     /** AI send function shared across wikis */
     aiSendMessage?: AskAIFunction;
@@ -95,12 +82,10 @@ export class WikiManager {
     register(registration: WikiRegistration): void {
         const resolvedDir = path.resolve(registration.wikiDir);
 
-        // Validate directory exists
         if (!fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) {
             throw new Error(`Wiki directory does not exist: ${resolvedDir}`);
         }
 
-        // Validate component-graph.json exists
         const graphPath = path.join(resolvedDir, 'component-graph.json');
         if (!fs.existsSync(graphPath)) {
             throw new Error(`component-graph.json not found in wiki directory: ${resolvedDir}`);
@@ -116,7 +101,6 @@ export class WikiManager {
             );
         }
 
-        // If this wiki ID is already registered, unregister it first
         if (this.wikis.has(registration.wikiId)) {
             this.unregister(registration.wikiId);
         }
@@ -184,7 +168,6 @@ export class WikiManager {
         // Destroy conversation sessions
         runtime.sessionManager?.destroyAll();
 
-        // Stop file watcher
         runtime.fileWatcher?.stop();
 
         // Remove from registry

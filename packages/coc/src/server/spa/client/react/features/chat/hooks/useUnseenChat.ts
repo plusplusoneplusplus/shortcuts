@@ -187,7 +187,6 @@ export function useUnseenChat(
         }
     }, [selectedTaskId, history, schedulePatch]);
 
-    // Compute the unseen set.
     const unseenProcessIds = useMemo(() => {
         const unseen = new Set<string>();
         for (const task of history) {

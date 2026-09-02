@@ -1,11 +1,6 @@
 /**
- * Notes REST API Handler — read-only routes.
- *
  * HTTP API routes for reading notes hierarchy, content, and search
  * for a given workspace.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';

@@ -1,6 +1,4 @@
 /**
- * Canvas Capability Runner
- *
  * Executes extension-canvas capabilities — `(state, params) => nextState`
  * functions authored as part of an extension canvas — against the canvas's
  * JSON shared state.
@@ -35,9 +33,6 @@
  * Script contract: the extension's `capabilities.js` assigns a top-level
  * `capabilities` object whose values take `(state, params)` and return the
  * complete next state object — or, on the async path, a promise of it.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as vm from 'vm';
@@ -120,7 +115,6 @@ export function isValidCapabilityName(name: string): boolean {
  * Run one capability against the canvas state.
  *
  * @param capabilitiesJs - The extension's capability script (assigns `capabilities = {...}`).
- * @param capability - Name of the capability to invoke.
  * @param stateJson - Current canvas content (JSON shared state; empty = `{}`).
  * @param params - Caller-provided parameters (AI tool call or UI action).
  * @param options - Async execution and host access; omit for the legacy sync path.

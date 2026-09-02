@@ -1,6 +1,3 @@
-/**
- * ConversationTurnBubble — role-aware chat bubble for conversation turns.
- */
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { cn, ImageGallery, ImageLightbox, Spinner } from '../../../ui';
 import type { ClientConversationTurn, ClientTokenUsage } from '../../../types/dashboard';
@@ -968,7 +965,6 @@ function buildCommitsByToolCallId(toolById: Map<string, RenderToolCall>): Map<st
     return detectCommitsByToolCallId(allToolCalls);
 }
 
-/** Format elapsed milliseconds into a human-friendly string. */
 export function formatCostTime(ms: number): string {
     if (ms < 1000) return `${Math.round(ms)}ms`;
     const totalSeconds = ms / 1000;
@@ -1326,7 +1322,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         const toolCall = assistantRender!.toolById.get(toolId);
         if (!toolCall) return null;
 
-        // Handle report_intent tool calls
         if (toolCall.toolName === 'report_intent') {
             if (!showReportIntent) return null;
             const intentText = typeof toolCall.args === 'object' && toolCall.args?.intent

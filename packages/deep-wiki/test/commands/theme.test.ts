@@ -1,6 +1,4 @@
 /**
- * Theme Command Tests
- *
  * Tests for the `deep-wiki theme` command orchestration:
  * --list, --check, --force, full pipeline (mocked), cache, error handling.
  *

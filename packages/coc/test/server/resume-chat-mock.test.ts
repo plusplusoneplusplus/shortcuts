@@ -1,6 +1,4 @@
 /**
- * Resume Chat Mock Tests
- *
  * Mock-AI cold resume & concurrent resume edge cases for
  * POST /api/queue/:id/resume-chat.
  *

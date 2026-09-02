@@ -1,6 +1,4 @@
 /**
- * TaskGroupService
- *
  * Server-side facade over the forge task-group registry — the canonical
  * record of parent/child task relationships shared by every hierarchical
  * feature (For Each, Map Reduce, Ralph, Dreams, future group types).

@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Probe Session
- *
  * Runs a single theme probe session using the Copilot SDK.
  * Creates a direct session with MCP tools and parses the response.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -39,8 +35,6 @@ const PROBE_TOOLS = ['view', 'grep', 'glob'];
  * Run a single theme probe session.
  *
  * @param repoPath - Absolute path to the repository
- * @param theme - The theme seed to probe
- * @param options - Probe options (model, timeout, focus)
  * @returns ThemeProbeResult (empty result on failure, doesn't throw)
  */
 export async function runThemeProbe(
@@ -67,7 +61,6 @@ export async function runThemeProbe(
         };
     }
 
-    // Build the prompt
     const prompt = buildProbePrompt(repoPath, theme, options.focus);
 
     // Configure the SDK session
@@ -86,7 +79,6 @@ export async function runThemeProbe(
     }
 
     try {
-        // Send the message
         printInfo(`    Probing theme: ${theme.theme} ${gray(`(timeout: ${(options.timeout || DEFAULT_PROBE_TIMEOUT_MS) / 1000}s)`)}`);
         const result = await service.sendMessage(sendOptions);
 
@@ -102,7 +94,6 @@ export async function runThemeProbe(
             };
         }
 
-        // Parse the response
         const parsed = parseProbeResponse(result.response, theme.theme);
         printInfo(`    Probe "${theme.theme}" found ${parsed.foundComponents.length} components ${gray(`(confidence: ${parsed.confidence})`)}`);
         return parsed;

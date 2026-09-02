@@ -1,6 +1,4 @@
 /**
- * Ask User Resume helpers
- *
  * Pure functions that support resuming a pending `ask_user` question across a
  * server restart. When an answer is submitted after the in-memory ask_user
  * resolver was torn down by a restart, the answer is converted into a durable

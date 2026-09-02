@@ -1,6 +1,4 @@
 /**
- * MCP Connection Tester Unit Tests
- *
  * Tests for testMcpConnection — stdio, http, and sse transports.
  * Node.js built-in modules (child_process, http) are mocked via vi.mock/vi.hoisted.
  */

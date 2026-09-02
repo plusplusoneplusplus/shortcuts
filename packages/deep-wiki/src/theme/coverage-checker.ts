@@ -232,9 +232,6 @@ function scoreModules(
     return results;
 }
 
-/**
- * Resolve the expected article path for a module.
- */
 function resolveModuleArticlePath(
     componentId: string,
     wikiDir: string,

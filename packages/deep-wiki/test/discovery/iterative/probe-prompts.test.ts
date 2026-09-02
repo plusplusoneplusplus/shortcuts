@@ -1,6 +1,4 @@
 /**
- * Probe Prompts Tests
- *
  * Tests for probe prompt template generation.
  * Verifies theme information, hints, and focus domain filtering.
  */

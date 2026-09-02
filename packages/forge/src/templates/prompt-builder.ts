@@ -22,7 +22,6 @@ export function buildReplicatePrompt(
         'You are a code-generation assistant. You will be shown an example commit (the \'template\') and an instruction describing what analogous change to produce.',
     );
 
-    // Template commit section
     parts.push('');
     parts.push('## Template Commit');
     parts.push('');
@@ -45,13 +44,11 @@ export function buildReplicatePrompt(
         }
     }
 
-    // Instruction section
     parts.push('');
     parts.push('## Instruction');
     parts.push('');
     parts.push(instruction);
 
-    // Hints section
     if (hints && hints.length > 0) {
         parts.push('');
         parts.push('## Hints');
@@ -61,7 +58,6 @@ export function buildReplicatePrompt(
         }
     }
 
-    // Output format section
     parts.push('');
     parts.push('## Output Format');
     parts.push('');

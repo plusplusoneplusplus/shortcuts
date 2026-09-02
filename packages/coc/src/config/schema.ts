@@ -220,16 +220,12 @@ const BASE_SCHEMA_TREE: SchemaTree = {
 };
 
 /**
- * Zod schema for CLI configuration file.
  * Base (non-admin) shape + generated admin-editable leaves.
  */
 export const CLIConfigSchema = treeToZodObject(
     mergeSchemaTrees(BASE_SCHEMA_TREE, buildAdminSettingsSchemaTree())
 ) as unknown as z.ZodType<CLIConfig>;
 
-/**
- * Parsed config type (should match CLIConfig)
- */
 export type CLIConfigFromSchema = CLIConfig;
 
 /**

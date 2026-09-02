@@ -1,6 +1,4 @@
 /**
- * SSE Token Usage Event Tests
- *
  * Tests that the SSE handler:
  * - Forwards 'token-usage' events as named SSE events
  * - Includes persisted context window totals and breakdown in conversation-snapshot

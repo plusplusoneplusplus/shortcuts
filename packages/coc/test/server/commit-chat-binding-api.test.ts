@@ -1,6 +1,4 @@
 /**
- * Commit-Chat Binding API Tests
- *
  * Tests for the commit-chat binding REST API routes:
  * - GET  /api/workspaces/:id/commit-chat-bindings       (list all)
  * - GET  /api/workspaces/:id/commit-chat-bindings/:hash  (get one)
@@ -9,7 +7,6 @@
  * - POST /api/workspaces/:id/commit-chat-bindings/rebind  (rebind)
  *
  * Uses a temp directory for CommitChatBindingStore persistence.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

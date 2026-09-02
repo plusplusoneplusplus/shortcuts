@@ -1,6 +1,4 @@
 /**
- * Container Session Store
- *
  * SQLite-backed persistence for container sessions. Stores session metadata
  * and turns with per-turn routing decisions. Uses an in-process SQLite
  * database (same pattern as CronStore).
@@ -57,7 +55,6 @@ export class ContainerSessionStore {
         this.db.exec(CREATE_TURNS_TABLE);
     }
 
-    /** Create a new container session. */
     create(id: string): ContainerSession {
         const now = new Date().toISOString();
         this.db.prepare(
@@ -100,7 +97,6 @@ export class ContainerSessionStore {
         }));
     }
 
-    /** Add a turn to a session. */
     addTurn(sessionId: string, turn: ContainerSessionTurn): void {
         this.db.prepare(
             `INSERT INTO container_session_turns
@@ -121,14 +117,12 @@ export class ContainerSessionStore {
         this.db.prepare(`UPDATE container_sessions SET updated_at = ? WHERE id = ?`).run(turn.timestamp, sessionId);
     }
 
-    /** Update the downstream process ID for a turn. */
     updateTurnProcessId(sessionId: string, turnIndex: number, processId: string): void {
         this.db.prepare(
             `UPDATE container_session_turns SET downstream_process_id = ? WHERE session_id = ? AND turn_index = ?`,
         ).run(processId, sessionId, turnIndex);
     }
 
-    /** Set or clear the routing override for a session. */
     setRoutingOverride(sessionId: string, override: { agentId: string; workspaceId: string } | null): void {
         const now = new Date().toISOString();
         if (override) {
@@ -142,7 +136,6 @@ export class ContainerSessionStore {
         }
     }
 
-    /** Close a session. */
     close(sessionId: string): void {
         const now = new Date().toISOString();
         this.db.prepare(`UPDATE container_sessions SET status = 'closed', updated_at = ? WHERE id = ?`).run(now, sessionId);
@@ -155,7 +148,6 @@ export class ContainerSessionStore {
         return result.changes > 0;
     }
 
-    /** Get the turn count for a session. */
     turnCount(sessionId: string): number {
         const row = this.db.prepare(
             `SELECT COUNT(*) as cnt FROM container_session_turns WHERE session_id = ?`,

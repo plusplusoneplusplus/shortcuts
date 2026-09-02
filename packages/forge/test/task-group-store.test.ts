@@ -1,7 +1,5 @@
 /**
- * SqliteTaskGroupStore Tests
- *
- * Uses an in-memory SQLite database. Cross-platform compatible.
+ * Uses an in-memory SQLite database.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

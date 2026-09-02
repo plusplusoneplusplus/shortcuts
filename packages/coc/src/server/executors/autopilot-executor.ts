@@ -7,9 +7,6 @@
  * - agentMode: 'autopilot'
  * - systemMessage: undefined (no read-only restriction — full read/write access)
  * - tools: follow-up suggestion tool (when configured)
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type {

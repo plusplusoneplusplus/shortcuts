@@ -2308,8 +2308,6 @@ export class ClaudeSDKService implements ISDKService {
  * Register a new `ClaudeSDKService` instance under `'claude'` in the module-
  * level `sdkServiceRegistry`. Call this once during server startup, regardless
  * of whether `claude.enabled` is true — live config gates actual usage.
- *
- * @returns The newly created service instance.
  */
 export function registerClaudeSDKService(): ClaudeSDKService {
     const svc = new ClaudeSDKService();

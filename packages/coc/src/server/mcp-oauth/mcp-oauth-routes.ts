@@ -1,6 +1,4 @@
 /**
- * MCP OAuth REST API Handler
- *
  * Routes:
  *   GET    /api/mcp-oauth/pending          List pending OAuth requests
  *   GET    /api/mcp-oauth/pending/:id      Fetch a specific pending request
@@ -109,7 +107,6 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
         },
     });
 
-    // Get
     routes.push({
         method: 'GET',
         pattern: PENDING_ITEM,
@@ -148,7 +145,6 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
         },
     });
 
-    // Delete
     routes.push({
         method: 'DELETE',
         pattern: PENDING_ITEM,

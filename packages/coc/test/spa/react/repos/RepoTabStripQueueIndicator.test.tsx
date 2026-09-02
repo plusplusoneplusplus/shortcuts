@@ -351,7 +351,6 @@ describe('RepoTabStrip overflow dropdown queue status indicator', () => {
             Object.defineProperty(el, 'offsetWidth', { value: 80, configurable: true });
         });
 
-        // Trigger resize
         act(() => {
             if (resizeCb) resizeCb([], {} as ResizeObserver);
         });

@@ -1,13 +1,9 @@
 /**
- * RepoScheduleLoader
- *
  * Scans <workspaceRoot>/.github/schedules/*.yaml (and *.yml) and parses each
  * file into a ScheduleEntry with source: 'repo'.
  *
  * IDs are prefixed with 'repo:' + filename stem (without extension) so they
  * never collide with user-managed schedule IDs (which start with 'sch_').
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

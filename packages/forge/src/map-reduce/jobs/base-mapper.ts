@@ -2,7 +2,7 @@
  * BaseMapper — shared scaffold for AI map-reduce mappers.
  *
  * Encapsulates the repetitive try/catch + aiInvoker call pattern that every
- * mapper uses. Subclasses override three focused abstract methods:
+ * mapper uses. Subclasses override four focused abstract methods:
  *  - buildPromptAndModel — domain-specific prompt construction
  *  - parseSuccessResponse — domain-specific response parsing
  *  - buildAIFailureResult — domain-specific failure result when AI fails
@@ -13,8 +13,6 @@ import type { AIInvokerResult } from '../../ai/types';
 import type { AIInvoker, MapContext, Mapper, WorkItem } from '../types';
 
 /**
- * Abstract base class for map-reduce mappers.
- *
  * Subclasses only implement domain-specific prompt building, response parsing,
  * and failure result construction. The shared try/catch + AI invocation scaffold
  * lives here so improvements to error handling propagate to all jobs automatically.

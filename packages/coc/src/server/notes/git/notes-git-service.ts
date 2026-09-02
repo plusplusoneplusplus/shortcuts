@@ -1,12 +1,7 @@
 /**
- * Notes Git Service
- *
  * Manages a standalone git repository inside the notes directory
  * (`~/.coc/repos/<wsId>/notes/`). Completely separate from the source code repo —
  * tracks markdown files only.
- *
- * Pure Node.js; uses built-in modules and forge git helpers.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -59,7 +54,6 @@ export class NotesGitService {
         await execGitAsync(['init'], this.notesDir);
         await this.disableInheritedGitHooks();
 
-        // Write .gitignore
         const gitignorePath = path.join(this.notesDir, '.gitignore');
         await fs.promises.writeFile(gitignorePath, GITIGNORE_CONTENT, 'utf-8');
 
@@ -381,7 +375,6 @@ export class NotesGitService {
     }
 
     private async getWorkingTreeDiff(): Promise<NotesGitDiff> {
-        // Unstaged changes
         let unstagedDiff = '';
         let unstagedNameStatus = '';
         try {
@@ -389,7 +382,6 @@ export class NotesGitService {
             unstagedNameStatus = await execGitAsync(['diff', '--name-status'], this.notesDir);
         } catch { /* empty */ }
 
-        // Staged changes
         let stagedDiff = '';
         let stagedNameStatus = '';
         try {
@@ -407,7 +399,6 @@ export class NotesGitService {
         // Verify the commit exists — let errors propagate
         await execGitAsync(['cat-file', '-t', hash], this.notesDir);
 
-        // Check if this commit has a parent
         let hasParent = true;
         try {
             await execGitAsync(['rev-parse', `${hash}^`], this.notesDir);

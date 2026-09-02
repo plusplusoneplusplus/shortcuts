@@ -1,6 +1,4 @@
 /**
- * ResolveCommentsExecutor Tests
- *
  * Regression test: executeTask() must return the full ChatModeExecutionResult
  * fields (response, timeline, sessionId) in addition to the resolve-specific
  * fields (revisedContent, commentIds).

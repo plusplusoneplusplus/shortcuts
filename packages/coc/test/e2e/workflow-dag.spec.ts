@@ -1,6 +1,4 @@
 /**
- * Workflow DAG E2E Tests
- *
  * Tests that a workflow-type YAML (containing `nodes` object) renders the
  * WorkflowDAGChart with expected nodes, edges, and interactive zoom controls.
  */

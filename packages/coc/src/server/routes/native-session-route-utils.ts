@@ -1,6 +1,4 @@
 /**
- * Shared plumbing for the native CLI session routes.
- *
  * The unified `/native-cli-sessions` routes and the legacy Copilot-only
  * `/native-copilot-sessions` compatibility aliases answer for the same provider
  * kernel, so query parsing, workspace scope construction, and the

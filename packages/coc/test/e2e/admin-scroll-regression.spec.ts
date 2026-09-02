@@ -1,6 +1,4 @@
 /**
- * Admin page scroll regression E2E test.
- *
  * Layout invariants the admin page must preserve:
  *   - The whole admin route must never scroll as a single page. The outer
  *     `admin-scroll-container` is bounded by the viewport and uses

@@ -1,14 +1,9 @@
 /**
- * Replicate Apply REST API Handler
- *
  * POST /api/workspaces/:id/replicate/:processId/apply
  *
  * Reads the completed ReplicateResult from a process and writes the
  * file changes to disk. Idempotent — re-applying the same result
  * overwrites files with the same content.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -39,7 +34,6 @@ interface ApplyResult {
 // ============================================================================
 
 /**
- * Register the replicate-apply route on the given route table.
  * Mutates the `routes` array in-place.
  */
 export function registerReplicateApplyRoutes(

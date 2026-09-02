@@ -1,6 +1,4 @@
 /**
- * Wiki Backend Tests
- *
  * Verifies that:
  * 1. WikiManager satisfies the WikiProvider interface structurally.
  * 2. createSingleWikiProvider produces a valid WikiProvider.

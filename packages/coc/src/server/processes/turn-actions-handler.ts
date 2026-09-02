@@ -1,6 +1,4 @@
 /**
- * Turn Actions REST API Handler
- *
  * HTTP API routes for per-message pin and archive on conversation turns.
  * Follows the same narrow-interface pattern as `pin-archive-handler.ts`.
  */

@@ -21,7 +21,6 @@ export async function executeAgentAdd(address: string, opts: { name?: string }):
 
         const agent = store.add(address, opts.name);
 
-        // Check health immediately
         const healthy = await checkAgentHealth(agent.address);
         store.updateStatus(agent.id, healthy ? 'online' : 'offline');
 

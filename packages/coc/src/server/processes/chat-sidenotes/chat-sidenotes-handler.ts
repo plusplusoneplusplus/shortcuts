@@ -13,8 +13,6 @@
  *
  * The workspace is supplied via `?workspace=` (the SPA always knows it); the
  * store is used to confirm the process exists.
- *
- * Cross-platform; pure Node.js.
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -65,9 +63,6 @@ export interface ChatSideNotesRouteOptions {
     manager?: ChatSideNotesManager;
 }
 
-/**
- * Register Quick Ask side-note routes on the shared route table.
- */
 export function registerChatSidenotesRoutes(opts: ChatSideNotesRouteOptions): void {
     const { routes, store, dataDir, getEnabled } = opts;
     const manager = opts.manager ?? new ChatSideNotesManager(dataDir);

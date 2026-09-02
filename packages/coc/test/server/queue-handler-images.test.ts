@@ -1,6 +1,4 @@
 /**
- * Queue Handler Image Tests
- *
  * Tests for:
  * - validateAndParseTask promoting top-level `images` into `payload.images`
  * - serializeTask stripping inline images (returning imagesCount/hasImages)

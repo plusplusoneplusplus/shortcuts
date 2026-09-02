@@ -1,6 +1,4 @@
 /**
- * Workspace History REST API Routes
- *
  * DELETE /api/workspaces/:id/history/:processId — Delete a single history entry
  * DELETE /api/workspaces/:id/history            — Bulk-delete history entries
  *

@@ -1,7 +1,5 @@
 /**
- * AskUserInline
- *
- * Renders one batched interactive ask_user form from the AI.
+ * AskUserInline — renders one batched interactive ask_user form from the AI.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

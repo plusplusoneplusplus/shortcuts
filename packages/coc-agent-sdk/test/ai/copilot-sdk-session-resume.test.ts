@@ -1,6 +1,4 @@
 /**
- * Copilot SDK Service — Session Resume Tests
- *
  * Tests for the `sessionId` option in `sendMessage()`:
  * - When `sessionId` is provided, calls `client.resumeSession()` instead of `createSession()`
  * - When `resumeSession()` fails, falls back to `createSession()`
@@ -88,7 +86,6 @@ describe('CopilotSDKService - Session Resume', () => {
             'original-sess-1',
             expect.any(Object),
         );
-        // createSession should NOT have been called
         expect(sdkModule.mockClient.createSession).not.toHaveBeenCalled();
     });
 
@@ -143,7 +140,6 @@ describe('CopilotSDKService - Session Resume', () => {
         });
 
         const sdkModule = createMockSDKModule(freshSession);
-        // Override resumeSession to reject
         sdkModule.mockClient.resumeSession.mockRejectedValue(new Error('Session expired'));
         wireService(sdkModule);
 
@@ -159,7 +155,6 @@ describe('CopilotSDKService - Session Resume', () => {
 
         expect(result.success).toBe(true);
         expect(result.response).toBe('fallback response');
-        // Both resume and create should have been attempted
         expect(sdkModule.mockClient.resumeSession).toHaveBeenCalledTimes(1);
         expect(sdkModule.mockClient.createSession).toHaveBeenCalledTimes(1);
         // onSessionCreated should fire with the new session ID
@@ -261,7 +256,6 @@ describe('CopilotSDKService - Session Resume', () => {
             loadDefaultMcpConfig: false,
         });
 
-        // Wait for handlers to be registered
         await vi.waitFor(() => {
             expect(streamingHandlers.length).toBeGreaterThan(0);
         }, { timeout: 1000 });

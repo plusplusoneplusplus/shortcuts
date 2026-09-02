@@ -1,6 +1,4 @@
 /**
- * File Writer Tests
- *
  * Tests for writing wiki articles to disk: directory creation,
  * slug generation, file paths, UTF-8 encoding, and line ending normalization.
  */

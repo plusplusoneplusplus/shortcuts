@@ -1,6 +1,4 @@
 /**
- * Work Item Hierarchy Routes
- *
  * Provides the hierarchy tree read API for the work item board.
  *
  * Routes:

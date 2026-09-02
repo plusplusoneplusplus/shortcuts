@@ -1,6 +1,4 @@
 /**
- * Turn Performance Infrastructure Tests
- *
  * Verifies the builder resolves the shared `processes.db` handle correctly:
  * - reuses the SqliteProcessStore handle (rows visible on the same DB)
  * - falls back to opening `processes.db` under dataDir for non-SQLite stores

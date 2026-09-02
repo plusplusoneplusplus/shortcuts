@@ -1,6 +1,4 @@
 /**
- * MCP Config API Endpoint Tests
- *
  * Tests for the MCP config API routes:
  * - GET /api/workspaces/:id/mcp-config
  * - PUT /api/workspaces/:id/mcp-config

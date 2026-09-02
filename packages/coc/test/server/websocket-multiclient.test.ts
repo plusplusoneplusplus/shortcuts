@@ -1,6 +1,4 @@
 /**
- * WebSocket Multi-Client Fan-Out & Connection Lifecycle Tests
- *
  * Section 1: Multi-Client Fan-Out — 3+ simultaneous connected clients all receive events
  * Section 2: Workspace-Scoped Event Filtering — tasks-changed leakage prevention (unit, mock clients)
  * Section 3: Connection Lifecycle — clientCount, disconnect cleanup, heartbeat pruning, no replay

@@ -53,9 +53,6 @@ export interface PipelineConfig {
     parameters?: PipelineParameter[];
 }
 
-/**
- * CSV source configuration for loading items from a file
- */
 export interface CSVSource {
     /** Source type - currently only 'csv' */
     type: 'csv';
@@ -65,9 +62,6 @@ export interface CSVSource {
     delimiter?: string;
 }
 
-/**
- * Type guard to check if a value is a CSVSource
- */
 export function isCSVSource(value: unknown): value is CSVSource {
     return (
         typeof value === 'object' &&
@@ -79,9 +73,6 @@ export function isCSVSource(value: unknown): value is CSVSource {
     );
 }
 
-/**
- * Parameter definition for pipeline input
- */
 export interface PipelineParameter {
     /** Parameter name (used as {{name}} in templates) */
     name: string;
@@ -118,9 +109,6 @@ export interface GenerateInputConfig {
     autoApprove?: boolean;
 }
 
-/**
- * Type guard to check if a value is a GenerateInputConfig
- */
 export function isGenerateConfig(value: unknown): value is GenerateInputConfig {
     return (
         typeof value === 'object' &&
@@ -193,9 +181,6 @@ export interface InputConfig {
     parameters?: PipelineParameter[];
 }
 
-/**
- * Map phase configuration
- */
 export interface MapConfig {
     /** 
      * Prompt template with {{column}} placeholders.
@@ -260,9 +245,6 @@ export interface MapConfig {
     batchSize?: number;
 }
 
-/**
- * Reduce phase configuration
- */
 export interface ReduceConfig {
     /** Reduce type / output format (includes 'text' for pure text concatenation) */
     type: MROutputFormat;
@@ -299,9 +281,6 @@ export interface ReduceConfig {
     model?: string;
 }
 
-/**
- * CSV parsing options
- */
 export interface CSVParseOptions {
     /** Delimiter character (default: ",") */
     delimiter?: string;
@@ -311,9 +290,6 @@ export interface CSVParseOptions {
     encoding?: BufferEncoding;
 }
 
-/**
- * CSV parsing result
- */
 export interface CSVParseResult {
     /** Parsed items */
     items: MRPromptItem[];
@@ -323,9 +299,6 @@ export interface CSVParseResult {
     rowCount: number;
 }
 
-/**
- * Filter operators for rule-based filtering
- */
 export type FilterOperator = 
     | 'equals' | 'not_equals'
     | 'in' | 'not_in'
@@ -333,9 +306,6 @@ export type FilterOperator =
     | 'greater_than' | 'less_than' | 'gte' | 'lte'
     | 'matches';
 
-/**
- * Single filter rule for rule-based filtering
- */
 export interface FilterRule {
     /** Field name to evaluate */
     field: string;
@@ -349,9 +319,6 @@ export interface FilterRule {
     pattern?: string;
 }
 
-/**
- * Rule-based filter configuration
- */
 export interface RuleFilterConfig {
     /** List of filter rules */
     rules: FilterRule[];
@@ -359,9 +326,6 @@ export interface RuleFilterConfig {
     mode?: 'all' | 'any';
 }
 
-/**
- * AI-based filter configuration
- */
 export interface AIFilterConfig {
     /** Prompt template with {{field}} placeholders */
     prompt: string;
@@ -389,9 +353,6 @@ export interface FilterConfig {
     combineMode?: 'and' | 'or';
 }
 
-/**
- * Filter statistics
- */
 export interface FilterStats {
     /** Total input items */
     totalItems: number;
@@ -405,9 +366,6 @@ export interface FilterStats {
     filterType: 'rule' | 'ai' | 'hybrid';
 }
 
-/**
- * Result from filter execution
- */
 export interface FilterResult {
     /** Items that passed the filter */
     included: MRPromptItem[];

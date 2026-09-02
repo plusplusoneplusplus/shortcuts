@@ -1,5 +1,4 @@
 /**
- * Unit tests for WikiGraph component.
  * Mocks D3 CDN loading to test loading, error, and rendering states.
  */
 

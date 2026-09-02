@@ -1,6 +1,3 @@
-/**
- * Tests for EmbeddingProviderRegistry.
- */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EmbeddingProviderRegistry } from '../src/embedding-provider';
 import type { EmbeddingProvider, EmbeddingVector } from '../src/embedding-provider';

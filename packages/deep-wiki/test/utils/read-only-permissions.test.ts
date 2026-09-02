@@ -1,9 +1,3 @@
-/**
- * Tests for readOnlyPermissions utility.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import { describe, it, expect } from 'vitest';
 import { readOnlyPermissions } from '../../src/utils/read-only-permissions';
 

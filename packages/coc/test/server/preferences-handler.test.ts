@@ -1,6 +1,4 @@
 /**
- * Preferences Handler Tests
- *
  * Comprehensive tests for the preferences REST API:
  * - GET /api/preferences — read preferences
  * - PUT /api/preferences — replace preferences

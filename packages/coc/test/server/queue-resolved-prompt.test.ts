@@ -1,6 +1,4 @@
 /**
- * Queue Resolved Prompt Tests
- *
  * Tests for:
  * - GET /api/queue/:id/resolved-prompt endpoint
  * - Enhanced SPA rendering for chat tasks with various modes and contexts

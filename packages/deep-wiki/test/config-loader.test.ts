@@ -1,10 +1,6 @@
 /**
- * Config Loader Tests
- *
  * Tests for YAML config file loading, schema validation, merge logic,
  * and per-phase resolution functions.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -740,7 +736,6 @@ phases:
     concurrency: 5
     depth: deep
 `);
-        // Load config
         const config = loadConfig(configPath);
 
         // Merge with CLI (no explicit overrides)

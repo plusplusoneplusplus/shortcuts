@@ -1,10 +1,6 @@
 /**
- * Seeds Phase — Prompt Templates
- *
  * Prompt templates for Phase 0 theme seed generation. These guide the AI
  * to scan a repository and identify architectural themes/concerns.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================
@@ -16,7 +12,6 @@
  *
  * @param repoPath - Absolute path to the repository
  * @param maxThemes - Maximum number of themes to generate
- * @returns The rendered prompt string
  */
 export function buildSeedsPrompt(repoPath: string, maxThemes: number): string {
     return `You are a senior software architect analyzing a codebase to identify feature-level themes and concerns.

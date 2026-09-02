@@ -1,12 +1,10 @@
 /**
- * Trigger Manager Tests
- *
  * Unit tests for `TriggerManager` — the generic event→action core:
  * arm/tick/fire, disarm, restore-from-persistence, in-flight suppression,
  * evaluator-requested auto-disarm, and TTL expiry.
  *
  * Uses an in-memory SQLite-backed `TriggerStore`, a fake timer registry, and
- * fake evaluator/action-executor. Cross-platform safe (no file I/O).
+ * fake evaluator/action-executor.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Stats Handler Tests
- *
  * Unit tests for GET /api/stats/token-usage:
  * - Happy path with two processes, no `days` param
  * - ?days=7 passes option through to aggregator

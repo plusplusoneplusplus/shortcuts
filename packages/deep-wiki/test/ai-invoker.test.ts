@@ -1,13 +1,11 @@
 /**
- * AI Invoker Factory Tests
- *
  * Tests for the analysis and writing invoker factories.
  * Verifies MCP tool configuration, permission handling, timeout, model, and pool settings.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Mock pipeline-core before imports
+// Mock forge before imports
 const mockSendMessage = vi.fn();
 const mockIsAvailable = vi.fn();
 
@@ -99,15 +97,12 @@ describe('AI Invoker Factory', () => {
             const callArgs = mockSendMessage.mock.calls[0][0];
             expect(callArgs.onPermissionRequest).toBeDefined();
 
-            // Test read permission
             const readResult = callArgs.onPermissionRequest({ kind: 'read' });
             expect(readResult.kind).toBe('approve-once');
 
-            // Test write permission
             const writeResult = callArgs.onPermissionRequest({ kind: 'write' });
             expect(writeResult.kind).toBe('reject');
 
-            // Test shell permission
             const shellResult = callArgs.onPermissionRequest({ kind: 'shell' });
             expect(shellResult.kind).toBe('reject');
         });

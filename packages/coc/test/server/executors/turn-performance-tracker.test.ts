@@ -1,6 +1,4 @@
 /**
- * Turn Performance Tracker Tests
- *
  * Covers the pure TTFT/TPS derivation (normal turn, no-output turn,
  * zero-duration guard, missing token usage, errored turn) and the tracker
  * lifecycle, including the AC-01 contract that `appendOutputChunk` stamps

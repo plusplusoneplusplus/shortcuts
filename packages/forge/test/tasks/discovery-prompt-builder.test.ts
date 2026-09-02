@@ -1,6 +1,4 @@
 /**
- * Discovery Prompt Builder Tests
- *
  * Tests for the pure-Node discovery prompt-building and response parsing functions.
  */
 

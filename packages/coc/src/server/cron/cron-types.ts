@@ -1,6 +1,4 @@
 /**
- * Cron Subsystem Types
- *
  * Defines the `CronEntry` type and related types for the cron subsystem.
  * Crons are a **separate** concept from schedules — own type, own persistence,
  * own executor.  They reuse `ScheduleTimerRegistry` for timing and

@@ -1,6 +1,4 @@
 /**
- * OpenCodeSDKService tests
- *
  * Unit tests for the OpenCode SDK provider adapter, covering:
  * - Availability detection when SDK is not installed
  * - Availability detection when SDK is installed

@@ -52,7 +52,7 @@ export const REGEX_FLAGS: readonly { flag: string; label: string }[] = [
 /** Guard against a runaway pattern eating the browser. */
 const MAX_MATCHES = 1000;
 
-/** Compile `pattern` with `flags`, surfacing both syntax errors as text. */
+/** Compile `pattern` with `flags`; an empty or invalid pattern comes back as an error. */
 export function compileRegex(pattern: string, flags: string): RegexResult<RegExp> {
     if (!pattern) return { ok: false, error: 'Enter a pattern' };
     try {

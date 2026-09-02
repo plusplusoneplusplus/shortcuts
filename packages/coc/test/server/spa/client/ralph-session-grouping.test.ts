@@ -1,6 +1,3 @@
-/**
- * Tests for ralph-session-grouping utility.
- */
 import { describe, it, expect } from 'vitest';
 import {
     groupByRalphSession,

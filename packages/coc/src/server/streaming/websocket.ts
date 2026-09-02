@@ -8,8 +8,6 @@
  * - Heartbeat using ws-level ping/pong with dead-connection pruning
  * - Workspace-scoped subscription filtering
  * - Process event broadcasting
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';
@@ -239,7 +237,6 @@ export class ProcessWebSocketServer {
             this.clients.add(client);
             getServerLogger().info({ clientId, remoteAddress }, 'WebSocket connected');
 
-            // Send welcome message
             client.send(JSON.stringify({
                 type: 'welcome',
                 clientId,
@@ -268,7 +265,6 @@ export class ProcessWebSocketServer {
             });
         });
 
-        // Start heartbeat check
         this.startHeartbeat();
     }
 
@@ -285,12 +281,10 @@ export class ProcessWebSocketServer {
                 client.send(data);
                 continue;
             }
-            // If event has no workspace, send to all
             if (!eventWorkspaceId) {
                 client.send(data);
                 continue;
             }
-            // Only send if workspace matches
             if (client.workspaceId === eventWorkspaceId) {
                 client.send(data);
             }

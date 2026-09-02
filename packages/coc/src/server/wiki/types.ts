@@ -1,11 +1,7 @@
 /**
- * Wiki Types
- *
  * Type definitions for the wiki data layer. Contains types copied from
  * deep-wiki that are consumed by wiki-data, context-builder,
  * file-watcher, and conversation-session-manager.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================
@@ -140,9 +136,6 @@ export interface ExternalDependency {
     usage: string;
 }
 
-/**
- * Deep analysis result for a single component.
- */
 export interface ComponentAnalysis {
     /** Component ID (matches ComponentInfo.id) */
     componentId: string;

@@ -1,7 +1,3 @@
-/**
- * Skill scanner for discovering skills from GitHub and local sources
- */
-
 import * as path from 'path';
 import { DiscoveredSkill, ParsedSource, ScanResult } from './types';
 import { safeExists, safeReadDir, safeReadFile, safeStats, execAsync, httpGetJson } from '../utils';
@@ -25,9 +21,6 @@ export function _resetGhCliCache(): void {
     ghCliAvailable = undefined;
 }
 
-/**
- * Check if gh CLI is available
- */
 async function isGhCliAvailable(): Promise<boolean> {
     if (ghCliAvailable !== undefined) {
         return ghCliAvailable;
@@ -44,10 +37,7 @@ async function isGhCliAvailable(): Promise<boolean> {
 }
 
 /**
- * Scan a source for skills
- * @param source Parsed source information
  * @param installPath Target installation path (to check for existing skills)
- * @returns Scan result with discovered skills
  */
 export async function scanForSkills(source: ParsedSource, installPath: string): Promise<ScanResult> {
     if (source.type === 'github' && source.github) {
@@ -64,8 +54,7 @@ export async function scanForSkills(source: ParsedSource, installPath: string): 
 }
 
 /**
- * Scan a GitHub repository for skills
- * Uses gh CLI if available, falls back to native HTTP (cross-platform)
+ * Uses gh CLI when available, otherwise native HTTP.
  */
 async function scanGitHubSource(
     github: { owner: string; repo: string; branch: string; path: string },
@@ -87,7 +76,7 @@ async function scanGitHubSource(
 }
 
 /**
- * Scan GitHub repository using gh CLI (authenticated, higher rate limits)
+ * Authenticated path — higher GitHub rate limits.
  */
 async function scanGitHubWithGhCli(
     github: { owner: string; repo: string; branch: string; path: string },
@@ -200,7 +189,7 @@ async function scanGitHubWithGhCli(
 }
 
 /**
- * Scan GitHub repository using native HTTP (cross-platform, no external dependencies)
+ * Fallback path — no external dependencies.
  */
 async function scanGitHubWithHttp(
     github: { owner: string; repo: string; branch: string; path: string },
@@ -318,9 +307,6 @@ async function scanGitHubWithHttp(
     }
 }
 
-/**
- * Get skill description from GitHub SKILL.md using gh CLI
- */
 async function getGitHubSkillDescriptionWithGhCli(
     github: { owner: string; repo: string; branch: string },
     skillPath: string
@@ -340,9 +326,6 @@ async function getGitHubSkillDescriptionWithGhCli(
     }
 }
 
-/**
- * Get skill description from GitHub SKILL.md using native HTTP
- */
 async function getGitHubSkillDescriptionWithHttp(
     github: { owner: string; repo: string; branch: string },
     skillPath: string
@@ -361,9 +344,6 @@ async function getGitHubSkillDescriptionWithHttp(
     }
 }
 
-/**
- * Scan a local directory for skills
- */
 async function scanLocalSource(localPath: string, installPath: string): Promise<ScanResult> {
     const logger = getLogger();
     const skills: DiscoveredSkill[] = [];
@@ -434,9 +414,6 @@ async function scanLocalSource(localPath: string, installPath: string): Promise<
     }
 }
 
-/**
- * Get skill description from local SKILL.md file
- */
 function getLocalSkillDescription(skillFilePath: string): string | undefined {
     const readResult = safeReadFile(skillFilePath);
     if (!readResult.success || !readResult.data) {
@@ -445,9 +422,6 @@ function getLocalSkillDescription(skillFilePath: string): string | undefined {
     return extractDescriptionFromMarkdown(readResult.data);
 }
 
-/**
- * Extract description from SKILL.md content
- */
 export function extractDescriptionFromMarkdown(content: string): string | undefined {
     const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 

@@ -1,6 +1,4 @@
 /**
- * FileProcessStore Per-Workspace Pruning Tests
- *
  * Tests for pruneWorkspaceIfNeeded: per-workspace cap,
  * file deletion, onPrune callback, and cross-workspace isolation.
  */
@@ -278,7 +276,6 @@ describe('FileProcessStore per-workspace pruning', () => {
             }));
         }
 
-        // Verify we are at exactly maxProcesses
         const before = await store.getAllProcesses();
         expect(before).toHaveLength(maxProcesses);
 

@@ -16,7 +16,6 @@ import { useEffect, useRef } from 'react';
 export interface DiffFindWidgetProps {
     /** Current search query (controlled). */
     query: string;
-    /** Whether matching is case-sensitive. */
     caseSensitive: boolean;
     /** Total number of matches across the full diff model. */
     matchCount: number;

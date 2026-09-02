@@ -1,6 +1,4 @@
 /**
- * Diff Line Mapper Tests
- *
  * Unit tests for unified diff parsing and line-index computation.
  */
 
@@ -111,7 +109,6 @@ describe('parseUnifiedDiff', () => {
     it('parses multiple hunks', () => {
         const lines = parseUnifiedDiff(MULTI_HUNK_DIFF);
 
-        // Find the two hunk headers
         const hunkHeaders = lines.filter((l) => l.type === 'hunk-header');
         expect(hunkHeaders).toHaveLength(2);
 

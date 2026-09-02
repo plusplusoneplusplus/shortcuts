@@ -1,14 +1,8 @@
 /**
- * Heading parsing utilities for the markdown review editor
- *
- * This module contains pure functions for parsing headings from markdown content.
- * These functions work in both Node.js (for tests) and browser environments.
- * No DOM dependencies.
+ * Pure heading parsing for markdown content. No DOM dependencies, so it runs
+ * in both Node.js tests and the browser.
  */
 
-/**
- * Information about a heading in the document
- */
 export interface HeadingInfo {
     /** 1-based line number */
     lineNum: number;
@@ -24,10 +18,8 @@ import { generateAnchorId } from './markdown-renderer';
 export { generateAnchorId };
 
 /**
- * Parse all headings from the content
- *
- * @param content - The markdown content to parse
- * @returns Array of HeadingInfo objects
+ * Parse ATX headings from the content, skipping anything inside fenced
+ * code blocks.
  */
 export function parseHeadings(content: string): HeadingInfo[] {
     const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
@@ -70,9 +62,6 @@ export function parseHeadings(content: string): HeadingInfo[] {
 /**
  * Find the end line of a section (the line before the next heading of same or higher level)
  *
- * @param headings - Array of all headings
- * @param headingIndex - Index of the current heading in the array
- * @param totalLines - Total number of lines in the document
  * @returns The last line number of the section (inclusive)
  */
 export function findSectionEndLine(
@@ -94,12 +83,6 @@ export function findSectionEndLine(
     return totalLines;
 }
 
-/**
- * Build a map of heading anchor IDs to their section line ranges
- *
- * @param content - The markdown content
- * @returns Map of anchor ID to { startLine, endLine }
- */
 export function buildSectionMap(content: string): Map<string, { startLine: number; endLine: number }> {
     const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const totalLines = lines.length;
@@ -128,9 +111,6 @@ export function buildSectionMap(content: string): Map<string, { startLine: numbe
 }
 
 /**
- * Get the heading level from a line content
- *
- * @param line - The line content
  * @returns The heading level (1-6) or 0 if not a heading
  */
 export function getHeadingLevel(line: string): number {
@@ -139,9 +119,6 @@ export function getHeadingLevel(line: string): number {
 }
 
 /**
- * Get the anchor ID from a heading line
- *
- * @param line - The line content
  * @returns The anchor ID or empty string if not a heading
  */
 export function getHeadingAnchorId(line: string): string {

@@ -18,7 +18,6 @@ function getInvalidChars(name: string): string[] {
 }
 
 export interface FolderActionDialogProps {
-    /** Controls Dialog visibility. */
     open: boolean;
     /** Dialog title shown in the header, e.g. "Rename Folder". */
     title: string;
@@ -26,7 +25,6 @@ export interface FolderActionDialogProps {
     label: string;
     /** Pre-filled value of the input (empty string for Create actions). */
     initialValue: string;
-    /** Placeholder text for the input. */
     placeholder?: string;
     /** Text on the confirm button, e.g. "Rename", "Create". */
     confirmLabel: string;

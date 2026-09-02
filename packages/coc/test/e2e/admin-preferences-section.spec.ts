@@ -1,6 +1,4 @@
 /**
- * Admin Preferences Section E2E Tests
- *
  * Tests the PreferencesSection component rendered inside the AdminPanel:
  * - Loads theme and reposSidebarCollapsed from GET /api/preferences
  * - Changing theme triggers PATCH /api/preferences + success toast

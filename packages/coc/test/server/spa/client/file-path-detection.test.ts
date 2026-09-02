@@ -1,5 +1,5 @@
 /**
- * Tests for file path detection in applyInlineMarkdown (pipeline-core).
+ * Tests for file path detection in applyInlineMarkdown.
  *
  * Verifies that absolute file paths in markdown text are wrapped
  * with interactive `<span class="file-path-link">` elements.

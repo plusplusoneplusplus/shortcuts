@@ -1,11 +1,6 @@
 /**
- * Data Exporter
- *
  * Collects all CoC data (processes, workspaces, wikis, queue history,
  * preferences, server config) and produces a CoCExportPayload JSON object.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

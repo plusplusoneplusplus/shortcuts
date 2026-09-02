@@ -1,7 +1,3 @@
-/**
- * Container Sessions — barrel export.
- */
-
 export { ContainerSessionStore } from './container-session-store';
 export { registerContainerSessionRoutes } from './container-session-handler';
 export { classifyRouting, parseClassifierResponse } from './routing-classifier';

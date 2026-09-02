@@ -1,5 +1,4 @@
 /**
- * Tests for useTaskComments hook.
  * Mocks fetch to verify CRUD methods update state correctly.
  */
 

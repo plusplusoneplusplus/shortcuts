@@ -1,6 +1,4 @@
 /**
- * Tests for useProviderReasoningEfforts hook.
- *
  * Verifies that the hook fetches the per-provider, per-model reasoning-effort
  * preference map and exposes it as a Record<string, string>.
  */

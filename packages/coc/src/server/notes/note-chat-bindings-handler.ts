@@ -1,6 +1,4 @@
 /**
- * Note-Chat Binding REST API Routes
- *
  * Read/write/delete operations on note → chat task bindings. Bindings are
  * normally created server-side as a side effect of enqueueing a chat task whose
  * payload carries `context.noteChat.notePath`. The one case that needs an

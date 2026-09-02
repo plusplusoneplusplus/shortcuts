@@ -1,9 +1,3 @@
-/**
- * Workflow sub-package — barrel export.
- *
- * Re-exports all public types, type guards, graph utilities, and validator
- * from the workflow module.
- */
 export {
     // Item types
     type Item,

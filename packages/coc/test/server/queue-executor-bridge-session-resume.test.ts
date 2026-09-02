@@ -1,6 +1,4 @@
 /**
- * Queue Executor Bridge — Session Resume in Follow-Up Tests
- *
  * Tests for the session resume behavior in executeFollowUp():
  * - Passes process.sdkSessionId to aiService.sendMessage() for session resumption
  * - Skips conversation history injection when sdkSessionId is present

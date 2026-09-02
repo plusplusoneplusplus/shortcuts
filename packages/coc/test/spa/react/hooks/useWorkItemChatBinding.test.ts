@@ -1,6 +1,3 @@
-/**
- * Tests for useWorkItemChatBinding hook.
- */
 /* @vitest-environment jsdom */
 
 import { act, renderHook } from '@testing-library/react';

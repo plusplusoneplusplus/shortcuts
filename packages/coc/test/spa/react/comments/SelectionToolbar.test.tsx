@@ -1,7 +1,3 @@
-/**
- * Tests for SelectionToolbar React component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SelectionToolbar } from '../../../../src/server/spa/client/react/tasks/comments/SelectionToolbar';

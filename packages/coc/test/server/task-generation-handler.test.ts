@@ -1,6 +1,4 @@
 /**
- * Task Generation Handler Tests
- *
  * Tests for the AI-powered task generation and discovery REST API endpoints.
  * Mocks CopilotSDKService to avoid real AI calls.
  *
@@ -82,7 +80,6 @@ function postJSON(url: string, data: unknown) {
     });
 }
 
-/** Parse SSE events from a raw response body */
 function parseSSEEvents(body: string): Array<{ event: string; data: any }> {
     const events: Array<{ event: string; data: any }> = [];
     const lines = body.split('\n');

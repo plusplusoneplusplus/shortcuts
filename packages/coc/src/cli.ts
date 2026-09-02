@@ -1,10 +1,6 @@
 /**
- * CLI Argument Parser
- *
  * Defines the CLI commands and options using Commander.
  * Routes parsed arguments to the appropriate command handlers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { Command } from 'commander';
@@ -38,9 +34,6 @@ export const EXIT_CODES = {
 // CLI Setup
 // ============================================================================
 
-/**
- * Create and configure the CLI program
- */
 export function createProgram(): Command {
     const program = new Command();
 

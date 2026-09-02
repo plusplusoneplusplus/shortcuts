@@ -1,10 +1,3 @@
-/**
- * Platform host abstraction for the Markdown Review Editor.
- *
- * Abstracts platform-specific operations for editor hosts and the standalone
- * HTTP server.
- */
-
 /** Abstracts platform-specific operations that differ between UI hosts. */
 export interface EditorHost {
     /** Show an informational notification */

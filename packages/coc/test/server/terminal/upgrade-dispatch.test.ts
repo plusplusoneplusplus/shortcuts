@@ -1,6 +1,4 @@
 /**
- * Upgrade Dispatch Tests
- *
  * Tests for attachWebSocketUpgradeHandler: path-based routing of
  * WebSocket upgrade requests between ProcessWebSocketServer (/ws)
  * and TerminalWebSocketServer (/ws/terminal).

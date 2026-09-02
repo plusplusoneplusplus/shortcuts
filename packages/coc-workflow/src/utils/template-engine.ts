@@ -1,10 +1,6 @@
 /**
- * Template Engine
- *
  * Shared template variable substitution logic for prompts across the codebase.
  * Provides a centralized implementation of {{variable}} placeholder replacement.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { PipelineCoreError, ErrorCode } from '../errors';
@@ -192,7 +188,6 @@ export function extractVariables(template: string, excludeSpecial: boolean = tru
 /**
  * Check if a template contains any variables.
  *
- * @param template Template string to check
  * @returns True if the template contains at least one {{variable}} placeholder
  */
 export function hasVariables(template: string): boolean {
@@ -202,8 +197,6 @@ export function hasVariables(template: string): boolean {
 /**
  * Check if a template contains any of the specified variables.
  *
- * @param template Template string to check
- * @param variableNames Variable names to look for
  * @returns True if the template contains any of the specified variables
  */
 export function containsVariables(template: string, variableNames: string[]): boolean {
@@ -213,10 +206,6 @@ export function containsVariables(template: string, variableNames: string[]): bo
 
 /**
  * Validate that all required variables are present in a variables object.
- *
- * @param template Template string
- * @param variables Variables object to validate
- * @returns Object with validation result and missing variables
  */
 export function validateVariables(
     template: string,

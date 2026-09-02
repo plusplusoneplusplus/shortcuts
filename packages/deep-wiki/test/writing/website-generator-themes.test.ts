@@ -1,6 +1,4 @@
 /**
- * Website Generator — Themes Tests
- *
  * Verifies that light, dark, and auto themes produce correct HTML output,
  * and that Mermaid zoom/pan support is present in generated pages.
  *

@@ -17,9 +17,6 @@ import { resetLogger as resetWorkflowLogger, setLogger as setWorkflowLogger } fr
  *   setLogger(myCustomLogger);
  */
 
-/**
- * Log categories for different subsystems
- */
 export enum LogCategory {
     /** AI Service operations (Copilot SDK, sessions) */
     AI = 'AI Service',
@@ -43,9 +40,6 @@ export enum LogCategory {
     MCP = 'MCP'
 }
 
-/**
- * Logger interface that can be implemented by different environments.
- */
 export interface Logger {
     /**
      * Log a debug message (verbose, for development)
@@ -69,7 +63,6 @@ export interface Logger {
 }
 
 /**
- * Format a timestamp for log output.
  * Returns ISO 8601 format: `2024-01-15T10:30:45.123Z`
  */
 export function formatTimestamp(date: Date = new Date()): string {
@@ -77,7 +70,6 @@ export function formatTimestamp(date: Date = new Date()): string {
 }
 
 /**
- * Console-based logger implementation.
  * Outputs to stdout/stderr with timestamps and categories.
  */
 export const consoleLogger: Logger = {
@@ -88,7 +80,6 @@ export const consoleLogger: Logger = {
 };
 
 /**
- * Null logger that discards all messages.
  * Useful for tests or when logging should be disabled.
  */
 export const nullLogger: Logger = {
@@ -137,7 +128,6 @@ export function getLogger(): Logger {
 }
 
 /**
- * Reset the logger to the default console logger.
  * Primarily useful for testing.
  */
 export function resetLogger(): void {

@@ -1,6 +1,4 @@
 /**
- * Cancel Process API Tests
- *
  * Tests that POST /api/processes/:id/cancel:
  * 1. Calls bridge.cancelProcess to abort the live AI session
  * 2. Still works when bridge has no cancelProcess (backwards compat)

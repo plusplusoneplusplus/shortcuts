@@ -32,7 +32,6 @@ export interface CriticalCallPathFrame {
     symbol: string;
     /** Optional 1-based line number for this frame. */
     line?: number;
-    /** Optional short frame note. */
     description?: string;
 }
 
@@ -89,7 +88,6 @@ export interface DiffClassificationCacheKey {
 /** The filter categories exposed in the UI filter bar. */
 export const HUNK_CATEGORIES: readonly HunkCategory[] = ['logic', 'mechanical', 'test', 'simple', 'generated'] as const;
 
-/** Human-readable labels for each category. */
 export const CATEGORY_LABELS: Record<HunkCategory, string> = {
     logic: 'Logic',
     mechanical: 'Mechanical',

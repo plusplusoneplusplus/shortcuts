@@ -1,6 +1,4 @@
 /**
- * StaleTaskDetector
- *
  * Periodically checks for running queue tasks that appear stuck/stale
  * and force-fails them. A task is considered stale when it has been
  * running for longer than its configured timeout plus a grace period.
@@ -8,9 +6,6 @@
  * This handles the case where tasks are killed externally (e.g., server
  * killed via signal, process crash) without going through the normal
  * cancellation flow, leaving them stuck in 'running' state.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { TaskQueueManager, DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';

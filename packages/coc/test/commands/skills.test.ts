@@ -1,7 +1,3 @@
-/**
- * Tests for skills CLI command handlers.
- */
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -164,7 +160,6 @@ describe('executeSkillInstall', () => {
             const code = await executeSkillInstall(sourceDir, { workspace: workspaceDir });
             expect(code).toBe(0);
 
-            // Verify the skill was installed
             const installedPath = path.join(workspaceDir, '.github', 'skills', 'test-skill', 'SKILL.md');
             expect(fs.existsSync(installedPath)).toBe(true);
         } finally {

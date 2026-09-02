@@ -1,6 +1,4 @@
 /**
- * Queue Startup Module
- *
  * Encapsulates shared queue initialization: provider resolution, global state,
  * and enqueue capability wiring. Created at server startup to set up the
  * machinery for task enqueueing used by both HTTP routes and in-process tools.
@@ -86,13 +84,11 @@ export function initializeQueueStartup(options: QueueStartupOptions): QueueStart
         });
     };
 
-    // Enqueue with resolved defaults
     const enqueueWithResolvedDefaults = async (input: CreateTaskInput): Promise<string> => {
         await prepareEnqueueTask(input);
         return bridge.enqueue(input);
     };
 
-    // Create bridge wrapper with resolved defaults
     const bridgeWithResolvedDefaults = Object.create(bridge) as MultiRepoQueueRouter;
     Object.defineProperty(bridgeWithResolvedDefaults, 'enqueue', {
         value: enqueueWithResolvedDefaults,

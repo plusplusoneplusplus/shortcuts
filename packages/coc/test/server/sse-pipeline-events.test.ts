@@ -1,6 +1,4 @@
 /**
- * SSE Pipeline Event Tests
- *
  * Tests that the SSE handler relays pipeline-phase and pipeline-progress
  * events as named SSE events through the onProcessOutput callback.
  */

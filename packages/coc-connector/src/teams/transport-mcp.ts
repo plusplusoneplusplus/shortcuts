@@ -29,7 +29,6 @@ export class McpTransport implements TeamsTransport {
         });
         await this.client.initialize();
 
-        // Discover available tools
         try {
             const toolsResult = await this.client.listTools();
             this._availableTools = (toolsResult.tools ?? []).map((t: any) => t.name);
@@ -38,7 +37,6 @@ export class McpTransport implements TeamsTransport {
             console.warn(`[mcp-transport] Failed to list tools: ${err.message}`);
         }
 
-        // If no teamId configured, use chat mode for DM
         if (!this.teamId) {
             this._useChat = true;
             console.log(`[mcp-transport] No teamId — using direct message (self) mode`);
@@ -178,7 +176,6 @@ export class McpTransport implements TeamsTransport {
             contentType: 'html',
         };
 
-        // If using SendMessageToChat, include chatId
         if (toolName === 'SendMessageToChat' && _chatId) {
             args['chatId'] = _chatId;
         }

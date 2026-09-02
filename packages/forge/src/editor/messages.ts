@@ -79,7 +79,6 @@ export interface AskAIContext {
     skillName?: string;
 }
 
-/** Recent prompt info for quick access */
 export interface RecentPrompt {
     absolutePath: string;
     relativePath: string;
@@ -111,7 +110,6 @@ export interface FollowPromptDialogOptions {
     additionalContext?: string;
 }
 
-/** A single line change indicator */
 export interface LineChange {
     line: number;
     type: 'added' | 'modified';

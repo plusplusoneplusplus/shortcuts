@@ -10,9 +10,6 @@
  * - systemMessage (mode-specific prompt restrictions)
  * - tools (follow-up suggestions or other injected tools)
  * - effectivePrompt (prompt with any mode-specific suffix appended)
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as os from 'os';

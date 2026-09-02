@@ -1,6 +1,3 @@
-/**
- * Tests for WorkflowDetailView component.
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { WorkflowDetailView } from '../../../../src/server/spa/client/react/processes/dag/WorkflowDetailView';

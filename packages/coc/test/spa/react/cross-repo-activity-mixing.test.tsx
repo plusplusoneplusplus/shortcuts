@@ -1,6 +1,4 @@
 /**
- * Tests for cross-repository activity mixing fix.
- *
  * Verifies:
  * - Fix 1: Tab components use key={ws.id} — renders RepoDetail, checks remount
  * - Fix 2: selectedTaskId is cleared on repo switch — render MiniReposSidebar/ReposGrid

@@ -1,7 +1,7 @@
 /**
  * Browser-safe AI command definitions for SPA menus.
  *
- * Keep this in the dashboard client instead of importing from pipeline-core/ai,
+ * Keep this in the dashboard client instead of importing from forge/ai,
  * because that barrel also exports Node-only SDK modules.
  */
 export interface DashboardAICommand {

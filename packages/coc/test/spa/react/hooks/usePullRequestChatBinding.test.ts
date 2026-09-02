@@ -1,6 +1,4 @@
 /**
- * Tests for usePullRequestChatBinding hook — binding fetch, createChat, state.
- *
  * Validates binding lookup on prId change, 404 → empty state, createChat
  * task creation + binding POST with pullRequestChat context blocks, and
  * error handling. Mirrors the useCommitChatBinding test contract.

@@ -1,6 +1,4 @@
 /**
- * Parsing module exports
- *
  * Pure TypeScript markdown parsing and block rendering utilities.
  * These functions have no DOM or editor-host dependencies, so they are
  * string-in, structured-data-out transformations suitable for any environment.

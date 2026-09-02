@@ -1,10 +1,6 @@
 /**
- * Iterative Discovery — Probe Response Parser
- *
  * Parses AI responses from theme probe sessions into ThemeProbeResult.
  * Handles JSON extraction, validation, and normalization.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ThemeProbeResult, ProbeFoundComponent, DiscoveredTheme } from './types';
@@ -36,7 +32,6 @@ export function parseProbeResponse(response: string, theme: string): ThemeProbeR
         throw new Error('Missing or invalid "foundComponents" field in probe response');
     }
 
-    // Parse foundComponents
     const foundComponents: ProbeFoundComponent[] = [];
     for (let i = 0; i < obj.foundComponents.length; i++) {
         const item = obj.foundComponents[i];
@@ -51,7 +46,6 @@ export function parseProbeResponse(response: string, theme: string): ThemeProbeR
             continue; // Skip components missing required fields
         }
 
-        // Normalize component ID
         const id = normalizeComponentId(String(mod.id));
 
         // Parse lineRanges if present
@@ -99,7 +93,6 @@ export function parseProbeResponse(response: string, theme: string): ThemeProbeR
         }
     }
 
-    // Parse dependencies (optional)
     const dependencies: string[] = parseStringArray(obj.dependencies);
 
     // Parse confidence (default to 0.5 if not provided)

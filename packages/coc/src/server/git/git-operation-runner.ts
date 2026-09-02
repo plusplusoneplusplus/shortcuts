@@ -1,6 +1,4 @@
 /**
- * Git Operation Runner
- *
  * Owns the lifecycle shared by every background git operation exposed over REST:
  * job-ID minting, the "already running" guard, `GitOpsStore` create/update,
  * terminal status mapping, mutable git-cache invalidation, and the
@@ -8,8 +6,6 @@
  *
  * Route handlers supply only the parsed input and the `BranchService` call;
  * everything else lives here so a fix to job or broadcast semantics lands once.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import type { GitOpJob, GitOpMetadata, GitOpStatus, GitOpType, GitOpsStore } from '@plusplusoneplusplus/forge';

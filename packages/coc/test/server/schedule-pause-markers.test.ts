@@ -1,6 +1,4 @@
 /**
- * Schedule Pause Markers Tests
- *
  * Covers Section 7 of test-plan-schedule-system.md:
  * - Workspace queue globally paused → scheduled tasks are enqueued (not run)
  * - Queue resumed → queued scheduled execution drains
@@ -9,8 +7,6 @@
  * Note: The WebSocket event `schedule-paused` is not currently emitted by the
  * server — that would require additional instrumentation. Tests for WS events
  * are marked TODO below.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

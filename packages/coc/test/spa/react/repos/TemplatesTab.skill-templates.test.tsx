@@ -208,7 +208,6 @@ describe('AI Chat Templates section', () => {
 
     it('deleting clears right panel when deleted item was selected', async () => {
         await renderTemplatesTab();
-        // Select st-1
         fireEvent.click(screen.getByTestId('skill-template-item-st-1'));
         await waitFor(() => expect(screen.getByTestId('skill-template-detail')).toBeDefined());
 

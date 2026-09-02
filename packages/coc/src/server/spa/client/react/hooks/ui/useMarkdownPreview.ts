@@ -1,9 +1,6 @@
 /**
  * useMarkdownPreview — shared hook for rendering markdown content with
  * highlight.js syntax highlighting and mermaid diagram support.
- *
- * Used by both TaskPreview and FilePreview to avoid duplicating the
- * render → hljs → mermaid pipeline.
  */
 
 import { useEffect } from 'react';
@@ -31,9 +28,6 @@ export interface UseMarkdownPreviewResult {
     html: string;
 }
 
-/**
- * Render markdown to HTML and apply post-render enhancements (hljs, mermaid).
- */
 export function useMarkdownPreview({
     content,
     containerRef,

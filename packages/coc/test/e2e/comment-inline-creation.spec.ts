@@ -1,6 +1,4 @@
 /**
- * Inline Comment Creation E2E Tests
- *
  * Covers the core interaction path for creating comments via text selection:
  * select text → right-click → context menu → "Add comment" → popup → type → submit.
  */

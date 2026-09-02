@@ -1,6 +1,4 @@
 /**
- * Admin Prompt Routes
- *
  * REST endpoints for viewing built-in prompts and managing per-prompt admin
  * overrides. Prompt metadata lives in `admin-prompt-catalog.ts`.
  */
@@ -15,7 +13,6 @@ import {
 import { getBuiltInPrompts, getPromptsWithOverrides, validatePromptOverride } from './admin-prompt-catalog';
 import type { AdminRouteOptions } from './admin-route-types';
 
-/** Register prompt catalogue and override routes. */
 export function registerPromptRoutes(routes: Route[], options: AdminRouteOptions): void {
     const { dataDir } = options;
 

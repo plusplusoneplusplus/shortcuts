@@ -1,6 +1,4 @@
 /**
- * List Command Tests
- *
  * Tests for pipeline package discovery and listing.
  */
 
@@ -277,7 +275,6 @@ reduce:
         it('should return 0 for empty directory with warning', () => {
             const exitCode = executeList(tmpDir);
             expect(exitCode).toBe(0);
-            // Should have written a warning to stderr
             expect(stderrSpy).toHaveBeenCalled();
         });
 

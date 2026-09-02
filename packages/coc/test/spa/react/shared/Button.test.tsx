@@ -1,7 +1,3 @@
-/**
- * Tests for Button shared component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Button } from '../../../../src/server/spa/client/react/ui/Button';

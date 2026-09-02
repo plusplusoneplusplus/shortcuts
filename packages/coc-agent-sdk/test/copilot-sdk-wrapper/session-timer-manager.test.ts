@@ -1,6 +1,4 @@
 /**
- * Tests for SessionTimerManager
- *
  * Verifies timer start/reset/cleanup and callback firing using fake timers.
  */
 

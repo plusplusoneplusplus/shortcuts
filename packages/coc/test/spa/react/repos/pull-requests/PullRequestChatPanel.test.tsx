@@ -1,6 +1,4 @@
 /**
- * Tests for PullRequestChatPanel — PR chat side-panel component.
- *
  * Validates rendering in all states (empty, loading, error, active chat),
  * user interactions (send, close, Enter key), and prop-driven behavior.
  * Mirrors the CommitChatPanel test contract.

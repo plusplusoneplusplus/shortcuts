@@ -1,6 +1,4 @@
 /**
- * My Life Handler Tests
- *
  * Tests for the My Life REST API endpoints:
  * - POST /api/my-life/sync — append personal data to notes
  * - POST /api/my-life/generate-summary — generate weekly summary

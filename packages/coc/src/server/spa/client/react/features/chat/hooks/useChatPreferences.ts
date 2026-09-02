@@ -50,7 +50,6 @@ export function useChatPreferences(workspaceId: string): UseChatPreferencesResul
             try {
                 const prefs = await getWorkspacePreferences(workspaceId);
                 if (!cancelled) {
-                    // pinnedChats
                     const pm = prefs?.pinnedChats;
                     if (typeof pm === 'object' && pm !== null) {
                         const ids = pm[workspaceId];
@@ -59,7 +58,6 @@ export function useChatPreferences(workspaceId: string): UseChatPreferencesResul
                             setPinnedIds(valid); pinnedIdsRef.current = valid;
                         }
                     }
-                    // archivedChats
                     const am = prefs?.archivedChats;
                     if (typeof am === 'object' && am !== null) {
                         const ids = am[workspaceId];

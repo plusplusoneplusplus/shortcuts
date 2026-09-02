@@ -1,6 +1,4 @@
 /**
- * Admin REST API Handler
- *
  * Thin composition entry point for administrative HTTP routes. Route logic
  * lives in per-domain modules; this file wires them together and preserves the
  * original public export surface for backward compatibility.
@@ -12,9 +10,6 @@
  *   - system    → admin-system-routes.ts (version / restart)
  *   - storage   → admin-storage-routes.ts (status / migration / directory import)
  *   - providers → admin-provider-routes.ts
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { Route } from '../types';
@@ -57,7 +52,6 @@ export {
 // ============================================================================
 
 /**
- * Register admin API routes on the given route table.
  * Mutates the `routes` array in-place by composing per-domain route modules.
  */
 export function registerAdminRoutes(routes: Route[], options: AdminRouteOptions): void {

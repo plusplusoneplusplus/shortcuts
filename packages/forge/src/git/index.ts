@@ -1,7 +1,3 @@
-/**
- * Git module — pure Node.js git types, constants, and helpers.
- */
-
 export {
     GitChangeStatus,
     GitChangeStage,

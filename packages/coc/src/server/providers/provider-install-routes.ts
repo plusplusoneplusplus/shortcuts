@@ -1,6 +1,4 @@
 /**
- * Provider SDK Install Routes
- *
  * POST /api/providers/sdk/:provider/install
  *   Triggers npm install of the optional SDK package for the given provider.
  *   Returns 202 Accepted immediately; status can be polled via the GET endpoint.
@@ -12,8 +10,6 @@
  *
  * After a successful install the provider's SDK service is re-registered in the
  * module-level `sdkServiceRegistry` so it becomes usable without a full server restart.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -218,10 +214,7 @@ export interface ProviderInstallRouteContext {
 // ============================================================================
 
 /**
- * Registers the provider SDK install endpoints on the shared route table.
- *
  * @param routes  - Shared route table (mutated in place)
- * @param ctx     - Runtime dependencies (install dir)
  */
 export function registerProviderInstallRoutes(routes: Route[], ctx: ProviderInstallRouteContext): void {
 

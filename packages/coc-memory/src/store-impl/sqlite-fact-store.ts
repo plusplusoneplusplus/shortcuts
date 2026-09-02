@@ -1,6 +1,4 @@
 /**
- * SQLite-backed fact store
- *
  * Uses FTS5 for BM25 full-text search. Vector search columns are reserved
  * here (BLOB `embedding`) but the ranking blending logic is added in AC-03
  * when the EmbeddingProvider is wired in.
@@ -208,7 +206,6 @@ export class SqliteFactStore implements IMemoryFactStore {
         const statuses = query.statuses ?? ['active'];
         const limit = query.limit ?? 10;
 
-        // Build scope clause
         const scopeParams: unknown[] = [];
         let scopeClause = '';
         if (query.scope === 'workspace' && query.workspaceId) {

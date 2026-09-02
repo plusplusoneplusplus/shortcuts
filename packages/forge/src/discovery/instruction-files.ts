@@ -20,8 +20,7 @@ const INSTRUCTION_FILES = {
 export type InstructionMode = keyof typeof INSTRUCTION_FILES;
 
 /**
- * Discover which instruction files exist for the given repository root.
- * Returns an `InstructionFileSet` with absolute paths for files that are present.
+ * Returns an `InstructionFileSet` with absolute paths for the files that exist.
  */
 export function findInstructionFiles(rootDir: string): InstructionFileSet {
     const dir = path.join(rootDir, INSTRUCTION_DIR);

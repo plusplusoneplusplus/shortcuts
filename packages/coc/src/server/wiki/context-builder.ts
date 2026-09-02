@@ -1,13 +1,9 @@
 /**
- * Context Builder
- *
  * TF-IDF indexing and context retrieval for the AI Q&A feature.
  * Builds an in-memory index of component articles on startup and
  * retrieves the most relevant components for a given question.
  *
- * No external dependencies — TF-IDF is ~100 lines.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
+ * No external dependencies — the TF-IDF scoring is implemented inline.
  */
 
 import type { ComponentGraph } from './types';
@@ -35,9 +31,6 @@ interface IndexedDocument {
     termCount: number;
 }
 
-/**
- * Context retrieval result.
- */
 export interface RetrievedContext {
     /** Component IDs selected as context */
     componentIds: string[];
@@ -144,11 +137,9 @@ export class ContextBuilder {
             }
         }
 
-        // Sort by score descending
         componentScores.sort((a, b) => b.score - a.score);
         themeScores.sort((a, b) => b.score - a.score);
 
-        // Select top-K components
         const topComponents = componentScores.slice(0, maxComponents);
         const selectedIds = topComponents.map(s => s.componentId);
 
@@ -210,7 +201,6 @@ export class ContextBuilder {
             contextParts.push(`## Theme Article: ${articleMeta?.title || slug}\n\nSource: themes/${themeId}/${slug}.md\n\n${content}`);
         }
 
-        // Build graph summary
         const graphSummary = this.buildGraphSummary();
 
         return {

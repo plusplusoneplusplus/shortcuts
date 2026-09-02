@@ -1,6 +1,4 @@
 /**
- * Work Item PR Submission Command
- *
  * Owns the git choreography behind `POST .../work-items/:wid/submit-pr`:
  * eligibility checks, base-branch discovery, branch creation, cherry-picking,
  * push, `gh pr create`, cleanup/branch restoration on failure, and the Work

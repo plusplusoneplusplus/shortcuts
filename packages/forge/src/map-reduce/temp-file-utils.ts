@@ -1,6 +1,4 @@
 /**
- * Temp File Utilities for Map-Reduce
- *
  * Provides cross-platform temp file management for passing large data
  * to AI processes without shell escaping issues.
  *
@@ -8,8 +6,6 @@
  * - Cross-platform path handling (Windows/Unix)
  * - Automatic cleanup on success or failure
  * - Unique file naming to avoid collisions
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -20,9 +16,6 @@ import { getAIServiceLogger } from '../ai-logger';
 /** Directory name for map-reduce temp files */
 const TEMP_DIR_NAME = 'vscode-shortcuts-mapreduce';
 
-/**
- * Result of creating a temp file
- */
 export interface TempFileResult {
     /** Absolute path to the temp file */
     filePath: string;
@@ -31,7 +24,6 @@ export interface TempFileResult {
 }
 
 /**
- * Ensure the temp directory exists
  * @returns The temp directory path, or undefined if creation failed
  */
 export function ensureTempDir(): string | undefined {
@@ -48,10 +40,7 @@ export function ensureTempDir(): string | undefined {
 }
 
 /**
- * Generate a unique temp file name
- * @param prefix Optional prefix for the filename
  * @param extension File extension (default: .json)
- * @returns Unique filename
  */
 export function generateTempFileName(prefix: string = 'results', extension: string = '.json'): string {
     const timestamp = Date.now();
@@ -60,10 +49,6 @@ export function generateTempFileName(prefix: string = 'results', extension: stri
 }
 
 /**
- * Write content to a temp file
- *
- * @param content The content to write
- * @param prefix Optional prefix for the filename
  * @param extension File extension (default: .json)
  * @returns TempFileResult with file path and cleanup function, or undefined on failure
  */
@@ -94,11 +79,6 @@ export function writeTempFile(
     }
 }
 
-/**
- * Clean up a temp file
- * @param filePath Path to the file to delete
- * @returns true if deleted successfully, false otherwise
- */
 export function cleanupTempFile(filePath: string): boolean {
     try {
         if (fs.existsSync(filePath)) {
@@ -112,8 +92,8 @@ export function cleanupTempFile(filePath: string): boolean {
 }
 
 /**
- * Clean up all temp files in the temp directory
- * Useful for cleanup on extension deactivation
+ * Useful for cleanup on extension deactivation.
+ *
  * @returns Number of files cleaned up
  */
 export function cleanupAllTempFiles(): number {
@@ -143,8 +123,6 @@ export function cleanupAllTempFiles(): number {
 }
 
 /**
- * Read content from a temp file
- * @param filePath Path to the file to read
  * @returns File content, or undefined on failure
  */
 export function readTempFile(filePath: string): string | undefined {

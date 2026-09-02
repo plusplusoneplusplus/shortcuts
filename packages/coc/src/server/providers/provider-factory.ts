@@ -1,10 +1,6 @@
 /**
- * Provider Factory
- *
  * Maps a git remote URL to the correct IPullRequestsService adapter (GitHub or ADO),
  * backed by credentials from ProvidersFileConfig.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { IPullRequestsService } from '@plusplusoneplusplus/forge';

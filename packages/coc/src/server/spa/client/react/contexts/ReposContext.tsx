@@ -242,7 +242,6 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // Seed per-repo queue stats for card badges
             seedRepoQueueStats(combined);
 
-            // Fetch per-repo unseen counts from server
             refreshUnseenCounts(combined.map(r => r.workspace.id));
 
             // Clear selection if repo was removed.

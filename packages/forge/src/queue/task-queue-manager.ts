@@ -1,13 +1,7 @@
 /**
- * TaskQueueManager
- *
  * Manages a queue of tasks with priority-based ordering.
- * Provides operations for enqueue, dequeue, reorder, and queue control.
  *
- * Uses Node.js EventEmitter for cross-platform compatibility.
  * In-memory storage only - queue resets when process restarts.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';
@@ -36,9 +30,6 @@ function isPauseMarker(item: QueueItem): item is PauseMarker {
     return (item as PauseMarker).kind === 'pause-marker';
 }
 
-/**
- * Task queue manager for managing AI task execution queue
- */
 export class TaskQueueManager extends EventEmitter {
     /** Queue of pending tasks and pause markers (sorted by priority for tasks; markers at absolute positions) */
     private queue: Array<QueueItem> = [];
@@ -94,7 +85,6 @@ export class TaskQueueManager extends EventEmitter {
             throw new Error('Queue is draining — no new tasks accepted');
         }
 
-        // Check queue size limit
         if (this.options.maxQueueSize > 0 && this.size() >= this.options.maxQueueSize) {
             throw new Error(`Queue is full (max size: ${this.options.maxQueueSize})`);
         }
@@ -109,7 +99,6 @@ export class TaskQueueManager extends EventEmitter {
 
         this.insertTask(task);
 
-        // Emit events
         this.emitChange('added', task);
         this.emit('taskAdded', task);
 
@@ -301,11 +290,9 @@ export class TaskQueueManager extends EventEmitter {
         const queued = this.queue.find(t => !isPauseMarker(t) && t.id === id) as QueuedTask | undefined;
         if (queued) return queued;
 
-        // Check running
         const running = this.running.get(id);
         if (running) return running;
 
-        // Check history
         return this.history.find(t => t.id === id);
     }
 
@@ -316,7 +303,6 @@ export class TaskQueueManager extends EventEmitter {
      * @returns true if task was found and updated
      */
     updateTask(id: string, updates: TaskUpdate): boolean {
-        // Try to find in queue
         const queueIndex = this.queue.findIndex(t => !isPauseMarker(t) && t.id === id);
         if (queueIndex !== -1) {
             const task = this.queue[queueIndex] as QueuedTask;
@@ -342,7 +328,6 @@ export class TaskQueueManager extends EventEmitter {
             return true;
         }
 
-        // Try to find in history
         const historyIndex = this.history.findIndex(t => t.id === id);
         if (historyIndex !== -1) {
             const task = this.history[historyIndex];
@@ -954,7 +939,6 @@ export class TaskQueueManager extends EventEmitter {
             this.draining = true;
             this.emitChange('drain-started');
             this.emit('drain-started');
-            // Check if already idle
             this.checkIdle();
         }
     }
@@ -965,7 +949,6 @@ export class TaskQueueManager extends EventEmitter {
     exitDrainMode(): void {
         if (this.draining) {
             this.draining = false;
-            // Clear any pending idle resolvers
             this.idleResolvers = [];
             this.emitChange('drain-cancelled');
             this.emit('drain-cancelled');
@@ -1270,9 +1253,6 @@ export class TaskQueueManager extends EventEmitter {
     }
 }
 
-/**
- * Create a new TaskQueueManager instance
- */
 export function createTaskQueueManager(
     options?: TaskQueueManagerOptions
 ): TaskQueueManager {

@@ -403,7 +403,6 @@ export function InteractiveTable({
         });
     }, [headers, alignments, rows, colIds]);
 
-    // Build row data
     const data = useMemo<RowData[]>(() => {
         return rows.map(row => {
             const obj: RowData = {};

@@ -1,6 +1,4 @@
 /**
- * Discover Command Tests
- *
  * Tests for the discover command's path validation, header output,
  * and exit code behavior. SDK calls are mocked to avoid timeouts.
  */
@@ -285,7 +283,6 @@ describe('Discover Command', () => {
 
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
-            // Check output file
             const graphFile = path.join(outputDir, 'component-graph.json');
             expect(fs.existsSync(graphFile)).toBe(true);
             const content = JSON.parse(fs.readFileSync(graphFile, 'utf-8'));

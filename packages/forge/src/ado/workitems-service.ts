@@ -12,7 +12,6 @@ import type { WebApi } from 'azure-devops-node-api';
 /** Patch operation type for JSON Patch documents. */
 export type PatchOp = 'add' | 'replace' | 'remove';
 
-/** A single field patch entry. */
 export interface FieldPatch {
     op: PatchOp;
     /** e.g. '/fields/System.Title' */
@@ -20,7 +19,6 @@ export interface FieldPatch {
     value?: unknown;
 }
 
-/** Error class for work-item operations. */
 export class AdoWorkItemError extends Error {
     constructor(message: string, public readonly cause?: unknown) {
         super(message);

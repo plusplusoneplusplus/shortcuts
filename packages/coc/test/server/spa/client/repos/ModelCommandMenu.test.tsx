@@ -1,6 +1,4 @@
 /**
- * ModelCommandMenu component tests.
- *
  * Covers rendering, filtering, selection, highlight, and current model checkmark.
  *
  * @vitest-environment jsdom

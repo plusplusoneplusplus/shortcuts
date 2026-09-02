@@ -1,6 +1,4 @@
 /**
- * File Preview API Endpoint Tests
- *
  * Tests for GET /api/workspaces/:id/files/preview endpoint
  * that returns file content for hover tooltips and full-content dialogs.
  */

@@ -1,6 +1,4 @@
 /**
- * Generate Command
- *
  * Implements the `deep-wiki generate <repo-path>` command.
  * Full pipeline wiki generation:
  *   Phase 1: Discovery      → ComponentGraph
@@ -10,7 +8,6 @@
  *   Phase 5: Website        → Static HTML website
  *
  * Phase runner functions are in `./phases/`.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -54,7 +51,6 @@ import {
  * Execute the generate command — full pipeline wiki generation.
  *
  * @param repoPath - Path to the local git repository
- * @param options - Command options
  * @returns Exit code
  */
 export async function executeGenerate(
@@ -63,10 +59,8 @@ export async function executeGenerate(
 ): Promise<number> {
     const startTime = Date.now();
 
-    // Resolve to absolute path
     const absoluteRepoPath = path.resolve(repoPath);
 
-    // Validate the repo path exists
     if (!fs.existsSync(absoluteRepoPath)) {
         printError(`Repository path does not exist: ${absoluteRepoPath}`);
         return EXIT_CODES.CONFIG_ERROR;
@@ -95,7 +89,6 @@ export async function executeGenerate(
         return EXIT_CODES.CONFIG_ERROR;
     }
 
-    // Print header
     printHeader('Deep Wiki \u2014 Full Generation');
     printKeyValue('Repository', absoluteRepoPath);
     printKeyValue('Output', path.resolve(options.output));
@@ -136,7 +129,6 @@ export async function executeGenerate(
 
     process.stderr.write('\n');
 
-    // Check AI availability
     const availability = await checkAIAvailability();
     if (!availability.available) {
         printError(`Copilot SDK is not available: ${availability.reason || 'Unknown reason'}`);
@@ -160,7 +152,6 @@ export async function executeGenerate(
     process.on('SIGINT', sigintHandler);
 
     try {
-        // Token usage tracker
         const usageTracker = new UsageTracker();
 
         // ================================================================

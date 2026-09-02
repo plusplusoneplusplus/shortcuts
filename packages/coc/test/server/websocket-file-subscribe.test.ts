@@ -1,6 +1,4 @@
 /**
- * WebSocket File-Scoped Subscription Tests
- *
  * Tests for file-scoped subscriptions on ProcessWebSocketServer:
  * - subscribe-file / unsubscribe-file client messages
  * - broadcastFileEvent only delivers to subscribed clients

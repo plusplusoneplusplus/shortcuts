@@ -1,6 +1,4 @@
 /**
- * Ralph Signal Parser Tests
- *
  * Unit tests for parseRalphSignal() and appendProgress().
  */
 

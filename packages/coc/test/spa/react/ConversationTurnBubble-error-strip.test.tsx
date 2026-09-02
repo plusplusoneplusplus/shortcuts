@@ -97,7 +97,6 @@ describe('ConversationTurnBubble — error-strip', () => {
         expect(detail.textContent).toContain('Upstream model returned');
         expect(detail.textContent).toContain('504 Gateway Timeout');
         expect(detail.textContent).toContain('useChatSSE');
-        // MarkdownView wrapper present
         expect(detail.querySelector('[data-testid="markdown-view"]')).toBeTruthy();
     });
 

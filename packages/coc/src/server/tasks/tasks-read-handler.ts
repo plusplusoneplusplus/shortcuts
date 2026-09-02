@@ -3,9 +3,6 @@
  *
  * HTTP API routes for exposing the Tasks Viewer folder hierarchy,
  * file content, and settings for a given workspace.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';

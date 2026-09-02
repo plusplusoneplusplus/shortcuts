@@ -1,7 +1,3 @@
-/**
- * Tests for WebClientBridge.
- */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import { WebClientBridge } from '../../src/proxy/webclient-bridge';
@@ -100,7 +96,6 @@ describe('WebClientBridge', () => {
 
         ws.emit('close');
 
-        // Listener removed
         expect(relay.listenerCount('message')).toBe(0);
     });
 

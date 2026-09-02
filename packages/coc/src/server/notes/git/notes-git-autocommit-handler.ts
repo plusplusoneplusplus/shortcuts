@@ -1,11 +1,7 @@
 /**
- * Notes Git Auto-Commit REST API Handler
- *
  * Three endpoints for enabling, disabling, and querying the notes auto-commit timer.
  * Auto-commit now runs as a silent in-process `setInterval` — no shell scripts,
  * no Activity-tab entries.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

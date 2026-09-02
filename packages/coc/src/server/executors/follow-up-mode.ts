@@ -17,12 +17,7 @@ import type { ChatMode } from '../tasks/task-types';
 import { normalizeChatMode } from '../tasks/task-types';
 
 /**
- * Resolve the follow-up mode for a given process.
- *
- * @param store    ProcessStore used to look up the persisted process.
- * @param processId The conversation/process the follow-up targets.
- * @param explicit Optional explicit override; bypasses lookup entirely.
- * @returns The resolved {@link ChatMode}.
+ * An explicit mode bypasses the process lookup entirely.
  */
 export async function resolveFollowUpMode(
     store: ProcessStore,

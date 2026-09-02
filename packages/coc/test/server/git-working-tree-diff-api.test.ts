@@ -1,11 +1,8 @@
 /**
- * Git Working-Tree Changes Diff API Tests
- *
  * Tests for:
  * - GET /api/workspaces/:id/git/changes/files/{path}/diff?stage=staged|unstaged
  *
  * Mocks WorkingTreeService to avoid actual git invocations.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

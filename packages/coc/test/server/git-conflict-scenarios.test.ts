@@ -1,6 +1,4 @@
 /**
- * Git Conflict Scenario Tests
- *
  * Section 1: Merge Conflicts
  * - POST /api/workspaces/:id/git/merge with conflicting branches
  * - Conflict response body with conflicting files
@@ -14,7 +12,7 @@
  * - POST /cherry-pick nonexistent hash → 400
  * - POST /cherry-pick with missing hash field → 400
  *
- * Mocks BranchService and child_process. Cross-platform compatible.
+ * Mocks BranchService and child_process.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

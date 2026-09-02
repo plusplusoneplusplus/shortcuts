@@ -1,6 +1,4 @@
 /**
- * Container Session Store Tests
- *
  * Unit tests for `ContainerSessionStore` — SQLite CRUD operations.
  * Uses in-memory SQLite databases (no file I/O, cross-platform safe).
  */

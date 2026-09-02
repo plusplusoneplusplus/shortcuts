@@ -129,7 +129,6 @@ export function WorkflowDetailView({ processId, workspaceId, onNavigateToProcess
         return result;
     })();
 
-    // Build phaseDetails
     const phaseDetails: Record<string, PhaseDetail> = {};
     if (dagData) {
         const meta = process?.metadata;

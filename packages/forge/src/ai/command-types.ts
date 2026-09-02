@@ -1,6 +1,4 @@
 /**
- * AI Command Types
- *
  * Type definitions for configurable AI commands.
  * These are pure types with no editor-host dependencies.
  */
@@ -114,9 +112,6 @@ export interface SerializedAIMenuConfig {
     interactiveCommands: SerializedAICommand[];
 }
 
-/**
- * Convert AICommand to serialized format for webview
- */
 export function serializeCommand(command: AICommand): SerializedAICommand {
     return {
         id: command.id,
@@ -128,9 +123,6 @@ export function serializeCommand(command: AICommand): SerializedAICommand {
     };
 }
 
-/**
- * Convert array of AICommands to serialized format
- */
 export function serializeCommands(commands: AICommand[]): SerializedAICommand[] {
     return commands.map(serializeCommand);
 }

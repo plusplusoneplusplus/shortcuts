@@ -1,6 +1,4 @@
 /**
- * Workflow utility functions and types.
- *
  * Extracted from workflows-handler.ts to keep each module focused.
  */
 
@@ -65,7 +63,6 @@ export async function discoverAndEnrichWorkflows(pipelinesDir: string): Promise<
             // Ignore read errors — validation will catch them
         }
 
-        // Validate workflow
         try {
             const result = validatePipeline(yamlPath);
             isValid = result.valid;

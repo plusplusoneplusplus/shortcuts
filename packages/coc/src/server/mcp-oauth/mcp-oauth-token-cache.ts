@@ -2,7 +2,7 @@
  * Read-only inspector for the Copilot SDK's MCP OAuth token cache at
  * `~/.copilot/mcp-oauth-config/`.
  *
- * The SDK (and our PKCE helper in `teams-bot/src/auth.ts`) writes two files per
+ * The SDK (and our PKCE helper in `coc-connector/src/teams/auth.ts`) writes two files per
  * server, keyed by a hash:
  *   - `<hash>.json`         metadata: { serverUrl, authorizationServerUrl, clientId, ... }
  *   - `<hash>.tokens.json`  tokens:   { accessToken, expiresAt, scope, refreshToken? }

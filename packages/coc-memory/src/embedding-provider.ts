@@ -1,6 +1,4 @@
 /**
- * Embedding Provider Interface
- *
  * Pluggable abstraction for text-embedding generation.
  * No hard-coded vendor default — the BM25 fallback works without any provider.
  *

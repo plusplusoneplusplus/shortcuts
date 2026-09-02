@@ -1,10 +1,6 @@
 /**
- * CommitChatBindingStore
- *
  * Per-workspace SQLite store mapping commitHash → taskId for the commit-chat feature.
  * Uses the shared `processes.db` database (same pattern as SqliteQueuePersistence).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type Database from 'better-sqlite3';

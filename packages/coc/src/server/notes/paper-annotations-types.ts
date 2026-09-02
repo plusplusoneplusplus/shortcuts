@@ -1,6 +1,4 @@
 /**
- * Paper Annotations — shared type definitions.
- *
  * A paper annotation is a persisted Quick Ask Q&A anchored to a passage inside a
  * PDF rendered in a note (Goal 2). It stores a **dual anchor** following the W3C
  * Web Annotation model:
@@ -129,7 +127,6 @@ export interface PaperAnnotationsSidecar {
     annotations: Record<string, PaperAnnotation>;
 }
 
-/** Create an empty sidecar object with no annotations. */
 export function createEmptyPaperAnnotationsSidecar(): PaperAnnotationsSidecar {
     return { version: 1, annotations: {} };
 }

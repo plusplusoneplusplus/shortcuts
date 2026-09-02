@@ -1,6 +1,4 @@
 /**
- * Real-time E2E Tests
- *
  * Tests that changes made via REST API are visible after page refresh.
  * Since the custom raw WS implementation isn't compatible with Playwright's
  * Chromium, we verify data consistency via reload instead of live WS updates.

@@ -4,12 +4,10 @@
  * HTTP integration tests verifying that routes return 400 MISSING_FIELDS
  * when required request body fields are absent.
  *
- * Routes tested (all in packages/coc-server):
+ *   Routes tested (all in packages/coc):
  *   POST /api/processes — requires id, promptPreview, status, startTime
  *   POST /api/workspaces — requires name, rootPath (id is server-computed)
  *   PATCH /api/workspaces/:id — 200 no-op for empty body
- *
- * Cross-platform compatible (Linux/macOS/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

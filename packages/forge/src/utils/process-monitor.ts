@@ -12,17 +12,10 @@
 import { execSync } from 'child_process';
 import { getLogger, LogCategory } from '../logger';
 
-/**
- * Disposable interface for cleanup
- * Compatible with Disposable-like interfaces
- */
 export interface Disposable {
     dispose(): void;
 }
 
-/**
- * Result of checking if a process is running
- */
 export interface ProcessCheckResult {
     /** Whether the process is currently running */
     isRunning: boolean;
@@ -30,9 +23,6 @@ export interface ProcessCheckResult {
     error?: string;
 }
 
-/**
- * Configuration options for ProcessMonitor
- */
 export interface ProcessMonitorOptions {
     /** Poll interval in milliseconds (default: 5000) */
     pollIntervalMs?: number;
@@ -42,9 +32,6 @@ export interface ProcessMonitorOptions {
     execSyncFn?: typeof execSync;
 }
 
-/**
- * Monitored session entry
- */
 interface MonitoredSession {
     /** Process ID to monitor */
     pid: number;
@@ -59,8 +46,6 @@ export { DEFAULT_POLL_INTERVAL_MS } from '../config/defaults';
 import { DEFAULT_POLL_INTERVAL_MS } from '../config/defaults';
 
 /**
- * ProcessMonitor
- *
  * Monitors external terminal processes and notifies when they terminate.
  * Uses polling with platform-specific commands to check process status.
  */
@@ -169,7 +154,6 @@ export class ProcessMonitor implements Disposable {
         // Store the session for monitoring
         this.monitoredSessions.set(sessionId, { pid, onTerminated });
 
-        // Start the polling interval if not already running
         if (!this.checkInterval && this.monitoredSessions.size > 0) {
             this.startPolling();
         }
@@ -183,7 +167,6 @@ export class ProcessMonitor implements Disposable {
     stopMonitoring(sessionId: string): void {
         this.monitoredSessions.delete(sessionId);
 
-        // Stop polling if no more sessions to monitor
         if (this.monitoredSessions.size === 0 && this.checkInterval) {
             this.stopPolling();
         }
@@ -248,12 +231,10 @@ export class ProcessMonitor implements Disposable {
             }
         }
 
-        // Remove terminated sessions from monitoring
         for (const sessionId of terminatedSessions) {
             this.monitoredSessions.delete(sessionId);
         }
 
-        // Stop polling if no more sessions to monitor
         if (this.monitoredSessions.size === 0 && this.checkInterval) {
             this.stopPolling();
         }
@@ -281,9 +262,6 @@ export class ProcessMonitor implements Disposable {
  */
 let defaultMonitor: ProcessMonitor | undefined;
 
-/**
- * Get the default ProcessMonitor instance
- */
 export function getProcessMonitor(): ProcessMonitor {
     if (!defaultMonitor) {
         defaultMonitor = new ProcessMonitor();

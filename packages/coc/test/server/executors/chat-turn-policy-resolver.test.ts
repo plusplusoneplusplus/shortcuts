@@ -1,6 +1,4 @@
 /**
- * Chat Turn Policy Resolver Tests
- *
  * Covers the model / reasoning-effort / context-tier policy shared by the
  * first-turn path (`ChatBaseExecutor.execute`) and the continuation path
  * (`FollowUpExecutor.executeFollowUp`):

@@ -5,7 +5,7 @@
  * for absent input, 400 `Missing or invalid hash` for malformed hashes, and the
  * 409 dirty/conflict response bodies.
  *
- * Pure functions — no HTTP. Cross-platform compatible.
+ * Pure functions — no HTTP.
  */
 
 import { describe, it, expect } from 'vitest';

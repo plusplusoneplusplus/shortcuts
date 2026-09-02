@@ -1,11 +1,7 @@
 /**
- * Discovery Phase — SDK Session Orchestration
- *
  * Orchestrates the Copilot SDK session for repository discovery.
  * Creates a direct session with MCP tools (grep, glob, view),
  * sends the discovery prompt, and parses the response.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -64,7 +60,6 @@ export interface DiscoverySessionResult {
 export async function runDiscoverySession(options: DiscoveryOptions): Promise<DiscoverySessionResult> {
     const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
-    // Check SDK availability
     printInfo('Checking Copilot SDK availability...');
     const availability = await service.isAvailable();
     if (!availability) {
@@ -74,7 +69,6 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
         );
     }
 
-    // Build the prompt
     printInfo(`Building discovery prompt ${options.focus ? `with focus: ${options.focus}` : 'for full repository'}...`);
     const prompt = buildDiscoveryPrompt(options.repoPath, options.focus);
 
@@ -94,7 +88,6 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
         sendOptions.model = options.model;
     }
 
-    // Send the message
     printInfo(`Sending discovery prompt to AI ${gray(`(timeout: ${timeoutMs / 1000}s, tools: ${DISCOVERY_TOOLS.join(', ')})`)}`);
     const result = await service.sendMessage(sendOptions) as SDKInvocationResult;
 
@@ -114,7 +107,6 @@ export async function runDiscoverySession(options: DiscoveryOptions): Promise<Di
         throw new DiscoveryError('AI returned empty response', 'empty-response');
     }
 
-    // Parse the response into a ComponentGraph
     printInfo('Parsing AI response into component graph...');
     try {
         const graph = parseComponentGraphResponse(result.response);
@@ -173,9 +165,6 @@ function mergeTokenUsage(a?: TokenUsage, b?: TokenUsage): TokenUsage | undefined
 // Error Types
 // ============================================================================
 
-/**
- * Error type for discovery phase failures.
- */
 export class DiscoveryError extends Error {
     constructor(
         message: string,

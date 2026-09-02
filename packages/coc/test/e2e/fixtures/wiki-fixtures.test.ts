@@ -1,6 +1,4 @@
 /**
- * Unit Tests for wiki-fixtures
- *
  * Validates that createWikiFixture and createWikiComponent produce
  * correct ComponentGraph structures and write them to disk.
  */

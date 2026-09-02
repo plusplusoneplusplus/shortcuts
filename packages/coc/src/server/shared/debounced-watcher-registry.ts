@@ -1,6 +1,4 @@
 /**
- * DebouncedWatcherRegistry
- *
  * Generic registry that manages a set of `fs.FSWatcher` instances keyed by
  * an arbitrary string key. Each key gets its own debounce timer and
  * accumulated set of changed file paths. After the debounce window passes
@@ -10,7 +8,7 @@
  * callback. Falls back to non-recursive `fs.watch` on platforms that do not
  * support the `{ recursive: true }` option (Linux + Node < 19).
  *
- * Zero external dependencies. Cross-platform compatible.
+ * Zero external dependencies.
  */
 
 import * as fs from 'fs';

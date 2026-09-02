@@ -1,8 +1,6 @@
 /**
- * Tests for markdown-renderer.ts
- *
  * Unit tests for the shared SPA markdown rendering module that delegates
- * to pipeline-core's rendering and parsing functions. Tests run in Node
+ * to forge's rendering and parsing functions. Tests run in Node
  * (no JSDOM), verifying HTML output from markdown input.
  */
 

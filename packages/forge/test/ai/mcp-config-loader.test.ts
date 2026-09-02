@@ -1,8 +1,5 @@
 /**
- * Tests for MCP Config Loader
- *
  * Comprehensive tests for loading MCP server configuration from global and workspace files.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -43,15 +40,12 @@ describe('MCP Config Loader', () => {
         workspaceDir = path.join(tempDir, 'workspace');
         workspaceConfigPath = path.join(workspaceDir, '.vscode', 'mcp.json');
 
-        // Set the home directory override to our temp directory
         setHomeDirectoryOverride(tempDir);
 
-        // Clear the config cache before each test
         clearMcpConfigCache();
     });
 
     afterEach(() => {
-        // Reset home directory override
         setHomeDirectoryOverride(null);
 
         // Clean up temp directory
@@ -59,7 +53,6 @@ describe('MCP Config Loader', () => {
             fs.rmSync(tempDir, { recursive: true, force: true });
         }
 
-        // Clear cache after each test
         clearMcpConfigCache();
     });
 
@@ -95,7 +88,6 @@ describe('MCP Config Loader', () => {
         });
 
         it('returns true when config file exists', () => {
-            // Create the config file
             fs.mkdirSync(mockCopilotDir, { recursive: true });
             fs.writeFileSync(mockConfigPath, '{}');
 
@@ -725,7 +717,6 @@ describe('MCP Config Loader', () => {
             loadDefaultMcpConfig();
             expect(getCachedMcpConfig()).not.toBeNull();
 
-            // Clear cache
             clearMcpConfigCache();
             expect(getCachedMcpConfig()).toBeNull();
         });

@@ -436,7 +436,6 @@ export class OpenCodeSDKService implements ISDKService {
                 }
             }
 
-            // Build the prompt body
             const modelRef = parseOpenCodeModelRef(options.model);
             const systemMsg = resolveOpenCodeSystemMessage(options.systemMessage);
             const promptBody: OpenCodePromptBody = {
@@ -890,8 +889,6 @@ function mapAgentMode(mode: SendMessageOptions['mode']): string | undefined {
 /**
  * Register a new `OpenCodeSDKService` instance under `'opencode'` in the
  * module-level `sdkServiceRegistry`. Call this once during server startup.
- *
- * @returns The newly created service instance.
  */
 export function registerOpenCodeSDKService(): OpenCodeSDKService {
     const svc = new OpenCodeSDKService();

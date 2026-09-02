@@ -313,7 +313,6 @@ test.describe('AI Actions (007)', () => {
             const overlay = page.locator('#update-doc-overlay');
             await expect(overlay).toBeVisible();
 
-            // Click the X close button
             await page.click('#update-doc-close');
 
             await expect(overlay).toHaveCount(0, { timeout: 5000 });

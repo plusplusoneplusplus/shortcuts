@@ -1,7 +1,3 @@
-/**
- * Tests for ContextMenu React component.
- */
-
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ContextMenu, clampMenuPosition, clampSubmenuVertical } from '../../../../src/server/spa/client/react/tasks/comments/ContextMenu';

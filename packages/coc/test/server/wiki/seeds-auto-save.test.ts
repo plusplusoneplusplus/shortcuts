@@ -3,8 +3,6 @@
  *
  * Verifies that after successful AI seed generation, the handler
  * automatically writes seeds.yaml to the wiki directory.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

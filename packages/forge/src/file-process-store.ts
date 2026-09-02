@@ -1,12 +1,10 @@
 /**
- * File-based ProcessStore Implementation
- *
  * Persistent AI process storage using JSON files in a configurable data directory.
  * Per-workspace subdirectory layout: repos/<workspaceId>/processes/index.json + repos/<workspaceId>/processes/<id>.json
  * Cross-workspace ID lookups via index scan across per-workspace index.json files.
  * Empty workspaceId maps to repos/_default/processes/.
  *
- * Pure Node.js; designed for the standalone pipeline server.
+ * Designed for the standalone pipeline server.
  */
 
 import * as fs from 'fs/promises';
@@ -333,7 +331,6 @@ export class FileProcessStore implements ProcessStore {
             };
             await this.writeProcessFile(workspaceId, id, newEntry);
 
-            // Update workspace index entry
             const index = await this.readIndex(workspaceId);
             const idx = index.findIndex(e => e.id === id);
             if (idx !== -1) {

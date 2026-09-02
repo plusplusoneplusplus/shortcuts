@@ -1,10 +1,6 @@
 /**
- * Website Styles
- *
  * CSS generation for the standalone HTML website.
  * Extracted from website-generator.ts for maintainability.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { getMermaidZoomStyles } from '../rendering/mermaid-zoom';
@@ -14,7 +10,6 @@ import { getMermaidZoomStyles } from '../rendering/mermaid-zoom';
 // ============================================================================
 
 /**
- * Generate the CSS styles for the website template.
  * @returns CSS string to embed in <style> tag
  */
 export function getStyles(): string {

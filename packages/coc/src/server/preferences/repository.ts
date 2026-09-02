@@ -60,7 +60,6 @@ function emitRepoPreferencesChanged(event: RepoPreferencesChangedEvent): void {
 // ============================================================================
 
 /**
- * Read the global preferences file from disk with structured status.
  * Missing files are not warnings. Invalid/corrupt files return an empty value
  * plus a warning so callers can report recovery without changing legacy API
  * responses.
@@ -93,14 +92,12 @@ export function readPreferencesWithStatus(dataDir: string): PreferencesReadResul
 }
 
 /**
- * Read the global preferences file from disk.
  * Returns an empty object when the file doesn't exist or is invalid.
  */
 export function readPreferences(dataDir: string): PreferencesFile {
     return readPreferencesWithStatus(dataDir).value;
 }
 
-/** Read only the global preferences block from disk. */
 export function readGlobalPreferences(dataDir: string): GlobalPreferences {
     return normalizeGlobalPreferencesForRead(readPreferences(dataDir).global ?? {});
 }
@@ -118,7 +115,6 @@ export function writePreferences(dataDir: string, data: PreferencesFile): void {
 }
 
 /**
- * Read per-repo preferences from disk with structured status.
  * Missing files are not warnings. Invalid/corrupt files return an empty value
  * plus a warning so callers can report recovery without changing legacy API
  * responses.
@@ -144,7 +140,6 @@ export function readRepoPreferencesWithStatus(
 }
 
 /**
- * Read per-repo preferences from disk.
  * Returns an empty object when the file doesn't exist or is invalid.
  */
 export function readRepoPreferences(dataDir: string, workspaceId: string): PerRepoPreferences {
@@ -172,7 +167,6 @@ export function resolveDefaultModel(
 }
 
 /**
- * Resolve the effective disabled LLM tools for a workspace.
  * Explicit per-repo preferences win; otherwise defaults depend on the global UI layout mode.
  */
 export function readEffectiveDisabledLlmTools(dataDir: string, workspaceId: string): string[] {

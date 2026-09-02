@@ -1,6 +1,4 @@
 /**
- * Cache Layer — Shared Utilities
- *
  * Provides low-level read/write/clear/scan primitives used by all cache modules
  * (graph, consolidation, analysis, article, discovery). Eliminates code duplication
  * across cache operations while keeping phase-specific validation logic inline.
@@ -24,9 +22,6 @@ import * as path from 'path';
 /**
  * Read and parse a JSON cache file.
  * Returns null on missing file, corrupted JSON, or any I/O error.
- *
- * @param cachePath - Absolute path to the cache file
- * @returns Parsed data of type T, or null on error
  */
 export function readCacheFile<T>(cachePath: string): T | null {
     try {
@@ -44,9 +39,7 @@ export function readCacheFile<T>(cachePath: string): T | null {
  * Read a cache file and validate with a custom predicate.
  * Returns null if the file is missing, corrupted, or fails validation.
  *
- * @param cachePath - Absolute path to the cache file
  * @param validate - Predicate that returns true if the data is valid
- * @returns Parsed and validated data of type T, or null
  */
 export function readCacheFileIf<T>(
     cachePath: string,
@@ -68,9 +61,6 @@ export function readCacheFileIf<T>(
  *
  * Uses atomic write pattern (write to .tmp, then rename) to prevent
  * partial writes on crash. This is strictly safer than direct writeFileSync.
- *
- * @param cachePath - Absolute path to the cache file
- * @param data - Data to serialize and write
  */
 export function writeCacheFile<T>(cachePath: string, data: T): void {
     const dir = path.dirname(cachePath);
@@ -88,7 +78,6 @@ export function writeCacheFile<T>(cachePath: string, data: T): void {
 /**
  * Delete a single cache file.
  *
- * @param cachePath - Absolute path to the file to delete
  * @returns True if the file was deleted, false if it didn't exist or on error
  */
 export function clearCacheFile(cachePath: string): boolean {
@@ -106,7 +95,6 @@ export function clearCacheFile(cachePath: string): boolean {
 /**
  * Delete a cache directory recursively.
  *
- * @param dirPath - Absolute path to the directory to delete
  * @returns True if the directory was deleted, false if it didn't exist or on error
  */
 export function clearCacheDir(dirPath: string): boolean {
@@ -133,7 +121,6 @@ export function clearCacheDir(dirPath: string): boolean {
  * - Reads and validates via `validator`
  * - Extracts the inner data via `extractor`
  *
- * @param ids - IDs to look up in the cache
  * @param pathResolver - Maps an ID to a cache file path (or null if not found)
  * @param validator - Returns true if the cached data is valid
  * @param extractor - Extracts the inner result from the cached wrapper
@@ -172,7 +159,6 @@ export function scanCacheItems<TCache, TResult>(
  * Similar to `scanCacheItems` but returns a Map<string, TResult> instead of an array.
  * Used by discovery cache functions that return Map-based results (probes, domains).
  *
- * @param ids - IDs to look up in the cache
  * @param pathResolver - Maps an ID to a cache file path (or null if not found)
  * @param validator - Returns true if the cached data is valid
  * @param extractor - Extracts the inner result from the cached wrapper

@@ -1,6 +1,4 @@
 /**
- * Graph module — Unit Tests
- *
  * Tests for buildGraph() and detectCycle().
  */
 

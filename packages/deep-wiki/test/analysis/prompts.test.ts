@@ -1,6 +1,4 @@
 /**
- * Analysis Prompt Tests
- *
  * Tests for analysis prompt template generation, depth variants,
  * and template variable substitution.
  */

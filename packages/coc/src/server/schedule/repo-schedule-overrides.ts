@@ -1,13 +1,9 @@
 /**
- * RepoScheduleOverrideStore
- *
  * Persists runtime status overrides for repo-sourced schedules (from .github/schedules/).
  * Since repo schedules are git-managed, only the status (active/paused) can be overridden
  * at runtime without touching the checked-in YAML.
  *
  * Storage: ~/.coc/repos/<workspaceId>/repo-schedule-overrides.json
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

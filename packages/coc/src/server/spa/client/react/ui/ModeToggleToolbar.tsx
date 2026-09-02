@@ -15,9 +15,7 @@ export interface ModeToggleToolbarProps<M extends string> {
     dirty?: boolean;
     /** When true, show a save button. Only rendered when `dirty` is also true. */
     showSave?: boolean;
-    /** Called when the save button is clicked. */
     onSave?: () => void;
-    /** Whether a save is currently in progress. */
     saving?: boolean;
 
     /** Content rendered at the right end of the toolbar. */

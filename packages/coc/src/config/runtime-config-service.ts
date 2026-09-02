@@ -1,6 +1,4 @@
 /**
- * Runtime Config Service
- *
  * Central service that owns config loading, validation, persistence,
  * resolved snapshots, source metadata, revisioning, and update notifications.
  *

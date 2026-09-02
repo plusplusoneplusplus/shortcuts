@@ -1,6 +1,4 @@
 /**
- * Explorer E2E Tests
- *
  * Tests the ExplorerPanel inside a repo detail view:
  *   - FileTree navigation (initial load, expand directory, filter)
  *   - PreviewPane: file open, dirty-indicator after edit, save button

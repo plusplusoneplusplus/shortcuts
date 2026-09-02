@@ -1,6 +1,4 @@
 /**
- * Commit Chat Executor Tests
- *
  * Unit tests for the CommitChatExecutor class:
  * - buildModeOptions injects add_diff_comment tool
  * - System message construction (read-only + memory + auto-folder)

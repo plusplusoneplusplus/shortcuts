@@ -1,6 +1,4 @@
 /**
- * My Work Workspace Tests
- *
  * Verifies that:
  * - ensureMyWorkWorkspace always creates the workspace root and registers it
  * - Default notes (Action Items.md, Follow Ups.md, Weekly/) are seeded ONLY when

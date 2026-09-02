@@ -2,8 +2,8 @@
  * Tests for the MCP OAuth token cache reader.
  *
  * Each test stages a tmp `.copilot/mcp-oauth-config/` directory and exercises
- * the four states the panel cares about: not-required (stdio), required (no
- * file), authenticated (valid token), and expired (past expiresAt).
+ * the states the panel cares about: not-required (stdio), required (no
+ * file), authenticated (valid token), expired (past expiresAt), and unknown.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Queue Pause Markers Tests
- *
  * Covers Section 7 of test-plan-queue-advanced.md:
  * - Create pause marker → appears in GET /api/queue queued list
  * - Delete pause marker → gone from queue, returns 200

@@ -55,7 +55,6 @@ export function ContainerSessionView() {
         try {
             let sessionId = session.id;
 
-            // Create session if needed
             if (!sessionId) {
                 const resp = await fetch('/api/container/sessions', { method: 'POST' });
                 if (!resp.ok) throw new Error('Failed to create session');
@@ -64,7 +63,6 @@ export function ContainerSessionView() {
                 setSession(prev => ({ ...prev, id: sessionId! }));
             }
 
-            // Send message
             const resp = await fetch(`/api/container/sessions/${sessionId}/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

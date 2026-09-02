@@ -1,6 +1,4 @@
 /**
- * Inbound Agent Manager
- *
  * Manages WebSocket connections from agents that connect to the container
  * via the call-home pattern. Handles registration, heartbeats, event
  * forwarding, and request proxying.
@@ -73,9 +71,6 @@ export class AgentManager extends EventEmitter {
         this.staleThresholdMs = options?.staleThresholdMs ?? 90_000; // 3 missed heartbeats
     }
 
-    /**
-     * Handle a new WebSocket connection from an agent.
-     */
     handleConnection(ws: WebSocket.WebSocket): void {
         let agentId: string | null = null;
 
@@ -147,30 +142,18 @@ export class AgentManager extends EventEmitter {
         });
     }
 
-    /**
-     * Get an inbound agent by ID.
-     */
     getAgent(agentId: string): InboundAgent | undefined {
         return this.agents.get(agentId);
     }
 
-    /**
-     * Check if an agent is connected via inbound channel.
-     */
     hasAgent(agentId: string): boolean {
         return this.agents.has(agentId);
     }
 
-    /**
-     * List all connected inbound agents.
-     */
     listAgents(): InboundAgent[] {
         return Array.from(this.agents.values());
     }
 
-    /**
-     * Get cached metadata for a disconnected agent.
-     */
     getDisconnectedAgent(agentId: string): DisconnectedAgent | undefined {
         return this.disconnectedAgents.get(agentId);
     }
@@ -184,9 +167,6 @@ export class AgentManager extends EventEmitter {
         this.heartbeatCheckTimer = setInterval(() => this.checkStaleAgents(), intervalMs);
     }
 
-    /**
-     * Stop periodic heartbeat staleness checks.
-     */
     stopHeartbeatCheck(): void {
         if (this.heartbeatCheckTimer) {
             clearInterval(this.heartbeatCheckTimer);
@@ -194,9 +174,6 @@ export class AgentManager extends EventEmitter {
         }
     }
 
-    /**
-     * Send a proxied HTTP request to an agent and wait for the response.
-     */
     async proxyRequest(agentId: string, method: string, path: string, headers: Record<string, string> = {}, body?: string): Promise<ResponsePayload> {
         const agent = this.agents.get(agentId);
         if (!agent) {
@@ -228,9 +205,6 @@ export class AgentManager extends EventEmitter {
         });
     }
 
-    /**
-     * Subscribe to SSE events from an agent.
-     */
     subscribeSSE(agentId: string, subscriptionId: string, path: string): boolean {
         const agent = this.agents.get(agentId);
         if (!agent) return false;
@@ -241,9 +215,6 @@ export class AgentManager extends EventEmitter {
         return true;
     }
 
-    /**
-     * Unsubscribe from SSE events.
-     */
     unsubscribeSSE(agentId: string, subscriptionId: string): void {
         const agent = this.agents.get(agentId);
         if (!agent) return;
@@ -253,9 +224,6 @@ export class AgentManager extends EventEmitter {
         agent.ws.send(JSON.stringify(msg));
     }
 
-    /**
-     * Close all connections and clean up.
-     */
     close(): void {
         this.stopHeartbeatCheck();
         for (const [, agent] of this.agents) {
@@ -267,7 +235,6 @@ export class AgentManager extends EventEmitter {
             pending.reject(new Error('Manager closed'));
         }
         this.pendingRequests.clear();
-        // Close outbound connections
         for (const [id] of this.outboundConnections) {
             this.disconnectOutbound(id);
         }
@@ -320,13 +287,11 @@ export class AgentManager extends EventEmitter {
         });
     }
 
-    /** Check if an outbound WebSocket connection is open. */
     hasOutboundConnection(agentId: string): boolean {
         const ws = this.outboundConnections.get(agentId);
         return ws !== undefined && ws.readyState === WebSocket.OPEN;
     }
 
-    /** Send a raw WS message to an outbound-connected agent. */
     sendOutbound(agentId: string, data: string): boolean {
         const ws = this.outboundConnections.get(agentId);
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -336,7 +301,6 @@ export class AgentManager extends EventEmitter {
         return false;
     }
 
-    /** Disconnect an outbound agent connection. */
     disconnectOutbound(agentId: string): void {
         const timer = this.outboundReconnectTimers.get(agentId);
         if (timer) { clearTimeout(timer); this.outboundReconnectTimers.delete(agentId); }
@@ -348,7 +312,6 @@ export class AgentManager extends EventEmitter {
         }
     }
 
-    /** Disconnect all outbound connections. */
     disconnectAllOutbound(): void {
         for (const [id] of this.outboundConnections) {
             this.disconnectOutbound(id);

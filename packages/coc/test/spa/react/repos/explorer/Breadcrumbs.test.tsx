@@ -1,7 +1,3 @@
-/**
- * Tests for Breadcrumbs component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Breadcrumbs } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/Breadcrumbs';

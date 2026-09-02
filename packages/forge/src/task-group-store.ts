@@ -1,6 +1,4 @@
 /**
- * SQLite-backed Task Group Store
- *
  * Generic registry for parent/child task relationships ("task groups").
  * A task group is a workspace-scoped record describing one hierarchical run
  * (a For Each run, Map Reduce run, Ralph session, Dream run, or any future

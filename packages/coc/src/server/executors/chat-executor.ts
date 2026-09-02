@@ -7,9 +7,6 @@
  * - agentMode: 'interactive'
  * - systemMessage: READ_ONLY_SYSTEM_MESSAGE + optional auto-folder location block
  * - tools: follow-up suggestion tool (when configured)
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';

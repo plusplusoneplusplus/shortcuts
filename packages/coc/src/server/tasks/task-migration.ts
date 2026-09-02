@@ -1,6 +1,4 @@
 /**
- * Task Migration Utility
- *
  * One-time migration that copies task files from the legacy `.vscode/tasks/`
  * location to the new `~/.coc/repos/<repoId>/tasks/` directory.
  * Also remaps comment file hashes from old-prefix to new-prefix paths.
@@ -101,7 +99,6 @@ export async function migrateTasksToRepoScoped(options: MigrationOptions): Promi
         return result;
     }
 
-    // List all files to copy
     const files = listFilesRecursive(sourcePath);
     result.fileCount = files.length;
 
@@ -137,7 +134,6 @@ export async function migrateTasksToRepoScoped(options: MigrationOptions): Promi
         result.errors.push(`.migrated-from: ${getErrorMessage(err)}`);
     }
 
-    // Migrate comment hashes
     try {
         const commentResult = await migrateCommentHashes({
             dataDir,
@@ -208,7 +204,6 @@ export async function migrateCommentHashes(options: {
             const newFileName = `${newHash}.json`;
 
             if (!dryRun) {
-                // Write updated data to new file
                 fs.writeFileSync(path.join(commentsDir, newFileName), JSON.stringify(data, null, 2));
                 // Remove old file if different name
                 if (file !== newFileName) {

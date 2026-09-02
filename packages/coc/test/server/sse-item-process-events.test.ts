@@ -1,6 +1,4 @@
 /**
- * SSE Item-Process Event Tests
- *
  * Tests that the SSE handler relays item-process events as named SSE events
  * for real-time per-item progress during pipeline map execution.
  */

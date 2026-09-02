@@ -1,6 +1,4 @@
 /**
- * MultiRepoQueueRouter Tests
- *
  * Tests for MultiRepoQueueRouter:
  * - Lazy creation of per-repo bridges
  * - Path normalization (dedup)

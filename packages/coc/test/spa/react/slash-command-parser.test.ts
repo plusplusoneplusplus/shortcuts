@@ -1,6 +1,4 @@
 /**
- * Tests for slash-command-parser utility.
- *
  * Covers parseSlashCommands, getSlashCommandContext, and isMetaCommand.
  */
 

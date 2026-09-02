@@ -52,8 +52,8 @@ export interface StreamingResult {
 
 /**
  * Minimal interface for a streamable SDK session.
- * ICopilotSession in copilot-sdk-service.ts is a strict superset and is
- * structurally compatible with this interface via TypeScript's structural typing.
+ * The SDK's `CopilotSession` is a strict superset and is structurally
+ * compatible with this interface.
  */
 export interface IStreamableSession {
     sessionId: string;

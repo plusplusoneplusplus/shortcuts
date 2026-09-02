@@ -1,6 +1,4 @@
 /**
- * Schedule Handler Tests
- *
  * Tests for the Schedule REST API endpoints:
  * CRUD, trigger, history.
  *
@@ -408,7 +406,6 @@ describe('Schedule Handler', () => {
             const createRes = await postJSON(schedulesUrl(), makeSchedule());
             const id = JSON.parse(createRes.body).schedule.id;
 
-            // Trigger a run
             await postJSON(`${schedulesUrl()}/${id}/run`, {});
 
             const res = await request(`${schedulesUrl()}/${id}/history`);
@@ -428,7 +425,6 @@ describe('Schedule Handler', () => {
             const store = new FileProcessStore({ dataDir });
             server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
 
-            // Create a schedule
             await postJSON(schedulesUrl(), makeSchedule({ name: 'Persistent Schedule' }));
 
             // Verify it exists

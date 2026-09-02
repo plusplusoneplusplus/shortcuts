@@ -1,6 +1,4 @@
 /**
- * AmendMessageModal E2E Tests
- *
  * Covers the full edit-and-confirm cycle for amending git commit messages
  * via the context-menu driven AmendMessageModal in the Git sub-tab.
  *

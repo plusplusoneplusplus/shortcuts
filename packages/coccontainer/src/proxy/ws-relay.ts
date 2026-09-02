@@ -19,9 +19,6 @@ export interface WSRelayMessage {
     data: string;
 }
 
-/**
- * Central bidirectional event bus for the container.
- */
 export class WebSocketRelay extends EventEmitter {
     private _agentManager: AgentManager | null = null;
 
@@ -47,9 +44,6 @@ export class WebSocketRelay extends EventEmitter {
         return this._agentManager.proxyRequest(agentId, method, path, headers ?? {}, body);
     }
 
-    /**
-     * Send a raw WS message to an outbound-connected agent via AgentManager.
-     */
     sendToAgent(agentId: string, data: string): boolean {
         if (!this._agentManager) return false;
         return this._agentManager.sendOutbound(agentId, data);

@@ -2,8 +2,6 @@
  * Tests for schedule REST body parsing.
  *
  * Error messages are the API contract, so they are asserted verbatim.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect } from 'vitest';

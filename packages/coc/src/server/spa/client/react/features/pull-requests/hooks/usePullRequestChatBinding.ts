@@ -34,7 +34,6 @@ export interface ReviewChatComposerSendOptions {
 export interface UsePullRequestChatBindingReturn {
     /** The queue task ID bound to this PR, or null if no chat exists. */
     taskId: string | null;
-    /** True while fetching the binding. */
     loading: boolean;
     /** Error message if binding fetch failed. */
     error: string | null;

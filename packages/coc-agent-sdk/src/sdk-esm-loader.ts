@@ -2,7 +2,7 @@
  * Dynamic ESM Loader for @github/copilot-sdk
  *
  * The SDK is ESM-only ("type": "module" with only an "import" export condition).
- * Since forge compiles to CommonJS, static `import ... from '@github/copilot-sdk'`
+ * Since this package compiles to CommonJS, static `import ... from '@github/copilot-sdk'`
  * becomes `require()` at runtime, which Node.js rejects with
  * ERR_PACKAGE_PATH_NOT_EXPORTED.
  *

@@ -18,14 +18,8 @@ import type { ConversationCostEstimate } from './conversation-cost-estimate';
 // Re-export legacy types so consumers of process-interfaces.ts get them too.
 export type { CodeReviewProcessMetadata, DiscoveryProcessMetadata, CodeReviewGroupMetadata };
 
-/**
- * Supported AI tools for invocation
- */
 export type AIToolType = 'copilot-cli' | 'clipboard';
 
-/**
- * Status of an AI process
- */
 export type AIProcessStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 /**
@@ -110,9 +104,6 @@ export interface GenericGroupMetadata extends GenericProcessMetadata {
     childProcessIds: string[];
 }
 
-/**
- * Options for registering a generic typed process
- */
 export interface TypedProcessOptions {
     /** The process type identifier */
     type: AIProcessType;
@@ -126,9 +117,6 @@ export interface TypedProcessOptions {
     initialStatus?: 'queued' | 'running';
 }
 
-/**
- * Options for registering a generic process group
- */
 export interface ProcessGroupOptions {
     /** The group type identifier */
     type: AIProcessType;
@@ -138,9 +126,6 @@ export interface ProcessGroupOptions {
     metadata?: Omit<GenericGroupMetadata, 'childProcessIds'>;
 }
 
-/**
- * Options for completing a process group
- */
 export interface CompleteGroupOptions {
     /** Summary result text */
     result: string;
@@ -174,9 +159,6 @@ export interface SerializedTimelineItem {
     toolCall?: SerializedToolCall;
 }
 
-/**
- * A single turn in a multi-turn conversation
- */
 export interface ConversationTurn {
     /** Role of the speaker */
     role: 'user' | 'assistant';
@@ -311,9 +293,6 @@ export interface SerializedConversationTurn {
     sdkEventId?: string;
 }
 
-/**
- * Status of a single tool call execution
- */
 export type ToolCallStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 /**
@@ -330,9 +309,6 @@ export interface ToolCallPermissionRequest {
     operation?: string;
 }
 
-/**
- * Permission approval/denial result for a tool call
- */
 export interface ToolCallPermissionResult {
     /** Whether permission was granted */
     approved: boolean;
@@ -342,9 +318,6 @@ export interface ToolCallPermissionResult {
     reason?: string;
 }
 
-/**
- * A single tool call executed during a conversation turn
- */
 export interface ToolCall {
     /** Unique ID for this tool call */
     id: string;
@@ -495,9 +468,6 @@ export interface PendingAskUserAnswer {
     submittedAt: string;
 }
 
-/**
- * A tracked AI process
- */
 export interface AIProcess {
     /** Unique identifier */
     id: string;
@@ -732,22 +702,13 @@ export interface TrackedProcessFields {
     workingDirectory?: string;
 }
 
-/**
- * Event types for process changes
- */
 export type ProcessEventType = 'process-added' | 'process-updated' | 'process-removed' | 'processes-cleared';
 
-/**
- * Process change event
- */
 export interface ProcessEvent {
     type: ProcessEventType;
     process?: AIProcess;
 }
 
-/**
- * Process count statistics
- */
 export interface ProcessCounts {
     queued: number;
     running: number;

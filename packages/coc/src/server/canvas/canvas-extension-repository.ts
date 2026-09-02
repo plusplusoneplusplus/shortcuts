@@ -1,6 +1,4 @@
 /**
- * Extension document persistence
- *
  * An extension canvas stores a manifest, a capabilities script, and one of two
  * UI documents: legacy `ui.html`, or the compiled `ui.js` (plus the `ui.jsx`
  * source it came from). `ui.js` takes precedence over `ui.html`, so rebuilding

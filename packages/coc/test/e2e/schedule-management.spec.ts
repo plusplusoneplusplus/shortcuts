@@ -1,6 +1,4 @@
 /**
- * Schedule Management E2E Tests
- *
  * Tests for schedule edit, delete, and run history UI/API.
  * Complements schedule-script.spec.ts which covers create + Run Now.
  *

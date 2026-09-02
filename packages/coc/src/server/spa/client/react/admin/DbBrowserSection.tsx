@@ -210,7 +210,6 @@ export function DbBrowserSection() {
         }
     }, []);
 
-    // Fetch table data
     const fetchTableData = useCallback(async (tableName: string, p: number, sort: string | null, order: 'asc' | 'desc' | null) => {
         setDataLoading(true);
         setError(null);
@@ -377,7 +376,6 @@ export function DbBrowserSection() {
                 await getSpaCocClient().dbBrowser.deleteRow('process-db', tableData.table, { pkColumns });
                 addToast('1 row deleted', 'success');
             } else {
-                // Bulk delete
                 const rows = Array.from(selectedRows).map(key => JSON.parse(key) as Record<string, unknown>);
                 const result = await getSpaCocClient().dbBrowser.deleteBulk('process-db', tableData.table, { rows });
                 addToast(`${result.deleted} row(s) deleted`, 'success');

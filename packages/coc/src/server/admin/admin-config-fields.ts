@@ -1,6 +1,4 @@
 /**
- * Admin Config Field Registry — derived from the unified setting definitions.
- *
  * The single source of truth for admin-editable settings lives in
  * `config/admin-setting-definitions.ts`. This module derives the
  * validate/apply field specs consumed by the PUT /api/admin/config handler

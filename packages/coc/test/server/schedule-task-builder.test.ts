@@ -4,8 +4,6 @@
  * These pin the exact payload shapes the executor enqueues for prompt (ask
  * and autopilot), Ralph, and script schedules, so extracting or changing the
  * builders cannot silently alter what reaches the queue.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect } from 'vitest';

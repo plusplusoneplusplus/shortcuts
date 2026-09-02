@@ -1,6 +1,4 @@
 /**
- * Enhanced Search Conversations Tool Tests
- *
  * Tests for the summarization path, recent-browse mode,
  * transcript truncation, session grouping, and fallback behavior.
  */

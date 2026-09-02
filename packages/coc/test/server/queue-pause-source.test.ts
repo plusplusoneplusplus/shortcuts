@@ -1,6 +1,4 @@
 /**
- * pauseSource plumbing tests.
- *
  * Verifies that the HTTP pause/resume endpoints stamp 'manual' on QueueGlobalState
  * and that getAggregateStats surfaces it in QueueStats. Also verifies that
  * normalizeGlobalQueueState clears pauseSource when a timed pause expires.

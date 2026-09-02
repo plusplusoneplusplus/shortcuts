@@ -1,6 +1,4 @@
 /**
- * Skill Resolver
- *
  * Resolves and loads skill prompts from the .github/skills/ directory.
  * Skills are organized as directories containing a SKILL.md file.
  *
@@ -12,8 +10,6 @@
  * │   └── SKILL.md
  *
  * Resolution: skill: "go-deep" → .github/skills/go-deep/SKILL.md
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -25,14 +21,8 @@ import { PipelineCoreError, ErrorCode } from '../errors';
 // Re-export for backward compatibility
 export const DEFAULT_SKILLS_DIRECTORY = SKILLS_DIR_DEFAULT;
 
-/**
- * Standard skill filename within a skill directory (required)
- */
 export const SKILL_PROMPT_FILENAME = 'SKILL.md';
 
-/**
- * Error thrown for skill resolution issues
- */
 export class SkillResolverError extends PipelineCoreError {
     /** Name of the skill that failed to resolve */
     readonly skillName: string;
@@ -57,9 +47,6 @@ export class SkillResolverError extends PipelineCoreError {
     }
 }
 
-/**
- * Result of skill resolution
- */
 export interface SkillResolutionResult {
     /** The resolved prompt content (frontmatter stripped) */
     content: string;
@@ -92,11 +79,7 @@ export interface SkillMetadata {
 }
 
 /**
- * Get the skills directory path
- * 
- * @param workspaceRoot The workspace root directory
  * @param customPath Optional custom skills directory path (relative or absolute)
- * @returns Absolute path to the skills directory
  */
 export function getSkillsDirectory(workspaceRoot: string, customPath?: string): string {
     if (customPath) {
@@ -108,14 +91,6 @@ export function getSkillsDirectory(workspaceRoot: string, customPath?: string): 
     return path.resolve(workspaceRoot, DEFAULT_SKILLS_DIRECTORY);
 }
 
-/**
- * Get the path to a specific skill's directory
- * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
- * @returns Absolute path to the skill directory
- */
 export function getSkillDirectory(
     skillName: string,
     workspaceRoot: string,
@@ -125,14 +100,6 @@ export function getSkillDirectory(
     return path.join(skillsDir, skillName);
 }
 
-/**
- * Get the path to a skill's SKILL.md file
- * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
- * @returns Absolute path to the skill's SKILL.md file
- */
 export function getSkillPromptPath(
     skillName: string,
     workspaceRoot: string,
@@ -142,14 +109,6 @@ export function getSkillPromptPath(
     return path.join(skillDir, SKILL_PROMPT_FILENAME);
 }
 
-/**
- * Check if a skill exists
- * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
- * @returns True if the skill's SKILL.md exists
- */
 export function skillExists(
     skillName: string,
     workspaceRoot: string,
@@ -159,13 +118,6 @@ export function skillExists(
     return fs.existsSync(promptPath);
 }
 
-/**
- * List all available skills
- * 
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
- * @returns Array of skill names
- */
 export function listSkills(
     workspaceRoot: string,
     customSkillsPath?: string
@@ -183,7 +135,6 @@ export function listSkills(
                 if (!entry.isDirectory()) {
                     return false;
                 }
-                // Check if the directory contains a SKILL.md file
                 const promptPath = path.join(skillsDir, entry.name, SKILL_PROMPT_FILENAME);
                 return fs.existsSync(promptPath);
             })
@@ -194,12 +145,6 @@ export function listSkills(
     }
 }
 
-/**
- * Parse skill metadata from SKILL.md content
- * 
- * @param content Raw SKILL.md content
- * @returns Parsed metadata
- */
 function parseSkillMetadata(content: string): SkillMetadata {
     const metadata: SkillMetadata = { raw: content };
     
@@ -246,12 +191,6 @@ function parseSkillMetadata(content: string): SkillMetadata {
     return metadata;
 }
 
-/**
- * Load skill metadata from SKILL.md file content
- * 
- * @param fileContent The content of the SKILL.md file
- * @returns Skill metadata parsed from frontmatter
- */
 function loadSkillMetadataFromContent(fileContent: string): SkillMetadata | undefined {
     if (!fileContent) {
         return undefined;
@@ -265,13 +204,8 @@ function loadSkillMetadataFromContent(fileContent: string): SkillMetadata | unde
 }
 
 /**
- * Resolve and load a skill's prompt
+ * The main API for loading skill prompts.
  * 
- * This is the main API for loading skill prompts.
- * 
- * @param skillName Name of the skill (e.g., "go-deep")
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
  * @returns Prompt content string (frontmatter stripped)
  * @throws SkillResolverError if skill not found or empty
  * 
@@ -289,11 +223,6 @@ export async function resolveSkill(
 }
 
 /**
- * Resolve and load a skill's prompt synchronously
- * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
  * @returns Prompt content string (frontmatter stripped)
  * @throws SkillResolverError if skill not found or empty
  */
@@ -307,12 +236,6 @@ export function resolveSkillSync(
 }
 
 /**
- * Resolve and load a skill with full details
- * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
- * @returns Full resolution result with content, paths, and metadata
  * @throws SkillResolverError if skill not found or empty
  */
 export async function resolveSkillWithDetails(
@@ -320,7 +243,6 @@ export async function resolveSkillWithDetails(
     workspaceRoot: string,
     customSkillsPath?: string
 ): Promise<SkillResolutionResult> {
-    // Validate skill name
     if (!skillName || typeof skillName !== 'string') {
         throw new SkillResolverError('Skill name must be a non-empty string', skillName || '');
     }
@@ -336,7 +258,6 @@ export async function resolveSkillWithDetails(
     const skillDirectory = getSkillDirectory(skillName, workspaceRoot, customSkillsPath);
     const promptPath = path.join(skillDirectory, SKILL_PROMPT_FILENAME);
     
-    // Check if skill directory exists
     if (!fs.existsSync(skillDirectory)) {
         const skillsDir = getSkillsDirectory(workspaceRoot, customSkillsPath);
         throw new SkillResolverError(
@@ -347,7 +268,6 @@ export async function resolveSkillWithDetails(
         );
     }
     
-    // Check if SKILL.md exists
     if (!fs.existsSync(promptPath)) {
         throw new SkillResolverError(
             `Skill "${skillName}" is missing SKILL.md. Expected: ${promptPath}`,
@@ -390,15 +310,11 @@ export async function resolveSkillWithDetails(
     }
 }
 
-/**
- * Resolve and load a skill with full details synchronously
- */
 export function resolveSkillWithDetailsSync(
     skillName: string,
     workspaceRoot: string,
     customSkillsPath?: string
 ): SkillResolutionResult {
-    // Validate skill name
     if (!skillName || typeof skillName !== 'string') {
         throw new SkillResolverError('Skill name must be a non-empty string', skillName || '');
     }
@@ -414,7 +330,6 @@ export function resolveSkillWithDetailsSync(
     const skillDirectory = getSkillDirectory(skillName, workspaceRoot, customSkillsPath);
     const promptPath = path.join(skillDirectory, SKILL_PROMPT_FILENAME);
     
-    // Check if skill directory exists
     if (!fs.existsSync(skillDirectory)) {
         const skillsDir = getSkillsDirectory(workspaceRoot, customSkillsPath);
         throw new SkillResolverError(
@@ -425,7 +340,6 @@ export function resolveSkillWithDetailsSync(
         );
     }
     
-    // Check if SKILL.md exists
     if (!fs.existsSync(promptPath)) {
         throw new SkillResolverError(
             `Skill "${skillName}" is missing SKILL.md. Expected: ${promptPath}`,
@@ -469,12 +383,7 @@ export function resolveSkillWithDetailsSync(
 }
 
 /**
- * Validate that a skill can be resolved (for config validation)
- * 
- * @param skillName Name of the skill
- * @param workspaceRoot The workspace root directory
- * @param customSkillsPath Optional custom skills directory path
- * @returns Validation result with error message if invalid
+ * Validate that a skill can be resolved, for config validation.
  */
 export function validateSkill(
     skillName: string,
@@ -484,7 +393,6 @@ export function validateSkill(
     try {
         const promptPath = getSkillPromptPath(skillName, workspaceRoot, customSkillsPath);
         
-        // Validate skill name
         if (!skillName || typeof skillName !== 'string') {
             return { valid: false, error: 'Skill name must be a non-empty string' };
         }

@@ -1,6 +1,4 @@
 /**
- * WikiManager Tests
- *
  * Tests register/unregister lifecycle, multi-wiki independence,
  * lazy ContextBuilder, FileWatcher integration,
  * ConversationSessionManager integration, and cleanup.

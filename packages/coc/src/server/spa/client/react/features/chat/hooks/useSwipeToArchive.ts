@@ -5,7 +5,7 @@
  * distance exceeds the threshold on touchend, `onSwipeConfirm` fires.
  * If the swipe is insufficient the offset animates back to 0.
  *
- * Only activates when `|dx| > |dy|` to avoid conflicting with vertical scroll.
+ * Only activates when `|dx| >= |dy|` to avoid conflicting with vertical scroll.
  */
 
 import { useRef, useState, useCallback } from 'react';

@@ -1,11 +1,7 @@
 /**
- * Theme Analysis Executor
- *
  * Runs deep analysis for each sub-article in a theme outline,
  * plus a cross-cutting analysis for the index page.
  * Per-article analyses run in parallel with concurrency control.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -298,9 +294,6 @@ export async function analyzeCrossCutting(
 // Response Parsing
 // ============================================================================
 
-/**
- * Parse AI response into a ThemeArticleAnalysis.
- */
 function parseArticleAnalysisResponse(response: string, expectedSlug: string): ThemeArticleAnalysis {
     const obj = parseAIJsonResponse(response, { context: 'article-analysis', repair: true });
 
@@ -313,9 +306,6 @@ function parseArticleAnalysisResponse(response: string, expectedSlug: string): T
     };
 }
 
-/**
- * Parse AI response into a ThemeCrossCuttingAnalysis.
- */
 function parseCrossCuttingResponse(response: string): ThemeCrossCuttingAnalysis {
     const obj = parseAIJsonResponse(response, { context: 'cross-cutting-analysis', repair: true });
 

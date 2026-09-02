@@ -20,7 +20,6 @@ import {
 export const ADO_RESOURCE_ID = '499b84ac-1321-427f-aa17-267ca6975798';
 
 /**
- * Injectable runner for Azure CLI commands.
  * Production code should not pass this; it exists for deterministic testing.
  */
 export type AdoAzCliRunner = (command: string) => Promise<{ stdout: string; stderr: string }>;
@@ -174,7 +173,6 @@ export async function resolveAdoAccessToken(
 }
 
 /**
- * Convenience wrapper that returns only the token string (or undefined).
  * Suitable as an `AzureBoardsAccessTokenResolver`.
  */
 export async function resolveAdoAccessTokenValue(
@@ -184,9 +182,6 @@ export async function resolveAdoAccessTokenValue(
     return result?.token;
 }
 
-/**
- * Reset module-level state for test isolation.
- */
 export function resetAdoTokenResolverForTests(): void {
     inflight.clear();
     azCliQueue = Promise.resolve();

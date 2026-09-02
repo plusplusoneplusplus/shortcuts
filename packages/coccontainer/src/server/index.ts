@@ -1,6 +1,4 @@
 /**
- * CoCContainer Server
- *
  * Thin wrapper that serves CoC's SPA in containerMode and proxies
  * API calls to registered CoC agents. The container has NO SPA of
  * its own — it reuses CoC's dashboard bundle.
@@ -87,7 +85,6 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
 
     // WebSocket upgrade handling
     const wsRouter = new ContainerWebSocketRouter();
-    // Client WS at /ws — relay all agent messages via WebClientBridge
     wsRouter.register('/ws', (ws) => runtime.webClientBridge.handleConnection(ws));
     // Agent inbound WS at /ws/agent-link — call-home connection
     wsRouter.register('/ws/agent-link', (ws) => runtime.agentManager.handleConnection(ws));

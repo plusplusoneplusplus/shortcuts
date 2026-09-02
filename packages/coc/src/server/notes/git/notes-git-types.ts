@@ -1,6 +1,4 @@
 /**
- * Notes Git — shared type definitions.
- *
  * Pure types, no runtime dependencies. Safe to import from server and client code.
  */
 

@@ -1,6 +1,4 @@
 /**
- * SqliteProcessStore Streaming & Turn Operation Tests
- *
  * Dedicated tests for upsertStreamingTurn race conditions,
  * appendConversationTurn with filterStreaming, and updateTurnContent.
  */

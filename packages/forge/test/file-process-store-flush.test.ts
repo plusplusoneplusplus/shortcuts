@@ -1,6 +1,4 @@
 /**
- * FileProcessStore Flush Handler Tests — Write Queue and Concurrent Writes
- *
  * Tests the write-queue serialization for concurrent addProcess calls,
  * concurrent writes to different workspaces, and the flush handler mechanism.
  */

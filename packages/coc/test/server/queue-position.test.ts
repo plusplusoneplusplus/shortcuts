@@ -1,6 +1,4 @@
 /**
- * Queue Position Manipulation Tests
- *
  * Covers Section 3 of test-plan-queue-advanced.md:
  * - move-to/:position (0-based index, clamped)
  * - move-to-top / move-up / move-down edge cases

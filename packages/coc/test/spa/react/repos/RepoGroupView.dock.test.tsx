@@ -153,18 +153,20 @@ describe('RepoGroupView right dock (AC-05)', () => {
 
     it('lists the group root plus every member and defaults to the first member', async () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        await waitFor(() => expect(screen.queryByTestId('workspace-dock-target-picker')).toBeTruthy());
+        // Wait on the resolved target, not just the picker: the members land one
+        // render before the effect that moves the target off the group root, so a
+        // slow runner can observe all three options with the root still selected.
+        await waitFor(() => expect(picker().value).toBe('r1'));
 
         expect(Array.from(picker().options).map(o => o.text))
             .toEqual([REPO_GROUP_ROOT_TARGET_LABEL, 'shortcuts', 'docs']);
-        expect(picker().value).toBe('r1');
     });
 
     it('points terminal and explorer at the picked member, notes at the group', async () => {
         // The open flag is read at mount (its toggle lives in the TopBar, not here).
         localStorage.setItem(workspaceDockOpenStorageKey(GROUP_ID), '1');
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        await waitFor(() => expect(screen.queryByTestId('workspace-dock-target-picker')).toBeTruthy());
+        await waitFor(() => expect(picker().value).toBe('r1'));
 
         expect(screen.getByTestId('mock-terminal').textContent).toBe('terminal:r1');
         expect(screen.getByTestId('mock-explorer').textContent).toBe('explorer:r1');
@@ -188,12 +190,11 @@ describe('RepoGroupView right dock (AC-05)', () => {
             ],
         });
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        await waitFor(() => expect(screen.queryByTestId('workspace-dock-target-picker')).toBeTruthy());
+        await waitFor(() => expect(picker().value).toBe('r2'));
 
         const stale = Array.from(picker().options).find(o => o.value === 'r1')!;
         expect(stale.disabled).toBe(true);
         expect(stale.text).toBe('shortcuts (path missing)');
-        expect(picker().value).toBe('r2');
     });
 
     it('reads a remote group from its own server base URL', async () => {

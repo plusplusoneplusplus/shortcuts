@@ -1,6 +1,4 @@
 /**
- * resolveClaudeDisallowedTools unit tests
- *
  * The native `AskUserQuestion` built-in is blocked whenever CoC's own
  * `ask_user` replacement is in the tool array — CoC can service `ask_user` but
  * not the built-in.

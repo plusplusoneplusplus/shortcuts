@@ -1,6 +1,4 @@
 /**
- * Work Item Command Service
- *
  * Shared create/update command logic used by the Work Items REST routes. Owns
  * hierarchy (parentId) validation, provider-backed remote sync (GitHub / Azure
  * Boards child creation and reparent/unlink updates), response-cache

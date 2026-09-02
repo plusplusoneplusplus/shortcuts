@@ -1,5 +1,3 @@
-/** Schedule preset model for prompt-first schedule creation. */
-
 export type PromptSchedulePreset = 'manual' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'custom';
 
 export interface PresetOption {

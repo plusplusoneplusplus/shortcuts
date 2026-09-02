@@ -293,7 +293,6 @@ describe('HybridSearchEngine', () => {
             const overrideProvider = buildProvider();
             const engine = new HybridSearchEngine(store, defaultProvider);
 
-            // Index facts with the override provider
             for (const fact of await store.listFacts({ statuses: ['active'] })) {
                 const vec = await overrideProvider.embed(fact.content);
                 store.storeEmbedding(fact.id, encodeEmbedding(vec.values));
@@ -329,7 +328,6 @@ describe('HybridSearchEngine', () => {
                 expect(fetched!.content).toBe(fact.content);
             }
 
-            // No facts without embedding remain
             expect(store.listFactsWithoutEmbedding()).toHaveLength(0);
         });
 
@@ -426,7 +424,6 @@ describe('HybridSearchEngine', () => {
             const provider = buildProvider();
             const engine = new HybridSearchEngine(store, provider);
 
-            // Index all facts
             for (const fact of await store.listFacts({ statuses: ['active'] })) {
                 const vec = await provider.embed(fact.content);
                 store.storeEmbedding(fact.id, encodeEmbedding(vec.values));
@@ -495,7 +492,6 @@ describe('HybridSearchEngine', () => {
         it('workspace-scoped vector search does not return global facts', async () => {
             const provider = buildProvider();
 
-            // Add a workspace fact
             const wsFact = await store.addFact({
                 scope: 'workspace',
                 workspaceId: 'ws-test',
@@ -520,7 +516,6 @@ describe('HybridSearchEngine', () => {
                 workspaceId: 'ws-test',
             });
 
-            // Only the workspace fact should appear
             expect(results.every(r => r.fact.workspaceId === 'ws-test')).toBe(true);
             expect(results.some(r => r.fact.id === wsFact.id)).toBe(true);
         });

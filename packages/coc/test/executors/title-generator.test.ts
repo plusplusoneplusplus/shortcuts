@@ -1,6 +1,4 @@
 /**
- * Tests for title-generator.ts
- *
  * Validates:
  * - Title is generated from the first user message only
  * - Existing title is never overwritten

@@ -1,6 +1,4 @@
 /**
- * ClaudeSDKService MCP tool-wiring tests
- *
  * Covers exposing CoC LLM tools to Claude Code through the stdio MCP bridge:
  * - query() receives a mcpServers map with the coc_llm_tools bridge entry
  * - caller-provided mcpServers are forwarded (normalized to Claude's shape)

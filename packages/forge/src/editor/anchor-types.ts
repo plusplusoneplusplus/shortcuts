@@ -1,12 +1,9 @@
 /**
- * Anchor Types
- *
  * Platform-agnostic interfaces for anchor-based comment location tracking.
  * Used by the CoC dashboard and standalone server.
  */
 
 /**
- * Base anchor data created from a text selection.
  * Stores enough context to relocate the selection after content changes.
  */
 export interface BaseAnchorData {
@@ -22,7 +19,6 @@ export interface BaseAnchorData {
     textHash: string;
 }
 
-/** Strategy used to relocate an anchor */
 export type AnchorRelocationStrategy =
     | 'exact_match'
     | 'fuzzy_match'
@@ -31,7 +27,6 @@ export type AnchorRelocationStrategy =
     | 'not_found';
 
 /**
- * Result of an anchor relocation attempt.
  * Contains the new position (if found) and metadata about the match quality.
  */
 export interface AnchorRelocationResult {

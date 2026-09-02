@@ -1,9 +1,3 @@
-/**
- * Errors Module - Public API
- *
- * Exports all error types and utilities for the pipeline-core package.
- */
-
 // Error codes
 export {
     ErrorCode,

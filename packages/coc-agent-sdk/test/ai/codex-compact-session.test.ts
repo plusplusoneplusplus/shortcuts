@@ -258,7 +258,6 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         child.writeStdoutLine({ id: 1, error: { code: -32000, message: 'thread not found' } });
 
         await expect(promise).rejects.toThrow(new RegExp(`thread/resume failed for thread ${THREAD_ID}.*thread not found`));
-        // Never advanced to compact/start.
         expect(child.sentMessages().map(m => m.method)).not.toContain('thread/compact/start');
     });
 

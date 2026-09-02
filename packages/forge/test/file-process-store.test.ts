@@ -1,6 +1,4 @@
 /**
- * FileProcessStore Tests — Per-Workspace Layout
- *
  * Validates per-workspace directory layout (repos/<workspaceId>/processes/<id>.json),
  * index-scan semantics, and the getProcess(id, workspaceId?) hint parameter.
  * All tests use a temp directory cleaned up in afterEach.
@@ -202,7 +200,6 @@ describe('FileProcessStore — per-workspace layout', () => {
 
         await store.clearProcesses({ workspaceId: 'ws-a' });
 
-        // ws-a dir should be gone
         const wsAExists = await fs.access(path.join(tmpDir, 'repos', 'ws-a', 'processes')).then(() => true, () => false);
         expect(wsAExists).toBe(false);
 

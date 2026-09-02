@@ -1,6 +1,4 @@
 /**
- * Container Link Config Routes
- *
  * GET  /api/config/container — current container link status + config
  * PUT  /api/config/container — update container URL (connect/disconnect)
  */

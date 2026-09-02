@@ -1,13 +1,9 @@
 /**
- * Prompt Map Job
- *
  * Generic map-reduce job that applies a prompt template to a list of items.
  * Each item's fields are substituted into the template, sent to AI, and results collected.
  *
  * This is a core reusable job type - input sources (CSV, JSON, git, etc.) are handled
  * by the caller (e.g., yaml-pipeline module).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -36,9 +32,6 @@ import { BaseMapper } from './base-mapper';
 export type { PromptItem } from '../../ai/types';
 import type { PromptItem } from '../../ai/types';
 
-/**
- * Input for the prompt map job
- */
 export interface PromptMapInput {
     /** Items to process */
     items: PromptItem[];
@@ -48,9 +41,6 @@ export interface PromptMapInput {
     outputFields: string[];
 }
 
-/**
- * Work item data passed to the mapper
- */
 export interface PromptWorkItemData {
     /** The item with template variables */
     item: PromptItem;
@@ -64,9 +54,6 @@ export interface PromptWorkItemData {
     allItems: PromptItem[];
 }
 
-/**
- * Result from processing a single item (map output)
- */
 export interface PromptMapResult {
     /** The original input item */
     item: PromptItem;
@@ -97,9 +84,6 @@ export interface PromptMapResult {
 export type { OutputFormat } from '../shared-types';
 import type { OutputFormat } from '../shared-types';
 
-/**
- * Final aggregated output from reduce phase
- */
 export interface PromptMapOutput {
     /** All processed results */
     results: PromptMapResult[];
@@ -109,9 +93,6 @@ export interface PromptMapOutput {
     summary: PromptMapSummary;
 }
 
-/**
- * Execution summary
- */
 export interface PromptMapSummary {
     /** Total items processed */
     totalItems: number;
@@ -123,9 +104,6 @@ export interface PromptMapSummary {
     outputFields: string[];
 }
 
-/**
- * Options for creating a prompt map job
- */
 export interface PromptMapJobOptions {
     /** AI invoker function */
     aiInvoker: AIInvoker;
@@ -152,15 +130,10 @@ export interface PromptMapJobOptions {
 const TEMPLATE_VARIABLE_REGEX = /\{\{(\w+)\}\}/g;
 
 /**
- * Substitute template variables with values from a pipeline item
- * 
- * Supports special variable {{ITEMS}} which is replaced with JSON array of all items.
- * This allows prompts to reference the full context of all items being processed.
- * 
- * @param template Template string with {{variable}} placeholders
- * @param item Current pipeline item containing values
+ * Supports the special variable {{ITEMS}}, replaced with a JSON array of all
+ * items so a prompt can reference the full set being processed.
+ *
  * @param allItems Optional array of all items (for {{ITEMS}} variable)
- * @returns Substituted string
  */
 function substituteTemplate(template: string, item: PromptItem, allItems?: PromptItem[]): string {
     return template.replace(TEMPLATE_VARIABLE_REGEX, (_, variableName) => {
@@ -577,7 +550,6 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         }
 
         if (!aiResult.success || !aiResult.response) {
-            // Update process as failed
             if (context.processTracker && reduceProcessId) {
                 context.processTracker.updateProcess(
                     reduceProcessId,
@@ -591,7 +563,6 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
 
         // Text mode - return raw AI response without JSON parsing
         if (isTextMode) {
-            // Update process as completed
             if (context.processTracker && reduceProcessId) {
                 context.processTracker.updateProcess(
                     reduceProcessId,
@@ -625,7 +596,6 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         try {
             aiOutput = parseAIResponse(aiResult.response, this.aiReduceOutput!);
         } catch (parseError) {
-            // Update process as failed
             if (context.processTracker && reduceProcessId) {
                 context.processTracker.updateProcess(
                     reduceProcessId,
@@ -637,10 +607,8 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
             throw new Error(`Failed to parse AI reduce response: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
         }
 
-        // Format output as JSON string
         const formattedOutput = JSON.stringify(aiOutput, null, 2);
 
-        // Update process as completed
         if (context.processTracker && reduceProcessId) {
             context.processTracker.updateProcess(
                 reduceProcessId,
@@ -675,9 +643,6 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
 // Factory functions
 // ============================================================================
 
-/**
- * Create a prompt map job
- */
 export function createPromptMapJob(
     options: PromptMapJobOptions
 ): MapReduceJob<PromptMapInput, PromptWorkItemData, PromptMapResult, PromptMapOutput> {
@@ -704,9 +669,6 @@ export function createPromptMapJob(
     };
 }
 
-/**
- * Helper to create job input
- */
 export function createPromptMapInput(
     items: PromptItem[],
     promptTemplate: string,

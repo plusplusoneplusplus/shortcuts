@@ -14,8 +14,6 @@
  *
  * It pulls with `rebase: true, currentBranchOnly: true`, which is exactly what
  * the browser timer this feature replaces asked for.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import { BranchService, GitOpsStore, WorkingTreeService } from '@plusplusoneplusplus/forge';

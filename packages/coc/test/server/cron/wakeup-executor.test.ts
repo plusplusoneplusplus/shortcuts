@@ -1,6 +1,4 @@
 /**
- * Wakeup Executor Tests
- *
  * Covers the durable one-shot lifecycle: arm/fire, terminal marking, failure
  * metadata, startup re-arm (restart recovery), overdue immediate fire, cancel,
  * and the characterization that clearing the timer registry drops the in-memory

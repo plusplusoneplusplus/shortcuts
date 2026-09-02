@@ -1,6 +1,4 @@
 /**
- * Queue Runtime Config Port Tests
- *
  * The queue used to read configuration three incompatible ways: values frozen
  * at startup, live getter callbacks, and no-argument `loadConfigFile()` calls
  * that always resolved `~/.coc/config.yaml`. These tests pin the replacement

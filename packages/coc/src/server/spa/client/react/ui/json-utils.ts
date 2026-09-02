@@ -1,8 +1,4 @@
 /**
- * Utility to detect pure-JSON content in AI responses.
- */
-
-/**
  * Returns true if `content` is a valid JSON object or array (not a primitive).
  * Only call on non-streaming (finalized) content.
  */
