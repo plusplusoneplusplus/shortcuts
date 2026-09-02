@@ -1,6 +1,4 @@
 /**
- * Process History Handler Tests
- *
  * Integration tests for GET /api/workspaces/:id/history endpoint.
  * Uses a real SqliteProcessStore for accurate behavior.
  */

@@ -1,8 +1,5 @@
 /**
- * GitOpsStore Tests
- *
  * All tests use a temp directory cleaned up in afterEach.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

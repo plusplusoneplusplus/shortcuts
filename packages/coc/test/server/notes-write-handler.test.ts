@@ -1,6 +1,4 @@
 /**
- * Notes Write Handler Tests
- *
  * Tests for PUT /api/workspaces/:id/notes/content path resolution:
  * - Relative paths resolve against notesRoot (~/.coc/repos/<wsId>/notes/)
  * - Absolute paths inside wsDataDir or ~/.copilot are allowed

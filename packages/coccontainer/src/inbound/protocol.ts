@@ -1,6 +1,4 @@
 /**
- * Agent ↔ Container Channel Protocol
- *
  * Defines the message types exchanged over the persistent WebSocket
  * connection between a CoC agent (outbound) and the container (inbound).
  */

@@ -982,7 +982,7 @@ describe('ChatDetail', () => {
         it('resets pendingQueue, sending and isStreaming before restoring draft', () => {
             const resetBlock = source.substring(
                 source.indexOf('Load task + conversation on mount / taskId change'),
-                source.indexOf('Restore draft for the new taskId'),
+                source.indexOf('const draft = getDraft(currentTaskId)'),
             );
             expect(resetBlock).toContain('setPendingQueue([])');
             expect(resetBlock).toContain('setSending(false)');
@@ -1530,7 +1530,6 @@ describe('ChatDetail', () => {
             const refreshIdx = finishBlock.indexOf('refreshConversation(processId)');
             expect(setTaskIdx).toBeGreaterThan(-1);
             expect(refreshIdx).toBeGreaterThan(-1);
-            // setTask should appear before refreshConversation in the code
             expect(setTaskIdx).toBeLessThan(refreshIdx);
         });
 

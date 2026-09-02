@@ -1,6 +1,4 @@
 /**
- * Logger Tests
- *
  * Tests for CLI logger, colors, symbols, spinner, and progress display.
  */
 

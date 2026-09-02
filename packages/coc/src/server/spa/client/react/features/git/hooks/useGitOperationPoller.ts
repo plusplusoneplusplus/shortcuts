@@ -49,11 +49,8 @@ export interface UseGitOperationPollerOptions {
 export interface UseGitOperationPollerReturn {
     /** Begin polling `jobId`. Replaces any in-flight poll on the same instance. */
     start: (jobId: string, callbacks: GitOperationPollerCallbacks) => void;
-    /** Stop the active poll, if any. */
     stop: () => void;
-    /** Whether a poll is currently active. */
     isPolling: () => boolean;
-    /** The job id currently being polled, or null. */
     activeJobId: () => string | null;
 }
 

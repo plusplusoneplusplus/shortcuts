@@ -1,12 +1,7 @@
 /**
- * Output File Manager
- *
  * Manages persisting full AI conversation output to disk as Markdown files.
  * Files are stored per-repo at `<dataDir>/repos/<workspaceId>/outputs/<processId>.md`.
  * When no workspaceId is available, falls back to the `_shared` workspace.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs/promises';

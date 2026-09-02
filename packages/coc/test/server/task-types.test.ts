@@ -1,8 +1,6 @@
 /**
- * Task Types Tests
- *
  * Tests for the unified task type guards:
- *   TaskType = 'chat' | 'run-workflow' | 'run-script'
+ *   TaskType = 'chat' | 'run-workflow' | 'run-script' | 'dream-run'
  *   ChatMode = 'ask' | 'autopilot' | 'ralph'
  */
 

@@ -1,6 +1,4 @@
 /**
- * OutputPruner Tests
- *
  * Tests for output file cleanup alongside process removal/pruning.
  * Uses OS temp directories for cross-platform compatibility.
  */

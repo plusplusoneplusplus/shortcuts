@@ -1,16 +1,11 @@
 /**
  * Core domain types for the Markdown Review Editor.
- *
- * These are platform-agnostic duplicates of the types originally defined
- * in src/shortcuts/markdown-comments/types.ts.  A follow-up commit will
- * update the extension to import from pipeline-core and delete the originals.
  */
 
 // ---------------------------------------------------------------------------
 // Comment enums
 // ---------------------------------------------------------------------------
 
-/** Status of a comment */
 export type CommentStatus = 'open' | 'resolved' | 'pending';
 
 /** Distinguishes user comments from different AI response types */
@@ -29,7 +24,6 @@ export interface CommentSelection {
 }
 
 /**
- * Anchor context for robust comment location tracking.
  * Stores surrounding context to enable fuzzy matching after content changes.
  */
 export interface CommentAnchor {
@@ -49,7 +43,6 @@ export interface CommentAnchor {
 // Mermaid context
 // ---------------------------------------------------------------------------
 
-/** Mermaid diagram context for comments on diagrams */
 export interface MermaidContext {
     diagramId: string;
     nodeId?: string;
@@ -66,7 +59,6 @@ export interface MermaidContext {
 // Comment
 // ---------------------------------------------------------------------------
 
-/** A single markdown comment */
 export interface MarkdownComment {
     id: string;
     filePath: string;
@@ -142,9 +134,6 @@ export interface DiffCommentContext {
 // Diff comment
 // ---------------------------------------------------------------------------
 
-/**
- * A reply to a diff comment.
- */
 export interface DiffCommentReply {
     /** Unique identifier (UUID). */
     id: string;
@@ -158,9 +147,6 @@ export interface DiffCommentReply {
     isAI?: boolean;
 }
 
-/**
- * A comment attached to a specific location in a git diff view.
- */
 export interface DiffComment {
     /** Unique identifier (UUID). */
     id: string;
@@ -197,7 +183,6 @@ export interface DiffComment {
 // Settings & configuration
 // ---------------------------------------------------------------------------
 
-/** Settings for comments display */
 export interface CommentsSettings {
     showResolved: boolean;
     highlightColor: string;
@@ -208,14 +193,12 @@ export interface CommentsSettings {
     aiQuestionHighlightColor: string;
 }
 
-/** Configuration structure for markdown comments */
 export interface CommentsConfig {
     version: number;
     comments: MarkdownComment[];
     settings?: CommentsSettings;
 }
 
-/** Default settings for comments */
 export const DEFAULT_COMMENTS_SETTINGS: CommentsSettings = {
     showResolved: true,
     highlightColor: 'rgba(255, 235, 59, 0.3)',
@@ -226,7 +209,6 @@ export const DEFAULT_COMMENTS_SETTINGS: CommentsSettings = {
     aiQuestionHighlightColor: 'rgba(0, 188, 212, 0.3)'
 };
 
-/** Default empty configuration */
 export const DEFAULT_COMMENTS_CONFIG: CommentsConfig = {
     version: 1,
     comments: [],

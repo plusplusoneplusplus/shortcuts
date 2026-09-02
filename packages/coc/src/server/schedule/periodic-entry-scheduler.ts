@@ -1,6 +1,4 @@
 /**
- * PeriodicEntryScheduler
- *
  * Shared timer-arming lifecycle kernel for persisted periodic work. Crons and
  * triggers are both long-lived background automation surfaces that drive off the
  * same contract: load active entries, compute a `nextTickAt` delay, clamp overdue

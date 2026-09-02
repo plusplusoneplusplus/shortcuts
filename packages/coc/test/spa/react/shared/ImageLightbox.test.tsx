@@ -1,7 +1,3 @@
-/**
- * Tests for ImageLightbox shared component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ImageLightbox } from '../../../../src/server/spa/client/react/ui/ImageLightbox';

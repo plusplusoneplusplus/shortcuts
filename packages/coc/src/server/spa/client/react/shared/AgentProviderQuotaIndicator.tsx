@@ -1,7 +1,3 @@
-/**
- * AgentProviderQuotaIndicator — desktop top-bar quota gauge and dropdown.
- */
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import type { AgentProviderId, ProviderQuotaResult, ProviderQuotaType } from '@plusplusoneplusplus/coc-client';

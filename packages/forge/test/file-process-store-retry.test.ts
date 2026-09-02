@@ -1,11 +1,9 @@
 /**
- * FileProcessStore Retry Tests — Per-Workspace Paths
- *
  * Verifies that atomic writes retry on transient FS errors and
  * propagate non-retryable errors immediately.
  * Uses vi.mock to intercept fs/promises.rename and fs/promises.writeFile.
- * Path assertions use the per-workspace layout: processes/<workspaceId>/<id>.json
- * and processes/_id-map.json.
+ * Path assertions use the per-workspace layout: repos/<workspaceId>/processes/<id>.json
+ * and repos/_id-map.json.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

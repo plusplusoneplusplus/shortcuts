@@ -1,11 +1,9 @@
 /**
- * SQLite-backed ProcessStore Implementation
- *
  * Single-file process store using better-sqlite3.
  * All methods are synchronous at the SQLite level, wrapped in async
  * to satisfy the ProcessStore interface's Promise return types.
  *
- * Pure Node.js; designed for the standalone CoC server.
+ * Designed for the standalone CoC server.
  */
 
 import * as fs from 'fs';
@@ -1380,7 +1378,6 @@ export class SqliteProcessStore implements ProcessStore {
                     stableTurnIndex = streamingRow.turn_index;
                 }
 
-                // Delete streaming turns
                 this.db.prepare(
                     'DELETE FROM conversation_turns WHERE process_id = ? AND streaming = 1'
                 ).run(processId);
@@ -1400,7 +1397,6 @@ export class SqliteProcessStore implements ProcessStore {
             const { next_idx } = this.maxTurnIndexStmt.get(processId) as MaxTurnIndexRow;
             const turn = makeTurn(stableTurnIndex ?? next_idx);
 
-            // Insert the new turn
             this.insertTurnStmt.run(turnToRow(turn, processId));
 
             // Update last_event_at to current time. Refresh the denormalized
@@ -1418,7 +1414,6 @@ export class SqliteProcessStore implements ProcessStore {
                     .run(new Date().toISOString(), processId);
             }
 
-            // Apply additional updates
             if (options?.additionalUpdates) {
                 const currentProcess = rowToProcess(processRow);
                 const extraUpdates = typeof options.additionalUpdates === 'function'

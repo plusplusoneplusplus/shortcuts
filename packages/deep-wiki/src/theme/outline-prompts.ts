@@ -1,9 +1,5 @@
 /**
- * Theme Outline — Prompt Templates
- *
  * Builds AI prompts for decomposing a theme into a structured article outline.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ThemeRequest } from '../types';
@@ -18,11 +14,6 @@ import type { EnrichedProbeResult } from './theme-probe';
  *
  * The prompt includes theme context, discovered modules, and depth instructions.
  * The AI is asked to return a JSON object describing the article layout.
- *
- * @param theme - The theme request
- * @param probeResult - Enriched probe results with module info
- * @param depth - How deeply to decompose the theme
- * @returns Prompt string for the AI
  */
 export function buildOutlinePrompt(
     theme: ThemeRequest,
@@ -94,9 +85,6 @@ Return a single JSON object (no markdown fences, no extra text):
 }`;
 }
 
-/**
- * Get depth-specific instructions for the prompt.
- */
 function getDepthInstruction(depth: 'shallow' | 'normal' | 'deep'): string {
     switch (depth) {
         case 'shallow':

@@ -1,10 +1,6 @@
 /**
- * Deterministic Reducer
- *
  * A code-based reducer that performs deduplication and aggregation
  * without AI calls. Fast, consistent, and reproducible.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -15,9 +11,6 @@ import {
 } from '../types';
 import { BaseReducer } from './reducer';
 
-/**
- * Interface for items that can be deduplicated
- */
 export interface Deduplicatable {
     /** Unique identifier */
     id?: string;
@@ -25,9 +18,6 @@ export interface Deduplicatable {
     [key: string]: unknown;
 }
 
-/**
- * Options for the deterministic reducer
- */
 export interface DeterministicReducerOptions<T> {
     /**
      * Function to generate a deduplication key for an item
@@ -54,9 +44,6 @@ export interface DeterministicReducerOptions<T> {
     summarize?: (items: T[]) => Record<string, unknown>;
 }
 
-/**
- * Result type for deterministic reducer including summary
- */
 export interface DeterministicReduceOutput<T> {
     /** Deduplicated items */
     items: T[];
@@ -82,7 +69,6 @@ export class DeterministicReducer<T extends Deduplicatable> extends BaseReducer<
     ): Promise<ReduceResult<DeterministicReduceOutput<T>>> {
         const startTime = Date.now();
 
-        // Collect all items from successful results
         const allItems: T[] = [];
         for (const result of results) {
             if (result.success && result.output) {
@@ -92,7 +78,6 @@ export class DeterministicReducer<T extends Deduplicatable> extends BaseReducer<
 
         const originalCount = allItems.length;
 
-        // Deduplicate items
         const dedupedItems = this.deduplicateItems(allItems);
 
         // Sort if sorter provided
@@ -132,7 +117,6 @@ export class DeterministicReducer<T extends Deduplicatable> extends BaseReducer<
             const key = this.options.getKey(item);
 
             if (seen.has(key)) {
-                // Merge with existing item
                 const existing = seen.get(key)!;
                 const merged = this.options.merge(existing, item);
                 seen.set(key, merged);
@@ -145,19 +129,12 @@ export class DeterministicReducer<T extends Deduplicatable> extends BaseReducer<
     }
 }
 
-/**
- * Factory function to create a deterministic reducer
- */
 export function createDeterministicReducer<T extends Deduplicatable>(
     options: DeterministicReducerOptions<T>
 ): DeterministicReducer<T> {
     return new DeterministicReducer(options);
 }
 
-/**
- * Simple string-based deduplication reducer
- * Deduplicates string arrays and returns unique strings
- */
 export class StringDeduplicationReducer extends BaseReducer<string[], { items: string[]; count: number }> {
     private caseSensitive: boolean;
 
@@ -209,8 +186,7 @@ export class StringDeduplicationReducer extends BaseReducer<string[], { items: s
 }
 
 /**
- * Numeric aggregation reducer
- * Aggregates numeric values with sum, average, min, max, etc.
+ * Aggregates numeric values: sum, average, min, max, etc.
  */
 export class NumericAggregationReducer extends BaseReducer<number[], {
     sum: number;

@@ -1590,7 +1590,6 @@ describe('ChatListPane', () => {
             it('"Archive" shown for non-archived task', () => {
                 renderPane({ history: [makeHistoryTask()], onMarkUnread: vi.fn() });
                 fireEvent.contextMenu(document.querySelector('[data-task-id="h-1"]')!);
-                // The menu item text is "📦 Archive"
                 const items = screen.getAllByRole('button');
                 const archiveBtn = items.find(b => b.textContent?.trim() === '📦 Archive');
                 expect(archiveBtn).toBeTruthy();
@@ -1613,7 +1612,6 @@ describe('ChatListPane', () => {
             it('clicking Rename opens the RenameDialog', async () => {
                 renderPane({ history: [makeHistoryTask()], onMarkUnread: vi.fn() });
                 fireEvent.contextMenu(document.querySelector('[data-task-id="h-1"]')!);
-                // Find Rename button inside the context menu
                 const menu = screen.getByTestId('context-menu');
                 const renameBtn = Array.from(menu.querySelectorAll('button')).find(b => b.textContent?.includes('Rename'));
                 expect(renameBtn).toBeTruthy();
@@ -1632,7 +1630,6 @@ describe('ChatListPane', () => {
                     fetchQueue: vi.fn().mockResolvedValue(undefined),
                 });
                 fireEvent.contextMenu(document.querySelector('[data-task-id="h-rename"]')!);
-                // Find Rename button inside the context menu
                 const menu = screen.getByTestId('context-menu');
                 const renameBtn = Array.from(menu.querySelectorAll('button')).find(b => b.textContent?.includes('Rename'));
                 fireEvent.click(renameBtn!);
@@ -1686,7 +1683,6 @@ describe('ChatListPane', () => {
                 renderThreeHistoryTasks();
                 // Anchor on h-1
                 fireEvent.click(document.querySelector('[data-task-id="h-1"]')!);
-                // Ctrl+click h-2 and h-3
                 fireEvent.click(document.querySelector('[data-task-id="h-2"]')!, { ctrlKey: true });
                 fireEvent.click(document.querySelector('[data-task-id="h-3"]')!, { ctrlKey: true });
                 expect(screen.getByTestId('selection-count-pill').textContent).toContain('2 selected');
@@ -2180,7 +2176,6 @@ describe('ChatListPane', () => {
                 history: [makeHistoryTask()],
                 unseenProcessIds: new Set(['h-1']),
             });
-            // Expand the archived section
             fireEvent.click(screen.getByTestId('archived-chats-section-toggle'));
             expect(screen.getByTestId('unseen-dot')).toBeTruthy();
         });

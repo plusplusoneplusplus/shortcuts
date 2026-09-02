@@ -1,6 +1,4 @@
 /**
- * Git Branches API Endpoint Tests
- *
  * Tests for the branch management API routes:
  * - GET /api/workspaces/:id/git/branches
  * - GET /api/workspaces/:id/git/branch-status
@@ -19,7 +17,6 @@
  * - POST /api/workspaces/:id/git/reword
  *
  * Uses mocked BranchService via vi.mock to avoid actual git calls.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

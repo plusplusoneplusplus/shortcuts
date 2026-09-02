@@ -1,6 +1,4 @@
 /**
- * Git Rebase Reorder Service
- *
  * Commit reordering is the one git operation CoC delegates to an AI session:
  * it needs `GIT_SEQUENCE_EDITOR` scripting plus judgement about whether a
  * conflict is trivial enough to auto-resolve. The work is enqueued as an
@@ -10,8 +8,6 @@
  * terminal-state policy — including the outcomes the queue reports as something
  * other than completed/failed (cancelled, removed) and the case where no
  * terminal event ever arrives.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import type { GitOpStatus } from '@plusplusoneplusplus/forge';

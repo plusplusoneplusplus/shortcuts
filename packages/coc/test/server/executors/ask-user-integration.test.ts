@@ -1,6 +1,4 @@
 /**
- * ask_user Integration Tests
- *
  * Verifies ask_user behavior at the executor level:
  * - ChatExecutor (ask mode) injects the custom ask_user tool
  * - Legacy plan payloads use ChatExecutor Ask semantics and inject the custom ask_user tool

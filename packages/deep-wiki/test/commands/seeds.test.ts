@@ -1,6 +1,4 @@
 /**
- * Seeds Command Tests
- *
  * Tests for the seeds command's path validation, header output,
  * and exit code behavior. SDK calls are mocked to avoid timeouts.
  */
@@ -253,7 +251,6 @@ describe('Seeds Command', () => {
 
             expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
-            // Check output file
             expect(fs.existsSync(outputFile)).toBe(true);
             const content = yaml.load(fs.readFileSync(outputFile, 'utf-8')) as any;
             expect(content.themes).toHaveLength(2);

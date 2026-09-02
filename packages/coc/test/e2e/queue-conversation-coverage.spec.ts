@@ -1,6 +1,4 @@
 /**
- * Queue Conversation Coverage — New Scenarios
- *
  * Additional E2E tests covering the 18 missing scenarios identified in
  * tasks/auto-test-coverage/queue-conversation.md.
  *

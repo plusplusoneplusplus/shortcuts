@@ -1,6 +1,4 @@
 /**
- * Tests for Memory REST API Edge Cases.
- *
  * Tests focus on edge cases not covered in the existing memory-routes.test.ts:
  * - Strict validation for PUT /api/memory/config
  * - Required config fields verification

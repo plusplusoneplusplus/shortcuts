@@ -1,5 +1,3 @@
-/** Shared types for the schedule management feature. */
-
 export type PromptScheduleMode = 'ask' | 'autopilot';
 
 export function normalizePromptScheduleMode(mode: unknown, fallback: PromptScheduleMode = 'ask'): PromptScheduleMode {

@@ -1,7 +1,3 @@
-/**
- * Tests for diff-utils — shared diff parsing utilities.
- */
-
 import { describe, it, expect } from 'vitest';
 import {
     makeDiffContent,

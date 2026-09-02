@@ -1,6 +1,4 @@
 /**
- * Tests for FileTree shared components.
- *
  * Validates exports, status maps, FlatFileList, FilesViewToggle,
  * FileTreeView renderActions slot, and tree builder utilities.
  */

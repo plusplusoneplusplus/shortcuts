@@ -1,6 +1,4 @@
 /**
- * Work Item AI Review Command
- *
  * Owns `POST .../work-items/:wid/ai-review`: eligibility checks, review prompt
  * construction, the queued review payload, and the persisted execution-history
  * entry. Queue `config` and history `aiSettings` are both derived from the one

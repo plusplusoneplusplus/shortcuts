@@ -2,7 +2,6 @@
  * MS Teams Bot types — standalone, no CoC/forge deps.
  */
 
-/** Inbound message received from MS Teams. */
 export interface InboundTeamsMessage {
     channelId: string;
     messageId: string;
@@ -19,7 +18,6 @@ export interface InboundTeamsMessage {
  */
 export type TeamsTransportMode = 'graph' | 'mcp';
 
-/** Options for creating a TeamsBot instance. */
 export interface TeamsBotOptions {
     /**
      * Transport mode (default: 'graph').
@@ -71,10 +69,8 @@ export interface DeviceCodeInfo {
     expiresIn: number;
 }
 
-/** Connection status of the bot. */
 export type BotStatus = 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
 
-/** MCP tool call request. */
 export interface McpToolCall {
     method: 'tools/call';
     params: {
@@ -83,18 +79,15 @@ export interface McpToolCall {
     };
 }
 
-/** MCP tool call response. */
 export interface McpToolResult {
     content: Array<{ type: string; text?: string }>;
     isError?: boolean;
 }
 
-/** MCP list tools response. */
 export interface McpToolsListResult {
     tools: Array<{ name: string; description?: string; inputSchema?: Record<string, unknown> }>;
 }
 
-/** Teams channel info. */
 export interface TeamsChannel {
     id: string;
     displayName: string;
@@ -102,7 +95,6 @@ export interface TeamsChannel {
     teamName?: string;
 }
 
-/** Send options for transport layer. */
 export interface TransportSendOptions {
     replyToId?: string;
     mentions?: Array<{ aadId: string; displayName: string }>;

@@ -1,6 +1,4 @@
 /**
- * Native GitHub Copilot CLI session routes.
- *
  * Read-only, workspace-scoped views over the current server user's native
  * Copilot CLI session store. These compatibility routes are gated by the
  * disabled-by-default `features.nativeCliSessions` flag with a live guard so

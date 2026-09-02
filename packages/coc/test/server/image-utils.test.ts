@@ -1,6 +1,4 @@
 /**
- * Image Utilities Tests
- *
  * Unit tests for parseDataUrl, saveImagesToTempFiles, and cleanupTempDir.
  */
 

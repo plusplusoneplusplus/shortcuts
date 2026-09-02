@@ -1,8 +1,8 @@
 /**
  * ModelInfo types mirrored from the Copilot SDK's types.ts.
  *
- * Defined here so the rest of pipeline-core can reference them without a
- * direct dependency on the SDK package.
+ * Defined here so the rest of the package can reference them without a direct
+ * dependency on the SDK package.
  */
 
 /**

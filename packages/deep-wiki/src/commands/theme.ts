@@ -1,6 +1,4 @@
 /**
- * Theme Command
- *
  * Implements the `deep-wiki theme <repo-path> [theme-name]` command.
  * Orchestrates the full theme generation pipeline:
  *   Phase A: Theme Probe       → EnrichedProbeResult
@@ -11,8 +9,6 @@
  *   Phase F: Website Regeneration (optional)
  *
  * Also handles --list and --check sub-flows.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -75,7 +71,6 @@ import { EXIT_CODES } from '../cli';
  *
  * @param repoPath - Path to the local git repository
  * @param themeName - Theme to generate (optional for --list)
- * @param options - Command options
  * @returns Exit code
  */
 export async function executeTheme(
@@ -85,7 +80,6 @@ export async function executeTheme(
 ): Promise<number> {
     const startTime = Date.now();
 
-    // Resolve to absolute path
     const absoluteRepoPath = path.resolve(repoPath);
 
     // ====================================================================
@@ -155,7 +149,6 @@ export async function executeTheme(
     }
 
     // ====================================================================
-    // Print header
     // ====================================================================
     printHeader('Deep Wiki — Theme Generation');
     process.stderr.write(`${'─'.repeat(35)}\n`);
@@ -167,7 +160,6 @@ export async function executeTheme(
     process.stderr.write('\n');
 
     // ====================================================================
-    // Check AI availability
     // ====================================================================
     const availability = await checkAIAvailability();
     if (!availability.available) {
@@ -396,9 +388,6 @@ export async function executeTheme(
 // Helpers
 // ============================================================================
 
-/**
- * Print the list of existing theme areas.
- */
 function printThemeList(themes: ThemeMeta[]): void {
     if (themes.length === 0) {
         printInfo('No theme areas found in wiki.');
@@ -418,9 +407,6 @@ function printThemeList(themes: ThemeMeta[]): void {
     printInfo(`${themes.length} theme area(s) found.`);
 }
 
-/**
- * Print coverage check result.
- */
 function printCoverageResult(
     themeId: string,
     coverage: { status: string; existingArticlePath?: string; relatedComponents: { componentId: string; relevance: string }[] }

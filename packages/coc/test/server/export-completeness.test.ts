@@ -1,6 +1,4 @@
 /**
- * Export Completeness Tests
- *
  * Section 7: Populates the server with one of each entity type, then calls
  * GET /api/admin/export and verifies that all entities are present in the
  * response, along with the correct HTTP headers.

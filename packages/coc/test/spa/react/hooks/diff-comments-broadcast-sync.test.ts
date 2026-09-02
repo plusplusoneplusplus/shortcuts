@@ -1,7 +1,3 @@
-/**
- * Tests for BroadcastChannel sync in diff comment hooks.
- */
-
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';

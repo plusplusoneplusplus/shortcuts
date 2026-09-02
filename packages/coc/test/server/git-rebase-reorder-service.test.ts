@@ -7,7 +7,7 @@
  * listener attached, enqueue failure, and no terminal event at all — plus
  * listener cleanup in each case.
  *
- * No HTTP, no git, no filesystem. Cross-platform compatible.
+ * No HTTP, no git, no filesystem.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

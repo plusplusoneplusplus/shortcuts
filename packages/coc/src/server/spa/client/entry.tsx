@@ -4,8 +4,8 @@
  * Bundled by esbuild into client/dist/bundle.js (IIFE).
  * Pure React bootstrap — all features handled by React components.
  *
- * When the URL hash starts with `#popout/activity/`, a lightweight
- * PopOutChatShell is rendered instead of the full App.
+ * A `#popout/...` hash (or a `/diagram/` pathname) mounts a lightweight
+ * pop-out shell instead of the full App.
  */
 
 import { createRoot } from 'react-dom/client';

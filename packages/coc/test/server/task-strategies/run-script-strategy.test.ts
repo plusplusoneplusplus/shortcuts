@@ -1,6 +1,4 @@
 /**
- * RunScriptStrategy Unit Tests
- *
  * Tests the extracted RunScriptStrategy and formatScriptResponse function
  * independently of CLITaskExecutor.
  */

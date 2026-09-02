@@ -1,6 +1,4 @@
 /**
- * Unit tests for LLM tool parameter summarization.
- *
  * Covers the pure JSON-schema → compact display-metadata derivation used by the
  * workspace LLM tools settings surface (AC-01 / AC-02 compact format).
  */

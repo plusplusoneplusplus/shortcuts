@@ -1,6 +1,4 @@
 /**
- * Ralph promotion route.
- *
  * POST /api/processes/:id/promote-to-ralph — promote a completed ask-mode
  * conversation into a Ralph session in place. Attaches a `grilling`-phase
  * ralph context to the existing process and enqueues a follow-up synthesis

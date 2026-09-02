@@ -1,10 +1,6 @@
 /**
- * Website Client Script
- *
  * Client-side JavaScript generation for the standalone HTML website.
  * Extracted from website-generator.ts for maintainability.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { WebsiteTheme } from '../types';
@@ -16,8 +12,6 @@ import { getMermaidZoomScript } from '../rendering/mermaid-zoom';
 
 /**
  * Generate the client-side JavaScript for the website template.
- * @param enableSearch - Whether to include search functionality
- * @param defaultTheme - The default theme setting
  * @returns JavaScript string to embed in <script> tag
  */
 export function getScript(enableSearch: boolean, defaultTheme: WebsiteTheme): string {

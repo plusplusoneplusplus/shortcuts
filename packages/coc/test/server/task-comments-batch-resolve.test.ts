@@ -1,6 +1,4 @@
 /**
- * Task Comments Batch Resolve Tests
- *
  * Tests for buildBatchResolvePrompt(), the per-comment resolve command
  * (commandId: 'resolve'), and the POST .../batch-resolve endpoint.
  */

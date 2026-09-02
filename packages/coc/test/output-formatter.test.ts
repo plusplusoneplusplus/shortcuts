@@ -1,6 +1,4 @@
 /**
- * Output Formatter Tests
- *
  * Tests for formatting pipeline results in table, json, csv, markdown.
  */
 

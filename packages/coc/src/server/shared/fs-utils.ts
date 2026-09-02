@@ -1,9 +1,3 @@
-/**
- * Shared filesystem utilities.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import * as fs from 'fs';
 import * as path from 'path';
 

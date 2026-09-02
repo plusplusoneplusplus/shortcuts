@@ -1,6 +1,4 @@
 /**
- * Attachment Utilities
- *
  * Server-side helpers for decoding uploaded file attachments (base64 data URLs)
  * into stored files and producing SDK Attachment objects.
  * Handles images, text files, and binary files.
@@ -143,7 +141,6 @@ export function saveAttachmentsToTempFiles(
             }
         }
 
-        // Generic data URL parsing
         const parsed = parseGenericDataUrl(payload.dataUrl);
         if (!parsed) continue;
         // Decoded-byte enforcement (same rationale as the image path above):
@@ -234,9 +231,6 @@ function getAttachmentDisplayName(name: string, filePath: string): string {
     return name.trim().length > 0 ? name : path.basename(filePath);
 }
 
-/**
- * Check if the request body has valid attachment payloads.
- */
 export function hasAttachments(body: Record<string, unknown>): boolean {
     return Array.isArray(body.attachments) && body.attachments.length > 0;
 }

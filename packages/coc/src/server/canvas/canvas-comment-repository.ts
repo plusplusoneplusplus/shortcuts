@@ -1,6 +1,4 @@
 /**
- * Canvas comment persistence
- *
  * Comments live in one `comments.json` array, so every mutation rewrites the
  * whole file. Add / set-status / delete therefore go through a single
  * {@link mutate} entry point: read, transform, write, all inside one call the

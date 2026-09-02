@@ -1,16 +1,3 @@
-/**
- * ClaudeSDKService tests
- *
- * Unit tests for the Claude SDK provider adapter, covering:
- * - Availability detection when SDK is not installed
- * - Availability detection when SDK is installed
- * - sendMessage streaming text
- * - sendMessage tool_use events
- * - sendMessage abort
- * - Unsupported operations (forkSession)
- * - Registry export and constants
- */
-
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';

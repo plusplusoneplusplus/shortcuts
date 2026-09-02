@@ -1,6 +1,4 @@
 /**
- * Work Item AI Authoring REST API Routes
- *
  * AI-assisted creation, improvement, and explicit draft application for work
  * items, goals, and child tasks. Persistent item reads/writes are origin-scoped;
  * workspaceId is required to select the concrete clone used by the AI generator.

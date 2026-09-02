@@ -152,9 +152,6 @@ function toGitChange(entry: NativeGitStatusEntry, repoRoot: string, repositoryNa
 // WorkingTreeService
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Service for working-tree operations: stage, unstage, discard, and query changes.
- */
 export class WorkingTreeService {
 
     /**

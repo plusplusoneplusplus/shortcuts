@@ -1,7 +1,7 @@
 /**
  * Tests for UnifiedDiffViewer line identity features:
  * parseHunkHeader, computeDiffLines, DiffLine interface,
- * and new prop declarations.
+ * and prop declarations.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';

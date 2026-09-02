@@ -35,7 +35,6 @@ const PINO_LEVELS: Array<[string, number]> = [
  * The original logger is called first (preserving all Pino behaviour); capture
  * is best-effort (errors are silently swallowed).
  *
- * @param logger  - The real Pino logger to wrap.
  * @param bindings - Accumulated child bindings (component, store, …).
  */
 function wrapForCapture(
@@ -79,7 +78,6 @@ let serverLogger: pino.Logger | null = null;
 let silentFallback: pino.Logger | null = null;
 
 /**
- * Inject a Pino logger for use across all coc-server modules.
  * The logger is wrapped in a capture proxy before storage so all log calls
  * are also forwarded to the in-process log buffer.
  * Call this once from the `coc serve` command before the HTTP server starts.
@@ -89,7 +87,6 @@ export function setServerLogger(logger: pino.Logger): void {
 }
 
 /**
- * Returns the active server logger.
  * Falls back to a silent (no-op) logger if `setServerLogger()` was not called.
  */
 export function getServerLogger(): pino.Logger {

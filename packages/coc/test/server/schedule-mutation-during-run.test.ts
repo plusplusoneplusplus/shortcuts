@@ -1,6 +1,4 @@
 /**
- * Schedule Mutation During Run Tests
- *
  * Covers Sections 2 & 3 of test-plan-schedule-system.md:
  * - Schedule Modified While Running (Section 2)
  * - Schedule Deleted While Running (Section 3)
@@ -9,8 +7,6 @@
  * terminal state, "during run" tests rely on fake queueManagers that don't
  * emit completion events — leaving the executor waiting — so state-mutation
  * side effects are tested without waiting for the run to finish.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -190,9 +186,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
             status: 'active',
         });
 
-        // Trigger run
         const runPromise = manager.triggerRun(REPO_ID, schedule.id);
-        // Pause schedule
         await manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
         // Run still completes
         const run = await runPromise;
@@ -228,7 +222,6 @@ describe('Schedule Modified While Running (Section 2)', () => {
             const firstCount = fireCount;
             expect(firstCount).toBeGreaterThanOrEqual(1);
 
-            // Pause the schedule
             await manager.updateSchedule(REPO_ID, schedule.id, { status: 'paused' });
 
             // Advance time further — should not fire again
@@ -265,7 +258,6 @@ describe('Schedule Modified While Running (Section 2)', () => {
         expect(run1.status).toBe('completed');
         expect(targetsUsed[0]).toContain('old.yaml');
 
-        // Update target
         await manager.updateSchedule(REPO_ID, schedule.id, { target: 'pipelines/new.yaml' });
 
         // Second run uses new target
@@ -335,13 +327,11 @@ describe('Schedule Deleted While Running (Section 3)', () => {
         const cr = await postJSON(schedulesUrl(), makeSchedule());
         const id = JSON.parse(cr.body).schedule.id;
 
-        // Trigger a run
         const runRes = await postJSON(`${schedulesUrl()}/${id}/run`, {});
         expect(runRes.status).toBe(200);
         const { run } = JSON.parse(runRes.body);
         expect(run.status).toMatch(/completed|running|failed/);
 
-        // Delete schedule
         const delRes = await deleteReq(`${schedulesUrl()}/${id}`);
         expect(delRes.status).toBe(200);
     });

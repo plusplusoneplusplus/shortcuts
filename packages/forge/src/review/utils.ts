@@ -1,10 +1,3 @@
-/**
- * Review Utilities
- *
- * Helper functions for creating, computing, and manipulating
- * review comments and results.
- */
-
 import { randomUUID } from 'node:crypto';
 import type {
     ReviewComment,
@@ -68,9 +61,6 @@ export function createReviewComment(input: CreateReviewCommentInput): ReviewComm
 
 const SEVERITY_KEYS: readonly ReviewSeverity[] = ['error', 'warning', 'info', 'suggestion'];
 
-/**
- * Compute aggregate `ReviewStats` from a list of comments.
- */
 export function computeReviewStats(comments: readonly ReviewComment[]): ReviewStats {
     const bySeverity: Record<ReviewSeverity, number> = { error: 0, warning: 0, info: 0, suggestion: 0 };
     const byCategory: Partial<Record<ReviewCategory, number>> = {};
@@ -109,9 +99,6 @@ export function deriveAssessment(stats: ReviewStats): ReviewAssessment {
 
 // ── Result builder ───────────────────────────────────────────
 
-/**
- * Build a complete `ReviewResult` from comments and metadata.
- */
 export function buildReviewResult(
     source: DiffSource,
     comments: ReviewComment[],
@@ -149,9 +136,6 @@ export function mergeReviewResults(
 
 // ── Filtering helpers ────────────────────────────────────────
 
-/**
- * Filter comments by severity.
- */
 export function filterBySeverity(
     comments: readonly ReviewComment[],
     severities: readonly ReviewSeverity[],
@@ -160,9 +144,6 @@ export function filterBySeverity(
     return comments.filter(c => set.has(c.severity));
 }
 
-/**
- * Filter comments by category.
- */
 export function filterByCategory(
     comments: readonly ReviewComment[],
     categories: readonly ReviewCategory[],
@@ -171,9 +152,6 @@ export function filterByCategory(
     return comments.filter(c => set.has(c.category));
 }
 
-/**
- * Filter comments by file path.
- */
 export function filterByFile(
     comments: readonly ReviewComment[],
     filePaths: readonly string[],
@@ -182,9 +160,6 @@ export function filterByFile(
     return comments.filter(c => set.has(c.filePath));
 }
 
-/**
- * Group comments by file path.
- */
 export function groupByFile(
     comments: readonly ReviewComment[],
 ): Map<string, ReviewComment[]> {

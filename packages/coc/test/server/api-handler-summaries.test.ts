@@ -1,6 +1,4 @@
 /**
- * API Handler — Process Summaries Endpoint Tests
- *
  * Tests for GET /api/processes/summaries — lightweight index-only process list.
  */
 

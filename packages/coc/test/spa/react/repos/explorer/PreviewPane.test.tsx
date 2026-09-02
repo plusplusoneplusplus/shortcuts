@@ -1,7 +1,3 @@
-/**
- * Tests for PreviewPane component.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
@@ -311,10 +307,8 @@ describe('PreviewPane', () => {
             textarea.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
-        // Mock save response
         mockExplorerApi.writeBlob.mockResolvedValueOnce({ success: true });
 
-        // Click save
         await act(async () => {
             screen.getByTestId('save-btn').click();
         });

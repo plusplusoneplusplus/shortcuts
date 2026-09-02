@@ -41,7 +41,6 @@ export interface AgentProvidersRouteContext extends AgentProvidersQuotaContext {
     getClaudeSdkService?: () => ClaudeSDKService | undefined;
     /** Optional: getter for OpenCode SDK service. Used for model queries. OpenCode has no quota API. */
     getOpenCodeSdkService?: () => ISDKService | undefined;
-    /** Config persistence functions for model settings. */
     configPath?: string;
     loadConfigFile: (p?: string) => CLIConfig | undefined;
     writeConfigFile: (p: string, c: CLIConfig) => void;

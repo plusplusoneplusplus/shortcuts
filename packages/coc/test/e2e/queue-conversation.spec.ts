@@ -1,6 +1,4 @@
 /**
- * Queue Task Conversation E2E Tests
- *
  * Comprehensive Playwright tests for the queue task conversation UI:
  * - Basic conversation rendering
  * - Streaming response
@@ -175,7 +173,6 @@ test.describe('Queue Task Conversation – Basic Rendering', () => {
 
             await gotoQueueTask(page, serverUrl, wsId, taskId);
 
-            // User message bubble exists
             await expect(page.locator('.chat-message.user')).toHaveCount(1);
             await expect(page.locator('.chat-message.user .chat-message-content')).toContainText('Analyze this file');
             await expect(page.locator('.chat-message.user .role-label')).toContainText('You');
@@ -200,7 +197,6 @@ test.describe('Queue Task Conversation – Basic Rendering', () => {
 
             await gotoQueueTask(page, serverUrl, wsId, taskId);
 
-            // Assistant bubble with response content
             await expect(page.locator('.chat-message.assistant')).toHaveCount(1);
             await expect(page.locator('.chat-message.assistant .role-label')).toContainText('Assistant');
             await expect(page.locator('.chat-message.assistant .chat-message-content')).toContainText('TypeScript module');
@@ -389,10 +385,8 @@ test.describe('Queue Task Conversation – Streaming', () => {
 
             await gotoQueueTask(page, serverUrl, wsId, taskId);
 
-            // Wait for completion
             await waitForStreamingToComplete(page);
 
-            // No streaming indicator, assistant bubble present
             await expect(page.locator('.streaming-indicator')).toHaveCount(0);
             await expect(page.locator('.chat-message.assistant.streaming')).toHaveCount(0);
             await expect(page.locator('.chat-message.assistant')).toHaveCount(1);
@@ -713,11 +707,9 @@ test.describe('Queue Task Conversation – User Input & Follow-up', () => {
             await gotoQueueTask(page, serverUrl, wsId, taskId);
             await waitForConversation(page, 2);
 
-            // Type and click send button
             await page.fill('[data-testid="activity-chat-input"]', 'Sent via button');
             await page.click('[data-testid="activity-chat-send-btn"]');
 
-            // User message sent
             await expect(page.locator('.chat-message.user')).toHaveCount(2, { timeout: 3000 });
             await expect(page.locator('.chat-message.user').last().locator('.chat-message-content'))
                 .toContainText('Sent via button');

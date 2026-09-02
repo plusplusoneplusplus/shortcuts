@@ -97,7 +97,6 @@ export interface WhisperGroupModel {
     duration: string;
 }
 
-/** Assemble the header model (parts + plain text + duration) for a group. */
 export function buildWhisperGroupModel(summary: WhisperSummary): WhisperGroupModel {
     const headerParts = buildWhisperHeaderParts(summary);
     const duration = formatWhisperDuration(summary.startTime, summary.endTime);

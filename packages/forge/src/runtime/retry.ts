@@ -1,17 +1,12 @@
 /**
- * Retry Utilities
- *
- * Provides a standard way to retry async operations with configurable backoff.
- * Produces structured PipelineCoreError with RETRY_EXHAUSTED code.
+ * Retry of async operations with configurable backoff.
+ * Produces a structured PipelineCoreError with the RETRY_EXHAUSTED code.
  */
 
 import { PipelineCoreError, ErrorCode, ErrorMetadata } from '../errors';
 import { IsCancelledFn, throwIfCancelled, isCancellationError } from './cancellation';
 import { isTimeoutError } from './timeout';
 
-/**
- * Error thrown when all retry attempts have been exhausted.
- */
 export class RetryExhaustedError extends PipelineCoreError {
     constructor(
         message: string,
@@ -27,9 +22,6 @@ export class RetryExhaustedError extends PipelineCoreError {
     }
 }
 
-/**
- * Backoff strategy type
- */
 export type BackoffStrategy = 'fixed' | 'exponential' | 'linear';
 
 /**
@@ -37,14 +29,8 @@ export type BackoffStrategy = 'fixed' | 'exponential' | 'linear';
  */
 export type OnAttemptFn = (attempt: number, maxAttempts: number, lastError?: unknown) => void;
 
-/**
- * Function to determine if an error should trigger a retry
- */
 export type RetryOnFn = (error: unknown, attempt: number) => boolean;
 
-/**
- * Options for withRetry
- */
 export interface RetryOptions {
     /** Maximum number of attempts (including initial attempt). Default: 3 */
     attempts?: number;
@@ -66,7 +52,6 @@ export interface RetryOptions {
     meta?: ErrorMetadata;
 }
 
-/** Default retry options */
 export const DEFAULT_RETRY_OPTIONS: Required<Omit<RetryOptions, 'retryOn' | 'onAttempt' | 'isCancelled' | 'operationName' | 'meta'>> = {
     attempts: 3,
     delayMs: 1000,
@@ -88,9 +73,6 @@ export const retryOnTimeout: RetryOnFn = (error: unknown): boolean => {
     return !isCancellationError(error) && isTimeoutError(error);
 };
 
-/**
- * Calculate delay for a given attempt based on backoff strategy
- */
 export function calculateDelay(
     attempt: number,
     baseDelayMs: number,
@@ -181,7 +163,6 @@ export async function withRetry<T>(
         }
     }
 
-    // All attempts exhausted
     const name = operationName ?? 'Operation';
     throw new RetryExhaustedError(
         `${name} failed after ${attempts} attempts`,
@@ -194,9 +175,6 @@ export async function withRetry<T>(
     );
 }
 
-/**
- * Check if an error is a retry exhausted error
- */
 export function isRetryExhaustedError(error: unknown): error is RetryExhaustedError {
     if (error instanceof RetryExhaustedError) {
         return true;
@@ -207,9 +185,6 @@ export function isRetryExhaustedError(error: unknown): error is RetryExhaustedEr
     return false;
 }
 
-/**
- * Sleep for a specified duration
- */
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }

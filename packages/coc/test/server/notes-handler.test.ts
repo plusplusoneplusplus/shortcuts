@@ -1,6 +1,4 @@
 /**
- * Notes Handler Tests
- *
  * Comprehensive tests for the Notes REST API endpoints:
  * tree, content read/write, create, rename, delete, search.
  *
@@ -57,7 +55,6 @@ function request(
     });
 }
 
-/** POST JSON helper. */
 function postJSON(url: string, data: unknown) {
     return request(url, {
         method: 'POST',
@@ -66,7 +63,6 @@ function postJSON(url: string, data: unknown) {
     });
 }
 
-/** PUT JSON helper. */
 function putJSON(url: string, data: unknown) {
     return request(url, {
         method: 'PUT',
@@ -75,7 +71,6 @@ function putJSON(url: string, data: unknown) {
     });
 }
 
-/** PATCH JSON helper. */
 function patchJSON(url: string, data: unknown) {
     return request(url, {
         method: 'PATCH',
@@ -84,7 +79,6 @@ function patchJSON(url: string, data: unknown) {
     });
 }
 
-/** DELETE helper. */
 function deleteRequest(url: string) {
     return request(url, { method: 'DELETE' });
 }

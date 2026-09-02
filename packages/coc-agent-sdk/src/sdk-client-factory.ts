@@ -245,7 +245,6 @@ export function getLastCopilotElectronSpawn(): CopilotElectronSpawn | undefined 
  * Requires the SDK to have been loaded via `loadCopilotSdk()` before calling.
  *
  * @param options - Client creation options (e.g. `workingDirectory`).
- * @returns The newly created SDK client instance.
  */
 export function createSdkClient(options: CopilotClientOptions = {}): CopilotClient {
     const { workingDirectory } = options;

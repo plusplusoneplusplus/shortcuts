@@ -1,9 +1,3 @@
-/**
- * Tests for prompt file discovery.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';

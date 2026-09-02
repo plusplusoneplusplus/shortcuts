@@ -1,7 +1,3 @@
-/**
- * Registry of bundled skills that ship with forge.
- */
-
 import type { BundledSkill } from './types';
 
 /**

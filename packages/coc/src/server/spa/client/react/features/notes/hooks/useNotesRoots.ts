@@ -42,13 +42,9 @@ export interface UseNotesRootsResult {
     roots: NotesRootEntry[];
     /** The currently selected root ID ('default' or a relative path). */
     selectedRootId: string;
-    /** Whether the selected root is the default managed root. */
     isDefaultRoot: boolean;
-    /** Display label for the current root. */
     selectedRootLabel: string;
-    /** Whether the roots list is still loading. */
     loading: boolean;
-    /** Select a different root. */
     selectRoot: (rootId: string) => void;
     /** Refresh roots from server. */
     refreshRoots: () => Promise<void>;

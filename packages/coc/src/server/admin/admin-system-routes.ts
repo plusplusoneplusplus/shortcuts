@@ -1,6 +1,4 @@
 /**
- * Admin System Routes
- *
  * Build version reporting and server restart.
  */
 
@@ -8,7 +6,6 @@ import { sendJSON } from '../core/api-handler';
 import type { Route } from '../types';
 import type { AdminRouteOptions } from './admin-route-types';
 
-/** Register version + restart routes. */
 export function registerSystemRoutes(routes: Route[], options: AdminRouteOptions): void {
     // ------------------------------------------------------------------
     // GET /api/admin/version — Return build version and commit hash

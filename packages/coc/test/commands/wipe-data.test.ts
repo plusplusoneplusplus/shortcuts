@@ -1,6 +1,4 @@
 /**
- * Wipe Data Command Tests
- *
  * Tests for the `coc admin wipe-data` command execution.
  */
 

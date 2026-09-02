@@ -1,10 +1,6 @@
 /**
- * Mermaid Zoom/Pan Module Tests
- *
- * Tests the shared mermaid zoom/pan CSS, HTML, and JS that are used by both
- * spa-template.ts (serve mode) and website-generator.ts (static site).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
+ * Tests the shared mermaid zoom/pan CSS, HTML, and JS that the generated
+ * static site pulls in through website-styles.ts and website-client-script.ts.
  */
 
 import { describe, it, expect } from 'vitest';

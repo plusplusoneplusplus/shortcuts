@@ -1,6 +1,4 @@
 /**
- * Wiki Content Rendering E2E Tests
- *
  * Tests markdown rendering, syntax highlighting, mermaid diagrams,
  * table of contents, and dependency graph visualization.
  *
@@ -491,7 +489,6 @@ test.describe('Syntax highlighting', () => {
             await expect(codeBlock).toBeVisible({ timeout: 5_000 });
             await expect(codeBlock).toHaveClass(/hljs/);
 
-            // Verify keyword and string tokens
             const keywords = codeBlock.locator('.hljs-keyword');
             expect(await keywords.count()).toBeGreaterThan(0);
             const strings = codeBlock.locator('.hljs-string');

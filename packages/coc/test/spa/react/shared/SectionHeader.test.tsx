@@ -1,7 +1,3 @@
-/**
- * Tests for SectionHeader shared component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SectionHeader } from '../../../../src/server/spa/client/react/ui/SectionHeader';

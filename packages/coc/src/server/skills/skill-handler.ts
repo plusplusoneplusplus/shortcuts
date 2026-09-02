@@ -1,11 +1,6 @@
 /**
- * Skill Management REST API Handler
- *
  * HTTP API routes for managing skills in a workspace's .github/skills/ directory.
  * Provides listing, scanning, installing, and deleting skills.
- *
- * Pure Node.js; uses pipeline-core skill utilities.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';

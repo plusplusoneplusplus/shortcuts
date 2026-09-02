@@ -1,11 +1,6 @@
 /**
- * Shared HTTP Router
- *
  * Base router implementation used by both main server and wiki server.
  * Handles route matching, static file serving, and SPA fallback.
- * Uses only Node.js built-in modules (http, fs, path, url).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';
@@ -181,12 +176,10 @@ export function createRouter(options: SharedRouterOptions): (req: http.IncomingM
                 }
             }
 
-            // No route matched
             send404(res, `API route not found: ${pathname}`);
             return;
         }
 
-        // Static file handlers
         for (const handler of staticHandlers) {
             const filePath = handler.resolve(pathname);
             if (filePath && serveStaticFile(filePath, res)) {

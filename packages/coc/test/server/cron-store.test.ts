@@ -1,6 +1,4 @@
 /**
- * Cron Store Tests
- *
  * Unit tests for `CronStore` — SQLite CRUD operations for cron entries.
  * Uses in-memory SQLite databases (no file I/O, cross-platform safe).
  */

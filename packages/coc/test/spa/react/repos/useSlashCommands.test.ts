@@ -160,7 +160,6 @@ describe('useSlashCommands', () => {
         expect(setValue).toHaveBeenCalledWith('/go-deep ', 9);
     });
 
-    // activeCommandHint tests
     describe('activeCommandHint', () => {
         it('is null when input is empty', () => {
             const { result } = renderHook(() => useSlashCommands(skillsWithMeta));

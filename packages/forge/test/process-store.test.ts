@@ -1,6 +1,4 @@
 /**
- * Process Store Types Tests
- *
  * Compile-time + runtime shape tests for WorkspaceInfo, ProcessFilter,
  * ProcessStore interface, and the new workspace fields on GenericProcessMetadata.
  */

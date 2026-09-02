@@ -26,14 +26,12 @@ export interface ZoomPanState {
     translateX: number;
     /** Current vertical pan offset in px. */
     translateY: number;
-    /** Whether the user is currently dragging. */
     isDragging: boolean;
 }
 
 export interface UseZoomPanReturn {
     /** Ref to attach to the outer container `<div>` that receives pointer events. */
     containerRef: React.RefObject<HTMLDivElement>;
-    /** Current transform state. */
     state: ZoomPanState;
     /** SVG transform string: `"translate(tx, ty) scale(s)"`. */
     svgTransform: string;
@@ -43,7 +41,6 @@ export interface UseZoomPanReturn {
     zoomOut: () => void;
     /** Reset to scale=1, translate=(0,0). */
     reset: () => void;
-    /** Auto-fit: calculate scale so all content fits the container. */
     fitToView: () => void;
     /** Center the content in the container at a fixed scale (default 1 = 100%). */
     centerContent: (scale?: number) => void;

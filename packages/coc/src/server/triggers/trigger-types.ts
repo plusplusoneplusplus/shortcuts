@@ -1,6 +1,4 @@
 /**
- * Trigger Subsystem Types
- *
  * A generic `event → action` framework. A `Trigger` binds an **event** (the
  * thing that is watched / fires) to an **action** (the thing that happens when
  * the event fires), scoped to a conversation `processId` and a `workspaceId`.

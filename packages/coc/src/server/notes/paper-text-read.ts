@@ -9,8 +9,6 @@
  * The read is **best-effort**: any failure (feature off, no sidecar, path
  * outside the papers cache, unreadable file) returns `null` so the caller can
  * fall back to the cheap selection-only grounding path.
- *
- * Pure Node.js; cross-platform (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

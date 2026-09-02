@@ -1,6 +1,6 @@
 /**
- * Task CRUD operations and composite helpers — Pure Node.js functions for task file management.
- * Pure Node.js. Every function takes explicit path arguments.
+ * Task CRUD operations and composite helpers for task file management.
+ * Every function takes explicit path arguments.
  */
 
 import * as fs from 'fs';
@@ -32,10 +32,8 @@ export { parseFileName, sanitizeFileName } from './task-parser';
 // ============================================================================
 
 /**
- * Create a new task file in the tasks folder.
  * @param tasksFolder - Absolute path to the tasks folder
  * @param name - Display name for the task
- * @returns The path to the created file
  */
 export async function createTask(tasksFolder: string, name: string): Promise<string> {
     const sanitized = sanitizeFileName(name);
@@ -52,10 +50,8 @@ export async function createTask(tasksFolder: string, name: string): Promise<str
 }
 
 /**
- * Create a new feature folder with a placeholder file.
+ * Creates a placeholder file inside the new folder.
  * @param tasksFolder - Absolute path to the tasks folder
- * @param name - Display name for the feature
- * @returns The path to the created folder
  */
 export async function createFeature(tasksFolder: string, name: string): Promise<string> {
     const sanitized = sanitizeFileName(name);
@@ -74,10 +70,7 @@ export async function createFeature(tasksFolder: string, name: string): Promise<
 }
 
 /**
- * Create a new subfolder inside an existing folder.
  * @param parentFolderPath - Absolute path to the parent folder
- * @param name - Name of the subfolder to create
- * @returns The path to the created subfolder
  */
 export async function createSubfolder(parentFolderPath: string, name: string): Promise<string> {
     if (!safeExists(parentFolderPath)) {
@@ -104,10 +97,8 @@ export async function createSubfolder(parentFolderPath: string, name: string): P
 // ============================================================================
 
 /**
- * Rename a task file.
  * @param oldPath - Absolute path to the existing task file
  * @param newName - New display name for the task
- * @returns The new file path
  */
 export async function renameTask(oldPath: string, newName: string): Promise<string> {
     if (!safeExists(oldPath)) {
@@ -127,10 +118,7 @@ export async function renameTask(oldPath: string, newName: string): Promise<stri
 }
 
 /**
- * Rename a folder.
  * @param folderPath - Absolute path to the folder
- * @param newName - New folder name
- * @returns The new folder path
  */
 export async function renameFolder(folderPath: string, newName: string): Promise<string> {
     if (!safeExists(folderPath)) {
@@ -155,11 +143,8 @@ export async function renameFolder(folderPath: string, newName: string): Promise
 }
 
 /**
- * Rename a document group (all documents sharing the same base name).
+ * Renames all documents sharing the same base name.
  * @param folderPath - Absolute path to the folder containing the documents
- * @param oldBaseName - Current base name of the document group
- * @param newBaseName - New base name for the documents
- * @returns Array of new file paths
  */
 export async function renameDocumentGroup(folderPath: string, oldBaseName: string, newBaseName: string): Promise<string[]> {
     if (!safeExists(folderPath)) {
@@ -221,10 +206,8 @@ export async function renameDocumentGroup(folderPath: string, oldBaseName: strin
 }
 
 /**
- * Rename a single document (preserving doc type suffix).
+ * Preserves the doc type suffix.
  * @param oldPath - Absolute path to the document
- * @param newBaseName - New base name for the document
- * @returns The new file path
  */
 export async function renameDocument(oldPath: string, newBaseName: string): Promise<string> {
     if (!safeExists(oldPath)) {
@@ -254,7 +237,6 @@ export async function renameDocument(oldPath: string, newBaseName: string): Prom
 // ============================================================================
 
 /**
- * Delete a task file.
  * @param filePath - Absolute path to the task file
  */
 export async function deleteTask(filePath: string): Promise<void> {
@@ -266,7 +248,7 @@ export async function deleteTask(filePath: string): Promise<void> {
 }
 
 /**
- * Delete a folder and all its contents recursively.
+ * Recursive.
  * @param folderPath - Absolute path to the folder to delete
  */
 export async function deleteFolder(folderPath: string): Promise<void> {
@@ -287,12 +269,11 @@ export async function deleteFolder(folderPath: string): Promise<void> {
 // ============================================================================
 
 /**
- * Archive a task (move to archive folder).
+ * Moves the task into the archive folder.
  * @param filePath - Absolute path to the task file
  * @param tasksFolder - Absolute path to the tasks folder
  * @param archiveFolder - Absolute path to the archive folder
  * @param preserveStructure - If true, preserves the relative folder structure under archive
- * @returns The new file path
  */
 export async function archiveTask(
     filePath: string,
@@ -335,10 +316,9 @@ export async function archiveTask(
 }
 
 /**
- * Unarchive a task (move back to tasks root).
+ * Moves the task back to the tasks root.
  * @param filePath - Absolute path to the archived task file
  * @param tasksFolder - Absolute path to the tasks folder
- * @returns The new file path
  */
 export async function unarchiveTask(filePath: string, tasksFolder: string): Promise<string> {
     if (!safeExists(filePath)) {
@@ -360,7 +340,7 @@ export async function unarchiveTask(filePath: string, tasksFolder: string): Prom
 }
 
 /**
- * Archive a document (delegates to archiveTask).
+ * Delegates to archiveTask.
  */
 export async function archiveDocument(
     filePath: string,
@@ -372,19 +352,17 @@ export async function archiveDocument(
 }
 
 /**
- * Unarchive a document (delegates to unarchiveTask).
+ * Delegates to unarchiveTask.
  */
 export async function unarchiveDocument(filePath: string, tasksFolder: string): Promise<string> {
     return unarchiveTask(filePath, tasksFolder);
 }
 
 /**
- * Archive a document group (move all documents to archive folder).
- * @param filePaths - Array of file paths in the group
+ * Moves every document in the group to the archive folder.
  * @param tasksFolder - Absolute path to the tasks folder
  * @param archiveFolder - Absolute path to the archive folder
  * @param preserveStructure - If true, preserves the relative folder structure under archive
- * @returns Array of new file paths
  */
 export async function archiveDocumentGroup(
     filePaths: string[],
@@ -401,10 +379,8 @@ export async function archiveDocumentGroup(
 }
 
 /**
- * Unarchive a document group (move all documents back to tasks root).
- * @param filePaths - Array of file paths in the group
+ * Moves every document in the group back to the tasks root.
  * @param tasksFolder - Absolute path to the tasks folder
- * @returns Array of new file paths
  */
 export async function unarchiveDocumentGroup(filePaths: string[], tasksFolder: string): Promise<string[]> {
     const newPaths: string[] = [];
@@ -420,10 +396,8 @@ export async function unarchiveDocumentGroup(filePaths: string[], tasksFolder: s
 // ============================================================================
 
 /**
- * Move a task file to a different folder.
  * @param sourcePath - Absolute path to the source file
  * @param targetFolder - Absolute path to the target folder
- * @returns The new file path
  */
 export async function moveTask(sourcePath: string, targetFolder: string): Promise<string> {
     if (!safeExists(sourcePath)) {
@@ -453,11 +427,9 @@ export async function moveTask(sourcePath: string, targetFolder: string): Promis
 }
 
 /**
- * Move an entire folder (and all its contents) into a target folder.
  * Prevents circular moves (moving a folder into its own subtree).
  * @param sourceFolderPath - Absolute path to the folder to move
  * @param targetParentFolder - Absolute path to the destination parent folder
- * @returns The new folder path
  */
 export async function moveFolder(sourceFolderPath: string, targetParentFolder: string): Promise<string> {
     if (!safeExists(sourceFolderPath)) {
@@ -505,10 +477,8 @@ export async function moveFolder(sourceFolderPath: string, targetParentFolder: s
 }
 
 /**
- * Move multiple task files to a different folder (for document groups).
  * @param sourcePaths - Array of absolute paths to source files
  * @param targetFolder - Absolute path to the target folder
- * @returns Array of new file paths
  */
 export async function moveTaskGroup(sourcePaths: string[], targetFolder: string): Promise<string[]> {
     const newPaths: string[] = [];
@@ -520,11 +490,9 @@ export async function moveTaskGroup(sourcePaths: string[], targetFolder: string)
 }
 
 /**
- * Import an external markdown file into the tasks folder (copy semantics).
- * @param sourcePath - Path to the source file
+ * Copy semantics — the source file is left in place.
  * @param tasksFolder - Absolute path to the tasks folder
  * @param newName - Optional new name for the task (without .md extension)
- * @returns The path to the imported file
  */
 export async function importTask(sourcePath: string, tasksFolder: string, newName?: string): Promise<string> {
     const sourceFileName = path.basename(sourcePath);
@@ -546,12 +514,10 @@ export async function importTask(sourcePath: string, tasksFolder: string, newNam
 }
 
 /**
- * Move an external markdown file into the tasks folder (move semantics - source is deleted).
- * @param sourcePath - Path to the source file
+ * Move semantics — the source file is deleted.
  * @param tasksFolder - Absolute path to the tasks folder
  * @param targetFolder - Absolute path to the target folder (defaults to tasksFolder)
  * @param newName - Optional new name for the task (without .md extension)
- * @returns The path to the moved file
  */
 export async function moveExternalTask(
     sourcePath: string,
@@ -591,7 +557,6 @@ export async function moveExternalTask(
 // ============================================================================
 
 /**
- * Check if a task with the given name exists in a specific folder.
  * @param name - Task name (without .md extension)
  * @param tasksFolder - Absolute path to the tasks folder
  * @param folder - Optional specific folder path (defaults to tasksFolder)
@@ -604,7 +569,6 @@ export function taskExistsInFolder(name: string, tasksFolder: string, folder?: s
 }
 
 /**
- * Check if a task with the given name exists in the tasks folder.
  * @param name - Task name (without .md extension)
  * @param tasksFolder - Absolute path to the tasks folder
  */
@@ -635,9 +599,6 @@ export function resolveTaskPaths(
     };
 }
 
-/**
- * Ensure both the tasks folder and archive sub-folder exist on disk.
- */
 export function ensureTaskFolders(tasksFolder: string): void {
     ensureDirectoryExists(tasksFolder);
     ensureDirectoryExists(path.join(tasksFolder, 'archive'));
@@ -723,7 +684,7 @@ export async function getFullTaskHierarchy(
 }
 
 /**
- * Recursively collect feature sub-folders under a tasks folder, excluding `archive/`.
+ * Recursive; excludes `archive/`.
  */
 export async function getFeatureFolders(
     tasksFolder: string

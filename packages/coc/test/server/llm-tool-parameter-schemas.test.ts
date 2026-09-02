@@ -1,6 +1,4 @@
 /**
- * LLM tool parameter schema map tests
- *
  * Covers the display-only mirror of tool input schemas
  * (`LLM_TOOL_PARAMETER_SCHEMAS`) and the `withToolParameterMetadata` helper
  * that attaches the additive `params` summary to registry metadata.

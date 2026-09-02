@@ -1,6 +1,4 @@
 /**
- * Ralph-specific queue routes.
- *
  * POST /api/processes/:id/ralph-start — validate a completed grilling-phase
  * process, initialize the per-session journal, and enqueue the first Ralph
  * execution task.
@@ -52,7 +50,6 @@ export function registerRalphRoutes(routes: Route[], ctx: QueueRalphRouteContext
                 return sendError(res, 400, 'Invalid JSON');
             }
 
-            // Validate goalSpec
             const goalSpec = typeof body.goalSpec === 'string' ? body.goalSpec.trim() : '';
             if (!goalSpec) {
                 return sendError(res, 400, 'Missing or empty field: goalSpec');

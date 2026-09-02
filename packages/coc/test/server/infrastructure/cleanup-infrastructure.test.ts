@@ -1,6 +1,4 @@
 /**
- * CleanupInfrastructure Tests
- *
  * Tests for the createCleanupInfrastructure factory function.
  * Uses OS temp directories for cross-platform compatibility.
  */

@@ -1,6 +1,4 @@
 /**
- * Tests for useDiffComments hook.
- *
  * Verifies CRUD operations, AI flows, WebSocket subscription, and
  * isEphemeral flag. Mocks fetch, WebSocket, and crypto.subtle.digest
  * to avoid real network and crypto calls.
@@ -552,7 +550,6 @@ describe('useDiffComments', () => {
 
 import type { DiffLine } from '../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 
-/** Build a DiffLine with the given content. */
 function makeDiffLine(content: string, index: number): DiffLine {
     return { index, type: 'context', content };
 }

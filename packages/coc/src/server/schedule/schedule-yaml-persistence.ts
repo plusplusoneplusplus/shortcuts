@@ -1,13 +1,9 @@
 /**
- * ScheduleYamlPersistence
- *
  * Stores each user schedule as an individual YAML file under:
  *   ~/.coc/repos/<repoId>/schedules/<id>.yaml
  *
  * This provides the same loadAll / saveRepo / deleteRepo contract as
  * SchedulePersistence, plus fine-grained per-entry helpers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

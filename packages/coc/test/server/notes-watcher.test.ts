@@ -1,6 +1,4 @@
 /**
- * NotesWatcher Unit Tests
- *
  * Tests for the NotesWatcher class which watches notes directories
  * for file changes and fires debounced callbacks with changed paths.
  *

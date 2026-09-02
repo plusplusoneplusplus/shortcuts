@@ -1,15 +1,12 @@
 /**
- * Cancellation Utilities
- *
- * Provides a standard way to check for and handle cancellation across async operations.
- * Works with the existing ConcurrencyLimiter's isCancelled pattern.
+ * Cancellation checks for async operations, built around the same
+ * `isCancelled` callback pattern ConcurrencyLimiter uses.
  */
 
 import { PipelineCoreError, ErrorCode, ErrorMetadata } from '../errors';
 
 /**
- * Error thrown when an operation is cancelled.
- * Extends PipelineCoreError with CANCELLED code.
+ * Carries the CANCELLED code.
  */
 export class CancellationError extends PipelineCoreError {
     constructor(message = 'Operation cancelled', meta?: ErrorMetadata) {
@@ -22,14 +19,10 @@ export class CancellationError extends PipelineCoreError {
 }
 
 /**
- * Function type for cancellation check.
  * Returns true if the operation should be cancelled.
  */
 export type IsCancelledFn = () => boolean;
 
-/**
- * Check if an error is a cancellation error
- */
 export function isCancellationError(error: unknown): error is CancellationError {
     return error instanceof CancellationError
         || (error instanceof PipelineCoreError && error.code === ErrorCode.CANCELLED);
@@ -53,8 +46,7 @@ export function throwIfCancelled(
 }
 
 /**
- * Create a cancellation token from a function.
- * Useful for wrapping external cancellation sources.
+ * Wraps an external cancellation source as a token.
  */
 export function createCancellationToken(isCancelled?: IsCancelledFn): {
     isCancelled: IsCancelledFn;

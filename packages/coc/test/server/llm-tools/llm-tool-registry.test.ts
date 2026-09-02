@@ -1,6 +1,4 @@
 /**
- * LLM Tool Registry Tests
- *
  * Tests for the LLM tool registry, default disabled tools, and filtering utilities.
  */
 

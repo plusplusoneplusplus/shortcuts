@@ -1,13 +1,10 @@
 /**
- * Image Blob Store
- *
  * Externalizes base64 image data-URLs from queue persistence payloads
  * into standalone JSON files under `<dataDir>/blobs/`.
  *
  * Uses atomic writes (temp file + rename) for safe concurrent access.
  *
  * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs/promises';

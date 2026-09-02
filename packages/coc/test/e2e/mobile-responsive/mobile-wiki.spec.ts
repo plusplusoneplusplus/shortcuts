@@ -72,7 +72,6 @@ test.describe('Mobile Wiki', () => {
         await page.goto(`${serverUrl}/#wiki/${encodeURIComponent('mob-wiki-toc')}`);
         await expect(page.locator('#view-wiki')).toBeVisible({ timeout: 15000 });
 
-        // Mobile sidebar toggle should be visible
         const toggle = page.locator('[data-testid="wiki-sidebar-toggle"]');
         if (await toggle.count() > 0) {
             await expect(toggle).toBeVisible();

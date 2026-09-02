@@ -269,11 +269,9 @@ describe('Schedule edit mode', () => {
 
         await waitFor(() => expect(screen.getByText('Edit Schedule')).toBeTruthy());
 
-        // Change the name
         const nameInput = screen.getByPlaceholderText('Name (e.g., Daily Report)') as HTMLInputElement;
         fireEvent.change(nameInput, { target: { value: 'Updated Schedule' } });
 
-        // Click Save
         const saveBtn = screen.getByRole('button', { name: 'Save' });
         fireEvent.click(saveBtn);
 

@@ -48,7 +48,6 @@ function generateHints(themeName: string): string[] {
     const parts = themeName.split('-');
     const hints = new Set<string>();
 
-    // Add each part as a hint
     for (const part of parts) {
         hints.add(part);
     }
@@ -102,7 +101,6 @@ function enrichProbeResult(
     const newModuleIds: string[] = [];
     const allKeyFiles: string[] = [];
 
-    // Collect all key files
     for (const mod of probeResult.foundComponents) {
         for (const f of mod.keyFiles) {
             if (!allKeyFiles.includes(f)) {

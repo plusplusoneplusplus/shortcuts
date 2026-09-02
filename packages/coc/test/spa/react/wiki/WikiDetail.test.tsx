@@ -1,5 +1,4 @@
 /**
- * Unit tests for WikiDetail component.
  * Covers loading state, graph-available rendering, error/empty state,
  * and tab-switching between Browse, Ask, and Graph views.
  */

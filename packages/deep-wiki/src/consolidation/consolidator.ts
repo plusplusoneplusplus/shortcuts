@@ -1,12 +1,8 @@
 /**
- * Component Consolidation Orchestrator
- *
  * Public API for Phase 2 — combines rule-based directory consolidation
  * with AI-assisted semantic clustering to reduce component count.
  *
  * Pipeline: Rule-based → AI clustering (optional)
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
@@ -19,7 +15,6 @@ import { clusterWithAI } from './ai-consolidator';
 // Constants
 // ============================================================================
 
-/** Default target component count for AI clustering */
 const DEFAULT_TARGET_COMPONENT_COUNT = 50;
 
 // ============================================================================
@@ -34,8 +29,6 @@ const DEFAULT_TARGET_COMPONENT_COUNT = 50;
  *
  * @param graph - The original component graph from Phase 1 (Discovery)
  * @param aiInvoker - AI invoker for semantic clustering (null to skip AI)
- * @param options - Consolidation options
- * @returns Consolidation result with new graph and stats
  */
 export async function consolidateComponents(
     graph: ComponentGraph,

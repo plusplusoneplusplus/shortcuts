@@ -1,6 +1,4 @@
 /**
- * Context Menu Submenu E2E Tests
- *
  * Covers: ContextMenu nested SubmenuItem hover-to-expand and child-item click.
  */
 

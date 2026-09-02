@@ -1,6 +1,4 @@
 /**
- * Copilot SDK Wrapper Module Tests
- *
  * Verifies that the copilot-sdk-wrapper barrel exports are complete
  * and that all types/functions are accessible from the wrapper module.
  * Also verifies backward compatibility through the ai/ re-exports.

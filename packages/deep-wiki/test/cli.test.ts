@@ -1,6 +1,4 @@
 /**
- * CLI Tests
- *
  * Tests for the CLI argument parser and program creation.
  */
 

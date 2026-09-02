@@ -1,6 +1,4 @@
 /**
- * ScheduleTimerRegistry
- *
  * Owns a key → setTimeout handle map.  Centralizes the cap on setTimeout's
  * 32-bit delay range and provides cancel/clear primitives.
  *

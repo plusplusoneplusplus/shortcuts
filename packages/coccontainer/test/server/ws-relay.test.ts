@@ -188,7 +188,6 @@ describe('Container WebSocket relay: message format', () => {
         // Give the client a moment to settle
         await new Promise(r => setTimeout(r, 100));
 
-        // Agent broadcasts a process-updated event
         const agentMsg = { type: 'process-updated', process: { id: 'p1', status: 'running', promptPreview: 'hello' } };
         agent.emitWS(JSON.stringify(agentMsg));
 
@@ -205,7 +204,6 @@ describe('Container WebSocket relay: message format', () => {
         // Agent payload fields must be preserved
         expect(evt.process?.id).toBe('p1');
         expect(evt.process?.status).toBe('running');
-        // agentId and agentName injected
         expect(evt.agentId).toBe(agentId);
         expect(evt.agentName).toBe('WS-Test-Agent');
     });

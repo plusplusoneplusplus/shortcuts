@@ -1,6 +1,4 @@
 /**
- * ModelMetadataStore warm-up at server startup
- *
  * Verifies that createExecutionServer() warms model metadata before listening,
  * passes the resolved AI service, and still starts when initialization rejects.
  */

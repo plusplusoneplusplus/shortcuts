@@ -1,6 +1,4 @@
 /**
- * Comment AI Advanced E2E Tests
- *
  * Covers: Fix with AI, AI error banner + dismiss, AI response expand/collapse,
  * Resolve All with AI loading state (spinner + disabled cards).
  */

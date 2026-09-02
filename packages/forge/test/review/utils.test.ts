@@ -1,6 +1,4 @@
 /**
- * Tests for review utility functions.
- *
  * Covers comment creation, stats computation, assessment derivation,
  * result building, merging, and filtering helpers.
  */

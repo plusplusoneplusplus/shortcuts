@@ -1,14 +1,10 @@
 /**
- * Wiki Backend Types
- *
  * Shared interfaces used by the unified ask/explore/generate handlers.
  * Each interface represents a "resolved context" — the dependencies a handler
  * needs after the caller has determined which wiki backend is being used.
  *
  * - NativeWikiBackend: resolves from WikiManager (multi-tenant)
  * - DeepWikiBackend: resolves from flat injected options (single-wiki)
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ContextBuilder } from './context-builder';
@@ -20,7 +16,6 @@ import type { WikiData } from './wiki-data';
 // Ask Context
 // ============================================================================
 
-/** Resolved context for the ask handler core logic. */
 export interface ResolvedAskContext {
     contextBuilder: ContextBuilder;
     sendMessage: AskAIFunction;
@@ -33,7 +28,6 @@ export interface ResolvedAskContext {
 // Explore Context
 // ============================================================================
 
-/** Resolved context for the explore handler core logic. */
 export interface ResolvedExploreContext {
     wikiData: WikiData;
     sendMessage: AskAIFunction;

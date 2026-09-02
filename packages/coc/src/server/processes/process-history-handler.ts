@@ -1,6 +1,4 @@
 /**
- * Process History REST API Handler
- *
  * GET /api/workspaces/:id/history — paginated list of completed/failed/cancelled
  * processes mapped to the canonical ProcessHistoryItem shape.
  */

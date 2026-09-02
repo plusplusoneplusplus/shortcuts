@@ -1,6 +1,4 @@
 /**
- * FileProcessStore Prune Hook Tests — Per-Workspace
- *
  * Tests the onPrune callback for per-workspace pruning behaviour.
  * Pruning in workspace A must not affect workspace B.
  */

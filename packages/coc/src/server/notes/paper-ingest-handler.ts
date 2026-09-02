@@ -13,8 +13,6 @@
  *
  * The network fetch and PDF text extraction are injectable so the handler is fully
  * unit-testable without real network or pdfjs.
- *
- * Pure Node.js; cross-platform (Linux/Mac/Windows).
  */
 
 import * as path from 'path';

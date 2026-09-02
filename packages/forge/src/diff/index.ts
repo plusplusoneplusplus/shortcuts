@@ -1,10 +1,3 @@
-/**
- * Diff module — unified diff provider abstraction.
- *
- * Re-exports all public types and factory functions for creating
- * `IDiffProvider` instances from various diff sources.
- */
-
 export type {
     DiffSourceKind,
     DiffFileEntry,

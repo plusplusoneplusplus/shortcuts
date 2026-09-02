@@ -1,6 +1,4 @@
 /**
- * Teams User State
- *
  * Per-user session state for the Teams bot command router.
  * Tracks which repo and chat topic each user has selected.
  * JSON-file-persisted in `<dataDir>/teams-user-state.json`.

@@ -33,7 +33,6 @@ interface ProviderModelsSectionProps {
     unavailableMessage?: string;
     /** All providers to show in the toolbar tab bar. When set, renders provider-switching tabs. */
     allProviders?: AgentProvider[];
-    /** Called when the user clicks a provider tab. */
     onProviderChange?: (provider: AgentProvider) => void;
 }
 

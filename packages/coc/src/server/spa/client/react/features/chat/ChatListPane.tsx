@@ -3,7 +3,6 @@
  *
  * Renders running/queued/history sections with filters, drag/drop,
  * pause markers, context menus, and selection highlighting.
- * Shared queue task list used by the Activity tab.
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef, useContext } from 'react';
@@ -126,7 +125,6 @@ export const SESSION_CATEGORY_LABELS: Record<string, { label: string; icon: stri
     'resolve-commit-comments': { label: 'Resolve Commit', icon: '🔺', color: 'text-amber-600 dark:text-amber-400' },
 };
 
-/** Extract session category from a task's payload. */
 export function getSessionCategory(task: any): string | undefined {
     return task.payload?.sessionCategory as string | undefined;
 }
@@ -302,7 +300,6 @@ export function getTaskModeLabel(task: any): 'A' | 'S' | 'R' {
     return 'A';
 }
 
-/** Extract a short preview of the user prompt from the task payload. */
 export function getTaskPromptPreview(task: any): string {
     const text = task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '';
     if (!text || /^Use the \S+ skill\.$/.test(text)) return '';
@@ -1264,6 +1261,7 @@ export function ChatListPane({
 
     // ── Folder assignment (AC-06) ──────────────────────────────────────────
     const { moveToFolder } = useChatFolderAssignment({
+        workspaceId,
         folderIdByProcess,
         onProcessFoldersChanged: handleProcessFoldersChanged,
         onError: handleFolderError,
@@ -2056,7 +2054,6 @@ export function ChatListPane({
         return { pinned, unpinned, archived };
     }, [activeTab, filteredRunning, filteredHistory, pinnedChatIds, archivedChatIds, groupedTaskIds]);
 
-    // Group unpinned history by plan file (when grouping is enabled)
     const groupedUnpinned = useMemo(
         () => historyGrouping ? groupHistoryByPlanFile(visibleFilteredUnpinned, unseenProcessIds) : null,
         [visibleFilteredUnpinned, unseenProcessIds, historyGrouping],

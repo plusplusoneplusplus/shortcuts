@@ -1,6 +1,4 @@
 /**
- * Website Generator Tests
- *
  * Comprehensive tests for the website generation phase:
  *   - Data embedding with special characters and deterministic output
  *   - HTML template generation with theme/search/title options
@@ -8,8 +6,6 @@
  *   - Full website generation flow
  *   - Custom template support
  *   - Flat and hierarchical layout support
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -97,7 +93,6 @@ function setupWikiDir(componentGraph: ComponentGraph, markdownFiles?: Record<str
     const componentsDir = path.join(wikiDir, 'components');
     fs.mkdirSync(componentsDir, { recursive: true });
 
-    // Write component-graph.json
     fs.writeFileSync(
         path.join(wikiDir, 'component-graph.json'),
         JSON.stringify(componentGraph, null, 2),
@@ -920,7 +915,6 @@ describe('generateWebsite', () => {
         const graph = createTestComponentGraph();
         const wikiDir = setupWikiDir(graph);
 
-        // Create a custom template
         const templatePath = path.join(tempDir, 'custom.html');
         fs.writeFileSync(templatePath, '<html><body>Custom Template</body></html>', 'utf-8');
 
@@ -1526,7 +1520,6 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
 
     it('domain-based sidebar should work with domains in component graph', () => {
         const graph = createTestComponentGraph();
-        // Add domains to the test graph
         graph.domains = [
             {
                 id: 'core-system',
@@ -1543,7 +1536,6 @@ describe('generateHtmlTemplate — domain-based sidebar', () => {
                 components: ['database'],
             },
         ];
-        // Assign area to components
         graph.components[0].area = 'core-system'; // auth
         graph.components[1].area = 'data-layer'; // database
 

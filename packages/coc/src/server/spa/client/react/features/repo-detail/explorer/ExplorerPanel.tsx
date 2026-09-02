@@ -1,6 +1,6 @@
 /**
  * ExplorerPanel — top-level panel for the Explorer sub-tab.
- * Left/right split: FileTree sidebar + placeholder preview pane.
+ * Left/right split: FileTree sidebar + preview pane.
  * On mobile, shows either the file tree OR the preview pane (not both).
  */
 
@@ -681,7 +681,6 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         [selectedPath, rootEntries, childrenMap],
     );
 
-    // Breadcrumb segments derived from selectedPath
     const breadcrumbSegments = useMemo(() => {
         if (!selectedPath) return [];
         return selectedPath.split('/').filter(Boolean);

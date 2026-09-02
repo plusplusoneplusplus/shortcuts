@@ -1,6 +1,4 @@
 /**
- * Theme Cache — Per-Theme Generation Artifacts
- *
  * Caches theme generation artifacts: probe results, outlines, analyses, and articles.
  * Follows the per-item incremental caching pattern from analysis-cache.ts.
  * Supports crash recovery via per-article incremental saves and git-hash-based invalidation.
@@ -23,37 +21,30 @@ import { getCacheDir, THEMES_DIR } from './cache-constants';
 // Path Helpers
 // ============================================================================
 
-/** Get the themes cache root directory. */
 export function getThemesCacheDir(outputDir: string): string {
     return path.join(getCacheDir(outputDir), THEMES_DIR);
 }
 
-/** Get the directory for a specific theme. */
 export function getThemeCacheDir(outputDir: string, themeId: string): string {
     return path.join(getThemesCacheDir(outputDir), themeId);
 }
 
-/** Get the path to the cached probe result for a theme. */
 function getThemeProbePath(outputDir: string, themeId: string): string {
     return path.join(getThemeCacheDir(outputDir, themeId), 'probe-result.json');
 }
 
-/** Get the path to the cached outline for a theme. */
 function getThemeOutlinePath(outputDir: string, themeId: string): string {
     return path.join(getThemeCacheDir(outputDir, themeId), 'outline.json');
 }
 
-/** Get the path to the cached analysis for a theme. */
 function getThemeAnalysisPath(outputDir: string, themeId: string): string {
     return path.join(getThemeCacheDir(outputDir, themeId), 'analysis.json');
 }
 
-/** Get the articles subdirectory for a theme. */
 function getThemeArticlesDir(outputDir: string, themeId: string): string {
     return path.join(getThemeCacheDir(outputDir, themeId), 'articles');
 }
 
-/** Get the path to a cached article within a theme. */
 function getThemeArticlePath(outputDir: string, themeId: string, slug: string): string {
     return path.join(getThemeArticlesDir(outputDir, themeId), `${slug}.json`);
 }
@@ -63,8 +54,6 @@ function getThemeArticlePath(outputDir: string, themeId: string, slug: string): 
 // ============================================================================
 
 /**
- * Get a cached theme probe result.
- *
  * @returns The enriched probe result, or null if not found/corrupted
  */
 export function getCachedThemeProbe(themeId: string, outputDir: string): EnrichedProbeResult | null {
@@ -75,9 +64,6 @@ export function getCachedThemeProbe(themeId: string, outputDir: string): Enriche
     return cached?.result ?? null;
 }
 
-/**
- * Save a theme probe result to cache.
- */
 export function saveThemeProbe(
     themeId: string,
     result: EnrichedProbeResult,
@@ -96,8 +82,6 @@ export function saveThemeProbe(
 // ============================================================================
 
 /**
- * Get a cached theme outline.
- *
  * @returns The theme outline, or null if not found/corrupted
  */
 export function getCachedThemeOutline(themeId: string, outputDir: string): ThemeOutline | null {
@@ -108,9 +92,6 @@ export function getCachedThemeOutline(themeId: string, outputDir: string): Theme
     return cached?.outline ?? null;
 }
 
-/**
- * Save a theme outline to cache.
- */
 export function saveThemeOutline(
     themeId: string,
     outline: ThemeOutline,
@@ -129,8 +110,6 @@ export function saveThemeOutline(
 // ============================================================================
 
 /**
- * Get a cached theme analysis.
- *
  * @returns The theme analysis, or null if not found/corrupted
  */
 export function getCachedThemeAnalysis(themeId: string, outputDir: string): ThemeAnalysis | null {
@@ -141,9 +120,6 @@ export function getCachedThemeAnalysis(themeId: string, outputDir: string): Them
     return cached?.analysis ?? null;
 }
 
-/**
- * Save a theme analysis to cache.
- */
 export function saveThemeAnalysis(
     themeId: string,
     analysis: ThemeAnalysis,
@@ -162,8 +138,6 @@ export function saveThemeAnalysis(
 // ============================================================================
 
 /**
- * Get a single cached theme article.
- *
  * @returns The theme article, or null if not found/corrupted
  */
 export function getCachedThemeArticle(themeId: string, slug: string, outputDir: string): ThemeArticle | null {

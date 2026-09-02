@@ -1,6 +1,4 @@
 /**
- * Notes File Preview Handler Tests
- *
  * Tests for GET /api/workspaces/:id/notes/file-preview?path=…
  * - File found in notes root → { exists: true, type: 'note' }
  * - File found in workspace root → { exists: true, type: 'file' }

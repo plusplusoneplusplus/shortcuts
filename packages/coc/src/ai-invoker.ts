@@ -1,11 +1,7 @@
 /**
- * AI Invoker Factory
- *
  * Creates AIInvoker instances for the CLI using the Copilot SDK service
  * exposed through Forge runtime utilities. Handles session management and
  * permission approvals.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -31,9 +27,6 @@ import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 // Types
 // ============================================================================
 
-/**
- * Options for creating a CLI AI invoker
- */
 export interface CLIAIInvokerOptions {
     /** Default model to use */
     model?: string;
@@ -61,9 +54,6 @@ export interface CLIAIInvokerOptions {
     aiService?: import('@plusplusoneplusplus/forge').ISDKService;
 }
 
-/**
- * Result from checking AI availability
- */
 export interface AIAvailabilityResult {
     available: boolean;
     reason?: string;
@@ -73,9 +63,6 @@ export interface AIAvailabilityResult {
 // AI Invoker Factory
 // ============================================================================
 
-/**
- * Check if the Copilot SDK is available
- */
 export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
     try {
         const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
@@ -93,8 +80,6 @@ export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
 }
 
 /**
- * Create an AIInvoker for CLI pipeline execution.
- *
  * Uses the SDK service registry exposed by Forge.
  * Each invocation creates a direct session (no pool) for proper permission handling.
  */

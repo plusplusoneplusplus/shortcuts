@@ -41,7 +41,6 @@ export class MessagingStore {
         this.ensureTables();
     }
 
-    /** Bind a WA message ID to a CoC process/agent. */
     bindMessage(waMessageId: string, processId: string, agentId: string, sessionLabel: string, workspaceId?: string): void {
         this.db.prepare(
             `INSERT OR REPLACE INTO wa_message_map (wa_message_id, process_id, agent_id, session_label, workspace_id) VALUES (?, ?, ?, ?, ?)`
@@ -108,7 +107,6 @@ export class MessagingStore {
         };
     }
 
-    /** Get the global session for a WA sender. */
     getGlobalSession(senderJid: string): GlobalSession | null {
         const row = this.db.prepare(
             `SELECT process_id, agent_id FROM wa_global_sessions WHERE sender_jid = ?`
@@ -117,7 +115,6 @@ export class MessagingStore {
         return { processId: row.process_id, agentId: row.agent_id };
     }
 
-    /** Set (or update) the global session for a WA sender. */
     setGlobalSession(senderJid: string, processId: string, agentId: string): void {
         this.db.prepare(
             `INSERT OR REPLACE INTO wa_global_sessions (sender_jid, process_id, agent_id) VALUES (?, ?, ?)`
@@ -136,7 +133,6 @@ export class MessagingStore {
         ).run(processId, senderAadId, senderName);
     }
 
-    /** Get the sender info for a process. */
     getProcessSender(processId: string): ProcessSender | null {
         const row = this.db.prepare(
             `SELECT sender_aad_id, sender_name FROM process_senders WHERE process_id = ?`
@@ -171,7 +167,6 @@ export class MessagingStore {
         return rows.map(r => ({ processId: r.process_id, workspaceId: r.workspace_id ?? undefined }));
     }
 
-    /** Check if a completion was already sent for a process. */
     isCompletionSent(processId: string): boolean {
         const row = this.db.prepare(
             `SELECT completion_sent FROM teams_completion_state WHERE process_id = ?`
@@ -179,7 +174,6 @@ export class MessagingStore {
         return row?.completion_sent === 1;
     }
 
-    /** Mark a process completion as sent. */
     markCompletionSent(processId: string): void {
         this.db.prepare(
             `INSERT INTO teams_completion_state (process_id, completion_sent, updated_at) VALUES (?, 1, unixepoch())
@@ -187,7 +181,6 @@ export class MessagingStore {
         ).run(processId);
     }
 
-    /** Get the persisted user turn count for a process. */
     getUserTurnCount(processId: string): number {
         const row = this.db.prepare(
             `SELECT user_turn_count FROM teams_completion_state WHERE process_id = ?`
@@ -203,7 +196,6 @@ export class MessagingStore {
         ).run(processId, count, count);
     }
 
-    /** Close the database. */
     close(): void {
         this.db.close();
     }

@@ -1,14 +1,11 @@
 /**
- * Git Branch Range API Endpoint Tests
- *
  * Tests for the four git branch-range API routes:
  * - GET /api/workspaces/:id/git/branch-range
  * - GET /api/workspaces/:id/git/branch-range/files
  * - GET /api/workspaces/:id/git/branch-range/diff
  * - GET /api/workspaces/:id/git/branch-range/files/:path/diff
  *
- * Mocks GitRangeService from pipeline-core to isolate API layer.
- * Cross-platform compatible (Linux/Mac/Windows).
+ * Mocks GitRangeService from forge to isolate API layer.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

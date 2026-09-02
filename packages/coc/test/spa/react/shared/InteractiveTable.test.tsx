@@ -297,7 +297,6 @@ describe('InteractiveTable', () => {
         it('shows filter inputs after clicking Filter button', () => {
             const { container } = render(<InteractiveTable {...defaultProps} />);
 
-            // Click the Filter button
             const filterBtn = screen.getByTitle('Show filters');
             fireEvent.click(filterBtn);
 

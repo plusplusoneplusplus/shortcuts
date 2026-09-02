@@ -1,11 +1,6 @@
 /**
- * Notes REST API Handler — write/mutation routes.
- *
  * HTTP API routes for notes write operations (create, autosave, rename, delete)
  * for a given workspace.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as url from 'url';

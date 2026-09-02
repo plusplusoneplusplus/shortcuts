@@ -1,6 +1,4 @@
 /**
- * Tests for ResponsiveSidebar shared component.
- *
  * In jsdom, window.matchMedia is undefined, so useBreakpoint returns
  * its DEFAULT_STATE: { isMobile: false, isTablet: false, isDesktop: true }.
  * Therefore ResponsiveSidebar renders as an <aside> (inline, not drawer mode).

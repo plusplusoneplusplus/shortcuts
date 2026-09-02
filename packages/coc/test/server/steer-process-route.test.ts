@@ -1,6 +1,4 @@
 /**
- * Steering Route Tests
- *
  * Verifies that POST /api/processes/:id/message routes to steerProcess()
  * when the parent task is running and deliveryMode is 'immediate', instead
  * of creating a duplicate queue task via enqueue().

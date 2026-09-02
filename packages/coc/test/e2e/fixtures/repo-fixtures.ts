@@ -1,6 +1,4 @@
 /**
- * Shared Repo & Tasks Fixture Helpers for E2E Tests
- *
  * Creates realistic on-disk repo structures that the server endpoints
  * (git-info, pipelines, tasks, fs/browse) can operate on.
  */

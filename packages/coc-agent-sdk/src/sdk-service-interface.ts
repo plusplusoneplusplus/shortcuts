@@ -1,9 +1,7 @@
 /**
- * ISDKService — Provider-agnostic SDK service interface for forge.
- *
- * Defines the contract that any AI SDK service provider must satisfy.
- * `CopilotSDKService` is the current sole implementation; this interface
- * enables future Codex SDK and Claude SDK adapters without changing callers.
+ * ISDKService — the contract every AI SDK service provider must satisfy.
+ * Copilot, Codex, Claude and OpenCode each implement it, so callers can pick a
+ * provider without changing call sites.
  *
  * Provider-agnostic primitive types are defined here so adapters can translate
  * provider-specific responses at their own boundaries.
@@ -18,7 +16,7 @@ import type { WarmStateChangeListener, WarmStatus } from './warm-client-registry
 
 /**
  * Minimal model descriptor that every SDK provider must supply.
- * Forge-specific `ModelInfo` satisfies this interface structurally.
+ * `ModelInfo` (model-info.ts) satisfies it structurally.
  */
 export interface IModelInfo {
     /** Unique model identifier (e.g. 'gpt-4.1', 'claude-sonnet-4.6') */
@@ -42,7 +40,7 @@ export interface IModelInfo {
 
 /**
  * Availability check result returned by any SDK provider.
- * Forge-specific `SDKAvailabilityResult` satisfies this interface structurally.
+ * `SDKAvailabilityResult` (types.ts) satisfies it structurally.
  */
 export interface IAvailabilityResult {
     /** Whether the provider is available and ready */
@@ -53,7 +51,7 @@ export interface IAvailabilityResult {
 
 /**
  * Invocation result returned by any SDK provider's sendMessage call.
- * Forge-specific `SDKInvocationResult` satisfies this interface structurally.
+ * `SDKInvocationResult` (types.ts) satisfies it structurally.
  */
 export interface IInvocationResult {
     /** Whether the invocation completed without error */
@@ -159,7 +157,8 @@ export interface CompactResult {
 
 /**
  * Error thrown by {@link ISDKService.compactSession} when the provider does not
- * support history compaction (currently every provider except Copilot).
+ * support history compaction (OpenCode always; Claude and Codex only when the
+ * installed CLI lacks the capability).
  *
  * Mirrors {@link RewindUnsupportedError}: it carries a stable `code` so callers
  * can recognize it across module/build boundaries where `instanceof` is

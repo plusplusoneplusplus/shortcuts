@@ -1,7 +1,3 @@
-/**
- * Tests for TaskSearchResults component.
- */
-
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { TaskSearchResults } from '../../../src/server/spa/client/react/tasks/TaskSearchResults';
@@ -171,7 +167,6 @@ describe('TaskSearchResults', () => {
 
         const row = screen.getByTestId('search-result-done-task');
         expect(row.textContent).toContain('✅');
-        // data-status attribute
         const statusSpan = row.querySelector('[data-status="done"]');
         expect(statusSpan).toBeTruthy();
     });

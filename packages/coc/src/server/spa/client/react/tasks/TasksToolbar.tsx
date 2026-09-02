@@ -1,7 +1,3 @@
-/**
- * TasksToolbar — toolbar strip at the top of the Tasks panel.
- */
-
 import type { RefObject } from 'react';
 import type { ReactElement } from 'react';
 import { Button } from '../ui/Button';

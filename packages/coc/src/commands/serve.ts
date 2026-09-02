@@ -1,11 +1,8 @@
 /**
- * Serve Command
- *
  * Implements the `coc serve` command.
  * Starts the CoC (Copilot Of Copilot) web server.
  *
  * Mirrors packages/deep-wiki/src/commands/serve.ts pattern.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -30,9 +27,6 @@ import type { ServeCommandOptions } from '../server/types';
 // ============================================================================
 
 /**
- * Execute the serve command.
- *
- * @param options - Command options
  * @returns Exit code (never returns normally — server runs until SIGINT)
  */
 export async function executeServe(options: ServeCommandOptions): Promise<number> {
@@ -82,7 +76,6 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
 
         const processCount = await server.store.getProcessCount();
 
-        // Print startup banner
         printBanner({
             url: server.url,
             dataDir,
@@ -92,7 +85,6 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
         // Structured log for tooling/file consumers
         coc.info({ url: server.url, dataDir, port }, 'Server started');
 
-        // Open browser unless disabled
         if (options.open !== false) {
             openBrowser(server.url);
         }

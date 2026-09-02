@@ -1,6 +1,4 @@
 /**
- * Get Conversation Tool
- *
  * Factory that creates a `get_conversation` custom tool for the Copilot SDK.
  * The model calls this tool to fetch the full transcript of a past session
  * (typically discovered via `search_conversations`), compacted to fit within
@@ -222,9 +220,6 @@ function stripNoise(turns: ConversationTurn[]): ConversationTurn[] {
     return turns.filter(t => !t.deletedAt);
 }
 
-/**
- * Render the full transcript at the given compaction level for the supplied turns.
- */
 function renderAtLevel(
     turns: ConversationTurn[],
     level: CompactionLevel,

@@ -1,6 +1,4 @@
 /**
- * Tests for usePrChatBinding hook — localStorage binding, createChat, context pattern.
- *
  * Validates that the hook stores/restores bindings in localStorage,
  * sends correct pullRequestChat context (workspaceId, prId, repoId, prTitle) so the
  * backend prompt-builder emits the PR framing sentence, and manages loading/error/taskId states.

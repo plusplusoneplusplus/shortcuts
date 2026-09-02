@@ -1,12 +1,7 @@
 /**
- * SSE Stream Handler
- *
  * Server-Sent Events endpoint for real-time process output streaming.
  * Clients connect to `GET /api/processes/:id/stream` to receive output chunks
  * as they arrive, followed by a status + done event on completion.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';

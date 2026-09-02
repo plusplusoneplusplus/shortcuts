@@ -1,26 +1,16 @@
 /**
- * Selection utilities for line number calculations and DOM operations
- * 
- * This module contains pure functions for selection position calculations.
- * These functions are testable in Node.js and used in the webview.
+ * Pure selection-position calculations, testable in Node.js and used in the
+ * webview.
  */
 
 import { CommentSelection } from '../types';
 
-/**
- * Selection position with selected text
- */
 export interface SelectionPositionWithText extends CommentSelection {
     selectedText: string;
 }
 
 /**
  * Calculate column indices from 1-based columns to 0-based string indices
- * 
- * @param lineContent - The plain text content of the line
- * @param startCol - 1-based start column
- * @param endCol - 1-based end column
- * @returns Object with 0-based start and end indices
  */
 export function calculateColumnIndices(
     lineContent: string,
@@ -39,11 +29,6 @@ export function calculateColumnIndices(
 
 /**
  * Determine the column range to highlight for a comment on a specific line
- * 
- * @param selection - The comment's selection
- * @param lineNumber - The current line number
- * @param lineLength - The length of the line content
- * @returns Start and end columns for this line
  */
 export function getHighlightColumnsForLine(
     selection: CommentSelection,
@@ -85,9 +70,6 @@ export function getHighlightColumnsForLine(
 /**
  * Create a mapping from plain text positions to HTML positions
  * Used to correctly apply highlights to HTML content
- * 
- * @param htmlContent - The HTML string to map
- * @returns Object with arrays mapping plain text positions to HTML positions
  */
 export function createPlainToHtmlMapping(
     htmlContent: string
@@ -145,16 +127,13 @@ export function createPlainToHtmlMapping(
 
 /**
  * Apply comment highlight span to a specific character range in HTML content
- * This handles HTML tags and HTML entities by mapping character positions
- * 
- * @param htmlContent - The HTML content to wrap
+ * Handles HTML tags and HTML entities by mapping character positions
+ *
  * @param plainText - The original plain text (for position reference)
  * @param startCol - 1-based start column
  * @param endCol - 1-based end column
- * @param commentId - The comment ID for data attribute
  * @param statusClass - CSS class for comment status (e.g., 'resolved')
  * @param typeClass - CSS class for comment type (e.g., 'ai-suggestion', 'ai-clarification')
- * @returns HTML with highlight span applied
  */
 export function applyCommentHighlightToRange(
     htmlContent: string,
@@ -204,9 +183,6 @@ export function applyCommentHighlightToRange(
     return before + wrapWithCommentSpan(highlighted, commentId, statusClass, typeClass) + after;
 }
 
-/**
- * Wrap content with a comment highlight span
- */
 function wrapWithCommentSpan(content: string, commentId: string, statusClass: string, typeClass: string = ''): string {
     const classes = ['commented-text', statusClass, typeClass].filter(c => c).join(' ');
     return `<span class="${classes}" data-comment-id="${commentId}">${content}</span>`;

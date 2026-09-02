@@ -1,6 +1,4 @@
 /**
- * Async Git Op Route Tests
- *
  * End-to-end coverage for the git routes that return 202 + { jobId } and settle
  * a `GitOpJob` in the background: rebase-continue, merge-continue, reword, and
  * drop-commit.
@@ -11,7 +9,6 @@
  * workspace isolation across repos.
  *
  * Mocks BranchService, the git cache, and the websocket server. No real git.
- * Cross-platform compatible.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';

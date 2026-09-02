@@ -18,9 +18,6 @@ import {
 } from '../utils/workspace-execution';
 import type { WslExecutionContext } from '../utils/workspace-execution';
 
-/**
- * Options for `execGitAsync`.
- */
 export interface ExecGitOptions {
     /** Maximum buffer size for stdout/stderr in bytes (default: 10 MB). */
     maxBuffer?: number;

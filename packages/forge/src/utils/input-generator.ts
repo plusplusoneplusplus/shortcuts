@@ -3,8 +3,6 @@
  *
  * AI-powered input generation for pipeline items.
  * Constructs prompts from user configuration and parses AI responses into items.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { GenerateInputConfig } from '@plusplusoneplusplus/coc-workflow/workflow';
@@ -12,9 +10,6 @@ import type { PromptItem, AIInvoker } from '../ai/types';
 import { extractJSON } from '../utils/ai-response-parser';
 import { PipelineCoreError, ErrorCode } from '../errors';
 
-/**
- * Error thrown when input generation fails
- */
 export class InputGenerationError extends PipelineCoreError {
     constructor(
         message: string,
@@ -28,9 +23,6 @@ export class InputGenerationError extends PipelineCoreError {
     }
 }
 
-/**
- * Result of generating input items
- */
 export interface GenerateInputResult {
     /** Whether generation was successful */
     success: boolean;
@@ -63,14 +55,10 @@ export type GenerateState =
 
 /**
  * Build the AI prompt for generating input items
- * 
- * @param config The generate configuration from the pipeline
- * @returns The constructed prompt to send to AI
  */
 export function buildGeneratePrompt(config: GenerateInputConfig): string {
     const { prompt, schema } = config;
     
-    // Build the field list
     const fieldsList = schema.join(', ');
     
     // Build example object
@@ -96,16 +84,12 @@ IMPORTANT: Return ONLY the JSON array, no additional text or explanation.`;
 /**
  * Parse the AI response into generated items
  * 
- * @param response The raw AI response
- * @param schema The expected field names
- * @returns Parsed items array
  * @throws InputGenerationError if parsing fails
  */
 export function parseGenerateResponse(
     response: string,
     schema: string[]
 ): PromptItem[] {
-    // Try to extract JSON from the response
     const jsonStr = extractJSON(response);
     
     if (!jsonStr) {
@@ -125,7 +109,6 @@ export function parseGenerateResponse(
         );
     }
     
-    // Validate it's an array
     if (!Array.isArray(parsed)) {
         throw new InputGenerationError(
             `AI response is not an array. Got: ${typeof parsed}`
@@ -166,19 +149,13 @@ export function parseGenerateResponse(
 
 /**
  * Generate input items using AI
- * 
- * @param config The generate configuration
- * @param aiInvoker Function to invoke AI
- * @returns Generation result with items or error
  */
 export async function generateInputItems(
     config: GenerateInputConfig,
     aiInvoker: AIInvoker
 ): Promise<GenerateInputResult> {
-    // Build the prompt
     const prompt = buildGeneratePrompt(config);
     
-    // Invoke AI with optional model from config
     const aiResult = await aiInvoker(prompt, config.model ? { model: config.model } : undefined);
     
     if (!aiResult.success) {
@@ -196,7 +173,6 @@ export async function generateInputItems(
         };
     }
     
-    // Parse the response
     try {
         const items = parseGenerateResponse(aiResult.response, config.schema);
         return {
@@ -214,11 +190,8 @@ export async function generateInputItems(
 }
 
 /**
- * Convert generated items to GeneratedItem array with selection state
- * All items are selected by default
- * 
- * @param items The generated items
- * @returns Items wrapped with selection state
+ * Convert generated items to GeneratedItem array with selection state.
+ * All items are selected by default.
  */
 export function toGeneratedItems(items: PromptItem[]): GeneratedItem[] {
     return items.map(data => ({
@@ -227,12 +200,6 @@ export function toGeneratedItems(items: PromptItem[]): GeneratedItem[] {
     }));
 }
 
-/**
- * Filter generated items to only those that are selected
- * 
- * @param items The generated items with selection state
- * @returns Only the selected item data
- */
 export function getSelectedItems(items: GeneratedItem[]): PromptItem[] {
     return items.filter(item => item.selected).map(item => item.data);
 }
@@ -240,7 +207,6 @@ export function getSelectedItems(items: GeneratedItem[]): PromptItem[] {
 /**
  * Create an empty item matching the schema
  * 
- * @param schema The field names
  * @returns Empty item with all fields set to empty string
  */
 export function createEmptyItem(schema: string[]): PromptItem {
@@ -254,7 +220,6 @@ export function createEmptyItem(schema: string[]): PromptItem {
 /**
  * Validate that a generate config is well-formed
  * 
- * @param config The config to validate
  * @returns Validation result with errors if invalid
  */
 export function validateGenerateConfig(
@@ -277,7 +242,6 @@ export function validateGenerateConfig(
     } else if (config.schema.length === 0) {
         errors.push('Generate config "schema" must have at least one field');
     } else {
-        // Validate each schema field
         for (let i = 0; i < config.schema.length; i++) {
             const field = config.schema[i];
             if (typeof field !== 'string') {

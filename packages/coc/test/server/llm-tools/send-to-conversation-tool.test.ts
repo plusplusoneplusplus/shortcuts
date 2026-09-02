@@ -1,6 +1,4 @@
 /**
- * Send To Conversation Tool Tests
- *
  * Unit tests for createSendToConversationTool — the dual-mode tool selected by
  * whether a `processId` is supplied:
  *   - create mode (no processId): defaults, explicit mode, validation errors,

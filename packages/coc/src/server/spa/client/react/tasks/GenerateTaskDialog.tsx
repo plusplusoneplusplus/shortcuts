@@ -84,9 +84,7 @@ export interface GenerateTaskDialogProps {
     initialFolder?: string;
     /** Whether the dialog is currently minimized into a pill. */
     minimized?: boolean;
-    /** Called when the user wants to minimize the dialog. */
     onMinimize?: () => void;
-    /** Called when the user wants to restore from minimized state. */
     onRestore?: () => void;
     /** Called when the task is successfully queued; receives the taskId. */
     onSuccess: (taskId: string) => void;

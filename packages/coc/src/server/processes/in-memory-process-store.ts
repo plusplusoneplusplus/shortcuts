@@ -1,10 +1,6 @@
 /**
- * In-Memory Process Store
- *
  * Minimal in-memory ProcessStore used when no store is injected.
  * Supports event emission for SSE streaming and process tracking.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';
@@ -179,7 +175,6 @@ export function createStubStore(): ProcessStore {
         },
     };
 
-    // Expose onProcessChange setter via defineProperty
     Object.defineProperty(store, 'onProcessChange', {
         get: () => changeCallback,
         set: (cb: ProcessChangeCallback | undefined) => { changeCallback = cb; },

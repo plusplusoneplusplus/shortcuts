@@ -89,7 +89,6 @@ async function renderSection(opts: {
 
     const result = render(<NotesSettingsSection workspaceId="ws-1" />);
 
-    // Wait for loading to finish
     await waitFor(() => {
         expect(screen.queryByTestId('notes-settings-loading')).toBeNull();
     });

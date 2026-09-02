@@ -1,6 +1,4 @@
 /**
- * BaseExecutor Unit Tests
- *
  * Verifies the streaming lifecycle, throttled flushing, tool event handling,
  * output persistence, and cancellation token management provided by BaseExecutor.
  *

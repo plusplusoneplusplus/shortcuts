@@ -1,6 +1,4 @@
 /**
- * UsageTracker Tests
- *
  * Tests for the token usage tracking and reporting system.
  */
 

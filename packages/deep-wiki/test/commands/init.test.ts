@@ -1,10 +1,6 @@
 /**
- * Init Command Tests
- *
  * Tests for the `deep-wiki init` command that generates
  * a template configuration file.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

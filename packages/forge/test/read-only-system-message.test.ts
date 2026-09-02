@@ -1,8 +1,6 @@
 /**
- * Read-Only System Message Constants Tests
- *
  * Verifies the READ_ONLY_SYSTEM_MESSAGE constant exported from the
- * copilot-sdk-wrapper types module.
+ * coc-agent-sdk types module.
  */
 
 import { describe, expect, it } from 'vitest';

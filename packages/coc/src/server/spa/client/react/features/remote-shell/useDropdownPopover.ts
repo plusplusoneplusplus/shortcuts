@@ -14,13 +14,10 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 
 export interface DropdownPopover {
-    /** Whether the popover is currently open. */
     open: boolean;
-    /** Set the open state directly. */
     setOpen: (open: boolean) => void;
     /** Toggle the open state (for the trigger button). */
     toggle: () => void;
-    /** Close the popover. */
     close: () => void;
     /** Ref to attach to the search input so it can auto-focus on open. */
     searchRef: RefObject<HTMLInputElement>;

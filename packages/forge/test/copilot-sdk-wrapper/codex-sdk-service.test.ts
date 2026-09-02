@@ -317,7 +317,6 @@ describe('CodexSDKService — SDK mocked', () => {
         expect(result.success).toBe(true);
         // resumeThread is called → mock returns 'resumed: <prompt>'
         expect(result.response).toContain('resumed: follow-up');
-        // sessionId should still be the same thread
         expect(result.sessionId).toBe(threadId);
     });
 

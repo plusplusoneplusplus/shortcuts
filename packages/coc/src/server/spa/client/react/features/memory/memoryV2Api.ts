@@ -49,28 +49,24 @@ export const memoryV2Api = {
         return runMemoryV2Request(() => getSpaCocClient().memoryV2.listMemoryScopes());
     },
 
-    /** Enable global memory scope. */
     async enableGlobalScope(): Promise<void> {
         await runMemoryV2Request(() =>
             getSpaCocClient().preferences.patchGlobal({ memoryV2: { enabled: true } } as any)
         );
     },
 
-    /** Disable global memory scope. */
     async disableGlobalScope(): Promise<void> {
         await runMemoryV2Request(() =>
             getSpaCocClient().preferences.patchGlobal({ memoryV2: { enabled: false } } as any)
         );
     },
 
-    /** Enable memory V2 for a workspace scope. */
     async enableWorkspaceScope(wsId: string): Promise<void> {
         await runMemoryV2Request(() =>
             getSpaCocClient().preferences.patchRepo(wsId, { memoryV2: { enabled: true } } as any)
         );
     },
 
-    /** Disable memory V2 for a workspace scope. */
     async disableWorkspaceScope(wsId: string): Promise<void> {
         await runMemoryV2Request(() =>
             getSpaCocClient().preferences.patchRepo(wsId, { memoryV2: { enabled: false } } as any)
@@ -123,7 +119,6 @@ export const memoryV2Api = {
         return runMemoryV2Request(() => getSpaCocClient().memoryV2.rejectReview(wsId, factId));
     },
 
-    /** List episodes for this scope. */
     async listEpisodes(wsId: string, limit = 50): Promise<MemoryEpisode[]> {
         return runMemoryV2Request(() => getSpaCocClient().memoryV2.listEpisodes(wsId, limit));
     },

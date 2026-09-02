@@ -1,6 +1,4 @@
 /**
- * Process Resume API Tests
- *
  * Tests POST /api/processes/:id/resume-cli route used by the
  * "Resume In CLI" button in process detail views.
  */

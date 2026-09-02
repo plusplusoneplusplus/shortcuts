@@ -4,8 +4,6 @@
  * The wiki admin UI parses these payloads, so the mapping must stay byte-for-byte
  * what the handler used to write inline. Undefined fields are omitted rather
  * than serialized as null.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi } from 'vitest';

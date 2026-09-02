@@ -1,6 +1,4 @@
 /**
- * Theme E2E Tests
- *
  * Tests the theme toggle button cycles through auto → dark → light.
  */
 

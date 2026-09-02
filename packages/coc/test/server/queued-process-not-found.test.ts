@@ -1,6 +1,4 @@
 /**
- * Queued Process Not Found — Synthetic Process Response Tests
- *
  * Verifies that GET /api/processes/:id and GET /api/processes/:id/output
  * return synthetic responses for queued tasks that don't yet have a process record,
  * rather than returning 404.

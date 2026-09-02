@@ -6,7 +6,6 @@
  * session cache so future calls do not need to re-resolve.
  *
  * Best-effort: on any failure the function logs a warning and returns null.
- * Pure Node.js.
  */
 import type { WebApi } from 'azure-devops-node-api';
 import { getLogger, LogCategory } from '../logger';
@@ -15,7 +14,6 @@ import { readAdoSessionCache, writeAdoSessionCache } from './ado-session-cache';
 /**
  * Call the ADO Identities API to resolve `upn` → identity GUID.
  *
- * @param connection - An authenticated `WebApi` instance.
  * @param orgUrl     - Full org URL, e.g. `https://dev.azure.com/myorg`.
  * @param upn        - User principal name (email address).
  * @returns The identity GUID string, or `null` on failure.
@@ -137,9 +135,9 @@ export async function resolveAdoUserIdFromConnectionData(
 }
 
 /**
- * High-level convenience function: read cached ADO user ID, or resolve it
- * via the VSSPS Identities API and cache the result. Falls back to the
- * Connection Data API when no cached UPN is available.
+ * Read the cached ADO user ID, or resolve it via the VSSPS Identities API and
+ * cache the result. Falls back to the Connection Data API when no cached UPN
+ * is available.
  *
  * Callers only need an org URL and bearer token — no `azure-devops-node-api`
  * import required.

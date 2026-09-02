@@ -1,6 +1,4 @@
 /**
- * Probe Response Parser Tests
- *
  * Tests for parsing AI responses into ThemeProbeResult.
  * Verifies JSON extraction, validation, normalization, and error handling.
  */

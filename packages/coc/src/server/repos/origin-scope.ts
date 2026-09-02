@@ -14,8 +14,6 @@
  *
  * Centralizing these primitives keeps two clones of the same upstream repo from
  * resolving to different storage directories.
- *
- * Pure Node.js; uses forge git helpers.
  */
 
 import {

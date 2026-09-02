@@ -32,11 +32,9 @@ export function installAgentRoutes(table: RouteTable, runtime: ContainerRuntime)
         const body = await readBody(req);
         const { address, name, tunnelId } = body as { address: string; name?: string; tunnelId?: string };
         const agent = agentStore.add(address, name, tunnelId);
-        // Start tunnel bridge for devtunnel agents
         if (agent.tunnelId) {
             await tunnelBridge.start(agent.id, agent.tunnelId, agent.address).catch(() => {});
         }
-        // Start SSH bridge for ssh:// agents
         if (isSshAddress(agent.address)) {
             await sshBridge.connect(agent.id, agent.address).catch(() => {});
         }
@@ -64,7 +62,6 @@ export function installAgentRoutes(table: RouteTable, runtime: ContainerRuntime)
         const agentId = url.pathname.split('/')[4];
         const body = await readBody(req);
         const { name, address, tunnelId } = body as { name?: string; address?: string; tunnelId?: string | null };
-        // Use full update if address or tunnelId provided, otherwise simple rename
         const agent = (address !== undefined || tunnelId !== undefined)
             ? agentStore.update(agentId, { name, address, tunnelId })
             : agentStore.rename(agentId, name ?? '');

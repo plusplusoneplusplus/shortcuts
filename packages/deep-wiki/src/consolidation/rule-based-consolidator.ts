@@ -1,6 +1,4 @@
 /**
- * Rule-Based Component Consolidator
- *
  * Merges fine-grained components by directory proximity.
  * This is the fast, deterministic first pass of the hybrid consolidation.
  *
@@ -9,8 +7,6 @@
  * 2. Merge components sharing the same directory into a single component
  * 3. Fix up dependency references (old IDs → new merged IDs)
  * 4. Re-derive categories from merged components
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -22,9 +18,6 @@ import { resolveMaxComplexity, deduplicateStrings } from './constants';
 // Types
 // ============================================================================
 
-/**
- * Intermediate grouping of components by directory.
- */
 interface DirectoryGroup {
     /** Normalized directory path (e.g., "src/shortcuts/tasks-viewer") */
     dirPath: string;
@@ -42,9 +35,6 @@ interface DirectoryGroup {
  * Components sharing the same parent directory are merged into a single component.
  * The merged component inherits the union of keyFiles, dependencies, dependents,
  * and picks the highest complexity level.
- *
- * @param graph - The original component graph from discovery
- * @returns A new component graph with consolidated components
  */
 export function consolidateByDirectory(graph: ComponentGraph): ComponentGraph {
     const components = graph.components;
@@ -94,7 +84,6 @@ export function consolidateByDirectory(graph: ComponentGraph): ComponentGraph {
 // ============================================================================
 
 /**
- * Get the parent directory of a component's path.
  * Handles both file paths and directory paths.
  */
 export function getComponentDirectory(modulePath: string): string {
@@ -114,9 +103,6 @@ export function getComponentDirectory(modulePath: string): string {
     return cleaned;
 }
 
-/**
- * Group components by their parent directory path.
- */
 function groupComponentsByDirectory(components: ComponentInfo[]): DirectoryGroup[] {
     const dirMap = new Map<string, ComponentInfo[]>();
 
@@ -134,9 +120,6 @@ function groupComponentsByDirectory(components: ComponentInfo[]): DirectoryGroup
     }));
 }
 
-/**
- * Merge multiple components in the same directory into a single component.
- */
 function mergeComponentGroup(group: DirectoryGroup): ComponentInfo {
     const { dirPath, components: comps } = group;
 
@@ -148,7 +131,6 @@ function mergeComponentGroup(group: DirectoryGroup): ComponentInfo {
         .map(w => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ');
 
-    // Union of all key files
     const keyFiles = deduplicateStrings(
         comps.flatMap(m => m.keyFiles)
     );
@@ -167,13 +149,10 @@ function mergeComponentGroup(group: DirectoryGroup): ComponentInfo {
     );
     const dependents = allDependents.filter(d => !selfIds.has(d));
 
-    // Pick highest complexity
     const complexity = resolveMaxComplexity(comps);
 
-    // Pick most common category
     const category = pickMostCommonCategory(comps);
 
-    // Combine purposes
     const purpose = combinePurposes(comps);
 
     // Track provenance

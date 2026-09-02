@@ -334,11 +334,9 @@ export class WhatsAppBridge {
         if (metadataName) return metadataName;
         if (!workspaceId) return 'unknown';
 
-        // Check cache
         const cached = this._workspaceNameCache.get(workspaceId);
         if (cached) return cached;
 
-        // Fetch from agent's workspace list API
         try {
             const res = await fetch(`${agentAddr}/api/workspaces`);
             if (res.ok) {
@@ -421,7 +419,6 @@ export class WhatsAppBridge {
 
         try {
             if (isFollowUp) {
-                // Send a follow-up message to the existing process session
                 const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
                 const url = `${agentAddr}/api/processes/${processId}/message${wsParam}`;
                 console.log(`[whatsapp-bridge] Sending follow-up to ${url}`);

@@ -1,6 +1,4 @@
 /**
- * File Watcher
- *
  * Watches a repository directory for changes and triggers incremental
  * rebuilds. Uses fs.watch (recursive) with debouncing to avoid
  * excessive rebuilds during rapid file saves.

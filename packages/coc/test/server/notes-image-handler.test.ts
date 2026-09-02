@@ -1,6 +1,4 @@
 /**
- * Notes Image Handler Tests
- *
  * Covers: upload, serve, path traversal protection, file type validation,
  * size limits, and markdown round-trip with images.
  */

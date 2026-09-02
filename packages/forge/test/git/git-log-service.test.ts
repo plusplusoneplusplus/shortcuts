@@ -1,6 +1,4 @@
 /**
- * Tests for GitLogService (pipeline-core).
- *
  * Integration-style tests that run against the actual shortcuts git repo.
  */
 

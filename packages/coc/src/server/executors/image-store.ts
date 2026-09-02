@@ -5,9 +5,6 @@
  * - Blob store for externalizing base64 image data from queue persistence payloads
  * - Temp-file helpers for decoding images into SDK Attachment objects
  * - Rehydration helper for restoring images lazily from external blob files
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { ImageBlobStore } from '../queue/image-blob-store';

@@ -1,6 +1,4 @@
 /**
- * Agent Health Monitor
- *
  * Periodically checks agent health and updates status in the store.
  * Inbound agents are checked via WebSocket call-home connection.
  * Outbound agents are checked via WebSocket connection status with HTTP fallback.

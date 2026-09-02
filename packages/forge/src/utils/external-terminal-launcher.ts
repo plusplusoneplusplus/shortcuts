@@ -18,9 +18,6 @@ import {
 } from './terminal-types';
 import { buildCliCommand } from '../ai/cli-utils';
 
-/**
- * Terminal configuration for each platform
- */
 interface TerminalConfig {
     /** Command to check if terminal is available */
     checkCommand: string;
@@ -115,9 +112,6 @@ const TERMINAL_CONFIGS: Record<string, Record<string, TerminalConfig>> = {
     }
 };
 
-/**
- * Order of terminal preference by platform
- */
 const TERMINAL_PREFERENCE_ORDER: Record<string, TerminalType[]> = {
     darwin: ['iterm', 'terminal.app'],
     win32: ['windows-terminal', 'powershell', 'cmd'],
@@ -137,8 +131,6 @@ function escapeAppleScript(str: string): string {
 
 
 /**
- * External Terminal Launcher
- *
  * Handles platform-specific detection and launching of external terminals
  * for interactive AI CLI sessions.
  */
@@ -258,11 +250,9 @@ export class ExternalTerminalLauncher {
             };
         }
 
-        // Build the CLI command (with optional session resume)
         const result = buildCliCommand(tool, { prompt: initialPrompt, model, resumeSessionId });
         const command = result.command;
 
-        // Get the terminal configuration
         const platformKey = this.getPlatformKey();
         const config = TERMINAL_CONFIGS[platformKey]?.[terminalType];
 
@@ -348,9 +338,6 @@ export class ExternalTerminalLauncher {
  */
 let defaultLauncher: ExternalTerminalLauncher | undefined;
 
-/**
- * Get the default ExternalTerminalLauncher instance
- */
 export function getExternalTerminalLauncher(): ExternalTerminalLauncher {
     if (!defaultLauncher) {
         defaultLauncher = new ExternalTerminalLauncher();

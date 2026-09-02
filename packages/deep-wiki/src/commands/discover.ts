@@ -1,10 +1,6 @@
 /**
- * Discover Command
- *
  * Implements the `deep-wiki discover <repo-path>` command.
  * Runs Phase 1 (Discovery) to produce a ComponentGraph JSON.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -48,17 +44,14 @@ import { initWikiGitRepo } from '../utils/git-init';
  * Execute the discover command.
  *
  * @param repoPath - Path to the local git repository
- * @param options - Command options
  * @returns Exit code
  */
 export async function executeDiscover(
     repoPath: string,
     options: DiscoverCommandOptions
 ): Promise<number> {
-    // Resolve to absolute path
     const absoluteRepoPath = path.resolve(repoPath);
 
-    // Validate the repo path exists
     if (!fs.existsSync(absoluteRepoPath)) {
         printError(`Repository path does not exist: ${absoluteRepoPath}`);
         return EXIT_CODES.CONFIG_ERROR;
@@ -69,7 +62,6 @@ export async function executeDiscover(
         return EXIT_CODES.CONFIG_ERROR;
     }
 
-    // Print header
     printHeader('Deep Wiki — Discovery Phase');
     printKeyValue('Repository', absoluteRepoPath);
     if (options.focus) {
@@ -88,7 +80,6 @@ export async function executeDiscover(
         // Non-fatal: caching won't work but discovery continues
     }
 
-    // Clear discovery cache if --force
     if (options.force) {
         clearDiscoveryCache(options.output);
     }
@@ -104,7 +95,6 @@ export async function executeDiscover(
                 printKeyValue('Components', String(cached.graph.components.length));
                 printKeyValue('Categories', String(cached.graph.categories.length));
 
-                // Output JSON to stdout
                 const jsonOutput = JSON.stringify(cached.graph, null, 2);
                 process.stdout.write(jsonOutput + '\n');
 
@@ -146,7 +136,6 @@ export async function executeDiscover(
                         verbose: options.verbose,
                     });
 
-                    // Cache the generated seeds
                     if (currentGitHash) {
                         try {
                             saveSeedsCache(seeds, options.output, currentGitHash);
@@ -165,7 +154,6 @@ export async function executeDiscover(
                 spinner.update('Running iterative discovery...');
             }
 
-            // Run iterative discovery with cache options
             const graph = await runIterativeDiscovery({
                 repoPath: absoluteRepoPath,
                 seeds,
@@ -201,7 +189,6 @@ export async function executeDiscover(
 
         spinner.succeed('Discovery complete');
 
-        // Print summary to stderr
         const { graph, duration } = result;
         process.stderr.write('\n');
         printHeader('Discovery Summary');
@@ -234,7 +221,6 @@ export async function executeDiscover(
             }
         }
 
-        // Write output file
         const jsonOutput = JSON.stringify(graph, null, 2);
         const outputDir = path.resolve(options.output);
         const outputFile = path.join(outputDir, 'component-graph.json');

@@ -1,12 +1,7 @@
 /**
- * Notes AI Create Handler
- *
  * REST endpoint for AI-powered note creation.
  * Enqueues a task that reads the notes tree, asks AI for a title and
  * placement, then creates the note file.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';

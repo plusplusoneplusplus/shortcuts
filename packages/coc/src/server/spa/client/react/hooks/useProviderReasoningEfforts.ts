@@ -3,8 +3,7 @@
  * preference map for a given provider.
  *
  * Wraps `GET /api/agent-providers/<provider>/models/reasoning-efforts` and
- * returns the resulting `Record<modelId, effort>` map.  Both `NewChatArea`
- * and `ChatDetail` consume this hook to drive their auto-derive logic.
+ * returns the resulting `Record<modelId, effort>` map.
  *
  * Returns an empty map `{}` while the request is in flight or if the
  * endpoint returns no data (preferences are optional — a missing map just

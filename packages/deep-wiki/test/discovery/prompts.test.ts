@@ -1,6 +1,4 @@
 /**
- * Prompts Tests
- *
  * Tests for discovery prompt template generation.
  * Verifies template variable substitution and focus domain filtering.
  */

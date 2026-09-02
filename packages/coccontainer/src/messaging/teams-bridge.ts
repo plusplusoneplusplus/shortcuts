@@ -248,7 +248,6 @@ export class TeamsBridge {
         await this.persistTeamsConfig(patch as Record<string, string | boolean | undefined>);
     }
 
-    /** Reconnect to Teams. */
     async reconnect(): Promise<void> {
         await this.bot?.stop();
 
@@ -316,7 +315,6 @@ export class TeamsBridge {
             return;
         }
 
-        // Acquire token for resolution
         try {
             this._azToken = await acquireMcpOAuthToken(this.opts.config.mcpServerUrl);
         } catch (err: any) {
@@ -364,7 +362,6 @@ export class TeamsBridge {
         }
     }
 
-    /** Save Teams config fields to the config file. */
     private async persistTeamsConfig(fields: Record<string, string | boolean | undefined>): Promise<void> {
         try {
             const fs = await import('fs');
@@ -572,7 +569,6 @@ export class TeamsBridge {
                 return;
             }
 
-            // Log all turns received
             console.log(`[teams-bridge] 📋 Process ${processId}: got ${turns.length} turn(s):`);
             for (let i = 0; i < turns.length; i++) {
                 const t = turns[i];
@@ -666,7 +662,6 @@ export class TeamsBridge {
                 return;
             }
 
-            // Log all turns received on completion
             console.log(`[teams-bridge] 🏁 Process ${processId} COMPLETED: got ${turns.length} turn(s):`);
             for (let i = 0; i < turns.length; i++) {
                 const t = turns[i];
@@ -797,9 +792,6 @@ export class TeamsBridge {
         }
     }
 
-    /**
-     * Send a message to Teams for a given process.
-     */
     private async sendToTeams(
         processId: string,
         role: string,
@@ -911,13 +903,11 @@ export class TeamsBridge {
         if (opts.processId) {
             lines.push(`ChatId: ${opts.processId}`);
         }
-        // Replace \n in content with <br> as well
         lines.push('Message:', opts.content.trimStart().replace(/\n/g, '<br>'));
 
         return lines.join('<br>');
     }
 
-    /** Resolve a workspace ID to a human-readable name. */
     private async resolveWorkspaceName(
         wsEventName: string | undefined,
         metadataName: string | undefined,
@@ -1045,7 +1035,6 @@ export class TeamsBridge {
             }
         }
 
-        // Check if command executor flagged "force new topic" for this user
         const forceNew = this.commandExecutor?.getUserState(userKey)?.forceNewTopic ?? false;
 
         // No reply, no [global] → continue the last active session (unless forced new)
@@ -1062,7 +1051,6 @@ export class TeamsBridge {
         // Still nothing (or forced new) → create a new chat via global session
         const senderId = msg.senderAadId ?? msg.senderName ?? 'unknown';
         if (!isFollowUp || !processId || !agentId) {
-            // Use the user's selected agent/workspace from command executor if available
             const executorState = this.commandExecutor?.getUserState(userKey);
             const selectedAgentId = executorState?.selectedAgentId ?? undefined;
             const selectedWorkspaceId = executorState?.selectedWorkspaceId ?? undefined;

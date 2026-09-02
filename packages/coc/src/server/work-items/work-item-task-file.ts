@@ -1,6 +1,4 @@
 /**
- * Work Item Task File Helpers
- *
  * Creates and updates a placeholder task file in the workspace tasks folder
  * when a work item execution starts. The file appears immediately in the Tasks
  * panel and its status is updated as the execution progresses.
@@ -14,9 +12,6 @@ import * as path from 'path';
 /** Status values written into the task file frontmatter. */
 export type TaskFileStatus = 'in-progress' | 'done' | 'failed' | 'cancelled';
 
-/**
- * Map a work item execution result status to a task file status string.
- */
 export function toTaskFileStatus(executionStatus: 'completed' | 'failed' | 'cancelled'): TaskFileStatus {
     if (executionStatus === 'completed') return 'done';
     if (executionStatus === 'cancelled') return 'cancelled';

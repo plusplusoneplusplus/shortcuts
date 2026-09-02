@@ -1,10 +1,6 @@
 /**
- * HTTP Router
- *
  * Main server router using shared Router implementation.
  * Routes requests to API handlers, static files, or SPA fallback.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';
@@ -59,9 +55,6 @@ const SWAGGER_UI_HTML = `<!DOCTYPE html>
 // Router Options
 // ============================================================================
 
-/**
- * Options for the main server router.
- */
 export interface RouterOptions {
     /** Route table — health route is prepended automatically. */
     routes: Route[];
@@ -149,7 +142,6 @@ export function createRequestHandler(
         ...options.routes,
     ];
 
-    // Static file handlers
     const staticHandlers = [];
 
     // Main static directory

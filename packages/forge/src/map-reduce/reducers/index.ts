@@ -1,9 +1,3 @@
-/**
- * Reducers Module
- *
- * Exports all reducer implementations and utilities.
- */
-
 // Base reducer
 export {
     BaseReducer,

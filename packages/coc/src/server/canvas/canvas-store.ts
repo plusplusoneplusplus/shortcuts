@@ -1,6 +1,4 @@
 /**
- * Canvas Store
- *
  * File-based persistence for chat canvases — markdown artifacts the AI and
  * the user co-edit in a side panel next to a conversation.
  *
@@ -33,9 +31,6 @@
  *   - {@link CanvasCommentRepository}   — comment mutations as read-modify-write
  *                                         under the lock
  *   - {@link CanvasFileSandbox}         — path safety and the read-only files tree
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as crypto from 'crypto';

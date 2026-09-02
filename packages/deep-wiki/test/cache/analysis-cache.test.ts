@@ -1,6 +1,4 @@
 /**
- * Analysis Cache Tests
- *
  * Tests for Phase 3 per-module analysis caching:
  * save/load single module, save/load all, incremental rebuild,
  * clear cache, and corrupted cache handling.

@@ -1,6 +1,4 @@
 /**
- * ReplicateTemplateStrategy Unit Tests
- *
  * Tests the extracted ReplicateTemplateStrategy independently of CLITaskExecutor.
  */
 

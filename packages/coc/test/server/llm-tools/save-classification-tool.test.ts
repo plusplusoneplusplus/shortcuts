@@ -1,7 +1,3 @@
-/**
- * Tests for the saveClassification LLM tool factory.
- */
-
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';

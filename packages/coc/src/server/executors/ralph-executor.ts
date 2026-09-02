@@ -23,9 +23,6 @@
  * and is referenced by absolute path in the user prompt — see
  * AGENTS.md: "Prefer use file path in the prompt instead of expanding the
  * prompt with file's content."
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as os from 'os';

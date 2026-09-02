@@ -1,6 +1,4 @@
 /**
- * Trigger Infrastructure Builder
- *
  * Creates and wires up the trigger-related objects (`TriggerStore`,
  * `TriggerManager`, the `ci-failure` `CiFailureEvaluator`, the queue-backed
  * `QueueActionExecutor`, and a dedicated `ScheduleTimerRegistry`) used by the
@@ -13,8 +11,6 @@
  * The CI-failure monitor's checks-fetch is injected (the production fetcher
  * reuses the server-side checks path — see `createCiChecksFetcher`) so this
  * builder stays free of provider/HTTP details and is unit-testable.
- *
- * Pure Node.js with built-ins only. Cross-platform.
  */
 
 import DatabaseConstructor from 'better-sqlite3';

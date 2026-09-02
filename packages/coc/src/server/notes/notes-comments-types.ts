@@ -1,6 +1,4 @@
 /**
- * Notes Comments — shared type definitions.
- *
  * Pure types, no runtime dependencies. Safe to import from server and client code.
  */
 
@@ -50,7 +48,6 @@ export interface NoteSidecar {
     threads: Record<string, CommentThread>;
 }
 
-/** Create an empty sidecar object with no threads. */
 export function createEmptySidecar(): NoteSidecar {
     return { version: 1, threads: {} };
 }

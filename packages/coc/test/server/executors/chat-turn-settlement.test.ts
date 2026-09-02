@@ -1,6 +1,4 @@
 /**
- * Chat Turn Settlement Tests
- *
  * Covers how a chat turn finishes:
  * - cumulative token usage accumulates counters but replaces session gauges
  * - optional counters (cost / actualUsdCost / duration) stay undefined until a

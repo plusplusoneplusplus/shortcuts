@@ -8,8 +8,6 @@
  *   GET/PATCH/DELETE /api/processes/:id
  *   GET/PATCH/DELETE /api/workspaces/:id
  *   Unknown API route
- *
- * Cross-platform compatible (Linux/macOS/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

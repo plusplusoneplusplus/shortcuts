@@ -15,7 +15,7 @@
 import type { DiffLine } from '../features/git/diff/UnifiedDiffViewer';
 import type { DiffComment } from '../../comments/diff-comment-types';
 
-/** djb2 hash — mirrors pipeline-core's hashText implementation. */
+/** djb2 hash — mirrors forge's hashText implementation. */
 function hashText(text: string): string {
     let hash = 5381;
     for (let i = 0; i < text.length; i++) {
@@ -28,8 +28,6 @@ function hashText(text: string): string {
 /**
  * Re-locate a comment's anchor against a new set of diff lines.
  *
- * @param comment  - The comment whose anchor is being evaluated.
- * @param newLines - The new DiffLine[] from the updated diff.
  * @returns The new 0-based index into newLines, or null if not found.
  */
 export function relocateDiffAnchor(

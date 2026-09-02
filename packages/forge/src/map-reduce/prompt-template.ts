@@ -1,10 +1,6 @@
 /**
- * Prompt Template
- *
  * Lightweight template system for building prompts from templates with variable substitution.
  * Supports required variables validation and optional response parsing.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { PromptRenderOptions, PromptTemplate } from './types';
@@ -17,9 +13,6 @@ import { PipelineCoreError, ErrorCode } from '../errors';
 // Re-export PromptTemplate for convenience
 export type { PromptTemplate } from './types';
 
-/**
- * Error thrown when a required variable is missing
- */
 export class MissingVariableError extends PipelineCoreError {
     /** Name of the missing variable */
     readonly variableName: string;
@@ -44,9 +37,6 @@ export class MissingVariableError extends PipelineCoreError {
     }
 }
 
-/**
- * Error thrown when template rendering fails
- */
 export class TemplateRenderError extends PipelineCoreError {
     constructor(
         message: string,
@@ -61,10 +51,6 @@ export class TemplateRenderError extends PipelineCoreError {
 }
 
 /**
- * Render a prompt template with the given variables
- * @param template The prompt template to render
- * @param options Render options including variables
- * @returns The rendered prompt string
  * @throws MissingVariableError if a required variable is missing
  * @throws TemplateRenderError if rendering fails
  */
@@ -74,7 +60,6 @@ export function renderTemplate(
 ): string {
     const { variables, includeSystemPrompt = false } = options;
 
-    // Validate required variables
     for (const required of template.requiredVariables) {
         if (!(required in variables) || variables[required] === undefined || variables[required] === null) {
             throw new MissingVariableError(required);
@@ -90,7 +75,6 @@ export function renderTemplate(
             preserveSpecialVariables: false // Don't treat any as special in this context
         });
 
-        // Prepend system prompt if requested
         if (includeSystemPrompt && template.systemPrompt) {
             rendered = `${template.systemPrompt}\n\n${rendered}`;
         }
@@ -104,18 +88,12 @@ export function renderTemplate(
     }
 }
 
-/**
- * Create a new prompt template
- * @param config Template configuration
- * @returns PromptTemplate instance
- */
 export function createTemplate(config: {
     template: string;
     requiredVariables?: string[];
     systemPrompt?: string;
     responseParser?: (response: string) => unknown;
 }): PromptTemplate {
-    // Auto-detect required variables from template if not provided
     const requiredVariables = config.requiredVariables ?? extractVariables(config.template);
 
     return {
@@ -126,21 +104,11 @@ export function createTemplate(config: {
     };
 }
 
-/**
- * Extract variable names from a template string
- * @param template The template string
- * @returns Array of variable names found in the template
- */
 export function extractVariables(template: string): string[] {
     // Use shared implementation but don't exclude any variables
     return extractTemplateVariables(template, false);
 }
 
-/**
- * Validate that a template has all required variables defined
- * @param template The template to validate
- * @returns Object with valid flag and any missing variables
- */
 export function validateTemplate(template: PromptTemplate): {
     valid: boolean;
     missingInTemplate: string[];
@@ -150,10 +118,8 @@ export function validateTemplate(template: PromptTemplate): {
     const requiredSet = new Set(template.requiredVariables);
     const templateSet = new Set(templateVariables);
 
-    // Find required variables not in template
     const missingInTemplate = template.requiredVariables.filter(v => !templateSet.has(v));
 
-    // Find template variables not declared as required
     const undeclaredVariables = templateVariables.filter(v => !requiredSet.has(v));
 
     return {
@@ -164,10 +130,7 @@ export function validateTemplate(template: PromptTemplate): {
 }
 
 /**
- * Compose multiple templates into one
- * @param templates Array of templates to compose
  * @param separator Separator between templates (default: '\n\n')
- * @returns Combined template
  */
 export function composeTemplates(
     templates: PromptTemplate[],
@@ -178,7 +141,6 @@ export function composeTemplates(
         new Set(templates.flatMap(t => t.requiredVariables))
     );
 
-    // Use first template's system prompt if available
     const systemPrompt = templates.find(t => t.systemPrompt)?.systemPrompt;
 
     return {
@@ -188,9 +150,6 @@ export function composeTemplates(
     };
 }
 
-/**
- * Built-in template helpers
- */
 export const TemplateHelpers = {
     /**
      * Escape special characters in a string for use in templates
@@ -245,9 +204,6 @@ export const TemplateHelpers = {
     }
 };
 
-/**
- * Common response parsers
- */
 export const ResponseParsers = {
     /**
      * Parse JSON from a response

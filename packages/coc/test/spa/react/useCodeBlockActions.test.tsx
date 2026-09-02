@@ -1,6 +1,4 @@
 /**
- * Tests for useCodeBlockActions hook.
- *
  * Verifies:
  * - Copy button copies data-raw content to clipboard
  * - Collapse button toggles data-collapsed attribute

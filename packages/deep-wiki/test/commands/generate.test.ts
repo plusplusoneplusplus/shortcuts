@@ -1,6 +1,4 @@
 /**
- * Generate Command Tests
- *
  * Tests for the full five-phase generate command orchestration:
  * Phase 1→2→3→4→5 flow, --phase skipping, --force bypass, --skip-website, and error handling.
  *
@@ -916,7 +914,6 @@ describe('executeGenerate — incremental per-component caching', () => {
         const exitCode = await executeGenerate(repoDir, defaultOptions({ force: true }));
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
-        // Should NOT have called scanIndividualAnalysesCache when force is used
         expect(scanIndividualAnalysesCache).not.toHaveBeenCalled();
     });
 
@@ -927,7 +924,6 @@ describe('executeGenerate — incremental per-component caching', () => {
         const exitCode = await executeGenerate(repoDir, defaultOptions());
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
-        // Should NOT have called scanIndividualAnalysesCache when no git hash
         expect(scanIndividualAnalysesCache).not.toHaveBeenCalled();
     });
 
@@ -1422,7 +1418,6 @@ describe('executeGenerate — strict mode', () => {
 
         const exitCode = await executeGenerate(repoDir, defaultOptions({ strict: false, noCluster: true }));
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
-        // Should NOT have printed strict mode error
         expect(printError).not.toHaveBeenCalledWith(
             expect.stringContaining('Strict mode')
         );
@@ -1581,7 +1576,6 @@ describe('executeGenerate — strict mode', () => {
 
         const exitCode = await executeGenerate(repoDir, defaultOptions({ strict: false, noCluster: true }));
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
-        // Should NOT have printed strict mode error
         expect(printError).not.toHaveBeenCalledWith(
             expect.stringContaining('Strict mode')
         );
@@ -1793,7 +1787,6 @@ describe('executeGenerate — Phase 4 incremental invalidation', () => {
         const exitCode = await executeGenerate(repoDir, defaultOptions({ force: true, noCluster: true }));
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
-        // restampArticles should NOT be called when --force is used
         expect(restampArticles).not.toHaveBeenCalled();
     });
 
@@ -1825,7 +1818,6 @@ describe('executeGenerate — Phase 4 incremental invalidation', () => {
         const exitCode = await executeGenerate(repoDir, defaultOptions({ useCache: true }));
         expect(exitCode).toBe(EXIT_CODES.SUCCESS);
 
-        // restampArticles should NOT be called when --use-cache is used
         expect(restampArticles).not.toHaveBeenCalled();
     });
 

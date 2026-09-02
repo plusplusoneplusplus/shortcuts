@@ -1,16 +1,7 @@
 /**
- * Conversation Session Manager
- *
  * Manages server-side conversation sessions for the Ask AI feature.
  * Each session wraps an AskAIFunction and tracks turn history so
  * follow-up questions can reuse the same AI context.
- *
- * Features:
- *   - Session creation with auto-generated IDs
- *   - Session lookup and reuse for multi-turn conversations
- *   - Auto-cleanup of idle sessions (configurable timeout)
- *   - Max concurrent sessions limit
- *   - Per-session mutex to prevent concurrent sends
  */
 
 import type { AskAIFunction } from './types';
@@ -19,7 +10,6 @@ import type { AskAIFunction } from './types';
 // Types
 // ============================================================================
 
-/** A single conversation session. */
 export interface ConversationSession {
     /** Unique session identifier */
     sessionId: string;
@@ -33,7 +23,6 @@ export interface ConversationSession {
     busy: boolean;
 }
 
-/** Options for creating the ConversationSessionManager. */
 export interface ConversationSessionManagerOptions {
     /** The AI send function to use for all sessions */
     sendMessage: AskAIFunction;
@@ -45,7 +34,6 @@ export interface ConversationSessionManagerOptions {
     cleanupIntervalMs?: number;
 }
 
-/** Result of sending a message through a session. */
 export interface SessionSendResult {
     /** The AI response */
     response: string;
@@ -236,9 +224,6 @@ export class ConversationSessionManager {
 // Helpers
 // ============================================================================
 
-/**
- * Generate a random session ID.
- */
 function generateSessionId(): string {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let id = '';

@@ -1,6 +1,4 @@
 /**
- * Tests for Queue Startup Module
- *
  * Verifies queue initialization: global state creation, provider resolution
  * wiring, and enqueue capability publishing.
  */

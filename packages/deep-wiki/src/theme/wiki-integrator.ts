@@ -1,6 +1,4 @@
 /**
- * Wiki Integrator
- *
  * Updates existing wiki files to integrate a new theme area:
  * - module-graph.json — adds/updates ThemeMeta entry
  * - index.md — adds/updates "Themes" navigation section
@@ -139,7 +137,6 @@ export function addCrossLinks(
     const linkLine = `- [${themeTitle}](${linkPath})`;
 
     for (const componentId of involvedComponentIds) {
-        // Try to find the module article file
         const articlePath = findModuleArticle(modulesDir, componentId);
         if (!articlePath) {
             continue;
@@ -221,7 +218,6 @@ export function integrateThemeIntoWiki(
     const { writeThemeArticles } = require('./file-writer');
     const writeResult = writeThemeArticles({ wikiDir, themeId, outline, articles });
 
-    // Build ThemeMeta
     const themeMeta: ThemeMeta = {
         id: themeId,
         title: outline.title,
@@ -241,10 +237,8 @@ export function integrateThemeIntoWiki(
         generatedAt: Date.now(),
     };
 
-    // Update module-graph.json
     updateModuleGraph(wikiDir, themeMeta);
 
-    // Update wiki index.md
     updateWikiIndex(wikiDir, themeId, outline.title, outline.layout);
 
     // Add cross-links to module articles

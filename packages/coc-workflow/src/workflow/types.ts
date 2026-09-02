@@ -1,6 +1,4 @@
 /**
- * DAG Workflow Engine — Core Types
- *
  * All TypeScript types, interfaces, discriminated unions, and type guards
  * for the DAG-based workflow engine. This file contains zero runtime imports
  * from other workflow sub-modules (type-only imports are allowed).
@@ -383,9 +381,6 @@ export interface WorkflowConfig {
 // Execution Results
 // =============================================================================
 
-/**
- * Execution statistics for a single node.
- */
 export interface NodeStats {
     /** Wall-clock duration in milliseconds. */
     durationMs: number;
@@ -395,9 +390,6 @@ export interface NodeStats {
     outputCount: number;
 }
 
-/**
- * Result of executing a single node.
- */
 export interface NodeResult {
     /** Node ID. */
     nodeId: string;
@@ -517,9 +509,6 @@ export interface WorkflowItemProcessEvent {
 // Execution Options
 // =============================================================================
 
-/**
- * Options for executing a workflow.
- */
 export interface WorkflowExecutionOptions {
     /**
      * AI invoker function for AI-capable nodes (map, reduce, ai, filter with ai rule, load with ai source).

@@ -1,7 +1,5 @@
 /**
  * @vitest-environment jsdom
- *
- * Unit tests for MobileScratchpadTabBar component.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';

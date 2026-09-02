@@ -1,6 +1,4 @@
 /**
- * Tavily Web Search Tool Tests
- *
  * Validates the caller side of `createTavilyWebSearchTool` against:
  *   - schema/shape assertions
  *   - key resolution (options + providers.json + missing)

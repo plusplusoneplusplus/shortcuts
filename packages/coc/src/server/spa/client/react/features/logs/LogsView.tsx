@@ -2,7 +2,7 @@
  * LogsView — top-level route component for #logs.
  *
  * Streams live server logs via SSE (/api/logs/stream) and supports:
- * - Level filter (all / info / warn / error)
+ * - Level threshold filter (All / Debug+ / Info+ / Warn+ / Error+)
  * - Free-text search (client-side, highlights matches)
  * - Pause / Resume auto-scroll
  * - Clear in-memory display

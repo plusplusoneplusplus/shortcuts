@@ -1,6 +1,3 @@
-/**
- * Pure utility: parse task navigation params from a URL hash string.
- */
 export function parseTaskHashParams(hash: string, wsId: string) {
     const [hashPath, queryStr] = hash.replace(/^#/, '').split('?');
     const parts = hashPath.split('/');

@@ -1,5 +1,4 @@
 /**
- * Tests for agent lifecycle management in the container server.
  * Ensures agents are properly registered, tracked, and marked offline on disconnection.
  */
 
@@ -125,15 +124,12 @@ describe('Agent Lifecycle', () => {
                 }
             });
 
-            // Connect agent
             agentManager.simulateAgentConnect('ws-agent-123', 'Agent-Dev2-Linux');
             let agent = agentStore.list().find(a => a.address === 'inbound://ws-agent-123');
             expect(agent?.status).toBe('online');
 
-            // Disconnect agent
             agentManager.simulateAgentDisconnect('ws-agent-123');
 
-            // Agent should now be offline
             agent = agentStore.list().find(a => a.address === 'inbound://ws-agent-123');
             expect(agent?.status).toBe('offline');
         });
@@ -166,7 +162,6 @@ describe('Agent Lifecycle', () => {
             expect(agentStore.list().length).toBe(3);
             agentStore.list().forEach(a => expect(a.status).toBe('online'));
 
-            // Disconnect only agent-2
             agentManager.simulateAgentDisconnect('agent-2');
 
             const agents = agentStore.list();
@@ -188,7 +183,6 @@ describe('Agent Lifecycle', () => {
                 }
             });
 
-            // Disconnect non-existent agent - should not throw
             expect(() => {
                 agentManager.simulateAgentDisconnect('non-existent-agent');
             }).not.toThrow();
@@ -200,7 +194,6 @@ describe('Agent Lifecycle', () => {
             // This demonstrates the ORIGINAL BUG
             // agentStore.get() expects UUID or agent name, not the WebSocket agent ID
 
-            // Add an agent
             const added = agentStore.add('inbound://ws-id-456', 'TestAgent');
             const storeId = added.id; // This is a UUID like "abc-123-def"
 

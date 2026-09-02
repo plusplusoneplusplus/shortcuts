@@ -1,6 +1,4 @@
 /**
- * Article Executor Tests
- *
  * Tests for article generation map-reduce orchestration:
  * analysis→PromptItem conversion, text mode mapping, AI reduce,
  * and static fallback generation.

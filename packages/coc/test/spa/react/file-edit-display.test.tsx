@@ -1,5 +1,5 @@
 /**
- * Tests for improved file edit display:
+ * Tests for file edit display:
  * - computeNetDiff (net line-level diff)
  * - computeFileEditTotals (aggregate totals)
  * - shortenPath (dir/basename path display)

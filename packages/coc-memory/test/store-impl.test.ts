@@ -518,7 +518,6 @@ describe('MemoryScopeResolver — scope isolation', () => {
 
     // AC-02 DoD #4: toggling modes does NOT migrate memory
     it('no automatic migration when switching from isolated to global mode', async () => {
-        // Create an isolated workspace fact
         const isolatedStore = resolver.resolve({ dataDir: tmpDir, workspaceId: 'ws-C', isolated: true });
         await isolatedStore.facts.addFact(WS_FACT('ws-C'));
 

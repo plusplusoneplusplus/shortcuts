@@ -1,6 +1,4 @@
 /**
- * Wiki Fixture Generators for E2E Tests
- *
  * Provides reusable helpers to create realistic ComponentGraph data
  * and write it to disk for wiki-related E2E tests.
  */
@@ -18,7 +16,6 @@ import type {
 // Re-export types so tests can import from a single module
 export type { ComponentGraph, ComponentInfo, ProjectInfo, CategoryInfo, DomainInfo };
 
-/** Configuration options for `createWikiFixture`. */
 export interface WikiFixtureOptions {
     /** Project name (default: "test-wiki-project") */
     projectName: string;

@@ -1,7 +1,3 @@
-/**
- * Tests for ConversationSessionManager.
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ConversationSessionManager } from '../../../src/server/wiki/conversation-session-manager';
 import type { AskAIFunction } from '../../../src/server/wiki/types';

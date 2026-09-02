@@ -329,7 +329,6 @@ describe('Run Script Templates — selection and detail view', () => {
 
     it('deleting selected script template clears right panel', async () => {
         await renderTemplatesTab();
-        // Select st-1
         fireEvent.click(screen.getByTestId('script-template-item-st-1'));
         await waitFor(() => expect(screen.getByTestId('script-template-detail')).toBeDefined());
 

@@ -1,6 +1,4 @@
 /**
- * RepoQueueRegistry
- *
  * Manages multiple TaskQueueManager instances, one per repository.
  * Provides registry-level operations and aggregated statistics.
  *
@@ -10,8 +8,6 @@
  * - Event forwarding from individual queues
  * - Aggregated stats across all repos
  * - Memory cleanup for removed repos
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';

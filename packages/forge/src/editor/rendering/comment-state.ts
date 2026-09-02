@@ -1,21 +1,10 @@
 /**
- * Comment state management utilities
- * 
- * This module contains pure functions for managing comment state.
- * These functions are testable in Node.js and are used both:
- * 1. In Node.js for unit testing
- * 2. In the webview (browser) by importing into the bundled script
+ * Pure comment-state helpers, used by Node.js unit tests and by the webview
+ * through the bundled script.
  */
 
 import { CommentSelection, CommentStatus, MarkdownComment } from '../types';
 
-/**
- * Filter comments by status
- * 
- * @param comments - Array of comments to filter
- * @param showResolved - Whether to include resolved comments
- * @returns Filtered array of comments
- */
 export function filterCommentsByStatus(
     comments: MarkdownComment[],
     showResolved: boolean
@@ -27,9 +16,6 @@ export function filterCommentsByStatus(
 }
 
 /**
- * Sort comments by their starting line number
- * 
- * @param comments - Array of comments to sort
  * @returns New sorted array (original not modified)
  */
 export function sortCommentsByLine(comments: MarkdownComment[]): MarkdownComment[] {
@@ -43,20 +29,13 @@ export function sortCommentsByLine(comments: MarkdownComment[]): MarkdownComment
 
 /**
  * Sort comments by column position (descending, for right-to-left application)
- * 
- * @param comments - Array of comments to sort
+ *
  * @returns New sorted array (original not modified)
  */
 export function sortCommentsByColumnDescending(comments: MarkdownComment[]): MarkdownComment[] {
     return [...comments].sort((a, b) => b.selection.startColumn - a.selection.startColumn);
 }
 
-/**
- * Group comments by their starting line number
- * 
- * @param comments - Array of comments to group
- * @returns Map from line number to array of comments on that line
- */
 export function groupCommentsByLine(comments: MarkdownComment[]): Map<number, MarkdownComment[]> {
     const map = new Map<number, MarkdownComment[]>();
 
@@ -72,12 +51,9 @@ export function groupCommentsByLine(comments: MarkdownComment[]): Map<number, Ma
 
 /**
  * Group comments by all lines they cover (not just starting line)
- * 
+ *
  * This is essential for multi-line comments where highlighting needs to appear
  * on every line the comment spans, not just the first line.
- * 
- * @param comments - Array of comments to group
- * @returns Map from line number to array of comments covering that line
  */
 export function groupCommentsByAllCoveredLines(comments: MarkdownComment[]): Map<number, MarkdownComment[]> {
     const map = new Map<number, MarkdownComment[]>();
@@ -98,12 +74,7 @@ export function groupCommentsByAllCoveredLines(comments: MarkdownComment[]): Map
 }
 
 /**
- * Get comments for a specific line, optionally filtered by visibility
- * 
  * @param lineNum - The 1-based line number
- * @param commentsMap - Map from line numbers to comments
- * @param showResolved - Whether to include resolved comments
- * @returns Array of comments for the line
  */
 export function getCommentsForLine(
     lineNum: number,
@@ -115,13 +86,8 @@ export function getCommentsForLine(
 }
 
 /**
- * Check if a block of lines has any visible comments
- * 
  * @param startLine - Start line (1-based, inclusive)
  * @param endLine - End line (1-based, inclusive)
- * @param commentsMap - Map from line numbers to comments
- * @param showResolved - Whether to include resolved comments
- * @returns True if the block has visible comments
  */
 export function blockHasComments(
     startLine: number,
@@ -138,12 +104,6 @@ export function blockHasComments(
     return false;
 }
 
-/**
- * Count comments by status
- * 
- * @param comments - Array of comments to count
- * @returns Object with counts for each status
- */
 export function countCommentsByStatus(
     comments: MarkdownComment[]
 ): { open: number; resolved: number; pending: number } {
@@ -168,13 +128,6 @@ export function countCommentsByStatus(
     return { open, resolved, pending };
 }
 
-/**
- * Find a comment by ID
- * 
- * @param comments - Array of comments to search
- * @param commentId - The comment ID to find
- * @returns The comment if found, undefined otherwise
- */
 export function findCommentById(
     comments: MarkdownComment[],
     commentId: string
@@ -183,11 +136,6 @@ export function findCommentById(
 }
 
 /**
- * Update a comment's status
- * 
- * @param comments - Array of comments
- * @param commentId - The ID of the comment to update
- * @param status - The new status
  * @returns New array with the updated comment
  */
 export function updateCommentStatus(
@@ -208,11 +156,6 @@ export function updateCommentStatus(
 }
 
 /**
- * Update a comment's text
- * 
- * @param comments - Array of comments
- * @param commentId - The ID of the comment to update
- * @param commentText - The new comment text
  * @returns New array with the updated comment
  */
 export function updateCommentText(
@@ -233,10 +176,6 @@ export function updateCommentText(
 }
 
 /**
- * Delete a comment by ID
- * 
- * @param comments - Array of comments
- * @param commentId - The ID of the comment to delete
  * @returns New array without the deleted comment
  */
 export function deleteComment(
@@ -247,9 +186,6 @@ export function deleteComment(
 }
 
 /**
- * Resolve all open comments
- * 
- * @param comments - Array of comments
  * @returns New array with all open comments marked as resolved
  */
 export function resolveAllComments(comments: MarkdownComment[]): MarkdownComment[] {
@@ -267,11 +203,7 @@ export function resolveAllComments(comments: MarkdownComment[]): MarkdownComment
 }
 
 /**
- * Check if a comment selection spans the given line
- * 
- * @param selection - Comment selection with line/column info
  * @param lineNumber - 1-based line number to check
- * @returns Object indicating if the line is covered and the column range
  */
 export function getSelectionCoverageForLine(
     selection: CommentSelection,

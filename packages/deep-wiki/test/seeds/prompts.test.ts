@@ -1,6 +1,4 @@
 /**
- * Seeds Prompts Tests
- *
  * Tests for the seeds prompt template generation.
  */
 

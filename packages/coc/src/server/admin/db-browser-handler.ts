@@ -1,6 +1,4 @@
 /**
- * Generic DB Browser Handler.
- *
  * Exposes a single source-based API for approved SQLite databases. Sources are
  * resolved server-side; callers never provide filesystem paths or SQL strings.
  */

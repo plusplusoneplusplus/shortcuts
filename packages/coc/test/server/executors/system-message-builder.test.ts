@@ -1,6 +1,4 @@
 /**
- * System Message Builder Unit Tests
- *
  * Focused tests for the admin global-system-prompt block helper and the
  * `appendGlobalSystemPrompt()` builder step (AC-03). The block must be a
  * labeled wrapper around the raw prompt and inert when no prompt is set.

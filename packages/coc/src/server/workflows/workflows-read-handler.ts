@@ -1,6 +1,4 @@
 /**
- * Workflow read-only REST API routes.
- *
  * Extracted from workflows-handler.ts to keep each module focused.
  */
 
@@ -17,9 +15,6 @@ import { resolveWorkspace, resolveAndValidatePath, discoverAndEnrichWorkflows } 
 // Read Route Registration
 // ============================================================================
 
-/**
- * Register workflow read-only API routes on the given route table.
- */
 export function registerWorkflowRoutes(
     routes: Route[],
     store: ProcessStore,

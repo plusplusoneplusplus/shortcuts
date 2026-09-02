@@ -1,6 +1,4 @@
 /**
- * ScheduleExecutor
- *
  * Owns the per-run lifecycle: enqueueing the appropriate task into the
  * queue manager based on schedule.targetType, tracking which schedules
  * have an in-flight run, and emitting `schedule-triggered` /

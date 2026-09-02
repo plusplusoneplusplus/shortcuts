@@ -1,7 +1,3 @@
-/**
- * Tests for UsageStatsView component.
- */
-
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { UsageStatsView } from '../../../../../src/server/spa/client/react/features/stats/UsageStatsView';

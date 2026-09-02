@@ -1,9 +1,3 @@
-/**
- * Config Module - Public API
- *
- * Exports all configuration constants and defaults.
- */
-
 // Defaults
 export {
     // Timeouts

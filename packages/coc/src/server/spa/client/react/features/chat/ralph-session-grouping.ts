@@ -93,12 +93,10 @@ function getTaskMode(task: any): string | undefined {
     return (task.payload?.mode ?? task.mode) as string | undefined;
 }
 
-/** Returns true if a task is part of a Ralph session. */
 export function isRalphTask(task: any): boolean {
     return !!getRalphSessionId(task);
 }
 
-/** Compute the aggregate phase for a Ralph session. */
 function computeSessionPhase(
     grillingProcess: any | undefined,
     iterations: any[],
@@ -133,10 +131,9 @@ function computeSessionPhase(
 }
 
 /**
- * Group a flat list of tasks/history items by ralph.sessionId.
- * Non-ralph tasks remain standalone.
- * Groups with only 1 item that is in executing phase remain as groups.
- * Groups with only the grilling process remain as groups (to show Start Ralph).
+ * Group a flat list of tasks/history items by ralph.sessionId. Non-ralph tasks
+ * remain standalone. Every session becomes a group even when it holds a single
+ * item — a lone grilling process still has to render its "Start Ralph" row.
  */
 export function groupByRalphSession(
     items: any[],

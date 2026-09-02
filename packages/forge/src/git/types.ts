@@ -1,6 +1,4 @@
 /**
- * Pure Node.js git types.
- *
  * Editor URI objects are represented as `filePath: string`.
  * UI-only types (`GitSectionType`, `GitViewCounts`) are omitted.
  */
@@ -18,14 +16,8 @@ export type GitChangeStatus =
     | 'ignored'     // ! - Ignored
     | 'conflict';   // U - Unmerged/Conflict
 
-/**
- * Stage of the git change.
- */
 export type GitChangeStage = 'staged' | 'unstaged' | 'untracked';
 
-/**
- * Represents a single git change (modified/added/deleted file).
- */
 export interface GitChange {
     /** Absolute path to the changed file */
     filePath: string;
@@ -41,9 +33,6 @@ export interface GitChange {
     repositoryName: string;
 }
 
-/**
- * Change counts for display.
- */
 export interface GitChangeCounts {
     staged: number;
     unstaged: number;
@@ -51,9 +40,6 @@ export interface GitChangeCounts {
     total: number;
 }
 
-/**
- * Represents a git commit.
- */
 export interface GitCommit {
     /** Full commit hash */
     hash: string;
@@ -83,9 +69,6 @@ export interface GitCommit {
     isAheadOfRemote?: boolean;
 }
 
-/**
- * Options for loading commits.
- */
 export interface CommitLoadOptions {
     /** Maximum number of commits to load */
     maxCount: number;
@@ -95,9 +78,6 @@ export interface CommitLoadOptions {
     search?: string;
 }
 
-/**
- * Result from loading commits.
- */
 export interface CommitLoadResult {
     /** Loaded commits */
     commits: GitCommit[];
@@ -105,9 +85,6 @@ export interface CommitLoadResult {
     hasMore: boolean;
 }
 
-/**
- * Represents a file changed in a commit.
- */
 export interface GitCommitFile {
     /** Relative path to the file within the repository */
     path: string;
@@ -127,9 +104,6 @@ export interface GitCommitFile {
     deletions?: number;
 }
 
-/**
- * Comment counts for display.
- */
 export interface GitCommentCounts {
     open: number;
     resolved: number;
@@ -174,9 +148,6 @@ export interface GitCommitRange {
     baseModeFallback?: true;
 }
 
-/**
- * File within a commit range.
- */
 export interface GitCommitRangeFile {
     /** File path relative to repository root */
     path: string;
@@ -192,9 +163,6 @@ export interface GitCommitRangeFile {
     repositoryRoot: string;
 }
 
-/**
- * Configuration for GitRangeService.
- */
 export interface GitRangeConfig {
     /** Maximum number of changed files to return from detectCommitRange (default: 100) */
     maxFiles?: number;
@@ -240,9 +208,6 @@ export interface GitRepositoryStatus {
     unborn: boolean;
 }
 
-/**
- * Represents a git branch.
- */
 export interface GitBranch {
     /** Branch name */
     name: string;
@@ -270,9 +235,6 @@ export interface BranchListOptions {
     searchPattern?: string;
 }
 
-/**
- * Result of paginated branch listing.
- */
 export interface PaginatedBranchResult {
     /** Branches in this page */
     branches: GitBranch[];
@@ -282,9 +244,6 @@ export interface PaginatedBranchResult {
     hasMore: boolean;
 }
 
-/**
- * Result of a git operation that may fail.
- */
 export interface GitOperationResult {
     success: boolean;
     error?: string;
@@ -346,9 +305,6 @@ export interface GitPatchApplyResult {
     appliedCount?: number;
 }
 
-/**
- * Current state of the repository (merge/rebase/cherry-pick in progress).
- */
 export type RepoOperationType = 'none' | 'merge' | 'rebase' | 'cherry-pick';
 export type GitOperationInProgress = RepoOperationType | 'am';
 

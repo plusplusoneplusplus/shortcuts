@@ -2,9 +2,6 @@ import path from 'path';
 import pino from 'pino';
 import type { Logger } from './logger';
 
-/**
- * Per-store configuration for the Pino logger.
- */
 export interface StoreOptions {
     /** Override the log level for this store. */
     level?: string;
@@ -17,9 +14,6 @@ export interface StoreOptions {
  */
 export type LogStoreName = 'ai-service' | 'coc-service';
 
-/**
- * Options for creating the root Pino logger.
- */
 export interface PinoLoggerOptions {
     /** Minimum log level (default: 'info') */
     level?: string;
@@ -88,7 +82,6 @@ export function createRootPinoLogger(options: PinoLoggerOptions): pino.Logger {
 }
 
 /**
- * Create a child Pino logger bound to a named store.
  * The `store` field is injected into every log record for downstream routing.
  */
 export function createLogStore(root: pino.Logger, store: LogStoreName): pino.Logger {
@@ -96,7 +89,6 @@ export function createLogStore(root: pino.Logger, store: LogStoreName): pino.Log
 }
 
 /**
- * Wrap a Pino logger in the existing `Logger` interface.
  * Preserves full backward-compatibility: callers using `getLogger()` continue
  * to work without any changes.
  */
@@ -110,7 +102,6 @@ export function createPinoAdapter(pinoLogger: pino.Logger): Logger {
 }
 
 /**
- * Create a silent Pino-backed `Logger` that discards all output.
  * Useful in tests as a drop-in replacement for the hand-rolled `nullLogger`.
  */
 export function createPinoNullLogger(): Logger {

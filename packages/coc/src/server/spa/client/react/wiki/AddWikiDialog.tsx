@@ -1,7 +1,3 @@
-/**
- * AddWikiDialog — dialog for creating a new wiki.
- */
-
 import { useState, useCallback } from 'react';
 import { Dialog, Button } from '../ui';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';

@@ -21,7 +21,6 @@ export interface MinimizedDialogEntry {
     label: string;
     /** Optional preview text (truncated prompt, file name, etc.). */
     preview?: string;
-    /** Called to restore (un-minimize) the dialog. */
     onRestore: () => void;
     /** If provided, a ✕ close button is shown. */
     onClose?: () => void;
@@ -32,9 +31,7 @@ export interface MinimizedDialogEntry {
 interface MinimizedDialogsContextValue {
     /** Add or update an entry. Only triggers re-render when id-list or display data changes. */
     register: (entry: MinimizedDialogEntry) => void;
-    /** Remove an entry by id. */
     unregister: (id: string) => void;
-    /** Current visible entries. */
     entries: MinimizedDialogEntry[];
 }
 

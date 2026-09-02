@@ -1,6 +1,4 @@
 /**
- * Diff Line Mapper
- *
  * Parses unified diff output and maps source-file line numbers to the
  * rendered diff-line indices used by the SPA's `UnifiedDiffViewer`.
  *
@@ -11,7 +9,6 @@
  * The parser and the mapper are pure TypeScript. The one git command this
  * module runs goes through `execGitAsync`, so it executes on a libuv worker in
  * the native addon rather than blocking the event loop.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { execGitAsync } from '@plusplusoneplusplus/forge/git';
@@ -246,9 +243,6 @@ export function mapLinesToDiffIndices(
     };
 }
 
-/**
- * Extract the text content for the given diff-line range.
- */
 export function extractTextFromDiffLines(
     parsedLines: ParsedDiffLine[],
     diffLineStart: number,

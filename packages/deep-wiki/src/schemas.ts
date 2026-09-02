@@ -1,10 +1,5 @@
 /**
- * Deep Wiki Generator — JSON Schemas
- *
- * JSON schema strings used to instruct the AI on expected output format.
- * These are embedded in prompts to guide structured AI responses.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
+ * JSON schema strings embedded in prompts so the AI returns structured output.
  */
 
 // ============================================================================
@@ -12,8 +7,7 @@
 // ============================================================================
 
 /**
- * JSON schema string for the ComponentGraph type.
- * Used in the discovery prompt to specify expected output format.
+ * Used in the discovery prompt.
  */
 export const COMPONENT_GRAPH_SCHEMA = `{
   "project": {
@@ -50,7 +44,7 @@ export const COMPONENT_GRAPH_SCHEMA = `{
 // ============================================================================
 
 /**
- * JSON schema string for the structural scan output (large repo first pass).
+ * Structural scan output (large repo first pass).
  */
 export const STRUCTURAL_SCAN_SCHEMA = `{
   "fileCount": "number — estimated total number of files",
@@ -74,8 +68,7 @@ export const STRUCTURAL_SCAN_SCHEMA = `{
 // ============================================================================
 
 /**
- * JSON schema string for the ComponentAnalysis type.
- * Used in analysis prompts to specify expected output format.
+ * Used in analysis prompts.
  */
 export const COMPONENT_ANALYSIS_SCHEMA = `{
   "componentId": "string — must match the component ID provided",
@@ -125,7 +118,7 @@ export const COMPONENT_ANALYSIS_SCHEMA = `{
 }`;
 
 /**
- * JSON schema string for the reduce output (Phase 4 index/architecture generation).
+ * Reduce output — Phase 4 index/architecture generation.
  */
 export const REDUCE_OUTPUT_SCHEMA = `{
   "index": "string — full markdown content for index.md (categorized TOC, project overview, module summaries)",
@@ -137,9 +130,6 @@ export const REDUCE_OUTPUT_SCHEMA = `{
 // Component Analysis Validation Helpers
 // ============================================================================
 
-/**
- * Required fields for a valid ComponentAnalysis
- */
 export const COMPONENT_ANALYSIS_REQUIRED_FIELDS = ['componentId', 'overview'] as const;
 
 /**
@@ -168,24 +158,12 @@ export function isValidMermaidDiagram(diagram: string): boolean {
 // Validation Helpers
 // ============================================================================
 
-/**
- * Required fields for a valid ComponentGraph
- */
 export const COMPONENT_GRAPH_REQUIRED_FIELDS = ['project', 'components', 'categories'] as const;
 
-/**
- * Required fields for a valid ProjectInfo
- */
 export const PROJECT_INFO_REQUIRED_FIELDS = ['name', 'language'] as const;
 
-/**
- * Required fields for a valid ComponentInfo
- */
 export const COMPONENT_INFO_REQUIRED_FIELDS = ['id', 'name', 'path'] as const;
 
-/**
- * Valid complexity values
- */
 export const VALID_COMPLEXITY_VALUES = ['low', 'medium', 'high'] as const;
 
 /**

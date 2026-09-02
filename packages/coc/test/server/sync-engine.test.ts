@@ -1,6 +1,4 @@
 /**
- * Sync Engine Tests
- *
  * Tests for the Git-based notes sync engine: workspace-scoped construction,
  * conflict resolution, status tracking, and folder mapping.
  */

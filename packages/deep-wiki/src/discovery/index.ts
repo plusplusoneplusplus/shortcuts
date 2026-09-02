@@ -1,11 +1,7 @@
 /**
- * Discovery Phase — Public API
- *
  * Main entry point for the discovery phase (Phase 1).
  * Analyzes a local repository and produces a ComponentGraph JSON
  * describing the codebase structure, components, and dependencies.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { DiscoveryOptions, DiscoveryResult } from '../types';
@@ -22,16 +18,10 @@ export { buildDiscoveryPrompt, buildStructuralScanPrompt, buildFocusedDiscoveryP
 export { runIterativeDiscovery } from './iterative/iterative-discovery';
 
 /**
- * Discover the component graph for a repository.
- *
- * This is the main entry point for Phase 1 of the deep-wiki pipeline.
- * It analyzes the repository and returns a structured ComponentGraph.
- *
  * For large repositories (3000+ files), it automatically uses multi-round
  * discovery: first a structural scan, then per-domain drill-downs.
  *
  * @param options - Discovery options (repoPath is required)
- * @returns DiscoveryResult containing the ComponentGraph and timing info
  */
 export async function discoverComponentGraph(options: DiscoveryOptions): Promise<DiscoveryResult> {
     const startTime = Date.now();

@@ -1,7 +1,3 @@
-/**
- * Tests for DiffContextMenu React component.
- */
-
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { DiffContextMenu } from '../../../../src/server/spa/client/react/tasks/comments/DiffContextMenu';

@@ -210,7 +210,6 @@ describe('AgentManager', () => {
 
             // Should emit agent-connected twice (different WS)
             expect(handler).toHaveBeenCalledTimes(2);
-            // Old WS should be closed
             expect(ws1.readyState).toBe(3); // CLOSED
             // New WS should be active
             const agent = manager.getAgent('reconn-1');
@@ -287,7 +286,6 @@ describe('AgentManager', () => {
             expect(reqMsg.payload.method).toBe('GET');
             expect(reqMsg.payload.path).toBe('/api/health');
 
-            // Simulate response
             ws.simulateMessage(createMessage('response', {
                 requestId: reqMsg.payload.requestId,
                 status: 200,

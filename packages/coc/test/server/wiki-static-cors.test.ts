@@ -1,10 +1,6 @@
 /**
- * Wiki Static File CORS Tests
- *
  * Verifies that CORS headers are set on wiki static file error responses
  * (wiki not found, invalid path, file not found).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';

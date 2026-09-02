@@ -1,6 +1,4 @@
 /**
- * LLM Tools Preferences Tests
- *
  * Tests for:
  * - validatePerRepoPreferences with disabledLlmTools
  * - readRepoPreferences/writeRepoPreferences with disabledLlmTools

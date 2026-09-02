@@ -1,6 +1,4 @@
 /**
- * Iterative Discovery Cache Integration Tests
- *
  * Tests that the iterative discovery loop properly integrates with
  * the discovery cache: loading cached probes, saving fresh probes,
  * round resumption from metadata, git hash invalidation, and

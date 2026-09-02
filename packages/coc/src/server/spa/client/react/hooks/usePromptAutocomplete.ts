@@ -8,7 +8,7 @@
  * Behavior:
  *   - Suggestions only appear when `enabled` is true, the cursor is at the
  *     end of `text`, and the trimmed prefix is at least `minPrefixLen` chars.
-     *   - Requests are debounced and stale responses are dropped.
+ *   - Requests are debounced and stale responses are dropped.
  *   - `accept()` returns the joined string (text + completion) for the caller
  *     to apply via the input's setValue handle.
  *   - `dismiss()` clears the current completion until the next text change.

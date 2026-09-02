@@ -1,6 +1,4 @@
 /**
- * PipelineCoreError
- *
  * Base error class for workflow engine errors.
  * Provides structured error information with:
  * - code: Well-known error code for programmatic handling
@@ -114,9 +112,6 @@ export class PipelineCoreError extends Error {
     }
 }
 
-/**
- * Type guard to check if an error is a PipelineCoreError
- */
 export function isPipelineCoreError(error: unknown): error is PipelineCoreError {
     return error instanceof PipelineCoreError;
 }
@@ -131,9 +126,7 @@ export function toPipelineCoreError(
     defaultCode: ErrorCodeType = ErrorCode.UNKNOWN,
     meta?: ErrorMetadata
 ): PipelineCoreError {
-    // Already a PipelineCoreError
     if (isPipelineCoreError(error)) {
-        // Merge additional meta if provided
         if (meta) {
             return new PipelineCoreError(error.message, {
                 code: error.code,
@@ -144,7 +137,6 @@ export function toPipelineCoreError(
         return error;
     }
 
-    // Regular Error
     if (error instanceof Error) {
         // Try to detect code from Node.js system errors
         const nodeCode = (error as NodeJS.ErrnoException).code;
@@ -157,7 +149,6 @@ export function toPipelineCoreError(
         });
     }
 
-    // String or other primitive
     const message = typeof error === 'string' ? error : String(error);
     return new PipelineCoreError(message, {
         code: defaultCode,
@@ -243,5 +234,4 @@ export function logError(
     }
 }
 
-// Re-export for convenience
 export { ErrorCode, ErrorCodeType, mapSystemErrorCode } from './error-codes';

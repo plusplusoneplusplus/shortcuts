@@ -1,6 +1,4 @@
 /**
- * Cron & Wakeup LLM Tools
- *
  * Two tool factories:
  * - `createCronTool`           — single `cron` tool with an `action` switch
  *                                (create | cancel | list); skill-gated, not in

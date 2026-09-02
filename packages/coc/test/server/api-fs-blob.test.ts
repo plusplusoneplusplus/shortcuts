@@ -214,7 +214,6 @@ describe('GET /api/fs/blob', () => {
         const filePath = path.join(tmpDir, 'tilde-test.txt');
         fs.writeFileSync(filePath, 'tilde works');
 
-        // Replace homedir with ~ in the path
         const tildePath = filePath.replace(os.homedir(), '~');
         const { status, body } = await apiGet(`/api/fs/blob?path=${encodeURIComponent(tildePath)}`);
         expect(status).toBe(200);

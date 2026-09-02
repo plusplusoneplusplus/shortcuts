@@ -11,9 +11,6 @@
  * Reads from both Global memory (gated by globalPrefs.memoryV2.enabled) and
  * Workspace memory (gated by repoPrefs.memoryV2.enabled). Returns the empty
  * addon when neither scope is enabled or any error occurs.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -84,7 +81,6 @@ const MEMORY_TOOL_SUFFIX = tagGuidanceSuffix(
  * - any error occurs during store initialization or fact retrieval
  *
  * @param dataDir     CoC data root (e.g. `~/.coc`)
- * @param workspaceId Workspace identifier
  * @param query       Current prompt text — used for per-turn recall search.
  *                    Pass undefined to skip per-turn recall (frozen snapshot only).
  * @param processId   Optional process ID for tool provenance.

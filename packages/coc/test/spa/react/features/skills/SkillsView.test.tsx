@@ -1,6 +1,4 @@
 /**
- * Tests for SkillsView component.
- *
  * SkillsView uses useApp (AppContext) for the active sub-tab state.
  * We mock AppContext so the component renders without real state management.
  */

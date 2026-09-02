@@ -1,14 +1,9 @@
 /**
- * Terminal Infrastructure Builder
- *
  * Creates the TerminalWebSocketServer (which internally owns a
  * TerminalSessionManager) and returns both references. Returns `undefined`
  * when the feature is disabled via config or node-pty is unavailable.
  *
  * Follows the same factory pattern as queue-infrastructure, schedule-infrastructure, etc.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -31,15 +26,11 @@ export interface TerminalInfrastructure {
 // ============================================================================
 
 /**
- * Creates terminal infrastructure when enabled and node-pty is available.
- *
  * Uses dynamic `require()` because node-pty is an optional dependency — on
  * machines without native build tools it won't be installed. The try/catch
  * detects this at runtime and gracefully falls back to `undefined`.
  *
- * @param store          - Process store for workspace lookups.
  * @param resolvedConfig - Resolved CLI config (checked for `terminal.enabled`).
- * @returns Terminal infrastructure, or `undefined` if disabled/unavailable.
  */
 export function createTerminalInfrastructure(
     store: ProcessStore,

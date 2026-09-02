@@ -1,6 +1,4 @@
 /**
- * AI Service Unavailable (503) E2E Tests
- *
  * Coverage gap: error-handling.spec.ts covers generic 500s but not the
  * AI-specific 503 paths returned when the AI service is unavailable.
  *

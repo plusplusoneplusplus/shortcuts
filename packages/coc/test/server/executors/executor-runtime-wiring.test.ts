@@ -11,8 +11,6 @@
  * tool or a silently skipped telemetry path. These tests supply a distinct
  * sentinel for EVERY capability at the outermost boundary and assert that the
  * intended final consumer receives that exact reference.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

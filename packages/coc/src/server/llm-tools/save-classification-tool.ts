@@ -1,6 +1,4 @@
 /**
- * Save Classification Tool
- *
  * Per-invocation `saveClassification` LLM tool. Persists a complete
  * `DiffClassificationResult` to the file-based classification store
  * (`packages/coc/src/server/repos/classification-store.ts`).
@@ -9,9 +7,6 @@
  * time via `createSaveClassificationTool()` so the AI only supplies the
  * `classifications` array. Validation is strict — the tool returns an error
  * response when entries are malformed so the AI can retry with corrections.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';

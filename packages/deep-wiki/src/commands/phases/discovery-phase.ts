@@ -66,7 +66,6 @@ export async function runPhase1(
         printWarning(`Failed to get git hash: ${getErrorMessage(e)}`);
     }
 
-    // Clear discovery cache if --force
     if (options.force) {
         clearDiscoveryCache(options.output);
     }
@@ -93,7 +92,6 @@ export async function runPhase1(
     try {
         let result;
 
-        // Resolve per-phase settings for discovery
         const discoveryModel = resolvePhaseModel(options, 'discovery');
         const discoveryTimeout = resolvePhaseTimeout(options, 'discovery');
         const discoveryConcurrency = resolvePhaseConcurrency(options, 'discovery');
@@ -123,7 +121,6 @@ export async function runPhase1(
                     });
                     printInfo(`Seeds generation returned ${seeds.length} seeds`);
 
-                    // Cache the generated seeds
                     if (currentGitHash) {
                         try {
                             printInfo(`Saving seeds cache (gitHash: ${currentGitHash}, output: ${options.output})...`);
@@ -146,7 +143,6 @@ export async function runPhase1(
                 spinner.update('Running iterative discovery...');
             }
 
-            // Run iterative discovery with cache options
             const graph = await runIterativeDiscovery({
                 repoPath,
                 seeds,

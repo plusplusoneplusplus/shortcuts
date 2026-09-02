@@ -18,8 +18,6 @@
  * region vision path (Goal 4, AC-01): the crop is written to a temp `.png`,
  * attached to a one-shot lookup, and read by a vision-capable model. No text
  * selection is required for that path.
- *
- * Cross-platform; pure Node.js.
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -87,9 +85,6 @@ export interface QuickAskAnswerRouteOptions {
     store?: ProcessStore;
 }
 
-/**
- * Register the stateless Quick Ask answer route on the shared route table.
- */
 export function registerQuickAskAnswerRoutes(opts: QuickAskAnswerRouteOptions): void {
     const { routes, dataDir, getEnabled, store } = opts;
     const invokeAI: SideNoteAIInvoke = opts.invokeAI ?? invokeSideNoteAI;

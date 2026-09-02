@@ -4,8 +4,6 @@
  * Low-level directory scanning, JSON/YAML read-write, and error formatting used
  * by more than one domain. Domain policy (what to collect, merge, or delete)
  * stays in the domain modules; only mechanics live here.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

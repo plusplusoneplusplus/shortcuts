@@ -10,7 +10,7 @@
  * their change optimistically via `setFolders` and reconcile with `refresh`.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import type { ChatFolder } from '@plusplusoneplusplus/coc-client';
 
 export interface UseChatFoldersResult {
@@ -40,7 +40,9 @@ export function useChatFolders(workspaceId: string | undefined, enabled: boolean
             setFolders(EMPTY_FOLDERS);
             return;
         }
-        const client = getSpaCocClient() as any;
+        // The list must come from the server that owns the workspace; a remote
+        // clone's ids do not exist on the page-origin server.
+        const client = getCocClientForWorkspace(workspaceId) as any;
         if (typeof client?.processes?.listChatFolders !== 'function') {
             setFolders(EMPTY_FOLDERS);
             return;

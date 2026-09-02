@@ -21,9 +21,6 @@ import type { CopilotSDKService, SendMessageOptions, SDKInvocationResult } from 
 
 // ── AI reviewer configuration ───────────────────────────────
 
-/**
- * Configuration for the AIReviewer.
- */
 export interface AIReviewerConfig {
     /** CopilotSDKService instance for AI invocations. */
     sdkService: CopilotSDKService;
@@ -68,9 +65,6 @@ const VALID_CATEGORIES = new Set<ReviewCategory>([
     'correctness', 'documentation', 'testing', 'general',
 ]);
 
-/**
- * Normalize a severity string to a valid ReviewSeverity.
- */
 function normalizeSeverity(raw?: string): ReviewSeverity {
     if (!raw) return 'info';
     const lower = raw.toLowerCase().trim();
@@ -81,9 +75,6 @@ function normalizeSeverity(raw?: string): ReviewSeverity {
     return 'info';
 }
 
-/**
- * Normalize a category string to a valid ReviewCategory.
- */
 function normalizeCategory(raw?: string): ReviewCategory {
     if (!raw) return 'general';
     const lower = raw.toLowerCase().trim();
@@ -101,9 +92,6 @@ function normalizeCategory(raw?: string): ReviewCategory {
 
 const AI_AUTHOR: ReviewAuthor = { name: 'AI Code Review', isAI: true };
 
-/**
- * Parse a single raw finding into a CreateReviewCommentInput.
- */
 function parseRawFinding(raw: RawAIFinding, rule?: string): CreateReviewCommentInput | undefined {
     const filePath = raw.filePath ?? raw.file;
     const description = raw.description;
@@ -164,8 +152,8 @@ export function extractJsonFromResponse(text: string): unknown | undefined {
 }
 
 /**
- * Parse the AI response text into ReviewComment[].
- * Handles various response formats: array of findings, object with findings array, etc.
+ * Handles the response formats seen in practice: array of findings, object
+ * with a findings array, and so on.
  */
 export function parseReviewFindings(
     responseText: string,
@@ -180,7 +168,6 @@ export function parseReviewFindings(
         rawFindings = parsed;
     } else if (typeof parsed === 'object' && parsed !== null) {
         const obj = parsed as Record<string, unknown>;
-        // Look for common keys: findings, comments, issues, results
         for (const key of ['findings', 'comments', 'issues', 'results', 'violations']) {
             if (Array.isArray(obj[key])) {
                 rawFindings = obj[key] as RawAIFinding[];
@@ -207,9 +194,6 @@ export function parseReviewFindings(
 
 // ── Prompt building ──────────────────────────────────────────
 
-/**
- * Build the diff description for the prompt based on the DiffSource kind.
- */
 function describeDiffSource(source: DiffSource): string {
     switch (source.kind) {
         case 'commit':
@@ -225,9 +209,6 @@ function describeDiffSource(source: DiffSource): string {
     }
 }
 
-/**
- * Build the review prompt for the AI.
- */
 function buildReviewPrompt(source: DiffSource, options?: ReviewOptions): string {
     const parts: string[] = [];
 

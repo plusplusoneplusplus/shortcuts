@@ -1,6 +1,4 @@
 /**
- * Phase Runner Unit Tests
- *
  * Tests each extracted phase runner function in isolation.
  * The full pipeline integration is tested in generate.test.ts — these tests
  * verify that the individual phase functions behave correctly with explicit

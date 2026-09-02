@@ -160,7 +160,6 @@ describe('FolderMoveDialog', () => {
         );
         expect(screen.getByText('Move Folder')).toBeTruthy();
         expect(screen.getByTestId('move-dest-root')).toBeTruthy();
-        // "Tasks Root" should be present
         expect(screen.getByText(/Tasks Root/)).toBeTruthy();
     });
 

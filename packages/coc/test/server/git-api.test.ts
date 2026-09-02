@@ -1,6 +1,4 @@
 /**
- * Git API Endpoint Tests
- *
  * Tests for the git commit API routes:
  * - GET /api/workspaces/:id/git/commits
  * - GET /api/workspaces/:id/git/commits/:hash/files
@@ -9,7 +7,6 @@
  * - GET /api/workspaces/:id/git/commits/:hash/files/:filePath/content
  *
  * Uses mocked forge execGitAsync via vi.mock to avoid actual git calls.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

@@ -1,6 +1,4 @@
 /**
- * Git Clone REST API Routes
- *
  * Endpoint for cloning arbitrary git URLs into a user-selected parent folder.
  */
 

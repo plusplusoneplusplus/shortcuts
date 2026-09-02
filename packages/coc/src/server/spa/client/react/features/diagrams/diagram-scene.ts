@@ -1,18 +1,6 @@
 /**
- * Helpers for normalising Excalidraw scene data returned by the diagrams REST API.
- *
- * The `GET /api/workspaces/:id/diagrams/:filename` endpoint wraps the scene
- * inside a `content` field along with metadata (sizeBytes, createdAt, ...).
- * Viewer components need just the scene, so we unwrap it and guarantee the
- * shape expected by `@excalidraw/excalidraw`'s `initialData` prop.
- *
- * LLM-generated diagrams typically use a "skeleton" shape — they carry the
- * visible attributes (id/type/x/y/width/height/text/...) but omit Excalidraw's
- * internal bookkeeping fields (`version`, `versionNonce`, `groupIds`,
- * `isDeleted`, `updated`, `index`, `frameId`, ...). Without those fields the
- * canvas silently renders blank, which is the most common "my diagram is
- * empty" symptom. We pipe the elements through `restoreElements` to fill in
- * those defaults before handing them to the viewer.
+ * Helpers for normalising Excalidraw scene data into the shape
+ * `@excalidraw/excalidraw`'s `initialData` prop expects.
  */
 
 import { restoreElements, convertToExcalidrawElements } from '@excalidraw/excalidraw';

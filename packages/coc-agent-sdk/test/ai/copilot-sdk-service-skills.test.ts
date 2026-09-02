@@ -1,6 +1,4 @@
 /**
- * CopilotSDKService Skills Passthrough Tests
- *
  * Verifies that `skillDirectories` and `disabledSkills` from SendMessageOptions
  * are correctly forwarded to the underlying SDK session creation.
  */

@@ -1,10 +1,6 @@
 /**
- * Discovery Phase — Large Repo Handler
- *
  * Handles multi-round discovery for large repositories (3000+ files).
  * First pass identifies top-level structure, second pass drills into each domain.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -60,7 +56,6 @@ const DISCOVERY_TOOLS = ['view', 'grep', 'glob'];
  * Estimate the number of files in a repository by counting glob results.
  * Uses a fast glob pattern to avoid reading file contents.
  *
- * @param repoPath - Path to the repository
  * @returns Estimated file count, or -1 if estimation fails
  */
 export async function estimateFileCount(repoPath: string): Promise<number> {
@@ -93,9 +88,7 @@ export async function estimateFileCount(repoPath: string): Promise<number> {
 /**
  * Check if a repository is large enough to require multi-round discovery.
  *
- * @param repoPath - Path to the repository
  * @param threshold - Custom file count threshold (defaults to LARGE_REPO_THRESHOLD)
- * @returns True if the repo has more files than the threshold
  */
 export async function isLargeRepo(repoPath: string, threshold?: number): Promise<boolean> {
     const count = await estimateFileCount(repoPath);
@@ -107,14 +100,9 @@ export async function isLargeRepo(repoPath: string, threshold?: number): Promise
 // ============================================================================
 
 /**
- * Perform multi-round discovery for a large repository.
- *
  * Round 1: Structural scan — identify top-level domains
  * Round 2: Per-domain drill-down — focused discovery for each domain (sequential)
  * Final:   Merge all sub-graphs into a unified ComponentGraph
- *
- * @param options - Discovery options
- * @returns Merged ComponentGraph
  */
 export async function discoverLargeRepo(options: DiscoveryOptions): Promise<ComponentGraph> {
     const cacheEnabled = !!options.outputDir;
@@ -140,7 +128,6 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
     if (!scanResult) {
         scanResult = await performStructuralScan(options);
 
-        // Save to cache
         if (cacheEnabled && gitHash) {
             try {
                 saveStructuralScan(scanResult, options.outputDir!, gitHash);
@@ -165,7 +152,6 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
         const domain = scanResult.domains[i];
         const domainSlug = normalizeComponentId(domain.path);
 
-        // Check domain cache
         let cachedDomain: ComponentGraph | null = null;
         if (cacheEnabled && gitHash) {
             cachedDomain = getCachedDomainSubGraph(domainSlug, options.outputDir!, gitHash);
@@ -183,7 +169,6 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
             printInfo(`    Found ${subGraph.components.length} components`);
             subGraphs.push(subGraph);
 
-            // Save domain sub-graph to cache
             if (cacheEnabled && gitHash) {
                 try {
                     saveDomainSubGraph(domainSlug, subGraph, options.outputDir!, gitHash);
@@ -201,7 +186,6 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
         throw new Error('All domain discoveries failed. Cannot produce a component graph.');
     }
 
-    // Merge sub-graphs
     printInfo(`Merging ${subGraphs.length} domain sub-graphs...`);
     const merged = mergeSubGraphs(subGraphs, scanResult);
     printInfo(`Merged result: ${merged.components.length} components, ${merged.categories.length} categories`);
@@ -324,7 +308,6 @@ export function mergeSubGraphs(
 
         for (const comp of graph.components) {
             if (!componentMap.has(comp.id)) {
-                // Tag component with its domain
                 const taggedComp = domainSlug ? { ...comp, domain: domainSlug } : comp;
                 componentMap.set(comp.id, taggedComp);
 
@@ -358,7 +341,6 @@ export function mergeSubGraphs(
         comp.dependents = comp.dependents.filter(dep => componentIds.has(dep));
     }
 
-    // Combine architecture notes
     const architectureNotes = subGraphs
         .map(g => g.architectureNotes)
         .filter(Boolean)

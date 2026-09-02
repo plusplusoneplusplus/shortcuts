@@ -10,9 +10,6 @@
  * Sub-classes must implement:
  *   - getWorkspaceDir(wsId)  — workspace-specific storage directory
  *   - buildStorage(comments) — wraps comments in the concrete storage envelope
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as crypto from 'crypto';

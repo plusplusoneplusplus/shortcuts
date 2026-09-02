@@ -85,8 +85,8 @@ export function getTurnKind(turn: ClientConversationTurn): MiniMapStripKind {
     return 'assistant';
 }
 
-/** CSS variable string for a strip kind. Kept exported for back-compat with
- *  earlier consumers and tests. */
+/** CSS variable holding the turn's strip color. Kept exported for back-compat
+ *  with earlier consumers and tests. */
 export function getTurnColor(turn: ClientConversationTurn): string {
     return `var(--minimap-${getTurnKind(turn)})`;
 }

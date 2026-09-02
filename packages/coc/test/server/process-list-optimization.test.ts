@@ -1,6 +1,4 @@
 /**
- * Process List & Stats Optimization Tests
- *
  * Verifies that GET /api/processes uses getProcessSummaries for the total count
  * (not a second getAllProcesses call), and GET /api/stats uses getProcessSummaries
  * instead of loading full process records.

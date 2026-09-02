@@ -1,14 +1,3 @@
-/**
- * BaseFileStore — abstract base class for file-backed stores.
- *
- * Provides shared low-level infrastructure:
- * - Write-queue serialization (enqueueWrite)
- * - Atomic tmp→rename writes (atomicWrite)
- * - Safe JSON reads with default value (readJSON)
- * - Safe subdirectory listing (listDirectory)
- *
- * Pure Node.js.
- */
 import * as fs from 'fs/promises';
 import * as path from 'path';
 

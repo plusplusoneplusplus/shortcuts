@@ -1,11 +1,7 @@
 /**
- * Config Loader (Standalone Wiki)
- *
  * Minimal subset of deep-wiki config-loader needed by
  * standalone-admin-handlers.ts. Only `discoverConfigFile` and `validateConfig`
  * are included.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -17,7 +13,6 @@ import type { PhaseName, PhasesConfig } from './types';
 // ============================================================================
 
 /**
- * Discover the config file in the given directory.
  * Looks for deep-wiki.config.yaml or deep-wiki.config.yml.
  */
 export function discoverConfigFile(dir: string): string | undefined {
@@ -80,7 +75,6 @@ function assignEnum(raw: Record<string, unknown>, field: string, target: Record<
 }
 
 /**
- * Validate a raw parsed config object.
  * Returns the validated config (same shape as DeepWikiConfigFile).
  */
 export function validateConfig(raw: Record<string, unknown>): Record<string, unknown> {

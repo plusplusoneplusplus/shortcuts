@@ -1,6 +1,4 @@
 /**
- * Tests for Related Items Loader
- * 
  * Tests the YAML-based related-items CRUD operations for task feature folders.
  */
 

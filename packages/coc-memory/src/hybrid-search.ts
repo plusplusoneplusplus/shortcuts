@@ -51,7 +51,6 @@ interface MergedHit {
     vectorScore: number | null;
 }
 
-/** Options that can override per-call behaviour */
 export interface HybridSearchOptions {
     /**
      * Override the engine's default embedding provider just for this search.

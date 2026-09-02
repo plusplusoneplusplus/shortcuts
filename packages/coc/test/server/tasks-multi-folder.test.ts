@@ -252,7 +252,6 @@ describe('Tasks Multi-Folder HTTP API', () => {
         const srv = await startServer();
         await registerWorkspace(srv, workspaceDir);
 
-        // Create .vscode/tasks directory in the workspace
         fs.mkdirSync(path.join(workspaceDir, '.vscode', 'tasks'), { recursive: true });
 
         const res = await request(`${srv.url}/api/workspaces/${wsId}/tasks/settings`);
@@ -266,7 +265,6 @@ describe('Tasks Multi-Folder HTTP API', () => {
         const srv = await startServer();
         await registerWorkspace(srv, workspaceDir);
 
-        // Create .vscode/tasks directory in the workspace
         fs.mkdirSync(path.join(workspaceDir, '.vscode', 'tasks'), { recursive: true });
 
         // Explicitly save empty list
@@ -283,7 +281,6 @@ describe('Tasks Multi-Folder HTTP API', () => {
         const srv = await startServer();
         await registerWorkspace(srv, workspaceDir);
 
-        // Create .vscode/tasks directory in the workspace
         fs.mkdirSync(path.join(workspaceDir, '.vscode', 'tasks'), { recursive: true });
 
         // Save custom paths

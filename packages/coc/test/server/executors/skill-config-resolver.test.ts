@@ -1,7 +1,3 @@
-/**
- * Tests for skill-config-resolver — resolveSkillConfig()
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as path from 'path';
 import * as fs from 'fs';

@@ -1,6 +1,4 @@
 /**
- * Import Corrupt / Malformed Payload Tests
- *
  * Section 3: Sends raw HTTP requests to POST /api/admin/import with various
  * corrupt or malformed bodies and verifies appropriate error responses.
  *

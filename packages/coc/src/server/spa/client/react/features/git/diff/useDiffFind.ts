@@ -24,7 +24,6 @@ import {
 } from './diffFindModel';
 
 export interface UseDiffFindResult {
-    /** Whether the find widget is open. */
     open: boolean;
     /** Current search query (raw, un-normalized). */
     query: string;

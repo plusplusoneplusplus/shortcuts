@@ -228,7 +228,6 @@ describe('CommitDetail — commit info header', () => {
 
     it('header collapsible wrapper uses overflow hidden when collapsed', async () => {
         await renderDetail({ commit: makeCommit({ body: 'Line\n'.repeat(100) }) });
-        // Collapse the header
         await act(async () => {
             fireEvent.click(screen.getByTestId('commit-info-collapse-btn'));
         });

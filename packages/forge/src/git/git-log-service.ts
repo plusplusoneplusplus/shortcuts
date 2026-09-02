@@ -56,17 +56,12 @@ function toUint32(value: number): number {
     return Math.min(Math.floor(value), 0xffffffff);
 }
 
-/**
- * Branch cache entry with timestamp.
- */
 interface BranchCacheEntry {
     branches: string[];
     timestamp: number;
 }
 
 /**
- * Service for retrieving git commit history, diffs, and branch information.
- *
  * All public methods are asynchronous, so the single-threaded Node event loop
  * is never blocked by git I/O — whether the work happens in the addon or in a
  * child process.

@@ -1,6 +1,4 @@
 /**
- * Behavioral tests for UnifiedDiffViewer helper functions.
- *
  * Tests extractFilePathFromDiffHeader and getLanguagesForLines
  * for per-file syntax highlighting in commit-level diffs.
  */

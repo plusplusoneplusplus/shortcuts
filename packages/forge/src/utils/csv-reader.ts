@@ -3,8 +3,6 @@
  *
  * Parses CSV files into pipeline items. Handles various CSV formats
  * and edge cases like quoted values, escaped characters, etc.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -17,18 +15,12 @@ import {
 } from '../config/defaults';
 import { PipelineCoreError, ErrorCode } from '../errors';
 
-/**
- * Default CSV parsing options
- */
 export const DEFAULT_CSV_OPTIONS: Required<CSVParseOptions> = {
     delimiter: DEFAULT_CSV_DELIMITER,
     hasHeaders: DEFAULT_CSV_HAS_HEADER,
     encoding: 'utf-8'
 };
 
-/**
- * Error thrown for CSV parsing issues
- */
 export class CSVParseError extends PipelineCoreError {
     /** Line number where the error occurred */
     readonly lineNumber?: number;
@@ -55,12 +47,8 @@ export class CSVParseError extends PipelineCoreError {
 
 /**
  * Parse a CSV string into an array of pipeline items
- * @param content CSV content as string
- * @param options Parsing options
- * @returns Parsed CSV result with items and headers
  */
 export function parseCSVContent(content: string, options?: CSVParseOptions): CSVParseResult {
-    // Filter out undefined values from options before merging
     const filteredOptions = options ? Object.fromEntries(
         Object.entries(options).filter(([, v]) => v !== undefined)
     ) as CSVParseOptions : undefined;
@@ -70,7 +58,6 @@ export function parseCSVContent(content: string, options?: CSVParseOptions): CSV
     // Normalize line endings
     const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-    // Parse into rows
     const rows = parseCSVRows(normalizedContent, opts.delimiter);
 
     if (rows.length === 0) {
@@ -88,13 +75,11 @@ export function parseCSVContent(content: string, options?: CSVParseOptions): CSV
         headers = rows[0].map(h => h.trim());
         dataRows = rows.slice(1);
     } else {
-        // Generate default headers (col0, col1, etc.)
         const numCols = rows[0].length;
         headers = Array.from({ length: numCols }, (_, i) => `col${i}`);
         dataRows = rows;
     }
 
-    // Validate headers are unique
     const headerSet = new Set<string>();
     for (const header of headers) {
         if (headerSet.has(header)) {
@@ -103,7 +88,6 @@ export function parseCSVContent(content: string, options?: CSVParseOptions): CSV
         headerSet.add(header);
     }
 
-    // Convert rows to items
     const items: PromptItem[] = dataRows.map((row, rowIndex) => {
         const item: PromptItem = {};
         for (let i = 0; i < headers.length; i++) {
@@ -187,17 +171,10 @@ function parseCSVRows(content: string, delimiter: string): string[][] {
     return rows;
 }
 
-/**
- * Read and parse a CSV file
- * @param filePath Path to CSV file
- * @param options Parsing options
- * @returns Parsed CSV result
- */
 export async function readCSVFile(
     filePath: string,
     options?: CSVParseOptions
 ): Promise<CSVParseResult> {
-    // Filter out undefined values from options before merging
     const filteredOptions = options ? Object.fromEntries(
         Object.entries(options).filter(([, v]) => v !== undefined)
     ) as CSVParseOptions : undefined;
@@ -215,17 +192,10 @@ export async function readCSVFile(
     }
 }
 
-/**
- * Read and parse a CSV file synchronously
- * @param filePath Path to CSV file
- * @param options Parsing options
- * @returns Parsed CSV result
- */
 export function readCSVFileSync(
     filePath: string,
     options?: CSVParseOptions
 ): CSVParseResult {
-    // Filter out undefined values from options before merging
     const filteredOptions = options ? Object.fromEntries(
         Object.entries(options).filter(([, v]) => v !== undefined)
     ) as CSVParseOptions : undefined;
@@ -267,8 +237,6 @@ export function resolveCSVPath(csvPath: string, baseDirectory: string): string {
 
 /**
  * Validate CSV headers against expected columns
- * @param headers Actual headers from CSV
- * @param expectedColumns Expected column names
  * @returns Object with validation result and missing columns
  */
 export function validateCSVHeaders(
@@ -286,9 +254,7 @@ export function validateCSVHeaders(
 
 /**
  * Get a preview of CSV data (first N rows)
- * @param result CSV parse result
  * @param maxRows Maximum rows to preview (default: 5)
- * @returns Preview items
  */
 export function getCSVPreview(
     result: CSVParseResult,

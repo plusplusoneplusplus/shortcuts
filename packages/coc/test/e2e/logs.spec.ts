@@ -1,6 +1,4 @@
 /**
- * Logs E2E Tests
- *
  * Tests the Logs tab: navigation, rendering, level filtering, search, and
  * the history endpoint. Log entries are injected directly via captureEntry()
  * which shares the same module singleton as the test server.

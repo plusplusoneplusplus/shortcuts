@@ -1,6 +1,4 @@
 /**
- * Queue Force-Fail Tests
- *
  * Covers Section 5 of test-plan-queue-advanced.md:
  * - force-fail on pending task → 404 (forceFailTask only acts on running tasks)
  * - force-fail on running task → 200 (verified via fake executor injection)

@@ -5,7 +5,7 @@
  * - /wiki/:wikiId/static/* route serving files with correct MIME types
  * - Path traversal protection
  * - Unknown wiki / missing file → 404
- * - New MIME type entries
+ * - MIME type entries
  * - navigateToWiki / navigateToWikiComponent helpers in client bundle
  * - selectedWikiComponentId in AppState defaults
  * - DashboardTab includes 'wiki'

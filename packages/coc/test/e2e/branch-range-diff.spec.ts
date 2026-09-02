@@ -1,6 +1,4 @@
 /**
- * Branch Range Diff E2E Tests — BranchRangeOverview
- *
  * Tests the right-panel BranchRangeOverview component that renders when the
  * user clicks the Branch Changes header in the Git sub-tab:
  *   - File list rendered in lower panel (BranchAllFilesDiff)

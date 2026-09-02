@@ -1,6 +1,4 @@
 /**
- * Tests for useMarkdownPreview shared hook.
- *
  * Verifies:
  * - HTML rendering via renderMarkdownToHtml
  * - stripFrontmatter option forwarding

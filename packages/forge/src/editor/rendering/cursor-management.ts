@@ -1,13 +1,8 @@
 /**
- * Cursor management utilities for the webview editor
- * 
- * This module contains pure functions for cursor position calculations.
- * These functions are designed to be testable in Node.js with mock DOM structures.
+ * Pure cursor-position calculations for the webview editor. Written against
+ * mock DOM structures so they stay testable in Node.js.
  */
 
-/**
- * Cursor position with line and column
- */
 export interface CursorPosition {
     /** 1-based line number */
     line: number;
@@ -50,11 +45,8 @@ export const NODE_TYPES = {
 
 /**
  * Calculate the column offset from the start of a line element to a target position.
- * This properly handles nested elements and skips non-content elements like comment bubbles.
- * 
- * @param lineElement - The line element to traverse
- * @param targetNode - The node where the cursor is positioned
- * @param targetOffset - The offset within the target node
+ * Handles nested elements and skips non-content elements like comment bubbles.
+ *
  * @param skipClasses - Array of class names to skip (e.g., comment bubbles)
  * @returns The 0-based column offset
  */
@@ -102,10 +94,8 @@ export function calculateColumnOffset(
  * Find the line element containing a node.
  * Walks up the DOM tree looking for elements with the 'line-content' class
  * and 'data-line' attribute.
- * 
- * @param node - The node to start from
+ *
  * @param editorElement - The editor wrapper element (stops search)
- * @returns The line element or null if not found
  */
 export function findLineElement(
     node: MockNode,
@@ -126,8 +116,6 @@ export function findLineElement(
 }
 
 /**
- * Get the line number from a line element.
- * 
  * @param lineElement - The line element with data-line attribute
  * @returns The 1-based line number or null if invalid
  */
@@ -141,11 +129,8 @@ export function getLineNumber(lineElement: MockNode): number | null {
 /**
  * Find the text node and offset for a target column position.
  * Used for cursor restoration after re-renders.
- * 
- * @param lineElement - The line element to search within
+ *
  * @param targetColumn - The 0-based column offset to find
- * @param skipClasses - Array of class names to skip
- * @returns Object with target node and offset, or null if not found
  */
 export function findTextNodeAtColumn(
     lineElement: MockNode,
@@ -201,32 +186,23 @@ export function findTextNodeAtColumn(
 }
 
 /**
- * Calculate cursor position from a selection range.
- * This is the main function for getting cursor position during editing.
- * 
- * @param startContainer - The start container node of the selection
- * @param startOffset - The offset within the start container
- * @param editorElement - The editor wrapper element
- * @returns CursorPosition or null if cannot determine
+ * Main entry point for reading the cursor position during editing.
  */
 export function getCursorPositionFromSelection(
     startContainer: MockNode,
     startOffset: number,
     editorElement: MockNode
 ): CursorPosition | null {
-    // Find the line element containing the cursor
     const lineElement = findLineElement(startContainer, editorElement);
     if (!lineElement) {
         return null;
     }
 
-    // Get the line number
     const lineNumber = getLineNumber(lineElement);
     if (lineNumber === null) {
         return null;
     }
 
-    // Calculate the column offset
     const column = calculateColumnOffset(lineElement, startContainer, startOffset);
 
     return { line: lineNumber, column };
@@ -236,12 +212,6 @@ export function getCursorPositionFromSelection(
  * Adjust cursor position after content insertion.
  * When content is inserted, we need to update the cursor position
  * if the insertion point is before the current cursor.
- * 
- * @param cursor - The current cursor position
- * @param insertLine - The line where content was inserted
- * @param insertColumn - The column where content was inserted  
- * @param insertedLines - Array of lines that were inserted
- * @returns The adjusted cursor position
  */
 export function adjustCursorAfterInsertion(
     cursor: CursorPosition,
@@ -293,13 +263,11 @@ export function adjustCursorAfterInsertion(
  * Adjust cursor position after content deletion.
  * When content is deleted, we need to update the cursor position
  * if the deletion range affects the cursor.
- * 
- * @param cursor - The current cursor position
+ *
  * @param deleteStartLine - Start line of deletion (1-based)
  * @param deleteStartColumn - Start column of deletion (0-based)
  * @param deleteEndLine - End line of deletion (1-based)
  * @param deleteEndColumn - End column of deletion (0-based)
- * @returns The adjusted cursor position
  */
 export function adjustCursorAfterDeletion(
     cursor: CursorPosition,
@@ -347,9 +315,7 @@ export function adjustCursorAfterDeletion(
 /**
  * Validate a cursor position against content.
  * Ensures the cursor position is within valid bounds.
- * 
- * @param cursor - The cursor position to validate
- * @param lines - The content lines
+ *
  * @returns The validated (and possibly clamped) cursor position
  */
 export function validateCursorPosition(
@@ -368,10 +334,6 @@ export function validateCursorPosition(
 }
 
 /**
- * Compare two cursor positions.
- * 
- * @param a - First cursor position
- * @param b - Second cursor position
  * @returns Negative if a < b, positive if a > b, zero if equal
  */
 export function compareCursorPositions(a: CursorPosition, b: CursorPosition): number {
@@ -382,14 +344,10 @@ export function compareCursorPositions(a: CursorPosition, b: CursorPosition): nu
 }
 
 /**
- * Check if a cursor position is within a range.
- * 
- * @param cursor - The cursor position to check
  * @param startLine - Start line of range (1-based)
  * @param startColumn - Start column of range (0-based)
  * @param endLine - End line of range (1-based)
  * @param endColumn - End column of range (0-based)
- * @returns True if cursor is within the range
  */
 export function isCursorInRange(
     cursor: CursorPosition,
@@ -409,10 +367,6 @@ export function isCursorInRange(
  * Restore cursor position after content change (e.g. Undo/Redo).
  * Provides smarter clamping than simple validation:
  * - If line was removed, clamps to end of the last available line.
- * 
- * @param cursor - The previous cursor position
- * @param lines - The new content lines
- * @returns The adjusted cursor position
  */
 export function restoreCursorAfterContentChange(
     cursor: CursorPosition,

@@ -1,6 +1,4 @@
 /**
- * Tests for shared parseStringArray utility.
- *
  * Covers happy path, edge cases, and non-array inputs.
  */
 

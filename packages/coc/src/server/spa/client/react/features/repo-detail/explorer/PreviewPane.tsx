@@ -26,7 +26,6 @@ export interface PreviewPaneProps {
      * when the file is opened from a content-search hit.
      */
     revealLine?: number;
-    /** Called when the user clicks the close button */
     onClose?: () => void;
     /** When true the editor is non-editable and save/dirty UI is suppressed. */
     readOnly?: boolean;

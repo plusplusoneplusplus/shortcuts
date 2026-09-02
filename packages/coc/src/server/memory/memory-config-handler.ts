@@ -1,11 +1,6 @@
 /**
- * Memory Config Handler
- *
  * REST API handlers for reading/writing the memory storage configuration.
  * Config is persisted to <dataDir>/memory-config.json using atomic write-then-rename.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -23,7 +18,6 @@ export type MemoryBackend = 'file' | 'sqlite' | 'vector';
 export interface MemoryConfig {
     /** Directory where memory entries are stored. Defaults to ~/.coc/memory/ */
     storageDir: string;
-    /** Storage backend type. */
     backend: MemoryBackend;
 }
 
@@ -43,7 +37,6 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
 // ============================================================================
 
 /**
- * Read memory config from disk.
  * Falls back to defaults when the file doesn't exist or is invalid.
  */
 export function readMemoryConfig(dataDir: string): MemoryConfig {

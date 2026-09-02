@@ -1,5 +1,3 @@
-/** Static schedule template data. */
-
 import { TaskDefs } from '../../../../../tasks/task-types';
 
 interface ScheduleTemplateParam {

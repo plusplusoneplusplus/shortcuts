@@ -1,11 +1,7 @@
 /**
- * Deep Wiki Pino logger initialization.
- *
  * Creates a Pino logger instance for Deep Wiki operations:
  * - pino-pretty to stderr in TTY mode
  * - Simple JSON to stderr when not a TTY
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import pino from 'pino';
@@ -32,8 +28,6 @@ export interface DeepWikiPinoOptions {
 // ============================================================================
 
 /**
- * Create a Pino logger for Deep Wiki CLI usage.
- *
  * Level precedence: verbose: true → 'debug', level option, default 'info'.
  * Pretty mode: 'auto' (default) uses TTY detection, true/false forces the mode.
  */
@@ -72,7 +66,7 @@ export function createDeepWikiPinoLogger(options: DeepWikiPinoOptions = {}): pin
 // ============================================================================
 
 /**
- * Wrap a Pino logger in the pipeline-core Logger interface.
+ * Wrap a Pino logger in forge's Logger interface.
  */
 export function pinoAdapterForPipelineCore(pinoLogger: pino.Logger): Logger {
     return createPinoAdapter(pinoLogger);

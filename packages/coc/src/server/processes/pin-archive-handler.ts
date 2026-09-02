@@ -1,6 +1,4 @@
 /**
- * Pin & Archive REST API Handler
- *
  * HTTP API routes for managing pinned and archived state of processes.
  * Delegates to SqliteProcessStore's pin/archive methods.
  */

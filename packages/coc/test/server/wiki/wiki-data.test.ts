@@ -1,9 +1,5 @@
 /**
- * WikiData Tests
- *
  * Tests for the wiki data layer that reads and caches wiki data from disk.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

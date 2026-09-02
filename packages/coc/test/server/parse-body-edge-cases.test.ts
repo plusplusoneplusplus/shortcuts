@@ -4,8 +4,6 @@
  * Tests the `parseBodyOrReject` helper from shared/handler-utils.ts.
  * The helper wraps `parseBody` and sends a 400 INVALID_JSON response
  * on parse failure, returning null to the caller.
- *
- * Cross-platform compatible (Linux/macOS/Windows).
  */
 
 import { describe, it, expect, vi } from 'vitest';

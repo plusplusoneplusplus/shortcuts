@@ -1,7 +1,3 @@
-/**
- * Tests for SkillsInstalledPanel component.
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { SkillsInstalledPanel } from '../../../../../src/server/spa/client/react/features/skills/SkillsInstalledPanel';

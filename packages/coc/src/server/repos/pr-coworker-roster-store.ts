@@ -1,6 +1,4 @@
 /**
- * Pull Request Coworker Roster Store
- *
  * File-based persistence for the Pull Requests tab's Team roster.
  *
  * Layout:

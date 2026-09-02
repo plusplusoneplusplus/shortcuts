@@ -1,6 +1,4 @@
 /**
- * ScheduleRuntimeKey
- *
  * Schedule IDs are only unique *within* a workspace.  Repo-defined schedules
  * derive their ID from the YAML filename (`repo:<stem>`), so two clones that
  * both ship `.github/schedules/daily.yaml` produce the same `repo:daily` ID.
@@ -11,8 +9,6 @@
  *
  * The key type is opaque (branded) so a bare `scheduleId` string cannot be
  * passed where a runtime key is expected.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /** Separator that cannot appear in a repoId or scheduleId. */

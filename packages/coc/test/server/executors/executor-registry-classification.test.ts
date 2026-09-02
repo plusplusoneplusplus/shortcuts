@@ -1,6 +1,4 @@
 /**
- * Executor Registry — Classification Routing Tests
- *
  * Verifies that pr-classification tasks and legacy chat tasks carrying
  * `context.classifyDiff` are routed to the ClassificationExecutor.
  */

@@ -1,6 +1,4 @@
 /**
- * Startup Commit-Chat Metadata Backfill
- *
  * Commit chats created before `metadata.commitChat` existed carry their commit
  * association only in the workspace-scoped `commit_chat_bindings` routing table,
  * so the conversation metadata popover has nothing to show. This repair joins

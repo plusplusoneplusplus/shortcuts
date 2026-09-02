@@ -1,6 +1,4 @@
 /**
- * Git Right-Panel E2E Tests
- *
  * Tests the right-panel diff views rendered by RepoGitTab:
  *   FileDiffPanel    — per-file diff (commit-file and branch-file modes)
  *   WorkingTreeFileDiff — diff when clicking a working-tree file

@@ -8,9 +8,6 @@
 
 import type { AIProcess, SerializedAIProcess, TrackedProcessFields } from './process-interfaces';
 
-/**
- * Convert AIProcess to serialized format for storage
- */
 export function serializeProcess(process: AIProcess & Partial<TrackedProcessFields>): SerializedAIProcess {
     return {
         id: process.id,
@@ -121,14 +118,10 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         pendingMessages: process.pendingMessages,
         pendingAskUser: process.pendingAskUser,
         pendingAskUserAnswer: process.pendingAskUserAnswer,
-        // Last event timestamp
         lastEventAt: process.lastEventAt?.toISOString(),
     };
 }
 
-/**
- * Convert serialized format back to AIProcess
- */
 export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
     return {
         id: serialized.id,
@@ -238,7 +231,6 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         pendingMessages: serialized.pendingMessages,
         pendingAskUser: serialized.pendingAskUser,
         pendingAskUserAnswer: serialized.pendingAskUserAnswer,
-        // Last event timestamp
         lastEventAt: serialized.lastEventAt ? new Date(serialized.lastEventAt) : undefined,
     };
 }

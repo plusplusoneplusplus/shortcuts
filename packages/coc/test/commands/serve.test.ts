@@ -1,6 +1,4 @@
 /**
- * Serve Command Tests
- *
  * Tests for the coc serve command — option parsing, startup banner,
  * browser open, signal handling, error handling, and config integration.
  */

@@ -1,6 +1,4 @@
 /**
- * BaseCommentsManager Tests
- *
  * Verifies the shared CRUD methods in BaseCommentsManager:
  *   - getComments / getComment
  *   - writeComments (uses atomicWriteJSON, not inline tmp/rename)

@@ -1,7 +1,3 @@
-/**
- * Tests for cache-utils shared primitives.
- */
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';

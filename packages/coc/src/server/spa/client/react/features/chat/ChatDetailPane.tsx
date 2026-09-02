@@ -1,16 +1,11 @@
 /**
  * ChatDetailPane — right-side detail switcher for the Activity tab.
  *
- * Always renders ChatDetail for any selected task.
- * When a deep-link selects a task before the queue list has loaded,
- * `selectedTask` may still be null.  In that case we show a loading
- * spinner while ChatDetail fetches the task data.
- *
- * When a task is popped out into a separate window, shows a placeholder
- * with a "Restore inline" button.
- *
- * When a task is floated as an overlay dialog, shows a "Chat is floating"
- * placeholder with a "Restore inline" button that calls unfloatChat.
+ * Routes purely on the selected task id, so a deep link works before the queue
+ * list has loaded — ChatDetail fetches the task itself. With no id, renders
+ * NewChatArea (or an empty-state prompt when read-only). A task that is popped
+ * out into its own window, or floated as an overlay, gets a placeholder with a
+ * "Restore inline" button instead of a second copy of the chat.
  */
 
 import { ChatDetail } from './ChatDetail';

@@ -1,14 +1,10 @@
 /**
- * Deep-Wiki Adapter
- *
  * The single place where CoC reaches into deep-wiki internals. Everything is
  * loaded through dynamic imports so coc keeps no compile-time dependency on
  * deep-wiki (it is not in coc's package.json dependencies).
  *
  * Runtime module paths stay `@plusplusoneplusplus/deep-wiki/dist/*` — packaged
  * and workspace-linked resolution both depend on those exact specifiers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

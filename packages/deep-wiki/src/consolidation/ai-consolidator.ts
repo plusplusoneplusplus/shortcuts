@@ -1,14 +1,10 @@
 /**
- * AI-Assisted Component Consolidator
- *
  * Uses a single AI session to semantically cluster pre-consolidated components
  * into a target number of high-level groups. This is the second pass of the
  * hybrid consolidation, running after the rule-based pass.
  *
  * The AI receives a compact component list and returns cluster assignments.
  * Components within each cluster are then programmatically merged.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
@@ -22,7 +18,6 @@ import { resolveMaxComplexity, deduplicateStrings } from './constants';
 // Constants
 // ============================================================================
 
-/** Default target component count */
 const DEFAULT_TARGET_COUNT = 50;
 
 /** Default timeout for AI clustering session: 30 minutes */
@@ -32,9 +27,6 @@ const DEFAULT_CLUSTERING_TIMEOUT_MS = 1_800_000;
 // Public API
 // ============================================================================
 
-/**
- * Options for AI-assisted clustering.
- */
 export interface AIClusteringOptions {
     /** AI invoker for the clustering session */
     aiInvoker: AIInvoker;
@@ -47,14 +39,10 @@ export interface AIClusteringOptions {
 }
 
 /**
- * Cluster components using AI semantic analysis.
- *
  * Sends the component list to AI, which groups semantically related components.
  * Then programmatically merges each cluster into a single component.
  *
  * @param graph - Component graph (typically after rule-based consolidation)
- * @param options - AI clustering options
- * @returns Consolidated component graph
  */
 export async function clusterWithAI(
     graph: ComponentGraph,
@@ -71,7 +59,6 @@ export async function clusterWithAI(
         return graph;
     }
 
-    // Build the clustering prompt
     const prompt = buildClusteringPrompt(components, graph.project.name, targetCount);
 
     // Call AI
@@ -82,7 +69,6 @@ export async function clusterWithAI(
         return graph;
     }
 
-    // Parse the cluster assignments
     const clusters = parseClusterResponse(result.response, components);
 
     if (clusters.length === 0) {
@@ -99,7 +85,6 @@ export async function clusterWithAI(
 // ============================================================================
 
 /**
- * Build the clustering prompt for AI.
  * Sends a compact component list and asks for semantic groupings.
  */
 export function buildClusteringPrompt(
@@ -157,7 +142,6 @@ Return ONLY the JSON, no other text.`;
 // ============================================================================
 
 /**
- * Parse the AI response into ClusterGroup objects.
  * Validates that all component IDs are accounted for.
  */
 export function parseClusterResponse(
@@ -250,7 +234,6 @@ export function applyClusterMerge(
             idMapping.set(comp.id, comp.id);
             mergedComponents.push(comp);
         } else {
-            // Merge members into cluster component
             const merged = mergeClusterMembers(cluster, members);
             for (const comp of members) {
                 idMapping.set(comp.id, cluster.id);
@@ -275,7 +258,6 @@ export function applyClusterMerge(
         ),
     }));
 
-    // Re-derive categories
     const categories = deriveFreshCategories(fixedComponents);
 
     return {

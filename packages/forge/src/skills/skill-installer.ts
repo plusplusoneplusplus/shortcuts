@@ -1,7 +1,3 @@
-/**
- * Skill installer for copying skills from sources to the workspace
- */
-
 import * as path from 'path';
 import * as fs from 'fs';
 import { DiscoveredSkill, InstallDetail, InstallResult, ParsedSource } from './types';
@@ -9,9 +5,6 @@ import { ensureDirectoryExists, safeExists, safeReadDir, safeStats, safeCopyFile
 import { getLogger, LogCategory } from '../logger';
 import { parseGitHubApiResponse } from './github-api-utils';
 
-/**
- * Check if gh CLI is available
- */
 async function isGhCliAvailable(): Promise<boolean> {
     try {
         await execAsync('gh --version');
@@ -22,12 +15,7 @@ async function isGhCliAvailable(): Promise<boolean> {
 }
 
 /**
- * Install selected skills to the target directory
- * @param skills Skills to install
- * @param source Source information
- * @param installPath Target installation path
  * @param handleConflict Callback to handle skill conflicts (returns true to replace)
- * @returns Installation result
  */
 export async function installSkills(
     skills: DiscoveredSkill[],
@@ -101,7 +89,6 @@ export async function installSkills(
 }
 
 /**
- * Install a skill from GitHub
  * Tries HTTP first (works for all public repos with no setup).
  * Falls back to gh CLI only if HTTP fails (e.g. private repo).
  */
@@ -119,9 +106,6 @@ async function installFromGitHub(
     }
 }
 
-/**
- * Install a skill from GitHub using gh CLI
- */
 async function installFromGitHubWithGhCli(
     github: { owner: string; repo: string; branch: string },
     skillPath: string,
@@ -162,9 +146,6 @@ async function installFromGitHubWithGhCli(
     }
 }
 
-/**
- * Install a skill from GitHub using native HTTP
- */
 async function installFromGitHubWithHttp(
     github: { owner: string; repo: string; branch: string },
     skillPath: string,
@@ -199,9 +180,6 @@ async function installFromGitHubWithHttp(
     }
 }
 
-/**
- * Install a skill from local filesystem
- */
 async function installFromLocal(sourcePath: string, targetPath: string): Promise<void> {
     const logger = getLogger();
 

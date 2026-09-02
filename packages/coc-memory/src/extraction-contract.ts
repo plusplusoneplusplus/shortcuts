@@ -1,6 +1,4 @@
 /**
- * Extraction Contracts
- *
  * Interfaces and types for automatic memory extraction after successful turns.
  * Extraction is always async and never blocks the user response.
  *
@@ -61,9 +59,6 @@ export interface ExtractedFactCandidate {
     tags: string[];
 }
 
-/**
- * Outcome of a single extraction run.
- */
 export interface ExtractionResult {
     /** Candidate facts immediately activated (high-confidence, safety passed) */
     activatedFacts: MemoryFactInput[];

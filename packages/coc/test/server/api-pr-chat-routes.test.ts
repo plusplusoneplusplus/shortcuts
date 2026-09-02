@@ -1,6 +1,4 @@
 /**
- * Pull-Request-Chat Binding API Route Tests
- *
  * HTTP-level tests for the origin-scoped pull-request-chat API endpoints:
  *   - GET    /api/origins/:originId/pull-request-chat-bindings          (list)
  *   - GET    /api/origins/:originId/pull-request-chat-bindings/:prId    (get)
@@ -8,7 +6,6 @@
  *   - DELETE /api/origins/:originId/pull-request-chat-bindings/:prId    (delete)
  *
  * Uses a real http.Server with registerApiRoutes + a temp dataDir.
- * Cross-platform (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

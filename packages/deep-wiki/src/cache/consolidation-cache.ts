@@ -1,6 +1,4 @@
 /**
- * Consolidation Cache — Consolidated Module Graph
- *
  * Caches the consolidated graph produced after merging discovery results.
  * Validates against both git hash and input module count.
  */
@@ -20,12 +18,6 @@ import { getCacheDir, CONSOLIDATED_GRAPH_FILE } from './cache-constants';
 // Paths
 // ============================================================================
 
-/**
- * Get the path to the cached consolidated graph file.
- *
- * @param outputDir - Output directory
- * @returns Absolute path to the consolidated graph cache file
- */
 export function getConsolidatedGraphCachePath(outputDir: string): string {
     return path.join(getCacheDir(outputDir), CONSOLIDATED_GRAPH_FILE);
 }
@@ -41,8 +33,6 @@ export function getConsolidatedGraphCachePath(outputDir: string): string {
  * - The git hash matches current HEAD
  * - The input module count matches (discovery produced the same graph)
  *
- * @param repoPath - Path to the git repository
- * @param outputDir - Output directory containing the cache
  * @param inputComponentCount - Number of modules in the pre-consolidation graph
  * @returns The cached consolidated graph if valid, or null if cache miss
  */
@@ -77,7 +67,6 @@ export async function getCachedConsolidation(
  * Still validates the input module count so we don't reuse a consolidation
  * from a different discovery result.
  *
- * @param outputDir - Output directory containing the cache
  * @param inputComponentCount - Number of modules in the pre-consolidation graph
  * @returns The cached consolidated graph if structurally valid, or null
  */
@@ -98,9 +87,6 @@ export function getCachedConsolidationAny(
 /**
  * Save a consolidated graph to the cache.
  *
- * @param repoPath - Path to the git repository
- * @param graph - The consolidated module graph
- * @param outputDir - Output directory for the cache
  * @param inputComponentCount - Number of modules before consolidation
  */
 export async function saveConsolidation(
@@ -129,7 +115,6 @@ export async function saveConsolidation(
 /**
  * Clear the consolidated graph cache.
  *
- * @param outputDir - Output directory
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearConsolidationCache(outputDir: string): boolean {

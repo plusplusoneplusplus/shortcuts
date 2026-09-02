@@ -1,12 +1,8 @@
 /**
- * Analysis Executor
- *
  * Orchestrates Phase 3 (Deep Analysis) using direct AI invocation
  * with concurrency-limited map phase. Converts ComponentInfo items into
  * PromptItems, runs parallel AI sessions with MCP tools, and parses
  * results into ComponentAnalysis objects.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -27,7 +23,6 @@ import { parseAnalysisResponse } from './response-parser';
 // Types
 // ============================================================================
 
-/** Progress information for analysis execution. */
 export interface AnalysisProgress {
     phase: 'mapping' | 'reducing';
     completedItems: number;
@@ -35,7 +30,6 @@ export interface AnalysisProgress {
     percentage: number;
 }
 
-/** Result of a single analysis map item. */
 interface AnalysisMapResult {
     item: PromptItem;
     success: boolean;
@@ -47,9 +41,6 @@ interface AnalysisMapResult {
 /** Callback invoked after each individual item completes during analysis. */
 export type AnalysisItemCompleteCallback = (item: PromptItem, result: AnalysisMapResult) => void;
 
-/**
- * Options for running the analysis executor.
- */
 export interface AnalysisExecutorOptions {
     /** AI invoker configured for analysis (with MCP tools) */
     aiInvoker: AIInvoker;
@@ -76,9 +67,6 @@ export interface AnalysisExecutorOptions {
     onItemComplete?: AnalysisItemCompleteCallback;
 }
 
-/**
- * Result of the analysis executor.
- */
 export interface AnalysisExecutorResult {
     /** Successfully parsed analyses */
     analyses: ComponentAnalysis[];
@@ -93,7 +81,6 @@ export interface AnalysisExecutorResult {
 // ============================================================================
 
 /**
- * Convert a ComponentInfo into a PromptItem for template substitution.
  * PromptItem requires flat string key-value pairs.
  */
 export function componentToPromptItem(component: ComponentInfo, graph: ComponentGraph): PromptItem {
@@ -119,13 +106,9 @@ export function componentToPromptItem(component: ComponentInfo, graph: Component
 /**
  * Run the analysis executor on all components in the graph.
  *
- * Uses MapReduceExecutor from pipeline-core with:
- * - PromptMapJob for template substitution + AI invocation
- * - Analysis prompt template (depth-dependent)
- * - Structured JSON output parsing
- *
- * @param options Executor options
- * @returns Analysis results (successes + failures)
+ * Substitutes the depth-dependent analysis prompt template per component,
+ * invokes the AI under a concurrency limiter, and parses the structured
+ * JSON output into ComponentAnalysis objects.
  */
 export async function runAnalysisExecutor(
     options: AnalysisExecutorOptions
@@ -169,7 +152,6 @@ export async function runAnalysisExecutor(
 
             logger.debug(LogCategory.MAP_REDUCE, `Retrying ${remainingFailed.length} failed component(s) (attempt ${attempt + 1}/${retryAttempts})`);
 
-            // Get the components that failed
             const retryComponents = components.filter(m => remainingFailed.includes(m.id));
 
             const retryResult = await executeAnalysisRound({
@@ -196,9 +178,6 @@ export async function runAnalysisExecutor(
     };
 }
 
-/**
- * Options for a single analysis round.
- */
 interface AnalysisRoundOptions {
     components: ComponentInfo[];
     graph: ComponentGraph;
@@ -221,10 +200,8 @@ async function executeAnalysisRound(
     options: AnalysisRoundOptions
 ): Promise<{ analyses: ComponentAnalysis[]; failedComponentIds: string[] }> {
     const { components, graph, aiInvoker, promptTemplate, outputFields, concurrency, model, onProgress, isCancelled, onItemComplete } = options;
-    // Convert components to PromptItems
     const items: PromptItem[] = components.map(c => componentToPromptItem(c, graph));
 
-    // Run map phase with concurrency limiter
     const limiter = new ConcurrencyLimiter(concurrency);
     const mapResults: AnalysisMapResult[] = new Array(items.length);
     let completed = 0;

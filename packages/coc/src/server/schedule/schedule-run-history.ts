@@ -1,6 +1,4 @@
 /**
- * ScheduleRunHistory
- *
  * Owns the in-memory run record list together with the optional SQLite
  * persistence backend.  Trims history per schedule and mirrors writes to
  * persistence when configured.

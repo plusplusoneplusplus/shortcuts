@@ -31,7 +31,6 @@ interface StatusConfig {
     label: string;
     badgeColor: string;
     icon: string;
-    /** Start collapsed by default */
     defaultCollapsed?: boolean;
 }
 
@@ -267,7 +266,6 @@ export function WorkItemSection({ workspaceId, originId, onSelectWorkItem, selec
     // Count archived items for the toggle label
     const archivedCount = items.filter(i => !!i.archivedAt).length;
 
-    // Filter out archived items unless showArchived is enabled
     const visibleItems = showArchived ? items : items.filter(i => !i.archivedAt);
 
     // Group items by status, pinned items first, then sorted by last run time descending

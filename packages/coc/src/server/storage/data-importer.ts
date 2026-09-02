@@ -1,6 +1,4 @@
 /**
- * Data Importer
- *
  * Validates a CoCExportPayload and restores its contents into the process
  * store, queue files, blob files, preferences, and schedules. Supports Replace
  * (wipe-then-restore) and Merge (add-only-missing) modes.

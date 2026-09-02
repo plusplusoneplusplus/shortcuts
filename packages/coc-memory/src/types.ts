@@ -1,6 +1,4 @@
 /**
- * CoC Memory — Core Types
- *
  * Defines all shared data shapes for the redesigned memory system:
  * facts, episodes, scopes, provenance, search, and feature flags.
  *
@@ -161,9 +159,6 @@ export type MemoryEpisodeInput = Omit<MemoryEpisode, 'id' | 'createdAt'>;
 // Search types
 // ---------------------------------------------------------------------------
 
-/**
- * Query object for searching facts.
- */
 export interface MemorySearchQuery {
     /** Free-text query string for BM25 and/or vector search */
     text: string;
@@ -181,9 +176,6 @@ export interface MemorySearchQuery {
     minScore?: number;
 }
 
-/**
- * A single search result entry.
- */
 export interface MemorySearchResult {
     fact: MemoryFact;
     /** Combined rank score in [0, 1] */
@@ -208,7 +200,6 @@ export interface MemoryFactFilter {
     offset?: number;
 }
 
-/** Filter for listing episodes */
 export interface MemoryEpisodeFilter {
     scope?: MemoryScope;
     workspaceId?: string;

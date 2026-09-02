@@ -7,7 +7,7 @@
  * older runtimes, and imports it lazily so tests that inject a stub extractor
  * never load pdfjs at all.
  *
- * Cross-platform, Node-only.
+ * Node-only.
  */
 
 /** Page separator written between page texts in the extracted sidecar. */

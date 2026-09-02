@@ -1,6 +1,4 @@
 /**
- * Classification Store
- *
  * File-based persistence for PR diff classification results. One JSON file per
  * (origin, pr, headSha) tuple when an origin scope is supplied, with a sibling
  * `.pending` marker while a classification task is in flight. Legacy
@@ -10,9 +8,6 @@
  * Layout:
  *   ~/.coc/repos/<originId>/classifications/<prId>_<headSha>.json
  *   ~/.coc/repos/<originId>/classifications/<prId>_<headSha>.json.pending
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

@@ -1,11 +1,7 @@
 /**
- * Analysis Prompt Templates
- *
  * Prompt templates for Phase 3 (Deep Analysis). Each component is analyzed
  * by an AI session with MCP tool access. Three depth variants control
  * the level of investigation detail.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { COMPONENT_ANALYSIS_SCHEMA } from '../schemas';
@@ -70,9 +66,6 @@ include all details you can find.`;
 // Template
 // ============================================================================
 
-/**
- * Get the investigation steps for a given depth level.
- */
 export function getInvestigationSteps(depth: 'shallow' | 'normal' | 'deep'): string {
     switch (depth) {
         case 'shallow': return SHALLOW_INVESTIGATION_STEPS;
@@ -88,9 +81,6 @@ export function getInvestigationSteps(depth: 'shallow' | 'normal' | 'deep'): str
  * - {{componentName}}, {{componentId}}, {{componentPath}}, {{purpose}}
  * - {{keyFiles}}, {{dependencies}}, {{dependents}}
  * - {{complexity}}, {{category}}, {{projectName}}, {{architectureNotes}}
- *
- * @param depth Analysis depth level
- * @returns Prompt template string with {{variable}} placeholders
  */
 export function buildAnalysisPromptTemplate(depth: 'shallow' | 'normal' | 'deep'): string {
     const steps = getInvestigationSteps(depth);
@@ -125,7 +115,6 @@ IMPORTANT:
 }
 
 /**
- * Get the list of output fields expected from the analysis prompt.
  * These fields are used by the map-reduce framework to parse AI responses.
  */
 export function getAnalysisOutputFields(): string[] {

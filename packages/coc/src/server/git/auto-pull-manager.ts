@@ -21,8 +21,6 @@
  *
  * The tick itself is injected (`runTick`) — this module owns only *when*, and
  * `auto-pull-tick` owns *what*.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import {

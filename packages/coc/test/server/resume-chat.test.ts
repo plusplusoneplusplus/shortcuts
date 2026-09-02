@@ -1,6 +1,4 @@
 /**
- * Resume Chat Tests
- *
  * Tests for the chat session resume functionality:
  * - buildContextPrompt: pure function for building context from conversation turns
  * - POST /api/queue/:id/resume-chat: warm and cold resume paths

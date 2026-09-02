@@ -1,11 +1,7 @@
 /**
- * Theme Article Generator
- *
  * Generates markdown articles for each item in a theme outline using
  * a map-reduce pattern: map generates per-sub-article content,
  * reduce synthesizes the index page.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -205,7 +201,6 @@ async function runSubArticlesParallel(
         await acquire();
         try {
             const articleAnalysis = analysisMap.get(plan.slug) ?? makeEmptyArticleAnalysis(plan.slug);
-            // Filter out the current article from siblings
             const siblings = siblingTitles.filter(s => s.slug !== plan.slug);
 
             const article = await generateSubArticle(
@@ -320,9 +315,6 @@ async function generateIndexPage(
 // Helpers
 // ============================================================================
 
-/**
- * Extract the first N words from markdown content as a summary.
- */
 export function extractSummary(content: string, maxWords: number): string {
     // Strip the leading heading line
     const lines = content.split('\n');

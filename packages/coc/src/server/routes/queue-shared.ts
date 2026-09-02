@@ -1,6 +1,4 @@
 /**
- * Shared utilities for queue route modules.
- *
  * Contains pure helpers, serializers, validators, and the shared mutable
  * state type that all queue route modules read/write via QueueRouteContext.
  */
@@ -82,9 +80,6 @@ export function normalizeGlobalQueueState(state: QueueGlobalState, now = Date.no
     }
 }
 
-/**
- * Context object threaded through every queue route module.
- */
 export interface QueueRouteContext {
     bridge: MultiRepoQueueRouter;
     store: ProcessStore | undefined;
@@ -110,9 +105,6 @@ function firstStringQueryValue(value: unknown): string | undefined {
 // Serialization Helpers
 // ============================================================================
 
-/**
- * Serialize a QueuedTask for JSON response.
- */
 export function serializeTask(task: QueuedTask): Record<string, unknown> {
     const payload = task.payload as any;
     const { images, imagesFilePath, ...restPayload } = payload || {};
@@ -166,9 +158,6 @@ export function serializeTask(task: QueuedTask): Record<string, unknown> {
     };
 }
 
-/**
- * Serialize a queue item (task or pause marker) for JSON response.
- */
 export function serializeQueueItem(item: QueuedTask | PauseMarker): Record<string, unknown> {
     if ((item as PauseMarker).kind === 'pause-marker') {
         const marker = item as PauseMarker;
@@ -285,9 +274,6 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
     };
 }
 
-/**
- * Summary-serialize a queue item (task or pause marker) for list views.
- */
 export function serializeQueueItemSummary(item: QueuedTask | PauseMarker): Record<string, unknown> {
     if ((item as PauseMarker).kind === 'pause-marker') {
         const marker = item as PauseMarker;
@@ -338,18 +324,12 @@ export function generateDisplayName(type: string, payload: any): string {
     return `${typeLabel} @ ${time}`;
 }
 
-/**
- * Validation result for a single task specification.
- */
 export interface TaskValidationResult {
     valid: boolean;
     error?: string;
     input?: CreateTaskInput;
 }
 
-/**
- * Validate a single task specification and construct CreateTaskInput.
- */
 export function validateAndParseTask(taskSpec: any): TaskValidationResult {
     if (!taskSpec.type) {
         return { valid: false, error: 'Missing required field: type' };

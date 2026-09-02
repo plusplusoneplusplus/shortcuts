@@ -1,6 +1,4 @@
 /**
- * Response Parser Tests
- *
  * Tests for JSON parsing, validation, normalization, and error recovery
  * of AI responses into ComponentGraph and StructuralScanResult structures.
  */

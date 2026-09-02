@@ -1,6 +1,4 @@
 /**
- * Wiki Generate Handler
- *
  * HTTP/SSE adapters over the generation domain layer in `./generation`.
  * These functions only parse and validate input, claim the wiki through the
  * generation registry, pipe generation events to SSE, and shape JSON errors.
@@ -12,8 +10,6 @@
  *   POST /api/wikis/:wikiId/admin/generate/cancel    — Cancel running generation
  *   GET  /api/wikis/:wikiId/admin/generate/status    — Get phase cache status
  *   POST /api/wikis/:wikiId/admin/generate/component/:id — Regenerate single component
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as http from 'http';

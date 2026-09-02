@@ -1,6 +1,4 @@
 /**
- * Notes Git Handler Tests
- *
  * Tests for the notes git REST API endpoints. Uses a real HTTP server
  * with an OS-assigned port for test isolation.
  */
@@ -118,19 +116,15 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
             const srv = await startServer();
             await registerWorkspace(srv, workspaceDir);
 
-            // POST /init
             const initRes = await postJSON(gitUrl(srv, 'init'), {});
             expect(initRes.status).toBe(200);
 
-            // GET /status
             const statusRes = await request(gitUrl(srv, 'status'));
             expect(statusRes.status).toBe(200);
 
-            // GET /log
             const logRes = await request(gitUrl(srv, 'log'));
             expect(logRes.status).toBe(200);
 
-            // GET /diff
             const diffRes = await request(gitUrl(srv, 'diff'));
             expect(diffRes.status).toBe(200);
 
@@ -142,7 +136,6 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
                 expect(diffHashRes.status).toBe(200);
             }
 
-            // POST /commit
             const commitRes = await postJSON(gitUrl(srv, 'commit'), {});
             expect(commitRes.status).toBe(200);
         });
@@ -161,7 +154,6 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
             const data = JSON.parse(res.body);
             expect(data.initialized).toBe(true);
 
-            // Verify .git exists
             expect(fs.existsSync(path.join(notesRoot(), '.git'))).toBe(true);
         });
 

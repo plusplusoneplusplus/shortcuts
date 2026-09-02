@@ -1,6 +1,4 @@
 /**
- * Historical Turns Prepending Tests
- *
  * Tests that CLITaskExecutor correctly prepends historical conversation turns
  * from the original session when executing a cold-resumed chat task.
  */

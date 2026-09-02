@@ -8,8 +8,6 @@
  * containing an array of the last N job records (default 10).
  *
  * Follows the same atomic-write and write-queue patterns as FileProcessStore.
- *
- * Pure Node.js.
  */
 
 import * as fs from 'fs/promises';

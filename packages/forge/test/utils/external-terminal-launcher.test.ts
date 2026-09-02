@@ -1,6 +1,4 @@
 /**
- * Tests for ExternalTerminalLauncher
- *
  * Covers platform-specific terminal detection, availability caching,
  * launch success/failure, AppleScript escaping, singleton behavior,
  * and preferred terminal override.

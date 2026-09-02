@@ -71,7 +71,6 @@ async function renderSection(opts: { taskRootPath?: string; folderPaths?: string
 
     const result = render(<TasksSettingsSection workspaceId="ws-1" />);
 
-    // Wait for loading to finish
     await waitFor(() => {
         expect(screen.queryByTestId('tasks-settings-loading')).toBeNull();
     });

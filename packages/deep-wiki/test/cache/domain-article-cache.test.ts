@@ -1,6 +1,4 @@
 /**
- * Area-Scoped Article Cache Tests
- *
  * Tests for hierarchical article caching with domain subdirectories:
  * - Save/load articles with domainId
  * - Backward compat: articles without domainId still work

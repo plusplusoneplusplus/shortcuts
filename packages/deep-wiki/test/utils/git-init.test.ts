@@ -1,6 +1,4 @@
 /**
- * Git Init Utility Tests
- *
  * Tests for initializing wiki output directories as Git repositories
  * and writing default `.gitignore` files.
  */
@@ -183,7 +181,6 @@ describe('initWikiGitRepo', () => {
         // First call — sets up repo + gitignore
         await initWikiGitRepo(tempDir);
 
-        // Modify the gitignore
         const gitignorePath = path.join(tempDir, '.gitignore');
         fs.writeFileSync(gitignorePath, 'custom rules', 'utf-8');
 

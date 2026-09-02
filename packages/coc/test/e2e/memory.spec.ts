@@ -1,6 +1,4 @@
 /**
- * Memory V2 E2E Tests
- *
  * Tests the #memory route after legacy memory panels were removed. The route
  * renders MemoryV2Panel only, with Facts, Review, and Episodes tabs.
  */

@@ -1,7 +1,3 @@
-/**
- * Tests for the consolidation orchestrator.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { consolidateComponents } from '../../src/consolidation/consolidator';
 import type { ComponentInfo, ComponentGraph } from '../../src/types';

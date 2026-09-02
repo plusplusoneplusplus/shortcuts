@@ -1,11 +1,6 @@
 /**
- * Prompt File Utilities
- *
  * Discover and read `.prompt.md` files without editor-host dependencies.
- * Mirrors src/shortcuts/shared/prompt-files-utils.ts using
- * pipeline-core's findPromptFiles() for the actual scanning.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
+ * Scanning is delegated to forge's findPromptFiles().
  */
 
 import * as fs from 'fs';
@@ -14,15 +9,12 @@ import type { PromptFileInfo } from '@plusplusoneplusplus/forge';
 
 export type { PromptFileInfo };
 
-/** Default location for prompt files. */
 const DEFAULT_PROMPT_LOCATIONS = ['.github/prompts'];
 
 /**
  * Discover `.prompt.md` files under the given project directory.
  *
- * @param projectDir - Root directory to search from
  * @param locations  - Folders to scan (default: ['.github/prompts'])
- * @returns Array of prompt file metadata
  */
 export async function discoverPromptFiles(
     projectDir: string,
@@ -33,9 +25,6 @@ export async function discoverPromptFiles(
 
 /**
  * Read a prompt file's content, stripping YAML frontmatter if present.
- *
- * @param absolutePath - Full path to the prompt file
- * @returns File content with frontmatter stripped
  */
 export async function readPromptFileContent(absolutePath: string): Promise<string> {
     const raw = await fs.promises.readFile(absolutePath, 'utf-8');

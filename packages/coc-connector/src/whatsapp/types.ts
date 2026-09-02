@@ -2,7 +2,6 @@
  * WhatsApp Bot types — standalone, no CoC/forge deps.
  */
 
-/** Inbound message received from WhatsApp. */
 export interface InboundWAMessage {
     senderJid: string;
     messageId: string;
@@ -11,7 +10,6 @@ export interface InboundWAMessage {
     senderName?: string;
 }
 
-/** Options for creating a WhatsAppBot instance. */
 export interface BotOptions {
     /** Directory for Baileys multi-file auth state. */
     sessionDir: string;
@@ -27,7 +25,6 @@ export interface BotOptions {
     onStatusChange?: (status: BotStatus) => void;
 }
 
-/** Connection status of the bot. */
 export type BotStatus = 'disconnected' | 'connecting' | 'qr-pending' | 'connected' | 'creating-group';
 
 /** Minimal socket interface consumed by WhatsAppBot (subset of Baileys). */

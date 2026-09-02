@@ -1,6 +1,4 @@
 /**
- * Queue Executor Bridge — Follow-Up Reuse Tests
- *
  * Tests for the execute() short-circuit introduced for chat-followup tasks:
  * - Bypasses store.addProcess() for chat-followup tasks
  * - Reuses the original process entry (no ghost process)

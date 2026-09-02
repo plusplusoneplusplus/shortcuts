@@ -1,6 +1,4 @@
 /**
- * SQLite-backed episode store
- *
  * Persists compact session/turn/Ralph summaries with provenance.
  * Episodes are append-only (no update method) and scoped to either
  * global or workspace-isolated storage.

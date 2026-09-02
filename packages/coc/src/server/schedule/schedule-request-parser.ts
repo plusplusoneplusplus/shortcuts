@@ -1,6 +1,4 @@
 /**
- * Schedule request parsing
- *
  * Single place where an untrusted REST body becomes a typed schedule shape.
  * The POST (create) and PATCH (update) routes share the same field
  * vocabulary — `targetType`, `mode`, `provider`, `status`, `onFailure`,
@@ -8,8 +6,6 @@
  * here instead of each hand-copying `any` fields.
  *
  * Error messages are the API contract and must stay stable.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager-types';

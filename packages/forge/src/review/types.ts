@@ -10,14 +10,8 @@ import type { BaseAnchorData } from '../editor/anchor-types';
 
 // ── Review comment categories ────────────────────────────────
 
-/**
- * Severity levels for review comments.
- */
 export type ReviewSeverity = 'error' | 'warning' | 'info' | 'suggestion';
 
-/**
- * Category of a review comment — classifies the nature of the finding.
- */
 export type ReviewCategory =
     | 'bug'
     | 'security'
@@ -94,9 +88,6 @@ export interface ReviewComment {
 
 // ── Review result ────────────────────────────────────────────
 
-/**
- * Aggregate statistics for a completed review.
- */
 export interface ReviewStats {
     /** Total comment count. */
     totalComments: number;
@@ -108,14 +99,8 @@ export interface ReviewStats {
     byRule: Record<string, number>;
 }
 
-/**
- * Overall assessment of the reviewed diff.
- */
 export type ReviewAssessment = 'pass' | 'needs-attention' | 'fail';
 
-/**
- * The result of a completed review.
- */
 export interface ReviewResult {
     /** The diff source that was reviewed. */
     source: DiffSource;
@@ -140,9 +125,6 @@ export interface ReviewResult {
  */
 export type OnReviewComment = (comment: ReviewComment) => void;
 
-/**
- * Options for a review invocation.
- */
 export interface ReviewOptions {
     /**
      * Streaming callback — invoked for each comment as it is produced.
@@ -185,9 +167,6 @@ export interface IDiffReviewer {
 
 // ── Review session (human reviewer handle) ───────────────────
 
-/**
- * Status of a human review session.
- */
 export type ReviewSessionStatus = 'active' | 'completed' | 'cancelled';
 
 /**

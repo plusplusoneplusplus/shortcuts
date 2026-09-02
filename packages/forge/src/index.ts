@@ -1,8 +1,5 @@
 /**
- * pipeline-core
- *
  * AI pipeline execution engine with map-reduce framework.
- * A pure Node.js package for building and executing AI-powered data processing pipelines.
  */
 
 // ============================================================================

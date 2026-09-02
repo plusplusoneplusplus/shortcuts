@@ -33,7 +33,7 @@ const PDF_FILENAME = 'OSDI_2026_Paper_Survey.pdf';
 // Native PDF navigation requires full Chromium rather than the headless shell.
 test.use({ channel: 'chromium' });
 
-/** A tiny valid PDF payload used for the upload path. */
+/** A tiny, deliberately unparseable PDF payload used for the upload path. */
 const TINY_PDF = Buffer.from(
     '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
     'utf-8',

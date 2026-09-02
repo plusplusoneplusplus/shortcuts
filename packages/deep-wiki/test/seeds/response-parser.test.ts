@@ -1,6 +1,4 @@
 /**
- * Seeds Response Parser Tests
- *
  * Tests for parsing AI responses into ThemeSeed arrays.
  */
 

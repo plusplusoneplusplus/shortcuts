@@ -103,7 +103,6 @@ describe('CommitList — deep-link auto-expansion', () => {
         expect(screen.getByTestId('commit-file-src/foo.ts')).toBeTruthy();
         expect(screen.getByTestId('commit-file-src/bar.ts')).toBeTruthy();
 
-        // API should have been called with the correct URL
         expect(mockFetchApi).toHaveBeenCalledWith(
             `/workspaces/${encodeURIComponent('ws-test')}/git/commits/${COMMIT_A.hash}/files`
         );
@@ -244,7 +243,6 @@ describe('CommitList — deep-link auto-expansion', () => {
         expect(screen.getByTestId('commit-file-src/foo.ts')).toBeTruthy();
         expect(screen.getByTestId('commit-file-src/bar.ts')).toBeTruthy();
 
-        // API should have been called with the correct URL
         expect(mockFetchApi).toHaveBeenCalledWith(
             `/workspaces/${encodeURIComponent('ws-test')}/git/commits/${COMMIT_A.hash}/files`
         );

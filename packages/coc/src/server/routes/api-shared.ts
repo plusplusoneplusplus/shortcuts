@@ -1,6 +1,4 @@
 /**
- * Shared context and types for API route modules.
- *
  * Mirrors the `QueueGlobalState` / `QueueRouteContext` pattern used by queue routes.
  * Each `registerXxxRoutes(routes, ctx)` function receives this context object
  * so that shared dependencies (store, bridge, WS server) are injected rather than imported.
@@ -15,9 +13,6 @@ import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
 
-/**
- * Dependency context passed to every API route module.
- */
 export interface ApiRouteContext {
     routes: Route[];
     store: ProcessStore;

@@ -1,6 +1,4 @@
 /**
- * Pipeline → Workflow Compiler
- *
  * Compiles legacy pipeline YAML configs (`PipelineConfig`) into the DAG-based
  * `WorkflowConfig` format. Also handles workflow YAML passthrough (validate + return).
  *
@@ -47,9 +45,6 @@ import { isCSVSource } from './pipeline-compat';
 /** Error code for compile-time failures. */
 const COMPILER_ERROR = 'COMPILER_ERROR';
 
-/**
- * Error thrown when pipeline-to-workflow compilation fails.
- */
 export class CompilerError extends PipelineCoreError {
     constructor(message: string, meta?: Record<string, unknown>) {
         super(message, { code: COMPILER_ERROR as ErrorCodeType, meta });
@@ -364,7 +359,6 @@ function compilePipelineToWorkflow(parsed: Record<string, unknown>): WorkflowCon
         nodes,
     };
 
-    // Settings
     const settings: WorkflowSettings = {};
     if (pipeline.workingDirectory) {
         settings.workingDirectory = pipeline.workingDirectory;

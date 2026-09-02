@@ -1,6 +1,4 @@
 /**
- * Article Cache — Per-Module Article Results and Reduce-Phase Articles
- *
  * Caches per-module articles from Phase 4 and reduce-phase synthesis articles.
  * Supports flat and domain-scoped directory layouts, crash recovery scanning,
  * re-stamping for incremental invalidation, and metadata-based validation.
@@ -23,9 +21,6 @@ import { getCacheDir, CACHE_VERSION, ARTICLES_DIR, ANALYSES_METADATA_FILE, REDUC
 // Paths
 // ============================================================================
 
-/**
- * Get the articles cache directory.
- */
 export function getArticlesCacheDir(outputDir: string): string {
     return path.join(getCacheDir(outputDir), ARTICLES_DIR);
 }
@@ -42,9 +37,6 @@ export function getArticleCachePath(outputDir: string, componentId: string, doma
     return path.join(getArticlesCacheDir(outputDir), `${componentId}.json`);
 }
 
-/**
- * Get the path to the articles metadata file.
- */
 export function getArticlesMetadataPath(outputDir: string): string {
     return path.join(getArticlesCacheDir(outputDir), ANALYSES_METADATA_FILE);
 }
@@ -53,9 +45,6 @@ export function getArticlesMetadataPath(outputDir: string): string {
 // Reduce Article Paths
 // ============================================================================
 
-/**
- * Get the path to the reduce articles metadata file.
- */
 export function getReduceMetadataPath(outputDir: string): string {
     return path.join(getArticlesCacheDir(outputDir), REDUCE_METADATA_FILE);
 }
@@ -70,10 +59,8 @@ export function getReduceMetadataPath(outputDir: string): string {
  * - `_reduce-domain-{domainId}-index.json` for domain-index article
  * - `_reduce-domain-{domainId}-architecture.json` for domain-architecture article
  *
- * @param outputDir - Output directory
  * @param articleType - Article type (e.g., 'index', 'architecture', 'getting-started')
  * @param domainId - Optional domain ID for domain-scoped reduce articles
- * @returns Absolute path to the reduce article cache file
  */
 export function getReduceArticleCachePath(
     outputDir: string,
@@ -94,8 +81,6 @@ export function getReduceArticleCachePath(
  * Get a single cached module article.
  * Checks domain-scoped path first (if domainId provided), then flat path.
  *
- * @param componentId - Module ID to look up
- * @param outputDir - Output directory
  * @param domainId - Optional domain ID for hierarchical lookup
  * @returns The cached article, or null if not found
  */
@@ -122,7 +107,6 @@ export function getCachedArticle(componentId: string, outputDir: string, domainI
  * Get all cached articles if the cache is valid (has metadata).
  * Supports both flat and domain-scoped directory layouts.
  *
- * @param outputDir - Output directory
  * @returns Array of cached articles, or null if cache is invalid/missing
  */
 export function getCachedArticles(outputDir: string): GeneratedArticle[] | null {
@@ -177,9 +161,6 @@ export function getCachedArticles(outputDir: string): GeneratedArticle[] | null 
     return articles.length > 0 ? articles : null;
 }
 
-/**
- * Get the articles cache metadata (for hash checking).
- */
 export function getArticlesCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
     return readCacheFile<AnalysisCacheMetadata>(getArticlesMetadataPath(outputDir));
 }
@@ -188,9 +169,6 @@ export function getArticlesCacheMetadata(outputDir: string): AnalysisCacheMetada
 // Reduce Article Read
 // ============================================================================
 
-/**
- * Get the reduce articles cache metadata (for hash checking).
- */
 export function getReduceCacheMetadata(outputDir: string): AnalysisCacheMetadata | null {
     return readCacheFile<AnalysisCacheMetadata>(getReduceMetadataPath(outputDir));
 }
@@ -201,7 +179,6 @@ export function getReduceCacheMetadata(outputDir: string): AnalysisCacheMetadata
  * Reads all `_reduce-*.json` files (excluding `_reduce-metadata.json`) from the
  * articles cache directory. Validates against the provided git hash if specified.
  *
- * @param outputDir - Output directory
  * @param gitHash - Optional git hash for validation. If provided, only returns
  *                  articles if the reduce metadata git hash matches.
  * @returns Array of cached reduce articles, or null if cache miss
@@ -263,9 +240,6 @@ export function getCachedReduceArticles(
  * Save a single module article to the cache.
  * Domain-scoped articles are cached under `articles/{domain-id}/{module-id}.json`.
  *
- * @param componentId - Module ID
- * @param article - The article to cache
- * @param outputDir - Output directory
  * @param gitHash - Git hash when the article was generated
  */
 export function saveArticle(
@@ -285,8 +259,6 @@ export function saveArticle(
  * Save all articles to the cache (bulk save with metadata).
  *
  * @param articles - All component articles (only 'component' type articles are cached)
- * @param outputDir - Output directory
- * @param repoPath - Path to the git repository
  */
 export async function saveAllArticles(
     articles: GeneratedArticle[],
@@ -306,7 +278,6 @@ export async function saveAllArticles(
         saveArticle(article.componentId!, article, outputDir, currentHash);
     }
 
-    // Write metadata
     writeCacheFile<AnalysisCacheMetadata>(getArticlesMetadataPath(outputDir), {
         gitHash: currentHash,
         timestamp: Date.now(),
@@ -327,7 +298,6 @@ export async function saveAllArticles(
  * with the git hash and count.
  *
  * @param articles - All articles (will be filtered to reduce types only)
- * @param outputDir - Output directory
  * @param gitHash - Git hash when the articles were generated
  */
 export function saveReduceArticles(
@@ -341,7 +311,6 @@ export function saveReduceArticles(
         return;
     }
 
-    // Write individual reduce article files
     for (const article of reduceArticles) {
         writeCacheFile<CachedArticle>(getReduceArticleCachePath(outputDir, article.type, article.domainId), {
             article,
@@ -350,7 +319,6 @@ export function saveReduceArticles(
         });
     }
 
-    // Write reduce metadata
     writeCacheFile<AnalysisCacheMetadata>(getReduceMetadataPath(outputDir), {
         gitHash,
         timestamp: Date.now(),
@@ -405,8 +373,6 @@ function findArticleCachePath(outputDir: string, componentId: string): string | 
  * Supports both flat (`articles/{module-id}.json`) and domain-scoped
  * (`articles/{domain-id}/{module-id}.json`) cache layouts.
  *
- * @param componentIds - Module IDs to look for in the cache
- * @param outputDir - Output directory
  * @param currentGitHash - Current git hash for validation (modules cached with
  *                         a different hash are considered stale and excluded)
  * @returns Object with `found` (valid cached articles) and `missing` (module IDs not found or stale)
@@ -429,8 +395,6 @@ export function scanIndividualArticlesCache(
  *
  * Supports both flat and domain-scoped cache layouts.
  *
- * @param componentIds - Module IDs to look for in the cache
- * @param outputDir - Output directory
  * @returns Object with `found` (valid cached articles) and `missing` (module IDs not found)
  */
 export function scanIndividualArticlesCacheAny(
@@ -457,8 +421,6 @@ export function scanIndividualArticlesCacheAny(
  * are re-stamped (their gitHash updated) so they pass validation on the
  * current run. Only I/O — no AI calls needed.
  *
- * @param componentIds - Module IDs whose articles should be re-stamped
- * @param outputDir - Output directory (cache lives here)
  * @param newGitHash - The current git hash to stamp onto the articles
  * @returns Number of articles successfully re-stamped
  */
@@ -505,7 +467,6 @@ export function restampArticles(
 /**
  * Clear all cached articles (including domain subdirectories).
  *
- * @param outputDir - Output directory
  * @returns True if cache was cleared, false if no cache existed
  */
 export function clearArticlesCache(outputDir: string): boolean {

@@ -1,6 +1,4 @@
 /**
- * Copilot SDK Service — Delivery Mode Tests
- *
  * Tests for the `deliveryMode` option in `sendMessage()`:
  * - sendWithStreaming forwards deliveryMode to session.send()
  * - One-shot session warning when deliveryMode is set without sessionId
@@ -176,7 +174,6 @@ describe('CopilotSDKService - Delivery Mode', () => {
     it('should NOT warn when deliveryMode is set with a sessionId (resumed session)', async () => {
         const sdkModule = wireStreamingService();
 
-        // Make resumeSession return a streaming session
         const resumedSessionResult = createStreamingMockSession('resumed-session');
         sdkModule.mockClient.resumeSession.mockResolvedValue(resumedSessionResult.session);
 
@@ -284,7 +281,6 @@ describe('CopilotSDKService - Delivery Mode', () => {
 
         expect(result.success).toBe(true);
         expect(mockSession.sendAndWait).toHaveBeenCalledTimes(1);
-        // sendAndWait should NOT receive any mode/deliveryMode property
         const sendAndWaitArgs = mockSession.sendAndWait.mock.calls[0][0];
         expect(sendAndWaitArgs).not.toHaveProperty('mode');
         expect(sendAndWaitArgs).not.toHaveProperty('deliveryMode');

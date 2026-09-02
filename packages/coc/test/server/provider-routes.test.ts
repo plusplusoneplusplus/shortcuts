@@ -1,6 +1,4 @@
 /**
- * Provider Routes Tests (coc-server)
- *
  * HTTP route tests for:
  * - GET /api/providers/config — returns sanitized config (tokens masked)
  * - PUT /api/providers/config — validates and persists provider credentials
@@ -103,7 +101,6 @@ describe('Provider Routes', () => {
             const providers = (body as any).providers;
             // Token must not be returned as a string
             expect(typeof providers.github.token).not.toBe('string');
-            // hasToken should be true
             expect(providers.github.hasToken).toBe(true);
         });
 

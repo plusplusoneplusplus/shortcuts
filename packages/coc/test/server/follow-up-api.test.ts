@@ -1,6 +1,4 @@
 /**
- * Follow-Up API Tests
- *
  * Tests for the POST /api/processes/:id/message REST endpoint:
  * success path, 404/400/409/410 error paths, and turn appending.
  *
@@ -212,7 +210,6 @@ describe('POST /api/processes/:id/message', () => {
             expect(call.payload.kind).toBe('chat');
             expect(call.payload.processId).toBe('proc-enqueue');
             expect(call.payload.prompt).toBe('Hello from enqueue');
-            // executeFollowUp should NOT be called directly
             expect(mockBridge.executeFollowUp).not.toHaveBeenCalled();
         });
 

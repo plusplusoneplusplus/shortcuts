@@ -1,9 +1,3 @@
-/**
- * Tests for QueueExecutor
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
     QueueExecutor,
@@ -143,7 +137,6 @@ describe('QueueExecutor', () => {
 
             const taskId = queueManager.enqueue(createTestTask());
 
-            // Wait for task to be processed
             await waitFor(() => queueManager.getTask(taskId)?.status === 'completed');
 
             const task = queueManager.getTask(taskId);
@@ -480,7 +473,6 @@ describe('QueueExecutor', () => {
 
             const taskId = queueManager.enqueue(createTestTask());
 
-            // Wait for task to start
             await waitFor(() => taskStarted);
 
             executor.cancelTask(taskId);
@@ -538,7 +530,6 @@ describe('QueueExecutor', () => {
             const task1Id = queueManager.enqueue(createTestTask({ displayName: 'task1' }));
             queueManager.enqueue(createTestTask({ displayName: 'task2' }));
 
-            // Wait for task1 to start executing
             await waitFor(() => task1Started);
 
             // task2 should still be queued (only 1 exclusive slot)
@@ -671,7 +662,6 @@ describe('QueueExecutor', () => {
             await delay(100);
             expect(queueManager.getTask(taskId)?.status).toBe('queued');
 
-            // Admit then immediately unadmit
             queueManager.admitTask(taskId);
             queueManager.unadmitTask(taskId);
 
@@ -998,7 +988,6 @@ describe('QueueExecutor', () => {
 
             queueManager.enqueue(createTestTask());
 
-            // Wait for task to start running
             await waitFor(() => queueManager.getRunning().length > 0, 2000);
 
             // Start drain (will wait for the task to complete)
@@ -1023,7 +1012,6 @@ describe('QueueExecutor', () => {
 
             queueManager.enqueue(createTestTask());
 
-            // Wait for task to start running
             await waitFor(() => queueManager.getRunning().length > 0, 2000);
 
             const result = await executor.drainAndDispose(200); // 200ms timeout

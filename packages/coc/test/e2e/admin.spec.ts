@@ -486,7 +486,6 @@ test.describe('Admin Panel (008)', () => {
             buffer: Buffer.from(JSON.stringify(exportPayload)),
         });
 
-        // Select merge mode
         await page.click('[data-testid="import-mode-merge"]');
 
         await page.click('#admin-import-btn');

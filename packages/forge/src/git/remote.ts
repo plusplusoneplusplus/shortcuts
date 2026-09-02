@@ -1,13 +1,3 @@
-/**
- * Git remote URL helpers.
- *
- * Provides utilities for reading the git remote URL, computing stable remote
- * hashes, and resolving canonical origin IDs shared by local clones that point
- * at the same upstream repository.
- *
- * Pure Node.js.
- */
-
 import { createHash } from 'crypto';
 import { loadNativeGit, type NativeGitAddon } from '@plusplusoneplusplus/coc-native';
 import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
@@ -63,7 +53,6 @@ export interface CanonicalOriginIdentity {
  * accessed via different protocols produces a consistent hash per-protocol.
  *
  * @param url Raw remote URL (e.g. `https://github.com/owner/repo.git`).
- * @returns Normalised URL string.
  */
 export function normalizeRemoteUrl(url: string): string {
     let normalized = url.toLowerCase();

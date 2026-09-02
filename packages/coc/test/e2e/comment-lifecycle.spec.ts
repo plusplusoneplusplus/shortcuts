@@ -1,6 +1,4 @@
 /**
- * Comment Lifecycle E2E Tests
- *
  * Covers the full comment lifecycle within the task preview:
  * resolve/reopen toggling, inline editing, two-step delete confirmation,
  * CommentPopover interactions, AICommandMenu command dispatch,

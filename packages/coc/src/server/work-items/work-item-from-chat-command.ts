@@ -1,6 +1,4 @@
 /**
- * Work Item From-Chat Command
- *
  * Owns `POST /api/workspaces/:id/work-items/from-chat`: builds the Work Item
  * from a chat process, seeds plan version 1 (AI-extracted or the generated
  * template), persists it, and settles cache/broadcast across every workspace id
@@ -87,7 +85,6 @@ export async function createWorkItemFromChatCommand(
 
     await ctx.workItemStore.addWorkItem(item);
 
-    // Persist the plan version record
     await ctx.workItemStore.savePlanVersion(item.id, {
         version: 1,
         content: item.plan.content,

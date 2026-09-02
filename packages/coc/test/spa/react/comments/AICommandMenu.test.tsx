@@ -1,7 +1,3 @@
-/**
- * Tests for the AICommandMenu extracted component.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AICommandMenu } from '../../../../src/server/spa/client/react/tasks/comments/AICommandMenu';

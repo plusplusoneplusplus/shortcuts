@@ -1,6 +1,4 @@
 /**
- * Miller Column Auto-Scroll E2E Tests
- *
  * Verifies that the tasks panel scroll container auto-scrolls to the right
  * when new columns are opened (folder click) or a file preview is opened.
  *

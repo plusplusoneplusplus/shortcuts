@@ -1,6 +1,4 @@
 /**
- * Unit tests for mcp-config-writer.ts
- *
  * Uses a temporary directory to exercise real file read/write operations.
  */
 

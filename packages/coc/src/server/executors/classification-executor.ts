@@ -9,9 +9,6 @@
  * tool pre-bound with the (workspaceId, repoId, origin storage scope, prId,
  * headSha) tuple. The AI calls the tool with the final per-hunk classifications
  * and the handler writes them to the file-based classification store.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type {

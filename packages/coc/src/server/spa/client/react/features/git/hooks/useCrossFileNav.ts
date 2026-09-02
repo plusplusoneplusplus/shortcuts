@@ -10,13 +10,10 @@ import { useCallback } from 'react';
 import type { UnifiedDiffViewerHandle } from '../diff/UnifiedDiffViewer';
 
 export interface CrossFileNavOptions {
-    /** Currently displayed file path. */
     filePath: string | undefined;
     /** Ordered list of file paths in the parent context (commit, branch, working tree). */
     files: string[];
-    /** Ref to the diff viewer imperative handle. */
     viewerRef: React.RefObject<UnifiedDiffViewerHandle | null>;
-    /** Callback invoked when cross-file navigation should occur. */
     onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
 }
 
@@ -25,10 +22,6 @@ export interface CrossFileNavHandlers {
     handlePrev: () => void;
 }
 
-/**
- * Returns next/prev handlers that perform cross-file navigation at
- * hunk boundaries and fall back to within-file hunk scrolling otherwise.
- */
 export function useCrossFileNav({
     filePath,
     files,

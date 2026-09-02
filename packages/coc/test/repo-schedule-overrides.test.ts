@@ -1,6 +1,4 @@
 /**
- * Tests for repo-schedule-overrides.ts
- *
  * Covers: load/save overrides, setStatus, missing file, cross-platform path.
  */
 

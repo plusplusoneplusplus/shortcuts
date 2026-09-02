@@ -1,11 +1,7 @@
 /**
- * Generate Handler Tests
- *
  * The handlers are thin HTTP adapters: request validation, 4xx shapes, registry
  * claiming, SSE headers, and status assembly. Generation itself is stubbed via
  * an injected DeepWikiAdapter, so nothing here reaches deep-wiki or the network.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

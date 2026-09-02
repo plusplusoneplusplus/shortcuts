@@ -1,6 +1,3 @@
-/**
- * Tests for MarkdownReviewMinimizedChip component.
- */
 /* @vitest-environment jsdom */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';

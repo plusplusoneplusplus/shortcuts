@@ -1,6 +1,4 @@
 /**
- * Iterative Discovery Tests
- *
  * Tests for the main iterative discovery convergence loop.
  * Verifies round iteration, concurrency control, and convergence logic.
  */

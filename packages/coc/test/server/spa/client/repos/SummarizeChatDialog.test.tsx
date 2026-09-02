@@ -277,12 +277,10 @@ describe('SummarizeChatDialog', () => {
         });
         expect(screen.getByText('Oops')).toBeTruthy();
 
-        // Close
         rerender(
             <SummarizeChatDialog open={false} chatCount={2} onClose={noop} onConfirm={onConfirm} />,
         );
 
-        // Re-open
         rerender(
             <SummarizeChatDialog open={true} chatCount={2} onClose={noop} onConfirm={onConfirm} />,
         );

@@ -252,13 +252,11 @@ describe('MyLifeView', () => {
     });
 
     it('header stays visible regardless of active tab', () => {
-        // Notes tab
         mockActiveRepoSubTab = 'notes';
         const { unmount } = renderView();
         expect(screen.getByTestId('my-life-header')).toBeTruthy();
         unmount();
 
-        // Activity tab
         mockActiveRepoSubTab = 'activity';
         renderView();
         expect(screen.getByTestId('my-life-header')).toBeTruthy();

@@ -1,5 +1,4 @@
 /**
- * Tests for useFolderActions hook.
  * Mocks global.fetch to verify correct HTTP method, URL, and body for each action.
  */
 

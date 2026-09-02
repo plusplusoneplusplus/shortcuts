@@ -1,6 +1,4 @@
 /**
- * Suggest Follow-Ups Tool
- *
  * Factory that creates a `suggest_follow_ups` custom tool for the Copilot SDK.
  * The model calls this tool at the end of each turn with exactly 3 suggested follow-up
  * actions; the handler is a passthrough that returns the suggestions as-is.

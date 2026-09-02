@@ -1,10 +1,6 @@
 /**
- * Wiki Routes
- *
  * Registers all wiki API endpoints under /api/wikis/* using the CoC Route[] pattern.
  * Each route uses a RegExp pattern with wikiId in match[1].
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -71,10 +67,6 @@ export interface WikiRouteOptions {
 // Route Registration
 // ============================================================================
 
-/**
- * Register all wiki routes on the given route table.
- * Returns the WikiManager instance for external access.
- */
 export function registerWikiRoutes(
     routes: Route[],
     options: WikiRouteOptions,
@@ -351,7 +343,6 @@ export function registerWikiRoutes(
                     fs.mkdirSync(wikiDir, { recursive: true });
                 }
 
-                // Check if wiki data already exists (component-graph.json)
                 const graphPath = path.join(wikiDir, 'component-graph.json');
                 const hasExistingData = fs.existsSync(graphPath);
 
@@ -366,7 +357,6 @@ export function registerWikiRoutes(
                     });
                 }
 
-                // Persist wiki registration to the store
                 if (store) {
                     const wikiInfo: WikiInfo = {
                         id: body.id,
@@ -455,7 +445,6 @@ export function registerWikiRoutes(
                 const runtime = wikiManager.get(wikiId);
                 let foundInStore = false;
 
-                // Persist updates to the store
                 if (store) {
                     const storeUpdates: Record<string, unknown> = {};
                     if (body.name !== undefined) storeUpdates.name = body.name;

@@ -1,6 +1,4 @@
 /**
- * Tests for mermaid diagram rendering in task preview.
- *
  * Unit tests for mermaid rendering via markdown-renderer and useMermaid hook.
  */
 

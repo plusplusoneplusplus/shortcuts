@@ -1,5 +1,5 @@
 /**
- * notes-order.ts — helpers for `.order.json` custom sort order in notes directories.
+ * Helpers for `.order.json` custom sort order in notes directories.
  *
  * Each notes directory may contain a `.order.json` file with the shape:
  *   { "order": ["name-a", "section-b", "page.md"] }

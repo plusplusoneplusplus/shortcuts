@@ -1,6 +1,4 @@
 /**
- * Admin Provider Tokens Section E2E Tests
- *
  * Tests the ProviderTokensSection component rendered inside the AdminPanel.
  * All provider API calls are intercepted so no real GitHub token is needed.
  *

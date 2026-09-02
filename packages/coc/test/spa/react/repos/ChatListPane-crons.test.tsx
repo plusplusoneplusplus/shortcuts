@@ -189,7 +189,6 @@ describe('ChatListPane cron awareness', () => {
         vi.clearAllMocks();
         cronsEnabledValue = false;
         mockListAll.mockResolvedValue([]);
-        // Clear localStorage
         try { localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });
 

@@ -1,6 +1,4 @@
 /**
- * Inline Comment Category Selection E2E Tests
- *
  * Covers: Selecting a non-default category in InlineCommentPopup creates
  * a comment with the correct category reflected in the sidebar filter chips.
  */

@@ -1,6 +1,4 @@
 /**
- * Follow-Up API Image Attachment Tests
- *
  * Tests for POST /api/processes/:id/message with optional images parameter.
  * Verifies images are decoded and forwarded as attachments via the bridge.
  */

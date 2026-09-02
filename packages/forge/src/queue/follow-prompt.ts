@@ -1,11 +1,7 @@
 /**
- * Follow-Prompt Types and Utilities
- *
  * Shared payload interface and prompt-building logic for follow-prompt tasks.
  * Used by the CoC server and Node queue consumers to ensure consistent prompt
  * construction when executing skill/prompt-file based AI tasks.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // ============================================================================
@@ -35,7 +31,6 @@ export interface FollowPromptPayload {
 // ============================================================================
 
 /**
- * Type guard for FollowPromptPayload.
  * Checks whether the payload contains a prompt file path or direct prompt content.
  */
 export function isFollowPromptPayload(payload: Record<string, unknown> | object): payload is FollowPromptPayload {
@@ -47,8 +42,6 @@ export function isFollowPromptPayload(payload: Record<string, unknown> | object)
 // ============================================================================
 
 /**
- * Build the prompt text for a follow-prompt task.
- *
  * Format:
  * - With direct content: `{promptContent} {planFilePath}`
  * - With file path:      `Follow the instruction {promptFilePath}. {planFilePath}`

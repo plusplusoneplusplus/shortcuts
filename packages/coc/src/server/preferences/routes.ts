@@ -15,10 +15,8 @@ import type { PerRepoPreferences, SkillUsageEntry } from './schema';
 import { validateGlobalPreferences, validatePerRepoPreferences } from './schema';
 
 /**
- * Register preferences API routes on the given route table.
  * Mutates the `routes` array in-place.
  *
- * @param routes - Shared route table
  * @param dataDir - Directory for preferences file (e.g. ~/.coc)
  * @param getSyncEngine - Optional getter for per-workspace sync engines; when
  *   provided, saving sync preferences immediately reconfigures the live engine

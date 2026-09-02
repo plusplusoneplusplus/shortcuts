@@ -1,6 +1,4 @@
 /**
- * Note Chat Executor Tests
- *
  * Tests for NoteChatExecutor.
  * Covers:
  * - buildModeOptions defaults to interactive (ask) agentMode

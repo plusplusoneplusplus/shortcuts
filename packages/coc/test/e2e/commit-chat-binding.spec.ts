@@ -1,6 +1,4 @@
 /**
- * Commit-Chat Binding E2E Tests
- *
  * Tests the commit-chat binding feature end-to-end:
  *   - CommitChatPanel rendering when toggling chat on a commit
  *   - Creating a binding (via UI flow through the CommitChatPanel)

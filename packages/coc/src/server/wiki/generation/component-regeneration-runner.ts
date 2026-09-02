@@ -1,11 +1,7 @@
 /**
- * Component Regeneration Runner
- *
  * Regenerates a single component article. Shares the registry, adapter, event
  * sink, AI availability check and wiki-reload policy with full generation so
  * the two paths cannot drift apart.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

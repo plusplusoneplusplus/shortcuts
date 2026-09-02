@@ -1,6 +1,4 @@
 /**
- * Tests for ChatPreferencesContext — provider and consumer hook.
- *
  * Validates that:
  * - SET_ALL dispatch sets loaded=true with correct pinnedIds + archivedIds
  * - pinChat / archiveChat update state optimistically and call REST endpoints

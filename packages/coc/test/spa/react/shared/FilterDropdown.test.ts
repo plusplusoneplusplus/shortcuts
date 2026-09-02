@@ -1,6 +1,4 @@
 /**
- * Tests for the FilterDropdown shared component.
- *
  * Source-code inspection tests that verify structure, props, and behaviour
  * without a full DOM rendering environment.
  */

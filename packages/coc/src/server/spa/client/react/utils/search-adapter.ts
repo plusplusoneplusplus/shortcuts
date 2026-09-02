@@ -17,7 +17,6 @@ export interface SearchResultTask {
     endTime: string;
     /** FTS5 snippet with <mark> highlights */
     _searchSnippet: string;
-    /** Whether this item came from a search result */
     _isSearchResult: true;
 }
 

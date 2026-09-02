@@ -3,9 +3,6 @@
  *
  * Pure-function helpers for assembling prompts and system messages used by
  * CLITaskExecutor.  No class state, no side-effects, no streaming references.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -330,7 +327,7 @@ export function extractPrompt(task: QueuedTask): string {
 
 /**
  * Skill content is now applied via `skillDirectories` passed to the AI SDK.
- * This function is kept for backward compatibility but returns the prompt unchanged.
+ * Kept for backward compatibility; returns the prompt unchanged.
  */
 export function applySkillContent(prompt: string, _task: QueuedTask): string {
     return prompt;
@@ -450,7 +447,6 @@ export function buildConversationHistoryContext(turns?: ConversationTurn[]): str
  * (guidance lives in the `suggest_follow_ups` tool description); returns empty
  * tools when disabled.
  *
- * @param enabled  Whether to attach the suggestion tool.
  * @param _count   Unused; retained to keep the positional signature stable.
  */
 export function buildFollowUpSuggestionsAddon(

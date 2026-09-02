@@ -1,6 +1,4 @@
 /**
- * Prompt Suggestion REST API Handler
- *
  * Serves the inline ghost-text autocomplete used by EnqueueDialog and
  * FollowUpInputArea. Returns a single best completion suffix from deterministic
  * history or opt-in AI generation grounded in workspace-scoped user history.

@@ -67,9 +67,6 @@ function renderHistory(history?: SideNoteHistoryTurn[]): string | undefined {
     return lines.join('\n');
 }
 
-/**
- * Build the compact grounded prompt sent to the one-shot invoker.
- */
 export function buildSideNotePrompt(input: SideNotePromptInput): string {
     const selection = truncate(input.selectedText, MAX_SELECTION_CHARS);
     const before = truncate(input.contextBefore ?? '', MAX_CONTEXT_CHARS);

@@ -1,10 +1,6 @@
 /**
- * OpenAPI Spec Validation Tests
- *
  * Validates that openapi.yaml is well-formed OpenAPI 3.1.0, all $ref pointers
  * resolve, and documented operations meet quality baseline.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect } from 'vitest';

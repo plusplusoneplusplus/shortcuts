@@ -1,9 +1,3 @@
-/**
- * Tests for diff module barrel exports.
- *
- * Verifies that the public API is correctly re-exported from the index.
- */
-
 import { describe, it, expect } from 'vitest';
 import * as diff from '../../src/diff';
 

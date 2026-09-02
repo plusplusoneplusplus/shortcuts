@@ -1,6 +1,4 @@
 /**
- * Workflow mutation REST API routes.
- *
  * Extracted from workflows-handler.ts to keep each module focused.
  */
 
@@ -29,9 +27,6 @@ import { resolveWorkspace, resolveAndValidatePath } from './workflow-utils';
 // Write Route Registration
 // ============================================================================
 
-/**
- * Register workflow mutation API routes on the given route table.
- */
 export function registerWorkflowWriteRoutes(
     routes: Route[],
     store: ProcessStore,
@@ -160,7 +155,6 @@ ${WORKFLOW_SCHEMA_REFERENCE}`;
                 return sendError(res, 400, 'Missing required field: instruction');
             }
 
-            // Validate that currentYaml is parseable YAML
             try {
                 yaml.load(currentYaml);
             } catch (err: any) {

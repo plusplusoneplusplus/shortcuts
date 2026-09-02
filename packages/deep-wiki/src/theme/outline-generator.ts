@@ -1,10 +1,6 @@
 /**
- * Theme Outline — Generator
- *
  * Generates a ThemeOutline by asking AI to decompose a theme into articles,
  * with a heuristic fallback when AI is unavailable.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -103,7 +99,6 @@ export async function generateThemeOutline(
 // ============================================================================
 
 /**
- * Parse AI response into a ThemeOutline.
  * Validates structure and normalizes fields.
  */
 export function parseOutlineResponse(
@@ -148,7 +143,6 @@ export function parseOutlineResponse(
         });
     }
 
-    // Build involvedComponents from probe results
     const involvedComponents = buildInvolvedModules(probeResult);
 
     return {
@@ -231,9 +225,6 @@ export function buildFallbackOutline(
 // Helpers
 // ============================================================================
 
-/**
- * Build ThemeInvolvedComponent array from enriched probe results.
- */
 function buildInvolvedModules(probeResult: EnrichedProbeResult): ThemeInvolvedComponent[] {
     return probeResult.probeResult.foundComponents.map(mod => ({
         componentId: mod.id,

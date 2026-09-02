@@ -1,6 +1,4 @@
 /**
- * Shared Comment Types
- *
  * Union types and helpers that allow comment UI components
  * (CommentCard, CommentPopover, CommentSidebar) to accept
  * both TaskComment and DiffComment without `as any` casts.

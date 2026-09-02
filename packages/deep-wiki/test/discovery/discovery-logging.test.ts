@@ -1,6 +1,4 @@
 /**
- * Discovery Logging Tests
- *
  * Tests that the discovery phase emits informative log messages
  * at each key step: SDK check, prompt building, AI invocation,
  * response parsing, and iterative round progress.
@@ -8,7 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock pipeline-core SDK
+// Mock forge SDK
 const mockGetOrThrow = vi.fn(() => ({
     isAvailable: vi.fn().mockResolvedValue(true),
     sendMessage: vi.fn().mockResolvedValue({

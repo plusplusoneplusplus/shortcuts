@@ -1,6 +1,4 @@
 /**
- * Tests for process-history-mapper.ts
- *
  * Covers:
  * - processToHistorySummary mapping from AIProcess → HistorySummary
  * - processToQueuedTask reconstruction for requeue fallback

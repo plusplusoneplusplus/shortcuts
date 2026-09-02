@@ -1,12 +1,3 @@
-/**
- * Queue Types
- *
- * Type definitions for the AI task queue system.
- * These types are used by TaskQueueManager and QueueExecutor.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 // ============================================================================
 // Core Types
 // ============================================================================
@@ -38,14 +29,10 @@ export interface PauseMarker {
 export type QueueItem = QueuedTask | PauseMarker;
 
 /**
- * Priority level for queued tasks
- * Higher priority tasks are executed first
+ * Higher priority tasks are executed first.
  */
 export type TaskPriority = 'high' | 'normal' | 'low';
 
-/**
- * Status of a queued task
- */
 export type QueueStatus =
     | 'queued'      // Waiting in queue
     | 'running'     // Currently executing
@@ -57,9 +44,6 @@ export type QueueStatus =
 // Task Configuration
 // ============================================================================
 
-/**
- * Configuration for task execution
- */
 export interface TaskExecutionConfig {
     /** AI model to use */
     model?: string;
@@ -97,9 +81,6 @@ export const DEFAULT_TASK_CONFIG: TaskExecutionConfig = {
 // Queued Task
 // ============================================================================
 
-/**
- * A task that has been queued for execution
- */
 export interface QueuedTask {
     /** Unique identifier for the task */
     id: string;
@@ -158,17 +139,11 @@ export interface QueuedTask {
     continuationOfSessionId?: string;
 }
 
-/**
- * Input for creating a new queued task (without auto-generated fields)
- */
 export type CreateTaskInput = Omit<
     QueuedTask,
     'id' | 'createdAt' | 'status' | 'startedAt' | 'completedAt' | 'result' | 'error' | 'retryCount'
 > & { id?: string };
 
-/**
- * Partial update for a queued task
- */
 export type TaskUpdate = Partial<
     Pick<
         QueuedTask,
@@ -180,9 +155,6 @@ export type TaskUpdate = Partial<
 // Queue Events
 // ============================================================================
 
-/**
- * Type of queue change event
- */
 export type QueueChangeType =
     | 'added'
     | 'removed'
@@ -204,9 +176,6 @@ export type QueueChangeType =
     | 'admitted'
     | 'unadmitted';
 
-/**
- * Event emitted when the queue changes
- */
 export interface QueueChangeEvent {
     /** Type of change */
     type: QueueChangeType;
@@ -220,9 +189,6 @@ export interface QueueChangeEvent {
     timestamp: number;
 }
 
-/**
- * Event types for the queue event emitter
- */
 export interface QueueEvents {
     change: (event: QueueChangeEvent) => void;
     taskAdded: (task: QueuedTask) => void;
@@ -265,9 +231,6 @@ export interface QueueExecutorDrainEvents {
 // Executor Types
 // ============================================================================
 
-/**
- * Result of task execution
- */
 export interface TaskExecutionResult<TResult = unknown> {
     /** Whether execution was successful */
     success: boolean;
@@ -280,7 +243,6 @@ export interface TaskExecutionResult<TResult = unknown> {
 }
 
 /**
- * Abstract task executor interface
  * Implement this for different backends (AI service, mock, etc.)
  */
 export interface TaskExecutor<TResult = unknown> {
@@ -298,9 +260,6 @@ export interface TaskExecutor<TResult = unknown> {
     cancel?(taskId: string): void;
 }
 
-/**
- * Options for the queue executor
- */
 export interface QueueExecutorOptions {
     /** Maximum concurrent task executions (default: 1) */
     maxConcurrency?: number;
@@ -322,9 +281,6 @@ export interface QueueExecutorOptions {
     initialDelayMs?: number;
 }
 
-/**
- * Default queue executor options
- */
 export const DEFAULT_EXECUTOR_OPTIONS: Required<QueueExecutorOptions> = {
     maxConcurrency: 1,
     autoStart: true,
@@ -338,9 +294,6 @@ export const DEFAULT_EXECUTOR_OPTIONS: Required<QueueExecutorOptions> = {
 // Queue Manager Types
 // ============================================================================
 
-/**
- * Options for the task queue manager
- */
 export interface TaskQueueManagerOptions {
     /** Maximum queue size (0 = unlimited, default: 0) */
     maxQueueSize?: number;
@@ -373,9 +326,6 @@ export interface TaskQueueManagerOptions {
     isExclusive?: (task: QueuedTask) => boolean;
 }
 
-/**
- * Default queue manager options
- */
 export const DEFAULT_QUEUE_MANAGER_OPTIONS: Required<Omit<TaskQueueManagerOptions, 'getTaskRepoId' | 'isExclusive'>> = {
     maxQueueSize: 0,
     keepHistory: true,
@@ -391,9 +341,6 @@ export interface PauseReason {
     failedAt: string;
 }
 
-/**
- * Statistics about the queue
- */
 export interface QueueStats {
     /** Number of tasks waiting in queue */
     queued: number;
@@ -457,8 +404,7 @@ export interface RegistryStats {
 // ============================================================================
 
 /**
- * Numeric values for priority comparison
- * Higher value = higher priority
+ * Higher value = higher priority.
  */
 export const PRIORITY_VALUES: Record<TaskPriority, number> = {
     high: 3,
@@ -467,8 +413,7 @@ export const PRIORITY_VALUES: Record<TaskPriority, number> = {
 };
 
 /**
- * Compare two tasks by priority (for sorting)
- * Returns negative if a should come before b
+ * Returns negative if a should come before b.
  */
 export function comparePriority(a: QueuedTask, b: QueuedTask): number {
     const priorityDiff = PRIORITY_VALUES[b.priority] - PRIORITY_VALUES[a.priority];

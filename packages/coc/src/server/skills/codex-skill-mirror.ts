@@ -1,6 +1,4 @@
 /**
- * Codex Skill Mirror
- *
  * Mirrors globally-installed bundled CoC skills from ~/.coc/skills to
  * ~/.codex/skills (or $CODEX_HOME/skills) so Codex can load them.
  *
@@ -53,9 +51,6 @@ export function getCodexHome(): string {
     return process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 }
 
-/**
- * Get the Codex skills directory.
- */
 export function getCodexSkillsDir(): string {
     return path.join(getCodexHome(), 'skills');
 }
@@ -154,7 +149,6 @@ async function copySkillDirectoryAtomic(
         // Copy to temporary location
         await copyDirectory(sourcePath, tempPath);
 
-        // Write marker
         writeMarker(tempPath, skillName, version);
 
         // Remove existing target if present
@@ -204,9 +198,7 @@ async function copyDirectory(source: string, dest: string): Promise<void> {
  * Mirror a bundled skill from CoC global skills to Codex skills directory.
  *
  * @param cocSkillsDir  CoC global skills directory (e.g. ~/.coc/skills)
- * @param skillName     Name of the skill to mirror
  * @param replace       If true, replace existing user-managed skills
- * @returns Mirror result with status
  */
 export async function mirrorBundledSkillToCodex(
     cocSkillsDir: string,
@@ -216,7 +208,6 @@ export async function mirrorBundledSkillToCodex(
     const logger = getLogger();
 
     try {
-        // Validate source skill exists
         const sourcePath = path.join(cocSkillsDir, skillName);
         const sourceSkillMd = path.join(sourcePath, 'SKILL.md');
         if (!fs.existsSync(sourceSkillMd)) {
@@ -227,7 +218,6 @@ export async function mirrorBundledSkillToCodex(
             };
         }
 
-        // Get target path
         const codexSkillsDir = getCodexSkillsDir();
         const targetPath = path.join(codexSkillsDir, skillName);
 
@@ -243,13 +233,10 @@ export async function mirrorBundledSkillToCodex(
             };
         }
 
-        // Parse source version
         const sourceVersion = parseSkillVersionFromFile(sourceSkillMd);
 
-        // Check if target exists
         const targetExists = fs.existsSync(targetPath);
         if (!targetExists) {
-            // New skill - just copy it
             await copySkillDirectoryAtomic(sourcePath, targetPath, skillName, sourceVersion);
             logger.info(LogCategory.GENERAL, `Mirrored bundled skill to Codex: ${skillName}`);
             return { skillName, status: 'copied' };
@@ -310,9 +297,7 @@ export async function mirrorBundledSkillToCodex(
  * Mirror multiple bundled skills to Codex.
  *
  * @param cocSkillsDir  CoC global skills directory
- * @param skillNames    Names of skills to mirror
  * @param replace       If true, replace existing user-managed skills
- * @returns Array of mirror results
  */
 export async function mirrorBundledSkillsToCodex(
     cocSkillsDir: string,
@@ -332,7 +317,6 @@ export async function mirrorBundledSkillsToCodex(
  * Called during server initialization when Codex is enabled.
  *
  * @param cocSkillsDir  CoC global skills directory (e.g. ~/.coc/skills)
- * @returns Sync results
  */
 export async function syncInstalledSkillsToCodex(cocSkillsDir: string): Promise<{
     synced: string[];
@@ -356,7 +340,6 @@ export async function syncInstalledSkillsToCodex(cocSkillsDir: string): Promise<
             return result;
         }
 
-        // Mirror each skill
         const mirrorResults = await mirrorBundledSkillsToCodex(cocSkillsDir, skillNames, false);
 
         for (const mr of mirrorResults) {

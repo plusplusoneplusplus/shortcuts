@@ -1,6 +1,4 @@
 /**
- * Chat Turn System Message Tests
- *
  * The system message is what the model actually reads, so block *order* is
  * load-bearing and is asserted here rather than left to each call site.
  *

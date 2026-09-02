@@ -1,6 +1,4 @@
 /**
- * SDK Session ID Lookup Tests
- *
  * Verifies GET /api/processes?sdkSessionId= uses the optimized
  * getProcessBySdkSessionId() on SqliteProcessStore instead of
  * loading all processes, and falls back to getAllProcesses().find()

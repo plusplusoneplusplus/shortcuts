@@ -1,6 +1,3 @@
-/**
- * Tests for the shared FilePathLink component.
- */
 /* @vitest-environment jsdom */
 
 import { describe, it, expect } from 'vitest';

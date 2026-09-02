@@ -4,6 +4,31 @@ The transport layer under the remote-first shell: how a REST call or WebSocket f
 workspace reaches the server that owns it, and which seam each feature wires into. The
 shell UI that surfaces these workspaces is [remote-shell.md](remote-shell.md).
 
+## The rule for every call site
+
+**A workspace-scoped or process-scoped API call must resolve its client from the
+workspace: `getCocClientForWorkspace(workspaceId)` outside React, `useCocClient(ref)`
+inside it. Never `getSpaCocClient()`, `fetchApi`, or a bare relative `/api/...` URL.**
+
+There is no server-side proxy for remote hosts. The browser talks straight to each
+remote CoC server at its SSH-forwarded origin (`http://127.0.0.1:<localPort>`), so the
+routing decision is made per call site and nothing downstream can repair a wrong one. A
+remote workspace id is a plain `ws-v2-...` id with no `remote:` marker on the wire, so a
+mis-routed call looks perfectly valid to the local server and simply misses:
+
+- Routes that start with `resolveWorkspaceOrFail` 404, and the feature reports a generic
+  failure — "Could not create folder" for a folder create sent to the local server.
+- Routes that only validate the id **shape** answer 200 against the wrong host's data,
+  which is worse: an empty list read as "nothing here", or a write landing on local disk.
+
+Both clients fall back safely: `getCocClientForWorkspace(undefined)` and an unknown id
+return the default page-origin client, so routing a local workspace through the registry
+is byte-for-byte the old behavior. There is no reason to leave a workspace-scoped call
+site unrouted.
+
+When a hook does not already receive a `workspaceId`, thread it in from the caller rather
+than reaching for the default client — that is what `useChatFolderAssignment` does.
+
 ## Clone routing primitives
 
 A remote clone's REST and WebSocket traffic is routed to its server's `baseUrl` through
@@ -87,7 +112,7 @@ input.
 | Seam | Call sites |
 |---|---|
 | `useCocClient(workspaceId)` (React) | `useGitInfo`; `TerminalView`; `ChatDetail` (all `processes`/`queue`/`notes`/`canvases`/`skills` calls); `RepoSchedulesTab` (schedule CRUD, notes-git status); `WorkItemSection`; `WorkItemHierarchyTree`; `WorkItemExecuteDialog`; `PullRequestsTab` (list/suggestions/roster/classification); `NativeCliSessionsPanel` (native CLI sessions read off `workspace.rootPath` on the host machine) |
-| `getCocClientForWorkspace(workspaceId)` (non-React services) | `explorerApi.*`; `notesApi.*`; `useRecentSkills` |
+| `getCocClientForWorkspace(workspaceId)` (non-React services) | `explorerApi.*`; `notesApi.*`; `useRecentSkills`; the chat-folder hooks `useChatFolders`, `useChatFolderMutations`, `useChatFolderAssignment`; `queue/hooks/pinArchiveApi` |
 | Inline registry use — `requestForWorkspace` for raw fetches, `getCocClientForWorkspace` for typed calls | `EnqueueDialog` (`/summary`, `/skills/all`, `queue.enqueue`, `recordSkillUsage`); `RepoSettingsTab` (instructions, processes, description PATCH, Agent Skills via its injected `useWorkspaceSkillsController` resolver, and MCP policy via its injected `useWorkspaceMcpConfigController` resolver); `useWorkspaceMcpConfigController` (the mcp-config read plus every `enabledMcpServers` / `enabledMcpTools` write, serialized per workspace); `useMcpServerInspectorController` (tool discovery, server detail, add/update/migrate/delete, and — via `cloneApiBase` — the raw `mcp-oauth/start` fetch and its status poller, so an OAuth token lands on the host owning the repo); `RepoDetail` (work-items badge preview); `WorkItemsTab` (commit file list); `BranchPickerModal` |
 
 `EnqueueDialog`'s Workspace dropdown merges local `appState.workspaces` with remote
@@ -125,6 +150,20 @@ The Ralph workflow pane routes its whole data flow to the clone: the journal rea
 `getCocClientForWorkspace(workspaceId)`, the continue/new-loop/resume mutations
 (`RalphWorkflowPaneContainer` / `RalphWorkflowPane`) via `useCocClient(workspaceId)`.
 The bare local singleton 404s a remote-only session as "Ralph session not found".
+
+### Chat list and chat folders
+
+`queue/hooks/pinArchiveApi` (pin/unpin, archive/unarchive, and their batch forms) takes a
+`workspaceId` and routes through `getCocClientForWorkspace(workspaceId)`.
+
+All three chat-folder hooks do the same: `useChatFolders` (the list fetch),
+`useChatFolderMutations` (create / rename / recolor / reorder / delete / undo), and
+`useChatFolderAssignment` (`setProcessFolder`, `setProcessFolderBatch`).
+`useChatFolderAssignment` takes `workspaceId` as an option purely to route — its own work
+is process-scoped — and `ChatListPane` passes the same id its sibling folder hooks get.
+The folder routes begin with `resolveWorkspaceOrFail`, so a local-origin call for a remote
+workspace 404s: the create surfaces "Could not create folder", and the list fetch's catch
+keeps the previous list, leaving the Folders section silently empty.
 
 ### Activity, workflows, and events
 

@@ -1,6 +1,4 @@
 /**
- * Chat Turn Runner Tests
- *
  * The MCP OAuth callback drives live UI (the dashboard's authorize prompt), so
  * it is pinned here: the pending record it registers, the SSE payload it emits,
  * and — critically — that no failure inside it can interrupt the turn.

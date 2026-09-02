@@ -1,6 +1,4 @@
 /**
- * Tests for SkillsBundledPanel component.
- *
  * Covers: initial load, install-selected, install-all, URL scan,
  * install-from-URL, error handling, and source-tab switching.
  */

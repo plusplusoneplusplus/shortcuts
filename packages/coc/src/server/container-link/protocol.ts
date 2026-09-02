@@ -1,6 +1,4 @@
 /**
- * Agent ↔ Container Channel Protocol
- *
  * Defines the message types exchanged over the persistent WebSocket
  * connection between a CoC agent (outbound) and the container (inbound).
  *
@@ -15,9 +13,7 @@
 export interface ChannelMessage {
     /** Correlation ID for request/response matching. */
     id: string;
-    /** Message type discriminator. */
     type: ChannelMessageType;
-    /** Type-specific payload. */
     payload: unknown;
 }
 
@@ -40,7 +36,6 @@ export type ChannelMessageType =
 
 /** Agent announces itself to the container. */
 export interface RegisterPayload {
-    /** Agent's display name. */
     name: string;
     /** Agent's unique ID (generated if not provided). */
     agentId?: string;
@@ -70,9 +65,7 @@ export interface EventPayload {
 export interface ResponsePayload {
     /** Correlation ID matching the original request. */
     requestId: string;
-    /** HTTP status code. */
     status: number;
-    /** Response headers. */
     headers: Record<string, string>;
     /** Response body (string, usually JSON). */
     body: string;
@@ -84,7 +77,6 @@ export interface SSEEventPayload {
     subscriptionId: string;
     /** SSE event name (if any). */
     event?: string;
-    /** SSE data field. */
     data: string;
     /** SSE id field (if any). */
     id?: string;
@@ -106,7 +98,6 @@ export interface RegisteredPayload {
 export interface RequestPayload {
     /** Correlation ID (agent must include this in response). */
     requestId: string;
-    /** HTTP method. */
     method: string;
     /** Request path (e.g. /api/workspaces/...). */
     path: string;

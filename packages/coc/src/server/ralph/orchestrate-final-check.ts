@@ -76,9 +76,7 @@ export interface OrchestrateFinalCheckInput {
 // ============================================================================
 
 /**
- * Orchestrate the outcome of a completed final-check AI task.
- *
- * This function is intentionally async-void from the bridge's perspective:
+ * Intentionally async-void from the bridge's perspective:
  * all errors are logged and do not propagate.
  */
 export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): Promise<void> {

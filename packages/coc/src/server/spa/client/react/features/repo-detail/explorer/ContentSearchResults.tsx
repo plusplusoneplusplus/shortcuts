@@ -55,7 +55,6 @@ function baseName(path: string): string {
     return index < 0 ? path : path.slice(index + 1);
 }
 
-/** Everything before the last path segment. */
 function dirName(path: string): string {
     const index = path.lastIndexOf('/');
     return index < 0 ? '' : path.slice(0, index);

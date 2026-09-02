@@ -1,7 +1,3 @@
-/**
- * Tests for cron infrastructure builder.
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
@@ -128,7 +124,6 @@ describe('Cron Infrastructure', () => {
             expect(timerRegistry.has('cron_shutdown_1')).toBe(true);
             expect(timerRegistry.has('cron_shutdown_2')).toBe(true);
 
-            // Shutdown
             executor.shutdownAll();
 
             // Timers should be cancelled

@@ -1,6 +1,4 @@
 /**
- * Git Branch Edge Cases Tests
- *
  * Section 3: Branch Operation Edge Cases
  * - DELETE /branches/:name — current branch, unmerged, force, nonexistent
  * - POST /branches/rename — to existing name, current branch rename
@@ -13,7 +11,7 @@
  * - POST /branches from detached HEAD
  * - POST /push from detached HEAD
  *
- * Mocks BranchService and child_process. Cross-platform compatible.
+ * Mocks BranchService and child_process.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';

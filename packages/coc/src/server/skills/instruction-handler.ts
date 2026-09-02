@@ -1,6 +1,4 @@
 /**
- * Per-Repo Instruction Files REST API Handler
- *
  * CRUD endpoints for managing .github/coc/instructions*.md files
  * inside a workspace repository.
  *
@@ -9,8 +7,6 @@
  *   GET    /api/workspaces/:id/instructions/:mode   — read one file
  *   PUT    /api/workspaces/:id/instructions/:mode   — create/update file
  *   DELETE /api/workspaces/:id/instructions/:mode   — delete file
- *
- * Pure Node.js. Cross-platform (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';

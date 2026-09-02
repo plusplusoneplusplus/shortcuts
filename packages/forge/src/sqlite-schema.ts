@@ -525,7 +525,6 @@ export function initializeDatabase(db: Database.Database): void {
             migrateV28toV29(db);
         }
 
-        // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });
 

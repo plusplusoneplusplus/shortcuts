@@ -1,5 +1,3 @@
-/** Micro-components: StatusDot, StatusBadge, failureLabel. */
-
 export function StatusDot({ status, isRunning }: { status: string; isRunning: boolean }) {
     if (isRunning) return <span title="Running">🔵</span>;
     switch (status) {

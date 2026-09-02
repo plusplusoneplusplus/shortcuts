@@ -1,6 +1,4 @@
 /**
- * Validate Command Tests
- *
  * Tests for pipeline validation including YAML parsing, input validation,
  * map/reduce configuration, and filter validation.
  */

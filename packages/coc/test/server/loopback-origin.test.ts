@@ -12,8 +12,6 @@
  *   2. `isWebSocketOriginAllowed` WS-origin decision.
  *   3. An integration-style boot of a real HTTP server with the upgrade handler:
  *      a loopback WS upgrade connects; a non-loopback WS upgrade is rejected.
- *
- * Cross-platform compatible (Linux/macOS/Windows).
  */
 
 import { describe, it, expect, afterEach } from 'vitest';

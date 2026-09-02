@@ -1,5 +1,3 @@
-/** Workspace Agent Skills view composed from controller state and focused UI components. */
-
 import './agent-skills-redesign.css';
 
 import { useEffect, useMemo, useState } from 'react';

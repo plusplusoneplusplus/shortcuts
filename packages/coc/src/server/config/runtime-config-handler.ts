@@ -1,6 +1,4 @@
 /**
- * Runtime Config API Handler
- *
  * Exposes GET /api/config/runtime so the SPA can fetch current feature
  * flags from the RuntimeConfigService instead of relying on stale
  * HTML-embedded window.__DASHBOARD_CONFIG__.
@@ -41,9 +39,6 @@ export interface RuntimeConfigRouteOptions {
     bindAddress: string;
 }
 
-/**
- * Build the runtime dashboard config response from the current config snapshot.
- */
 export function buildRuntimeDashboardConfig(
     runtimeConfigService: RuntimeConfigService,
     hostname: string,

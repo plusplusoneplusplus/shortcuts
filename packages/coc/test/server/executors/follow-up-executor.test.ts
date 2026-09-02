@@ -1,6 +1,4 @@
 /**
- * FollowUpExecutor Unit Tests
- *
  * Verifies FollowUpExecutor.executeFollowUp():
  * - Throws when process not found
  * - Happy path: sends follow-up message, updates process status to completed,

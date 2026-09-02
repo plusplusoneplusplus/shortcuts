@@ -1,6 +1,4 @@
 /**
- * Multi-repo scoping of the shared executor runtime
- *
  * Late-bound capabilities are operator-wide: one object is assembled in the
  * composition layer and shared by identity with every per-repo bridge. Repo
  * identity is NOT part of that object — the working directory and the
@@ -9,8 +7,6 @@
  *
  * These tests run two workspace IDs over two roots at once and assert both
  * halves of that contract: the capabilities are shared, the repo scoping is not.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';

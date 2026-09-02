@@ -1,10 +1,6 @@
 /**
- * ComponentRegenerationRunner Tests
- *
  * Characterizes the single-article path: event sequence, AI failures,
  * cancellation, cache + markdown persistence, and the shared reload policy.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

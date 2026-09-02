@@ -1,6 +1,4 @@
 /**
- * Image Preview API Endpoint Tests
- *
  * Tests for GET /api/workspaces/:id/files/preview with image files.
  * Verifies that image files return base64-encoded content instead of
  * the "Binary files not supported" error.

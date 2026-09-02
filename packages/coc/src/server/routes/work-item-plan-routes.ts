@@ -1,6 +1,4 @@
 /**
- * Work Item Plan REST API Routes
- *
  * Plan versioning and AI-assisted refinement for work items.
  *
  * Routes:

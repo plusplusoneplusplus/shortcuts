@@ -1,9 +1,3 @@
-/**
- * Tests for TaskQueueManager
- *
- * Cross-platform compatible (Linux/Mac/Windows).
- */
-
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
     TaskQueueManager,
@@ -1552,7 +1546,6 @@ describe('TaskQueueManager', () => {
 
             expect(resolved).toBe(false);
 
-            // Mark started then completed
             manager.markStarted(id);
             expect(resolved).toBe(false);
 
@@ -1853,7 +1846,6 @@ describe('TaskQueueManager', () => {
             expect(repoManager.dequeue()).toBeUndefined();
             expect(repoManager.size()).toBe(2);
 
-            // Resume repo-A
             repoManager.resumeRepo('repo-A');
             expect(repoManager.dequeue()!.displayName).toBe('A1');
             expect(repoManager.dequeue()!.displayName).toBe('A2');
@@ -2856,11 +2848,9 @@ describe('TaskQueueManager.returnToHistory', () => {
         manager.markStarted(id);
         manager.markCompleted(id, 'done');
 
-        // Requeue it
         manager.requeueFromHistory(id);
         expect(manager.getQueued()).toHaveLength(1);
 
-        // Return to history
         const result = manager.returnToHistory(id);
         expect(result).toBe(true);
         expect(manager.getQueued()).toHaveLength(0);
@@ -2992,7 +2982,6 @@ describe('Ralph-session continuation ordering', () => {
         const unrelatedId1 = m.enqueue(makeExclusiveTask({ displayName: 'unrelated-1' }));
         const unrelatedId2 = m.enqueue(makeExclusiveTask({ displayName: 'unrelated-2' }));
 
-        // Enqueue a Ralph continuation for session A
         const continuationId = m.enqueue(makeRalphTask('session-A', { displayName: 'ralph-continuation' }));
 
         const queued = m.getQueued();

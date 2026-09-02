@@ -1,13 +1,9 @@
 /**
- * Reduce Prompt Templates
- *
  * Prompt templates for the reduce phase of Phase 4 (Article Generation).
  * The AI reducer receives component summaries and generates:
  * - index.md: Categorized table of contents with component summaries
  * - architecture.md: High-level architecture with Mermaid diagrams
  * - getting-started.md: Setup, build, and run instructions
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 /**
@@ -104,15 +100,11 @@ IMPORTANT:
 Do NOT write, create, or save any files to disk. Return ONLY the JSON object in your response.`;
 }
 
-/**
- * Get the output fields for the reduce phase.
- */
 export function getReduceOutputFields(): string[] {
     return ['index', 'architecture', 'gettingStarted'];
 }
 
 /**
- * Build a concise component summary for the reduce phase.
  * We don't send full articles to the reducer — just names and overviews.
  */
 export function buildComponentSummaryForReduce(
@@ -213,9 +205,6 @@ IMPORTANT:
 Do NOT write, create, or save any files to disk. Return ONLY the JSON object in your response.`;
 }
 
-/**
- * Get the output fields for the domain-level reduce phase.
- */
 export function getDomainReduceOutputFields(): string[] {
     return ['index', 'architecture'];
 }

@@ -1,6 +1,4 @@
 /**
- * Canvas on-disk layout
- *
  * The single place that knows where a canvas's files live. Every persistence
  * service takes a `CanvasLayout` instead of joining paths itself, so the
  * directory shape is stated once:

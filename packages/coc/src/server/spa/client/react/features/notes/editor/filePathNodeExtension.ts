@@ -26,10 +26,7 @@ export const FILE_PATH_PASTE_RE = new RegExp(
     'g',
 );
 
-/**
- * Derive a display label from a file path.
- * Returns the file basename (last segment).
- */
+/** The last path segment. */
 export function filePathLabel(filePath: string): string {
     return filePath.split('/').pop() ?? filePath;
 }

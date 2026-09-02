@@ -1,10 +1,6 @@
 /**
- * Process Store Interface
- *
  * Abstract storage interface for AI processes with workspace-scoped querying.
  * Enables multi-workspace process tracking for the standalone AI execution server.
- *
- * Pure Node.js; can be used in CLI tools and other environments.
  */
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn, TimelineItem } from './ai/process-types';
@@ -331,14 +327,9 @@ export interface ProcessIndexEntry {
     compaction?: ProcessCompactionState;
 }
 
-/**
- * Callback type for process change notifications.
- */
 export type ProcessChangeCallback = (event: ProcessEvent) => void;
 
 /**
- * Abstract storage interface for AI processes.
- *
  * Implementations may be backed by in-memory Map (tests / server) or SQLite
  * (persistent server).
  */

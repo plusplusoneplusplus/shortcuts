@@ -1,6 +1,4 @@
 /**
- * MCP Connection Tester
- *
  * Spawns a temporary MCP server process (stdio) or checks HTTP/SSE reachability,
  * sends a JSON-RPC `initialize` handshake, and returns success/error.
  *

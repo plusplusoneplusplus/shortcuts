@@ -13,8 +13,6 @@ import { spawn, SpawnOptions } from 'child_process';
 import { InteractiveSession, TerminalType, WindowFocusResult } from './terminal-types';
 
 /**
- * Window Focus Service
- *
  * Handles platform-specific window focusing for interactive sessions.
  * Currently only implemented for Windows.
  */
@@ -67,7 +65,6 @@ export class WindowFocusService {
             };
         }
 
-        // Check if session has a PID
         if (!session.pid) {
             return {
                 success: false,
@@ -75,7 +72,6 @@ export class WindowFocusService {
             };
         }
 
-        // Check if session is active
         if (session.status !== 'active' && session.status !== 'starting') {
             return {
                 success: false,
@@ -83,7 +79,6 @@ export class WindowFocusService {
             };
         }
 
-        // Focus using the appropriate method for the terminal type
         return this.focusWindowByPid(session.pid, session.terminalType);
     }
 
@@ -168,9 +163,6 @@ export class WindowFocusService {
  */
 let defaultService: WindowFocusService | undefined;
 
-/**
- * Get the default WindowFocusService instance
- */
 export function getWindowFocusService(): WindowFocusService {
     if (!defaultService) {
         defaultService = new WindowFocusService();

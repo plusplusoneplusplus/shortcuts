@@ -1,6 +1,4 @@
 /**
- * TaskWatcher Unit Tests
- *
  * Tests for the TaskWatcher class which watches a repo-scoped tasks directory
  * for file changes and fires debounced callbacks.
  *

@@ -1,6 +1,4 @@
 /**
- * MCP Servers Panel E2E Tests
- *
  * Tests the MCP Servers settings panel at #repos/:id/settings/mcp:
  *   - Navigation to the panel and rendering
  *   - Empty state when no MCP servers are configured

@@ -1,10 +1,6 @@
 /**
- * Shared Router Tests
- *
  * Unit tests for the shared Router implementation used by both
  * main server and wiki server routers.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -28,7 +24,6 @@ import type { SharedRouterOptions } from '../../../src/server/shared/router';
 // Test Helpers
 // ============================================================================
 
-/** Make an HTTP request to the test server. */
 function request(
     url: string,
     options: { method?: string; body?: string; headers?: Record<string, string> } = {}
@@ -60,7 +55,6 @@ function request(
     });
 }
 
-/** Create a test server from router options. */
 function createTestServer(options: SharedRouterOptions): Promise<{ server: http.Server; baseUrl: string }> {
     return new Promise((resolve) => {
         const handler = createRouter(options);

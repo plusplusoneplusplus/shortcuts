@@ -1,6 +1,4 @@
 /**
- * Queue Executor Bridge — Title Generation Tests
- *
  * Tests for the AI-generated title feature in CLITaskExecutor:
  * - Title generated after first task execution via the SDK transform boundary
  * - Title generated after follow-up execution

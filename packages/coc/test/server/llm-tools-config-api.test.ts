@@ -1,6 +1,4 @@
 /**
- * LLM Tools Config API Endpoint Tests
- *
  * Tests for the llm-tools-config API routes:
  * - GET /api/workspaces/:id/llm-tools-config
  * - PUT /api/workspaces/:id/llm-tools-config

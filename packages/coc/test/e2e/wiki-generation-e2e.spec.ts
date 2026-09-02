@@ -1,6 +1,4 @@
 /**
- * Wiki Generation End-to-End Tests
- *
  * Coverage gap: wiki-admin.spec.ts mocks SSE for individual phases.
  * This spec exercises the complete user journey from the wiki list:
  *   add wiki → navigate → open generate tab → trigger generation → observe

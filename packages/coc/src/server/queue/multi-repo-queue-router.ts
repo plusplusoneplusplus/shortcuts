@@ -5,9 +5,6 @@
  * mapping between workspace/repo identifiers and the per-repo TaskQueueManager
  * + QueueExecutor pair. It does not itself execute tasks; execution is
  * delegated to each repo's QueueExecutor.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';

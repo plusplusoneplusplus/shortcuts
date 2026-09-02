@@ -135,7 +135,6 @@ describe('POST /api/git-info/batch — workspace isolation', () => {
         const data = resp.json();
         expect(data.results[WORKSPACE_A.id]).not.toBeNull();
         expect(data.results[WORKSPACE_B.id]).not.toBeNull();
-        // nonexistent should be null or have an error field
         const nonexistentResult = data.results['nonexistent-ws'];
         expect(nonexistentResult === null || (typeof nonexistentResult === 'object' && nonexistentResult.error !== undefined)).toBe(true);
     });

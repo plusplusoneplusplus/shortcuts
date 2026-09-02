@@ -12,7 +12,6 @@ export function installTeamsAuthRoutes(table: RouteTable, controller: TeamsAuthC
         sendJson(res, await controller.start());
     });
 
-    // POST /auth/exchange — client sends { code, codeVerifier, redirectUri }
     table.on('POST', '/api/container/messaging/teams/auth/exchange', async ({ req, res }) => {
         const body = await readBody(req) as { code?: string; codeVerifier?: string; redirectUri?: string };
         sendJson(res, await controller.exchange(body));

@@ -1,6 +1,4 @@
 /**
- * Add Diff Comment Tool Tests
- *
  * Unit tests for the createAddDiffCommentTool factory.
  */
 

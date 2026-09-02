@@ -8,17 +8,12 @@
  * - Relative paths: resolved from pipeline package directory
  * - Absolute paths: used as-is
  * - Bare filenames: searched in order (pipeline dir, prompts/ subfolder, shared prompts)
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { PipelineCoreError, ErrorCode } from '../errors';
 
-/**
- * Error thrown for prompt file resolution issues
- */
 export class PromptResolverError extends PipelineCoreError {
     /** Paths that were searched when resolving the prompt */
     readonly searchedPaths?: string[];
@@ -36,9 +31,6 @@ export class PromptResolverError extends PipelineCoreError {
     }
 }
 
-/**
- * Result of prompt file resolution
- */
 export interface PromptResolutionResult {
     /** The resolved prompt content (frontmatter stripped) */
     content: string;
@@ -101,7 +93,6 @@ export function getSearchPaths(filename: string, pipelineDirectory: string): str
  * - Paths with separators (e.g., "prompts/map.prompt.md"): resolved relative to pipelineDirectory
  * - Bare filenames (e.g., "analyze.prompt.md"): searched using getSearchPaths()
  * 
- * @param promptFile Path or filename from config
  * @param pipelineDirectory Pipeline package directory (where pipeline.yaml lives)
  * @returns Absolute path to the prompt file
  * @throws PromptResolverError if file not found
@@ -156,9 +147,6 @@ export function resolvePromptPath(promptFile: string, pipelineDirectory: string)
  * ---
  * 
  * Actual prompt content starts here...
- * 
- * @param fileContent Raw file content
- * @returns Object with content and whether frontmatter was stripped
  */
 export function extractPromptContent(fileContent: string): { content: string; hadFrontmatter: boolean } {
     const match = fileContent.match(FRONTMATTER_REGEX);
@@ -182,7 +170,6 @@ export function extractPromptContent(fileContent: string): { content: string; ha
  * 
  * This is the main API for loading prompts from files.
  * 
- * @param promptFile Path or filename from config
  * @param pipelineDirectory Pipeline package directory (where pipeline.yaml lives)
  * @returns Prompt content string (frontmatter stripped)
  * @throws PromptResolverError if file not found or empty
@@ -229,7 +216,6 @@ export async function resolvePromptFile(
 /**
  * Resolve and load a prompt file synchronously
  * 
- * @param promptFile Path or filename from config
  * @param pipelineDirectory Pipeline package directory (where pipeline.yaml lives)
  * @returns Prompt content string (frontmatter stripped)
  * @throws PromptResolverError if file not found or empty
@@ -266,7 +252,6 @@ export function resolvePromptFileSync(
 /**
  * Resolve and load a prompt file with full result details
  * 
- * @param promptFile Path or filename from config
  * @param pipelineDirectory Pipeline package directory (where pipeline.yaml lives)
  * @returns Full resolution result with content, path, and frontmatter info
  * @throws PromptResolverError if file not found or empty
@@ -307,8 +292,6 @@ export async function resolvePromptFileWithDetails(
 /**
  * Check if a prompt file exists (without loading it)
  * 
- * @param promptFile Path or filename from config
- * @param pipelineDirectory Pipeline package directory
  * @returns True if the file exists at any of the search locations
  */
 export function promptFileExists(promptFile: string, pipelineDirectory: string): boolean {
@@ -323,8 +306,6 @@ export function promptFileExists(promptFile: string, pipelineDirectory: string):
 /**
  * Validate that a prompt file can be resolved (for config validation)
  * 
- * @param promptFile Path or filename from config
- * @param pipelineDirectory Pipeline package directory
  * @returns Validation result with error message if invalid
  */
 export function validatePromptFile(

@@ -1,6 +1,4 @@
 /**
- * Tests for unified diff provider types.
- *
  * Verifies type-level contracts and discriminated union narrowing.
  */
 

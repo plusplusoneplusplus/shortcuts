@@ -1,6 +1,4 @@
 /**
- * Global Workspace Tests
- *
  * Verifies that:
  * - ensureGlobalWorkspace creates the directory
  * - Calling it twice does not create duplicate workspace entries

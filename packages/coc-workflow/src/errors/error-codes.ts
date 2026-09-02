@@ -1,6 +1,4 @@
 /**
- * Error Codes for Pipeline Core
- *
  * Well-known error codes used across the workflow package.
  * These codes provide structured error identification without relying on message parsing.
  *
@@ -101,9 +99,6 @@ export const ErrorCode = {
     UNKNOWN: 'UNKNOWN',
 } as const;
 
-/**
- * Type representing valid error codes
- */
 export type ErrorCodeType = typeof ErrorCode[keyof typeof ErrorCode];
 
 /**
@@ -147,14 +142,8 @@ export const WorkflowErrorCode = {
     SCRIPT_NONZERO_EXIT: 'SCRIPT_NONZERO_EXIT',
 } as const;
 
-/**
- * Type representing valid workflow error codes
- */
 export type WorkflowErrorCodeType = typeof WorkflowErrorCode[keyof typeof WorkflowErrorCode];
 
-/**
- * Map Node.js system error codes to our error codes
- */
 export function mapSystemErrorCode(nodeCode: string): ErrorCodeType {
     switch (nodeCode) {
         case 'ENOENT':

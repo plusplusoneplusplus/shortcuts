@@ -1,6 +1,4 @@
 /**
- * Types for the MCP OAuth subsystem.
- *
  * Captures pending OAuth requests surfaced by the Copilot SDK's
  * `mcp.oauth_required` event so the dashboard can prompt the user to
  * complete the browser-based authorization flow.

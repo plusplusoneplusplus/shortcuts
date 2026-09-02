@@ -1,7 +1,3 @@
-/**
- * Tests for useTokenUsageStats hook.
- */
-
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useTokenUsageStats } from '../../../../src/server/spa/client/react/features/chat/hooks/useTokenUsageStats';

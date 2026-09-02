@@ -1,7 +1,3 @@
-/**
- * Tests for the Pipeline → Workflow Compiler
- */
-
 import { describe, it, expect } from 'vitest';
 import {
     detectFormat,

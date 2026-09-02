@@ -6,8 +6,6 @@
  * task comments, repo-scoped (multi-repo safe) via `getRepoDataPath`:
  *
  *   {dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json
- *
- * Pure Node.js; cross-platform (Linux/Mac/Windows).
  */
 
 import * as crypto from 'crypto';
@@ -53,9 +51,6 @@ export interface ChatSideNoteTurn {
     answer: string;
 }
 
-/**
- * A persisted Quick Ask side-note.
- */
 export interface ChatSideNote {
     /** Unique identifier (UUID). */
     id: string;

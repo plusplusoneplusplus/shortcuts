@@ -1,6 +1,4 @@
 /**
- * ScheduleManager
- *
  * Thin orchestrator over four focused collaborators:
  *
  *   - ScheduleTimerRegistry  — owns (repoId, scheduleId) → setTimeout handle map
@@ -11,8 +9,6 @@
  * Manager itself handles user-schedule CRUD, repo-schedule loading,
  * schedule-move operations, and the EventEmitter bus.  All disk I/O on
  * `.github/schedules/` uses `fs.promises` (non-blocking).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { EventEmitter } from 'events';
@@ -167,7 +163,6 @@ export class ScheduleManager extends EventEmitter {
      * Create a new schedule.
      */
     async addSchedule(repoId: string, entry: Omit<ScheduleEntry, 'id' | 'createdAt'>): Promise<ScheduleEntry> {
-        // Validate cron
         parseCron(entry.cron);
 
         const schedule: ScheduleEntry = {
@@ -611,7 +606,6 @@ export class ScheduleManager extends EventEmitter {
                 return;
             }
 
-            // Skip if previous run still active
             if (this.executor.isRunning(schedule.id, repoId)) {
                 const missedReason = 'Previous schedule run still active';
                 this.executor.recordMissedRun(repoId, current, missedReason);
@@ -739,7 +733,6 @@ export class ScheduleManager extends EventEmitter {
             this.repoSchedules.delete(repoId);
         }
 
-        // Start timers for active repo schedules
         for (const entry of newMap.values()) {
             if (entry.status === 'active' && !this.timers.has(scheduleRuntimeKey(repoId, entry.id))) {
                 this.scheduleNextRun(repoId, entry);

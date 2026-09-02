@@ -1,6 +1,4 @@
 /**
- * Tests for terminal/terminal-routes.ts
- *
  * Verifies REST endpoints:
  * - GET /api/terminal/status (disabled & enabled)
  * - GET /api/workspaces/:id/terminals (list sessions, unknown workspace)

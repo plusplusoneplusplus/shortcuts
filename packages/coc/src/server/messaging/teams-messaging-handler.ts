@@ -1,6 +1,4 @@
 /**
- * Teams Messaging REST Handler
- *
  * Registers HTTP routes for the Teams messaging integration:
  *   GET  /container/messaging/teams/status   — current connection status
  *   POST /container/messaging/teams/config   — update config (botName, teamName, channelName, enabled)

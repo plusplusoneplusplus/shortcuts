@@ -1,7 +1,5 @@
 /**
  * @vitest-environment jsdom
- *
- * Unit tests for the useNotesGit hook.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

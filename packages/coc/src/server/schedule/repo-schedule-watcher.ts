@@ -1,6 +1,4 @@
 /**
- * RepoScheduleWatcher
- *
  * Owns the per-repo `fs.FSWatcher` instances and the debounce timers
  * coalescing rapid file events into a single reload callback.
  *

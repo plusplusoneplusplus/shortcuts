@@ -1,10 +1,6 @@
 /**
- * Hybrid Reducer
- *
  * Combines deterministic reduction with AI polishing.
  * First performs code-based deduplication, then uses AI to refine the results.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import {
@@ -18,9 +14,6 @@ import { BaseReducer } from './reducer';
 import { DeterministicReducer, DeterministicReducerOptions, DeterministicReduceOutput, Deduplicatable } from './deterministic';
 import { getAIServiceLogger } from '../../ai-logger';
 
-/**
- * Options for the hybrid reducer
- */
 export interface HybridReducerOptions<T extends Deduplicatable, TPolished> {
     /**
      * Options for the deterministic reduction phase
@@ -60,8 +53,6 @@ export interface HybridReducerOptions<T extends Deduplicatable, TPolished> {
 }
 
 /**
- * Hybrid reducer that combines deterministic reduction with AI polishing.
- * 
  * Flow:
  * 1. Deterministic reduction (deduplication, merging)
  * 2. AI polishing (summarization, prioritization, formatting)
@@ -130,7 +121,6 @@ export class HybridReducer<T extends Deduplicatable, TPolished> extends BaseRedu
                 };
             }
 
-            // AI failed, use fallback
             getAIServiceLogger().warn({ error: aiResult.error }, 'AI polishing failed, using deterministic result');
             return this.createFallbackResult(deterministicOutput, deterministicResult.stats, startTime);
 
@@ -161,18 +151,12 @@ export class HybridReducer<T extends Deduplicatable, TPolished> extends BaseRedu
     }
 }
 
-/**
- * Factory function to create a hybrid reducer
- */
 export function createHybridReducer<T extends Deduplicatable, TPolished>(
     options: HybridReducerOptions<T, TPolished>
 ): HybridReducer<T, TPolished> {
     return new HybridReducer(options);
 }
 
-/**
- * Simple polished output interface for common use cases
- */
 export interface SimplePolishedOutput<T> {
     /** The processed items */
     items: T[];
@@ -187,7 +171,7 @@ export interface SimplePolishedOutput<T> {
 }
 
 /**
- * Create a simple hybrid reducer with default polishing behavior
+ * Hybrid reducer with default polishing behavior.
  */
 export function createSimpleHybridReducer<T extends Deduplicatable>(
     deterministicOptions: DeterministicReducerOptions<T>,

@@ -1,6 +1,4 @@
 /**
- * MiniReposSidebar E2E Tests
- *
  * The persistent MiniReposSidebar rail has been removed. Repo switching is
  * handled by the RepoTabStrip in the TopBar on all pages.
  *

@@ -8,9 +8,6 @@
  * {@link resolveNoteSidecarPath}: notes under the managed data dir keep a
  * co-located `<path>.md.comments.json`, everything else stores its sidecar in
  * the managed area so the workspace repo stays clean.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as crypto from 'crypto';

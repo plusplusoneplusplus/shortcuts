@@ -60,7 +60,6 @@ export async function runPhase3Analysis(
     process.stderr.write('\n');
     printHeader('Phase 3: Deep Analysis');
 
-    // Resolve per-phase settings for analysis
     const analysisModel = resolvePhaseModel(options, 'analysis');
     const analysisTimeout = resolvePhaseTimeout(options, 'analysis');
     const analysisConcurrency = resolvePhaseConcurrency(options, 'analysis') || 5;

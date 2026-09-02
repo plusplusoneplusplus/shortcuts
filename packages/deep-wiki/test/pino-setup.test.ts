@@ -1,6 +1,4 @@
 /**
- * deep-wiki pino-setup Tests
- *
  * Tests for createDeepWikiPinoLogger and pinoAdapterForPipelineCore.
  */
 

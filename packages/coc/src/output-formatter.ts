@@ -1,10 +1,6 @@
 /**
- * Output Formatter
- *
  * Formats pipeline execution results for different output targets:
  * table, json, csv, markdown.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { FlatWorkflowResult } from '@plusplusoneplusplus/coc-workflow';
@@ -20,9 +16,6 @@ export type OutputFormat = 'table' | 'json' | 'csv' | 'markdown';
 // Main Formatter
 // ============================================================================
 
-/**
- * Format pipeline results according to the specified format
- */
 export function formatResults(
     result: FlatWorkflowResult,
     format: OutputFormat
@@ -168,9 +161,6 @@ function truncate(str: string, maxLen: number): string {
 // Summary Formatting
 // ============================================================================
 
-/**
- * Format an execution summary for display
- */
 export function formatSummary(result: FlatWorkflowResult): string {
     const stats = result.stats;
     const lines: string[] = [];
@@ -217,9 +207,6 @@ export function formatDuration(ms: number): string {
 // Data Extraction Helpers
 // ============================================================================
 
-/**
- * Extract structured output data from pipeline results
- */
 function extractOutputData(result: FlatWorkflowResult): unknown {
     if (result.leafOutput && result.leafOutput.length > 0) {
         return result.leafOutput;
@@ -227,9 +214,6 @@ function extractOutputData(result: FlatWorkflowResult): unknown {
     return extractRows(result);
 }
 
-/**
- * Extract row data from pipeline results
- */
 function extractRows(result: FlatWorkflowResult): Record<string, unknown>[] {
     return result.items
         .filter(item => item.success && item.output && typeof item.output === 'object')

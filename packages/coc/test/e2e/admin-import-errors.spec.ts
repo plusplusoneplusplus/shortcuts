@@ -1,6 +1,4 @@
 /**
- * Admin Import Error Paths E2E Tests
- *
  * Tests the error branches in the Import Data section:
  * - Invalid JSON file shows 'Invalid JSON file.'
  * - Import token request fails → 'Failed to get import token.'

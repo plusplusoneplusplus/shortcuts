@@ -1,9 +1,3 @@
-/**
- * Jobs Module
- *
- * Exports all job implementations and utilities.
- */
-
 // Base mapper (shared scaffold for all mappers)
 export { BaseMapper } from './base-mapper';
 

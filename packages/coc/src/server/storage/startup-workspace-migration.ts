@@ -1,6 +1,4 @@
 /**
- * Startup Workspace Registry Migration
- *
  * Automatically migrates workspace and wiki registry entries from legacy
  * JSON files (workspaces.json, wikis.json) into the SQLite process store
  * on server startup. This covers the upgrade path where someone pulls

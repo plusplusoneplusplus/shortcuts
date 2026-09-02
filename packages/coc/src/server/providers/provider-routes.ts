@@ -1,10 +1,6 @@
 /**
- * Provider Routes
- *
  * GET  /api/providers/config  — returns sanitized config (tokens redacted as "****")
  * PUT  /api/providers/config  — validates and persists provider credentials; returns 204
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { Route } from '../types';
@@ -48,10 +44,8 @@ function sanitizeConfig(config: ProvidersFileConfig): unknown {
 // ============================================================================
 
 /**
- * Register provider config API routes on the given route table.
  * Mutates the `routes` array in-place.
  *
- * @param routes  - Shared route table
  * @param dataDir - CoC data directory (e.g. ~/.coc)
  */
 export function registerProviderRoutes(routes: Route[], dataDir: string): void {

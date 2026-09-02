@@ -1,7 +1,3 @@
-/**
- * Terminal session and message types for WebSocket-based terminal communication.
- */
-
 // ============================================================================
 // PTY interface (local mirror of node-pty's IPty)
 // ============================================================================
@@ -30,13 +26,10 @@ export interface IPty {
 export interface TerminalSession {
     /** Unique session identifier (12-char random alphanum) */
     readonly id: string;
-    /** Workspace this terminal belongs to */
     readonly workspaceId: string;
     /** The underlying PTY process (internal use only) */
     readonly pty: IPty;
-    /** Current column count */
     cols: number;
-    /** Current row count */
     rows: number;
     /** Unix timestamp of creation */
     readonly createdAt: number;

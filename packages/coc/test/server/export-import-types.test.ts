@@ -1,6 +1,4 @@
 /**
- * Export/Import Types Tests
- *
  * Validates the export payload schema validation logic:
  * - Valid payload passes
  * - Missing / wrong version fails

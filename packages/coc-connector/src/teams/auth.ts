@@ -66,7 +66,6 @@ export async function acquireTokenWithDeviceCode(
         throw new Error('No scope configured and no mcpServerUrl to derive one from');
     }
 
-    // Use tenant from config, extract from MCP URL, or fall back to 'organizations'
     const tenantId = config.tenantId
         ?? (config.mcpServerUrl ? extractTenantId(config.mcpServerUrl) : undefined)
         ?? 'organizations';
@@ -183,7 +182,6 @@ export async function acquireTokenViaBrowser(
             exec(openCmd);
             console.log(`[teams-auth] Opening browser for login...`);
 
-            // Set timeout
             const timeout = setTimeout(() => {
                 server.close();
                 reject(new Error('OAuth login timed out (120s)'));
@@ -300,7 +298,6 @@ function saveMcpOAuthTokens(
         hash = crypto.createHash('sha256').update(serverUrl + data.clientId).digest('hex');
     }
 
-    // Write metadata
     const metadata = {
         serverUrl,
         authorizationServerUrl: data.authorizationServerUrl,
@@ -312,7 +309,6 @@ function saveMcpOAuthTokens(
     };
     fs.writeFileSync(path.join(configDir, `${hash}.json`), JSON.stringify(metadata, null, 2));
 
-    // Write tokens
     const tokens = {
         accessToken: data.accessToken,
         expiresAt: Math.floor(Date.now() / 1000) + data.expiresIn,
@@ -511,7 +507,6 @@ export async function acquireMcpOAuthToken(mcpServerUrl: string, homeDir?: strin
         throw new Error(`No OAuth config found for MCP server "${mcpServerUrl}" — use Copilot CLI to authenticate first`);
     }
 
-    // Read the tokens file
     const tokensFileName = metadataFile.replace('.json', '.tokens.json');
     const tokensFilePath = path.join(configDir, tokensFileName);
 

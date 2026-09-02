@@ -1,6 +1,4 @@
 /**
- * Workspace History Delete API Tests
- *
  * Covers the unified DELETE endpoints:
  *   DELETE /api/workspaces/:id/history/:processId — single delete
  *   DELETE /api/workspaces/:id/history            — bulk delete

@@ -213,7 +213,6 @@ describe('Git API caching', () => {
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/beef5678/files`);
             const callsAfterFirst = mockForgeExecGit.mock.calls.length;
 
-            // Invalidate mutable cache
             gitCache.invalidateMutable(WORKSPACE_ID);
 
             // Immutable entry still cached

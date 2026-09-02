@@ -1,9 +1,3 @@
-/**
- * Phase runners barrel export
- *
- * Re-exports all phase runner functions and their associated types.
- */
-
 export { runPhase1 } from './discovery-phase';
 export type { Phase1Result } from './discovery-phase';
 

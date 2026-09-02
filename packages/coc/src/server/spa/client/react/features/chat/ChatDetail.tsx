@@ -1760,7 +1760,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setSending(false);
         setIsStreaming(false);
 
-        // Restore draft for the new taskId
         const draft = getDraft(currentTaskId);
         if (draft) {
             setFollowUpInput(draft.text);
@@ -1879,7 +1878,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
                 const pid = loadedTask?.processId ?? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId));
 
-                // Check shared conversation cache
                 const cached = appState.conversationCache[taskId];
                 if (cached && (Date.now() - cached.cachedAt < CACHE_TTL_MS)) {
                     setTask(loadedTask);

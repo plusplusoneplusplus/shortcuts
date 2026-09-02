@@ -1,6 +1,4 @@
 /**
- * Messaging config persistence.
- *
  * Writes Teams messaging settings into the container's `config.yaml` so they
  * survive restarts even when the live bridge is not running. File-system and
  * YAML access are injectable so persistence can be tested against a temp dir

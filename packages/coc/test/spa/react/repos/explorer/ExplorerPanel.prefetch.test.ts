@@ -1,6 +1,4 @@
 /**
- * Tests for ExplorerPanel two-level prefetch (depth=2 on mount).
- *
  * Unit tests for seedFromEntries helper and source-level assertions
  * that the mount fetch uses depth=2 and seeds childrenMap.
  */

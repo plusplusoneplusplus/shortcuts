@@ -782,7 +782,6 @@ describe('RepoChatTab: mobile behavior', () => {
             expect(screen.getByTestId('back-btn')).toBeTruthy();
         });
 
-        // Click back
         await act(async () => {
             fireEvent.click(screen.getByTestId('back-btn'));
         });
@@ -875,7 +874,6 @@ describe('RepoChatTab: mobile behavior', () => {
             expect(screen.getByTestId('activity-detail-panel')).toBeTruthy();
         });
 
-        // Click back
         await act(async () => {
             fireEvent.click(screen.getByTestId('back-btn'));
         });
@@ -1838,7 +1836,6 @@ describe('RepoChatTab: Ralph session and new chat', () => {
         setupFetchMock();
         await renderTab('ws-1', 'chats');
 
-        // Select Ralph session
         await act(async () => {
             fireEvent.click(screen.getByTestId('select-ralph-btn'));
         });
@@ -1847,7 +1844,6 @@ describe('RepoChatTab: Ralph session and new chat', () => {
             expect(screen.getByTestId('mock-ralph-pane')).toBeTruthy();
         });
 
-        // Click new chat
         await act(async () => {
             fireEvent.click(screen.getByTestId('new-chat-btn'));
         });
@@ -1864,7 +1860,6 @@ describe('RepoChatTab: Ralph session and new chat', () => {
         setupFetchMock({ running: [r1] });
         await renderTab();
 
-        // Select Ralph session
         await act(async () => {
             fireEvent.click(screen.getByTestId('select-ralph-btn'));
         });

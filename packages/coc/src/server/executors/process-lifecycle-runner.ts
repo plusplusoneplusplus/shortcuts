@@ -15,9 +15,6 @@
  * Extracted from CLITaskExecutor so the bridge becomes a thin routing facade.
  * Extends BaseExecutor for shared streaming/session plumbing (sessions map,
  * cleanupSession, flushConversationTurn, persistOutput).
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -448,7 +445,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         const startTime = Date.now();
         logger.debug(LogCategory.AI, `[QueueExecutor] Starting task ${task.id} (type: ${task.type}, name: ${task.displayName || 'unnamed'})`);
 
-        // Check if cancelled before starting
         if (opts.cancelledTasks.has(task.id)) {
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} was cancelled before starting`);
             if (isChatFollowUp(task.payload)) {
@@ -933,7 +929,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                     this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
                 }
 
-                // Drain pending messages after task completion
                 if (finalStatus === 'completed' && opts.onDrainPendingMessages) {
                     try {
                         await opts.onDrainPendingMessages(processId, task.id);

@@ -1,6 +1,4 @@
 /**
- * Seen State Handler Tests
- *
  * Tests the REST API endpoints for read/unread (seen/unseen) state.
  * Uses a real SqliteProcessStore for integration testing.
  */

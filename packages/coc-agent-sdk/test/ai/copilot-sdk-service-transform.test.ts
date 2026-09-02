@@ -1,6 +1,4 @@
 /**
- * CopilotSDKService.transform() Tests
- *
  * Tests for the one-shot transform primitive that runs a single isolated
  * request and returns a structured result. The primitive defaults to no
  * MCP/tools and denied permissions, owns no model default, and never throws on

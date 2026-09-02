@@ -1,6 +1,4 @@
 /**
- * Area Tagging Tests
- *
  * Tests for mergeSubGraphs domain tagging in large-repo-handler:
  * - Modules tagged with domain slug
  * - DomainInfo[] populated from TopLevelDomain[]

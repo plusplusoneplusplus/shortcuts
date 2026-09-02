@@ -3,7 +3,7 @@
  * the SQLite migration flow (confirm → stream progress → done/error).
  * Also provides "Import History from Directory" for SQLite backends.
  *
- * Loaded lazily in AdminPanel via React.lazy.
+ * Loaded lazily in DataOperationsPanel via React.lazy.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -483,7 +483,6 @@ export default function StorageSection() {
     const handleSSEEvent = (data: any) => {
         if (data.type === 'done') {
             if (data.success) {
-                // Mark all phases complete
                 setMigrationPhases(prev => prev.map(p => ({ ...p, state: 'complete' })));
                 setResult({
                     success: true,
@@ -598,7 +597,6 @@ export default function StorageSection() {
     // Render
     // -----------------------------------------------------------------------
 
-    // Status display
     if (phase === 'status') {
         return (
             <div>

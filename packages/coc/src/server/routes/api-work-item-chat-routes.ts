@@ -1,6 +1,4 @@
 /**
- * Work-Item-Chat Binding REST API Routes
- *
  * CRUD operations on origin + workItemId -> chat task bindings. Workspace URLs
  * are migration-compatible callers that resolve their workspace to an origin.
  */

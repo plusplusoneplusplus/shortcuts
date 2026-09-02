@@ -1,6 +1,4 @@
 /**
- * Queue File Path Hover E2E Tests
- *
  * Playwright spec asserting that file paths in chat messages are:
  * 1. Linkified with `.file-path-link` spans (user and assistant bubbles)
  * 2. NOT linkified when inside inline code backticks

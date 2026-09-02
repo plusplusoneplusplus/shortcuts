@@ -1,6 +1,4 @@
 /**
- * In-Memory Process Store Tests
- *
  * Verifies createStubStore() implements the ProcessStore interface correctly,
  * including getProcessCount.
  */

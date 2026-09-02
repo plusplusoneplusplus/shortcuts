@@ -1,6 +1,4 @@
 /**
- * Heap Memory Pressure Monitor
- *
  * Periodically samples V8 heap statistics and logs warnings when
  * memory usage exceeds configurable thresholds. Exposes a route
  * for on-demand heap snapshots via `GET /api/admin/heap`.

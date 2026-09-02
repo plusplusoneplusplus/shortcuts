@@ -6,8 +6,6 @@
  *   - One invalid ID mixed in → partial results with null for invalid ID
  *   - All-invalid IDs → all results are null (not 400)
  *   - 0 items → empty results object (not 400)
- *
- * Cross-platform compatible (Linux/macOS/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

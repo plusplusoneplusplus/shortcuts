@@ -1,5 +1,4 @@
 /**
- * Tests for useDefaultModelForMode hook.
  * Verifies that the hook resolves the effective default model from repo preferences
  * using provider-scoped cascade: providerModels[mode] → legacy defaultModels[mode] (Copilot) → legacy defaultModel (Copilot) → undefined.
  *

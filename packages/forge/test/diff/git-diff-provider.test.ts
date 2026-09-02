@@ -77,12 +77,10 @@ function setupCommitMocks(): void {
             return PARENT_HASH;
         }
 
-        // name-status
         if (joined.includes('--name-status')) {
             return NAME_STATUS_OUTPUT;
         }
 
-        // numstat
         if (joined.includes('--numstat')) {
             return NUMSTAT_OUTPUT;
         }

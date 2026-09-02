@@ -1,7 +1,6 @@
 import type { ClientTimelineItem } from '../../../types/dashboard';
 
 /**
- * Merge consecutive 'content' timeline items into single items.
  * Tool events act as boundaries and are preserved as-is.
  * Returns a new array (no mutation).
  */

@@ -34,7 +34,6 @@ function resolveCachePath(dataDir?: string): string {
 }
 
 /**
- * Read and parse the ADO session cache.
  * Returns `null` on cache miss, parse error, or any I/O error.
  */
 export async function readAdoSessionCache(dataDir?: string): Promise<AdoSessionCache | null> {

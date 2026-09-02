@@ -3,7 +3,7 @@
  *
  * jsdom does no real layout and CPU timing under `pool: 'forks'` is noisy, so
  * wall-clock ms is not a reliable CI gate. These hard gates instead assert the
- * two *structural* invariants that encode the large-file rendering improvements:
+ * four *structural* invariants that encode the large-file rendering improvements:
  *
  *   Gate 1 — windowing bounds the mounted DOM-node count.
  *   Gate 2 — syntax highlighting is computed once, never per-render.

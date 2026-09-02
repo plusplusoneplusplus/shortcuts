@@ -305,7 +305,6 @@ describe('last refreshed timestamp', () => {
         const el = screen.getByTestId('git-last-refreshed');
         expect(el.textContent).toBe('just now');
 
-        // Advance 2 minutes
         act(() => { vi.advanceTimersByTime(2 * 60_000); });
         expect(el.textContent).toBe('2m ago');
 

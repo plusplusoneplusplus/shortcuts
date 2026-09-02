@@ -1,7 +1,7 @@
 /**
  * Shared vitest-free mock of ISDKService.
  *
- * Implements all 15 interface methods plus the off-interface `createClient`.
+ * Implements every interface method plus the off-interface `createClient`.
  * The mock-function factory is injectable so consumers can bind `vi.fn` for
  * full spy assertions while the package itself imports nothing from vitest.
  */

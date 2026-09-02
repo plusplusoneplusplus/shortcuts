@@ -1,6 +1,4 @@
 /**
- * Server Tests
- *
  * Tests for the HTTP server foundation: health endpoint, CORS,
  * SPA fallback, JSON body parsing, route matching, and shutdown.
  *
@@ -28,7 +26,6 @@ async function startTestServer(routes: Route[] = [], store?: ProcessStore): Prom
     return createExecutionServer({ port: 0, host: 'localhost', store });
 }
 
-/** Make an HTTP request and return status, headers, and body. */
 function request(
     url: string,
     options: { method?: string; body?: string; headers?: Record<string, string> } = {}

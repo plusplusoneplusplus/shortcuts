@@ -1,6 +1,4 @@
 /**
- * Queue Freeze / Unfreeze Tests
- *
  * Covers Section 4 of test-plan-queue-advanced.md:
  * - Freeze a pending task — it stays in the queue but is skipped during drain
  * - Unfreeze a frozen task — it becomes eligible again

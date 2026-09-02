@@ -481,7 +481,6 @@ describe('RepoTabStrip overflow', () => {
             fireEvent.contextMenu(items[3]);
             // Dropdown should close
             expect(screen.queryByTestId('overflow-dropdown')).toBeNull();
-            // Context menu should open
             expect(screen.getByTestId('repo-tab-context-menu')).toBeDefined();
         });
 

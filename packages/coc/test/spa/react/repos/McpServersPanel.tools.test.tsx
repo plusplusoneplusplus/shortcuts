@@ -71,7 +71,6 @@ afterEach(() => {
 
 async function openToolsTab(serverName: string) {
     const user = userEvent.setup();
-    // Expand the server row.
     await user.click(screen.getByRole('button', { name: new RegExp(`Expand ${serverName}`) }));
     // Switch to the Tools inspector tab.
     await user.click(screen.getByRole('button', { name: 'Tools' }));

@@ -1,12 +1,8 @@
 /**
- * Wiki Generation Events
- *
  * Typed events emitted by the generation runners. Runners never touch HTTP —
  * they emit these events and a sink decides where they go. The SSE sink maps
  * them onto the existing wire format one-to-one, so the admin UI sees exactly
  * the same payloads it did when the handler wrote SSE inline.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type * as http from 'http';

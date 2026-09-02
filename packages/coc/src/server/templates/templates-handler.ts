@@ -1,13 +1,9 @@
 /**
- * Templates REST API Handler
- *
  * HTTP API routes for template CRUD operations: list, read single,
  * create, update (merge), and delete.
  *
  * Templates are stored as `.vscode/templates/*.yaml` per workspace.
  * Mirrors workflows-handler.ts pattern (separate read + write registration).
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -64,9 +60,6 @@ async function readTemplateFile(filePath: string): Promise<Record<string, unknow
 // Read Route Registration
 // ============================================================================
 
-/**
- * Register template read-only API routes on the given route table.
- */
 export function registerTemplateRoutes(routes: Route[], store: ProcessStore): void {
 
     // ------------------------------------------------------------------
@@ -155,9 +148,6 @@ export function registerTemplateRoutes(routes: Route[], store: ProcessStore): vo
 // Write Route Registration
 // ============================================================================
 
-/**
- * Register template mutation API routes on the given route table.
- */
 export function registerTemplateWriteRoutes(
     routes: Route[],
     store: ProcessStore,
@@ -284,7 +274,6 @@ export function registerTemplateWriteRoutes(
                 return sendError(res, 400, 'Request body must be a JSON object');
             }
 
-            // Read existing template, merge with updates
             const existing = await readTemplateFile(resolvedPath);
             if (!existing) {
                 return sendError(res, 500, 'Failed to read existing template');

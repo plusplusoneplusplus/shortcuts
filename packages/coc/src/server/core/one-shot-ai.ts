@@ -1,6 +1,4 @@
 /**
- * Shared one-shot AI invocation helper.
- *
  * A one-shot lookup is stateless and grounded: a single prompt, no session
  * resume, no follow-up, no tools, and every permission request denied. Several
  * features need exactly that — Quick Ask side-notes, comment drafting, canvas
@@ -45,9 +43,6 @@ export type OneShotAIResult =
     | { success: true; response: string }
     | { success: false; error: string; unavailable: boolean };
 
-/**
- * Run a single stateless, tool-free, permission-denied AI lookup.
- */
 export async function invokeOneShotAI(
     prompt: string,
     options: OneShotAIOptions = {},

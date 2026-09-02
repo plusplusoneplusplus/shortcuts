@@ -1,5 +1,3 @@
-/** Canvas panel chrome icons + the shared icon-button style. */
-
 /** Matches ChatHeader's ICON_BTN_CLASS for visual consistency. */
 export const ICON_BTN_CLASS =
     'inline-flex items-center justify-center w-[26px] h-[26px] rounded text-[#848484] '

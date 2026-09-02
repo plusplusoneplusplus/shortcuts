@@ -7,8 +7,6 @@
  *
  * `NOTES_AUTOCOMMIT_SCHEDULE_NAME` and `findAutoCommitSchedule` are kept for
  * backward-compat cleanup when upgrading from the old scheduler-based approach.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ScheduleManager, ScheduleEntry } from '../../schedule/schedule-manager';

@@ -1,5 +1,4 @@
 /**
- * Tests for Wiki React components.
  * Covers WikiList, AddWikiDialog, WikiComponentTree, WikiAsk, WikiAdmin, useWiki hook,
  * and WebSocket wiki event dispatching.
  */

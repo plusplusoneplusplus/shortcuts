@@ -33,7 +33,6 @@ test.describe('Cross-Viewport Deep Links', () => {
         await seedWorkspace(serverUrl, 'dl-mob-ws', 'dl-mob-repo');
         await page.goto(`${serverUrl}/#repos/dl-mob-ws`);
 
-        // Repo detail should be visible
         await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
     });
 

@@ -1,6 +1,4 @@
 /**
- * Git Patch Transfer Service
- *
  * Owns the domain policy behind `POST /git/patch/export` and `POST /git/patch/apply`:
  * hash validation, source remote-URL resolution, provenance metadata, target
  * repo-state preflight, and the success/dirty/conflict result taxonomy.
@@ -8,8 +6,6 @@
  * Methods throw `APIError` for the plain error responses and return an explicit
  * `{ status, payload }` for the 409 bodies that carry operation detail, so the
  * route module stays a thin adapter.
- *
- * Pure Node.js. Cross-platform compatible.
  */
 
 import { detectRemoteUrl, isSameRepoClone, resolveRepoIdentity } from '@plusplusoneplusplus/forge';

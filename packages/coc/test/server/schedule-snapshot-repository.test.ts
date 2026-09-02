@@ -1,6 +1,4 @@
 /**
- * ScheduleSnapshotRepository Tests
- *
  * Direct coverage for the schedule-owned snapshot repository: collecting and
  * restoring per-repo `schedules/*.yaml` files plus `schedule_runs` SQLite rows,
  * and wiping both. Covers file-only, row-only, and mixed snapshots.

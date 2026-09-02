@@ -1,10 +1,6 @@
 /**
- * Chunk Splitter
- *
  * Splits large content into smaller chunks for processing.
  * Useful for processing large files or texts that exceed model context limits.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { Splitter, WorkItem } from '../types';
@@ -15,9 +11,6 @@ import {
     DEFAULT_CHUNK_PRESERVE_BOUNDARIES
 } from '../../config/defaults';
 
-/**
- * Input for chunk splitter
- */
 export interface ChunkInput {
     /** The content to split into chunks */
     content: string;
@@ -27,9 +20,6 @@ export interface ChunkInput {
     context?: Record<string, unknown>;
 }
 
-/**
- * Work item data for chunk processing
- */
 export interface ChunkWorkItemData {
     /** The chunk content */
     content: string;
@@ -47,9 +37,6 @@ export interface ChunkWorkItemData {
     endOffset?: number;
 }
 
-/**
- * Options for chunk splitter
- */
 export interface ChunkSplitterOptions {
     /**
      * Maximum size of each chunk (in characters)
@@ -82,9 +69,6 @@ export interface ChunkSplitterOptions {
     preserveBoundaries: boolean;
 }
 
-/**
- * Default chunk splitter options
- */
 const DEFAULT_CHUNK_OPTIONS: ChunkSplitterOptions = {
     maxChunkSize: DEFAULT_CHUNK_MAX_SIZE,
     overlapSize: DEFAULT_CHUNK_OVERLAP_SIZE,
@@ -92,9 +76,6 @@ const DEFAULT_CHUNK_OPTIONS: ChunkSplitterOptions = {
     preserveBoundaries: DEFAULT_CHUNK_PRESERVE_BOUNDARIES
 };
 
-/**
- * Splitter that divides content into smaller chunks
- */
 export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
     private options: ChunkSplitterOptions;
 
@@ -170,7 +151,6 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
         while (startOffset < content.length) {
             let endOffset = Math.min(startOffset + maxChunkSize, content.length);
 
-            // Try to preserve boundaries if configured
             if (preserveBoundaries && endOffset < content.length) {
                 // Look for a good break point (newline, period, space)
                 const breakPoints = ['\n\n', '\n', '. ', ' '];
@@ -230,7 +210,6 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
             const lineSize = line.length + 1; // +1 for newline
 
             if (currentSize + lineSize > maxChunkSize && currentChunk.length > 0) {
-                // Save current chunk
                 const chunkContent = currentChunk.join('\n');
                 chunks.push({
                     content: chunkContent,
@@ -238,7 +217,6 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
                     endOffset: startOffset + chunkContent.length
                 });
 
-                // Start new chunk with overlap
                 const overlapLines = Math.max(1, Math.floor(overlapSize / 50)); // Estimate lines for overlap
                 const overlapStart = Math.max(0, currentChunk.length - overlapLines);
                 currentChunk = currentChunk.slice(overlapStart);
@@ -285,7 +263,6 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
             const paragraphSize = paragraph.length + 2; // +2 for \n\n
 
             if (currentSize + paragraphSize > maxChunkSize && currentChunk.length > 0) {
-                // Save current chunk
                 const chunkContent = currentChunk.join('\n\n');
                 chunks.push({
                     content: chunkContent,
@@ -350,7 +327,6 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
             const sentenceSize = sentence.length;
 
             if (currentSize + sentenceSize > maxChunkSize && currentChunk.length > 0) {
-                // Save current chunk
                 const chunkContent = currentChunk.join(' ');
                 chunks.push({
                     content: chunkContent,
@@ -358,7 +334,6 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
                     endOffset: startOffset + chunkContent.length
                 });
 
-                // Start new chunk with some overlap
                 const overlapSentences = Math.max(1, Math.floor(overlapSize / 100));
                 const overlapStart = Math.max(0, currentChunk.length - overlapSentences);
                 currentChunk = currentChunk.slice(overlapStart);
@@ -385,16 +360,10 @@ export class ChunkSplitter implements Splitter<ChunkInput, ChunkWorkItemData> {
     }
 }
 
-/**
- * Factory function to create a chunk splitter
- */
 export function createChunkSplitter(options?: Partial<ChunkSplitterOptions>): ChunkSplitter {
     return new ChunkSplitter(options);
 }
 
-/**
- * Create a line-based chunk splitter
- */
 export function createLineChunkSplitter(
     maxChunkSize: number = 4000,
     overlapSize: number = 200
@@ -407,9 +376,6 @@ export function createLineChunkSplitter(
     });
 }
 
-/**
- * Create a paragraph-based chunk splitter
- */
 export function createParagraphChunkSplitter(maxChunkSize: number = 4000): ChunkSplitter {
     return new ChunkSplitter({
         maxChunkSize,

@@ -1,6 +1,4 @@
 /**
- * SqliteQueuePersistence Tests
- *
  * Covers: incremental change handling (no debounce), restore with restart
  * policies, pause state persistence, repo path tracking, dispose/cleanup,
  * and integration with createQueueInfrastructure.
@@ -541,7 +539,6 @@ describe('SqliteQueuePersistence', () => {
             qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId });
             expect(store.getQueueTasks(rId)).toHaveLength(1);
 
-            // Dispose
             persistence.dispose();
 
             // Clear DB to verify no further writes
@@ -584,7 +581,6 @@ describe('SqliteQueuePersistence', () => {
             const id1 = qm.enqueue({ type: 'custom', priority: 'normal', payload: { msg: 'hello' }, config: {}, repoId: rId, displayName: 'Task 1' });
             const id2 = qm.enqueue({ type: 'custom', priority: 'high', payload: { msg: 'world' }, config: {}, repoId: rId, displayName: 'Task 2' });
 
-            // Pause repo
             qm.pauseRepo(rId);
 
             persistence.dispose();

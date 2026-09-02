@@ -20,9 +20,6 @@ export interface PromptItem {
  */
 export type AIInvoker = (prompt: string, options?: AIInvokerOptions) => Promise<AIInvokerResult>;
 
-/**
- * Options for AI invocation.
- */
 export interface AIInvokerOptions {
     /** Model to use (optional, uses caller default if not specified) */
     model?: string;
@@ -42,9 +39,6 @@ export interface AIInvokerOptions {
     systemMessage?: SystemMessageConfig;
 }
 
-/**
- * Result from AI invocation.
- */
 export interface AIInvokerResult {
     /** Whether the invocation succeeded */
     success: boolean;

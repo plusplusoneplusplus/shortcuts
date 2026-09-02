@@ -23,9 +23,6 @@
  * `enabledMcpServers` allow-list. In the common no-toggle case the resolved map
  * is identical to the SDK's default global+workspace load, so behavior is
  * preserved; it only narrows the set when a server or tool is actually disabled.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { MCPServerConfig, ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';

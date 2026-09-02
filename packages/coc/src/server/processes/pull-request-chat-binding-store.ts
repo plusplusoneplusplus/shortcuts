@@ -1,10 +1,6 @@
 /**
- * PullRequestChatBindingStore
- *
  * Origin-scoped SQLite store mapping prId -> taskId for the PR-chat feature.
  * Uses the shared `processes.db` database (same pattern as CommitChatBindingStore).
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type Database from 'better-sqlite3';

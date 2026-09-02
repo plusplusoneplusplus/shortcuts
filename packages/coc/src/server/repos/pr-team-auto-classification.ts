@@ -1,7 +1,5 @@
 /**
- * Pull Requests Team auto-classification.
- *
- * This helper is intentionally server-side so PR list refreshes and background
+ * Intentionally server-side so PR list refreshes and background
  * cache warming share the same cap, cache/pending checks, queue priority, and
  * stale-pending self-healing behavior.
  */

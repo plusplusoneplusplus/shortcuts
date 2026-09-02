@@ -76,10 +76,6 @@ function mapAdoComment(c: AdoRawComment): Comment {
 
 // ── adapter ──────────────────────────────────────────────────
 
-/**
- * Adapter that wraps `AdoWorkItemsService` and implements the
- * provider-agnostic `IWorkItemsService` interface.
- */
 export class AdoWorkItemsAdapter implements IWorkItemsService {
     constructor(private readonly service: AdoWorkItemsService) {}
 

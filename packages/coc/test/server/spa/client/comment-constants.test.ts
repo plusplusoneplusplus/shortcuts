@@ -1,6 +1,4 @@
 /**
- * Tests for comment-constants.ts
- *
  * Validates ALL_COMMENT_CATEGORIES, COMMENT_CATEGORY_REGEX, and
  * the shared resolveCommentCategory helper.
  */

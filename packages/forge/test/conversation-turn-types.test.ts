@@ -1,6 +1,4 @@
 /**
- * ConversationTurn Type & Serialization Tests
- *
  * Tests for the ConversationTurn interface, its serialization via
  * serializeProcess / deserializeProcess, and edge cases around
  * backward compatibility and extreme content.

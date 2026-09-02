@@ -1,5 +1,4 @@
 /**
- * Tests for workspace resolution utilities.
  * Covers resolveWorkspaceName, getProcessWorkspaceId, getProcessWorkspaceName.
  */
 

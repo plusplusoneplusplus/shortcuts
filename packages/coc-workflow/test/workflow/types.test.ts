@@ -1,6 +1,4 @@
 /**
- * Workflow Core Types — Unit Tests
- *
  * Tests for every exported type guard and key type properties.
  */
 

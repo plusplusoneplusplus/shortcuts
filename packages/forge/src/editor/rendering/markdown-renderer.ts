@@ -1,16 +1,10 @@
 /**
- * Markdown rendering utilities
- * 
- * This module contains pure functions for converting markdown to HTML.
- * These functions are testable in Node.js and used in the webview.
+ * Pure markdown-to-HTML conversion, testable in Node.js and used in the webview.
  */
 
 import { toForwardSlashes } from '../../utils/path-utils';
 import { isEmbeddableHtmlPath, parseHtmlEmbedTitle } from './html-embed';
 
-/**
- * Result of applying markdown highlighting to a line
- */
 export interface MarkdownLineResult {
     html: string;
     inCodeBlock: boolean;
@@ -32,11 +26,6 @@ export interface MarkdownRenderInlineOptions {
  * - Remove all punctuation except hyphens and spaces
  * - Replace spaces with hyphens
  * - Collapse multiple hyphens into one
- * 
- * Works consistently across Windows, macOS, and Linux.
- * 
- * @param text - The heading text to convert
- * @returns A URL-safe anchor ID
  */
 export function generateAnchorId(text: string): string {
     if (!text) return '';
@@ -58,12 +47,6 @@ export function generateAnchorId(text: string): string {
         .trim();
 }
 
-/**
- * Escape HTML entities in text
- * 
- * @param text - The text to escape
- * @returns HTML-escaped text
- */
 export function escapeHtml(text: string): string {
     return text
         .replace(/&/g, '&amp;')
@@ -77,10 +60,6 @@ export function escapeHtml(text: string): string {
  * Apply source mode syntax highlighting to a line.
  * This provides visual highlighting for markdown syntax without rendering.
  * Code blocks (```) are NOT highlighted - they are displayed as plain text.
- * 
- * @param line - The line content
- * @param inCodeBlock - Whether currently inside a code block
- * @returns Object with highlighted HTML and code block state
  */
 export function applySourceModeHighlighting(
     line: string,
@@ -187,9 +166,6 @@ export function applySourceModeHighlighting(
 /**
  * Apply inline markdown syntax highlighting for source mode.
  * Highlights bold, italic, code, links, images, and strikethrough markers.
- * 
- * @param text - The text to highlight
- * @returns HTML with syntax highlighting
  */
 export function applySourceModeInlineHighlighting(text: string): string {
     if (!text) return '';
@@ -236,9 +212,6 @@ export function applySourceModeInlineHighlighting(text: string): string {
 
 /**
  * Apply inline markdown formatting (bold, italic, code, links, images)
- * 
- * @param text - The text to format
- * @returns HTML with inline markdown rendered
  */
 export function applyInlineMarkdown(text: string, options?: MarkdownRenderInlineOptions): string {
     if (!text) return '';
@@ -354,9 +327,6 @@ function shortenFilePath(p: string): string {
 }
 
 /**
- * Resolve image path relative to the file or workspace
- * 
- * @param src - The image source path
  * @returns Resolved path or marker for post-processing
  */
 export function resolveImagePath(src: string): string {
@@ -371,15 +341,6 @@ export function resolveImagePath(src: string): string {
     return 'IMG_PATH:' + src;
 }
 
-/**
- * Apply markdown syntax highlighting to a single line
- * 
- * @param line - The line content
- * @param lineNum - The 1-based line number
- * @param inCodeBlock - Whether currently in a code block
- * @param codeBlockLang - The current code block language
- * @returns Object with rendered HTML and code block state
- */
 export function applyMarkdownHighlighting(
     line: string,
     lineNum: number,

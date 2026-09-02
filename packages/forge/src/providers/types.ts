@@ -1,4 +1,3 @@
-/** Provider enum for selecting a backend implementation. */
 export enum ProviderType {
     ADO = 'ado',
     GitHub = 'github',

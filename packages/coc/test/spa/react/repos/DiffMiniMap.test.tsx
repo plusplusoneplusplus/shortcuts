@@ -496,7 +496,6 @@ describe('DiffMiniMap', () => {
             // Should not throw
             fireEvent.mouseDown(viewport);
 
-            // Simulate mouse move and mouse up on document
             fireEvent.mouseMove(document, { clientX: 7, clientY: 50 });
             fireEvent.mouseUp(document);
         });

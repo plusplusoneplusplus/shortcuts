@@ -1,6 +1,4 @@
 /**
- * Diff Truncation Tests
- *
  * Tests for the truncateDiffIfNeeded helper and the ?full=true query param
  * on per-file diff endpoints (commit, working-tree, branch-range).
  */

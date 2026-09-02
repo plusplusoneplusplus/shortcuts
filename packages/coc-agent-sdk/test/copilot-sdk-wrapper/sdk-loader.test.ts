@@ -1,6 +1,4 @@
 /**
- * Unit tests for sdk-loader.ts
- *
  * Tests the filesystem-based availability check for the ESM-only SDK.
  */
 

@@ -1,7 +1,3 @@
-/**
- * Tests for Spinner shared component.
- */
-
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { Spinner } from '../../../../src/server/spa/client/react/ui/Spinner';

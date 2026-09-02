@@ -137,7 +137,6 @@ test.describe('Mobile Navigation', () => {
         const skillsBtn = bottomNav.locator('button[data-tab="skills"]');
         if (await skillsBtn.count() > 0) {
             await skillsBtn.tap();
-            // Skills view should be rendered
             await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
         }
     });

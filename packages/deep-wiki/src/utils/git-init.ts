@@ -1,6 +1,4 @@
 /**
- * Git Repository Initialization Utilities
- *
  * Initializes a wiki output directory as a Git repository with a default
  * `.gitignore`. Designed to run once after the output directory is created.
  *
@@ -18,8 +16,6 @@
  * and the addon's message is the sentence that names the rebuild — so the
  * broken install is reported rather than swallowed, which is the reason the
  * rest of the move rethrows.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
@@ -75,8 +71,6 @@ export async function initWikiGitRepo(
 /**
  * Run `git init` in the given directory if it is not already a Git repository.
  *
- * @param dir - Directory to initialize
- * @param log - Logging callbacks
  * @returns `true` if the repo was initialized (or already existed), `false` on error
  */
 export async function initGitRepo(
@@ -86,7 +80,6 @@ export async function initGitRepo(
     const resolved = path.resolve(dir);
     const gitDir = path.join(resolved, '.git');
 
-    // Already a git repo
     if (fs.existsSync(gitDir)) {
         log?.info?.(`Git repository already exists at ${resolved}`);
         return true;
@@ -109,8 +102,6 @@ export async function initGitRepo(
 /**
  * Write a default `.gitignore` to the directory if one does not already exist.
  *
- * @param dir - Directory to write `.gitignore` in
- * @param log - Logging callbacks
  * @returns `true` if the file was written (or already existed), `false` on error
  */
 export function writeGitignore(
@@ -120,7 +111,6 @@ export function writeGitignore(
     const resolved = path.resolve(dir);
     const gitignorePath = path.join(resolved, '.gitignore');
 
-    // Already has a .gitignore
     if (fs.existsSync(gitignorePath)) {
         log?.info?.(`.gitignore already exists at ${resolved}`);
         return true;

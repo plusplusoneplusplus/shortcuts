@@ -1,6 +1,4 @@
 /**
- * createScheduleInfrastructure Tests
- *
  * Regression coverage for the extracted schedule infrastructure builder.
  * Verifies that createScheduleInfrastructure returns correctly configured
  * instances equivalent to the inline setup it replaced in index.ts.

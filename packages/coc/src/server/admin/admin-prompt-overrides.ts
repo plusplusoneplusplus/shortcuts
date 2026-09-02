@@ -1,6 +1,4 @@
 /**
- * Admin Prompt Override Persistence
- *
  * Reads and writes per-prompt admin overrides from/to a global JSON file at
  * `<dataDir>/admin-prompt-overrides.json`.  Absent file = all built-in
  * defaults.  Any read / write failure is handled silently so the server
@@ -27,12 +25,10 @@ function readOverrides(dataDir: string): Record<string, string> {
     }
 }
 
-/** Returns the override text for the given prompt ID, or undefined if not overridden. */
 export function getPromptOverride(id: string, dataDir: string): string | undefined {
     return readOverrides(dataDir)[id];
 }
 
-/** Read all current overrides as a plain record. */
 export function getAllPromptOverrides(dataDir: string): Record<string, string> {
     return readOverrides(dataDir);
 }

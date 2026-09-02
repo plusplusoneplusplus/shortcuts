@@ -1,11 +1,8 @@
 /**
- * Templates Handler Tests
- *
  * Comprehensive tests for the Template CRUD REST API endpoints:
  * list, read single (with commit enrichment), create, update (merge), delete.
  *
  * Tests handlers in isolation with a lightweight HTTP server and mock store.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

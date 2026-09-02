@@ -1,11 +1,7 @@
 /**
- * Map-Reduce AI Framework
- *
  * A reusable framework for AI map-reduce workflows.
  * Provides pluggable splitters, mappers, reducers, and prompt templates
  * with consistent UI/process tracking.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 // Core types

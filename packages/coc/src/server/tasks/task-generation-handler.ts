@@ -1,15 +1,10 @@
 /**
- * Task Generation API Handler
- *
  * HTTP API routes for AI-powered task generation and feature-folder discovery.
- * Exposes the prompt-building logic from pipeline-core as REST endpoints with SSE streaming.
+ * Exposes forge's prompt-building logic as REST endpoints with SSE streaming.
  *
  * Endpoints:
  *   POST /api/workspaces/:id/tasks/generate  — Generate a task with AI (SSE stream)
  *   POST /api/workspaces/:id/tasks/discover  — Discover related items for a feature
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
@@ -125,7 +120,6 @@ export function registerTaskGenerationRoutes(
             let aiPrompt: string;
 
             if (mode === 'from-feature') {
-                // Gather feature context from the target folder
                 const context = await gatherFeatureContext(resolvedTarget, ws.rootPath);
                 const selectedContext: SelectedContext = {
                     description: context.description,
@@ -151,7 +145,6 @@ export function registerTaskGenerationRoutes(
                 aiPrompt = buildCreateTaskPrompt(prompt, resolvedTarget);
             }
 
-            // Build system prompt for plan generation
             const systemPrompt = buildPlanGenerationSystemPrompt({
                 targetPath: resolvedTarget,
                 autoFolder: isAutoFolder,

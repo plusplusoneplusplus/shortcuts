@@ -1,6 +1,4 @@
 /**
- * icon-template tests
- *
  * Covers:
  *   - hostnameToGradient: determinism, triadic spacing, full coverage of inputs
  *   - generateIconSvg: valid SVG, color injection, default fallback

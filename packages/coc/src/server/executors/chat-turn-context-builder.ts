@@ -10,9 +10,6 @@
  * Returns one cohesive context object so callers do not need to
  * independently coordinate Memory V2 tools, Memory V2 prompt context,
  * SDK built-in exclusions, ask-user handles, and resource disposal.
- *
- * Pure Node.js; uses only built-in modules.
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';

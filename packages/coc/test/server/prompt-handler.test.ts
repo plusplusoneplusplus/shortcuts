@@ -1,6 +1,4 @@
 /**
- * Prompt Handler Tests
- *
  * Tests for the Skill Discovery REST API endpoint.
  *
  * Uses port 0 (OS-assigned) for test isolation.
@@ -54,7 +52,6 @@ function request(
     });
 }
 
-/** POST JSON helper. */
 function postJSON(url: string, data: unknown) {
     return request(url, {
         method: 'POST',

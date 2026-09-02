@@ -1,6 +1,4 @@
 /**
- * Startup Process History Migration Tests
- *
  * Validates automatic migration of file-based process histories
  * into SQLite on server startup:
  * - No-op for file-based backends, missing repos dir, no processes

@@ -1,6 +1,4 @@
 /**
- * Import Large Payload Tests
- *
  * Section 4: Validates that importData/POST /api/admin/import handles
  * large payloads (1,000 and 10,000 processes) correctly.
  *

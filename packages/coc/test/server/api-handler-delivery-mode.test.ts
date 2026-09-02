@@ -1,10 +1,6 @@
 /**
- * API Handler — deliveryMode Tests
- *
  * Verifies that POST /api/processes/:id/message accepts, validates, and
  * defaults the `deliveryMode` field, and emits `message-queued` SSE events.
- *
- * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
@@ -194,7 +190,6 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
         expect(resp.status).toBe(202);
         const { turnIndex } = resp.json();
 
-        // message-queued event should have been emitted via store.emitProcessEvent
         expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-dm', expect.objectContaining({
             type: 'message-queued',
             turnIndex,

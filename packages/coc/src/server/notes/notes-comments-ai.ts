@@ -1,6 +1,4 @@
 /**
- * AI prompt builders for notes comments.
- *
  * Builds a resolve prompt for notes comment threads using anchor-based
  * text selection (quotedText + surrounding context) rather than line/column.
  */
@@ -17,9 +15,6 @@ import type { CommentThread } from './notes-comments-types';
  *
  * @param threads        - All threads from the sidecar; only status==='open' are included.
  * @param notePath       - Path to the note file (used for display and tool reference).
- * @param documentContent - Current document content.
- * @param userContext    - Optional additional context from the user.
- * @returns Structured prompt string.
  */
 export function buildNotesBatchResolvePrompt(
     threads: CommentThread[],

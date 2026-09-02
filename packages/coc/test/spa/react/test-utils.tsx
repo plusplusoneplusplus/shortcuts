@@ -1,6 +1,4 @@
 /**
- * Shared test utilities for SPA React tests.
- *
  * Provides context-provider wrappers, mock context factories, and a mock-fetch
  * builder so every component/hook test starts from a consistent foundation.
  */

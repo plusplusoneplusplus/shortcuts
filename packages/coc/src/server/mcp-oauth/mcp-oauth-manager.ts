@@ -65,7 +65,6 @@ export class McpOauthManager {
         return entry;
     }
 
-    /** Get a pending OAuth request by id. */
     getPending(id: string): PendingMcpOAuth | undefined {
         this.sweepExpired();
         return this.entries.get(id);
@@ -84,7 +83,6 @@ export class McpOauthManager {
         });
     }
 
-    /** Mark a request as resolved. */
     resolve(id: string, status: 'completed' | 'failed', error?: string): PendingMcpOAuth | undefined {
         const entry = this.entries.get(id);
         if (!entry) {

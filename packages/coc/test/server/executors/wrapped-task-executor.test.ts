@@ -1,6 +1,4 @@
 /**
- * WrappedTaskExecutor Unit Tests
- *
  * Verifies the before-script → AI → after-script orchestration,
  * including error handling, event emission, and edge cases.
  */

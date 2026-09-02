@@ -1,6 +1,4 @@
 /**
- * Test helpers for memory route tests.
- *
  * Provides a lightweight test router that can exercise Route handlers
  * without starting a full HTTP server.
  */
@@ -48,7 +46,6 @@ function createMockResponse(): { res: http.ServerResponse; getResult: () => { st
 }
 
 /**
- * Create a test router from an array of Route objects.
  * Routes are matched in order by method + pattern.
  */
 export function createTestRouter(routes: Route[]) {

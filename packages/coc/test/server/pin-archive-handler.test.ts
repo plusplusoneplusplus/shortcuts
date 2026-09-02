@@ -1,6 +1,4 @@
 /**
- * Pin & Archive Handler Tests
- *
  * Tests the REST API endpoints for pinning and archiving processes.
  * Uses a real SqliteProcessStore for integration testing.
  */

@@ -1,6 +1,4 @@
 /**
- * Analysis Response Parser Tests
- *
  * Tests for JSON extraction, field normalization, Mermaid validation,
  * and ComponentAnalysis construction from raw AI responses.
  */
