@@ -1264,6 +1264,7 @@ export function ChatListPane({
 
     // ── Folder assignment (AC-06) ──────────────────────────────────────────
     const { moveToFolder } = useChatFolderAssignment({
+        workspaceId,
         folderIdByProcess,
         onProcessFoldersChanged: handleProcessFoldersChanged,
         onError: handleFolderError,
