@@ -173,6 +173,52 @@ describe('pinned segments — navigation', () => {
         expect(mockSelectClone).toHaveBeenCalledWith('a');
     });
 
+    // Regression: pin resolution hard-coded `group.repos[0]`, so clicking a
+    // pinned repo tab always landed on the cluster's primary clone instead of
+    // the machine you were last on.
+    it('clicking a repo pin returns to the clone last used for that remote', async () => {
+        mockAppState.lastCloneByRemote = { 'github.com/acme/shortcuts': 'b' };
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        fireEvent.click(pinSegment(SHORTCUTS_PIN)!);
+
+        expect(mockSelectClone).toHaveBeenCalledWith('b');
+    });
+
+    it('falls back to the primary clone when the remembered one is gone', async () => {
+        mockAppState.lastCloneByRemote = { 'github.com/acme/shortcuts': 'vanished' };
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        fireEvent.click(pinSegment(SHORTCUTS_PIN)!);
+
+        expect(mockSelectClone).toHaveBeenCalledWith('a');
+    });
+
+    // `workspaceId` and `targetId` are the same value, so the pop-out follows
+    // the remembered clone too — otherwise "Open in new window" on a pin would
+    // land on a different machine than clicking it.
+    it('pops a repo pin out onto the remembered clone', async () => {
+        const openSpy = vi.fn().mockReturnValue({ focus: vi.fn() });
+        vi.stubGlobal('open', openSpy);
+        mockAppState.lastCloneByRemote = { 'github.com/acme/shortcuts': 'b' };
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        const icon = pinSegment(SHORTCUTS_PIN)!.querySelector('[data-testid="scope-segment-popout"]')!;
+        expect(icon.getAttribute('data-workspace-id')).toBe('b');
+        fireEvent.click(icon);
+        expect(String(openSpy.mock.calls[0][0])).toContain('window=b');
+    });
+
+    it('records the active repo as the last clone of its remote cluster', async () => {
+        await renderWithPins({ repo: mockRepos[1], repos: mockRepos });
+
+        expect(mockDispatch).toHaveBeenCalledWith({
+            type: 'RECORD_REMOTE_CLONE',
+            groupKey: 'github.com/acme/shortcuts',
+            cloneId: 'b',
+        });
+    });
+
     it('clicking a group pin selects the repo-group virtual workspace', async () => {
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
 

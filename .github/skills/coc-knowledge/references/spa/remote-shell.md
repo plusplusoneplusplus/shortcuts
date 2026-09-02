@@ -22,7 +22,14 @@ Requests pills; the chip's dropdown lists recent remotes from the global prefere
 `recentRemotes` (MRU keys `groupKey(group)`, cap 8; default-group fallback before any
 MRU), search over all remotes, and `AddFolderDialog` / `AddRepoDialog` /
 `CloneRepoDialog`. Selecting a remote records the MRU entry and picks that remote's
-remembered clone, else its first local-first clone. `WorkspaceTabsCluster` carries the
+clone via the shared `pickCloneForGroup` (`repos/cloneIdentity.ts`): the clone last
+used for that cluster when it still exists, else the cluster's first local-first
+clone. That memory is `AppContextState.lastCloneByRemote` — keyed by
+`groupKey(group)`, valued with a repo selection id, written by the
+`RECORD_REMOTE_CLONE` reducer case and persisted to localStorage
+(`coc-last-clone-by-remote`), since which machine's clone you were viewing is
+per-device. `ScopeSlideSwitcher` records it (deciding the cluster needs the full
+repo list and the grouping pass, which the reducer lacks). `WorkspaceTabsCluster` carries the
 clone switcher, clone popover, clone-scoped tabs, overflow menu, and repo info/remove
 dialogs. `header-new-btn` is the first right-side action, enqueuing for the active clone.
 `ReposView` renders a `chromeless` `RepoDetail`.
@@ -78,7 +85,11 @@ UI calls a "repo group" have separate key spaces: `repo:<groupKey>` is a git-rem
 `RepoGroup`, `group:<workspaceId>` a repo-group virtual workspace. `pinnedScopes.ts`
 holds the pure model (`parsePinnedScope` splits on the first colon so a
 `repo:workspace:<id>` key survives; `resolvePinnedScopes` drops pins whose target is
-missing from the rendered set only, never from storage). `usePinnedScopes.ts` is a
+missing from the rendered set only, never from storage). A `repo:` pin's `targetId` /
+`workspaceId` come from the same `pickCloneForGroup` the picker uses, fed
+`lastCloneByRemote` through `PinnedScopeResolveContext` so the module stays pure — so
+clicking or popping out a pin lands on the clone you were last on, not the cluster's
+primary. `usePinnedScopes.ts` is a
 module-level store rather than per-hook state so the pin toggles on the picker rows
 (`scope-pin-toggle`, `data-pin-kind` / `data-pin-key`, in `WorkspaceIdentityChip`) and
 the segments in `ScopeSlideSwitcher` stay in sync without a common owner.
@@ -112,7 +123,11 @@ UI calls a "repo group" have separate key spaces: `repo:<groupKey>` is a git-rem
 `RepoGroup`, `group:<workspaceId>` a repo-group virtual workspace. `pinnedScopes.ts`
 holds the pure model (`parsePinnedScope` splits on the first colon so a
 `repo:workspace:<id>` key survives; `resolvePinnedScopes` drops pins whose target is
-missing from the rendered set only, never from storage). `usePinnedScopes.ts` is a
+missing from the rendered set only, never from storage). A `repo:` pin's `targetId` /
+`workspaceId` come from the same `pickCloneForGroup` the picker uses, fed
+`lastCloneByRemote` through `PinnedScopeResolveContext` so the module stays pure — so
+clicking or popping out a pin lands on the clone you were last on, not the cluster's
+primary. `usePinnedScopes.ts` is a
 module-level store rather than per-hook state so the pin toggles on the picker rows
 (`scope-pin-toggle`, `data-pin-kind` / `data-pin-key`, in `WorkspaceIdentityChip`) and
 the segments in `ScopeSlideSwitcher` stay in sync without a common owner.

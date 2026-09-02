@@ -181,9 +181,15 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     // when their target does.
     const pinSegments = useMemo(
         () => (pinnedScopesEnabled
-            ? resolvePinnedScopes(pins, { groups, groupWorkspaces, cloneStatus, unseenCounts: unseenCounts ?? {} })
+            ? resolvePinnedScopes(pins, {
+                groups,
+                groupWorkspaces,
+                cloneStatus,
+                unseenCounts: unseenCounts ?? {},
+                lastCloneByRemote: state.lastCloneByRemote,
+            })
             : []),
-        [pinnedScopesEnabled, pins, groups, groupWorkspaces, cloneStatus, unseenCounts],
+        [pinnedScopesEnabled, pins, groups, groupWorkspaces, cloneStatus, unseenCounts, state.lastCloneByRemote],
     );
 
     // A repo group is a virtual scope without its own segment: unless pinned it

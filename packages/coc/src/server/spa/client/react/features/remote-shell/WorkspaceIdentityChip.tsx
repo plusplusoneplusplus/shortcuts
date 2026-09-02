@@ -17,7 +17,7 @@ import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import { RepoGroupDialog } from '../../repos/RepoGroupDialog';
 import { deleteRepoGroup } from '../../repos/repoGroupService';
 import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
-import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
+import { getRepoSelectionId, isRepoSelected, pickCloneForGroup } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
 import { getGroupRemoteServers, getGroupWsl } from '../../repos/repoPickerModel';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
@@ -161,7 +161,7 @@ function groupMatchesSearch(group: RepoGroup, query: string): boolean {
 export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity, identitySuppressed }: WorkspaceIdentityChipProps) {
     const cloneId = repo ? getRepoSelectionId(repo) : '';
     const { state: queueState } = useQueue();
-    const { state: appState } = useApp();
+    const { state: appState, dispatch } = useApp();
     const { fetchRepos, unseenCounts, remoteGroupWorkspaces } = useRepos();
     const { selectClone } = useShellNavigation();
     const { toasts, addToast, removeToast } = useToast();
@@ -178,7 +178,6 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
     const [groupDeleting, setGroupDeleting] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
-    const lastCloneByRemote = useRef<Record<string, string>>({});
     const { open, toggle, close, searchRef } = useDropdownPopover(rootRef, triggerRef);
 
     const groups = useMemo(() => groupReposByRemote(repos, {}), [repos]);
@@ -240,18 +239,24 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
         );
     }, [pinnedScopesEnabled, pins, pinsFull, togglePin]);
 
+    // Remember which clone of the active cluster the user is on, so the picker
+    // row AND a pinned repo tab both return here rather than to the cluster's
+    // primary. Recorded from this component because deciding the cluster needs
+    // the full repo list and the grouping pass (the reducer has neither), and
+    // because the chip is on every surface that shows a clone — the scope
+    // switcher's workspace segment and the legacy `RemoteScopeCluster` alike.
     useEffect(() => {
-        if (activeGroupKey) {
-            lastCloneByRemote.current[activeGroupKey] = cloneId;
-        }
-    }, [activeGroupKey, cloneId]);
+        if (!activeGroupKey || !cloneId) return;
+        dispatch({ type: 'RECORD_REMOTE_CLONE', groupKey: activeGroupKey, cloneId });
+    }, [activeGroupKey, cloneId, dispatch]);
 
+    // Which clone of a cluster to open lives in ONE function shared with the
+    // pinned scope segments (`resolvePinnedScopes`); the memory it reads lives in
+    // AppContext (persisted), recorded by `ScopeSlideSwitcher`, so the picker and
+    // the pins agree and both survive a reload.
     const chooseGroup = useCallback((group: RepoGroup) => {
         const key = groupKey(group);
-        const remembered = lastCloneByRemote.current[key];
-        const target = remembered && group.repos.some(r => isRepoSelected(r, repos, remembered))
-            ? remembered
-            : (group.repos[0] ? getRepoSelectionId(group.repos[0]) : undefined);
+        const target = pickCloneForGroup(group, repos, appState.lastCloneByRemote?.[key]);
         if (target) {
             recordUse(key);
             selectClone(target);
@@ -259,7 +264,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
         close();
         setShowAll(false);
         setQuery('');
-    }, [repos, recordUse, selectClone, close]);
+    }, [repos, appState.lastCloneByRemote, recordUse, selectClone, close]);
 
     const { requestRemove, removeDialog } = useWorkspaceRemoval({ repos, selectedRepo: repo, addToast });
 

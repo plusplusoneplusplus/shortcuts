@@ -18,6 +18,7 @@ import {
     togglePinnedScope,
     type PinnedScopeRef,
 } from '../../../../src/server/spa/client/react/features/remote-shell/pinnedScopes';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import { groupReposByRemote } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 
 const repo = (id: string, name: string, remoteUrl?: string) => ({
@@ -121,12 +122,92 @@ describe('resolvePinnedScopes', () => {
         ...over,
     });
 
-    it('resolves a repo pin to its cluster label and first clone as the click target', () => {
+    it('resolves a repo pin to its cluster label and primary clone as the click target', () => {
         const [resolved] = resolvePinnedScopes([repoPin('github.com/acme/shortcuts')], ctx());
         expect(resolved.label).toBe('shortcuts');
         expect(resolved.targetId).toBe('a');
         expect(resolved.workspaceId).toBe('a');
         expect(resolved.id).toBe('repo:github.com/acme/shortcuts');
+    });
+
+    // Regression: a repo pin used to hard-code `group.repos[0]`, so clicking it
+    // snapped you back to the cluster's primary clone every time instead of the
+    // machine you were last on. It now shares `pickCloneForGroup` with the
+    // picker's `chooseGroup`.
+    describe('remembered clone', () => {
+        it('targets the clone the user was last on for that cluster', () => {
+            const [resolved] = resolvePinnedScopes(
+                [repoPin('github.com/acme/shortcuts')],
+                ctx({ lastCloneByRemote: { 'github.com/acme/shortcuts': 'b' } }),
+            );
+            expect(resolved.targetId).toBe('b');
+            // Same value — so the pop-out / right-click menu land on that clone too.
+            expect(resolved.workspaceId).toBe('b');
+        });
+
+        it('honours a REMOTE clone selection id', () => {
+            const remoteClone = {
+                workspace: {
+                    id: 'r1',
+                    name: 'shortcuts@box-2',
+                    remoteUrl: SHORTCUTS,
+                    baseUrl: 'http://box-2:3000',
+                    remote: { serverId: 'box-2', cloneKey: buildRemoteCloneKey('box-2', 'r1') },
+                },
+                gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl: SHORTCUTS },
+            } as any;
+            const withRemote = groupReposByRemote([...repos, remoteClone], {});
+            const key = buildRemoteCloneKey('box-2', 'r1');
+            const [resolved] = resolvePinnedScopes(
+                [repoPin('github.com/acme/shortcuts')],
+                ctx({ groups: withRemote, lastCloneByRemote: { 'github.com/acme/shortcuts': key } }),
+            );
+            expect(resolved.targetId).toBe(key);
+        });
+
+        it('falls back to the primary when the remembered clone is gone (machine offline)', () => {
+            const [resolved] = resolvePinnedScopes(
+                [repoPin('github.com/acme/shortcuts')],
+                ctx({ lastCloneByRemote: { 'github.com/acme/shortcuts': 'vanished' } }),
+            );
+            expect(resolved.targetId).toBe('a');
+        });
+
+        it('ignores a memory recorded for a DIFFERENT cluster', () => {
+            const [resolved] = resolvePinnedScopes(
+                [repoPin('github.com/acme/shortcuts')],
+                // 'c' is the forge clone: real, but not a member of this cluster.
+                ctx({ lastCloneByRemote: { 'github.com/acme/shortcuts': 'c', 'github.com/acme/forge': 'c' } }),
+            );
+            expect(resolved.targetId).toBe('a');
+        });
+
+        it('is unaffected on a single-clone cluster', () => {
+            const [resolved] = resolvePinnedScopes(
+                [repoPin('github.com/acme/forge')],
+                ctx({ lastCloneByRemote: { 'github.com/acme/forge': 'c' } }),
+            );
+            expect(resolved.targetId).toBe('c');
+        });
+
+        it('resolves identically with no map at all (cold load / corrupt storage)', () => {
+            const bare = { groups, groupWorkspaces: [], cloneStatus: {}, unseenCounts: {} };
+            const [resolved] = resolvePinnedScopes([repoPin('github.com/acme/shortcuts')], bare);
+            expect(resolved.targetId).toBe('a');
+            const [empty] = resolvePinnedScopes(
+                [repoPin('github.com/acme/shortcuts')],
+                ctx({ lastCloneByRemote: {} }),
+            );
+            expect(empty.targetId).toBe('a');
+        });
+
+        it('leaves `group:` pins alone — they have no clones to choose between', () => {
+            const [resolved] = resolvePinnedScopes(
+                [groupPin('group-ai')],
+                ctx({ lastCloneByRemote: { 'group-ai': 'b' } }),
+            );
+            expect(resolved.targetId).toBe('group-ai');
+        });
     });
 
     it('sums unseen counts across every clone of a pinned remote', () => {

@@ -99,6 +99,37 @@ export function isRepoSelected<T extends RepoSelectionLike>(
     return findRepoBySelectionId(repos, selectionId) === repo;
 }
 
+/** A git-remote cluster, structurally: only its ordered clone list matters here. */
+export interface CloneGroupLike<T extends RepoSelectionLike> {
+    repos: readonly T[];
+}
+
+/**
+ * THE rule for "which clone of this remote cluster do I open?" — the remembered
+ * clone when it still exists in the cluster, else the cluster's primary
+ * (`repos[0]`, which `sortClonesLocalFirst` pins to a local checkout when there
+ * is one), else nothing because the cluster is empty.
+ *
+ * This lives in one function on purpose: the picker (`WorkspaceIdentityChip`)
+ * and the pin segments (`resolvePinnedScopes`) once each carried their own copy
+ * and drifted, so clicking a pin snapped you back to `repos[0]` while the picker
+ * returned you to the machine you were last on.
+ *
+ * `remembered` and the return value are both repo *selection ids*
+ * (`getRepoSelectionId`) — the same space `selectClone` accepts.
+ */
+export function pickCloneForGroup<T extends RepoSelectionLike>(
+    group: CloneGroupLike<T>,
+    repos: readonly T[],
+    remembered?: string | null,
+): string | undefined {
+    if (remembered && group.repos.some(r => isRepoSelected(r, repos, remembered))) {
+        return remembered;
+    }
+    const primary = group.repos[0];
+    return primary ? getRepoSelectionId(primary) : undefined;
+}
+
 export function legacyPathOnlyWorkspaceIdForRootPath(rootPath: string): string {
     return LEGACY_PATH_ONLY_WORKSPACE_ID_PREFIX + hashString(rootPath);
 }

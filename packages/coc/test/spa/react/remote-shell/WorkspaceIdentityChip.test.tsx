@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockSelectClone = vi.fn();
+const mockDispatch = vi.fn();
 const mockFetchRepos = vi.fn().mockResolvedValue(undefined);
 const mockRemoveWorkspace = vi.fn().mockResolvedValue(undefined);
 const mockDeleteRepoGroup = vi.fn().mockResolvedValue(undefined);
@@ -19,6 +20,7 @@ let mockUnseen: Record<string, number> = {};
 let mockWorkspaces: any[] = [];
 let mockSelectedRepoId: string | null = null;
 let mockRemoteGroupWorkspaces: any[] = [];
+let mockLastCloneByRemote: Record<string, string> = {};
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
@@ -29,7 +31,14 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: { workspaces: mockWorkspaces, selectedRepoId: mockSelectedRepoId }, dispatch: vi.fn() }),
+    useApp: () => ({
+        state: {
+            workspaces: mockWorkspaces,
+            selectedRepoId: mockSelectedRepoId,
+            lastCloneByRemote: mockLastCloneByRemote,
+        },
+        dispatch: mockDispatch,
+    }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: mockQueueState, dispatch: vi.fn() }),
@@ -91,6 +100,7 @@ const remoteRepo = (id: string, name: string, remoteUrl: string, connection: str
 beforeEach(() => {
     cleanup();
     mockSelectClone.mockReset();
+    mockDispatch.mockReset();
     mockFetchRepos.mockClear();
     mockRemoveWorkspace.mockReset().mockResolvedValue(undefined);
     mockDeleteRepoGroup.mockReset().mockResolvedValue(undefined);
@@ -99,6 +109,7 @@ beforeEach(() => {
     mockWorkspaces = [];
     mockSelectedRepoId = null;
     mockRemoteGroupWorkspaces = [];
+    mockLastCloneByRemote = {};
 });
 
 function openPicker(repos: any[], selected: any) {
@@ -743,6 +754,56 @@ describe('WorkspaceIdentityChip group identity mode', () => {
         expect(chip.textContent).toContain('2');
         expect(chip.getAttribute('data-repo-group-id')).toBeNull();
         expect(screen.queryByTestId('remote-chip-group-icon')).toBeNull();
+    });
+});
+
+// The remembered clone is AppContext state (persisted to localStorage), not a
+// component ref, so it survives a reload and is the SAME memory the pinned scope
+// segments read — the picker and a pin can no longer disagree about which
+// machine a remote opens on.
+describe('WorkspaceIdentityChip recent-remote row — clone choice', () => {
+    const clones = () => [repo('a', 'shortcuts', SHORTCUTS), repo('b', 'shortcuts-2', SHORTCUTS)];
+
+    function clickRemoteRow(repos: any[], name: string) {
+        openPicker(repos, repos[0]);
+        const row = screen.getAllByTestId('remote-dropdown-item')
+            .find(el => el.textContent?.includes(name))!;
+        fireEvent.click(row);
+    }
+
+    // Recorded here, not in `ScopeSlideSwitcher`: the chip is on every surface
+    // that shows a clone (the switcher's workspace segment AND the legacy
+    // `RemoteScopeCluster`), so one effect covers both.
+    it('records the active clone as the cluster memory', () => {
+        const repos = clones();
+        openPicker(repos, repos[1]);
+        expect(mockDispatch).toHaveBeenCalledWith({
+            type: 'RECORD_REMOTE_CLONE',
+            groupKey: 'github.com/acme/shortcuts',
+            cloneId: 'b',
+        });
+    });
+
+    it('records nothing when no repo is selected', () => {
+        openPicker(clones(), undefined);
+        expect(mockDispatch).not.toHaveBeenCalled();
+    });
+
+    it('opens the clone last used for that remote', () => {
+        mockLastCloneByRemote = { 'github.com/acme/shortcuts': 'b' };
+        clickRemoteRow(clones(), 'shortcuts');
+        expect(mockSelectClone).toHaveBeenCalledWith('b');
+    });
+
+    it('opens the primary clone when nothing is remembered', () => {
+        clickRemoteRow(clones(), 'shortcuts');
+        expect(mockSelectClone).toHaveBeenCalledWith('a');
+    });
+
+    it('opens the primary clone when the remembered one is gone', () => {
+        mockLastCloneByRemote = { 'github.com/acme/shortcuts': 'vanished' };
+        clickRemoteRow(clones(), 'shortcuts');
+        expect(mockSelectClone).toHaveBeenCalledWith('a');
     });
 });
 

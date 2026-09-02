@@ -18,7 +18,7 @@
  * Everything here is pure so it unit-tests without React, the dashboard
  * contexts, or the preferences client.
  */
-import { getRepoSelectionId } from '../../repos/cloneIdentity';
+import { pickCloneForGroup } from '../../repos/cloneIdentity';
 import { groupKey, type RepoGroup } from '../../repos/repoGrouping';
 import { summarizeRemote, type CloneStatus } from './shellModel';
 
@@ -127,15 +127,31 @@ export interface PinnedScopeResolveContext {
     groupWorkspaces: readonly NamedWorkspace[];
     cloneStatus: Record<string, CloneStatus | string>;
     unseenCounts: Record<string, number>;
+    /**
+     * Which clone of each git-remote cluster the user was last on, keyed by
+     * `groupKey(group)` and valued with a repo selection id. Owned by
+     * `AppContext` (persisted to localStorage) and threaded in so this module
+     * stays a pure function. Absent/stale entries fall back to the cluster's
+     * primary clone.
+     */
+    lastCloneByRemote?: Record<string, string>;
 }
 
 export interface ResolvedPinnedScope {
     ref: PinnedScopeRef;
     /** Stable per-pin segment key for refs / `data-*` (the serialized ref). */
     id: string;
-    /** Workspace id the pop-out and the right-click menu act on. */
+    /**
+     * Workspace id the pop-out and the right-click menu act on. For a `repo:`
+     * pin this is the chosen *clone* (see `targetId`), so popping a pin out
+     * lands on the same machine clicking it would.
+     */
     workspaceId: string;
-    /** What `selectClone` is called with when the segment is clicked. */
+    /**
+     * What `selectClone` is called with when the segment is clicked. For a
+     * `repo:` pin (a whole cluster) this is the clone `pickCloneForGroup`
+     * chooses: the one you were last on, else the cluster's primary.
+     */
     targetId: string;
     label: string;
     /** Status dot color; group pins have no member health of their own. */
@@ -156,6 +172,11 @@ export function resolvePinnedScopes(
     ctx: PinnedScopeResolveContext,
 ): ResolvedPinnedScope[] {
     const groupsByKey = new Map(ctx.groups.map(g => [groupKey(g), g]));
+    // `groupReposByRemote` partitions every repo into exactly one group, so
+    // flattening the clusters reconstructs the full repo list `pickCloneForGroup`
+    // needs to check a remembered clone against — without this module taking a
+    // second, redundant input that could disagree with `groups`.
+    const allRepos = ctx.groups.flatMap(g => g.repos);
     const workspacesById = new Map(
         ctx.groupWorkspaces.map(ws => [String(ws?.id ?? ''), ws] as const),
     );
@@ -164,13 +185,13 @@ export function resolvePinnedScopes(
         const id = serializePinnedScope(ref);
         if (ref.kind === 'repo') {
             const group = groupsByKey.get(ref.key);
-            const first = group?.repos[0];
-            if (!group || !first) continue;
+            if (!group) continue;
+            // A cluster has no single workspace, so the pin acts on one of its
+            // clones — the one you were last on, else the cluster's primary.
+            // Shared with the picker's `chooseGroup` so the two can't drift.
+            const targetId = pickCloneForGroup(group, allRepos, ctx.lastCloneByRemote?.[ref.key]);
+            if (!targetId) continue;
             const summary = summarizeRemote(group, ctx.cloneStatus, ctx.unseenCounts);
-            // A cluster has no single workspace, so the pin acts on its first
-            // clone — the same clone the picker falls back to when no clone of
-            // that remote has been visited yet (`chooseGroup`).
-            const targetId = getRepoSelectionId(first);
             out.push({
                 ref,
                 id,
