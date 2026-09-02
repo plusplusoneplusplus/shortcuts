@@ -21,7 +21,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
     // Reflect the inputs faithfully enough to prove target-scoped note/task data
     // is threaded through when a fallback suffix must be rebuilt.
-    buildRepoSubTabSuffix: (tab: string, state: any, selectedTaskId?: string | null) => {
+    buildWorkspaceSubTabSuffix: (_id: string, tab: string, state: any, selectedTaskId?: string | null) => {
         if (tab === 'notes' && state?.selectedNotePath) return '/notes/' + state.selectedNotePath;
         if ((tab === 'chats' || tab === 'activity' || tab === 'tasks') && selectedTaskId) return '/' + tab + '/' + selectedTaskId;
         return '/' + tab;

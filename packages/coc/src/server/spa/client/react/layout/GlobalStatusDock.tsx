@@ -91,10 +91,13 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     if (inNotesSidebarFooter) return null;
 
     // The settings sub-tab hosts the cluster in `RepoSettingsTab`'s own nav
-    // footer, matching Notes/Admin owned-sidebar behavior.
+    // footer, matching Notes/Admin owned-sidebar behavior. A repo group is the
+    // exception: its Settings tab is a plain scrolling pane with no nav sidebar
+    // (`RepoGroupSettingsTab`), so there is no footer to defer to.
     const inSettingsSidebarFooter =
         visibleTab === 'repos' &&
         !!state.selectedRepoId &&
+        !isRepoGroupWorkspaceId(state.selectedRepoId) &&
         state.activeRepoSubTab === 'settings';
     if (inSettingsSidebarFooter) return null;
 

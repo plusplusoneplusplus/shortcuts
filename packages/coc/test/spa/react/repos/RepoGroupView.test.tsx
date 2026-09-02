@@ -1,15 +1,15 @@
 /**
  * RepoGroupView — repo-group virtual workspace landing view (AC-02).
  *
- * The group workspace exposes ONLY the Workspace (chat) and Notes tabs — every
- * git-dependent tab is absent by construction. Renders the real
+ * The group workspace exposes ONLY the Workspace (chat), Notes and Settings tabs
+ * — every git-dependent tab is absent by construction. Renders the real
  * VirtualWorkspaceInlineHeader (classic shell) so the tab strip assertions are
- * genuine, with the heavy tab bodies (chat, notes) stubbed.
+ * genuine, with the heavy tab bodies (chat, notes, settings) stubbed.
  *
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 const mockDispatch = vi.fn();
 let mockAppState: any = {};
@@ -28,7 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
-    return { buildRepoSubTabSuffix: routes.buildRepoSubTabSuffix };
+    return { buildWorkspaceSubTabSuffix: routes.buildWorkspaceSubTabSuffix };
 });
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
     useSchedulesInScheduledSlideEnabled: () => false,
@@ -57,6 +57,11 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () =
         <div data-testid="stub-notes-view" data-workspace={workspaceId} data-active={String(active)} data-dock-footer={String(!!dockStatusFooter)} />
     ),
 }));
+vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab', () => ({
+    RepoGroupSettingsTab: ({ workspaceId, active }: { workspaceId: string; active: boolean }) => (
+        <div data-testid="stub-group-settings" data-workspace={workspaceId} data-active={String(active)} />
+    ),
+}));
 
 import { getRepoGroupHeaderConfig, RepoGroupView } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
 
@@ -79,10 +84,15 @@ beforeEach(() => {
 });
 
 describe('getRepoGroupHeaderConfig (AC-02 tab gating)', () => {
-    it('declares exactly the Workspace (chats) and Notes tabs — no git-dependent tabs', () => {
+    it('declares exactly the Workspace (chats), Notes and Settings tabs — no git-dependent tabs', () => {
         const config = getRepoGroupHeaderConfig(GROUP_ID, 'Frontend');
-        expect(config.tabs.map(t => t.key)).toEqual(['chats', 'notes']);
-        expect(config.tabs.map(t => t.label)).toEqual(['Workspace', 'Notes']);
+        expect(config.tabs.map(t => t.key)).toEqual(['chats', 'notes', 'settings']);
+        expect(config.tabs.map(t => t.label)).toEqual(['Workspace', 'Notes', 'Settings']);
+    });
+
+    it('puts Settings last and gives it the repo settings shortcut', () => {
+        const config = getRepoGroupHeaderConfig(GROUP_ID, 'Frontend');
+        expect(config.tabs.at(-1)).toEqual({ key: 'settings', label: 'Settings', shortcut: 'Alt+C' });
     });
 
     it('lands on the Workspace tab, has no header actions, and carries the group identity', () => {
@@ -96,12 +106,37 @@ describe('getRepoGroupHeaderConfig (AC-02 tab gating)', () => {
 });
 
 describe('RepoGroupView', () => {
-    it('renders only Workspace and Notes tab buttons in the inline header', () => {
+    it('renders only Workspace, Notes and Settings tab buttons in the inline header', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('repo-group-tab-chats')).toBeTruthy();
         expect(screen.getByTestId('repo-group-tab-notes')).toBeTruthy();
+        expect(screen.getByTestId('repo-group-tab-settings')).toBeTruthy();
         const strip = screen.getByTestId('repo-group-header-tabs');
-        expect(strip.querySelectorAll('button[data-subtab]')).toHaveLength(2);
+        expect(strip.querySelectorAll('button[data-subtab]')).toHaveLength(3);
+    });
+
+    it('deep-links Settings to a bare #repos/<groupId>/settings, with no section suffix', () => {
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
+        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings');
+    });
+
+    it('shows the Settings pane (and hides chat/notes) when Settings is active', () => {
+        mockAppState.activeRepoSubTab = 'settings';
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        const settings = screen.getByTestId('stub-group-settings');
+        expect(settings.getAttribute('data-workspace')).toBe(GROUP_ID);
+        expect(settings.getAttribute('data-active')).toBe('true');
+        expect((settings.parentElement as HTMLElement).style.display).not.toBe('none');
+        expect((screen.getByTestId('stub-chat-tab').parentElement as HTMLElement).style.display).toBe('none');
+        expect((screen.getByTestId('stub-notes-view').parentElement as HTMLElement).style.display).toBe('none');
+    });
+
+    it('no longer renders the inline Member repos strip on the Workspace tab', () => {
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.queryByTestId('repo-group-members-toggle')).toBeNull();
+        expect(screen.queryByTestId('repo-group-members-panel')).toBeNull();
     });
 
     it('shows the group name from the workspace registry in the header', () => {
@@ -131,6 +166,7 @@ describe('RepoGroupView', () => {
         expect(chat.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect((chat.parentElement as HTMLElement).style.display).not.toBe('none');
         expect((notes.parentElement as HTMLElement).style.display).toBe('none');
+        expect((screen.getByTestId('stub-group-settings').parentElement as HTMLElement).style.display).toBe('none');
     });
 
     it('shows the notes tab targeting the group workspace when Notes is active', () => {

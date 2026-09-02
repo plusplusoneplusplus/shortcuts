@@ -4,7 +4,7 @@
  * When a `group-<slug>` workspace is selected on the repos tab, the TopBar picks
  * the virtual-workspace shell header by ID PREFIX (unlike My Work / My Life,
  * which match by id equality), labels it with the registered group name, and
- * shows only the group's Workspace + Notes sub-tabs.
+ * shows only the group's Workspace + Notes + Settings sub-tabs.
  *
  * @vitest-environment jsdom
  */
@@ -115,13 +115,14 @@ afterEach(() => {
 });
 
 describe('TopBar — repo-group virtual header', () => {
-    it('renders the virtual-workspace shell header for a group selection with only Workspace + Notes tabs', () => {
+    it('renders the virtual-workspace shell header for a group selection with only Workspace + Notes + Settings tabs', () => {
         renderTopBarWithGroup();
         const header = screen.getByTestId('virtual-workspace-shell-header');
         expect(header.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect(screen.getByTestId('repo-group-shell-tab-chats').textContent).toBe('Workspace');
         expect(screen.getByTestId('repo-group-shell-tab-notes').textContent).toBe('Notes');
-        expect(header.querySelectorAll('button[data-subtab]')).toHaveLength(2);
+        expect(screen.getByTestId('repo-group-shell-tab-settings').textContent).toBe('Settings');
+        expect(header.querySelectorAll('button[data-subtab]')).toHaveLength(3);
     });
 
     it('labels the header with the registered group name', () => {

@@ -23,7 +23,7 @@ import { getWorkspaceIdFromSelectionId } from '../repos/cloneIdentity';
 import {
     resolveDashboardRoute,
     applyRouteEffects,
-    buildRepoSubTabSuffix,
+    buildWorkspaceSubTabSuffix,
     resolveChatSubTab,
     type RouteContext,
 } from './dashboardRoutes';
@@ -149,7 +149,7 @@ export function Router() {
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
                     const selectedTaskId = queueState.selectedTaskIdByRepo?.[state.selectedRepoId] ?? queueState.selectedTaskId;
-                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + buildRepoSubTabSuffix(tab, state, selectedTaskId);
+                    location.hash = '#repos/' + encodeURIComponent(state.selectedRepoId) + buildWorkspaceSubTabSuffix(state.selectedRepoId, tab, state, selectedTaskId);
                 }
             }
         };

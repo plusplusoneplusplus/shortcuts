@@ -1,14 +1,14 @@
 /**
  * useShellNavigation — selection + sub-tab routing for the remote-first shell.
  *
- * Reuses the exact hash-routing the classic nav uses (buildRepoSubTabSuffix),
+ * Reuses the exact hash-routing the classic nav uses (buildWorkspaceSubTabSuffix),
  * so the new shell stays interoperable with deep links and the Router.
  */
 
 import { useCallback } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
-import { buildRepoSubTabSuffix } from '../../layout/Router';
+import { buildWorkspaceSubTabSuffix } from '../../layout/Router';
 import { useWorkspaceNavigation } from '../../hooks/useWorkspaceNavigation';
 import type { RepoSubTab } from '../../types/dashboard';
 
@@ -32,7 +32,8 @@ export function useShellNavigation(): ShellNavigation {
 
     const navigate = useCallback((id: string, subTab: RepoSubTab) => {
         const selectedTaskId = queueState.selectedTaskIdByRepo?.[id] ?? null;
-        const suffix = buildRepoSubTabSuffix(
+        const suffix = buildWorkspaceSubTabSuffix(
+            id,
             subTab,
             { ...state, selectedNotePath: state.notePathState?.[id] ?? null },
             selectedTaskId,

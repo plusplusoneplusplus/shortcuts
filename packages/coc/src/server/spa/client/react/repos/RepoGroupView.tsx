@@ -4,7 +4,7 @@
  * A repo group is a virtual workspace (own root under `~/.coc/repos/<groupId>/`,
  * no git) that knows about a set of registered repo workspaces; chats started
  * here get the member repos injected server-side. The view therefore shows only
- * the Workspace (chat) tab and the Notes tab — every git-dependent tab (PRs,
+ * the Workspace (chat), Notes and Settings tabs — every git-dependent tab (PRs,
  * Work Items, branches, …) is hidden, same treatment as My Work / My Life.
  *
  * In the remote-first desktop shell the header (identity + sub-tabs) lives in
@@ -16,9 +16,12 @@
  * Explorer point at a target picked in the dock header: the group root, or any
  * live member repo. Notes stays on the group. Members come from
  * `GET /api/repo-groups/:id`; stale ones are listed but not selectable.
+ *
+ * Member descriptions are edited on the Settings tab (`RepoGroupSettingsTab`),
+ * not here — the Workspace tab is the chat and nothing else.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
@@ -27,16 +30,22 @@ import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { resolveRepoGroupName } from './repoGroupName';
-import { getRepoGroup, type RepoGroupMember } from './repoGroupService';
-import { RepoGroupMemberList } from './RepoGroupMemberList';
+import type { RepoGroupMember } from './repoGroupService';
+import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
+import { useRepoGroupMembers } from './useRepoGroupMembers';
 import { WorkspaceRightDock, useWorkspaceDock, type DockTarget } from '../features/repo-detail/WorkspaceRightDock';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 
-/** The only tabs a repo group exposes: chat ("Workspace") and Notes. */
+/**
+ * The only tabs a repo group exposes: chat ("Workspace"), Notes, and Settings.
+ * Settings reuses a real repo's Alt+C — a group is never on screen at the same
+ * time as a repo, so the shortcut cannot collide.
+ */
 const REPO_GROUP_TABS: VirtualWorkspaceHeaderConfig['tabs'] = [
     { key: 'chats', label: 'Workspace', shortcut: 'Alt+W' },
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
+    { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
 ];
 
 /**
@@ -84,37 +93,6 @@ export function repoGroupDockTargets(workspaceId: string, members: readonly Repo
     ];
 }
 
-/**
- * Fetch the group's members. Returns `undefined` while the request is in flight
- * or when it fails — the dock reads that as "no picker" (better than flashing an
- * empty one, and it degrades to a scope-only dock rather than an error state)
- * and the member strip reads it as "still loading".
- *
- * `enabled` is the union of the two consumers: the dock and an OPEN member
- * strip. A group whose strip is collapsed on a shell without the dock therefore
- * makes no request at all.
- */
-function useRepoGroupMembers(workspaceId: string, baseUrl: string | undefined, enabled: boolean): RepoGroupMember[] | undefined {
-    const [members, setMembers] = useState<RepoGroupMember[] | undefined>(undefined);
-    useEffect(() => {
-        if (!enabled) {
-            setMembers(undefined);
-            return;
-        }
-        let cancelled = false;
-        setMembers(undefined);
-        getRepoGroup(workspaceId, baseUrl)
-            .then(group => {
-                if (!cancelled) setMembers(group.members ?? []);
-            })
-            .catch(() => {
-                if (!cancelled) setMembers(undefined);
-            });
-        return () => { cancelled = true; };
-    }, [workspaceId, baseUrl, enabled]);
-    return members;
-}
-
 export interface RepoGroupViewProps {
     /** The `group-<slug>` workspace id currently selected. */
     workspaceId: string;
@@ -150,10 +128,9 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         const url = (match as { baseUrl?: unknown } | undefined)?.baseUrl;
         return typeof url === 'string' && url.length > 0 ? url : undefined;
     }, [remoteGroups, workspaceId]);
-    // Member repos + their descriptions: one read shared with the dock picker,
-    // made only once either surface actually needs it.
-    const [membersOpen, setMembersOpen] = useState(false);
-    const members = useRepoGroupMembers(workspaceId, groupBaseUrl, dockAvailable || membersOpen);
+    // Member repos, for the dock's target picker. The Settings tab does its own
+    // read — it needs the descriptions too, and only while it is the visible tab.
+    const members = useRepoGroupMembers(workspaceId, groupBaseUrl, dockAvailable);
     const dockTargets = useMemo(
         () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
         [dockAvailable, members, workspaceId]
@@ -171,30 +148,6 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
             {!headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
 
-            {/* Member repos — collapsed by default so the chat keeps the height,
-                but one click from the landing page since a description edit is a
-                rare, deliberate action. */}
-            <div className="shrink-0 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                <button
-                    type="button"
-                    data-testid="repo-group-members-toggle"
-                    aria-expanded={membersOpen}
-                    onClick={() => setMembersOpen(open => !open)}
-                    className="w-full flex items-center gap-1.5 px-3 py-1 text-xs text-[#616161] dark:text-[#999] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a]"
-                >
-                    <span>{membersOpen ? '▾' : '▸'}</span>
-                    <span className="font-medium">Member repos</span>
-                    {members && <span className="text-[#848484]">({members.length})</span>}
-                </button>
-                {membersOpen && (
-                    <div className="max-h-52 overflow-y-auto" data-testid="repo-group-members-panel">
-                        {members
-                            ? <RepoGroupMemberList workspaceId={workspaceId} baseUrl={groupBaseUrl} members={members} />
-                            : <div className="text-xs text-[#848484] px-3 py-2">Loading…</div>}
-                    </div>
-                )}
-            </div>
-
             {/* Tab content + the right dock as the outermost-right, full-height
                 column — mirrors RepoDetail's workspace content row. */}
             <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -209,6 +162,13 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                             defaultScope="per-note"
                             active={activeTab === 'notes'}
                             dockStatusFooter
+                        />
+                    </div>
+                    <div style={{ display: activeTab === 'settings' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        <RepoGroupSettingsTab
+                            workspaceId={workspaceId}
+                            baseUrl={groupBaseUrl}
+                            active={activeTab === 'settings'}
                         />
                     </div>
                 </div>

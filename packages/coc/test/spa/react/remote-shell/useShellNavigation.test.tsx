@@ -21,7 +21,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
-    buildRepoSubTabSuffix: (tab: string) => '/' + tab,
+    buildWorkspaceSubTabSuffix: (_id: string, tab: string) => '/' + tab,
 }));
 
 import { useShellNavigation } from '../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation';
