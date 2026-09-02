@@ -23,8 +23,23 @@
  */
 
 import { READ_ONLY_SYSTEM_MESSAGE, loadInstructions } from '@plusplusoneplusplus/forge';
-import type { ChatMode, LegacyChatMode } from '../tasks/task-types';
-import { normalizeChatMode, normalizeChatModeOrDefault, resolveInstructionMode } from '../tasks/task-types';
+import type { ChatMode, ChatPayload, LegacyChatMode } from '../tasks/task-types';
+import {
+    hasClassifyDiffContext,
+    hasCommitChatContext,
+    hasNoteChatContext,
+    hasNoteCreateContext,
+    hasReplicationContext,
+    hasResolveCommentsContext,
+    hasResolveDiffCommentsMultiContext,
+    hasTaskGenerationContext,
+    isChatPayload,
+    isPrClassificationPayload,
+    normalizeChatMode,
+    normalizeChatModeOrDefault,
+    resolveInstructionMode,
+    TaskDefs,
+} from '../tasks/task-types';
 import { tagBlock } from './prompt-tags';
 
 /** Tag wrapping the per-turn mode directive on the user message. */
@@ -106,4 +121,71 @@ export async function loadChatModeInstructions(
     } catch {
         return undefined;
     }
+}
+
+// ============================================================================
+// Chat-visible disclosure
+// ============================================================================
+
+/**
+ * The chat-visible half of the directive: the mode prose only.
+ *
+ * Prepended to the *stored* user turn so the transcript shows the constraint
+ * the model was actually given on that turn, the same way the `<chat-style>`
+ * and `<selected_skills>` blocks are stored. The repo's mode-specific
+ * instructions are deliberately left out — they are repo configuration that has
+ * never been surfaced in a transcript, and they would bury the user's message.
+ *
+ * Returns `undefined` when the turn has nothing mode-specific to disclose.
+ */
+export function buildChatModeDisplayBlock(input: {
+    mode: ChatMode;
+    previousMode?: ChatMode;
+}): string | undefined {
+    return buildChatModeDirective({ mode: input.mode, previousMode: input.previousMode });
+}
+
+/**
+ * The mode a brand-new chat's first turn actually runs in, or `undefined` when
+ * the task routes to an executor that sends no mode directive at all.
+ *
+ * Mirrors `ExecutorRegistry.resolveChatExecutor` — the same mirroring
+ * `isChatStyleEligiblePayload` does, and for the same reason: the stored user
+ * turn is written before an executor is picked, so the display layer has to
+ * predict the routing. A task that lands on the note, note-create,
+ * task-generation, replication or Ralph executors gets nothing, because those
+ * executors send nothing; over-claiming here would put a constraint in the
+ * transcript that the model was never told.
+ *
+ * The task *type* is checked first because Dreams runs its own internal steps
+ * through `ProcessLifecycleRunner` with a `kind: 'chat'` payload but its own
+ * one-shot AI call — it never reaches the executor registry, so it discloses
+ * nothing.
+ */
+export function resolveFirstTurnDirectiveMode(
+    task: { type?: string; payload?: Record<string, unknown> } | undefined,
+): ChatMode | undefined {
+    const payload = task?.payload;
+    if (!payload) return undefined;
+    if (task?.type !== TaskDefs.chat.kind && task?.type !== TaskDefs.prClassification.kind) return undefined;
+    // pr-classification payloads are not chat payloads, and always run ask.
+    if (isPrClassificationPayload(payload)) return 'ask';
+    if (!isChatPayload(payload)) return undefined;
+
+    if (hasTaskGenerationContext(payload) || hasReplicationContext(payload)) return undefined;
+    if (
+        hasResolveCommentsContext(payload)
+        || hasResolveDiffCommentsMultiContext(payload)
+        || (payload as ChatPayload).tools?.includes('resolve-comments')
+    ) {
+        // Multi-file resolve runs autopilot and sends no directive; single-file
+        // is pinned to ask by ResolveCommentsExecutor whatever the payload says.
+        return hasResolveDiffCommentsMultiContext(payload) ? undefined : 'ask';
+    }
+    // Commit chats and PR-diff classification are pinned to ask by their executors.
+    if (hasCommitChatContext(payload) || hasClassifyDiffContext(payload)) return 'ask';
+    if (hasNoteCreateContext(payload) || hasNoteChatContext(payload)) return undefined;
+
+    const mode = normalizeChatModeOrDefault((payload as ChatPayload).mode);
+    return mode === 'ralph' ? undefined : mode;
 }

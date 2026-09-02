@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { deriveScriptTitle } from '../../src/server/executors/title-generator';
+import { deriveScriptTitle, stripInjectedUserBlocks } from '../../src/server/executors/title-generator';
 
 const TITLE_GEN_PATH = path.join(
     __dirname, '..', '..', 'src', 'server', 'executors', 'title-generator.ts'
@@ -79,8 +79,42 @@ describe('title-generator idempotency', () => {
         expect(source).toContain('logger.warn');
     });
 
-    it('returns early if no user content is found', () => {
-        expect(source).toContain('if (!firstUserContent) return');
+    it('returns early if the user turn has no content of its own', () => {
+        expect(source).toContain('if (!stripInjectedUserBlocks(firstUserContent)) return');
+    });
+});
+
+// ============================================================================
+// stripInjectedUserBlocks
+// ============================================================================
+
+// The title prompt reads only the first 400 characters of the first user turn.
+// The stored turn opens with server-injected blocks — the read-only directive
+// alone is longer than that window — so without stripping them the user's
+// actual message never reaches the model.
+describe('stripInjectedUserBlocks', () => {
+    it('drops the mode directive and keeps the message', () => {
+        const content = '<coc-chat-mode>\n<coc-read-only-mode>\nYou are in read-only mode.\n</coc-read-only-mode>\n</coc-chat-mode>\n\nWhy is the build red?';
+
+        expect(stripInjectedUserBlocks(content)).toBe('Why is the build red?');
+    });
+
+    it('drops the chat-style and selected-skills blocks too', () => {
+        const content = [
+            '<chat-style>\nSelected style: Direct.\n</chat-style>',
+            '<selected_skills>\nThe user explicitly selected these skills: impl.\n</selected_skills>',
+            'Fix the flaky test',
+        ].join('\n\n');
+
+        expect(stripInjectedUserBlocks(content)).toBe('Fix the flaky test');
+    });
+
+    it('leaves a plain message byte-for-byte', () => {
+        expect(stripInjectedUserBlocks('Just a question')).toBe('Just a question');
+    });
+
+    it('is empty when the turn carried nothing but injected blocks', () => {
+        expect(stripInjectedUserBlocks('<coc-chat-mode>\nx\n</coc-chat-mode>')).toBe('');
     });
 });
 

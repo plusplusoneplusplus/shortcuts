@@ -21,6 +21,7 @@ import { serializeTask, enqueueViaBridge } from './queue-shared';
 import type { QueueGlobalState } from './queue-shared';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
+import { buildChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
@@ -101,7 +102,7 @@ import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCom
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
-import { TaskDefs, type ChatProvider } from '../tasks/task-types';
+import { TaskDefs, normalizeChatModeOrDefault, type ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { RemoteServerStore } from '../servers/remote-server-store';
@@ -465,9 +466,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }
         const resolvedDeliveryMode: 'immediate' | 'enqueue' =
             deliveryMode === 'immediate' || deliveryMode === 'steer' ? 'immediate' : 'enqueue';
+        const previousMode = normalizeChatModeOrDefault(proc.metadata?.mode);
         const deliveryInput: FollowUpMessageInput = {
             content,
-            displayContent: content,
+            // FollowUpExecutor sends the mode directive on this turn, so the
+            // stored turn discloses it — same as the POST /message route.
+            displayContent: prependChatModeDirective(
+                content,
+                buildChatModeDisplayBlock({
+                    mode: normalizeChatModeOrDefault(mode, previousMode),
+                    previousMode,
+                }),
+            ),
             deliveryMode: resolvedDeliveryMode,
             pasteExternalized: false,
             ...(mode ? { mode } : {}),

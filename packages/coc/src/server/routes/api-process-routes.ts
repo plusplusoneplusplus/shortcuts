@@ -26,8 +26,9 @@ import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
+import { buildChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
-import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, serializeCommitChatMetadata } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
     ProcessMessageDeliveryService,
@@ -1204,8 +1205,20 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // Pass content through as-is — /skill tokens are kept in the prompt
             // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
             const messageContent = applyStyle(body.content as string);
+            // Every follow-up routes through FollowUpExecutor, which prepends the
+            // mode directive to what it sends — so the stored turn carries it too
+            // and the transcript matches. Innermost, keeping the style block as
+            // the outermost prefix (AC-05).
+            const followUpPreviousMode = normalizeChatModeOrDefault(proc.metadata?.mode);
+            const followUpMode = normalizeChatModeOrDefault(fields.mode, followUpPreviousMode);
             const displayContent = applyStyle(
-                prependSelectedSkillsDirective(body.content as string, fields.selectedSkillNames),
+                prependSelectedSkillsDirective(
+                    prependChatModeDirective(
+                        body.content as string,
+                        buildChatModeDisplayBlock({ mode: followUpMode, previousMode: followUpPreviousMode }),
+                    ),
+                    fields.selectedSkillNames,
+                ),
             );
             // Measured against what the user actually typed — the style block is
             // server-injected and must not tip a message over the paste threshold.

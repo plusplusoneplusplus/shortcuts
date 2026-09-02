@@ -157,10 +157,9 @@ describe('ask mode system message — initial chat', () => {
         expect(callArgs.systemMessage?.content ?? '').not.toContain(READ_ONLY_DIRECTIVE);
     });
 
-    it('keeps the directive out of the user turn the chat UI renders', async () => {
-        // The directive is a ride-along on the wire, not something the user
-        // typed: the persisted turn 0 is what the chat bubble shows, so it must
-        // stay the raw prompt.
+    it('discloses the directive on the user turn the chat UI renders', async () => {
+        // The directive is part of the message the model got, so the transcript
+        // shows it — but the user's own text must survive intact after it.
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task = chatTask('ask', 'Hello');
 
@@ -172,7 +171,22 @@ describe('ask mode system message — initial chat', () => {
         const stored = await store.getProcess(task.processId!);
         const userTurn = stored?.conversationTurns?.[0];
         expect(userTurn?.role).toBe('user');
-        expect(userTurn?.content).toBe('Hello');
+        expect(userTurn?.content).toContain(READ_ONLY_DIRECTIVE);
+        expect(userTurn?.content?.endsWith('Hello')).toBe(true);
+        // The preview and the stored full prompt record what the user asked,
+        // not what the server added — they drive the chat list and the title.
+        expect(stored?.promptPreview).toBe('Hello');
+        expect(stored?.fullPrompt).toBe('Hello');
+    });
+
+    it('leaves an autopilot first turn undisclosed — nothing was injected', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask('autopilot', 'Do it');
+
+        await executor.execute(task);
+
+        const stored = await store.getProcess(task.processId!);
+        expect(stored?.conversationTurns?.[0]?.content).toBe('Do it');
     });
 
     it('should include For Each generation guidance without changing the visible user prompt', async () => {

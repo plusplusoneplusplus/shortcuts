@@ -53,7 +53,7 @@ import { readNoteContent } from './note-chat-executor';
 import { suppressesAutoFolder } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
-import { buildChatModeDirective, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
+import { buildChatModeDirective, buildChatModeDisplayBlock, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import {
     buildCumulativeTokenUsage,
@@ -379,7 +379,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     processId,
                     (idx) => ({
                         role: 'user' as const,
-                        content: message,
+                        // Same disclosure the POST /message route applies to an
+                        // interactive follow-up: the stored turn shows the mode
+                        // directive this turn was sent with.
+                        content: prependChatModeDirective(
+                            message,
+                            buildChatModeDisplayBlock({ mode: currentMode, previousMode }),
+                        ),
                         timestamp: new Date(),
                         turnIndex: idx,
                         timeline: [],

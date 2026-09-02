@@ -160,7 +160,9 @@ describe('POST /api/processes/:id/message', () => {
             // Handler persists the user turn atomically with the status change
             expect(updated?.conversationTurns).toHaveLength(1);
             expect(updated?.conversationTurns![0].role).toBe('user');
-            expect(updated?.conversationTurns![0].content).toBe('Hello');
+            // The stored turn also discloses the mode directive the turn is sent
+            // with; the user's own text still ends it.
+            expect(updated?.conversationTurns![0].content.endsWith('Hello')).toBe(true);
             expect(updated?.status).toBe('running');
         });
 
@@ -248,7 +250,7 @@ describe('POST /api/processes/:id/message', () => {
             expect(updated?.status).toBe('running');
             expect(updated?.conversationTurns).toHaveLength(3);
             expect(updated?.conversationTurns?.[1].content).toBe('partial answer');
-            expect(updated?.conversationTurns?.[2].content).toBe('continue');
+            expect(updated?.conversationTurns?.[2].content.endsWith('continue')).toBe(true);
         });
 
         it('should call bridge.enqueue (fresh task) when a completed parent task exists', async () => {
@@ -892,7 +894,7 @@ describe('POST /api/processes/:id/message', () => {
             // The buffered (2nd) message is only in pendingMessages.
             const updated = await store.getProcess('proc-8');
             expect(updated?.conversationTurns).toHaveLength(1);
-            expect(updated?.conversationTurns![0].content).toBe('First');
+            expect(updated?.conversationTurns![0].content.endsWith('First')).toBe(true);
             // First follow-up enqueues (process was completed), second buffers as pending
             const enqueueFn = mockBridge.enqueue as ReturnType<typeof vi.fn>;
             expect(enqueueFn).toHaveBeenCalledTimes(1);
@@ -1587,7 +1589,7 @@ describe('POST /api/processes/:id/message', () => {
 
             const updated = await store.getProcess('proc-skills-2');
             const userTurn = updated?.conversationTurns?.find(t => t.role === 'user');
-            expect(userTurn?.content).toBe('Hello world');
+            expect(userTurn?.content.endsWith('Hello world')).toBe(true);
             expect(userTurn?.content).not.toContain('<selected_skills>');
         });
 
