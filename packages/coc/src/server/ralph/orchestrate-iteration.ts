@@ -122,6 +122,17 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
         logger,
     });
 
+    // The cap can be edited mid-flight (POST .../max-iterations), so the value
+    // baked into this task's payload may be stale. session.json wins when a
+    // record exists; the payload value stays the fallback.
+    const journalMaxIterations = await readJournalMaxIterations({
+        dataDir: deps.dataDir,
+        workspaceId,
+        sessionId,
+        logger,
+    });
+    const effectiveMaxIterations = journalMaxIterations ?? maxIterations;
+
     const decision = decideRalphIterationActions({
         responseText,
         taskId: completedTaskId,
@@ -130,7 +141,7 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
         sessionId,
         originalGoal,
         currentIteration,
-        maxIterations,
+        maxIterations: effectiveMaxIterations,
         iterationStartMs,
         adapterContext,
         recentProgressSections,
@@ -376,6 +387,36 @@ function isAutoProviderRoutingRequested(context: Record<string, unknown> | undef
         && !Array.isArray(routing)
         && (routing as Record<string, unknown>).requested === true
     );
+}
+
+/**
+ * Read the cap currently stored in session.json so a mid-flight edit is honored
+ * at this iteration's continue/stop decision. Returns undefined when there is no
+ * journal record (or the read fails), leaving the task-payload value in charge.
+ */
+async function readJournalMaxIterations(input: {
+    dataDir?: string;
+    workspaceId?: string;
+    sessionId?: string;
+    logger: ReturnType<typeof getLogger>;
+}): Promise<number | undefined> {
+    const { dataDir, workspaceId, sessionId, logger } = input;
+    if (!dataDir || !workspaceId || !sessionId) {
+        return undefined;
+    }
+
+    try {
+        const store = new RalphSessionStore({ dataDir });
+        const record = await store.readSessionRecord(workspaceId, sessionId);
+        const value = record?.maxIterations;
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
+            return undefined;
+        }
+        return Math.floor(value);
+    } catch (err) {
+        logger.debug(LogCategory.AI, `[Ralph] Could not read live maxIterations for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+        return undefined;
+    }
 }
 
 async function readRecentProgressSections(input: {
