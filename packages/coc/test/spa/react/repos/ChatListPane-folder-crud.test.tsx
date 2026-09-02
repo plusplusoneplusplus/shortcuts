@@ -50,6 +50,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         crons: { listAll: vi.fn().mockResolvedValue([]) },
         processes: {
             listChatFolders: (...args: any[]) => listChatFolders(...(args as [])),
+            summaries: async () => ({ summaries: mockProcesses }),
             createChatFolder: (...args: any[]) => (createChatFolder as any)(...args),
             updateChatFolder: (...args: any[]) => (updateChatFolder as any)(...args),
             deleteChatFolder: (...args: any[]) => (deleteChatFolder as any)(...args),
@@ -123,7 +124,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     }),
 }));
 
-// `folderId` rides on the process-summary index that AppContext already holds.
+// `folderId` rides on the workspace-scoped summaries fetch (`useChatFolderMembership`).
 let mockProcesses: any[] = [];
 const mockDispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -499,12 +500,11 @@ describe('ChatListPane — folder create / rename / recolor / delete (AC-05)', (
         expect(createChatFolder).toHaveBeenCalledWith('ws-test', { name: 'Auth rewrite', color: 'purple' });
         // …and re-files exactly the members it remembered, into the new id.
         expect(setProcessFolderBatch).toHaveBeenCalledWith(['proc-a', 'proc-b'], 'folder-new');
-        // The summary index is patched too, or every restored row would keep
+        // The membership map is patched too, or every restored row would keep
         // pointing at the folder that no longer exists.
-        expect(mockDispatch).toHaveBeenCalledWith({
-            type: 'PROCESS_UPDATED',
-            process: { id: 'proc-a', folderId: 'folder-new' },
-        });
+        const restored = document.querySelector('[data-testid="chat-folder"][data-folder-id="folder-new"]');
+        expect(restored?.textContent).toContain('token refresh');
+        expect(restored?.textContent).toContain('count tokens');
         expect(screen.getAllByTestId('chat-folder-name').map(n => n.textContent)).toContain('Auth rewrite');
         expect(screen.queryByTestId('chat-folder-undo-toast')).toBeNull();
     });

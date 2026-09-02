@@ -156,9 +156,11 @@ The bare local singleton 404s a remote-only session as "Ralph session not found"
 `queue/hooks/pinArchiveApi` (pin/unpin, archive/unarchive, and their batch forms) takes a
 `workspaceId` and routes through `getCocClientForWorkspace(workspaceId)`.
 
-All three chat-folder hooks do the same: `useChatFolders` (the list fetch),
-`useChatFolderMutations` (create / rename / recolor / reorder / delete / undo), and
-`useChatFolderAssignment` (`setProcessFolder`, `setProcessFolderBatch`).
+All four chat-folder hooks do the same: `useChatFolders` (the list fetch),
+`useChatFolderMembership` (the `processId -> folderId` read, a workspace-scoped
+`processes.summaries` fetch), `useChatFolderMutations` (create / rename / recolor /
+reorder / delete / undo), and `useChatFolderAssignment` (`setProcessFolder`,
+`setProcessFolderBatch`).
 `useChatFolderAssignment` takes `workspaceId` as an option purely to route — its own work
 is process-scoped — and `ChatListPane` passes the same id its sibling folder hooks get.
 The folder routes begin with `resolveWorkspaceOrFail`, so a local-origin call for a remote

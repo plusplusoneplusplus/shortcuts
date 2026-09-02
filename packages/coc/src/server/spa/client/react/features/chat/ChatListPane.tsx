@@ -48,6 +48,7 @@ import { isRalphEnabled, isCronEnabled, isSessionContextAttachmentsEnabled, isFo
 import { getListModeConfig } from './list-mode-config';
 import { useChatFoldersEnabled } from '../../hooks/feature-flags/useChatFoldersEnabled';
 import { useChatFolders } from './hooks/useChatFolders';
+import { useChatFolderMembership } from './hooks/useChatFolderMembership';
 import { ChatFolderSection, ChatFolderChip } from './ChatFolderSection';
 import { ChatFolderArchiveDialog } from './ChatFolderArchiveDialog';
 import { ChatFolderDeleteDialog } from './ChatFolderDeleteDialog';
@@ -68,7 +69,6 @@ import { CHAT_FOLDER_COLORS } from '../../../../../processes/chat-folder-validat
 import type { ChatFolderColor } from '@plusplusoneplusplus/coc-client';
 import {
     buildChatFolderRows,
-    buildFolderIdByProcess,
     buildFolderMemberCounts,
     buildSearchChatFolderRows,
     groupEntriesByFolder,
@@ -1167,7 +1167,7 @@ export function ChatListPane({
         return false;
     }, [selectedTaskId]);
 
-    const { state: appState, dispatch: appDispatch } = useApp();
+    const { state: appState } = useApp();
     /**
      * The activity tab no longer renders a type-filter dropdown — chats and
      * automations are surfaced through the scope segmented control instead.
@@ -1191,16 +1191,18 @@ export function ChatListPane({
     const chatFoldersEnabled = useChatFoldersEnabled();
     const { folders: chatFolders, setFolders: setChatFolders, refresh: refreshChatFolders } = useChatFolders(workspaceId, chatFoldersEnabled);
     /**
-     * `processId -> folderId`, read straight off the process-summary index that
-     * `AppContext` already holds (AC-02 stamps `folderId` onto every
-     * `ProcessIndexEntry`). The queue and history endpoints that feed the list
-     * rows do not carry the field, so this is where the client reads it — it is
-     * a field lookup, not a join against a folder-members endpoint.
+     * `processId -> folderId`, fetched workspace-scoped through the clone
+     * registry — the queue and history endpoints that feed the list rows do not
+     * carry the field, and the global `appState.processes` index only ever holds
+     * page-origin processes, so a remote SSH workspace's membership would read
+     * as empty from it. It is a field lookup on the summaries, not a join
+     * against a folder-members endpoint.
      */
-    const folderIdByProcess = useMemo(
-        () => (chatFoldersEnabled ? buildFolderIdByProcess(appState.processes) : new Map<string, string>()),
-        [chatFoldersEnabled, appState.processes],
-    );
+    const {
+        folderIdByProcess,
+        refresh: refreshFolderMembership,
+        applyOverride: applyFolderMembershipOverride,
+    } = useChatFolderMembership(workspaceId, chatFoldersEnabled);
     // Archived members are excluded so a folder whose chats are all archived
     // reads as "empty everywhere" and stays on screen at count 0, rather than
     // as "has members, none on this tab" — which would hide it (AC-09).
@@ -1221,16 +1223,19 @@ export function ChatListPane({
     const [showFolders, setShowFolders] = useState(true);
 
     /**
-     * The one seam every optimistic membership change goes through: patch the
-     * process-summary index that `folderIdByProcess` is derived from, so a move
-     * is visible before the next summaries fetch reconciles it.
+     * The one seam every optimistic membership change goes through: layer the
+     * move onto the membership map so it is visible before the next
+     * workspace-scoped summaries fetch reconciles it.
      */
     const handleProcessFoldersChanged = useCallback((processIds: string[], folderId: string | null) => {
-        for (const id of processIds) {
-            appDispatch({ type: 'PROCESS_UPDATED', process: { id, folderId } });
-        }
-    }, [appDispatch]);
+        applyFolderMembershipOverride(processIds, folderId);
+    }, [applyFolderMembershipOverride]);
     const handleFolderError = useCallback((message: string) => { toastCtx?.addToast?.(message, 'error'); }, [toastCtx]);
+    /** Folders and membership reconcile together — a failed write rolls both back against the server. */
+    const refreshChatFoldersAndMembership = useCallback(() => {
+        refreshChatFolders();
+        refreshFolderMembership();
+    }, [refreshChatFolders, refreshFolderMembership]);
 
     // ── Folder mutations (AC-05) ───────────────────────────────────────────
     // Create / rename / recolor / delete, with a single-level undo. The
@@ -1238,7 +1243,7 @@ export function ChatListPane({
     const chatFolderMutations = useChatFolderMutations({
         workspaceId,
         setFolders: setChatFolders,
-        refresh: refreshChatFolders,
+        refresh: refreshChatFoldersAndMembership,
         folderIdByProcess,
         folders: chatFolders,
         // Undo re-files the remembered members into a brand-new folder id, so

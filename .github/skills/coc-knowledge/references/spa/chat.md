@@ -142,8 +142,12 @@ Chats, Tasks and a repo group's Workspace tab all go through `ChatListPane`, so
 is declared as the `folders` `SectionVariant` in `list-mode-config.ts`.
 
 `chat-folder-tree.ts` holds all the bucketing rules as pure functions: `folderId` is read
-off the process-summary index that `AppContext` already carries (AC-02 stamps it onto every
-`ProcessIndexEntry`), never joined client-side against a members endpoint. A filed row
+off a workspace-scoped `processes.summaries` fetch owned by `useChatFolderMembership`
+(routed through `getCocClientForWorkspace`, so a remote clone's membership comes from its
+own server — the global `AppContext` index only ever holds page-origin processes), never
+joined client-side against a members endpoint. Membership writes go through the
+`onProcessFoldersChanged` seam, which layers optimistic overrides onto that map
+(`applyOverride`) until a refresh reconciles them; a failed fetch never blanks the map. A filed row
 leaves its date bucket but keeps its Running/Queued row, where it gains a truncated
 folder-name chip. A folder whose members all fall outside the current tab's scope is hidden
 there, so the count badge always matches what expanding reveals; a folder that is empty

@@ -55,6 +55,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         crons: { listAll: vi.fn().mockResolvedValue([]) },
         processes: {
             listChatFolders: (...args: any[]) => listChatFolders(...(args as [])),
+            summaries: async () => ({ summaries: mockProcesses }),
             createChatFolder: (...args: any[]) => (createChatFolder as any)(...args),
             updateChatFolder: (...args: any[]) => (updateChatFolder as any)(...args),
             deleteChatFolder: (...args: any[]) => (deleteChatFolder as any)(...args),
@@ -135,7 +136,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     }),
 }));
 
-// `folderId` rides on the process-summary index that AppContext already holds.
+// `folderId` rides on the workspace-scoped summaries fetch (`useChatFolderMembership`).
 let mockProcesses: any[] = [];
 const mockDispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -309,7 +310,7 @@ describe('ChatListPane — Move to folder context menu (AC-06)', () => {
 
     // ── Single move ─────────────────────────────────────────────────────────
 
-    it('files a single row into the picked folder and patches the summaries index', async () => {
+    it('files a single row into the picked folder and shows it there optimistically', async () => {
         await renderPane({ history: [makeChat({ id: 'proc-a', title: 'alpha chat' })] });
         await openRowMenu('alpha chat');
         const panel = await openMoveSubmenu();
@@ -318,10 +319,10 @@ describe('ChatListPane — Move to folder context menu (AC-06)', () => {
 
         expect(setProcessFolder).toHaveBeenCalledWith('proc-a', 'folder-auth');
         expect(setProcessFolderBatch).not.toHaveBeenCalled();
-        expect(mockDispatch).toHaveBeenCalledWith({
-            type: 'PROCESS_UPDATED',
-            process: { id: 'proc-a', folderId: 'folder-auth' },
-        });
+        // The membership map is patched optimistically, so the row renders
+        // inside the folder before any summaries refetch.
+        const folder = document.querySelector('[data-testid="chat-folder"][data-folder-id="folder-auth"]');
+        expect(folder?.textContent).toContain('alpha chat');
     });
 
     it('lists folders in the tree order', async () => {

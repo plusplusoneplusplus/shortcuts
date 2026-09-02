@@ -56,11 +56,12 @@ export function sortChatFolders<T extends { sortIndex?: number; createdAt?: stri
 }
 
 /**
- * Build a `processId -> folderId` lookup from the global process-summary index
- * (`GET /api/processes/summaries`, seeded into `AppContext.state.processes`).
+ * Build a `processId -> folderId` lookup from process summaries
+ * (`GET /api/processes/summaries?workspace=<id>`, fetched workspace-scoped by
+ * `useChatFolderMembership` against the server that owns the workspace).
  *
  * The list rows themselves come from the queue / history endpoints, which do
- * not carry `folderId`, so the summary index is the single source of truth the
+ * not carry `folderId`, so the summaries are the single source of truth the
  * client reads. It is still not a *join*: `folderId` is a field on the process,
  * not a member list hanging off the folder.
  */

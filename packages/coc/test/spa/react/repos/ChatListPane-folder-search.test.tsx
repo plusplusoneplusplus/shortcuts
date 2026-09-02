@@ -40,7 +40,10 @@ const listChatFolders = vi.fn(async () => ({ folders: FOLDERS }));
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         crons: { listAll: vi.fn().mockResolvedValue([]) },
-        processes: { listChatFolders: (...args: any[]) => listChatFolders(...(args as [])) },
+        processes: {
+            listChatFolders: (...args: any[]) => listChatFolders(...(args as [])),
+            summaries: async () => ({ summaries: mockProcesses }),
+        },
     }),
 }));
 
@@ -109,7 +112,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     }),
 }));
 
-// `folderId` rides on the process-summary index that AppContext already holds.
+// `folderId` rides on the workspace-scoped summaries fetch (`useChatFolderMembership`).
 let mockProcesses: any[] = [];
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({

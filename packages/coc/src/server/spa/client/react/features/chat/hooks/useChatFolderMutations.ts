@@ -39,7 +39,7 @@ export interface UseChatFolderMutationsOptions {
     /** The folder list as rendered, read at drop time by `reorderFolders`. */
     folders: readonly ChatFolder[];
     /**
-     * Patch the process-summary index so an optimistic membership change is
+     * Patch the membership map so an optimistic membership change is
      * visible before the next summaries fetch lands.
      */
     onProcessFoldersChanged?: (processIds: string[], folderId: string | null) => void;
