@@ -330,6 +330,20 @@ the answer attaches to that message's Side notes row. Components live under
 `QuickAskPill`, `QuickAskSidenotePopover`, `QuickAskTurnLayer` — plumbed from `ChatDetail`
 through `ConversationArea` to `ConversationTurnBubble`.
 
+Answers render with `chatMarkdownToHtml` (no `wsId`, embeds off) — they are chat content, not
+notes. The notes live-preview renderer `renderMarkdownToHtml` deliberately keeps `**`/backtick
+markers in `.md-marker` spans and is wrong here. Related: `MarkdownView` re-highlights `pre
+code` on mount but skips anything inside `.code-block-container`, since forge's
+`renderCodeBlock` already highlighted it and wraps lines in `.code-line`/`.line-number` spans
+that `hljs.highlightElement` would flatten.
+
+Answers render with `chatMarkdownToHtml` (no `wsId`, embeds off) — they are chat content, not
+notes. The notes live-preview renderer `renderMarkdownToHtml` deliberately keeps `**`/backtick
+markers in `.md-marker` spans and is wrong here. Related: `MarkdownView` re-highlights `pre
+code` on mount but skips anything inside `.code-block-container`, since forge's
+`renderCodeBlock` already highlighted it and wraps lines in `.code-line`/`.line-number` spans
+that `hljs.highlightElement` would flatten.
+
 ### Threads
 
 Once answered the popover is a multi-turn thread: `QuickAskTurnLayer` passes
