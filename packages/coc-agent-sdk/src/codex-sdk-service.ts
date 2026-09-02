@@ -1963,7 +1963,8 @@ export class CodexSDKService implements ISDKService {
     }
 
     private resolveCodexModeOptions(): Pick<CodexStartThreadOptions, 'approvalPolicy' | 'sandboxMode' | 'networkAccessEnabled'> {
-        // Ask-mode constraints are enforced by READ_ONLY_SYSTEM_MESSAGE. Codex
+        // Ask-mode constraints are enforced by READ_ONLY_SYSTEM_MESSAGE, which
+        // CoC prepends to each ask-mode user turn. Codex
         // still needs a full-access sandbox so skill file reads work on hosts
         // that block workspace-write sandbox initialization.
         return {

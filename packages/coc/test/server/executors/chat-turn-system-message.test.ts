@@ -8,6 +8,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 import type { AutoFolderContext } from '@plusplusoneplusplus/forge';
 import type { MemoryV2Addon } from '../../../src/server/executors/memory-v2-addon';
@@ -37,7 +40,6 @@ function autoFolder(): AutoFolderContext {
 
 function input(overrides: Partial<ChatTurnSystemMessageInput> = {}): ChatTurnSystemMessageInput {
     return {
-        mode: 'ask',
         // No working directory: repo-instruction loading hits the filesystem and
         // is covered by system-message-builder's own tests.
         workingDirectory: undefined,
@@ -56,17 +58,14 @@ function input(overrides: Partial<ChatTurnSystemMessageInput> = {}): ChatTurnSys
 
 describe('buildChatTurnSystemMessage', () => {
     it('returns undefined when no block applies', async () => {
-        // OpenCode has no source-location guidance, so with no mode block and
-        // nothing else set there is genuinely nothing to send.
-        const result = await buildChatTurnSystemMessage(input({
-            mode: undefined as unknown as ChatTurnSystemMessageInput['mode'],
-            provider: 'opencode',
-        }));
+        // OpenCode has no source-location guidance, so with nothing else set
+        // there is genuinely nothing to send.
+        const result = await buildChatTurnSystemMessage(input({ provider: 'opencode' }));
 
         expect(result).toBeUndefined();
     });
 
-    it('orders global prompt, memory, and tool guidance after the mode block', async () => {
+    it('orders the global prompt first, then memory, then tool guidance', async () => {
         const result = await buildChatTurnSystemMessage(input({
             globalSystemPrompt: 'OPERATOR-RULE',
             memoryV2: memoryAddon('MEMORY-BLOCK'),
@@ -74,14 +73,19 @@ describe('buildChatTurnSystemMessage', () => {
         }));
 
         const content = result!.content;
-        const modeIdx = 0;
         const globalIdx = content.indexOf(`<${GLOBAL_SYSTEM_PROMPT_TAG}>`);
         const memoryIdx = content.indexOf('MEMORY-BLOCK');
         const toolIdx = content.indexOf('TOOL-GUIDANCE');
 
-        expect(globalIdx).toBeGreaterThan(modeIdx);
+        expect(globalIdx).toBe(0);
         expect(memoryIdx).toBeGreaterThan(globalIdx);
         expect(toolIdx).toBeGreaterThan(memoryIdx);
+    });
+
+    it('carries no read-only block — the mode directive rides the user turn', async () => {
+        const result = await buildChatTurnSystemMessage(input({ toolGuidance: 'TOOL-GUIDANCE' }));
+
+        expect(result!.content).not.toContain('coc-read-only-mode');
     });
 
     it('places the auto-folder block after tool guidance and the note block last', async () => {
@@ -122,7 +126,6 @@ describe('first-turn and follow-up parity', () => {
         // Mirrors what ChatBaseExecutor.buildStandardModeOptions and
         // FollowUpExecutor.executeFollowUp each pass in for an ask-mode turn.
         const shared = input({
-            mode: 'ask',
             provider: 'claude',
             globalSystemPrompt: 'OPERATOR-RULE',
             memoryV2: memoryAddon('MEMORY-BLOCK'),
@@ -141,20 +144,56 @@ describe('first-turn and follow-up parity', () => {
     it('emits source-location guidance for Copilot and Claude but not Codex or OpenCode', async () => {
         const marker = '<citing_rule>';
 
+        // Tool guidance keeps the message non-empty for the providers that
+        // contribute no block of their own.
         for (const provider of ['copilot', 'claude'] as const) {
-            const result = await buildChatTurnSystemMessage(input({ provider }));
+            const result = await buildChatTurnSystemMessage(input({ provider, toolGuidance: 'TOOL-GUIDANCE' }));
             expect(result!.content).toContain(marker);
         }
         for (const provider of ['codex', 'opencode'] as const) {
-            const result = await buildChatTurnSystemMessage(input({ provider }));
+            const result = await buildChatTurnSystemMessage(input({ provider, toolGuidance: 'TOOL-GUIDANCE' }));
             expect(result!.content).not.toContain(marker);
         }
     });
 
-    it('applies autopilot mode restrictions distinctly from ask mode', async () => {
-        const ask = await buildChatTurnSystemMessage(input({ mode: 'ask' }));
-        const autopilot = await buildChatTurnSystemMessage(input({ mode: 'autopilot' }));
+});
 
-        expect(autopilot!.content).not.toBe(ask!.content);
+// ============================================================================
+// Prefix invariance — the durable guard against re-adding a mode branch
+// ============================================================================
+
+describe('mode invariance', () => {
+    it('loads only the shared instructions.md, never the mode-specific file', async () => {
+        // A repo carrying both mode files: whichever mode the turn runs in, the
+        // system message must be the same bytes, or a mid-chat mode toggle
+        // invalidates the whole conversation's prefix cache.
+        const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-mode-invariance-'));
+        const instructionDir = path.join(repoDir, '.github', 'coc');
+        fs.mkdirSync(instructionDir, { recursive: true });
+        fs.writeFileSync(path.join(instructionDir, 'instructions.md'), 'SHARED-INSTRUCTIONS');
+        fs.writeFileSync(path.join(instructionDir, 'instructions-ask.md'), 'ASK-ONLY-INSTRUCTIONS');
+        fs.writeFileSync(path.join(instructionDir, 'instructions-autopilot.md'), 'AUTOPILOT-ONLY-INSTRUCTIONS');
+
+        try {
+            const shared = input({
+                workingDirectory: repoDir,
+                provider: 'claude',
+                globalSystemPrompt: 'OPERATOR-RULE',
+                toolGuidance: 'TOOL-GUIDANCE',
+                autoFolderContext: autoFolder(),
+            });
+
+            // `ChatTurnSystemMessageInput` has no `mode` field at all — that is
+            // the invariant. Both executors can only pass these same inputs.
+            const askTurn = await buildChatTurnSystemMessage(shared);
+            const autopilotTurn = await buildChatTurnSystemMessage({ ...shared });
+
+            expect(askTurn!.content).toBe(autopilotTurn!.content);
+            expect(askTurn!.content).toContain('SHARED-INSTRUCTIONS');
+            expect(askTurn!.content).not.toContain('ASK-ONLY-INSTRUCTIONS');
+            expect(askTurn!.content).not.toContain('AUTOPILOT-ONLY-INSTRUCTIONS');
+        } finally {
+            fs.rmSync(repoDir, { recursive: true, force: true });
+        }
     });
 });

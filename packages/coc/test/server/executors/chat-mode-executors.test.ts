@@ -203,15 +203,18 @@ describe('ChatBaseExecutor provider routing', () => {
 
             expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toBe('Hello Claude');
+            expect(call.prompt).toContain('Hello Claude');
             expect(call.workingDirectory).toBe(tmpRoot);
             expect(call.systemMessage?.mode).toBe('append');
-            expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+            // Shared instructions stay in the (mode-invariant) system message;
+            // the read-only block and the ask-only instructions ride the turn.
             expect(call.systemMessage?.content).toContain('Base CoC repo instruction');
-            expect(call.systemMessage?.content).toContain('Ask-only CoC repo instruction');
+            expect(call.systemMessage?.content).not.toContain('Ask-only CoC repo instruction');
+            expect(call.systemMessage?.content).not.toContain('<coc-read-only-mode>');
             expect(call.systemMessage?.content).toContain('<chosen-folder>');
+            expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+            expect(call.prompt).toContain('Ask-only CoC repo instruction');
             expect(call.prompt).not.toContain('Base CoC repo instruction');
-            expect(call.prompt).not.toContain('Ask-only CoC repo instruction');
         } finally {
             fs.rmSync(tmpRoot, { recursive: true, force: true });
         }
@@ -260,7 +263,7 @@ describe('ChatBaseExecutor provider routing', () => {
         await executor.execute(task, 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.systemMessage?.content).not.toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+        expect(call.systemMessage?.content ?? '').not.toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
     });
 });
 
@@ -351,13 +354,16 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
             await executor.execute(task, 'Hello');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            // The system message is mode-invariant now: whichever executor ran,
+            // the read-only block is on the user turn, never in this channel.
             if (expectsSystemMessage) {
                 expect(call.systemMessage).toBeDefined();
+                expect(call.systemMessage.content).not.toContain('<coc-read-only-mode>');
+                expect(call.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
                 if (expectedAgentMode === 'interactive') {
-                    expect(call.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+                    expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
                 } else {
-                    expect(call.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
-                    expect(call.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+                    expect(call.prompt).not.toContain('<coc-read-only-mode>');
                 }
             } else {
                 expect(call.systemMessage).toBeUndefined();
@@ -491,7 +497,7 @@ describe('ChatExecutor system message content', () => {
         await executor.execute(task, 'Hi');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
         expect(call.systemMessage?.content).toContain('<chosen-folder>');
     });
 
@@ -502,7 +508,7 @@ describe('ChatExecutor system message content', () => {
         await executor.execute(task, 'Hi');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
         expect(call.systemMessage?.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
         expect(call.systemMessage?.content).not.toContain('<chosen-folder>');
     });
@@ -768,7 +774,7 @@ describe('global admin system prompt injection', () => {
         sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
     });
 
-    it('injects the labeled global block into ask-mode sessions and still keeps read-only mode', async () => {
+    it('injects the labeled global block into ask-mode sessions while read-only rides the turn', async () => {
         const executor = new ChatExecutor(store, makeOptions(store, {
             getGlobalSystemPrompt: () => GLOBAL_PROMPT,
         }));
@@ -778,8 +784,8 @@ describe('global admin system prompt injection', () => {
         expect(call.systemMessage?.mode).toBe('append');
         expect(call.systemMessage?.content).toContain(`<${GLOBAL_SYSTEM_PROMPT_TAG}>`);
         expect(call.systemMessage?.content).toContain(GLOBAL_PROMPT);
-        // Global prompt SUPPLEMENTS but does not override the read-only mode block.
-        expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        // Global prompt SUPPLEMENTS but does not override the read-only directive.
+        expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
     });
 
     it('injects the global block into autopilot sessions', async () => {
@@ -896,7 +902,8 @@ describe('AutopilotExecutor system message', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.systemMessage?.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
-        expect(call.systemMessage?.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(call.systemMessage?.content).not.toContain('<coc-read-only-mode>');
+        expect(call.prompt).not.toContain('<coc-read-only-mode>');
     });
 });
 
@@ -910,7 +917,7 @@ describe('ClassificationExecutor ask-mode behavior', () => {
         sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1', toolCalls: [] });
     });
 
-    it('runs classification in interactive ask mode with read-only system instructions', async () => {
+    it('runs classification in interactive ask mode with the read-only directive on the turn', async () => {
         const executor = new ClassificationExecutor(store, makeOptions(store));
         const task = makeClassificationTask('task-classify-ask-mode');
 
@@ -919,7 +926,8 @@ describe('ClassificationExecutor ask-mode behavior', () => {
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.mode).toBe('interactive');
         expect(call.systemMessage?.mode).toBe('append');
-        expect(call.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(call.systemMessage?.content).not.toContain('<coc-read-only-mode>');
+        expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
     });
 
     it('stays cold (no keepWarm) — a one-shot background job must not retain the client', async () => {
@@ -933,7 +941,7 @@ describe('ClassificationExecutor ask-mode behavior', () => {
         expect(call.warmKey).toBeUndefined();
     });
 
-    it('loads ask repo instructions instead of autopilot repo instructions', async () => {
+    it('splits repo instructions: shared half in the system prompt, ask half on the turn', async () => {
         const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-classify-ask-instructions-'));
         try {
             const instructionDir = path.join(tmpRoot, '.github', 'coc');
@@ -951,9 +959,12 @@ describe('ClassificationExecutor ask-mode behavior', () => {
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const content = call.systemMessage?.content ?? '';
+            // Base half in the system prompt, ask half on the user turn.
             expect(content).toContain('Base classification instruction');
-            expect(content).toContain('Ask classification instruction');
+            expect(content).not.toContain('Ask classification instruction');
             expect(content).not.toContain('Autopilot classification instruction');
+            expect(call.prompt).toContain('Ask classification instruction');
+            expect(call.prompt).not.toContain('Autopilot classification instruction');
         } finally {
             fs.rmSync(tmpRoot, { recursive: true, force: true });
         }

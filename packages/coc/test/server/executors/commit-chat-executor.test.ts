@@ -154,7 +154,7 @@ describe('CommitChatExecutor', () => {
             expect(callArgs.mode).toBe('interactive');
         });
 
-        it('includes system message with READ_ONLY_SYSTEM_MESSAGE', async () => {
+        it('carries the read-only directive on the user turn, not the system message', async () => {
             const store = createMockProcessStore();
             const executor = new CommitChatExecutor(store, makeOptions(store), undefined, '/data');
             const task = makeCommitChatTask();
@@ -162,8 +162,12 @@ describe('CommitChatExecutor', () => {
             await executor.execute(task, 'Review this commit');
 
             const callArgs = sdkMocks.service.sendMessage.mock.calls[0][0];
+            // Commit chats accept follow-ups, which route through
+            // FollowUpExecutor — so turn 1 must put the constraint on the same
+            // channel turn 2 will, or the two disagree and the prefix churns.
+            expect(callArgs.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
             expect(callArgs.systemMessage).toBeDefined();
-            expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+            expect(callArgs.systemMessage.content).not.toContain('<coc-read-only-mode>');
             expect(callArgs.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
         });
 
@@ -174,11 +178,12 @@ describe('CommitChatExecutor', () => {
 
             await executor.execute(task, 'Review this commit');
 
-            const content = sdkMocks.service.sendMessage.mock.calls[0][0].systemMessage?.content ?? '';
+            const call = sdkMocks.service.sendMessage.mock.calls[0][0];
+            const content = call.systemMessage?.content ?? '';
             expect(content).not.toContain('Save location');
             expect(content).not.toContain('.plan.md');
-            expect(content).toContain(READ_ONLY_SYSTEM_MESSAGE);
             expect(content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+            expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
         });
 
         it('injects add_diff_comment tool when context is complete', async () => {

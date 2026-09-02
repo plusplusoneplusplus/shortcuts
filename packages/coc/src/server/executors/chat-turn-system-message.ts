@@ -8,28 +8,32 @@
  * Block order is load-bearing — it is what the model actually reads — so it is
  * fixed here rather than repeated at each call site:
  *
- *   1. mode restrictions (ask / autopilot / ralph)
- *   2. admin global system prompt
- *   3. For Each generation contract
- *   4. Map Reduce generation contract
- *   5. repo instructions (AGENTS.md / CLAUDE.md for the working directory)
- *   6. source-location markdown-link guidance (provider-specific)
- *   7. Memory V2 context
- *   8. tool guidance
- *   9. auto-folder save location
- *  10. note file context
+ *   1. admin global system prompt
+ *   2. For Each generation contract
+ *   3. Map Reduce generation contract
+ *   4. base repo instructions (shared `.github/coc/instructions.md`)
+ *   5. source-location markdown-link guidance (provider-specific)
+ *   6. Memory V2 context
+ *   7. tool guidance
+ *   8. auto-folder save location
+ *   9. note file context
+ *
+ * **This message is mode-invariant by contract.** It carries no `mode` input:
+ * the read-only directive and the mode-specific repo instructions ride the
+ * outgoing user turn instead (see `chat-mode-directive.ts`), so toggling the
+ * mode pill mid-chat leaves the conversation's cached prefix intact. Do not
+ * re-introduce a mode branch here — `chat-turn-system-message.test.ts` asserts
+ * byte equality across modes.
  *
  * Callers decide *whether* a block applies (e.g. grilling suppresses the
- * auto-folder block, and follow-ups only pass it in ask mode) by passing
- * `undefined`; they do not decide where it lands.
+ * auto-folder block) by passing `undefined`; they do not decide where it lands.
  */
 
 import type { AutoFolderContext, SystemMessageConfig } from '@plusplusoneplusplus/forge';
-import type { ChatMode, ChatProvider } from '../tasks/task-types';
+import type { ChatProvider } from '../tasks/task-types';
 import {
     buildForEachGenerationSystemMessage,
     buildMapReduceGenerationSystemMessage,
-    buildModeSystemMessage,
     buildSourceLocationMarkdownLinkSystemMessage,
 } from './prompt-builder';
 import { systemMessageBuilder } from './system-message-builder';
@@ -40,9 +44,7 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 // ============================================================================
 
 export interface ChatTurnSystemMessageInput {
-    /** Chat mode driving both the mode block and the repo-instruction flavor. */
-    mode: ChatMode;
-    /** Working directory used to load repo instructions. */
+    /** Working directory used to load the shared repo instructions. */
     workingDirectory: string | undefined;
     /** Provider whose source-location link guidance applies to this turn. */
     provider: ChatProvider;
@@ -76,11 +78,10 @@ export function buildChatTurnSystemMessage(
     input: ChatTurnSystemMessageInput,
 ): Promise<SystemMessageConfig | undefined> {
     return systemMessageBuilder()
-        .append(buildModeSystemMessage(input.mode)?.content)
         .appendGlobalSystemPrompt(input.globalSystemPrompt)
         .append(buildForEachGenerationSystemMessage(input.forEachGeneration)?.content)
         .append(buildMapReduceGenerationSystemMessage(input.mapReduceGeneration)?.content)
-        .withRepoInstructions(input.workingDirectory, input.mode)
+        .withBaseRepoInstructions(input.workingDirectory)
         .append(buildSourceLocationMarkdownLinkSystemMessage(input.provider)?.content)
         .appendMemoryV2(input.memoryV2)
         .appendToolGuidance(input.toolGuidance)

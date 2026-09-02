@@ -64,24 +64,6 @@ export { systemMessageBuilder } from './system-message-builder';
 // System Message Builders
 // ============================================================================
 
-/**
- * Builds the system message config for the given chat mode.
- * Ask mode injects the read-only system message.
- * `autopilot` (and any unknown mode) returns `undefined`.
- *
- * NOTE: The auto-folder location block is NOT included here.
- * Use {@link appendAutoFolderBlock} after {@link withRepoInstructions}
- * to ensure the canonical save-location directive is always last.
- */
-export function buildModeSystemMessage(
-    mode: ChatMode | undefined,
-): SystemMessageConfig | undefined {
-    if (normalizeChatMode(mode) !== 'ask') {
-        return undefined;
-    }
-    return { mode: 'append' as const, content: READ_ONLY_SYSTEM_MESSAGE };
-}
-
 export const SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE = tagBlock(
     'citing_rule',
     `When citing source code locations, format each location as a Markdown link.
