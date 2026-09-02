@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
+import { tabFromHash, VALID_REPO_SUB_TABS, VALID_WIKI_PROJECT_TABS, VALID_WIKI_ADMIN_TABS, parseProcessDeepLink, parseWikiDeepLink, parseWorkflowsDeepLink, parseWorkflowsRunDeepLink, parseGitCommitDeepLink, parseGitFileDeepLink, parseWorkflowDeepLink, parseActivityDeepLink, parseRalphSessionDeepLink, REPO_TAB_SHORTCUTS, parseSettingsSection, VALID_SETTINGS_SECTIONS, parseChatTemplateDeepLink, parseAdminSubTab, VALID_ADMIN_SUB_TABS, VALID_PR_DETAIL_TABS, parsePrDetailTab, parseAdminDatabaseDeepLink, buildDbBrowserHash, buildRepoSubTabSuffix, buildWorkspaceSubTabSuffix } from '../../../src/server/spa/client/react/layout/Router';
 import { SHOW_WIKI_TAB } from '../../../src/server/spa/client/react/layout/TopBar';
 import type { AppContextState, AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { appReducer } from '../../../src/server/spa/client/react/contexts/AppContext';
@@ -283,6 +283,36 @@ describe('buildRepoSubTabSuffix', () => {
 
     it('falls back to the plain tab path for tabs without nested state', () => {
         expect(buildRepoSubTabSuffix('workflows', stateWith(), 'queue_1')).toBe('/workflows');
+    });
+});
+
+describe('buildWorkspaceSubTabSuffix', () => {
+    function stateWith(overrides: Partial<AppContextState> = {}): AppContextState {
+        return {
+            settingsSection: 'info',
+            selectedGitCommitHash: null,
+            selectedGitFilePath: null,
+            selectedNotePath: null,
+            ...overrides,
+        } as AppContextState;
+    }
+
+    it('drops the settings section for a repo group — its Settings tab has none', () => {
+        expect(buildWorkspaceSubTabSuffix('group-frontend', 'settings', stateWith({ settingsSection: 'llm-tools' })))
+            .toBe('/settings');
+    });
+
+    it('keeps the settings section for a real repo and for My Work / My Life', () => {
+        expect(buildWorkspaceSubTabSuffix('repo-1', 'settings', stateWith({ settingsSection: 'llm-tools' })))
+            .toBe('/settings/llm-tools');
+        expect(buildWorkspaceSubTabSuffix('my_work', 'settings', stateWith({ settingsSection: 'mcp' })))
+            .toBe('/settings/mcp');
+    });
+
+    it('delegates every non-settings tab to buildRepoSubTabSuffix, group or not', () => {
+        const state = stateWith({ selectedNotePath: 'Notebook/Page.md' });
+        expect(buildWorkspaceSubTabSuffix('group-frontend', 'notes', state)).toBe('/notes/Notebook/Page.md');
+        expect(buildWorkspaceSubTabSuffix('group-frontend', 'chats', state, 'queue_1')).toBe('/chats/queue_1');
     });
 });
 
@@ -2112,7 +2142,7 @@ describe('Router source-level: Alt+<letter> keyboard shortcuts', () => {
     });
 
     it('uses the shared repo sub-tab suffix builder for shortcut navigation', () => {
-        expect(ROUTER_SOURCE).toContain('buildRepoSubTabSuffix(tab, state, selectedTaskId)');
+        expect(ROUTER_SOURCE).toContain('buildWorkspaceSubTabSuffix(state.selectedRepoId, tab, state, selectedTaskId)');
     });
 
     it('activity route is in VALID_REPO_SUB_TABS', () => {

@@ -95,7 +95,7 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
     if (members.length === 0) {
         return (
             <div className="text-xs text-[#848484] px-3 py-2" data-testid="repo-group-members-empty">
-                This group has no member repos yet.
+                This group has no member repos yet. Add some from the group menu → Edit group.
             </div>
         );
     }

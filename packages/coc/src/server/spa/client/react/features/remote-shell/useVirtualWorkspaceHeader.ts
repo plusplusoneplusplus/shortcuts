@@ -9,7 +9,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
-import { buildRepoSubTabSuffix } from '../../layout/Router';
+import { buildWorkspaceSubTabSuffix } from '../../layout/Router';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import type { RepoSubTab } from '../../types/dashboard';
 import type {
@@ -57,13 +57,14 @@ export function useVirtualWorkspaceHeader(config: VirtualWorkspaceHeaderConfig):
     const switchTab = useCallback((tab: RepoSubTab) => {
         dispatch({ type: 'SET_REPO_SUB_TAB', tab });
         // Mirror useShellNavigation.navigate: build the hash suffix through
-        // buildRepoSubTabSuffix so each tab keeps its remembered detail (open
+        // buildWorkspaceSubTabSuffix so each tab keeps its remembered detail (open
         // note, selected chat/task, open commit) instead of resetting to a bare
         // `/<tab>`. Resolve this workspace's remembered note path and selected
         // task the same way, so returning to Notes preserves the mounted view.
         const workspaceId = config.workspaceId;
         const selectedTaskId = queueState.selectedTaskIdByRepo?.[workspaceId] ?? null;
-        const suffix = buildRepoSubTabSuffix(
+        const suffix = buildWorkspaceSubTabSuffix(
+            workspaceId,
             tab,
             { ...state, selectedNotePath: state.notePathState?.[workspaceId] ?? state.selectedNotePath },
             selectedTaskId,

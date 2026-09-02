@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { AppContextState } from '../contexts/AppContext';
 import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
-import { buildRepoSubTabSuffix } from '../layout/Router';
+import { buildWorkspaceSubTabSuffix } from '../layout/Router';
 import { confirmDiscardExplorerEditsOnSwitch } from '../features/repo-detail/explorer/explorerDirtyStore';
 import type { RepoSubTab } from '../types/dashboard';
 
@@ -49,7 +49,8 @@ export function resolveWorkspaceRouteSuffix(
     }
     const subTab = subTabOverride ?? state.repoTabState?.[id] ?? firstVisitTab ?? 'chats';
     const selectedTaskId = selectedTaskIdByRepo?.[id] ?? null;
-    return buildRepoSubTabSuffix(
+    return buildWorkspaceSubTabSuffix(
+        id,
         subTab,
         { ...state, selectedNotePath: state.notePathState?.[id] ?? null },
         selectedTaskId,

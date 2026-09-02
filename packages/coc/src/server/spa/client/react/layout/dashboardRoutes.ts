@@ -35,6 +35,7 @@ import {
 import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { isNativeCliProviderAvailable, isNativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
+import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 import type { AppAction, AppContextState } from '../contexts/AppContext';
 import type { QueueAction, QueueContextState } from '../contexts/QueueContext';
 import {
@@ -407,6 +408,28 @@ export function buildRepoSubTabSuffix(
         return '/' + tab + '/' + encodeSegment(selectedTaskId);
     }
     return '/' + tab;
+}
+
+/**
+ * `buildRepoSubTabSuffix`, but aware of which workspace the tab belongs to.
+ *
+ * The only difference today is Settings: a real repo (and My Work / My Life)
+ * has a sectioned settings tab, so its hash carries the open section, while a
+ * repo group's Settings tab is one scrolling pane with no sections — its
+ * canonical hash is a bare `#repos/<groupId>/settings`.
+ *
+ * Prefer this over `buildRepoSubTabSuffix` wherever the target workspace id is
+ * in hand; the bare form is what the router records and replays, so a group
+ * that lands on Settings comes back to Settings.
+ */
+export function buildWorkspaceSubTabSuffix(
+    workspaceId: string,
+    tab: RepoSubTab,
+    state: AppContextState,
+    selectedTaskId?: string | null
+): string {
+    if (tab === 'settings' && isRepoGroupWorkspaceId(workspaceId)) return '/settings';
+    return buildRepoSubTabSuffix(tab, state, selectedTaskId);
 }
 
 // ── Work-items deep-links ─────────────────────────────────────────────

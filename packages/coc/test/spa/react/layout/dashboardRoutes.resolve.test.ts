@@ -58,6 +58,37 @@ describe('resolveDashboardRoute — top-level activation', () => {
 
 // ── Repo sub-routes ───────────────────────────────────────────────────────────
 
+describe('resolveDashboardRoute — repo group settings', () => {
+    it('activates the Settings sub-tab for a bare #repos/group-x/settings', () => {
+        const r = resolveDashboardRoute('#repos/group-frontend/settings', makeCtx());
+        expect(appActions(r)).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
+        // No section suffix to canonicalize to — the group settings pane has none.
+        expect(navigations(r)).toEqual([]);
+    });
+
+    it('remembers the bare /settings suffix so returning to the group lands there', () => {
+        const r = resolveDashboardRoute('#repos/group-frontend/settings', makeCtx());
+        expect(appActions(r)).toContainEqual({
+            type: 'RECORD_REPO_ROUTE_SUFFIX',
+            repoId: 'group-frontend',
+            suffix: '/settings',
+        });
+    });
+
+    it('replays the remembered /settings suffix when the group is opened bare', () => {
+        const r = resolveDashboardRoute('#repos/group-frontend', makeCtx({
+            repoRouteState: { 'group-frontend': '/settings' },
+        }));
+        expect(navigations(r)).toContainEqual({
+            kind: 'navigate',
+            hash: '#repos/group-frontend/settings',
+            mode: 'replaceState',
+        });
+        expect(appActions(r)).toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
+    });
+});
+
+
 describe('resolveDashboardRoute — repo sub-routes', () => {
     it('#repos/ws1/git clears git selection and records the suffix (full effect list)', () => {
         const r = resolveDashboardRoute('#repos/ws1/git', makeCtx());
