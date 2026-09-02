@@ -94,8 +94,21 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
         openScopePopOut({ workspaceId, addToast: toast?.addToast });
     }, [toast]);
 
-    // Lightweight right-click menu (this switcher has none of its own yet).
-    const [menu, setMenu] = useState<{ workspaceId: string; label: string; x: number; y: number } | null>(null);
+    // Lightweight right-click menu. Pins additionally hang their reorder actions
+    // here (`pin` + the two direction flags): keeping `‹`/`›` as always-rendered
+    // hover controls reserved ~40px of invisible width on every pin, and both were
+    // permanently dead with a single pin. The pin fields stay optional so the
+    // virtual and workspace segments can keep calling `openScopeMenu` unchanged.
+    type ScopeMenuState = {
+        workspaceId: string;
+        label: string;
+        x: number;
+        y: number;
+        pin?: ResolvedPinnedScope;
+        canMoveLeft?: boolean;
+        canMoveRight?: boolean;
+    };
+    const [menu, setMenu] = useState<ScopeMenuState | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (!menu) return;
@@ -111,9 +124,14 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
         };
     }, [menu]);
 
-    const openScopeMenu = useCallback((e: { preventDefault: () => void; clientX: number; clientY: number }, workspaceId: string, label: string) => {
+    const openScopeMenu = useCallback((
+        e: { preventDefault: () => void; clientX: number; clientY: number },
+        workspaceId: string,
+        label: string,
+        pinContext?: { pin: ResolvedPinnedScope; canMoveLeft: boolean; canMoveRight: boolean },
+    ) => {
         e.preventDefault();
-        setMenu({ workspaceId, label, x: e.clientX, y: e.clientY });
+        setMenu({ workspaceId, label, x: e.clientX, y: e.clientY, ...pinContext });
     }, []);
 
     const renderPopOutIcon = (workspaceId: string, label: string) => (
@@ -124,7 +142,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
             data-workspace-id={workspaceId}
             aria-label={`Open ${label} in new window`}
             title="Open in new window"
-            className="inline-flex items-center justify-center w-4 h-4 rounded text-current opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-opacity"
+            className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center justify-center w-4 h-4 rounded text-current opacity-70 hover:opacity-100 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-opacity"
             onClick={e => { e.stopPropagation(); e.preventDefault(); popOut(workspaceId); }}
             onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -328,6 +346,10 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
      * A hover-revealed control inside a pin segment. `span role="button"` rather
      * than a `<button>` because the segment itself is a button and buttons may
      * not nest — the same trick `renderPopOutIcon` already uses.
+     *
+     * Revealed by `display`, not `opacity`: an `opacity-0` control still occupies
+     * its `w-4` box and still triggers the segment's `gap-1`, which left every
+     * idle pin with dead space to the right of its badge.
      */
     const pinControl = (
         testId: string,
@@ -335,30 +357,21 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
         label: string,
         glyph: string,
         onActivate: () => void,
-        disabled = false,
     ) => (
         <span
             role="button"
-            tabIndex={disabled ? -1 : 0}
+            tabIndex={0}
             data-testid={testId}
             data-pin-id={pin.id}
             aria-label={`${label} ${pin.label}`}
-            aria-disabled={disabled || undefined}
             title={label}
-            className={
-                'inline-flex items-center justify-center w-4 h-4 rounded text-current text-[11px] leading-none transition-opacity '
-                + (disabled
-                    ? 'opacity-0 pointer-events-none'
-                    : 'opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100 hover:bg-black/[0.08] dark:hover:bg-white/[0.12]')
-            }
+            className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center justify-center w-4 h-4 rounded text-current text-[11px] leading-none opacity-70 hover:opacity-100 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-opacity"
             onClick={e => {
-                if (disabled) return;
                 e.stopPropagation();
                 e.preventDefault();
                 onActivate();
             }}
             onKeyDown={e => {
-                if (disabled) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.stopPropagation();
                     e.preventDefault();
@@ -391,7 +404,11 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 aria-label={pin.label}
                 title={pin.label}
                 onClick={() => selectClone(pin.targetId)}
-                onContextMenu={e => openScopeMenu(e, pin.workspaceId, pin.label)}
+                onContextMenu={e => openScopeMenu(e, pin.workspaceId, pin.label, {
+                    pin,
+                    canMoveLeft: index > 0,
+                    canMoveRight: index < pinSegments.length - 1,
+                })}
                 className={segmentClass(active) + ' group max-w-[170px]'}
                 style={active ? { color: accent } : undefined}
             >
@@ -414,8 +431,6 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                         {pin.unseen > 99 ? '99+' : pin.unseen}
                     </span>
                 )}
-                {pinControl('scope-pin-move-left', pin, 'Move left', '‹', () => movePin(pin.ref, -1), index === 0)}
-                {pinControl('scope-pin-move-right', pin, 'Move right', '›', () => movePin(pin.ref, 1), index === pinSegments.length - 1)}
                 {renderPopOutIcon(pin.workspaceId, pin.label)}
                 {pinControl('scope-pin-unpin', pin, 'Unpin', '✕', () => togglePin(pin.ref))}
             </button>
@@ -500,6 +515,43 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                     >
                         🪟 Open in new window
                     </button>
+                    {/* Reorder lives here rather than on the segment so an idle
+                        pin collapses to dot + label + badge. A direction that is
+                        unavailable (first / last pin) is omitted, not disabled —
+                        with a single pin the menu is just the pop-out entry. */}
+                    {menu.pin && (menu.canMoveLeft || menu.canMoveRight) && (
+                        <div aria-hidden className="my-1 h-px bg-[#e0e0e0] dark:bg-[#3c3c3c]" />
+                    )}
+                    {menu.pin && menu.canMoveLeft && (
+                        <button
+                            data-testid="scope-pin-move-left"
+                            data-pin-id={menu.pin.id}
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => {
+                                const ref = menu.pin!.ref;
+                                setMenu(null);
+                                movePin(ref, -1);
+                            }}
+                        >
+                            ‹ Move left
+                        </button>
+                    )}
+                    {menu.pin && menu.canMoveRight && (
+                        <button
+                            data-testid="scope-pin-move-right"
+                            data-pin-id={menu.pin.id}
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => {
+                                const ref = menu.pin!.ref;
+                                setMenu(null);
+                                movePin(ref, 1);
+                            }}
+                        >
+                            › Move right
+                        </button>
+                    )}
                 </div>
             )}
         </div>

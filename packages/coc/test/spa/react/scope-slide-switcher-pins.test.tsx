@@ -290,41 +290,98 @@ describe('pinned segments — active scope and the chip identity clash', () => {
 });
 
 describe('pinned segments — reorder and unpin', () => {
-    it('moves a pin right and persists the new order', async () => {
+    /** Right-click a pin and return its context menu. */
+    const openPinMenu = (pinId: string) => {
+        fireEvent.contextMenu(pinSegment(pinId)!);
+        return screen.getByTestId('scope-switcher-context-menu');
+    };
+
+    it('moves a pin right from the context menu and persists the new order', async () => {
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
 
-        const right = screen.getAllByTestId('scope-pin-move-right')
-            .find(el => el.getAttribute('data-pin-id') === SHORTCUTS_PIN)!;
-        fireEvent.click(right);
+        openPinMenu(SHORTCUTS_PIN);
+        fireEvent.click(screen.getByTestId('scope-pin-move-right'));
 
         expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([AI_GROUP_PIN, SHORTCUTS_PIN]);
         expect(patchGlobal).toHaveBeenCalledWith({ pinnedScopes: [AI_GROUP_PIN, SHORTCUTS_PIN] });
-        // Reordering must not navigate.
+        // Reordering must not navigate, and it closes the menu.
         expect(mockSelectClone).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('scope-switcher-context-menu')).toBeNull();
     });
 
-    it('moves a pin left', async () => {
+    it('moves a pin left from the context menu', async () => {
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
 
-        const left = screen.getAllByTestId('scope-pin-move-left')
-            .find(el => el.getAttribute('data-pin-id') === AI_GROUP_PIN)!;
-        fireEvent.click(left);
+        openPinMenu(AI_GROUP_PIN);
+        fireEvent.click(screen.getByTestId('scope-pin-move-left'));
 
         expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([AI_GROUP_PIN, SHORTCUTS_PIN]);
     });
 
-    it('disables move-left on the first pin and move-right on the last', async () => {
+    it('omits the unavailable direction on the first and last pin', async () => {
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
 
-        const firstLeft = screen.getAllByTestId('scope-pin-move-left')
-            .find(el => el.getAttribute('data-pin-id') === SHORTCUTS_PIN)!;
-        const lastRight = screen.getAllByTestId('scope-pin-move-right')
-            .find(el => el.getAttribute('data-pin-id') === AI_GROUP_PIN)!;
-        expect(firstLeft.getAttribute('aria-disabled')).toBe('true');
-        expect(lastRight.getAttribute('aria-disabled')).toBe('true');
+        // First pin: right only.
+        openPinMenu(SHORTCUTS_PIN);
+        expect(screen.queryByTestId('scope-pin-move-left')).toBeNull();
+        expect(screen.getByTestId('scope-pin-move-right').getAttribute('data-pin-id')).toBe(SHORTCUTS_PIN);
+        fireEvent.keyDown(document, { key: 'Escape' });
 
-        fireEvent.click(firstLeft);
-        expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([SHORTCUTS_PIN, AI_GROUP_PIN]);
+        // Last pin: left only.
+        openPinMenu(AI_GROUP_PIN);
+        expect(screen.queryByTestId('scope-pin-move-right')).toBeNull();
+        expect(screen.getByTestId('scope-pin-move-left').getAttribute('data-pin-id')).toBe(AI_GROUP_PIN);
+    });
+
+    it('offers no reorder items when there is only one pin', async () => {
+        getGlobal.mockResolvedValue({ pinnedScopes: [SHORTCUTS_PIN] });
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        openPinMenu(SHORTCUTS_PIN);
+
+        expect(screen.queryByTestId('scope-pin-move-left')).toBeNull();
+        expect(screen.queryByTestId('scope-pin-move-right')).toBeNull();
+        expect(screen.getByTestId('scope-switcher-context-open-window')).toBeTruthy();
+    });
+
+    it('offers no reorder items on the non-pin segments', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        fireEvent.contextMenu(segment('workspace')!);
+
+        expect(screen.getByTestId('scope-switcher-context-open-window')).toBeTruthy();
+        expect(screen.queryByTestId('scope-pin-move-left')).toBeNull();
+        expect(screen.queryByTestId('scope-pin-move-right')).toBeNull();
+    });
+
+    it('keeps no reorder controls inside the pin segment itself', async () => {
+        // Regression: `‹`/`›` rendered as opacity-0 hover controls reserved ~40px
+        // of invisible width on every pin, even when both were permanently dead.
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        for (const seg of pinSegments()) {
+            expect(seg.querySelector('[data-testid="scope-pin-move-left"]')).toBeNull();
+            expect(seg.querySelector('[data-testid="scope-pin-move-right"]')).toBeNull();
+        }
+    });
+
+    it('reveals the remaining hover controls by display so idle pins reserve no width', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        const seg = pinSegment(SHORTCUTS_PIN)!;
+        const controls = [
+            seg.querySelector('[data-testid="scope-pin-unpin"]')!,
+            seg.querySelector('[data-testid="scope-segment-popout"]')!,
+        ];
+        for (const el of controls) {
+            const cls = el.getAttribute('class') || '';
+            // `hidden` takes them out of flow (and out of the segment's `gap-1`)
+            // until the segment is hovered or focused.
+            expect(cls.split(/\s+/)).toContain('hidden');
+            expect(cls).toContain('group-hover:inline-flex');
+            expect(cls).toContain('group-focus-within:inline-flex');
+            expect(cls).not.toContain('opacity-0');
+        }
     });
 
     it('unpins from the segment without navigating', async () => {

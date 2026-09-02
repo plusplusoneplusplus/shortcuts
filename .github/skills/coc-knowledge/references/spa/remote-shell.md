@@ -64,7 +64,11 @@ user-pinned segments between the virtual scopes and the workspace chip, brackete
 `scope-pin-divider` on each side. A pin renders as `scope-segment` with
 `data-scope="pin"`, `data-pin-id`, `data-pin-kind`, an unread badge
 (`scope-pin-unseen-badge`), the shared pop-out icon, the shared right-click menu, and
-hover controls `scope-pin-move-left` / `scope-pin-move-right` / `scope-pin-unpin`.
+the hover control `scope-pin-unpin`. The hover controls (unpin and pop-out) are
+revealed with `hidden group-hover:inline-flex group-focus-within:inline-flex`, so an
+idle pin collapses to dot + label + badge and reserves no width for them. Reordering
+lives in the right-click menu as `scope-pin-move-left` / `scope-pin-move-right`, each
+item omitted when that direction is unavailable (first / last pin).
 Below `xl` a pin drops to icon-only; below `lg` the whole strip
 (`scope-pin-strip`) is hidden.
 
@@ -94,7 +98,11 @@ user-pinned segments between the virtual scopes and the workspace chip, brackete
 `scope-pin-divider` on each side. A pin renders as `scope-segment` with
 `data-scope="pin"`, `data-pin-id`, `data-pin-kind`, an unread badge
 (`scope-pin-unseen-badge`), the shared pop-out icon, the shared right-click menu, and
-hover controls `scope-pin-move-left` / `scope-pin-move-right` / `scope-pin-unpin`.
+the hover control `scope-pin-unpin`. The hover controls (unpin and pop-out) are
+revealed with `hidden group-hover:inline-flex group-focus-within:inline-flex`, so an
+idle pin collapses to dot + label + badge and reserves no width for them. Reordering
+lives in the right-click menu as `scope-pin-move-left` / `scope-pin-move-right`, each
+item omitted when that direction is unavailable (first / last pin).
 Below `xl` a pin drops to icon-only; below `lg` the whole strip
 (`scope-pin-strip`) is hidden.
 
