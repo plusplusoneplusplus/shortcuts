@@ -101,6 +101,12 @@ const TERMINAL_LABEL: Record<RalphTerminalReason, string> = {
     NO_SIGNAL: 'Stopped — no signal',
 };
 
+/**
+ * Client-side mirror of the server's `RALPH_RESUME_HARD_CAP`. The route
+ * re-validates, so this only saves a round-trip on obviously bad input.
+ */
+const RALPH_MAX_ITERATIONS_CAP = 500;
+
 function singleLine(s: string, max = 140): string {
     const flat = s.replace(/\s+/g, ' ').trim();
     return flat.length > max ? flat.slice(0, max - 1) + '…' : flat;
@@ -329,6 +335,30 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
 
     const [submitPrPending, setSubmitPrPending] = useState(false);
     const [submitPrError, setSubmitPrError] = useState<string | null>(null);
+
+    // AC-03: inline, session-scoped edit of the total iteration cap.
+    //  - `capDraft` is the raw input text (kept as a string so a half-typed
+    //    value isn't coerced mid-keystroke).
+    //  - `capPending` holds a value parked behind the "this stops the loop"
+    //    confirmation.
+    //  - `capOverride` holds the cap returned by a successful POST so the
+    //    header updates without waiting for a journal refetch; the effect
+    //    below drops it once the fetched record catches up.
+    const [capState, setCapState] = useState<'idle' | 'editing' | 'confirming' | 'submitting'>('idle');
+    const [capDraft, setCapDraft] = useState('');
+    const [capPending, setCapPending] = useState<number | null>(null);
+    const [capError, setCapError] = useState<string | null>(null);
+    const [capOverride, setCapOverride] = useState<number | null>(null);
+
+    const fetchedMaxIterations = view ? view.record.maxIterations : undefined;
+    useEffect(() => {
+        setCapOverride(null);
+        setCapState('idle');
+        setCapPending(null);
+        setCapDraft('');
+        setCapError(null);
+    }, [fetchedMaxIterations, sessionId]);
+
     const resumeDefaults = view && view !== null ? view.resumeDefaults : undefined;
     const resumeAiSelection = useModalJobAiSelection({
         workspaceId,
@@ -409,6 +439,92 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         } finally {
             setSubmitPrPending(false);
         }
+    };
+
+    // ── AC-03: total iteration cap editor ───────────────────────────────────
+    // The cap is session-scoped: this writes only the session journal via the
+    // max-iterations route, never the repo-level preference.
+    const displayedMaxIterations = capOverride ?? record.maxIterations;
+    const canEditMaxIterations = record.phase !== 'complete';
+
+    const openCapEditor = () => {
+        setCapError(null);
+        setCapPending(null);
+        setCapDraft(String(displayedMaxIterations));
+        setCapState('editing');
+    };
+
+    const closeCapEditor = () => {
+        setCapState('idle');
+        setCapPending(null);
+        setCapDraft('');
+    };
+
+    const submitCap = async (value: number) => {
+        setCapState('submitting');
+        setCapError(null);
+        try {
+            const res = await cloneClient.request<{ maxIterations?: number }>(
+                `/workspaces/${encodeURIComponent(workspaceId)}/ralph-sessions/${encodeURIComponent(sessionId)}/max-iterations`,
+                { method: 'POST', body: { maxIterations: value } },
+            );
+            setCapOverride(typeof res?.maxIterations === 'number' ? res.maxIterations : value);
+            closeCapEditor();
+        } catch (err) {
+            // Surface the server's message verbatim and leave the header on the
+            // previous cap — nothing changed server-side.
+            setCapError(getSpaCocClientErrorMessage(err, 'Failed to update the iteration cap'));
+            closeCapEditor();
+        }
+    };
+
+    /** Validate the draft, then either park it behind the stop-confirmation or send it. */
+    const requestCapChange = async (raw: string) => {
+        const trimmed = raw.trim();
+        const value = Number(trimmed);
+        if (
+            trimmed === ''
+            || !Number.isFinite(value)
+            || !Number.isInteger(value)
+            || value < 1
+            || value > RALPH_MAX_ITERATIONS_CAP
+        ) {
+            // Client guard mirrors the route: stay in edit mode so the value can
+            // be corrected, and fire no request.
+            setCapError(`Iteration cap must be a whole number between 1 and ${RALPH_MAX_ITERATIONS_CAP}`);
+            setCapState('editing');
+            return;
+        }
+        setCapError(null);
+        if (value <= record.currentIteration) {
+            // Effectively a stop action — confirm before writing it.
+            setCapPending(value);
+            setCapState('confirming');
+            return;
+        }
+        await submitCap(value);
+    };
+
+    const handleCapKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            void requestCapChange(capDraft);
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            setCapError(null);
+            closeCapEditor();
+        }
+    };
+
+    const handleCapBlur = () => {
+        // Only a blur out of an active edit submits; blur caused by the editor
+        // being swapped for the confirmation must not re-fire.
+        if (capState !== 'editing') return;
+        if (capDraft.trim() === '' || Number(capDraft) === displayedMaxIterations) {
+            closeCapEditor();
+            return;
+        }
+        void requestCapChange(capDraft);
     };
 
     // Stuck = still in the executing phase but no queued/running task backs it
@@ -579,9 +695,70 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                         </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-                        <span data-testid="ralph-workflow-iteration-count">
-                            Iteration {record.currentIteration} / {record.maxIterations}
+                        <span data-testid="ralph-workflow-iteration-count" className="inline-flex items-center gap-1">
+                            Iteration {record.currentIteration} /{' '}
+                            {canEditMaxIterations && (capState === 'editing' || capState === 'submitting') ? (
+                                <input
+                                    type="number"
+                                    data-testid="ralph-workflow-max-iterations-input"
+                                    aria-label="Total iteration cap"
+                                    value={capDraft}
+                                    min={1}
+                                    max={RALPH_MAX_ITERATIONS_CAP}
+                                    step={1}
+                                    autoFocus
+                                    disabled={capState === 'submitting'}
+                                    onChange={(e) => setCapDraft(e.target.value)}
+                                    onKeyDown={handleCapKeyDown}
+                                    onBlur={handleCapBlur}
+                                    className="w-16 rounded border border-blue-400 bg-white px-1 py-0.5 text-xs text-zinc-800 disabled:opacity-50 dark:border-blue-500 dark:bg-zinc-900 dark:text-zinc-100"
+                                />
+                            ) : canEditMaxIterations ? (
+                                <button
+                                    type="button"
+                                    data-testid="ralph-workflow-max-iterations-edit"
+                                    onClick={openCapEditor}
+                                    title="Change the total iteration cap"
+                                    className="rounded px-0.5 underline decoration-dotted underline-offset-2 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                                >
+                                    {displayedMaxIterations}
+                                </button>
+                            ) : (
+                                displayedMaxIterations
+                            )}
                         </span>
+                        {capState === 'confirming' && capPending !== null && (
+                            <span
+                                className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300"
+                                data-testid="ralph-workflow-max-iterations-confirm"
+                            >
+                                Loop will stop after iteration {capPending}
+                                <button
+                                    type="button"
+                                    data-testid="ralph-workflow-max-iterations-confirm-apply"
+                                    onClick={() => { void submitCap(capPending); }}
+                                    className="rounded border border-amber-500 px-1.5 py-0.5 hover:bg-amber-100 dark:border-amber-400 dark:hover:bg-amber-900/40"
+                                >
+                                    Apply
+                                </button>
+                                <button
+                                    type="button"
+                                    data-testid="ralph-workflow-max-iterations-confirm-cancel"
+                                    onClick={closeCapEditor}
+                                    className="rounded border border-zinc-300 px-1.5 py-0.5 hover:bg-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </button>
+                            </span>
+                        )}
+                        {capError && (
+                            <span
+                                className="text-[11px] text-red-700 dark:text-red-300"
+                                data-testid="ralph-workflow-max-iterations-error"
+                            >
+                                {capError}
+                            </span>
+                        )}
                         {RALPH_MULTI_LOOP && record.loops && record.loops.length > 1 && (
                             <span data-testid="ralph-workflow-loop-count">
                                 Loop {record.loops.length}

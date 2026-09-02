@@ -652,3 +652,165 @@ describe('orchestrateRalphIteration — persistent idempotency (final-check)', (
         expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
     });
 });
+
+// ── Live cap (session.json) overrides the stale task-payload cap ─────────────
+
+describe('orchestrateRalphIteration — live maxIterations from session.json', () => {
+    let dataDir: string;
+
+    beforeEach(async () => {
+        dataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'orch-iter-cap-'));
+        _clearFinalCheckEnqueuedSet();
+    });
+
+    afterEach(async () => {
+        _clearFinalCheckEnqueuedSet();
+        await fs.promises.rm(dataDir, { recursive: true, force: true });
+    });
+
+    async function initSession(maxIterations: number): Promise<RalphSessionStore> {
+        const store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, { originalGoal: 'Do the goal.', maxIterations });
+        return store;
+    }
+
+    it('continues past the stale payload cap when the journal cap was raised', async () => {
+        const store = await initSession(3);
+        await store.setMaxIterations(WS, SID, 10);
+
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 3,
+            maxIterations: 3, // stale payload value — would have stopped the loop
+            deps,
+        });
+
+        expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.payload.context.ralph.currentIteration).toBe(4);
+        // The refreshed cap rides along so the next prompt says "4 of 10".
+        expect(enqueuedTask.payload.context.ralph.maxIterations).toBe(10);
+        expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+
+        const record = await store.readSessionRecord(WS, SID);
+        expect(record?.phase).toBe('executing');
+    });
+
+    it('stops with CAP_REACHED when the journal cap was lowered to the current iteration', async () => {
+        const store = await initSession(20);
+        await store.setMaxIterations(WS, SID, 4);
+
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 4,
+            maxIterations: 20, // stale payload value — would have continued
+            deps,
+        });
+
+        expect(deps.enqueueTask).not.toHaveBeenCalled();
+        expect(deps.broadcastSessionComplete).toHaveBeenCalledTimes(1);
+        const broadcast = (deps.broadcastSessionComplete as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(broadcast.reason).toBe('cap');
+
+        const record = await store.readSessionRecord(WS, SID);
+        expect(record?.phase).toBe('complete');
+        expect(record?.terminalReason).toBe('CAP_REACHED');
+    });
+
+    it('stops when the journal cap was lowered below the current iteration', async () => {
+        const store = await initSession(20);
+        await store.setMaxIterations(WS, SID, 2);
+
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 6,
+            maxIterations: 20,
+            deps,
+        });
+
+        expect(deps.enqueueTask).not.toHaveBeenCalled();
+        const record = await store.readSessionRecord(WS, SID);
+        expect(record?.phase).toBe('complete');
+        expect(record?.terminalReason).toBe('CAP_REACHED');
+    });
+
+    it('RALPH_COMPLETE still wins over a raised cap', async () => {
+        const store = await initSession(5);
+        await store.setMaxIterations(WS, SID, 50);
+
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeCompleteResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 2,
+            maxIterations: 5,
+            deps,
+        });
+
+        // Final-check task, not another iteration.
+        expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.displayName).toContain('final check');
+        expect(enqueuedTask.payload.context.ralph.finalCheck.sourceIteration).toBe(2);
+    });
+
+    it('falls back to the payload cap when no session record exists', async () => {
+        const deps = makeDeps({ dataDir });
+        await orchestrateRalphIteration({
+            responseText: makeNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: 'sess-no-record',
+            originalGoal: 'Do the goal.',
+            currentIteration: 2,
+            maxIterations: 5,
+            deps,
+        });
+
+        expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.payload.context.ralph.maxIterations).toBe(5);
+    });
+
+    it('falls back to the payload cap when no dataDir is configured', async () => {
+        const deps = makeDeps({ dataDir: undefined });
+        await orchestrateRalphIteration({
+            responseText: makeNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 2,
+            maxIterations: 5,
+            deps,
+        });
+
+        expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.payload.context.ralph.maxIterations).toBe(5);
+    });
+});
