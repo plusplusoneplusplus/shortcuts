@@ -1,6 +1,4 @@
 /**
- * Tests for cross-repository activity mixing fix.
- *
  * Verifies:
  * - Fix 1: Tab components use key={ws.id} to force remount on workspace change
  * - Fix 2: selectedTaskId is cleared on repo switch in ReposGrid

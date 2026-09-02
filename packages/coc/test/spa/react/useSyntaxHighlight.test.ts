@@ -1,6 +1,4 @@
 /**
- * Tests for useSyntaxHighlight utility functions.
- *
  * Validates language detection from file names and per-line syntax
  * highlighting behaviour, including HTML escaping and error fallback.
  */

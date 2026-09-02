@@ -1,7 +1,3 @@
-/**
- * useNotesDragDrop — unit tests for the notes drag-and-drop hook.
- */
-
 import { describe, it, expect } from 'vitest';
 import {
     getNotesParentPath,

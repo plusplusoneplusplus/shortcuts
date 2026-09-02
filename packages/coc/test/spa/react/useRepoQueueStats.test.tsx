@@ -1,7 +1,3 @@
-/**
- * Tests for useRepoQueueStats hook.
- */
-
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';

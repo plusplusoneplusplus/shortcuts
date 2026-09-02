@@ -1,7 +1,6 @@
 /**
- * Tests for useFileActions hook.
  * Verifies correct HTTP method, URL, and body for each action,
- * with focus on the new moveFileToWorkspace cross-workspace move.
+ * with focus on the moveFileToWorkspace cross-workspace move.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

@@ -1,7 +1,3 @@
-/**
- * Unit tests for the skill menu ranking helper.
- */
-
 import { describe, it, expect } from 'vitest';
 import { rankSkillsByRecency, MRU_SKILL_LIMIT } from '../../../src/server/spa/client/react/features/git/skill-menu-ranking';
 

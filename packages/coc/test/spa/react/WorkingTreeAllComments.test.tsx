@@ -1,6 +1,4 @@
 /**
- * Tests for WorkingTreeAllComments component.
- *
  * Validates source structure and the copyAllCommentsAsPrompt callback that
  * builds a multi-file prompt from all open DiffComments and passes it to
  * CommentSidebar as onCopyPrompt.
