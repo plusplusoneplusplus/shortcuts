@@ -126,6 +126,9 @@ describe('search marshalling', () => {
         expect(await index.search('zzzqqq', 10)).toEqual([]);
     });
 
+    // Creating (and later removing) 12k files is trivial on Linux and macOS but
+    // costs minutes on a Windows runner, where every file open/close goes through
+    // the virus scanner. The default 60s budget is the file I/O, not the addon.
     it('marshals a result array larger than 10k entries', async () => {
         const big = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-big-'));
         try {
@@ -148,7 +151,7 @@ describe('search marshalling', () => {
         } finally {
             fs.rmSync(big, { recursive: true, force: true });
         }
-    });
+    }, 180_000);
 });
 
 describe('async contract', () => {
