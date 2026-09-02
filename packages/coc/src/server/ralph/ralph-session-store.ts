@@ -290,6 +290,54 @@ export class RalphSessionStore {
     }
 
     /**
+     * Set an existing session's iteration cap to an absolute value.
+     *
+     * Unlike `extendSession` this is not a delta and leaves `phase`,
+     * `completedAt` and `terminalReason` untouched — it is safe to call on a
+     * live session whose loop is mid-iteration.
+     *
+     * Returns the updated record. Throws if the session does not exist.
+     */
+    async setMaxIterations(
+        workspaceId: string,
+        sessionId: string,
+        value: number,
+        nowIso?: string,
+    ): Promise<RalphSessionRecord> {
+        if (!Number.isInteger(value) || value <= 0) {
+            throw new Error(`setMaxIterations: value must be a positive integer, got ${value}`);
+        }
+        const existing = await this.readSessionRecord(workspaceId, sessionId);
+        if (!existing) {
+            throw new Error(`Ralph session ${sessionId} not found in workspace ${workspaceId}`);
+        }
+        void nowIso;
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? existing;
+            return { ...base, maxIterations: value };
+        });
+    }
+
+    /**
+     * Append a "Max iterations changed at <ts> — <old> -> <new>" line to
+     * `progress.md`, so the journal records manual cap edits.
+     */
+    async appendMaxIterationsMarker(
+        workspaceId: string,
+        sessionId: string,
+        previousMax: number,
+        newMax: number,
+        nowIso?: string,
+    ): Promise<void> {
+        const dir = this.getSessionDir(workspaceId, sessionId);
+        await fs.promises.mkdir(dir, { recursive: true });
+        const progressPath = this.getProgressPath(workspaceId, sessionId);
+        const ts = nowIso ?? new Date().toISOString();
+        const marker = `\n_Max iterations changed at ${ts} — ${previousMax} -> ${newMax}_\n`;
+        await fs.promises.appendFile(progressPath, marker, 'utf-8');
+    }
+
+    /**
      * Extend an existing session's iteration cap. Resets the session to
      * `executing` phase and clears the previous terminal markers so the
      * loop can resume from `currentIteration + 1`.

@@ -108,6 +108,7 @@ import type { SshConnector } from '../servers/ssh-connector';
 import { registerRalphRoutes } from './queue-ralph-routes';
 import { registerRalphSessionRoutes } from './ralph-session-routes';
 import { registerRalphContinueRoutes } from './ralph-continue-routes';
+import { registerRalphMaxIterationsRoutes } from './ralph-max-iterations-routes';
 import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
@@ -856,6 +857,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getGitWorktreeExecutionEnabled });
     registerRalphSessionRoutes(routes, { dataDir, store, bridge: bridgeWithResolvedDefaults });
     registerRalphContinueRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphMaxIterationsRoutes(routes, { dataDir });
     registerRalphNewLoopRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir, store, getGitWorktreeExecutionEnabled });

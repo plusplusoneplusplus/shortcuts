@@ -89,3 +89,46 @@ describe('RalphSessionStore.appendContinuationMarker', () => {
         expect(md).toMatch(/extending to 50/);
     });
 });
+
+describe('RalphSessionStore.setMaxIterations', () => {
+    it('sets an absolute cap without touching phase or terminal markers', async () => {
+        const updated = await store.setMaxIterations(WS, SID, 42);
+        expect(updated.maxIterations).toBe(42);
+        // The seeded record is terminal; the store setter is phase-agnostic —
+        // the route owns the non-terminal guard.
+        expect(updated.phase).toBe('complete');
+        expect(updated.completedAt).toBe('2026-05-11T03:00:00Z');
+        expect(updated.terminalReason).toBe('CAP_REACHED');
+        expect(updated.currentIteration).toBe(10);
+    });
+
+    it('can lower the cap below currentIteration', async () => {
+        const updated = await store.setMaxIterations(WS, SID, 3);
+        expect(updated.maxIterations).toBe(3);
+        expect(updated.currentIteration).toBe(10);
+    });
+
+    it('persists to session.json', async () => {
+        await store.setMaxIterations(WS, SID, 7);
+        const reread = await store.readSessionRecord(WS, SID);
+        expect(reread?.maxIterations).toBe(7);
+    });
+
+    it('throws on non-positive or non-integer values', async () => {
+        await expect(store.setMaxIterations(WS, SID, 0)).rejects.toThrow(/positive integer/);
+        await expect(store.setMaxIterations(WS, SID, -3)).rejects.toThrow(/positive integer/);
+        await expect(store.setMaxIterations(WS, SID, 2.5)).rejects.toThrow(/positive integer/);
+    });
+
+    it('throws when the session does not exist', async () => {
+        await expect(store.setMaxIterations(WS, 'missing-session', 5)).rejects.toThrow(/not found/);
+    });
+});
+
+describe('RalphSessionStore.appendMaxIterationsMarker', () => {
+    it('appends an old -> new line to progress.md', async () => {
+        await store.appendMaxIterationsMarker(WS, SID, 10, 42, '2026-05-11T04:00:00Z');
+        const md = await store.readProgress(WS, SID);
+        expect(md).toMatch(/Max iterations changed at 2026-05-11T04:00:00Z — 10 -> 42/);
+    });
+});
