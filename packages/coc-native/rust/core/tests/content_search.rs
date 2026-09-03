@@ -354,6 +354,28 @@ fn include_globs_whitelist_and_exclude_globs_subtract() {
 }
 
 #[test]
+fn a_malformed_glob_is_a_distinct_error_the_server_can_answer_with_400() {
+    let dir = repo(&[("a.ts", "needle\n")]);
+
+    let from_include = search(
+        dir.path(),
+        "needle",
+        &ContentSearchOptions { include: vec!["[unclosed".into()], ..Default::default() },
+    )
+    .expect_err("malformed include glob rejected");
+    assert!(matches!(from_include, SearchError::InvalidGlob(_)), "got {from_include:?}");
+    assert!(from_include.to_string().contains("invalid glob"), "{from_include}");
+
+    let from_exclude = search(
+        dir.path(),
+        "needle",
+        &ContentSearchOptions { exclude: vec!["[unclosed".into()], ..Default::default() },
+    )
+    .expect_err("malformed exclude glob rejected");
+    assert!(matches!(from_exclude, SearchError::InvalidGlob(_)), "got {from_exclude:?}");
+}
+
+#[test]
 fn decodes_non_utf8_bytes_lossily_without_breaking_columns() {
     let dir = repo(&[]);
     // A lone 0xFF is not valid UTF-8; it becomes one replacement character.
@@ -436,4 +458,146 @@ fn a_root_that_does_not_exist_is_an_io_error() {
         .expect_err("missing root rejected");
 
     assert!(matches!(error, SearchError::Io(_)), "got {error:?}");
+}
+
+// -- Multi-line queries ------------------------------------------------------
+
+/// The default options with regex mode on — the `.*` toggle.
+fn regex_options() -> ContentSearchOptions {
+    ContentSearchOptions { regex: true, ..ContentSearchOptions::default() }
+}
+
+#[test]
+fn a_query_containing_a_newline_matches_across_the_line_break() {
+    let dir = repo(&[("a.txt", "before\nalpha\nbeta\nafter\n")]);
+
+    let result = run(dir.path(), "alpha\nbeta", ContentSearchOptions::default());
+
+    assert_eq!(locations(&result), ["a.txt:2", "a.txt:3"]);
+    // Each piece is still one line with per-line columns, so a client
+    // highlighting text[start..end] highlights exactly what matched.
+    assert_eq!(result.matches[0].text, "alpha");
+    assert_eq!((result.matches[0].start_column, result.matches[0].end_column), (0, 5));
+    assert_eq!(result.matches[1].text, "beta");
+    assert_eq!((result.matches[1].start_column, result.matches[1].end_column), (0, 4));
+}
+
+#[test]
+fn the_pieces_of_one_multi_line_match_share_a_group_id() {
+    let dir = repo(&[("a.txt", "alpha\nbeta\nfiller\nalpha\nbeta\n")]);
+
+    let result = run(dir.path(), "alpha\nbeta", ContentSearchOptions::default());
+
+    let groups: Vec<Option<u32>> = result.matches.iter().map(|m| m.group).collect();
+    assert_eq!(groups.len(), 4);
+    assert_eq!(groups[0], groups[1]);
+    assert_eq!(groups[2], groups[3]);
+    // Two separate matches, so two ids — a client can tell them apart.
+    assert_ne!(groups[0], groups[2]);
+    assert!(groups.iter().all(Option::is_some));
+}
+
+#[test]
+fn a_single_line_match_carries_no_group() {
+    let dir = repo(&[("a.txt", "needle\n")]);
+
+    let result = run(dir.path(), "needle", ContentSearchOptions::default());
+
+    assert_eq!(result.matches[0].group, None);
+}
+
+#[test]
+fn a_multi_line_query_matching_inside_one_line_carries_no_group() {
+    let dir = repo(&[("a.txt", "alpha beta\nalpha\nbeta\n")]);
+
+    let result = run(dir.path(), "alpha( |\n)beta", regex_options());
+
+    // The first hit is confined to line 1, so it is indistinguishable from an
+    // ordinary match and gets no id; the second crosses a break and does.
+    assert_eq!(locations(&result), ["a.txt:1", "a.txt:2", "a.txt:3"]);
+    assert_eq!(result.matches[0].group, None);
+    assert!(result.matches[1].group.is_some());
+    assert_eq!(result.matches[1].group, result.matches[2].group);
+}
+
+#[test]
+fn a_newline_in_a_literal_query_is_searched_literally() {
+    let dir = repo(&[("a.txt", "ax\nb\n"), ("b.txt", "a.\nb\n")]);
+
+    let result = run(dir.path(), "a.\nb", ContentSearchOptions::default());
+
+    // With regex off the `.` is a full stop, so only b.txt matches.
+    assert_eq!(locations(&result), ["b.txt:1", "b.txt:2"]);
+}
+
+#[test]
+fn a_regex_newline_escape_searches_across_lines() {
+    let dir = repo(&[("a.txt", "alpha\nbeta\n")]);
+
+    let result = run(dir.path(), r"alpha\nbeta", regex_options());
+
+    assert_eq!(locations(&result), ["a.txt:1", "a.txt:2"]);
+    assert_eq!(result.matches[0].group, result.matches[1].group);
+    assert!(result.matches[0].group.is_some());
+}
+
+#[test]
+fn an_escaped_backslash_before_n_stays_a_single_line_search() {
+    let dir = repo(&[("a.txt", r"path\name")]);
+
+    // `\\n` is an escaped backslash followed by a literal `n`, not a newline,
+    // so this must not flip the searcher into multi-line mode.
+    let result = run(dir.path(), r"\\name", regex_options());
+
+    assert_eq!(locations(&result), ["a.txt:1"]);
+    assert_eq!(result.matches[0].group, None);
+}
+
+#[test]
+fn a_multi_line_query_does_not_match_lines_that_are_not_adjacent() {
+    let dir = repo(&[("a.txt", "alpha\nmiddle\nbeta\n")]);
+
+    let result = run(dir.path(), "alpha\nbeta", ContentSearchOptions::default());
+
+    assert!(result.matches.is_empty());
+}
+
+#[test]
+fn a_multi_line_match_spanning_three_lines_reports_every_line() {
+    let dir = repo(&[("a.txt", "start one\ntwo\nthree end\ntail\n")]);
+
+    let result = run(dir.path(), "one\ntwo\nthree", ContentSearchOptions::default());
+
+    assert_eq!(locations(&result), ["a.txt:1", "a.txt:2", "a.txt:3"]);
+    // The first and last pieces are partial lines; the middle one is whole.
+    assert_eq!(result.matches[0].text, "start one");
+    assert_eq!((result.matches[0].start_column, result.matches[0].end_column), (6, 9));
+    assert_eq!((result.matches[1].start_column, result.matches[1].end_column), (0, 3));
+    assert_eq!(result.matches[2].text, "three end");
+    assert_eq!((result.matches[2].start_column, result.matches[2].end_column), (0, 5));
+}
+
+#[test]
+fn a_multi_line_match_ending_on_the_line_break_does_not_touch_the_next_line() {
+    let dir = repo(&[("a.txt", "alpha\nbeta\n")]);
+
+    let result = run(dir.path(), r"alpha\n", regex_options());
+
+    assert_eq!(locations(&result), ["a.txt:1"]);
+    assert_eq!(result.matches[0].group, None);
+}
+
+#[test]
+fn multi_line_matches_still_respect_the_per_file_cap() {
+    let body = "alpha\nbeta\n".repeat(10);
+    let dir = repo(&[("a.txt", body.as_str())]);
+
+    let result = run(
+        dir.path(),
+        "alpha\nbeta",
+        ContentSearchOptions { max_per_file: 3, ..ContentSearchOptions::default() },
+    );
+
+    assert_eq!(result.matches.len(), 3);
+    assert!(result.truncated);
 }

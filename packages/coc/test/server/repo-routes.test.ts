@@ -613,6 +613,18 @@ describe('GET /api/repos/:repoId/search/content', () => {
         expect(body.error).toMatch(/invalid regular expression/i);
     });
 
+    it('returns 400 with the glob message for a malformed include or exclude glob', async () => {
+        seedSearchableRepo();
+
+        const badInclude = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&include=${encodeURIComponent('[unclosed')}`);
+        expect(badInclude.status).toBe(400);
+        expect(((await badInclude.json()) as any).error).toMatch(/invalid glob/i);
+
+        const badExclude = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&exclude=${encodeURIComponent('[unclosed')}`);
+        expect(badExclude.status).toBe(400);
+        expect(((await badExclude.json()) as any).error).toMatch(/invalid glob/i);
+    });
+
     it('honours showIgnored', async () => {
         seedDefaultRepo();
         initGitRepo(repoDir);
@@ -746,5 +758,176 @@ describe('GET /api/repos/:repoId/reveal', () => {
         expect(res.status).toBe(404);
         const body = await res.json() as any;
         expect(body.error).toBeDefined();
+    });
+});
+
+describe('POST /api/repos/:repoId/search/replace', () => {
+    const ALPHA = 'const needle = 1;\nconst other = 2;\n';
+
+    function seedReplaceableRepo(): void {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'alpha.ts'), ALPHA);
+        fs.writeFileSync(path.join(repoDir, 'src', 'beta.ts'), 'export const NEEDLE = 3;\n');
+    }
+
+    function replace(repoId: string, body: unknown): Promise<Response> {
+        return fetch(`${baseUrl}/api/repos/${repoId}/search/replace`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+    }
+
+    /** The target a search for `needle` in alpha.ts's first line would return. */
+    function alphaTarget(text = 'const needle = 1;') {
+        return { line: 1, text, startColumn: 6, endColumn: 12 };
+    }
+
+    it('rewrites the listed spans and reports what it wrote', async () => {
+        seedReplaceableRepo();
+
+        const res = await replace(REPO_ID, {
+            query: 'needle',
+            replacement: 'pin',
+            files: [
+                { path: 'src/alpha.ts', targets: [alphaTarget()] },
+                { path: 'src/beta.ts', targets: [{ line: 1, text: 'export const NEEDLE = 3;', startColumn: 13, endColumn: 19 }] },
+            ],
+        });
+
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ replacedMatches: 2, replacedFiles: 2, skipped: [] });
+        expect(fs.readFileSync(path.join(repoDir, 'src', 'alpha.ts'), 'utf-8')).toBe('const pin = 1;\nconst other = 2;\n');
+        expect(fs.readFileSync(path.join(repoDir, 'src', 'beta.ts'), 'utf-8')).toBe('export const pin = 3;\n');
+    });
+
+    it('writes nothing outside the listed spans', async () => {
+        seedReplaceableRepo();
+        fs.writeFileSync(path.join(repoDir, 'src', 'gamma.ts'), 'const needle = 9;\n');
+
+        await replace(REPO_ID, {
+            query: 'needle',
+            replacement: 'pin',
+            files: [{ path: 'src/alpha.ts', targets: [alphaTarget()] }],
+        });
+
+        // gamma.ts matches the query but was not in the result set the user saw.
+        expect(fs.readFileSync(path.join(repoDir, 'src', 'gamma.ts'), 'utf-8')).toBe('const needle = 9;\n');
+    });
+
+    it('skips and reports a file that changed on disk since the search ran', async () => {
+        seedReplaceableRepo();
+        fs.writeFileSync(path.join(repoDir, 'src', 'alpha.ts'), 'const needle = 42;\nconst other = 2;\n');
+
+        const res = await replace(REPO_ID, {
+            query: 'needle',
+            replacement: 'pin',
+            files: [{ path: 'src/alpha.ts', targets: [alphaTarget()] }],
+        });
+
+        const body = await res.json() as any;
+        expect(body.replacedMatches).toBe(0);
+        expect(body.replacedFiles).toBe(0);
+        expect(body.skipped).toEqual([{ path: 'src/alpha.ts', reason: 'stale', message: expect.stringMatching(/changed on disk/i) }]);
+        // Reported, not overwritten.
+        expect(fs.readFileSync(path.join(repoDir, 'src', 'alpha.ts'), 'utf-8')).toBe('const needle = 42;\nconst other = 2;\n');
+    });
+
+    it('reports a deleted file as missing while still writing the others', async () => {
+        seedReplaceableRepo();
+        fs.rmSync(path.join(repoDir, 'src', 'beta.ts'));
+
+        const res = await replace(REPO_ID, {
+            query: 'needle',
+            replacement: 'pin',
+            files: [
+                { path: 'src/alpha.ts', targets: [alphaTarget()] },
+                { path: 'src/beta.ts', targets: [{ line: 1, text: 'export const NEEDLE = 3;', startColumn: 13, endColumn: 19 }] },
+            ],
+        });
+
+        const body = await res.json() as any;
+        expect(body).toMatchObject({ replacedMatches: 1, replacedFiles: 1 });
+        expect(body.skipped).toEqual([{ path: 'src/beta.ts', reason: 'missing', message: expect.any(String) }]);
+    });
+
+    it('honours regex backreferences and preserve case', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'call.ts'), 'FOO(7)\n');
+
+        const res = await replace(REPO_ID, {
+            query: 'foo\\((\\d)\\)',
+            replacement: 'bar[$1]',
+            regex: true,
+            preserveCase: true,
+            files: [{ path: 'call.ts', targets: [{ line: 1, text: 'FOO(7)', startColumn: 0, endColumn: 6 }] }],
+        });
+
+        expect(res.status).toBe(200);
+        expect(fs.readFileSync(path.join(repoDir, 'call.ts'), 'utf-8')).toBe('BAR[7]\n');
+    });
+
+    it('returns 400 for a bad regex before writing anything', async () => {
+        seedReplaceableRepo();
+
+        const res = await replace(REPO_ID, {
+            query: '(unclosed',
+            replacement: 'x',
+            regex: true,
+            files: [{ path: 'src/alpha.ts', targets: [alphaTarget()] }],
+        });
+
+        expect(res.status).toBe(400);
+        expect((await res.json() as any).error).toMatch(/regular expression/i);
+        expect(fs.readFileSync(path.join(repoDir, 'src', 'alpha.ts'), 'utf-8')).toBe(ALPHA);
+    });
+
+    it('returns 400 for a multi-line query, which replace does not support', async () => {
+        seedReplaceableRepo();
+        const res = await replace(REPO_ID, {
+            query: 'a\nb',
+            replacement: 'x',
+            files: [{ path: 'src/alpha.ts', targets: [alphaTarget()] }],
+        });
+        expect(res.status).toBe(400);
+        expect((await res.json() as any).error).toMatch(/multi-line/i);
+    });
+
+    it('returns 400 for a malformed body', async () => {
+        seedReplaceableRepo();
+
+        const bodies: unknown[] = [
+            { replacement: 'x', files: [] },
+            { query: 'needle', replacement: 'x' },
+            { query: 'needle', replacement: 'x', files: [{ path: 'src/alpha.ts' }] },
+            { query: 'needle', replacement: 'x', files: [{ path: 'src/alpha.ts', targets: [{ line: 1, text: 'a' }] }] },
+        ];
+        for (const body of bodies) {
+            const res = await replace(REPO_ID, body);
+            expect(res.status).toBe(400);
+        }
+    });
+
+    it('rejects a path that escapes the repo root', async () => {
+        seedReplaceableRepo();
+
+        const res = await replace(REPO_ID, {
+            query: 'needle',
+            replacement: 'pin',
+            files: [{ path: '../outside.ts', targets: [alphaTarget()] }],
+        });
+
+        expect(res.status).toBe(400);
+        expect((await res.json() as any).error).toMatch(/traversal/i);
+    });
+
+    it('returns 404 for an unknown repo', async () => {
+        const res = await replace('nonexistent', {
+            query: 'needle',
+            replacement: 'pin',
+            files: [{ path: 'src/alpha.ts', targets: [alphaTarget()] }],
+        });
+        expect(res.status).toBe(404);
     });
 });

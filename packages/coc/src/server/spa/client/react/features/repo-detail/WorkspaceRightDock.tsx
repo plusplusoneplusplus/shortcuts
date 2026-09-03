@@ -534,7 +534,12 @@ export function WorkspaceRightDock({ workspaceId, dock, targets }: WorkspaceRigh
                                 style={{ display: view === 'explorer' ? undefined : 'none' }}
                                 data-testid="workspace-dock-explorer"
                             >
-                                <ExplorerPanel key={target} workspaceId={target} />
+                                {/* Deep-linking only when the dock targets its own
+                                    scope. A repo group's dock points Explorer at a
+                                    MEMBER repo, and the hash it would write reads as
+                                    "select that repo" — navigating the user out of
+                                    the group on every file click. */}
+                                <ExplorerPanel key={target} workspaceId={target} deepLink={target === workspaceId} />
                             </div>
                         )}
                         <div

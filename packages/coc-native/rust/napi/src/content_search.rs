@@ -55,6 +55,10 @@ pub struct ContentMatch {
     pub start_column: u32,
     /// UTF-16 offset one past the end of the match within `text`.
     pub end_column: u32,
+    /// Present when this line is one piece of a match that crossed a line
+    /// break; every piece of that match shares the id, and it is unique within
+    /// a path. Absent for an ordinary single-line match.
+    pub group: Option<u32>,
     /// Lines preceding `line`, in file order.
     pub before: Vec<String>,
     /// Lines following `line`, in file order.
@@ -93,11 +97,14 @@ fn search_options(options: Option<SearchContentOptions>) -> ContentSearchOptions
 
 /// Map a search failure onto an N-API status the server can branch on.
 ///
-/// A bad regex or a bad path is the caller's mistake and becomes `InvalidArg`,
-/// which the route turns into a 400; everything else is a genuine failure.
+/// A bad regex, a bad path or a bad glob is the caller's mistake and becomes
+/// `InvalidArg`, which the route turns into a 400; everything else is a genuine
+/// failure.
 fn to_napi_error(error: SearchError) -> Error {
     let status = match error {
-        SearchError::InvalidRegex(_) | SearchError::InvalidPath(_) => Status::InvalidArg,
+        SearchError::InvalidRegex(_)
+        | SearchError::InvalidPath(_)
+        | SearchError::InvalidGlob(_) => Status::InvalidArg,
         SearchError::Io(_) => Status::GenericFailure,
     };
     Error::new(status, error.to_string())
@@ -126,6 +133,7 @@ impl Task for SearchContentTask {
                     text: hit.text,
                     start_column: hit.start_column,
                     end_column: hit.end_column,
+                    group: hit.group,
                     before: hit.before,
                     after: hit.after,
                 })

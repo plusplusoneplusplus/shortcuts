@@ -86,6 +86,14 @@ switch deliberately remounts Terminal and Explorer — the same teardown a works
 switch already causes — and rehydrates through `explorerStateStore` and pinned
 terminal sessions rather than a per-target mount map.
 
+Only a dock whose target *is* its scope owns the explorer route:
+`WorkspaceRightDock` passes `deepLink={target === workspaceId}` to
+`ExplorerPanel`. Selecting a file otherwise writes
+`#repos/<target>/explorer/<path>`, which `resolveReposRoute` reads as
+`SET_SELECTED_REPO` — inside a repo group that navigates straight out of the
+group on the first click. With `deepLink={false}` the selection stays local and
+still persists through `explorerStateStore`.
+
 Target switches go through `confirmDiscardExplorerEditsOnSwitch` (from
 `explorer/explorerDirtyStore.ts`), so picking another member repo cannot silently
 drop a dirty Monaco buffer; declining leaves the selection and localStorage
@@ -154,9 +162,11 @@ typed change waits `SEARCH_DEBOUNCE_MS` (250 ms) of quiet, while a toggle change
 re-runs the query it already has with no delay — the toggle *is* the intent and
 no keystroke is coming. Every request carries an `AbortSignal` plus a monotonic
 run id, and a response is dropped unless its run id is still the newest; without
-that guard a slow early answer paints over a fast later one. The search is scoped
-to the directory selected in the tree via `resolveSearchScope`, which walks up to
-the parent when the selection is a file.
+that guard a slow early answer paints over a fast later one. The search is
+repo-wide: the tree selection deliberately does not narrow it (VS Code's
+behaviour). A directory's context menu offers **Find in Folder**, which switches
+to the Search view and writes `<dir>/**` into the *include* glob box, so the
+scope is visible and the user can edit or clear it.
 
 The server owns every default and every cap — the panel sends only what the user
 chose. A 400 is the route's answer for an unparseable pattern and carries the

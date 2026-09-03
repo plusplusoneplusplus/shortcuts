@@ -14,16 +14,34 @@ import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
 import { ContentSearchPanel } from './ContentSearchPanel';
+import { SearchEditorPane } from './SearchEditorPane';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
-import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile, useExplorerView } from './explorerStateStore';
+import {
+    useExplorerContentFilters,
+    useExplorerExpandedPaths,
+    useExplorerPreviewFile,
+    useExplorerSelectedPath,
+    useExplorerView,
+} from './explorerStateStore';
 import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
 import { setExplorerInstanceDirty } from './explorerDirtyStore';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
+    /**
+     * Whether this mount owns the global `#repos/:id/explorer/:path` route.
+     * Selecting a file writes that hash, which the router reads as "switch to
+     * workspace :id and show its Explorer sub-tab" — correct for the Explorer
+     * sub-tab itself, but wrong for a mount whose workspace is not the one the
+     * app is showing. A repo group's dock points at a MEMBER repo, so the write
+     * would navigate the user out of the group entirely; such a mount passes
+     * `false` and keeps its selection purely local (it still persists through
+     * explorerStateStore). Defaults to `true`.
+     */
+    deepLink?: boolean;
 }
 
 /** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
@@ -145,40 +163,7 @@ export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set
     return next;
 }
 
-/**
- * True when `path` names a directory according to the tree data already
- * fetched. A directory the user has opened is a key of `childrenMap`; otherwise
- * fall back to its own entry in the parent listing. Unknown paths read as files,
- * which is the safe answer for the caller below (it then scopes to the parent).
- */
-export function isDirectoryPath(
-    path: string,
-    rootEntries: TreeEntry[],
-    childrenMap: Map<string, TreeEntry[]>,
-): boolean {
-    if (childrenMap.has(path)) return true;
-    const slash = path.lastIndexOf('/');
-    const siblings = slash < 0 ? rootEntries : childrenMap.get(path.slice(0, slash));
-    return siblings?.find(entry => entry.path === path)?.type === 'dir';
-}
-
-/**
- * The directory content search is scoped to: the selection itself when it is a
- * directory, its parent when it is a file, and the whole repo when nothing is
- * selected or the selection sits at the root.
- */
-export function resolveSearchScope(
-    selectedPath: string | null,
-    rootEntries: TreeEntry[],
-    childrenMap: Map<string, TreeEntry[]>,
-): string | undefined {
-    if (!selectedPath) return undefined;
-    if (isDirectoryPath(selectedPath, rootEntries, childrenMap)) return selectedPath;
-    const slash = selectedPath.lastIndexOf('/');
-    return slash < 0 ? undefined : selectedPath.slice(0, slash);
-}
-
-export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
+export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
@@ -211,6 +196,9 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const [selectedPath, setSelectedPath] = useExplorerSelectedPath(workspaceId);
     const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(workspaceId);
     const [previewFile, setPreviewFile] = useExplorerPreviewFile(workspaceId);
+    // The "Open in Editor" buffer (§2.7). In memory only — it is a snapshot of a
+    // result set, and a stale one restored after a reload would be a lie.
+    const [searchEditor, setSearchEditor] = useState<{ text: string; query: string } | null>(null);
 
     // Report the preview editor's unsaved-edits state into the per-workspace dirty
     // store so the workspace-switch guard (nav hooks) can prompt before discarding
@@ -228,6 +216,11 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     // Which sidebar view is showing. Persisted per workspace, so the choice
     // survives a remount; the tree's own state is untouched while Search is up.
     const [view, setView] = useExplorerView(workspaceId);
+    // Owned here only so "Find in Folder" can write the include glob; the Search
+    // panel reads the same persisted store, so the write lands in its box.
+    const [, setContentFilters] = useExplorerContentFilters(workspaceId);
+    // Bumped by "Find in Folder" to move focus into the Search panel's query box.
+    const [searchFocusToken, setSearchFocusToken] = useState(0);
 
     // Search state
     const [searchInput, setSearchInput] = useState('');
@@ -313,9 +306,11 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
 
     const handleSelect = useCallback((path: string, isDirectory: boolean) => {
         setSelectedPath(path);
-        // Update hash for deep-linking
-        location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(path)}`;
-    }, [workspaceId]);
+        // Update hash for deep-linking — only when this mount owns the route.
+        if (deepLink) {
+            location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(path)}`;
+        }
+    }, [workspaceId, deepLink]);
 
     const handleToggle = useCallback((path: string) => {
         setExpandedPaths(prev => {
@@ -345,8 +340,20 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const handleOpenMatch = useCallback((filePath: string, line: number) => {
         const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
         setSelectedPath(filePath);
+        // Opening a hit is a request to see the file, so the search buffer that
+        // was covering the preview pane steps aside.
+        setSearchEditor(null);
         setPreviewFile({ path: filePath, name, line });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /**
+     * "Open in Editor": park the rendered result set in the preview pane as a
+     * read-only buffer. It sits *over* the preview rather than replacing it, so
+     * closing the buffer returns to the file that was open.
+     */
+    const handleOpenSearchInEditor = useCallback((text: string, query: string) => {
+        setSearchEditor({ text, query });
+    }, []);
 
     const handleQuickOpenSelect = useCallback((filePath: string) => {
         // Trusted absolute-path from ExactOpen — skip tree expansion and hash update
@@ -372,12 +379,26 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 return next;
             });
         }
-        location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(filePath)}`;
-    }, [workspaceId]);
+        if (deepLink) {
+            location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(filePath)}`;
+        }
+    }, [workspaceId, deepLink]);
 
     const handleTreeContextMenu = useCallback((e: React.MouseEvent, entry: TreeEntry) => {
         setContextMenu({ position: { x: e.clientX, y: e.clientY }, entry });
     }, []);
+
+    /**
+     * VS Code's "Find in Folder": switch to the Search view and express the
+     * scope as an *include* glob rather than a hidden request field, so it is
+     * visible and the user can edit or clear it. Replaces the include box
+     * outright — two folder scopes at once is never what the click meant.
+     */
+    const handleFindInFolder = useCallback((dirPath: string) => {
+        setContentFilters(prev => ({ ...prev, include: `${dirPath}/**` }));
+        setView('search');
+        setSearchFocusToken(token => token + 1);
+    }, [setContentFilters, setView]);
 
     const buildContextMenuItems = useCallback((entry: TreeEntry): ContextMenuItem[] => {
         const isDir = entry.type === 'dir';
@@ -389,6 +410,11 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 label: isExpanded ? 'Collapse' : 'Expand',
                 icon: isExpanded ? '📂' : '📁',
                 onClick: () => handleToggle(entry.path),
+            });
+            items.push({
+                label: 'Find in Folder',
+                icon: '🔍',
+                onClick: () => handleFindInFolder(entry.path),
             });
         } else {
             items.push({
@@ -433,7 +459,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         });
 
         return items;
-    }, [expandedPaths, handleToggle]);
+    }, [expandedPaths, handleToggle, handleFindInFolder]);
 
     /** Collapse All — clears expansion only; selection, preview and filter stay put. */
     const handleCollapseAll = useCallback(() => {
@@ -675,12 +701,6 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         return () => document.removeEventListener('keydown', handler);
     }, [searchInput, onSearchClear]);
 
-    // Content search is scoped to the directory the user has selected in the tree.
-    const searchScope = useMemo(
-        () => resolveSearchScope(selectedPath, rootEntries, childrenMap),
-        [selectedPath, rootEntries, childrenMap],
-    );
-
     const breadcrumbSegments = useMemo(() => {
         if (!selectedPath) return [];
         return selectedPath.split('/').filter(Boolean);
@@ -752,6 +772,10 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                             </button>
                         ))}
                     </div>
+                    {/* The header toolbar belongs to the Files view: collapsing,
+                        revealing and refreshing the tree all say nothing in Search,
+                        which carries its own strip (ContentSearchToolbar) at the top
+                        of the panel instead. */}
                     <div className="flex items-center gap-2">
                         {view === 'tree' && (
                             <>
@@ -773,18 +797,18 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                                 >
                                     ⊙
                                 </button>
+                                <button
+                                    className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
+                                    onClick={handleRefresh}
+                                    title="Refresh"
+                                    disabled={refreshing}
+                                    aria-busy={refreshing}
+                                    data-testid="explorer-refresh-btn"
+                                >
+                                    ↻
+                                </button>
                             </>
                         )}
-                        <button
-                            className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
-                            onClick={handleRefresh}
-                            title="Refresh"
-                            disabled={refreshing}
-                            aria-busy={refreshing}
-                            data-testid="explorer-refresh-btn"
-                        >
-                            ↻
-                        </button>
                     </div>
                 </div>
                 {error && (
@@ -798,8 +822,9 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 {view === 'search' ? (
                     <ContentSearchPanel
                         workspaceId={workspaceId}
-                        scopePath={searchScope}
+                        focusQueryToken={searchFocusToken}
                         onOpenMatch={handleOpenMatch}
+                        onOpenInEditor={handleOpenSearchInEditor}
                     />
                 ) : (
                     <>
@@ -851,11 +876,19 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
 
             {/* Right main — preview pane (full-screen on mobile when file is open) */}
             <main
-                className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${previewFile ? '' : ' flex items-center justify-center'}`}
-                style={isMobile && !previewFile ? { display: 'none' } : undefined}
+                className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${previewFile || searchEditor ? '' : ' flex items-center justify-center'}`}
+                style={isMobile && !previewFile && !searchEditor ? { display: 'none' } : undefined}
                 data-testid="explorer-preview-pane"
             >
-                {previewFile
+                {searchEditor
+                    ? (
+                        <SearchEditorPane
+                            query={searchEditor.query}
+                            text={searchEditor.text}
+                            onClose={() => setSearchEditor(null)}
+                        />
+                    )
+                    : previewFile
                     ? (
                         <div className="flex flex-col w-full h-full">
                             {/* Mobile back bar */}

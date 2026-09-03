@@ -21,6 +21,16 @@ export interface ContentSearchModes {
     regex: boolean;
 }
 
+/**
+ * How the result set is laid out — VS Code's "View as List" / "View as Tree"
+ * toolbar toggle. `list` is a flat sequence of file groups; `tree` nests those
+ * groups under their directories.
+ */
+export type ContentSearchResultView = 'list' | 'tree';
+
+/** Default result layout: the flat, VS Code-default list. */
+export const DEFAULT_CONTENT_SEARCH_RESULT_VIEW: ContentSearchResultView = 'list';
+
 /** Default mode state: case-insensitive, not whole-word, literal. */
 export const DEFAULT_CONTENT_SEARCH_MODES: ContentSearchModes = {
     caseSensitive: false,
@@ -39,7 +49,91 @@ export const DEFAULT_CONTENT_SEARCH_MODES: ContentSearchModes = {
 export type ContentSearchStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
 
 /**
- * An invalid regex is reported inline against the query box with the engine's
- * own parse message; anything else is a generic, retryable request failure.
+ * An invalid regex, and an invalid include/exclude glob, are both the caller's
+ * own mistake: the route answers 400 and the engine's own parse message, which
+ * belongs inline against the input that caused it. Anything else is a generic,
+ * retryable request failure.
  */
-export type ContentSearchErrorKind = 'regex' | 'request';
+export type ContentSearchErrorKind = 'regex' | 'glob' | 'request';
+
+/**
+ * The Search view's file filters — the `…` section under the query box.
+ *
+ * `include` / `exclude` are held verbatim as the user typed them (a
+ * comma-separated glob list) rather than pre-split, so a half-typed glob round
+ * trips through persistence unchanged. `parseGlobList` turns either into the
+ * array the request wants.
+ */
+export interface ContentSearchFilters {
+    /** Comma-separated whitelist globs. Empty searches every file. */
+    include: string;
+    /** Comma-separated globs whose matches are skipped. */
+    exclude: string;
+    /**
+     * VS Code's "Use Exclude Settings and Ignore Files" gear, on by default.
+     * Off sends `showIgnored: true`, so `.gitignore`d files are searched too.
+     */
+    useIgnoreFiles: boolean;
+}
+
+/** Default filter state: no globs, ignore files honoured. */
+export const DEFAULT_CONTENT_SEARCH_FILTERS: ContentSearchFilters = {
+    include: '',
+    exclude: '',
+    useIgnoreFiles: true,
+};
+
+/**
+ * Split a comma-separated glob list into the array the search request takes.
+ * Returns undefined for an empty list so the field is omitted entirely — the
+ * route treats an empty array and an absent parameter the same, but omitting it
+ * keeps the query string clean.
+ */
+export function parseGlobList(value: string): string[] | undefined {
+    const globs = value.split(',').map(glob => glob.trim()).filter(glob => glob.length > 0);
+    return globs.length > 0 ? globs : undefined;
+}
+
+/**
+ * True when any filter differs from its default — what the `…` toggle's dot
+ * reports, so a filtered search is never invisible with the section collapsed.
+ */
+export function contentSearchFiltersActive(filters: ContentSearchFilters): boolean {
+    return parseGlobList(filters.include) !== undefined
+        || parseGlobList(filters.exclude) !== undefined
+        || !filters.useIgnoreFiles;
+}
+
+/**
+ * The Search view's replace row (§2.2) — the text that will be written over
+ * each match, plus its one toggle.
+ *
+ * Deliberately *not* folded into `ContentSearchModes`: the modes object is a
+ * dependency of the panel's request effect, so a preserve-case toggle living
+ * there would re-issue the search. Replace state changes nothing about what was
+ * searched.
+ */
+export interface ContentSearchReplaceState {
+    /** Replacement text. `$1`-style backreferences expand only in regex mode. */
+    replacement: string;
+    /**
+     * VS Code's `AB` toggle: an ALL-CAPS / all-lower / Capitalized match keeps
+     * its casing, anything mixed is replaced verbatim.
+     */
+    preserveCase: boolean;
+}
+
+/** Default replace state: nothing to write, casing not preserved. */
+export const DEFAULT_CONTENT_SEARCH_REPLACE: ContentSearchReplaceState = {
+    replacement: '',
+    preserveCase: false,
+};
+
+/**
+ * True when the query spans lines, which the replace endpoint rejects with a
+ * 400 (`Replace does not support multi-line queries`). Mirrors the server's own
+ * test exactly, so the UI disables itself rather than earning that error.
+ */
+export function isMultiLineQuery(query: string): boolean {
+    return /[\r\n]/.test(query);
+}

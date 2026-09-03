@@ -49,8 +49,10 @@ describe('ExplorerPanel mobile responsiveness', () => {
             expect(source).toContain("showMobilePreview ? { display: 'none' }");
         });
 
-        it('hides preview pane on mobile when no file is selected', () => {
-            expect(source).toContain("isMobile && !previewFile ? { display: 'none' }");
+        // The search-editor buffer (§2.7 Open in Editor) lives in the same pane,
+        // so "nothing to show" now means neither a file nor a buffer.
+        it('hides preview pane on mobile when there is nothing to show', () => {
+            expect(source).toContain("isMobile && !previewFile && !searchEditor ? { display: 'none' }");
         });
     });
 

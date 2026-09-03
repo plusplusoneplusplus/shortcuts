@@ -23,9 +23,15 @@
 import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react';
 import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import {
+    DEFAULT_CONTENT_SEARCH_FILTERS,
     DEFAULT_CONTENT_SEARCH_MODES,
+    DEFAULT_CONTENT_SEARCH_REPLACE,
+    DEFAULT_CONTENT_SEARCH_RESULT_VIEW,
     type ContentSearchErrorKind,
+    type ContentSearchFilters,
     type ContentSearchModes,
+    type ContentSearchReplaceState,
+    type ContentSearchResultView,
     type ContentSearchStatus,
     type ExplorerView,
 } from './types';
@@ -72,6 +78,21 @@ export function explorerContentQueryStorageKey(workspaceId: string): string {
 /** localStorage key for the content-search mode toggles, per workspace. */
 export function explorerContentModesStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:explorer-content-modes`;
+}
+
+/** localStorage key for the content-search include/exclude filters, per workspace. */
+export function explorerContentFiltersStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-content-filters`;
+}
+
+/** localStorage key for the content-search replace text + preserve-case toggle. */
+export function explorerContentReplaceStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-content-replace`;
+}
+
+/** localStorage key for the content-search result layout (list or tree). */
+export function explorerContentResultViewStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-content-result-view`;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +183,49 @@ const MODES_CODEC: Codec<ContentSearchModes> = {
             caseSensitive: parsed.caseSensitive === true,
             wholeWord: parsed.wholeWord === true,
             regex: parsed.regex === true,
+        };
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const REPLACE_CODEC: Codec<ContentSearchReplaceState> = {
+    fallback: DEFAULT_CONTENT_SEARCH_REPLACE,
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return DEFAULT_CONTENT_SEARCH_REPLACE;
+        return {
+            replacement: typeof parsed.replacement === 'string' ? parsed.replacement : '',
+            preserveCase: parsed.preserveCase === true,
+        };
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const RESULT_VIEW_CODEC: Codec<ContentSearchResultView> = {
+    fallback: DEFAULT_CONTENT_SEARCH_RESULT_VIEW,
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        return parsed === 'tree' ? 'tree' : 'list';
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const FILTERS_CODEC: Codec<ContentSearchFilters> = {
+    fallback: DEFAULT_CONTENT_SEARCH_FILTERS,
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return DEFAULT_CONTENT_SEARCH_FILTERS;
+        return {
+            include: typeof parsed.include === 'string' ? parsed.include : '',
+            exclude: typeof parsed.exclude === 'string' ? parsed.exclude : '',
+            // Absent means the stored value predates the gear; default it on.
+            useIgnoreFiles: parsed.useIgnoreFiles !== false,
         };
     },
     serialize(value) {
@@ -287,6 +351,27 @@ export function useExplorerContentModes(
     return usePersistedValue(explorerContentModesStorageKey(workspaceId), MODES_CODEC);
 }
 
+/** Persisted content-search include/exclude/ignore filters for a workspace. */
+export function useExplorerContentFilters(
+    workspaceId: string,
+): [ContentSearchFilters, Dispatch<SetStateAction<ContentSearchFilters>>] {
+    return usePersistedValue(explorerContentFiltersStorageKey(workspaceId), FILTERS_CODEC);
+}
+
+/** Persisted content-search replace text + preserve-case toggle for a workspace. */
+export function useExplorerContentReplace(
+    workspaceId: string,
+): [ContentSearchReplaceState, Dispatch<SetStateAction<ContentSearchReplaceState>>] {
+    return usePersistedValue(explorerContentReplaceStorageKey(workspaceId), REPLACE_CODEC);
+}
+
+/** Persisted content-search result layout (list or tree) for a workspace. */
+export function useExplorerContentResultView(
+    workspaceId: string,
+): [ContentSearchResultView, Dispatch<SetStateAction<ContentSearchResultView>>] {
+    return usePersistedValue(explorerContentResultViewStorageKey(workspaceId), RESULT_VIEW_CODEC);
+}
+
 // ---------------------------------------------------------------------------
 // Content-search results — in-memory, per workspace.
 //
@@ -313,7 +398,28 @@ export interface ContentSearchState {
     errorKind: ContentSearchErrorKind | null;
     /** The query these results answer — may lag the typed query while loading. */
     query: string;
+    /**
+     * Paths of the result groups the user has collapsed. Lives with the results
+     * rather than in localStorage so it survives a switch to the tree view and
+     * back, and is wiped whenever a new result set is written — collapsing a
+     * file in one search says nothing about the next one.
+     */
+    collapsed: readonly string[];
+    /**
+     * Keys of the rows the user has dismissed with `X` — a file path for a whole
+     * group, or `matchDismissKey(match)` for one row. View-only: nothing is
+     * written to disk, and unlike `collapsed` it is wiped on *every* new result
+     * set, including a re-run of the same query, because a dismissal says "not
+     * this list", not "not this file".
+     */
+    dismissed: readonly string[];
 }
+
+/** Stable empty collapsed set — a fresh `[]` per render would loop consumers. */
+export const NO_COLLAPSED_GROUPS: readonly string[] = [];
+
+/** Stable empty dismissed set, for the same reason as NO_COLLAPSED_GROUPS. */
+export const NO_DISMISSED_ROWS: readonly string[] = [];
 
 /** Stable empty state; also the reference returned before any search has run. */
 export const IDLE_CONTENT_SEARCH_STATE: ContentSearchState = {
@@ -323,6 +429,8 @@ export const IDLE_CONTENT_SEARCH_STATE: ContentSearchState = {
     error: null,
     errorKind: null,
     query: '',
+    collapsed: NO_COLLAPSED_GROUPS,
+    dismissed: NO_DISMISSED_ROWS,
 };
 
 const contentSearchStates = new Map<string, ContentSearchState>();

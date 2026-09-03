@@ -57,6 +57,12 @@ export interface ContentMatch {
   startColumn: number
   /** UTF-16 offset one past the end of the match within `text`. */
   endColumn: number
+  /**
+   * Present when this line is one piece of a match that crossed a line
+   * break; every piece of that match shares the id, and it is unique within
+   * a path. Absent for an ordinary single-line match.
+   */
+  group?: number
   /** Lines preceding `line`, in file order. */
   before: Array<string>
   /** Lines following `line`, in file order. */

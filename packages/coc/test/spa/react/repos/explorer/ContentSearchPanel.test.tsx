@@ -167,6 +167,24 @@ describe('ContentSearchPanel — UX states', () => {
         expect(screen.queryByTestId('content-search-empty')).toBeNull();
     });
 
+    it('error (glob): a malformed include glob shows the server message inline', async () => {
+        searchContentSpy.mockRejectedValue(
+            Object.assign(new Error('invalid glob: unclosed character class'), { status: 400 }),
+        );
+        renderPanel();
+        fireEvent.click(screen.getByTestId('content-search-filters-toggle'));
+        fireEvent.change(screen.getByTestId('content-search-include'), {
+            target: { value: '[unclosed' },
+        });
+        type('needle');
+        await advance(SEARCH_DEBOUNCE_MS);
+
+        expect(screen.getByTestId('content-search-glob-error').textContent)
+            .toContain('invalid glob: unclosed character class');
+        expect(screen.queryByTestId('content-search-error')).toBeNull();
+        expect(screen.queryByTestId('content-search-regex-error')).toBeNull();
+    });
+
     it('error (request): a server failure is generic, not a regex complaint', async () => {
         searchContentSpy.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
         renderPanel();
@@ -214,8 +232,8 @@ describe('ContentSearchPanel — request behaviour', () => {
         const [workspaceId, query, options] = searchContentSpy.mock.calls[0];
         expect(workspaceId).toBe(WS);
         expect(query).toBe('needle');
+        expect(options.path).toBeUndefined();
         expect(options).toMatchObject({
-            path: undefined,
             caseSensitive: false,
             wholeWord: false,
             regex: false,
@@ -223,12 +241,23 @@ describe('ContentSearchPanel — request behaviour', () => {
         expect(options.signal).toBeInstanceOf(AbortSignal);
     });
 
-    it('scopes the search to the selected directory', async () => {
-        renderPanel({ scopePath: 'packages/coc' });
-        expect(screen.getByTestId('content-search-scope').textContent).toContain('packages/coc');
+    // §2.6: the panel has no scope of its own any more — the include glob is the
+    // only scope, so the request never carries a `path` and there is no caption.
+    it('never sends a scope path and shows no scope caption', async () => {
+        renderPanel();
+        expect(screen.queryByTestId('content-search-scope')).toBeNull();
         type('needle');
         await advance(SEARCH_DEBOUNCE_MS);
-        expect(searchContentSpy.mock.calls[0][2]).toMatchObject({ path: 'packages/coc' });
+        expect(searchContentSpy.mock.calls[0][2].path).toBeUndefined();
+    });
+
+    it('focuses the query box when the host bumps focusQueryToken', async () => {
+        const { rerender } = renderPanel({ focusQueryToken: 0 });
+        const input = screen.getByTestId('content-search-input');
+        expect(document.activeElement).not.toBe(input);
+
+        rerender(<ContentSearchPanel workspaceId={WS} focusQueryToken={1} onOpenMatch={vi.fn()} />);
+        expect(document.activeElement).toBe(input);
     });
 
     it.each([
@@ -386,6 +415,97 @@ describe('ContentSearchPanel — state survives the tree round trip', () => {
     });
 });
 
+describe('ContentSearchPanel — collapsible result groups', () => {
+    beforeEach(() => {
+        searchContentSpy.mockResolvedValue({
+            matches: [match({ line: 4 }), match({ line: 8 }), match({ path: 'README.md', line: 1 })],
+            truncated: false,
+        });
+    });
+
+    async function search(term = 'needle'): Promise<void> {
+        type(term);
+        await advance(SEARCH_DEBOUNCE_MS);
+    }
+
+    function collapse(index: number): void {
+        fireEvent.click(screen.getAllByTestId('content-search-file-header')[index]);
+    }
+
+    it('clicking a file header hides its matches and keeps the count', async () => {
+        renderPanel();
+        await search();
+        collapse(0);
+
+        expect(screen.getAllByTestId('content-search-match').map(r => r.getAttribute('data-path')))
+            .toEqual(['README.md']);
+        expect(screen.getAllByTestId('content-search-file-count').map(c => c.textContent))
+            .toEqual(['2', '1']);
+        // The summary reports the search, not the visible rows.
+        expect(screen.getByTestId('content-search-summary').textContent).toBe('3 results in 2 files');
+    });
+
+    it('clicking the header again expands the group', async () => {
+        renderPanel();
+        await search();
+        collapse(0);
+        collapse(0);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(3);
+    });
+
+    it('keeps the collapse state across a switch to the tree view and back', async () => {
+        const view = renderPanel();
+        await search();
+        collapse(0);
+
+        // Switching views unmounts the panel; the results (and the collapse
+        // state) live in the store, so remounting shows the same thing.
+        view.unmount();
+        renderPanel();
+        expect(screen.getAllByTestId('content-search-match').map(r => r.getAttribute('data-path')))
+            .toEqual(['README.md']);
+
+        // A remount re-runs the same query. Its answer must not silently
+        // re-expand what the user closed.
+        await advance(SEARCH_DEBOUNCE_MS);
+        expect(searchContentSpy).toHaveBeenCalledTimes(2);
+        expect(screen.getAllByTestId('content-search-match').map(r => r.getAttribute('data-path')))
+            .toEqual(['README.md']);
+    });
+
+    it('drops a collapsed path that the re-run no longer matches', async () => {
+        renderPanel();
+        await search();
+        collapse(0);
+
+        searchContentSpy.mockResolvedValue({ matches: [match({ path: 'README.md', line: 1 })], truncated: false });
+        fireEvent.click(screen.getByTestId('content-search-toggle-case'));
+        await advance(0);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(1);
+        expect(screen.getAllByTestId('content-search-file-header')).toHaveLength(1);
+
+        // 'src/app.ts' is gone from the results, so its collapse must not linger:
+        // when it comes back it is expanded again.
+        searchContentSpy.mockResolvedValue({
+            matches: [match({ line: 4 }), match({ path: 'README.md', line: 1 })],
+            truncated: false,
+        });
+        fireEvent.click(screen.getByTestId('content-search-toggle-case'));
+        await advance(0);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(2);
+    });
+
+    it('resets the collapse state when a new query brings new results', async () => {
+        renderPanel();
+        await search();
+        collapse(0);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(1);
+
+        await search('needle2');
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(3);
+    });
+});
+
 describe('classifySearchError', () => {
     it('treats a 400 in regex mode as an inline regex error', () => {
         const state = classifySearchError(
@@ -397,6 +517,20 @@ describe('classifySearchError', () => {
         const state = classifySearchError(
             Object.assign(new Error('invalid regular expression: x'), { status: 400 }), false);
         expect(state.errorKind).toBe('regex');
+    });
+
+    it('blames the glob, not the query, when a 400 names a bad glob in regex mode', () => {
+        const state = classifySearchError(
+            Object.assign(new Error('invalid glob: unclosed character class'), { status: 400 }),
+            true,
+        );
+        expect(state.errorKind).toBe('glob');
+    });
+
+    it('recognises a glob 400 outside regex mode too', () => {
+        const state = classifySearchError(
+            Object.assign(new Error('invalid glob: x'), { status: 400 }), false);
+        expect(state.errorKind).toBe('glob');
     });
 
     it('treats a non-400 failure as a generic request error even in regex mode', () => {
