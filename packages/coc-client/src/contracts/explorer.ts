@@ -78,6 +78,13 @@ export interface ExplorerContentMatch {
   startColumn: number;
   /** UTF-16 offset one past the end of the match within `text`. */
   endColumn: number;
+  /**
+   * Present when this line is one piece of a match that crossed a line break —
+   * a multi-line query. Every piece of that match carries the same id, and the
+   * id is unique within a path, which is the only scope two pieces are ever
+   * compared in. Absent for a single-line match.
+   */
+  group?: number;
   /** Lines preceding `line`, in file order. */
   before: string[];
   /** Lines following `line`, in file order. */

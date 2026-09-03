@@ -45,6 +45,11 @@ pub struct ContentMatch {
     pub start_column: u32,
     /// UTF-16 offset one past the end of the match within `text`.
     pub end_column: u32,
+    /// Set when this line is one piece of a match that spanned a line break;
+    /// every piece of that match carries the same id. Unique within a path,
+    /// which is the only scope a client ever compares two pieces in. `None`
+    /// for an ordinary single-line match.
+    pub group: Option<u32>,
     /// Up to `context_lines` lines preceding `line`, in file order.
     pub before: Vec<String>,
     /// Up to `context_lines` lines following `line`, in file order.
@@ -117,7 +122,11 @@ pub fn search(
     }
 
     let scope = resolve_scope(root, options.path.as_deref())?;
-    let matcher = build_matcher(query, options)?;
+    // A query that can match a line break has to be searched across lines; one
+    // that cannot keeps the cheaper line-at-a-time path, whose columns are
+    // per-line by construction.
+    let multi_line = is_multi_line_query(query, options.regex);
+    let matcher = build_matcher(query, options, multi_line)?;
 
     // The walk yields paths relative to `scope`, but every path the client sees
     // is relative to the repo root, so re-root them by this prefix.
@@ -146,8 +155,9 @@ pub fn search(
             // Stop at the first NUL rather than emitting the garbage that
             // matching inside a binary file produces.
             .binary_detection(BinaryDetection::quit(0))
-            // One match per line keeps `start_column`/`end_column` meaningful.
-            .multi_line(false)
+            // One match per line keeps `start_column`/`end_column` meaningful;
+            // a multi-line query gives that up and the sink re-splits instead.
+            .multi_line(multi_line)
             .before_context(options.context_lines)
             .after_context(options.context_lines)
             .build();
@@ -175,7 +185,7 @@ pub fn search(
             };
             let path = join_posix(&prefix, &to_posix(relative));
 
-            let mut sink = MatchSink::new(&matcher, &path, context_lines, max_per_file);
+            let mut sink = MatchSink::new(&matcher, &path, context_lines, max_per_file, multi_line);
             // A file that cannot be read or decoded is skipped; one bad file
             // must not sink a whole-repo query.
             if searcher.search_path(&matcher, entry.path(), &mut sink).is_err() {
@@ -234,9 +244,49 @@ fn resolve_scope(root: &Path, path: Option<&str>) -> Result<PathBuf, SearchError
     }
 }
 
+/// Does this query ask to match across a line break?
+///
+/// A literal query says so by containing a real newline — what pasting two
+/// lines into the search box produces. A regex query can also say it with an
+/// `\n` or `\r` escape, which is how VS Code decides the same question.
+/// An odd spelling like `[\n]` or `\x0a` is not detected and stays a
+/// single-line search, where the engine rejects it as it does today.
+fn is_multi_line_query(query: &str, regex: bool) -> bool {
+    if query.contains('\n') {
+        return true;
+    }
+    if !regex {
+        return false;
+    }
+    let mut chars = query.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            continue;
+        }
+        // Consume the escaped character either way, so `\\n` reads as an
+        // escaped backslash followed by a literal `n`, not as a newline.
+        match chars.next() {
+            Some('n' | 'r') => return true,
+            Some(_) => {}
+            None => break,
+        }
+    }
+    false
+}
+
 /// Translate the query and the three mode toggles into one regex matcher.
-fn build_matcher(query: &str, options: &ContentSearchOptions) -> Result<RegexMatcher, SearchError> {
-    RegexMatcherBuilder::new()
+///
+/// `multi_line` is the answer from `is_multi_line_query`: it turns on the
+/// regex `m` flag and, crucially, drops the line-terminator declaration —
+/// grep-regex refuses to build a pattern that can match the terminator it was
+/// told about, which is exactly what a multi-line query is.
+fn build_matcher(
+    query: &str,
+    options: &ContentSearchOptions,
+    multi_line: bool,
+) -> Result<RegexMatcher, SearchError> {
+    let mut builder = RegexMatcherBuilder::new();
+    builder
         .case_insensitive(!options.case_sensitive)
         // With `fixed_strings`, the engine escapes the pattern itself, so a
         // literal query containing regex metacharacters searches for exactly
@@ -245,9 +295,11 @@ fn build_matcher(query: &str, options: &ContentSearchOptions) -> Result<RegexMat
         // Word boundaries wrap whatever the pattern turned out to be, so this
         // composes with both literal and regex mode.
         .word(options.whole_word)
-        .line_terminator(Some(b'\n'))
-        .build(query)
-        .map_err(|error| SearchError::InvalidRegex(error.to_string()))
+        .multi_line(multi_line);
+    if !multi_line {
+        builder.line_terminator(Some(b'\n'));
+    }
+    builder.build(query).map_err(|error| SearchError::InvalidRegex(error.to_string()))
 }
 
 /// Turn `include`/`exclude` globs into the walk's override set.

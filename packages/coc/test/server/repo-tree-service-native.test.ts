@@ -315,6 +315,26 @@ suiteIfGit('RepoTreeService.searchContent — options reaching the addon', () =>
             .toEqual([undefined, undefined, 'src', 'src', 'src']);
     });
 
+    it('passes a multi-line query and its match groups straight through', async () => {
+        seedRepo();
+        const addon = {
+            searchContent: async () => ({
+                matches: [
+                    { path: 'a.ts', line: 1, text: 'alpha', startColumn: 0, endColumn: 5, group: 0, before: [], after: [] },
+                    { path: 'a.ts', line: 2, text: 'beta', startColumn: 0, endColumn: 4, group: 0, before: [], after: [] },
+                ],
+                truncated: false,
+            }),
+        };
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+
+        // The group id is what tells a client "one match over two lines" from
+        // "two matches", so the service must not drop it on the way out.
+        const result = await svc.searchContent(REPO_ID, 'alpha\nbeta');
+
+        expect(result.matches.map(m => m.group)).toEqual([0, 0]);
+    });
+
     it('rejects an unregistered repo and a root that vanished, without touching the addon', async () => {
         seedRepo();
         const addon = recordingAddon();

@@ -55,6 +55,10 @@ pub struct ContentMatch {
     pub start_column: u32,
     /// UTF-16 offset one past the end of the match within `text`.
     pub end_column: u32,
+    /// Present when this line is one piece of a match that crossed a line
+    /// break; every piece of that match shares the id, and it is unique within
+    /// a path. Absent for an ordinary single-line match.
+    pub group: Option<u32>,
     /// Lines preceding `line`, in file order.
     pub before: Vec<String>,
     /// Lines following `line`, in file order.
@@ -126,6 +130,7 @@ impl Task for SearchContentTask {
                     text: hit.text,
                     start_column: hit.start_column,
                     end_column: hit.end_column,
+                    group: hit.group,
                     before: hit.before,
                     after: hit.after,
                 })
