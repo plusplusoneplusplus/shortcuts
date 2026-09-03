@@ -376,10 +376,21 @@ export interface ContentSearchState {
      * file in one search says nothing about the next one.
      */
     collapsed: readonly string[];
+    /**
+     * Keys of the rows the user has dismissed with `X` — a file path for a whole
+     * group, or `matchDismissKey(match)` for one row. View-only: nothing is
+     * written to disk, and unlike `collapsed` it is wiped on *every* new result
+     * set, including a re-run of the same query, because a dismissal says "not
+     * this list", not "not this file".
+     */
+    dismissed: readonly string[];
 }
 
 /** Stable empty collapsed set — a fresh `[]` per render would loop consumers. */
 export const NO_COLLAPSED_GROUPS: readonly string[] = [];
+
+/** Stable empty dismissed set, for the same reason as NO_COLLAPSED_GROUPS. */
+export const NO_DISMISSED_ROWS: readonly string[] = [];
 
 /** Stable empty state; also the reference returned before any search has run. */
 export const IDLE_CONTENT_SEARCH_STATE: ContentSearchState = {
@@ -390,6 +401,7 @@ export const IDLE_CONTENT_SEARCH_STATE: ContentSearchState = {
     errorKind: null,
     query: '',
     collapsed: NO_COLLAPSED_GROUPS,
+    dismissed: NO_DISMISSED_ROWS,
 };
 
 const contentSearchStates = new Map<string, ContentSearchState>();

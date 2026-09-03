@@ -16,7 +16,7 @@ export { ContentSearchToolbar } from './ContentSearchToolbar';
 export type { ContentSearchToolbarProps } from './ContentSearchToolbar';
 export { ContentSearchPanel, SEARCH_DEBOUNCE_MS, classifySearchError, keepCollapsedPaths } from './ContentSearchPanel';
 export type { ContentSearchPanelProps } from './ContentSearchPanel';
-export { ContentSearchResults, groupMatchesByFile, splitMatchText, trimMatchIndent, toggleCollapsedPath, buildSearchTree, collapsibleTreePaths } from './ContentSearchResults';
+export { ContentSearchResults, groupMatchesByFile, splitMatchText, trimMatchIndent, toggleCollapsedPath, buildSearchTree, collapsibleTreePaths, matchDismissKey, applyDismissals, dismissRow } from './ContentSearchResults';
 export type { ContentSearchResultsProps, ContentSearchFileGroup, MatchTextParts, ContentSearchTreeNode, ContentSearchDirNode, ContentSearchFileNode } from './ContentSearchResults';
 export { QuickOpen, highlightMatches, splitIndices } from './QuickOpen';
 export type { QuickOpenProps } from './QuickOpen';

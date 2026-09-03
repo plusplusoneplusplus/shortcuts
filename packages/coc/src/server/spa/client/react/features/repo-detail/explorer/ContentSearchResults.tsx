@@ -192,6 +192,38 @@ export function toggleCollapsedPath(collapsed: readonly string[], path: string):
         : [...collapsed, path];
 }
 
+/**
+ * The key a match row is dismissed under. `\u0000` cannot appear in a repo path,
+ * so a match key can never collide with the file path a whole group is dismissed
+ * under, and `line:startColumn` is unique within a file.
+ */
+export function matchDismissKey(match: Pick<ExplorerContentMatch, 'path' | 'line' | 'startColumn'>): string {
+    return `${match.path}\u0000${match.line}:${match.startColumn}`;
+}
+
+/**
+ * Drop the matches the user dismissed — whole files first (the group key is the
+ * bare path), then individual rows. A file whose every match is dismissed simply
+ * stops producing a group, which is how "dismissing the last match removes the
+ * group" falls out without a special case.
+ *
+ * Returns the input array untouched when nothing is dismissed, so the common
+ * case adds no allocation and memoized consumers do not re-run.
+ */
+export function applyDismissals(
+    matches: readonly ExplorerContentMatch[],
+    dismissed: readonly string[],
+): readonly ExplorerContentMatch[] {
+    if (dismissed.length === 0) return matches;
+    const keys = new Set(dismissed);
+    return matches.filter(match => !keys.has(match.path) && !keys.has(matchDismissKey(match)));
+}
+
+/** Add one key to the dismissed set, ignoring a repeat. */
+export function dismissRow(dismissed: readonly string[], key: string): string[] {
+    return dismissed.includes(key) ? [...dismissed] : [...dismissed, key];
+}
+
 /** Last path segment, used as the file name in the group header. */
 function baseName(path: string): string {
     const index = path.lastIndexOf('/');
@@ -224,12 +256,44 @@ export interface ContentSearchResultsProps {
     onToggleCollapsed?: (path: string) => void;
     /** Flat-by-file (default) or nested by directory. */
     resultView?: ContentSearchResultView;
+    /**
+     * Hide one row: a file path dismisses the whole group, a `matchDismissKey`
+     * dismisses one match. Absent hides the `X` affordance entirely.
+     */
+    onDismiss?: (key: string) => void;
 }
 
 interface RowProps {
     collapsedSet: ReadonlySet<string>;
     onToggleCollapsed?: (path: string) => void;
     onOpenMatch: (path: string, line: number) => void;
+    /** Hide one row. Absent leaves the `X` affordance off entirely. */
+    onDismiss?: (key: string) => void;
+}
+
+/**
+ * The hover-only `X` that hides a row. It sits *beside* the row button rather
+ * than inside it: a button inside a button is invalid markup, and React would
+ * hand the click to both.
+ */
+function DismissButton({ label, onDismiss }: { label: string; onDismiss: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onDismiss}
+            className={cn(
+                'flex-shrink-0 px-1 text-xs leading-none text-[#848484]',
+                'bg-transparent border-none cursor-pointer',
+                'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                'hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+            )}
+            title={label}
+            aria-label={label}
+            data-testid="content-search-dismiss"
+        >
+            ✕
+        </button>
+    );
 }
 
 function Twisty({ collapsed }: { collapsed: boolean }) {
@@ -262,6 +326,7 @@ function FileGroupRows({
     collapsedSet,
     onToggleCollapsed,
     onOpenMatch,
+    onDismiss,
 }: RowProps & {
     path: string;
     name: string;
@@ -273,49 +338,61 @@ function FileGroupRows({
     const isCollapsed = collapsedSet.has(path);
     return (
         <div data-testid="content-search-group" data-path={path}>
-            <button
-                type="button"
-                onClick={() => onToggleCollapsed?.(path)}
-                className={ROW_CLASS}
-                style={{ paddingLeft: HEADER_BASE_PX + depth * INDENT_STEP_PX }}
-                data-testid="content-search-file-header"
-                data-path={path}
-                data-collapsed={isCollapsed ? 'true' : 'false'}
-                aria-expanded={!isCollapsed}
-                title={path}
-            >
-                <Twisty collapsed={isCollapsed} />
-                <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">{name}</span>
-                <span className="text-[#848484] truncate flex-1 min-w-0">{directory}</span>
-                <CountBadge count={matches.length} />
-            </button>
+            <div className="group flex items-center">
+                <button
+                    type="button"
+                    onClick={() => onToggleCollapsed?.(path)}
+                    className={cn(ROW_CLASS, 'flex-1 min-w-0')}
+                    style={{ paddingLeft: HEADER_BASE_PX + depth * INDENT_STEP_PX }}
+                    data-testid="content-search-file-header"
+                    data-path={path}
+                    data-collapsed={isCollapsed ? 'true' : 'false'}
+                    aria-expanded={!isCollapsed}
+                    title={path}
+                >
+                    <Twisty collapsed={isCollapsed} />
+                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">{name}</span>
+                    <span className="text-[#848484] truncate flex-1 min-w-0">{directory}</span>
+                    <CountBadge count={matches.length} />
+                </button>
+                {onDismiss && (
+                    <DismissButton label={`Dismiss ${path}`} onDismiss={() => onDismiss(path)} />
+                )}
+            </div>
             {!isCollapsed && matches.map(match => {
                 const { before, hit, after } = trimMatchIndent(splitMatchText(match));
                 return (
-                    <button
-                        key={`${match.line}:${match.startColumn}`}
-                        type="button"
-                        onClick={() => onOpenMatch(match.path, match.line)}
-                        className={cn(
-                            'w-full flex items-baseline gap-2 pr-3 py-0.5 text-left text-xs font-mono',
-                            'bg-transparent border-none cursor-pointer',
-                            'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]',
+                    <div key={`${match.line}:${match.startColumn}`} className="group flex items-center">
+                        <button
+                            type="button"
+                            onClick={() => onOpenMatch(match.path, match.line)}
+                            className={cn(
+                                'flex-1 min-w-0 flex items-baseline gap-2 pr-3 py-0.5 text-left text-xs font-mono',
+                                'bg-transparent border-none cursor-pointer',
+                                'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]',
+                            )}
+                            style={{ paddingLeft: MATCH_BASE_PX + depth * INDENT_STEP_PX }}
+                            data-testid="content-search-match"
+                            data-path={match.path}
+                            data-line={match.line}
+                        >
+                            {/* Long lines scroll horizontally inside their own row rather
+                                than stretching the panel; the highlight stays inline. */}
+                            <span className="flex-1 min-w-0 overflow-x-auto whitespace-pre text-[#1e1e1e] dark:text-[#cccccc]">
+                                {before}
+                                <mark className="bg-[#fff2a8] dark:bg-[#623315] text-inherit rounded-sm">
+                                    {hit}
+                                </mark>
+                                {after}
+                            </span>
+                        </button>
+                        {onDismiss && (
+                            <DismissButton
+                                label={`Dismiss match at line ${match.line}`}
+                                onDismiss={() => onDismiss(matchDismissKey(match))}
+                            />
                         )}
-                        style={{ paddingLeft: MATCH_BASE_PX + depth * INDENT_STEP_PX }}
-                        data-testid="content-search-match"
-                        data-path={match.path}
-                        data-line={match.line}
-                    >
-                        {/* Long lines scroll horizontally inside their own row rather
-                            than stretching the panel; the highlight stays inline. */}
-                        <span className="flex-1 min-w-0 overflow-x-auto whitespace-pre text-[#1e1e1e] dark:text-[#cccccc]">
-                            {before}
-                            <mark className="bg-[#fff2a8] dark:bg-[#623315] text-inherit rounded-sm">
-                                {hit}
-                            </mark>
-                            {after}
-                        </span>
-                    </button>
+                    </div>
                 );
             })}
         </div>
@@ -378,11 +455,13 @@ export function ContentSearchResults({
     collapsed,
     onToggleCollapsed,
     resultView = 'list',
+    onDismiss,
 }: ContentSearchResultsProps) {
     const rows: RowProps = {
         collapsedSet: new Set(collapsed ?? []),
         onToggleCollapsed,
         onOpenMatch,
+        onDismiss,
     };
     return (
         <div

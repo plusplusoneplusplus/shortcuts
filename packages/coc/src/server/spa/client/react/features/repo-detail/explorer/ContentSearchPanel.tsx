@@ -24,7 +24,9 @@ import { SearchFilters } from './SearchFilters';
 import { ContentSearchToolbar } from './ContentSearchToolbar';
 import {
     ContentSearchResults,
+    applyDismissals,
     collapsibleTreePaths,
+    dismissRow,
     groupMatchesByFile,
     toggleCollapsedPath,
 } from './ContentSearchResults';
@@ -36,6 +38,7 @@ import {
     useExplorerContentResults,
     useExplorerContentResultView,
     NO_COLLAPSED_GROUPS,
+    NO_DISMISSED_ROWS,
     type ContentSearchState,
 } from './explorerStateStore';
 import {
@@ -77,6 +80,7 @@ export function classifySearchError(error: unknown, regexMode: boolean): Content
         errorKind: isRegexError ? 'regex' : 'request',
         query: '',
         collapsed: NO_COLLAPSED_GROUPS,
+        dismissed: NO_DISMISSED_ROWS,
     };
 }
 
@@ -153,6 +157,7 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                 errorKind: null,
                 query: '',
                 collapsed: NO_COLLAPSED_GROUPS,
+                dismissed: NO_DISMISSED_ROWS,
             });
             return;
         }
@@ -191,6 +196,10 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                         collapsed: prev.query === trimmed
                             ? keepCollapsedPaths(prev.collapsed, response.matches)
                             : NO_COLLAPSED_GROUPS,
+                        // Dismissals are per result list, not per file, so any
+                        // new response — including a Refresh of the same query —
+                        // brings the hidden rows back.
+                        dismissed: NO_DISMISSED_ROWS,
                     }));
                 })
                 .catch(error => {
@@ -240,7 +249,15 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
         },
     ], [modes, toggleMode]);
 
-    const groups = useMemo(() => groupMatchesByFile(state.matches), [state.matches]);
+    // Two groupings on purpose: the rendered tree drops the rows the user
+    // dismissed, while the summary keeps reporting what the *search* found —
+    // dismissing is a view filter, not a correction to the result count.
+    const visibleMatches = useMemo(
+        () => applyDismissals(state.matches, state.dismissed),
+        [state.matches, state.dismissed],
+    );
+    const groups = useMemo(() => groupMatchesByFile(visibleMatches), [visibleMatches]);
+    const fileCount = useMemo(() => groupMatchesByFile(state.matches).length, [state.matches]);
 
     const onClear = useCallback(() => setQuery(''), [setQuery]);
 
@@ -270,6 +287,10 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
     const onToggleResultView = useCallback(() => {
         setResultView(prev => (prev === 'tree' ? 'list' : 'tree'));
     }, [setResultView]);
+
+    const onDismiss = useCallback((key: string) => {
+        setState(prev => ({ ...prev, dismissed: dismissRow(prev.dismissed, key) }));
+    }, [setState]);
 
     const onToggleCollapsed = useCallback((path: string) => {
         setState(prev => ({ ...prev, collapsed: toggleCollapsedPath(prev.collapsed, path) }));
@@ -345,7 +366,7 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                     >
                         {state.matches.length} {state.matches.length === 1 ? 'result' : 'results'}
                         {' in '}
-                        {groups.length} {groups.length === 1 ? 'file' : 'files'}
+                        {fileCount} {fileCount === 1 ? 'file' : 'files'}
                     </div>
                     {state.truncated && (
                         <div
@@ -362,6 +383,7 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                         collapsed={state.collapsed}
                         onToggleCollapsed={onToggleCollapsed}
                         resultView={resultView}
+                        onDismiss={onDismiss}
                     />
                 </>
             )}
