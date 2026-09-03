@@ -23,10 +23,15 @@
  *
  * Headers are no longer sticky: the whole tree scrolls as one surface.
  *
+ * The rows are keyboard-navigable as one flat sequence (arrows, Enter, Delete,
+ * F4), driven by `flattenVisibleRows` rather than by DOM order — see
+ * `useResultKeyboardNav` below.
+ *
  * Purely presentational — collapse state is owned by the panel (it lives with
  * the results, so it survives a view switch and resets on the next query).
  */
 
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../../ui/cn';
 import type { ContentSearchResultView } from './types';
@@ -151,6 +156,151 @@ export function collapsibleTreePaths(groups: readonly ContentSearchFileGroup[]):
     return paths;
 }
 
+/** What a navigable row is: a directory row, a file header, or one match. */
+export type ContentSearchRowKind = 'dir' | 'file' | 'match';
+
+/**
+ * One row of the flat keyboard sequence. Built from the same walk the renderer
+ * does — never from DOM order — so navigation and rendering cannot disagree
+ * about what is on screen.
+ */
+export interface ContentSearchRow {
+    kind: ContentSearchRowKind;
+    /** Stable identity for focus; unique across a result set. */
+    key: string;
+    /** The file or directory path; for a match, the path of its file. */
+    path: string;
+    depth: number;
+    /** The row Left-arrow jumps to: a match's file header, a row's parent directory. */
+    parentKey: string | null;
+    /** Twisty rows only: whether they are currently closed. */
+    collapsible: boolean;
+    collapsed: boolean;
+    /** One-based line, match rows only. */
+    line?: number;
+    /** Key for `onDismiss`. Absent on directory rows, which are not dismissible. */
+    dismissKey?: string;
+}
+
+/** Focus keys. Prefixed by kind so a file and its directory can never collide. */
+export function dirRowKey(path: string): string {
+    return `dir:${path}`;
+}
+
+export function fileRowKey(path: string): string {
+    return `file:${path}`;
+}
+
+export function matchRowKey(match: Pick<ExplorerContentMatch, 'path' | 'line' | 'startColumn'>): string {
+    return `match:${match.path}:${match.line}:${match.startColumn}`;
+}
+
+/**
+ * The rows currently on screen, top to bottom, for whichever layout is showing.
+ * Collapsed rows contribute themselves but not their children, which is what
+ * makes Up/Down skip a closed group in one step.
+ */
+export function flattenVisibleRows(
+    groups: readonly ContentSearchFileGroup[],
+    options: { resultView?: ContentSearchResultView; collapsed?: readonly string[] } = {},
+): ContentSearchRow[] {
+    const collapsedSet = new Set(options.collapsed ?? []);
+    const rows: ContentSearchRow[] = [];
+
+    const pushFile = (group: ContentSearchFileGroup, depth: number, parentKey: string | null): void => {
+        const key = fileRowKey(group.path);
+        const collapsed = collapsedSet.has(group.path);
+        rows.push({
+            kind: 'file',
+            key,
+            path: group.path,
+            depth,
+            parentKey,
+            collapsible: true,
+            collapsed,
+            dismissKey: group.path,
+        });
+        if (collapsed) return;
+        for (const match of group.matches) {
+            rows.push({
+                kind: 'match',
+                key: matchRowKey(match),
+                path: match.path,
+                depth,
+                parentKey: key,
+                collapsible: false,
+                collapsed: false,
+                line: match.line,
+                dismissKey: matchDismissKey(match),
+            });
+        }
+    };
+
+    if (options.resultView !== 'tree') {
+        for (const group of groups) pushFile(group, 0, null);
+        return rows;
+    }
+
+    const walk = (nodes: readonly ContentSearchTreeNode[], depth: number, parentKey: string | null): void => {
+        for (const node of nodes) {
+            if (node.kind === 'file') {
+                pushFile({ path: node.path, matches: node.matches }, depth, parentKey);
+                continue;
+            }
+            const key = dirRowKey(node.path);
+            const collapsed = collapsedSet.has(node.path);
+            rows.push({
+                kind: 'dir',
+                key,
+                path: node.path,
+                depth,
+                parentKey,
+                collapsible: true,
+                collapsed,
+            });
+            if (!collapsed) walk(node.children, depth + 1, key);
+        }
+    };
+    walk(buildSearchTree(groups), 0, null);
+    return rows;
+}
+
+/**
+ * The row focus should land on after `rows[index]` is dismissed. For a match
+ * that is simply the next row; for a file group it is the first row past the
+ * group, since the group's own match rows disappear with it. Falls back to the
+ * row above, and to nothing when the list empties.
+ */
+export function rowAfterDismissal(rows: readonly ContentSearchRow[], index: number): string | null {
+    const target = rows[index];
+    if (!target) return null;
+    for (let i = index + 1; i < rows.length; i++) {
+        if (target.kind === 'file' && rows[i].path === target.path) continue;
+        return rows[i].key;
+    }
+    return index > 0 ? rows[index - 1].key : null;
+}
+
+/**
+ * Step to the next (or previous) match row, wrapping at the ends the way
+ * VS Code's `F4` does. Only *visible* matches take part — a collapsed group is
+ * skipped rather than opened, so `F4` never changes what is on screen.
+ */
+export function stepToMatch(
+    rows: readonly ContentSearchRow[],
+    fromIndex: number,
+    direction: 1 | -1,
+): string | null {
+    const count = rows.length;
+    if (count === 0) return null;
+    const start = fromIndex < 0 ? (direction === 1 ? -1 : count) : fromIndex;
+    for (let step = 1; step <= count; step++) {
+        const row = rows[((start + direction * step) % count + count) % count];
+        if (row.kind === 'match') return row.key;
+    }
+    return null;
+}
+
 /** The three pieces a match row renders: text before, inside, and after the hit. */
 export interface MatchTextParts {
     before: string;
@@ -269,6 +419,25 @@ interface RowProps {
     onOpenMatch: (path: string, line: number) => void;
     /** Hide one row. Absent leaves the `X` affordance off entirely. */
     onDismiss?: (key: string) => void;
+    /**
+     * Roving tabindex: exactly one row is tabbable, so Tab lands on the results
+     * once and the arrow keys take over from there.
+     */
+    tabbableKey: string | null;
+    /** Remember a row's element so navigation can move focus onto it. */
+    registerRow: (key: string, el: HTMLButtonElement | null) => void;
+    /** A row taking focus (a click, or Tab) becomes the navigation anchor. */
+    onRowFocus: (key: string) => void;
+}
+
+/** The props every focusable row button shares. */
+function rowFocusProps(key: string, rows: RowProps) {
+    return {
+        ref: (el: HTMLButtonElement | null) => rows.registerRow(key, el),
+        onFocus: () => rows.onRowFocus(key),
+        tabIndex: rows.tabbableKey === key ? 0 : -1,
+        'data-row-key': key,
+    };
 }
 
 /**
@@ -317,17 +486,7 @@ function CountBadge({ count }: { count: number }) {
 }
 
 /** One file group: its header row plus, when expanded, its match rows. */
-function FileGroupRows({
-    path,
-    name,
-    directory,
-    matches,
-    depth,
-    collapsedSet,
-    onToggleCollapsed,
-    onOpenMatch,
-    onDismiss,
-}: RowProps & {
+function FileGroupRows(props: RowProps & {
     path: string;
     name: string;
     /** Dimmed directory suffix — empty in the tree view, where it is redundant. */
@@ -335,12 +494,15 @@ function FileGroupRows({
     matches: ExplorerContentMatch[];
     depth: number;
 }) {
+    const { path, name, directory, matches, depth, collapsedSet, onToggleCollapsed, onOpenMatch, onDismiss } = props;
+    const rowProps: RowProps = props;
     const isCollapsed = collapsedSet.has(path);
     return (
         <div data-testid="content-search-group" data-path={path}>
             <div className="group flex items-center">
                 <button
                     type="button"
+                    {...rowFocusProps(fileRowKey(path), rowProps)}
                     onClick={() => onToggleCollapsed?.(path)}
                     className={cn(ROW_CLASS, 'flex-1 min-w-0')}
                     style={{ paddingLeft: HEADER_BASE_PX + depth * INDENT_STEP_PX }}
@@ -365,6 +527,7 @@ function FileGroupRows({
                     <div key={`${match.line}:${match.startColumn}`} className="group flex items-center">
                         <button
                             type="button"
+                            {...rowFocusProps(matchRowKey(match), rowProps)}
                             onClick={() => onOpenMatch(match.path, match.line)}
                             className={cn(
                                 'flex-1 min-w-0 flex items-baseline gap-2 pr-3 py-0.5 text-left text-xs font-mono',
@@ -424,6 +587,7 @@ function TreeRows({ nodes, depth, ...rows }: RowProps & {
                     <div key={node.path} data-testid="content-search-dir" data-path={node.path}>
                         <button
                             type="button"
+                            {...rowFocusProps(dirRowKey(node.path), rows)}
                             onClick={() => rows.onToggleCollapsed?.(node.path)}
                             className={ROW_CLASS}
                             style={{ paddingLeft: HEADER_BASE_PX + depth * INDENT_STEP_PX }}
@@ -449,6 +613,116 @@ function TreeRows({ nodes, depth, ...rows }: RowProps & {
     );
 }
 
+/**
+ * `useResultKeyboardNav` — the flat arrow/Enter/Delete/F4 sequence over the rows
+ * currently on screen.
+ *
+ * The navigable order comes from `flattenVisibleRows`, not from the DOM, because
+ * the list and tree layouts render through two different code paths and only the
+ * derived list can describe both. Focus itself is moved imperatively through a
+ * key → element map: after expanding a group or dismissing a row the target row
+ * does not exist yet at the time the key is handled, so the move is deferred to
+ * the effect that runs once React has painted the new rows.
+ */
+function useResultKeyboardNav({
+    rows,
+    onOpenMatch,
+    onToggleCollapsed,
+    onDismiss,
+}: {
+    rows: readonly ContentSearchRow[];
+    onOpenMatch: (path: string, line: number) => void;
+    onToggleCollapsed?: (path: string) => void;
+    onDismiss?: (key: string) => void;
+}) {
+    const [activeKey, setActiveKey] = useState<string | null>(null);
+    const elements = useRef(new Map<string, HTMLButtonElement>());
+    const pendingFocus = useRef<string | null>(null);
+
+    const registerRow = useCallback((key: string, el: HTMLButtonElement | null) => {
+        if (el) elements.current.set(key, el);
+        else elements.current.delete(key);
+    }, []);
+
+    // Focusing an already-focused element is a no-op, so letting a row's own
+    // `onFocus` write the anchor back cannot loop with the effect below.
+    const onRowFocus = useCallback((key: string) => setActiveKey(key), []);
+
+    useEffect(() => {
+        const key = pendingFocus.current;
+        if (key === null) return;
+        pendingFocus.current = null;
+        elements.current.get(key)?.focus();
+    });
+
+    // A row can vanish under the cursor (dismissed, or its group collapsed);
+    // drop the stale anchor so the roving tabindex falls back to the first row.
+    useEffect(() => {
+        if (activeKey !== null && !rows.some(row => row.key === activeKey)) setActiveKey(null);
+    }, [rows, activeKey]);
+
+    const focusKey = useCallback((key: string | null) => {
+        if (key === null) return;
+        setActiveKey(key);
+        pendingFocus.current = key;
+    }, []);
+
+    const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+        if (rows.length === 0) return;
+        const index = activeKey === null ? -1 : rows.findIndex(row => row.key === activeKey);
+        const current = index < 0 ? null : rows[index];
+        const last = rows.length - 1;
+
+        switch (event.key) {
+            case 'ArrowDown':
+                focusKey(rows[index < 0 ? 0 : Math.min(index + 1, last)].key);
+                break;
+            case 'ArrowUp':
+                focusKey(rows[index < 0 ? last : Math.max(index - 1, 0)].key);
+                break;
+            case 'ArrowLeft':
+                if (!current) return;
+                // An open group closes in place; anything else walks outward, so
+                // a second press on a closed group still moves up a level.
+                if (current.collapsible && !current.collapsed) onToggleCollapsed?.(current.path);
+                else focusKey(current.parentKey);
+                break;
+            case 'ArrowRight':
+                if (!current) return;
+                if (current.collapsible && current.collapsed) onToggleCollapsed?.(current.path);
+                else if (index < last) focusKey(rows[index + 1].key);
+                break;
+            case 'Enter':
+                if (!current) return;
+                // Handled here rather than left to the button's native activation
+                // so the two can never both fire; `preventDefault` suppresses it.
+                if (current.kind === 'match' && current.line !== undefined) onOpenMatch(current.path, current.line);
+                else onToggleCollapsed?.(current.path);
+                break;
+            case 'Delete':
+                if (!current?.dismissKey || !onDismiss) return;
+                focusKey(rowAfterDismissal(rows, index));
+                onDismiss(current.dismissKey);
+                break;
+            case 'F4':
+                focusKey(stepToMatch(rows, index, event.shiftKey ? -1 : 1));
+                break;
+            default:
+                return;
+        }
+        event.preventDefault();
+    }, [rows, activeKey, focusKey, onOpenMatch, onToggleCollapsed, onDismiss]);
+
+    return {
+        onKeyDown,
+        registerRow,
+        onRowFocus,
+        // With nothing focused yet, Tab must still reach the results: the first
+        // row carries the tab stop until the user picks another.
+        tabbableKey: activeKey ?? rows[0]?.key ?? null,
+    };
+}
+
 export function ContentSearchResults({
     groups,
     onOpenMatch,
@@ -457,17 +731,29 @@ export function ContentSearchResults({
     resultView = 'list',
     onDismiss,
 }: ContentSearchResultsProps) {
+    const navRows = useMemo(
+        () => flattenVisibleRows(groups, { resultView, collapsed }),
+        [groups, resultView, collapsed],
+    );
+    const { onKeyDown, ...focus } = useResultKeyboardNav({
+        rows: navRows,
+        onOpenMatch,
+        onToggleCollapsed,
+        onDismiss,
+    });
     const rows: RowProps = {
         collapsedSet: new Set(collapsed ?? []),
         onToggleCollapsed,
         onOpenMatch,
         onDismiss,
+        ...focus,
     };
     return (
         <div
             className="flex-1 min-h-0 overflow-y-auto"
             data-testid="content-search-results"
             data-result-view={resultView}
+            onKeyDown={onKeyDown}
         >
             {resultView === 'tree'
                 ? <TreeRows nodes={buildSearchTree(groups)} depth={0} {...rows} />
