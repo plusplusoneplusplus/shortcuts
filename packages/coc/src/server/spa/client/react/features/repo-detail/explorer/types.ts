@@ -43,3 +43,51 @@ export type ContentSearchStatus = 'idle' | 'loading' | 'success' | 'empty' | 'er
  * own parse message; anything else is a generic, retryable request failure.
  */
 export type ContentSearchErrorKind = 'regex' | 'request';
+
+/**
+ * The Search view's file filters — the `…` section under the query box.
+ *
+ * `include` / `exclude` are held verbatim as the user typed them (a
+ * comma-separated glob list) rather than pre-split, so a half-typed glob round
+ * trips through persistence unchanged. `parseGlobList` turns either into the
+ * array the request wants.
+ */
+export interface ContentSearchFilters {
+    /** Comma-separated whitelist globs. Empty searches every file. */
+    include: string;
+    /** Comma-separated globs whose matches are skipped. */
+    exclude: string;
+    /**
+     * VS Code's "Use Exclude Settings and Ignore Files" gear, on by default.
+     * Off sends `showIgnored: true`, so `.gitignore`d files are searched too.
+     */
+    useIgnoreFiles: boolean;
+}
+
+/** Default filter state: no globs, ignore files honoured. */
+export const DEFAULT_CONTENT_SEARCH_FILTERS: ContentSearchFilters = {
+    include: '',
+    exclude: '',
+    useIgnoreFiles: true,
+};
+
+/**
+ * Split a comma-separated glob list into the array the search request takes.
+ * Returns undefined for an empty list so the field is omitted entirely — the
+ * route treats an empty array and an absent parameter the same, but omitting it
+ * keeps the query string clean.
+ */
+export function parseGlobList(value: string): string[] | undefined {
+    const globs = value.split(',').map(glob => glob.trim()).filter(glob => glob.length > 0);
+    return globs.length > 0 ? globs : undefined;
+}
+
+/**
+ * True when any filter differs from its default — what the `…` toggle's dot
+ * reports, so a filtered search is never invisible with the section collapsed.
+ */
+export function contentSearchFiltersActive(filters: ContentSearchFilters): boolean {
+    return parseGlobList(filters.include) !== undefined
+        || parseGlobList(filters.exclude) !== undefined
+        || !filters.useIgnoreFiles;
+}

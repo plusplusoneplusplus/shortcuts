@@ -17,18 +17,20 @@
  * paint over a fast later one.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '../../../ui';
 import { SearchBar, type SearchBarToggle } from './SearchBar';
+import { SearchFilters } from './SearchFilters';
 import { ContentSearchResults, groupMatchesByFile } from './ContentSearchResults';
 import { explorerApi } from './explorerApi';
 import {
+    useExplorerContentFilters,
     useExplorerContentModes,
     useExplorerContentQuery,
     useExplorerContentResults,
     type ContentSearchState,
 } from './explorerStateStore';
-import type { ContentSearchModes } from './types';
+import { contentSearchFiltersActive, parseGlobList, type ContentSearchModes } from './types';
 
 /** Quiet period after the last keystroke before a search request fires. */
 export const SEARCH_DEBOUNCE_MS = 250;
@@ -72,16 +74,31 @@ function isAbortError(error: unknown): boolean {
 export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: ContentSearchPanelProps) {
     const [query, setQuery] = useExplorerContentQuery(workspaceId);
     const [modes, setModes] = useExplorerContentModes(workspaceId);
+    const [filters, setFilters] = useExplorerContentFilters(workspaceId);
     const [state, setState] = useExplorerContentResults(workspaceId);
+    // The `…` section starts open when it is already filtering, so a persisted
+    // filter is never hidden behind a collapsed chevron on the first render.
+    const [filtersExpanded, setFiltersExpanded] = useState(() => contentSearchFiltersActive(filters));
 
     // Monotonic run id: only the newest request may write results.
     const runIdRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
-    // The query the previous effect run searched for, so a mode-only change can
-    // skip the debounce instead of waiting for a keystroke that will not come.
-    const lastQueryRef = useRef<string | null>(null);
+    // What the previous effect run typed — query plus the two glob boxes. A
+    // change to any of them is a keystroke and waits out the debounce; a change
+    // to a toggle is intent and re-runs at once, because no further keystroke is
+    // coming.
+    const lastTypedRef = useRef<string | null>(null);
 
     const trimmed = query.trim();
+    // Keyed off the *parsed* glob lists, not the raw text, so typing a space
+    // after a comma neither changes the request nor re-fires the effect. A glob
+    // cannot contain a comma (the route splits on it), so join/split round trips.
+    const includeKey = (parseGlobList(filters.include) ?? []).join(',');
+    const excludeKey = (parseGlobList(filters.exclude) ?? []).join(',');
+    const include = useMemo(() => (includeKey ? includeKey.split(',') : undefined), [includeKey]);
+    const exclude = useMemo(() => (excludeKey ? excludeKey.split(',') : undefined), [excludeKey]);
+    // `\u0000` cannot appear in a glob or a query, so the join is unambiguous.
+    const typedSignature = `${trimmed}\u0000${includeKey}\u0000${excludeKey}`;
 
     useEffect(() => {
         abortRef.current?.abort();
@@ -89,7 +106,7 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
         const runId = ++runIdRef.current;
 
         if (!trimmed) {
-            lastQueryRef.current = '';
+            lastTypedRef.current = null;
             setState({
                 status: 'idle',
                 matches: [],
@@ -101,9 +118,9 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
             return;
         }
 
-        const queryChanged = lastQueryRef.current !== trimmed;
-        lastQueryRef.current = trimmed;
-        const delay = queryChanged ? SEARCH_DEBOUNCE_MS : 0;
+        const typedChanged = lastTypedRef.current !== typedSignature;
+        lastTypedRef.current = typedSignature;
+        const delay = typedChanged ? SEARCH_DEBOUNCE_MS : 0;
 
         const timer = setTimeout(() => {
             const controller = new AbortController();
@@ -114,6 +131,9 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                 caseSensitive: modes.caseSensitive,
                 wholeWord: modes.wholeWord,
                 regex: modes.regex,
+                showIgnored: !filters.useIgnoreFiles,
+                include,
+                exclude,
                 signal: controller.signal,
             })
                 .then(response => {
@@ -137,7 +157,7 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
             clearTimeout(timer);
             abortRef.current?.abort();
         };
-    }, [workspaceId, trimmed, scopePath, modes, setState]);
+    }, [workspaceId, trimmed, typedSignature, include, exclude, scopePath, modes, filters.useIgnoreFiles, setState]);
 
     // Unmounting mid-request must not leave a request running: bump the run id
     // so any in-flight response is discarded, and abort the fetch itself.
@@ -186,6 +206,13 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                 onClear={onClear}
                 placeholder="Search in files…"
                 toggles={toggles}
+                testIdPrefix="content-search"
+            />
+            <SearchFilters
+                filters={filters}
+                onChange={setFilters}
+                expanded={filtersExpanded}
+                onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
                 testIdPrefix="content-search"
             />
             {scopePath && (

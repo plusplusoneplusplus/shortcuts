@@ -23,8 +23,10 @@
 import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react';
 import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import {
+    DEFAULT_CONTENT_SEARCH_FILTERS,
     DEFAULT_CONTENT_SEARCH_MODES,
     type ContentSearchErrorKind,
+    type ContentSearchFilters,
     type ContentSearchModes,
     type ContentSearchStatus,
     type ExplorerView,
@@ -72,6 +74,11 @@ export function explorerContentQueryStorageKey(workspaceId: string): string {
 /** localStorage key for the content-search mode toggles, per workspace. */
 export function explorerContentModesStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:explorer-content-modes`;
+}
+
+/** localStorage key for the content-search include/exclude filters, per workspace. */
+export function explorerContentFiltersStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-content-filters`;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +169,23 @@ const MODES_CODEC: Codec<ContentSearchModes> = {
             caseSensitive: parsed.caseSensitive === true,
             wholeWord: parsed.wholeWord === true,
             regex: parsed.regex === true,
+        };
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const FILTERS_CODEC: Codec<ContentSearchFilters> = {
+    fallback: DEFAULT_CONTENT_SEARCH_FILTERS,
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return DEFAULT_CONTENT_SEARCH_FILTERS;
+        return {
+            include: typeof parsed.include === 'string' ? parsed.include : '',
+            exclude: typeof parsed.exclude === 'string' ? parsed.exclude : '',
+            // Absent means the stored value predates the gear; default it on.
+            useIgnoreFiles: parsed.useIgnoreFiles !== false,
         };
     },
     serialize(value) {
@@ -285,6 +309,13 @@ export function useExplorerContentModes(
     workspaceId: string,
 ): [ContentSearchModes, Dispatch<SetStateAction<ContentSearchModes>>] {
     return usePersistedValue(explorerContentModesStorageKey(workspaceId), MODES_CODEC);
+}
+
+/** Persisted content-search include/exclude/ignore filters for a workspace. */
+export function useExplorerContentFilters(
+    workspaceId: string,
+): [ContentSearchFilters, Dispatch<SetStateAction<ContentSearchFilters>>] {
+    return usePersistedValue(explorerContentFiltersStorageKey(workspaceId), FILTERS_CODEC);
 }
 
 // ---------------------------------------------------------------------------

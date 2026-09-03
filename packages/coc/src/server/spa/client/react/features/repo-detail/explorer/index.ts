@@ -10,6 +10,8 @@ export { MonacoFileEditor, getMonacoLanguage, revealEditorLine, buildHighlightDe
 export type { MonacoFileEditorProps, EditorHighlightRange } from './MonacoFileEditor';
 export { SearchBar } from './SearchBar';
 export type { SearchBarProps, SearchBarToggle } from './SearchBar';
+export { SearchFilters } from './SearchFilters';
+export type { SearchFiltersProps } from './SearchFilters';
 export { ContentSearchPanel, SEARCH_DEBOUNCE_MS, classifySearchError } from './ContentSearchPanel';
 export type { ContentSearchPanelProps } from './ContentSearchPanel';
 export { ContentSearchResults, groupMatchesByFile, splitMatchText } from './ContentSearchResults';
@@ -20,5 +22,5 @@ export { ExactOpen, exactMatchScore } from './ExactOpen';
 export type { ExactOpenProps } from './ExactOpen';
 export { Breadcrumbs } from './Breadcrumbs';
 export type { BreadcrumbsProps } from './Breadcrumbs';
-export type { TreeEntry, ExplorerView, ContentSearchModes, ContentSearchStatus, ContentSearchErrorKind } from './types';
-export { DEFAULT_CONTENT_SEARCH_MODES } from './types';
+export type { TreeEntry, ExplorerView, ContentSearchModes, ContentSearchFilters, ContentSearchStatus, ContentSearchErrorKind } from './types';
+export { DEFAULT_CONTENT_SEARCH_MODES, DEFAULT_CONTENT_SEARCH_FILTERS, parseGlobList, contentSearchFiltersActive } from './types';
