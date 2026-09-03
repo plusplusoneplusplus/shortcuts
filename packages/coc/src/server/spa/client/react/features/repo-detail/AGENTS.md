@@ -86,6 +86,14 @@ switch deliberately remounts Terminal and Explorer — the same teardown a works
 switch already causes — and rehydrates through `explorerStateStore` and pinned
 terminal sessions rather than a per-target mount map.
 
+Only a dock whose target *is* its scope owns the explorer route:
+`WorkspaceRightDock` passes `deepLink={target === workspaceId}` to
+`ExplorerPanel`. Selecting a file otherwise writes
+`#repos/<target>/explorer/<path>`, which `resolveReposRoute` reads as
+`SET_SELECTED_REPO` — inside a repo group that navigates straight out of the
+group on the first click. With `deepLink={false}` the selection stays local and
+still persists through `explorerStateStore`.
+
 Target switches go through `confirmDiscardExplorerEditsOnSwitch` (from
 `explorer/explorerDirtyStore.ts`), so picking another member repo cannot silently
 drop a dirty Monaco buffer; declining leaves the selection and localStorage

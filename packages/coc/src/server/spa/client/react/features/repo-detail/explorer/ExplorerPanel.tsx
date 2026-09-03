@@ -24,6 +24,17 @@ import { setExplorerInstanceDirty } from './explorerDirtyStore';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
+    /**
+     * Whether this mount owns the global `#repos/:id/explorer/:path` route.
+     * Selecting a file writes that hash, which the router reads as "switch to
+     * workspace :id and show its Explorer sub-tab" — correct for the Explorer
+     * sub-tab itself, but wrong for a mount whose workspace is not the one the
+     * app is showing. A repo group's dock points at a MEMBER repo, so the write
+     * would navigate the user out of the group entirely; such a mount passes
+     * `false` and keeps its selection purely local (it still persists through
+     * explorerStateStore). Defaults to `true`.
+     */
+    deepLink?: boolean;
 }
 
 /** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
@@ -178,7 +189,7 @@ export function resolveSearchScope(
     return slash < 0 ? undefined : selectedPath.slice(0, slash);
 }
 
-export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
+export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
@@ -313,9 +324,11 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
 
     const handleSelect = useCallback((path: string, isDirectory: boolean) => {
         setSelectedPath(path);
-        // Update hash for deep-linking
-        location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(path)}`;
-    }, [workspaceId]);
+        // Update hash for deep-linking — only when this mount owns the route.
+        if (deepLink) {
+            location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(path)}`;
+        }
+    }, [workspaceId, deepLink]);
 
     const handleToggle = useCallback((path: string) => {
         setExpandedPaths(prev => {
@@ -372,8 +385,10 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 return next;
             });
         }
-        location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(filePath)}`;
-    }, [workspaceId]);
+        if (deepLink) {
+            location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(filePath)}`;
+        }
+    }, [workspaceId, deepLink]);
 
     const handleTreeContextMenu = useCallback((e: React.MouseEvent, entry: TreeEntry) => {
         setContextMenu({ position: { x: e.clientX, y: e.clientY }, entry });
