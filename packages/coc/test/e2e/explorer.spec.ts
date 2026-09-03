@@ -4,7 +4,8 @@
  *   - PreviewPane: file open, dirty-indicator after edit, save button
  *   - QuickOpen: Ctrl+P overlay, filter, select file
  *   - Refresh: reloads the file tree
- *   - Content search: Search view, grouped results, click-to-open-at-line
+ *   - Content search: Search view, grouped results, click-to-open-at-line,
+ *     include filter + collapse + keyboard navigation
  *
  * Relies on existing data-testid attributes in the explorer components
  * (no new testids added):
@@ -16,7 +17,10 @@
  *   explorer-view-tree, explorer-view-search, content-search-panel,
  *   content-search-input, content-search-toggle-{case,word,regex},
  *   content-search-results, content-search-group, content-search-match,
- *   content-search-summary, content-search-empty, content-search-regex-error
+ *   content-search-summary, content-search-empty, content-search-regex-error,
+ *   content-search-file-header, content-search-file-count,
+ *   content-search-filters-toggle, content-search-filters-dot,
+ *   content-search-include
  */
 
 import * as fs from 'fs';
@@ -453,6 +457,63 @@ test.describe('ExplorerPanel – Content search', () => {
             const regexError = page.locator('[data-testid="content-search-regex-error"]');
             await expect(regexError).toBeVisible({ timeout: 10_000 });
             await expect(regexError).toContainText('regular expression');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.17 query, include filter, collapse, keyboard navigation, open', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+
+            await gotoExplorer(page, serverUrl);
+            await gotoSearchView(page);
+
+            // 1. Type a query — repo-wide, so both fixture files answer.
+            await page.locator('[data-testid="content-search-input"]').fill(SEARCH_NEEDLE);
+            const groups = page.locator('[data-testid="content-search-group"]');
+            await expect(groups).toHaveCount(2, { timeout: 10_000 });
+
+            // 2. Narrow it with an include glob, revealed by the details chevron.
+            await page.locator('[data-testid="content-search-filters-toggle"]').click();
+            const include = page.locator('[data-testid="content-search-include"]');
+            await expect(include).toBeVisible();
+            await include.fill('src/**');
+
+            await expect(groups).toHaveCount(1, { timeout: 10_000 });
+            const header = page.locator('[data-testid="content-search-file-header"]');
+            await expect(header).toHaveAttribute('data-path', 'src/search-fixture.ts');
+            // The chevron shows a dot so a filtered search is never invisible.
+            await expect(page.locator('[data-testid="content-search-filters-dot"]')).toBeVisible();
+
+            // 3. Collapse the group: its matches go, its count badge stays.
+            await header.click();
+            await expect(header).toHaveAttribute('data-collapsed', 'true');
+            await expect(page.locator('[data-testid="content-search-match"]')).toHaveCount(0);
+            await expect(page.locator('[data-testid="content-search-file-count"]')).toHaveText('1');
+
+            // 4. Keyboard alone from here: Right re-opens the group, Down lands on
+            //    its single match.
+            await header.focus();
+            await page.keyboard.press('ArrowRight');
+            await expect(header).toHaveAttribute('data-collapsed', 'false');
+
+            const match = page.locator('[data-testid="content-search-match"]');
+            await expect(match).toHaveCount(1);
+            await page.keyboard.press('ArrowDown');
+            await expect(match).toBeFocused();
+
+            // 5. Enter opens the focused match in the preview, at its line.
+            await page.keyboard.press('Enter');
+            const editor = page.locator('[data-testid="monaco-container"] .monaco-editor').first();
+            await expect(editor).toBeVisible({ timeout: 15_000 });
+            await expect(editor.locator('.view-lines')).toContainText(SEARCH_NEEDLE, { timeout: 15_000 });
+            await expect(editor.locator('.line-numbers.active-line-number')).toHaveText(
+                String(SEARCH_NEEDLE_LINE),
+                { timeout: 15_000 },
+            );
         } finally {
             safeRmSync(tmpDir);
         }
