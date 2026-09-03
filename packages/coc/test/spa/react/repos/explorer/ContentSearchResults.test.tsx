@@ -11,6 +11,8 @@ import {
     ContentSearchResults,
     groupMatchesByFile,
     splitMatchText,
+    toggleCollapsedPath,
+    trimMatchIndent,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ContentSearchResults';
 
 function match(overrides: Partial<ExplorerContentMatch> = {}): ExplorerContentMatch {
@@ -79,6 +81,41 @@ describe('splitMatchText', () => {
     });
 });
 
+describe('trimMatchIndent', () => {
+    it('drops the line indentation so the hit is not pushed off the row', () => {
+        expect(trimMatchIndent(splitMatchText(match({
+            text: '        const needle = 1;',
+            startColumn: 14,
+            endColumn: 20,
+        })))).toEqual({ before: 'const ', hit: 'needle', after: ' = 1;' });
+    });
+
+    it('leaves interior whitespace alone', () => {
+        expect(trimMatchIndent({ before: 'a  b ', hit: 'x', after: ' y' }).before).toBe('a  b ');
+    });
+
+    it('never eats the highlight: whitespace inside the match survives', () => {
+        // A query of two spaces, matched inside the indentation itself.
+        const parts = trimMatchIndent(splitMatchText(match({
+            text: '    x', startColumn: 2, endColumn: 4,
+        })));
+        expect(parts).toEqual({ before: '', hit: '  ', after: 'x' });
+    });
+});
+
+describe('toggleCollapsedPath', () => {
+    it('adds a path that is not collapsed and removes one that is', () => {
+        expect(toggleCollapsedPath([], 'a.ts')).toEqual(['a.ts']);
+        expect(toggleCollapsedPath(['a.ts', 'b.ts'], 'a.ts')).toEqual(['b.ts']);
+    });
+
+    it('returns a new array, never mutating the input', () => {
+        const before = ['a.ts'];
+        expect(toggleCollapsedPath(before, 'b.ts')).not.toBe(before);
+        expect(before).toEqual(['a.ts']);
+    });
+});
+
 describe('ContentSearchResults', () => {
     const groups = groupMatchesByFile([
         match({ path: 'src/app.ts', line: 3 }),
@@ -93,11 +130,34 @@ describe('ContentSearchResults', () => {
         expect(screen.getAllByTestId('content-search-file-count').map(c => c.textContent)).toEqual(['2', '1']);
     });
 
-    it('renders one row per match, labelled with its line number', () => {
+    it('renders one row per match, carrying its line in data-line', () => {
         render(<ContentSearchResults groups={groups} onOpenMatch={vi.fn()} />);
         const rows = screen.getAllByTestId('content-search-match');
         expect(rows).toHaveLength(3);
         expect(rows.map(r => r.getAttribute('data-line'))).toEqual(['3', '9', '1']);
+    });
+
+    it('shows no line-number gutter and no sticky header, as in VS Code', () => {
+        render(<ContentSearchResults groups={groups} onOpenMatch={vi.fn()} />);
+        // The only text in a match row is the line itself; '3' and '9' would be
+        // the gutter values for the first file.
+        const row = screen.getAllByTestId('content-search-match')[0];
+        expect(row.textContent).toBe('const needle = 1;');
+        for (const header of screen.getAllByTestId('content-search-file-header')) {
+            expect(header.className).not.toContain('sticky');
+        }
+    });
+
+    it('trims the leading indentation off a match row', () => {
+        render(
+            <ContentSearchResults
+                groups={groupMatchesByFile([match({
+                    text: '      const needle = 1;', startColumn: 12, endColumn: 18,
+                })])}
+                onOpenMatch={vi.fn()}
+            />,
+        );
+        expect(screen.getByTestId('content-search-match').textContent).toBe('const needle = 1;');
     });
 
     it('highlights only the matched span', () => {
@@ -127,6 +187,45 @@ describe('ContentSearchResults', () => {
         expect(textSpan?.className).toContain('overflow-x-auto');
         expect(textSpan?.className).toContain('min-w-0');
         expect(row.querySelector('mark')?.textContent).toBe('needle');
+    });
+
+    it('hides a collapsed group\'s matches but keeps its header and count', () => {
+        render(
+            <ContentSearchResults
+                groups={groups}
+                onOpenMatch={vi.fn()}
+                collapsed={['src/app.ts']}
+                onToggleCollapsed={vi.fn()}
+            />,
+        );
+        const rows = screen.getAllByTestId('content-search-match');
+        expect(rows.map(r => r.getAttribute('data-path'))).toEqual(['README.md']);
+        const header = screen.getAllByTestId('content-search-file-header')[0];
+        expect(header.getAttribute('data-collapsed')).toBe('true');
+        expect(header.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.getAllByTestId('content-search-file-count').map(c => c.textContent))
+            .toEqual(['2', '1']);
+    });
+
+    it('reports the clicked file header to the owner as a collapse toggle', () => {
+        const onToggleCollapsed = vi.fn();
+        render(
+            <ContentSearchResults
+                groups={groups}
+                onOpenMatch={vi.fn()}
+                collapsed={[]}
+                onToggleCollapsed={onToggleCollapsed}
+            />,
+        );
+        fireEvent.click(screen.getAllByTestId('content-search-file-header')[1]);
+        expect(onToggleCollapsed).toHaveBeenCalledWith('README.md');
+    });
+
+    it('leaves every group expanded when no collapse state is supplied', () => {
+        render(<ContentSearchResults groups={groups} onOpenMatch={vi.fn()} />);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(3);
+        expect(screen.getAllByTestId('content-search-file-header')[0].getAttribute('data-collapsed'))
+            .toBe('false');
     });
 
     it('renders 500 matches without dropping any', () => {

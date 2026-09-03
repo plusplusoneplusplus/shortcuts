@@ -386,6 +386,97 @@ describe('ContentSearchPanel — state survives the tree round trip', () => {
     });
 });
 
+describe('ContentSearchPanel — collapsible result groups', () => {
+    beforeEach(() => {
+        searchContentSpy.mockResolvedValue({
+            matches: [match({ line: 4 }), match({ line: 8 }), match({ path: 'README.md', line: 1 })],
+            truncated: false,
+        });
+    });
+
+    async function search(term = 'needle'): Promise<void> {
+        type(term);
+        await advance(SEARCH_DEBOUNCE_MS);
+    }
+
+    function collapse(index: number): void {
+        fireEvent.click(screen.getAllByTestId('content-search-file-header')[index]);
+    }
+
+    it('clicking a file header hides its matches and keeps the count', async () => {
+        renderPanel();
+        await search();
+        collapse(0);
+
+        expect(screen.getAllByTestId('content-search-match').map(r => r.getAttribute('data-path')))
+            .toEqual(['README.md']);
+        expect(screen.getAllByTestId('content-search-file-count').map(c => c.textContent))
+            .toEqual(['2', '1']);
+        // The summary reports the search, not the visible rows.
+        expect(screen.getByTestId('content-search-summary').textContent).toBe('3 results in 2 files');
+    });
+
+    it('clicking the header again expands the group', async () => {
+        renderPanel();
+        await search();
+        collapse(0);
+        collapse(0);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(3);
+    });
+
+    it('keeps the collapse state across a switch to the tree view and back', async () => {
+        const view = renderPanel();
+        await search();
+        collapse(0);
+
+        // Switching views unmounts the panel; the results (and the collapse
+        // state) live in the store, so remounting shows the same thing.
+        view.unmount();
+        renderPanel();
+        expect(screen.getAllByTestId('content-search-match').map(r => r.getAttribute('data-path')))
+            .toEqual(['README.md']);
+
+        // A remount re-runs the same query. Its answer must not silently
+        // re-expand what the user closed.
+        await advance(SEARCH_DEBOUNCE_MS);
+        expect(searchContentSpy).toHaveBeenCalledTimes(2);
+        expect(screen.getAllByTestId('content-search-match').map(r => r.getAttribute('data-path')))
+            .toEqual(['README.md']);
+    });
+
+    it('drops a collapsed path that the re-run no longer matches', async () => {
+        renderPanel();
+        await search();
+        collapse(0);
+
+        searchContentSpy.mockResolvedValue({ matches: [match({ path: 'README.md', line: 1 })], truncated: false });
+        fireEvent.click(screen.getByTestId('content-search-toggle-case'));
+        await advance(0);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(1);
+        expect(screen.getAllByTestId('content-search-file-header')).toHaveLength(1);
+
+        // 'src/app.ts' is gone from the results, so its collapse must not linger:
+        // when it comes back it is expanded again.
+        searchContentSpy.mockResolvedValue({
+            matches: [match({ line: 4 }), match({ path: 'README.md', line: 1 })],
+            truncated: false,
+        });
+        fireEvent.click(screen.getByTestId('content-search-toggle-case'));
+        await advance(0);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(2);
+    });
+
+    it('resets the collapse state when a new query brings new results', async () => {
+        renderPanel();
+        await search();
+        collapse(0);
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(1);
+
+        await search('needle2');
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(3);
+    });
+});
+
 describe('classifySearchError', () => {
     it('treats a 400 in regex mode as an inline regex error', () => {
         const state = classifySearchError(

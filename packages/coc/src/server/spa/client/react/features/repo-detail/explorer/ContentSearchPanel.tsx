@@ -21,13 +21,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '../../../ui';
 import { SearchBar, type SearchBarToggle } from './SearchBar';
 import { SearchFilters } from './SearchFilters';
-import { ContentSearchResults, groupMatchesByFile } from './ContentSearchResults';
+import { ContentSearchResults, groupMatchesByFile, toggleCollapsedPath } from './ContentSearchResults';
 import { explorerApi } from './explorerApi';
 import {
     useExplorerContentFilters,
     useExplorerContentModes,
     useExplorerContentQuery,
     useExplorerContentResults,
+    NO_COLLAPSED_GROUPS,
     type ContentSearchState,
 } from './explorerStateStore';
 import { contentSearchFiltersActive, parseGlobList, type ContentSearchModes } from './types';
@@ -63,7 +64,24 @@ export function classifySearchError(error: unknown, regexMode: boolean): Content
         error: message || 'Search failed',
         errorKind: isRegexError ? 'regex' : 'request',
         query: '',
+        collapsed: NO_COLLAPSED_GROUPS,
     };
+}
+
+/**
+ * Narrow a carried-over collapsed set to the paths the new result set actually
+ * has, so a file that stops matching does not leave its path behind forever.
+ * Returns the shared empty array when nothing survives, keeping the reference
+ * stable for consumers.
+ */
+export function keepCollapsedPaths(
+    collapsed: readonly string[],
+    matches: readonly { path: string }[],
+): readonly string[] {
+    if (collapsed.length === 0) return NO_COLLAPSED_GROUPS;
+    const present = new Set(matches.map(entry => entry.path));
+    const kept = collapsed.filter(path => present.has(path));
+    return kept.length > 0 ? kept : NO_COLLAPSED_GROUPS;
 }
 
 /** True for the rejection an aborted (superseded or unmounted) request produces. */
@@ -114,6 +132,7 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                 error: null,
                 errorKind: null,
                 query: '',
+                collapsed: NO_COLLAPSED_GROUPS,
             });
             return;
         }
@@ -138,14 +157,21 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
             })
                 .then(response => {
                     if (runId !== runIdRef.current) return;
-                    setState({
+                    setState(prev => ({
                         status: response.matches.length > 0 ? 'success' : 'empty',
                         matches: response.matches,
                         truncated: response.truncated,
                         error: null,
                         errorKind: null,
                         query: trimmed,
-                    });
+                        // A new query starts fully expanded; a re-run of the same
+                        // one keeps the groups the user closed, which is what
+                        // makes the collapse state survive a tree round trip (the
+                        // panel re-searches on every remount) and a Refresh.
+                        collapsed: prev.query === trimmed
+                            ? keepCollapsedPaths(prev.collapsed, response.matches)
+                            : NO_COLLAPSED_GROUPS,
+                    }));
                 })
                 .catch(error => {
                     if (runId !== runIdRef.current || isAbortError(error)) return;
@@ -197,6 +223,10 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
     const groups = useMemo(() => groupMatchesByFile(state.matches), [state.matches]);
 
     const onClear = useCallback(() => setQuery(''), [setQuery]);
+
+    const onToggleCollapsed = useCallback((path: string) => {
+        setState(prev => ({ ...prev, collapsed: toggleCollapsedPath(prev.collapsed, path) }));
+    }, [setState]);
 
     return (
         <div className="flex flex-col flex-1 min-h-0" data-testid="content-search-panel">
@@ -270,7 +300,12 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                             over 1 MB skipped). Narrow the query to see the rest.
                         </div>
                     )}
-                    <ContentSearchResults groups={groups} onOpenMatch={onOpenMatch} />
+                    <ContentSearchResults
+                        groups={groups}
+                        onOpenMatch={onOpenMatch}
+                        collapsed={state.collapsed}
+                        onToggleCollapsed={onToggleCollapsed}
+                    />
                 </>
             )}
         </div>

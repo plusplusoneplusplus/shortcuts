@@ -344,7 +344,17 @@ export interface ContentSearchState {
     errorKind: ContentSearchErrorKind | null;
     /** The query these results answer — may lag the typed query while loading. */
     query: string;
+    /**
+     * Paths of the result groups the user has collapsed. Lives with the results
+     * rather than in localStorage so it survives a switch to the tree view and
+     * back, and is wiped whenever a new result set is written — collapsing a
+     * file in one search says nothing about the next one.
+     */
+    collapsed: readonly string[];
 }
+
+/** Stable empty collapsed set — a fresh `[]` per render would loop consumers. */
+export const NO_COLLAPSED_GROUPS: readonly string[] = [];
 
 /** Stable empty state; also the reference returned before any search has run. */
 export const IDLE_CONTENT_SEARCH_STATE: ContentSearchState = {
@@ -354,6 +364,7 @@ export const IDLE_CONTENT_SEARCH_STATE: ContentSearchState = {
     error: null,
     errorKind: null,
     query: '',
+    collapsed: NO_COLLAPSED_GROUPS,
 };
 
 const contentSearchStates = new Map<string, ContentSearchState>();
