@@ -12,6 +12,10 @@
  *  - a *toggle* change re-runs the query it already has immediately, because the
  *    user has expressed intent and there is no further keystroke to wait for.
  *
+ * Enter in the query box takes that second path too: it is the same re-run the
+ * toolbar's Refresh issues, so it skips whatever debounce is still pending. The
+ * box is a textarea, so Shift+Enter adds a line and the query goes multi-line.
+ *
  * Every request carries an AbortSignal and a monotonic run id. A superseded
  * response is dropped on the run-id check, so a slow early response can never
  * paint over a fast later one.
@@ -146,7 +150,7 @@ export function ContentSearchPanel({
     // to a toggle is intent and re-runs at once, because no further keystroke is
     // coming.
     const lastTypedRef = useRef<string | null>(null);
-    const queryInputRef = useRef<HTMLInputElement>(null);
+    const queryInputRef = useRef<HTMLTextAreaElement>(null);
 
     // Focus on request from the host (Find in Folder). Skipped at zero so a
     // plain mount does not steal focus from wherever the user actually is.
@@ -354,6 +358,8 @@ export function ContentSearchPanel({
                 placeholder="Search in files…"
                 toggles={toggles}
                 inputRef={queryInputRef}
+                multiline
+                onSubmit={onRefresh}
                 testIdPrefix="content-search"
             />
             <SearchFilters

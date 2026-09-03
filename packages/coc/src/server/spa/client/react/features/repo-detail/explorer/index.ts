@@ -8,7 +8,7 @@ export { PreviewPane } from './PreviewPane';
 export type { PreviewPaneProps } from './PreviewPane';
 export { MonacoFileEditor, getMonacoLanguage, revealEditorLine, buildHighlightDecorations, EDITOR_HIGHLIGHT_CLASS } from './MonacoFileEditor';
 export type { MonacoFileEditorProps, EditorHighlightRange } from './MonacoFileEditor';
-export { SearchBar } from './SearchBar';
+export { SearchBar, autoGrowRows, SEARCH_BAR_MAX_ROWS } from './SearchBar';
 export type { SearchBarProps, SearchBarToggle } from './SearchBar';
 export { SearchFilters } from './SearchFilters';
 export type { SearchFiltersProps } from './SearchFilters';
