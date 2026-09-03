@@ -6,10 +6,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { ToolCallView } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallView';
-
-vi.mock('../../../src/server/spa/client/diff/markdown-renderer', () => ({
-    renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
-}));
+import { ToolCallVariantProvider } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolCallVariant';
+import { ChatRenderContextProvider } from '../../../src/server/spa/client/react/features/chat/conversation/ChatRenderContext';
+import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/markdownHtml';
 
 vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' }),
@@ -104,7 +103,11 @@ describe('ToolCallView — task_complete rendering', () => {
         const mdEl = container.querySelector('[data-testid="task-complete-markdown"]');
         expect(mdEl).toBeTruthy();
         expect(mdEl!.innerHTML).toContain('<p>');
-        expect(mdEl!.classList.contains('markdown-body')).toBe(true);
+        // MarkdownView owns the rendered body, so the `markdown-body` surface
+        // (and with it hljs, mermaid/svg, tables, canvas embeds, lightbox)
+        // lives inside the task-complete wrapper.
+        expect(mdEl!.querySelector('.markdown-body')).toBeTruthy();
+        expect(mdEl!.querySelector('strong')?.textContent).toBe('new feature');
     });
 
     it('does not render generic Arguments or Result sections', () => {
@@ -124,7 +127,8 @@ describe('ToolCallView — task_complete rendering', () => {
         );
         const mdEl = container.querySelector('[data-testid="task-complete-markdown"]');
         expect(mdEl).toBeTruthy();
-        expect(mdEl!.innerHTML).toContain('Added **new feature** with tests.');
+        expect(mdEl!.textContent).toContain('Added new feature with tests.');
+        expect(mdEl!.querySelector('strong')?.textContent).toBe('new feature');
     });
 
     it('can be collapsed by clicking the header', () => {
@@ -140,6 +144,147 @@ describe('ToolCallView — task_complete rendering', () => {
         fireEvent.click(header);
         body = getBody(container)!;
         expect(body.classList.contains('hidden')).toBe(true);
+    });
+});
+
+/**
+ * The expanded task_complete body must go through the same markdown pipeline as
+ * an assistant chat message (`chatMarkdownToHtml` + `MarkdownView`), so the
+ * rendered HTML is compared against that renderer's output directly.
+ */
+describe('ToolCallView — task_complete markdown parity with chat messages', () => {
+    function renderSummary(summary: string, ctx?: Record<string, any>) {
+        const call = makeTaskCompleteCall({ args: { summary }, result: summary });
+        const { container } = ctx
+            ? render(
+                <ChatRenderContextProvider value={ctx}>
+                    <ToolCallView toolCall={call} />
+                </ChatRenderContextProvider>
+            )
+            : render(<ToolCallView toolCall={call} />);
+        return container.querySelector('[data-testid="task-complete-markdown"] .markdown-body')!;
+    }
+
+    const cases: Array<[string, string]> = [
+        ['paragraphs and line breaks', 'First line\nsecond line\n\nSecond paragraph.'],
+        ['bulleted lists', '- one\n- two\n- three'],
+        ['ordered lists', '1. first\n2. second'],
+        ['inline code', 'Call `buildToolCallRenderModel()` first.'],
+        ['fenced code blocks', 'Done:\n\n```ts\nconst x: number = 1;\n```'],
+        ['links', 'See [the docs](https://example.com/docs).'],
+        ['raw HTML', 'Careful: <script>alert(1)</script> and <b>bold</b>.'],
+        ['headings and emphasis', '## Summary\n\nShipped *the* **thing**.'],
+    ];
+
+    for (const [label, markdown] of cases) {
+        it(`renders ${label} exactly like a chat message`, () => {
+            const el = renderSummary(markdown);
+            expect(el.innerHTML).toBe(chatMarkdownToHtml(markdown));
+        });
+    }
+
+    it('escapes raw HTML instead of executing it', () => {
+        const el = renderSummary('Careful: <script>alert(1)</script>');
+        expect(el.querySelector('script')).toBeNull();
+        expect(el.textContent).toContain('<script>alert(1)</script>');
+    });
+
+    it('keeps the shared safe-link attributes on external links', () => {
+        const el = renderSummary('See [the docs](https://example.com/docs).');
+        const link = el.querySelector('a[href="https://example.com/docs"]')!;
+        expect(link).toBeTruthy();
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toContain('noopener');
+    });
+
+    it('resolves workspace-local image paths from the surrounding conversation', () => {
+        const markdown = '![shot](docs/shot.png)';
+        const el = renderSummary(markdown, { wsId: 'ws-42' });
+        const img = el.querySelector('img')!;
+        expect(img).toBeTruthy();
+        expect(img.getAttribute('src')).toContain('ws-42');
+        expect(el.innerHTML).toBe(chatMarkdownToHtml(markdown, 'ws-42', {}));
+    });
+
+    it('does not resolve workspace-local images without a workspace in context', () => {
+        const markdown = '![shot](docs/shot.png)';
+        const el = renderSummary(markdown);
+        expect(el.innerHTML).not.toContain('ws-42');
+        expect(el.innerHTML).toBe(chatMarkdownToHtml(markdown));
+    });
+
+    it('passes the conversation embed options through to the renderer', () => {
+        const markdown = 'canvas://my-canvas';
+        const el = renderSummary(markdown, { wsId: 'ws-9', canvasEmbedEnabled: true });
+        const embed = el.querySelector('.md-canvas-embed')!;
+        expect(embed).toBeTruthy();
+        expect(embed.getAttribute('data-canvas-id')).toBe('my-canvas');
+        expect(embed.getAttribute('data-ws-id')).toBe('ws-9');
+    });
+});
+
+describe('ToolCallView — task_complete body in the whisper-row variant', () => {
+    it('uses the same shared markdown body as the card variant', () => {
+        const summary = '- one\n- two';
+        const call = makeTaskCompleteCall({ args: { summary }, result: summary });
+
+        const card = render(<ToolCallView toolCall={call} />);
+        const whisper = render(
+            <ToolCallVariantProvider value="whisper-row">
+                <ToolCallView toolCall={call} />
+            </ToolCallVariantProvider>
+        );
+
+        const cardBody = card.container.querySelector('[data-testid="task-complete-markdown"] .markdown-body')!;
+        const whisperBody = whisper.container.querySelector('[data-testid="task-complete-markdown"] .markdown-body')!;
+        expect(whisperBody).toBeTruthy();
+        expect(whisperBody.innerHTML).toBe(cardBody.innerHTML);
+        expect(whisperBody.querySelectorAll('li')).toHaveLength(2);
+    });
+
+    it('keeps the whisper header plain text and truncated', () => {
+        const summary = 'Added **new feature** with tests.';
+        const { container } = render(
+            <ToolCallVariantProvider value="whisper-row">
+                <ToolCallView toolCall={makeTaskCompleteCall({ args: { summary }, result: summary })} />
+            </ToolCallVariantProvider>
+        );
+        const path = container.querySelector('.tool-call-row-path')!;
+        expect(path.textContent).toContain('Added **new feature** with tests.');
+        expect(path.querySelector('strong')).toBeNull();
+        expect(path.className).toContain('truncate');
+    });
+});
+
+describe('ToolCallView — task_complete summary source and empty handling', () => {
+    it('prefers the tool result over args.summary', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeTaskCompleteCall({
+                args: { summary: 'From args' },
+                result: 'From result',
+            })} />
+        );
+        const mdEl = container.querySelector('[data-testid="task-complete-markdown"]')!;
+        expect(mdEl.textContent).toContain('From result');
+        expect(mdEl.textContent).not.toContain('From args');
+    });
+
+    it('renders no markdown body and a plain header when the summary is empty', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeTaskCompleteCall({ args: {}, result: '' })} />
+        );
+        expect(container.querySelector('[data-testid="task-complete-markdown"]')).toBeNull();
+        expect(getHeader(container)!.textContent).toContain('Task completed');
+    });
+
+    it('leaves the card header as plain, unrendered text', () => {
+        const { container } = render(
+            <ToolCallView toolCall={makeTaskCompleteCall()} />
+        );
+        const header = getHeader(container)!;
+        expect(header.textContent).toContain('Added **new feature** with tests.');
+        expect(header.querySelector('strong')).toBeNull();
+        expect(header.querySelector('.markdown-body')).toBeNull();
     });
 });
 

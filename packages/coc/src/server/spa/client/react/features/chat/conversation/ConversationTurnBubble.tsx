@@ -50,6 +50,7 @@ import {
     type ParsedSessionContextBlock,
 } from '../hooks/useAttachedContext';
 import { chatMarkdownToHtml, toContentHtml } from './markdownHtml';
+import { ChatRenderContextProvider, type ChatRenderContextValue } from './ChatRenderContext';
 
 export {
     chatMarkdownToHtml,
@@ -1097,6 +1098,12 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     // canvas feature is on (the legacy excalidraw flag still enables it too).
     const canvasEmbedEnabled = isCanvasEnabled() && !turn.streaming;
     const excalidrawEmbedEnabled = SHOW_EXCALIDRAW_DIAGRAMS && (isExcalidrawEnabled() || isCanvasEnabled()) && !turn.streaming;
+    // Shared with nested chat-markdown renderers (e.g. the expanded task_complete
+    // body) so they resolve the same workspace and embed options as this turn.
+    const chatRenderContext = useMemo<ChatRenderContextValue>(
+        () => ({ wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
+        [wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
+    );
     const assistantRender = useMemo(
         () => isUser ? null : buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
         // turn.timeline + turn.content drive the markdown HTML; embed flags toggle inline-HTML/excalidraw rendering.
@@ -1395,6 +1402,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     }
 
     return (
+        <ChatRenderContextProvider value={chatRenderContext}>
         <div className={cn(
             'flex', isUser ? 'justify-end' : 'justify-start',
             'chat-message', isUser ? 'user' : 'assistant',
@@ -1861,5 +1869,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                 document.body and renders null while closed. */}
             <ImageLightbox src={lightboxSrc} onClose={closeLightbox} />
         </div>
+        </ChatRenderContextProvider>
     );
 }
