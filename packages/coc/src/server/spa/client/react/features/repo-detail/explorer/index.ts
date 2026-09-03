@@ -56,6 +56,8 @@ export {
     parseExplorerTabs,
 } from './explorerTabsModel';
 export type { ExplorerTab, ExplorerTabKind, ExplorerTabsState, TabCycleDirection, OpenFileTabInput, OpenSearchTabInput } from './explorerTabsModel';
+export { ExplorerTabStrip, tabTooltip } from './ExplorerTabStrip';
+export type { ExplorerTabStripProps } from './ExplorerTabStrip';
 export { useExplorerTabs } from './useExplorerTabs';
 export type { ExplorerTabsApi } from './useExplorerTabs';
 export type { TreeEntry, ExplorerView, ContentSearchModes, ContentSearchFilters, ContentSearchReplaceState, ContentSearchResultView, ContentSearchStatus, ContentSearchErrorKind } from './types';
