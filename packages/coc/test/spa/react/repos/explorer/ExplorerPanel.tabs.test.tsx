@@ -10,37 +10,57 @@
  * single-preview Explorer exactly as it was.
  *
  * PreviewPane and ContentSearchPanel are mocked to stubs so the test drives the
- * wiring directly without pulling Monaco or the search API into the graph.
+ * wiring directly without pulling Monaco or the search API into the graph. The
+ * PreviewPane stub mimics the real save-registration contract — an editable
+ * buffer hands the panel a save function, a read-only one hands it `null` — so
+ * "this tab can never be written" is observable from here.
  */
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { useEffect } from 'react';
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 
 const treeSpy = vi.fn();
 const searchSpy = vi.fn();
+const trustedBlobSpy = vi.fn();
+
+/** filePath → the save function its buffer registered (null = cannot be written). */
+const registeredSaves = new Map<string, (() => Promise<boolean>) | null>();
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: {
         tree: (...args: unknown[]) => treeSpy(...args),
         searchFiles: (...args: unknown[]) => searchSpy(...args),
+        readTrustedBlob: (...args: unknown[]) => trustedBlobSpy(...args),
         reveal: vi.fn(),
     },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', () => ({
-    PreviewPane: ({ filePath, revealLine, readOnly, onDirtyChange, onClose }: {
+    PreviewPane: ({ filePath, revealLine, readOnly, onDirtyChange, onRegisterSave, onClose }: {
         filePath: string;
         revealLine?: number;
         readOnly?: boolean;
         onDirtyChange?: (d: boolean) => void;
+        onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
         onClose?: () => void;
-    }) => (
-        <div data-testid={`mock-preview-${filePath}`} data-reveal-line={revealLine} data-readonly={readOnly ? 'true' : undefined}>
-            <button data-testid={`make-dirty-${filePath}`} onClick={() => onDirtyChange?.(true)}>dirty</button>
-            <button data-testid={`make-clean-${filePath}`} onClick={() => onDirtyChange?.(false)}>clean</button>
-            <button data-testid={`preview-close-${filePath}`} onClick={() => onClose?.()}>close</button>
-        </div>
-    ),
+    }) => {
+        useEffect(() => {
+            if (!onRegisterSave) return;
+            // Read-only buffers never register a way to write, exactly as the
+            // real PreviewPane does.
+            const save = readOnly ? null : async () => { onDirtyChange?.(false); return true; };
+            registeredSaves.set(filePath, save);
+            onRegisterSave(save);
+        }, [onRegisterSave, readOnly, onDirtyChange, filePath]);
+        return (
+            <div data-testid={`mock-preview-${filePath}`} data-reveal-line={revealLine} data-readonly={readOnly ? 'true' : undefined}>
+                <button data-testid={`make-dirty-${filePath}`} onClick={() => onDirtyChange?.(true)}>dirty</button>
+                <button data-testid={`make-clean-${filePath}`} onClick={() => onDirtyChange?.(false)}>clean</button>
+                <button data-testid={`preview-close-${filePath}`} onClick={() => onClose?.()}>close</button>
+            </div>
+        );
+    },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/ContentSearchPanel', () => ({
@@ -62,6 +82,7 @@ import {
     clearExplorerSearchBuffers,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerStateStore';
 import { isExplorerDirty, clearExplorerDirty } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerDirtyStore';
+import { TRUSTED_PATH_PREFIX } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExactOpen';
 import { applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
 import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
 
@@ -87,6 +108,18 @@ async function renderPanel(wsId = 'ws-1') {
     await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
 }
 
+/** Open Quick Open with Ctrl+P, type a query, and click the first match. */
+async function pickThroughQuickOpen(query: string) {
+    fireEvent.keyDown(document, { key: 'p', ctrlKey: true });
+    fireEvent.change(await screen.findByTestId('quick-open-input'), { target: { value: query } });
+    fireEvent.click(await screen.findByTestId('quick-open-item-0'));
+}
+
+/** An absolute path Exact Open resolves through the trusted-fs endpoint. */
+const TRUSTED_ABS_PATH = '/etc/hosts';
+const TRUSTED_FILE_PATH = `${TRUSTED_PATH_PREFIX}${TRUSTED_ABS_PATH}`;
+const TRUSTED_TAB_ID = `file:${TRUSTED_FILE_PATH}`;
+
 beforeEach(() => {
     localStorage.clear();
     location.hash = '';
@@ -97,6 +130,9 @@ beforeEach(() => {
     treeSpy.mockResolvedValue({ entries: ROOT_ENTRIES });
     searchSpy.mockReset();
     searchSpy.mockResolvedValue({ results: [] });
+    trustedBlobSpy.mockReset();
+    trustedBlobSpy.mockResolvedValue({ content: '', encoding: 'utf8' });
+    registeredSaves.clear();
     applyRuntimeConfigPatch({ explorerEditorTabsEnabled: true });
 });
 
@@ -245,6 +281,64 @@ describe('ExplorerPanel — editor tabs (flag on)', () => {
         await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts', 'file:c.ts']));
         expect(screen.getByTestId('explorer-tab-file:c.ts')).toHaveAttribute('aria-selected', 'true');
         expect(screen.getByTestId('explorer-tab-file:c.ts')).not.toHaveAttribute('data-preview');
+    });
+
+    it('opens exactly one preview tab for a file picked through Quick Open', async () => {
+        searchSpy.mockResolvedValue({ results: [{ path: 'src/deep/b.ts', score: 1, indices: [] }] });
+        await renderPanel();
+        await pickThroughQuickOpen('b.ts');
+
+        await waitFor(() => expect(openTabIds()).toEqual(['file:src/deep/b.ts']));
+        const tab = screen.getByTestId('explorer-tab-file:src/deep/b.ts');
+        expect(tab).toHaveAttribute('data-preview', 'true');
+        expect(tab).toHaveAttribute('aria-selected', 'true');
+        expect(screen.queryByTestId('quick-open-dialog')).toBeNull();
+    });
+
+    it('activates the tab a Quick Open pick is already open in instead of duplicating it', async () => {
+        searchSpy.mockResolvedValue({ results: [{ path: 'a.ts', score: 1, indices: [] }] });
+        await renderPanel();
+        fireEvent.doubleClick(screen.getByTestId('tree-node-a.ts'));
+        fireEvent.doubleClick(screen.getByTestId('tree-node-b.ts'));
+        await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts', 'file:b.ts']));
+        expect(screen.getByTestId('explorer-tab-file:b.ts')).toHaveAttribute('aria-selected', 'true');
+
+        await pickThroughQuickOpen('a.ts');
+
+        await waitFor(() => expect(screen.getByTestId('explorer-tab-file:a.ts')).toHaveAttribute('aria-selected', 'true'));
+        expect(openTabIds()).toEqual(['file:a.ts', 'file:b.ts']);
+        // Quick Open opens as a preview, but it must not knock an already
+        // pinned tab back to the replaceable slot.
+        expect(screen.getByTestId('explorer-tab-file:a.ts')).not.toHaveAttribute('data-preview');
+    });
+
+    it('adds a trusted Exact Open path to the same strip as a pinned read-only tab that registers no save', async () => {
+        await renderPanel();
+        fireEvent.doubleClick(screen.getByTestId('tree-node-a.ts'));
+        await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts']));
+
+        fireEvent.keyDown(document, { key: 'o', ctrlKey: true });
+        fireEvent.change(await screen.findByTestId('exact-open-input'), { target: { value: TRUSTED_ABS_PATH } });
+        fireEvent.click(await screen.findByTestId('exact-open-item-0'));
+
+        await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts', TRUSTED_TAB_ID]));
+        const tab = screen.getByTestId(`explorer-tab-${TRUSTED_TAB_ID}`);
+        expect(tab).toHaveAttribute('data-readonly', 'true');
+        expect(tab).toHaveAttribute('aria-selected', 'true');
+        expect(tab).not.toHaveAttribute('data-preview');
+        expect(tab).toHaveTextContent('hosts');
+        expect(screen.getByTestId(`mock-preview-${TRUSTED_FILE_PATH}`)).toHaveAttribute('data-readonly', 'true');
+
+        // Read-only, so its buffer hands the panel no way to write it — while
+        // the editable tab beside it does.
+        await waitFor(() => expect(registeredSaves.has(TRUSTED_FILE_PATH)).toBe(true));
+        expect(registeredSaves.get(TRUSTED_FILE_PATH)).toBeNull();
+        expect(registeredSaves.get('a.ts')).not.toBeNull();
+
+        // ...and closing it can never raise the save prompt.
+        fireEvent.click(screen.getByTestId(`explorer-tab-close-${TRUSTED_TAB_ID}`));
+        await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts']));
+        expect(screen.queryByTestId('explorer-close-tabs-prompt')).toBeNull();
     });
 
     it('persists the tab session per workspace', async () => {
