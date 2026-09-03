@@ -107,6 +107,8 @@ interface DashboardConfig {
     schedulesInScheduledSlideEnabled?: boolean;
     /** Whether user-created chat folders are shown in the chat list. Default false. */
     chatFoldersEnabled?: boolean;
+    /** Whether the File Explorer shows VS Code-style multiple editor tabs. Default false. */
+    explorerEditorTabsEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs?: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */
@@ -561,6 +563,18 @@ export function isGitWorktreeExecutionEnabled(): boolean {
  */
 export function isChatFoldersEnabled(): boolean {
     return getConfig().chatFoldersEnabled === true;
+}
+
+/**
+ * Returns true when the File Explorer's multi-tab editor is enabled
+ * (`features.explorerEditorTabs`).
+ *
+ * With the flag off the Explorer keeps its current single replaceable preview
+ * pane; with it on the editor area grows a VS Code-style tab strip whose tabs
+ * are persisted per workspace. Gates UI only — nothing server-side changes.
+ */
+export function isExplorerEditorTabsEnabled(): boolean {
+    return getConfig().explorerEditorTabsEnabled === true;
 }
 
 /**

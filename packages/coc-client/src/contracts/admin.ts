@@ -281,6 +281,8 @@ export interface RuntimeDashboardConfig {
      * remote-target capability signal; an older server omits it entirely.
      */
     chatStyleSelectorEnabled: boolean;
+    /** VS Code-style multiple editor tabs in the File Explorer (`features.explorerEditorTabs`). */
+    explorerEditorTabsEnabled: boolean;
     /**
      * Style new conversations start on, server-wide (`features.defaultChatStyle`).
      * `'default'` means "add no style instruction".
