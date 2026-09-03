@@ -15,6 +15,7 @@
  */
 
 import type { ChatFolder, ChatFolderColor } from '@plusplusoneplusplus/coc-client';
+import { collectGroupProcessIds, getGroupFolderKeyForEntry } from './group-folder-key';
 
 /**
  * The 6 preset folder colors, as hex. These mirror the accent values already
@@ -92,27 +93,103 @@ export function buildFolderIdByProcess(processes: readonly any[] | undefined): M
 export function buildFolderMemberCounts(
     folderIdByProcess: ReadonlyMap<string, string>,
     excludeProcessIds?: ReadonlySet<string>,
+    groupIndex?: GroupFolderIndex,
 ): Map<string, number> {
     const counts = new Map<string, number>();
     for (const [processId, folderId] of folderIdByProcess) {
         if (excludeProcessIds?.has(processId)) {continue;}
+        // A chat inside a filed group is not a member in its own right — the
+        // group is the member, and it is counted once below (AC-02).
+        if (groupIndex?.folderIdByGroupChild.has(processId)) {continue;}
+        counts.set(folderId, (counts.get(folderId) ?? 0) + 1);
+    }
+    for (const folderId of groupIndex?.folderIdByGroupKey.values() ?? []) {
         counts.set(folderId, (counts.get(folderId) ?? 0) + 1);
     }
     return counts;
 }
 
 /**
+ * The resolved group-folder state for one rendered list.
+ *
+ * Built per render from (a) the group rows the list currently has and (b) the
+ * `"<type>:<groupId>" -> folderId` map from
+ * `GET /api/workspaces/:ws/group-folders`. Because it is derived rather than
+ * stored, a child enqueued after the move — a new Ralph iteration, a later
+ * for-each item, a freshly delegated chat — lands inside the folder with no
+ * extra write (AC-05).
+ */
+export interface GroupFolderIndex {
+    /** `"<type>:<groupId>" -> folderId`, restricted to groups actually present. */
+    folderIdByGroupKey: ReadonlyMap<string, string>;
+    /** Every process id nested inside a filed group -> that group's folder. */
+    folderIdByGroupChild: ReadonlyMap<string, string>;
+}
+
+/** Shared "no groups are filed" value, so callers need no null checks. */
+export const EMPTY_GROUP_FOLDER_INDEX: GroupFolderIndex = {
+    folderIdByGroupKey: new Map<string, string>(),
+    folderIdByGroupChild: new Map<string, string>(),
+};
+
+/**
+ * Resolve which of the currently rendered group rows are filed, and which
+ * chats those groups contain.
+ *
+ * Only groups present in `entries` are indexed: a stale assignment for a group
+ * that no longer renders must not inflate a folder's count badge.
+ */
+export function buildGroupFolderIndex(
+    entries: readonly any[] | undefined,
+    folderIdByGroupKey: ReadonlyMap<string, string> | undefined,
+): GroupFolderIndex {
+    if (!entries || !folderIdByGroupKey || folderIdByGroupKey.size === 0) {
+        return EMPTY_GROUP_FOLDER_INDEX;
+    }
+    const byKey = new Map<string, string>();
+    const byChild = new Map<string, string>();
+    for (const entry of entries) {
+        const key = getGroupFolderKeyForEntry(entry);
+        if (!key) {continue;}
+        const folderId = folderIdByGroupKey.get(key);
+        if (!folderId) {continue;}
+        byKey.set(key, folderId);
+        for (const processId of collectGroupProcessIds(entry)) {
+            byChild.set(processId, folderId);
+        }
+    }
+    if (byKey.size === 0) {return EMPTY_GROUP_FOLDER_INDEX;}
+    return { folderIdByGroupKey: byKey, folderIdByGroupChild: byChild };
+}
+
+/**
  * Resolve the folder a list entry belongs to, or `null`.
  *
- * Only individual process rows are filable — a for-each / map-reduce / ralph /
- * spawned-tree group entry is never filed as a unit, so any entry carrying a
- * `kind` discriminator resolves to `null`.
+ * Two kinds of entry are filable. An individual chat row reads its own
+ * `folderId` (from `task_group_members`); a group row — for-each, map-reduce,
+ * ralph session, spawned tree — resolves through the group-folder index, which
+ * is keyed on the group rather than on its children (AC-02).
+ *
+ * A group never splits across folders: for a chat nested inside a filed group,
+ * the group's folder wins over any per-chat membership the row may still carry
+ * from before the move (AC-06).
  */
 export function resolveEntryFolderId(
     entry: any,
     folderIdByProcess: ReadonlyMap<string, string>,
+    groupIndex?: GroupFolderIndex,
 ): string | null {
-    if (!entry || entry.kind) {return null;}
+    if (!entry) {return null;}
+    if (entry.kind) {
+        const key = getGroupFolderKeyForEntry(entry);
+        if (!key) {return null;}
+        return groupIndex?.folderIdByGroupKey.get(key) ?? null;
+    }
+    const byGroup = groupIndex && (
+        (typeof entry.id === 'string' ? groupIndex.folderIdByGroupChild.get(entry.id) : undefined)
+        ?? (typeof entry.processId === 'string' ? groupIndex.folderIdByGroupChild.get(entry.processId) : undefined)
+    );
+    if (byGroup) {return byGroup;}
     if (typeof entry.folderId === 'string' && entry.folderId.length > 0) {return entry.folderId;}
     const byId = typeof entry.id === 'string' ? folderIdByProcess.get(entry.id) : undefined;
     if (byId) {return byId;}
@@ -143,11 +220,24 @@ export interface BuildChatFolderRowsInput {
      */
     entries: readonly any[];
     folderIdByProcess: ReadonlyMap<string, string>;
+    /** Filed group rows, from {@link buildGroupFolderIndex}. */
+    groupIndex?: GroupFolderIndex;
     /** Workspace-wide member counts, from {@link buildFolderMemberCounts}. */
     folderMemberCounts?: ReadonlyMap<string, number>;
     collapsedIds: ReadonlySet<string>;
     /** Ids of rows that are currently running, for the live-run dot. */
     runningIds?: ReadonlySet<string>;
+}
+
+/**
+ * Is this row live? A group row counts as running when *any* chat inside it is
+ * — the live dot is about the folder having activity, and a group row has no
+ * process id of its own.
+ */
+function isEntryRunning(entry: any, runningIds?: ReadonlySet<string>): boolean {
+    if (!runningIds) {return false;}
+    if (entry?.kind) {return collectGroupProcessIds(entry).some(id => runningIds.has(id));}
+    return typeof entry?.id === 'string' && runningIds.has(entry.id);
 }
 
 /**
@@ -160,18 +250,18 @@ export interface BuildChatFolderRowsInput {
  * so a freshly created folder does not vanish before anything is filed into it.
  */
 export function buildChatFolderRows(input: BuildChatFolderRowsInput): ChatFolderRow[] {
-    const { folders, entries, folderIdByProcess, collapsedIds } = input;
+    const { folders, entries, folderIdByProcess, collapsedIds, groupIndex } = input;
     const known = new Set(folders.map(f => f.id));
     const byFolder = new Map<string, any[]>();
     const runningByFolder = new Map<string, number>();
 
     for (const entry of entries) {
-        const folderId = resolveEntryFolderId(entry, folderIdByProcess);
+        const folderId = resolveEntryFolderId(entry, folderIdByProcess, groupIndex);
         // A folderId pointing at a deleted folder means "unfiled", not an error.
         if (!folderId || !known.has(folderId)) {continue;}
         const bucket = byFolder.get(folderId);
         if (bucket) {bucket.push(entry);} else {byFolder.set(folderId, [entry]);}
-        if (input.runningIds?.has(entry.id)) {
+        if (isEntryRunning(entry, input.runningIds)) {
             runningByFolder.set(folderId, (runningByFolder.get(folderId) ?? 0) + 1);
         }
     }
@@ -206,11 +296,12 @@ export function partitionFiledEntries(
     entries: readonly any[],
     folderIdByProcess: ReadonlyMap<string, string>,
     visibleFolderIds: ReadonlySet<string>,
+    groupIndex?: GroupFolderIndex,
 ): { filed: any[]; unfiled: any[] } {
     const filed: any[] = [];
     const unfiled: any[] = [];
     for (const entry of entries) {
-        const folderId = resolveEntryFolderId(entry, folderIdByProcess);
+        const folderId = resolveEntryFolderId(entry, folderIdByProcess, groupIndex);
         if (folderId && visibleFolderIds.has(folderId)) {filed.push(entry);}
         else {unfiled.push(entry);}
     }
@@ -251,10 +342,11 @@ export function groupEntriesByFolder(
     entries: readonly any[],
     folderIdByProcess: ReadonlyMap<string, string>,
     knownFolderIds?: ReadonlySet<string>,
+    groupIndex?: GroupFolderIndex,
 ): Map<string, any[]> {
     const byFolder = new Map<string, any[]>();
     for (const entry of entries) {
-        const folderId = resolveEntryFolderId(entry, folderIdByProcess);
+        const folderId = resolveEntryFolderId(entry, folderIdByProcess, groupIndex);
         if (!folderId) {continue;}
         if (knownFolderIds && !knownFolderIds.has(folderId)) {continue;}
         const bucket = byFolder.get(folderId);
@@ -299,7 +391,7 @@ export function buildSearchChatFolderRows(input: BuildSearchChatFolderRowsInput)
         let runningCount = 0;
         if (input.runningIds) {
             for (const member of members) {
-                if (input.runningIds.has(member?.id)) {runningCount += 1;}
+                if (isEntryRunning(member, input.runningIds)) {runningCount += 1;}
             }
         }
         rows.push({
