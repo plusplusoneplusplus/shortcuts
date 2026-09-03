@@ -165,6 +165,68 @@ describe('Queue Pause Markers', () => {
         });
     });
 
+    it('POST /api/queue/pause-marker accepts scope=autopilot and serializes it', async () => {
+        await enqueueTask('T1');
+        await enqueueTask('T2');
+        const res = await post(`${server!.url}/api/queue/pause-marker`, {
+            afterIndex: 0,
+            scope: 'autopilot',
+            durationHours: 2,
+        });
+
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+        expect(body.scope).toBe('autopilot');
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const queued = JSON.parse(listRes.body).queued;
+        const marker = queued.find((i: any) => i.kind === 'pause-marker');
+        expect(marker).toMatchObject({
+            id: body.markerId,
+            scope: 'autopilot',
+            durationHours: 2,
+        });
+    });
+
+    it('POST /api/queue/pause-marker accepts an explicit scope=all', async () => {
+        await enqueueTask('T1');
+        const res = await post(`${server!.url}/api/queue/pause-marker`, { afterIndex: 0, scope: 'all' });
+
+        expect(res.status).toBe(201);
+        expect(JSON.parse(res.body).scope).toBe('all');
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const queued = JSON.parse(listRes.body).queued;
+        const marker = queued.find((i: any) => i.kind === 'pause-marker');
+        expect(marker.scope).toBe('all');
+    });
+
+    it('POST /api/queue/pause-marker without scope stays all-scoped', async () => {
+        await enqueueTask('T1');
+        const res = await post(`${server!.url}/api/queue/pause-marker`, { afterIndex: 0 });
+
+        expect(res.status).toBe(201);
+        expect(JSON.parse(res.body).scope).toBeUndefined();
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const queued = JSON.parse(listRes.body).queued;
+        const marker = queued.find((i: any) => i.kind === 'pause-marker');
+        expect(marker.scope).toBeUndefined();
+    });
+
+    it('POST /api/queue/pause-marker rejects an unrecognised scope and inserts nothing', async () => {
+        await enqueueTask('T1');
+        for (const scope of ['nonsense', 'AUTOPILOT', 1, null]) {
+            const res = await post(`${server!.url}/api/queue/pause-marker`, { afterIndex: 0, scope });
+            expect(res.status, `scope=${JSON.stringify(scope)}`).toBe(400);
+            expect(res.body).toContain('scope must be');
+        }
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const queued = JSON.parse(listRes.body).queued;
+        expect(queued.some((i: any) => i.kind === 'pause-marker')).toBe(false);
+    });
+
     it('POST /api/queue/pause-marker rejects out-of-range durationHours and inserts nothing', async () => {
         await enqueueTask('T1');
         for (const durationHours of [0, -2, 24.5]) {

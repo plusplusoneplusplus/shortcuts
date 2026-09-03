@@ -166,6 +166,7 @@ export function serializeQueueItem(item: QueuedTask | PauseMarker): Record<strin
             id: marker.id,
             createdAt: marker.createdAt,
             ...(marker.durationHours !== undefined ? { durationHours: marker.durationHours } : {}),
+            ...(marker.scope !== undefined ? { scope: marker.scope } : {}),
         };
     }
     return serializeTask(item as QueuedTask);
@@ -282,6 +283,7 @@ export function serializeQueueItemSummary(item: QueuedTask | PauseMarker): Recor
             id: marker.id,
             createdAt: marker.createdAt,
             ...(marker.durationHours !== undefined ? { durationHours: marker.durationHours } : {}),
+            ...(marker.scope !== undefined ? { scope: marker.scope } : {}),
         };
     }
     return serializeTaskSummary(item as QueuedTask);

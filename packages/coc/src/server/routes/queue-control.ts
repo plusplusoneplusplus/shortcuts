@@ -25,7 +25,7 @@
 
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { PauseDurationHours } from '@plusplusoneplusplus/forge';
+import type { PauseDurationHours, PauseScope } from '@plusplusoneplusplus/forge';
 import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
 import { collectDescendantProcessIds } from './process-subtree';
 import type { Route } from '../types';
@@ -39,6 +39,16 @@ import {
 } from './queue-shared';
 
 const DURATION_HOURS_ERROR = 'durationHours must be a number greater than 0 and at most 24';
+
+const PAUSE_SCOPE_ERROR = "scope must be either 'all' or 'autopilot'";
+
+function parsePauseScope(value: unknown): { scope?: PauseScope; error?: string } {
+    if (value === undefined) return {};
+    if (value !== 'all' && value !== 'autopilot') {
+        return { error: PAUSE_SCOPE_ERROR };
+    }
+    return { scope: value };
+}
 
 function parseDurationHours(value: unknown): { durationHours?: PauseDurationHours; error?: string } {
     if (value === undefined) return {};
@@ -222,7 +232,7 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
 
     // ------------------------------------------------------------------
     // POST /api/queue/pause-marker — Insert a pause marker at a position
-    // Body: { afterIndex: number, repoId?: string, durationHours?: 1|2|3|4|8 }
+    // Body: { afterIndex: number, repoId?: string, durationHours?: 1|2|3|4|8, scope?: 'all'|'autopilot' }
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
@@ -243,6 +253,10 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
             if (duration.error) {
                 return sendError(res, 400, duration.error);
             }
+            const pauseScope = parsePauseScope(body?.scope);
+            if (pauseScope.error) {
+                return sendError(res, 400, pauseScope.error);
+            }
 
             let mgr: import('@plusplusoneplusplus/forge').TaskQueueManager | undefined;
             if (repoId) {
@@ -258,12 +272,13 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
                 mgr = allQueues.values().next().value as import('@plusplusoneplusplus/forge').TaskQueueManager;
             }
 
-            const markerId = mgr.insertPauseMarker(afterIndex, duration.durationHours);
+            const markerId = mgr.insertPauseMarker(afterIndex, duration.durationHours, pauseScope.scope);
             process.stderr.write(`[Queue] pause-marker inserted markerId=${markerId} afterIndex=${afterIndex} repoId=${repoId || '-'}\n`);
             sendJSON(res, 201, {
                 markerId,
                 afterIndex,
                 ...(duration.durationHours !== undefined ? { durationHours: duration.durationHours } : {}),
+                ...(pauseScope.scope !== undefined ? { scope: pauseScope.scope } : {}),
             });
         },
     });

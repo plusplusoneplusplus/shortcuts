@@ -82,4 +82,23 @@ describe('QueueClient', () => {
 
     await expect(client.insertPauseMarker({ afterIndex: 0, durationHours: 2 })).resolves.toEqual(response);
   });
+
+  it('sends and returns the pause marker scope', async () => {
+    const response = {
+      markerId: 'marker-2',
+      afterIndex: 1,
+      scope: 'autopilot',
+    } satisfies QueuePauseMarkerResponse;
+    const adapter = createMockAdapter(response);
+    const client = new QueueClient(adapter);
+
+    await expect(
+      client.insertPauseMarker({ afterIndex: 1, scope: 'autopilot' }),
+    ).resolves.toEqual(response);
+    expect(adapter.calls[0].path).toBe('/queue/pause-marker');
+    expect(adapter.calls[0].options).toMatchObject({
+      method: 'POST',
+      body: { afterIndex: 1, scope: 'autopilot' },
+    });
+  });
 });
