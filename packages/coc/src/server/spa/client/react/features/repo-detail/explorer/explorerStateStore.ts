@@ -25,10 +25,12 @@ import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import {
     DEFAULT_CONTENT_SEARCH_FILTERS,
     DEFAULT_CONTENT_SEARCH_MODES,
+    DEFAULT_CONTENT_SEARCH_REPLACE,
     DEFAULT_CONTENT_SEARCH_RESULT_VIEW,
     type ContentSearchErrorKind,
     type ContentSearchFilters,
     type ContentSearchModes,
+    type ContentSearchReplaceState,
     type ContentSearchResultView,
     type ContentSearchStatus,
     type ExplorerView,
@@ -81,6 +83,11 @@ export function explorerContentModesStorageKey(workspaceId: string): string {
 /** localStorage key for the content-search include/exclude filters, per workspace. */
 export function explorerContentFiltersStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:explorer-content-filters`;
+}
+
+/** localStorage key for the content-search replace text + preserve-case toggle. */
+export function explorerContentReplaceStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-content-replace`;
 }
 
 /** localStorage key for the content-search result layout (list or tree). */
@@ -176,6 +183,21 @@ const MODES_CODEC: Codec<ContentSearchModes> = {
             caseSensitive: parsed.caseSensitive === true,
             wholeWord: parsed.wholeWord === true,
             regex: parsed.regex === true,
+        };
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const REPLACE_CODEC: Codec<ContentSearchReplaceState> = {
+    fallback: DEFAULT_CONTENT_SEARCH_REPLACE,
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return DEFAULT_CONTENT_SEARCH_REPLACE;
+        return {
+            replacement: typeof parsed.replacement === 'string' ? parsed.replacement : '',
+            preserveCase: parsed.preserveCase === true,
         };
     },
     serialize(value) {
@@ -334,6 +356,13 @@ export function useExplorerContentFilters(
     workspaceId: string,
 ): [ContentSearchFilters, Dispatch<SetStateAction<ContentSearchFilters>>] {
     return usePersistedValue(explorerContentFiltersStorageKey(workspaceId), FILTERS_CODEC);
+}
+
+/** Persisted content-search replace text + preserve-case toggle for a workspace. */
+export function useExplorerContentReplace(
+    workspaceId: string,
+): [ContentSearchReplaceState, Dispatch<SetStateAction<ContentSearchReplaceState>>] {
+    return usePersistedValue(explorerContentReplaceStorageKey(workspaceId), REPLACE_CODEC);
 }
 
 /** Persisted content-search result layout (list or tree) for a workspace. */

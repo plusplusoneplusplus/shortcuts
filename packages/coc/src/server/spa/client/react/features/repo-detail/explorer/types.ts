@@ -101,3 +101,37 @@ export function contentSearchFiltersActive(filters: ContentSearchFilters): boole
         || parseGlobList(filters.exclude) !== undefined
         || !filters.useIgnoreFiles;
 }
+
+/**
+ * The Search view's replace row (§2.2) — the text that will be written over
+ * each match, plus its one toggle.
+ *
+ * Deliberately *not* folded into `ContentSearchModes`: the modes object is a
+ * dependency of the panel's request effect, so a preserve-case toggle living
+ * there would re-issue the search. Replace state changes nothing about what was
+ * searched.
+ */
+export interface ContentSearchReplaceState {
+    /** Replacement text. `$1`-style backreferences expand only in regex mode. */
+    replacement: string;
+    /**
+     * VS Code's `AB` toggle: an ALL-CAPS / all-lower / Capitalized match keeps
+     * its casing, anything mixed is replaced verbatim.
+     */
+    preserveCase: boolean;
+}
+
+/** Default replace state: nothing to write, casing not preserved. */
+export const DEFAULT_CONTENT_SEARCH_REPLACE: ContentSearchReplaceState = {
+    replacement: '',
+    preserveCase: false,
+};
+
+/**
+ * True when the query spans lines, which the replace endpoint rejects with a
+ * 400 (`Replace does not support multi-line queries`). Mirrors the server's own
+ * test exactly, so the UI disables itself rather than earning that error.
+ */
+export function isMultiLineQuery(query: string): boolean {
+    return /[\r\n]/.test(query);
+}

@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '../../../ui';
 import { SearchBar, type SearchBarToggle } from './SearchBar';
 import { SearchFilters } from './SearchFilters';
+import { ReplaceRow } from './ReplaceRow';
 import { ContentSearchToolbar } from './ContentSearchToolbar';
 import {
     ContentSearchResults,
@@ -40,6 +41,7 @@ import {
     useExplorerContentFilters,
     useExplorerContentModes,
     useExplorerContentQuery,
+    useExplorerContentReplace,
     useExplorerContentResults,
     useExplorerContentResultView,
     NO_COLLAPSED_GROUPS,
@@ -48,10 +50,15 @@ import {
 } from './explorerStateStore';
 import {
     DEFAULT_CONTENT_SEARCH_FILTERS,
+    DEFAULT_CONTENT_SEARCH_REPLACE,
     contentSearchFiltersActive,
+    isMultiLineQuery,
     parseGlobList,
     type ContentSearchModes,
 } from './types';
+
+/** Shown in place of the replace field for a query the endpoint would reject. */
+export const MULTILINE_REPLACE_NOTICE = 'Replace is not available for a multi-line query.';
 
 /** Quiet period after the last keystroke before a search request fires. */
 export const SEARCH_DEBOUNCE_MS = 250;
@@ -129,6 +136,9 @@ export function ContentSearchPanel({
     const [query, setQuery] = useExplorerContentQuery(workspaceId);
     const [modes, setModes] = useExplorerContentModes(workspaceId);
     const [filters, setFilters] = useExplorerContentFilters(workspaceId);
+    // Replace state is persisted like the query, and deliberately kept out of
+    // the request effect: nothing here changes what was searched.
+    const [replace, setReplace] = useExplorerContentReplace(workspaceId);
     const [state, setState] = useExplorerContentResults(workspaceId);
     // List vs. tree is a display preference, not part of the query, so it is
     // persisted and never touches the request effect.
@@ -136,6 +146,9 @@ export function ContentSearchPanel({
     // The `…` section starts open when it is already filtering, so a persisted
     // filter is never hidden behind a collapsed chevron on the first render.
     const [filtersExpanded, setFiltersExpanded] = useState(() => contentSearchFiltersActive(filters));
+    // Same rule for the replace chevron: a persisted replacement is never left
+    // hidden behind a collapsed row.
+    const [replaceExpanded, setReplaceExpanded] = useState(() => replace.replacement.length > 0);
 
     // Bumped by the toolbar's Refresh. It is an effect dep but not part of
     // `typedSignature`, so the re-run it triggers takes the zero-delay path: a
@@ -297,7 +310,8 @@ export function ContentSearchPanel({
     const onClearAll = useCallback(() => {
         setQuery('');
         setFilters(DEFAULT_CONTENT_SEARCH_FILTERS);
-    }, [setQuery, setFilters]);
+        setReplace(DEFAULT_CONTENT_SEARCH_REPLACE);
+    }, [setQuery, setFilters, setReplace]);
 
     // Derived from `prev.matches` rather than the rendered `groups` so the
     // updater stays pure and cannot collapse against a stale result set. It
@@ -351,17 +365,26 @@ export function ContentSearchPanel({
                 hasResults={onOpenInEditor !== undefined && visibleMatches.length > 0}
                 testIdPrefix="content-search"
             />
-            <SearchBar
-                value={query}
-                onChange={setQuery}
-                onClear={onClear}
-                placeholder="Search in files…"
-                toggles={toggles}
-                inputRef={queryInputRef}
-                multiline
-                onSubmit={onRefresh}
+            <ReplaceRow
+                replace={replace}
+                onChange={setReplace}
+                expanded={replaceExpanded}
+                onToggleExpanded={() => setReplaceExpanded(prev => !prev)}
+                disabledReason={isMultiLineQuery(query) ? MULTILINE_REPLACE_NOTICE : undefined}
                 testIdPrefix="content-search"
-            />
+            >
+                <SearchBar
+                    value={query}
+                    onChange={setQuery}
+                    onClear={onClear}
+                    placeholder="Search in files…"
+                    toggles={toggles}
+                    inputRef={queryInputRef}
+                    multiline
+                    onSubmit={onRefresh}
+                    testIdPrefix="content-search"
+                />
+            </ReplaceRow>
             <SearchFilters
                 filters={filters}
                 onChange={setFilters}
