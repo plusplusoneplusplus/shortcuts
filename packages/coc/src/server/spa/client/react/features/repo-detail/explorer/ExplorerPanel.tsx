@@ -14,6 +14,7 @@ import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
 import { ContentSearchPanel } from './ContentSearchPanel';
+import { SearchEditorPane } from './SearchEditorPane';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
@@ -222,6 +223,9 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
     const [selectedPath, setSelectedPath] = useExplorerSelectedPath(workspaceId);
     const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(workspaceId);
     const [previewFile, setPreviewFile] = useExplorerPreviewFile(workspaceId);
+    // The "Open in Editor" buffer (§2.7). In memory only — it is a snapshot of a
+    // result set, and a stale one restored after a reload would be a lie.
+    const [searchEditor, setSearchEditor] = useState<{ text: string; query: string } | null>(null);
 
     // Report the preview editor's unsaved-edits state into the per-workspace dirty
     // store so the workspace-switch guard (nav hooks) can prompt before discarding
@@ -358,8 +362,20 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
     const handleOpenMatch = useCallback((filePath: string, line: number) => {
         const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
         setSelectedPath(filePath);
+        // Opening a hit is a request to see the file, so the search buffer that
+        // was covering the preview pane steps aside.
+        setSearchEditor(null);
         setPreviewFile({ path: filePath, name, line });
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /**
+     * "Open in Editor": park the rendered result set in the preview pane as a
+     * read-only buffer. It sits *over* the preview rather than replacing it, so
+     * closing the buffer returns to the file that was open.
+     */
+    const handleOpenSearchInEditor = useCallback((text: string, query: string) => {
+        setSearchEditor({ text, query });
+    }, []);
 
     const handleQuickOpenSelect = useCallback((filePath: string) => {
         // Trusted absolute-path from ExactOpen — skip tree expansion and hash update
@@ -819,6 +835,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                         workspaceId={workspaceId}
                         scopePath={searchScope}
                         onOpenMatch={handleOpenMatch}
+                        onOpenInEditor={handleOpenSearchInEditor}
                     />
                 ) : (
                     <>
@@ -870,11 +887,19 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
 
             {/* Right main — preview pane (full-screen on mobile when file is open) */}
             <main
-                className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${previewFile ? '' : ' flex items-center justify-center'}`}
-                style={isMobile && !previewFile ? { display: 'none' } : undefined}
+                className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${previewFile || searchEditor ? '' : ' flex items-center justify-center'}`}
+                style={isMobile && !previewFile && !searchEditor ? { display: 'none' } : undefined}
                 data-testid="explorer-preview-pane"
             >
-                {previewFile
+                {searchEditor
+                    ? (
+                        <SearchEditorPane
+                            query={searchEditor.query}
+                            text={searchEditor.text}
+                            onClose={() => setSearchEditor(null)}
+                        />
+                    )
+                    : previewFile
                     ? (
                         <div className="flex flex-col w-full h-full">
                             {/* Mobile back bar */}

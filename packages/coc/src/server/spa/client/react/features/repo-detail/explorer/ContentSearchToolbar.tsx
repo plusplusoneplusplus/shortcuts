@@ -27,6 +27,14 @@ export interface ContentSearchToolbarProps {
     resultView: ContentSearchResultView;
     /** Switch between the flat list and the directory tree. */
     onToggleResultView: () => void;
+    /**
+     * Render the result set as a read-only text buffer. Gated on `hasResults`
+     * as well as `enabled`: a query with nothing to show would export a header
+     * and no body, which is not worth a pane.
+     */
+    onOpenInEditor: () => void;
+    /** True when the current result set has at least one match. */
+    hasResults?: boolean;
     /** Prefix for every `data-testid`, matching the SearchBar's convention. */
     testIdPrefix?: string;
 }
@@ -44,12 +52,20 @@ export function ContentSearchToolbar({
     onCollapseAll,
     resultView,
     onToggleResultView,
+    onOpenInEditor,
+    hasResults = false,
     testIdPrefix = 'content-search',
 }: ContentSearchToolbarProps) {
     // The button names the layout it switches *to*, as VS Code's does: showing a
     // list, it offers "View as Tree".
     const treeShowing = resultView === 'tree';
-    const actions = [
+    const actions: {
+        id: string;
+        label: string;
+        title: string;
+        onClick: () => void;
+        disabled?: boolean;
+    }[] = [
         { id: 'refresh', label: '↻', title: 'Refresh', onClick: onRefresh },
         { id: 'clear-results', label: '⊘', title: 'Clear search results', onClick: onClear },
         {
@@ -59,6 +75,13 @@ export function ContentSearchToolbar({
             onClick: onToggleResultView,
         },
         { id: 'collapse-all', label: '⊟', title: 'Collapse all', onClick: onCollapseAll },
+        {
+            id: 'open-in-editor',
+            label: '⎘',
+            title: 'Open in editor',
+            onClick: onOpenInEditor,
+            disabled: !hasResults,
+        },
     ];
 
     return (
@@ -71,7 +94,7 @@ export function ContentSearchToolbar({
                     key={action.id}
                     type="button"
                     onClick={action.onClick}
-                    disabled={!enabled}
+                    disabled={!enabled || action.disabled === true}
                     title={action.title}
                     aria-label={action.title}
                     className={BUTTON_CLASS}

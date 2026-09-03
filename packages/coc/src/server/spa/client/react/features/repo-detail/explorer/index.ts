@@ -18,6 +18,10 @@ export { ContentSearchPanel, SEARCH_DEBOUNCE_MS, classifySearchError, keepCollap
 export type { ContentSearchPanelProps } from './ContentSearchPanel';
 export { ContentSearchResults, groupMatchesByFile, splitMatchText, trimMatchIndent, toggleCollapsedPath, buildSearchTree, collapsibleTreePaths, matchDismissKey, applyDismissals, dismissRow, flattenVisibleRows, rowAfterDismissal, stepToMatch, dirRowKey, fileRowKey, matchRowKey } from './ContentSearchResults';
 export type { ContentSearchResultsProps, ContentSearchFileGroup, MatchTextParts, ContentSearchTreeNode, ContentSearchDirNode, ContentSearchFileNode, ContentSearchRow, ContentSearchRowKind } from './ContentSearchResults';
+export { SearchEditorPane } from './SearchEditorPane';
+export type { SearchEditorPaneProps } from './SearchEditorPane';
+export { buildSearchEditorText } from './searchEditorText';
+export type { SearchEditorInput } from './searchEditorText';
 export { QuickOpen, highlightMatches, splitIndices } from './QuickOpen';
 export type { QuickOpenProps } from './QuickOpen';
 export { ExactOpen, exactMatchScore } from './ExactOpen';

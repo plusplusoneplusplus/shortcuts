@@ -30,6 +30,7 @@ import {
     groupMatchesByFile,
     toggleCollapsedPath,
 } from './ContentSearchResults';
+import { buildSearchEditorText } from './searchEditorText';
 import { explorerApi } from './explorerApi';
 import {
     useExplorerContentFilters,
@@ -60,6 +61,14 @@ export interface ContentSearchPanelProps {
     scopePath?: string;
     /** Open a file at a one-based line — the click-through for a match. */
     onOpenMatch: (path: string, line: number) => void;
+    /**
+     * Show the result set as a read-only text buffer in the preview pane
+     * (§2.7's "Open in Editor"). The panel builds the text — it owns the query,
+     * the filters and the surviving matches — and the host decides where it
+     * goes. A host with nowhere to put it omits the prop and the toolbar button
+     * stays disabled.
+     */
+    onOpenInEditor?: (text: string, query: string) => void;
 }
 
 /**
@@ -105,7 +114,12 @@ function isAbortError(error: unknown): boolean {
     return (error as { name?: unknown } | null)?.name === 'AbortError';
 }
 
-export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: ContentSearchPanelProps) {
+export function ContentSearchPanel({
+    workspaceId,
+    scopePath,
+    onOpenMatch,
+    onOpenInEditor,
+}: ContentSearchPanelProps) {
     const [query, setQuery] = useExplorerContentQuery(workspaceId);
     const [modes, setModes] = useExplorerContentModes(workspaceId);
     const [filters, setFilters] = useExplorerContentFilters(workspaceId);
@@ -292,6 +306,22 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
         setState(prev => ({ ...prev, dismissed: dismissRow(prev.dismissed, key) }));
     }, [setState]);
 
+    // Built from the dismissal-filtered matches, not `state.matches`: the buffer
+    // is an export of what is on screen.
+    const onOpenInEditorClick = useCallback(() => {
+        if (!onOpenInEditor) return;
+        onOpenInEditor(
+            buildSearchEditorText({
+                query: state.query || trimmed,
+                modes,
+                filters,
+                matches: visibleMatches,
+                truncated: state.truncated,
+            }),
+            state.query || trimmed,
+        );
+    }, [onOpenInEditor, state.query, state.truncated, trimmed, modes, filters, visibleMatches]);
+
     const onToggleCollapsed = useCallback((path: string) => {
         setState(prev => ({ ...prev, collapsed: toggleCollapsedPath(prev.collapsed, path) }));
     }, [setState]);
@@ -305,6 +335,8 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                 onCollapseAll={onCollapseAll}
                 resultView={resultView}
                 onToggleResultView={onToggleResultView}
+                onOpenInEditor={onOpenInEditorClick}
+                hasResults={onOpenInEditor !== undefined && visibleMatches.length > 0}
                 testIdPrefix="content-search"
             />
             <SearchBar
