@@ -21,6 +21,16 @@ export interface ContentSearchModes {
     regex: boolean;
 }
 
+/**
+ * How the result set is laid out — VS Code's "View as List" / "View as Tree"
+ * toolbar toggle. `list` is a flat sequence of file groups; `tree` nests those
+ * groups under their directories.
+ */
+export type ContentSearchResultView = 'list' | 'tree';
+
+/** Default result layout: the flat, VS Code-default list. */
+export const DEFAULT_CONTENT_SEARCH_RESULT_VIEW: ContentSearchResultView = 'list';
+
 /** Default mode state: case-insensitive, not whole-word, literal. */
 export const DEFAULT_CONTENT_SEARCH_MODES: ContentSearchModes = {
     caseSensitive: false,

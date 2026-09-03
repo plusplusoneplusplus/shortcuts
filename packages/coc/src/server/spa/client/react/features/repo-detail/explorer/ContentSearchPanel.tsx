@@ -22,13 +22,19 @@ import { Spinner } from '../../../ui';
 import { SearchBar, type SearchBarToggle } from './SearchBar';
 import { SearchFilters } from './SearchFilters';
 import { ContentSearchToolbar } from './ContentSearchToolbar';
-import { ContentSearchResults, groupMatchesByFile, toggleCollapsedPath } from './ContentSearchResults';
+import {
+    ContentSearchResults,
+    collapsibleTreePaths,
+    groupMatchesByFile,
+    toggleCollapsedPath,
+} from './ContentSearchResults';
 import { explorerApi } from './explorerApi';
 import {
     useExplorerContentFilters,
     useExplorerContentModes,
     useExplorerContentQuery,
     useExplorerContentResults,
+    useExplorerContentResultView,
     NO_COLLAPSED_GROUPS,
     type ContentSearchState,
 } from './explorerStateStore';
@@ -100,6 +106,9 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
     const [modes, setModes] = useExplorerContentModes(workspaceId);
     const [filters, setFilters] = useExplorerContentFilters(workspaceId);
     const [state, setState] = useExplorerContentResults(workspaceId);
+    // List vs. tree is a display preference, not part of the query, so it is
+    // persisted and never touches the request effect.
+    const [resultView, setResultView] = useExplorerContentResultView(workspaceId);
     // The `…` section starts open when it is already filtering, so a persisted
     // filter is never hidden behind a collapsed chevron on the first render.
     const [filtersExpanded, setFiltersExpanded] = useState(() => contentSearchFiltersActive(filters));
@@ -248,13 +257,19 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
     }, [setQuery, setFilters]);
 
     // Derived from `prev.matches` rather than the rendered `groups` so the
-    // updater stays pure and cannot collapse against a stale result set.
+    // updater stays pure and cannot collapse against a stale result set. It
+    // collects the directory rows too, so one click closes everything in either
+    // layout — and switching layouts afterwards finds it already collapsed.
     const onCollapseAll = useCallback(() => {
         setState(prev => {
-            const paths = groupMatchesByFile(prev.matches).map(group => group.path);
+            const paths = collapsibleTreePaths(groupMatchesByFile(prev.matches));
             return { ...prev, collapsed: paths.length > 0 ? paths : NO_COLLAPSED_GROUPS };
         });
     }, [setState]);
+
+    const onToggleResultView = useCallback(() => {
+        setResultView(prev => (prev === 'tree' ? 'list' : 'tree'));
+    }, [setResultView]);
 
     const onToggleCollapsed = useCallback((path: string) => {
         setState(prev => ({ ...prev, collapsed: toggleCollapsedPath(prev.collapsed, path) }));
@@ -267,6 +282,8 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                 onRefresh={onRefresh}
                 onClear={onClearAll}
                 onCollapseAll={onCollapseAll}
+                resultView={resultView}
+                onToggleResultView={onToggleResultView}
                 testIdPrefix="content-search"
             />
             <SearchBar
@@ -344,6 +361,7 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
                         onOpenMatch={onOpenMatch}
                         collapsed={state.collapsed}
                         onToggleCollapsed={onToggleCollapsed}
+                        resultView={resultView}
                     />
                 </>
             )}

@@ -1,6 +1,6 @@
 /**
  * ContentSearchToolbar — the Search view's own header buttons, VS Code's
- * Refresh / Clear / Collapse All strip.
+ * Refresh / Clear / Collapse All / View as Tree strip.
  *
  * The Files view's toolbar (collapse all, reveal, refresh) is about the tree and
  * says nothing useful in Search, so ExplorerPanel hides it here and this strip
@@ -12,6 +12,7 @@
  */
 
 import { cn } from '../../../ui/cn';
+import type { ContentSearchResultView } from './types';
 
 export interface ContentSearchToolbarProps {
     /** False disables every button — no query means nothing to act on. */
@@ -22,6 +23,10 @@ export interface ContentSearchToolbarProps {
     onClear: () => void;
     /** Collapse every result group. */
     onCollapseAll: () => void;
+    /** Current result layout — the toggle button reports and flips it. */
+    resultView: ContentSearchResultView;
+    /** Switch between the flat list and the directory tree. */
+    onToggleResultView: () => void;
     /** Prefix for every `data-testid`, matching the SearchBar's convention. */
     testIdPrefix?: string;
 }
@@ -37,11 +42,22 @@ export function ContentSearchToolbar({
     onRefresh,
     onClear,
     onCollapseAll,
+    resultView,
+    onToggleResultView,
     testIdPrefix = 'content-search',
 }: ContentSearchToolbarProps) {
+    // The button names the layout it switches *to*, as VS Code's does: showing a
+    // list, it offers "View as Tree".
+    const treeShowing = resultView === 'tree';
     const actions = [
         { id: 'refresh', label: '↻', title: 'Refresh', onClick: onRefresh },
         { id: 'clear-results', label: '⊘', title: 'Clear search results', onClick: onClear },
+        {
+            id: 'view-mode',
+            label: treeShowing ? '☰' : '⌸',
+            title: treeShowing ? 'View as List' : 'View as Tree',
+            onClick: onToggleResultView,
+        },
         { id: 'collapse-all', label: '⊟', title: 'Collapse all', onClick: onCollapseAll },
     ];
 
@@ -60,6 +76,7 @@ export function ContentSearchToolbar({
                     aria-label={action.title}
                     className={BUTTON_CLASS}
                     data-testid={`${testIdPrefix}-${action.id}`}
+                    data-result-view={action.id === 'view-mode' ? resultView : undefined}
                 >
                     {action.label}
                 </button>

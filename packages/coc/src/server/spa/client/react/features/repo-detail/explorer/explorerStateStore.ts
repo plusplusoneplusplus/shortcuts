@@ -25,9 +25,11 @@ import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import {
     DEFAULT_CONTENT_SEARCH_FILTERS,
     DEFAULT_CONTENT_SEARCH_MODES,
+    DEFAULT_CONTENT_SEARCH_RESULT_VIEW,
     type ContentSearchErrorKind,
     type ContentSearchFilters,
     type ContentSearchModes,
+    type ContentSearchResultView,
     type ContentSearchStatus,
     type ExplorerView,
 } from './types';
@@ -79,6 +81,11 @@ export function explorerContentModesStorageKey(workspaceId: string): string {
 /** localStorage key for the content-search include/exclude filters, per workspace. */
 export function explorerContentFiltersStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:explorer-content-filters`;
+}
+
+/** localStorage key for the content-search result layout (list or tree). */
+export function explorerContentResultViewStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-content-result-view`;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +177,17 @@ const MODES_CODEC: Codec<ContentSearchModes> = {
             wholeWord: parsed.wholeWord === true,
             regex: parsed.regex === true,
         };
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const RESULT_VIEW_CODEC: Codec<ContentSearchResultView> = {
+    fallback: DEFAULT_CONTENT_SEARCH_RESULT_VIEW,
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        return parsed === 'tree' ? 'tree' : 'list';
     },
     serialize(value) {
         return JSON.stringify(value);
@@ -316,6 +334,13 @@ export function useExplorerContentFilters(
     workspaceId: string,
 ): [ContentSearchFilters, Dispatch<SetStateAction<ContentSearchFilters>>] {
     return usePersistedValue(explorerContentFiltersStorageKey(workspaceId), FILTERS_CODEC);
+}
+
+/** Persisted content-search result layout (list or tree) for a workspace. */
+export function useExplorerContentResultView(
+    workspaceId: string,
+): [ContentSearchResultView, Dispatch<SetStateAction<ContentSearchResultView>>] {
+    return usePersistedValue(explorerContentResultViewStorageKey(workspaceId), RESULT_VIEW_CODEC);
 }
 
 // ---------------------------------------------------------------------------

@@ -68,19 +68,22 @@ describe('ContentSearchToolbar (presentational)', () => {
         onRefresh: vi.fn(),
         onClear: vi.fn(),
         onCollapseAll: vi.fn(),
+        onToggleResultView: vi.fn(),
+        resultView: 'list' as const,
     });
 
-    it('renders refresh, clear and collapse-all', () => {
+    it('renders refresh, clear, view-mode and collapse-all', () => {
         render(<ContentSearchToolbar enabled {...handlers()} />);
         expect(screen.getByTestId('content-search-toolbar')).toBeInTheDocument();
         expect(screen.getByTestId('content-search-refresh')).toBeInTheDocument();
         expect(screen.getByTestId('content-search-clear-results')).toBeInTheDocument();
+        expect(screen.getByTestId('content-search-view-mode')).toBeInTheDocument();
         expect(screen.getByTestId('content-search-collapse-all')).toBeInTheDocument();
     });
 
     it('disables every button when not enabled', () => {
         render(<ContentSearchToolbar enabled={false} {...handlers()} />);
-        for (const id of ['refresh', 'clear-results', 'collapse-all']) {
+        for (const id of ['refresh', 'clear-results', 'view-mode', 'collapse-all']) {
             expect(screen.getByTestId(`content-search-${id}`)).toBeDisabled();
         }
     });
@@ -91,6 +94,8 @@ describe('ContentSearchToolbar (presentational)', () => {
         screen.getByTestId('content-search-refresh').click();
         screen.getByTestId('content-search-clear-results').click();
         screen.getByTestId('content-search-collapse-all').click();
+        screen.getByTestId('content-search-view-mode').click();
+        expect(props.onToggleResultView).toHaveBeenCalledTimes(1);
         expect(props.onRefresh).toHaveBeenCalledTimes(1);
         expect(props.onClear).toHaveBeenCalledTimes(1);
         expect(props.onCollapseAll).toHaveBeenCalledTimes(1);
