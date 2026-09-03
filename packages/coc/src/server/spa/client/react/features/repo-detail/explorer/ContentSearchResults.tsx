@@ -411,6 +411,13 @@ export interface ContentSearchResultsProps {
      * dismisses one match. Absent hides the `X` affordance entirely.
      */
     onDismiss?: (key: string) => void;
+    /**
+     * Rewrite the given matches with the panel's current replacement. Passed
+     * the whole group's matches from a file header, one match from a match row.
+     * Absent hides the replace affordance — which is what a collapsed or
+     * unusable replace row means.
+     */
+    onReplace?: (matches: readonly ExplorerContentMatch[]) => void;
 }
 
 interface RowProps {
@@ -419,6 +426,8 @@ interface RowProps {
     onOpenMatch: (path: string, line: number) => void;
     /** Hide one row. Absent leaves the `X` affordance off entirely. */
     onDismiss?: (key: string) => void;
+    /** Rewrite matches. Absent leaves the replace affordance off entirely. */
+    onReplace?: (matches: readonly ExplorerContentMatch[]) => void;
     /**
      * Roving tabindex: exactly one row is tabbable, so Tab lands on the results
      * once and the arrow keys take over from there.
@@ -465,6 +474,31 @@ function DismissButton({ label, onDismiss }: { label: string; onDismiss: () => v
     );
 }
 
+/**
+ * The hover-only replace action, beside the dismiss `X` and outside the row
+ * button for the same reason. Shown only while the panel says replacing is
+ * possible, so it never offers a write the endpoint would refuse.
+ */
+function ReplaceButton({ label, onReplace }: { label: string; onReplace: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onReplace}
+            className={cn(
+                'flex-shrink-0 px-1 text-xs leading-none text-[#848484]',
+                'bg-transparent border-none cursor-pointer',
+                'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                'hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+            )}
+            title={label}
+            aria-label={label}
+            data-testid="content-search-replace-action"
+        >
+            ⇄
+        </button>
+    );
+}
+
 function Twisty({ collapsed }: { collapsed: boolean }) {
     return (
         <span
@@ -494,7 +528,7 @@ function FileGroupRows(props: RowProps & {
     matches: ExplorerContentMatch[];
     depth: number;
 }) {
-    const { path, name, directory, matches, depth, collapsedSet, onToggleCollapsed, onOpenMatch, onDismiss } = props;
+    const { path, name, directory, matches, depth, collapsedSet, onToggleCollapsed, onOpenMatch, onDismiss, onReplace } = props;
     const rowProps: RowProps = props;
     const isCollapsed = collapsedSet.has(path);
     return (
@@ -517,6 +551,9 @@ function FileGroupRows(props: RowProps & {
                     <span className="text-[#848484] truncate flex-1 min-w-0">{directory}</span>
                     <CountBadge count={matches.length} />
                 </button>
+                {onReplace && (
+                    <ReplaceButton label={`Replace in ${path}`} onReplace={() => onReplace(matches)} />
+                )}
                 {onDismiss && (
                     <DismissButton label={`Dismiss ${path}`} onDismiss={() => onDismiss(path)} />
                 )}
@@ -549,6 +586,12 @@ function FileGroupRows(props: RowProps & {
                                 {after}
                             </span>
                         </button>
+                        {onReplace && (
+                            <ReplaceButton
+                                label={`Replace match at line ${match.line}`}
+                                onReplace={() => onReplace([match])}
+                            />
+                        )}
                         {onDismiss && (
                             <DismissButton
                                 label={`Dismiss match at line ${match.line}`}
@@ -730,6 +773,7 @@ export function ContentSearchResults({
     onToggleCollapsed,
     resultView = 'list',
     onDismiss,
+    onReplace,
 }: ContentSearchResultsProps) {
     const navRows = useMemo(
         () => flattenVisibleRows(groups, { resultView, collapsed }),
@@ -746,6 +790,7 @@ export function ContentSearchResults({
         onToggleCollapsed,
         onOpenMatch,
         onDismiss,
+        onReplace,
         ...focus,
     };
     return (

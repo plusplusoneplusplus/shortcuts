@@ -35,6 +35,19 @@ export interface ContentSearchToolbarProps {
     onOpenInEditor: () => void;
     /** True when the current result set has at least one match. */
     hasResults?: boolean;
+    /**
+     * Rewrite every match on screen with the current replacement. The panel
+     * confirms first — this is the only Explorer control that writes to disk
+     * without opening a file.
+     */
+    onReplaceAll: () => void;
+    /**
+     * True when a replace is possible: the replace row is showing, the query is
+     * one the endpoint accepts, and there is at least one match on screen. The
+     * panel decides all three — the last of them is §2.2's "disabled at 0
+     * results" — and this button asks nothing else.
+     */
+    canReplaceAll?: boolean;
     /** Prefix for every `data-testid`, matching the SearchBar's convention. */
     testIdPrefix?: string;
 }
@@ -54,6 +67,8 @@ export function ContentSearchToolbar({
     onToggleResultView,
     onOpenInEditor,
     hasResults = false,
+    onReplaceAll,
+    canReplaceAll = false,
     testIdPrefix = 'content-search',
 }: ContentSearchToolbarProps) {
     // The button names the layout it switches *to*, as VS Code's does: showing a
@@ -75,6 +90,13 @@ export function ContentSearchToolbar({
             onClick: onToggleResultView,
         },
         { id: 'collapse-all', label: '⊟', title: 'Collapse all', onClick: onCollapseAll },
+        {
+            id: 'replace-all',
+            label: '⇄',
+            title: 'Replace All',
+            onClick: onReplaceAll,
+            disabled: !canReplaceAll,
+        },
         {
             id: 'open-in-editor',
             label: '⎘',

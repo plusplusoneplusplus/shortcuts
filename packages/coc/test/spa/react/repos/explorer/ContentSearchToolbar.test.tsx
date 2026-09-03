@@ -70,6 +70,7 @@ describe('ContentSearchToolbar (presentational)', () => {
         onCollapseAll: vi.fn(),
         onToggleResultView: vi.fn(),
         onOpenInEditor: vi.fn(),
+        onReplaceAll: vi.fn(),
         resultView: 'list' as const,
     });
 
@@ -84,7 +85,7 @@ describe('ContentSearchToolbar (presentational)', () => {
 
     it('disables every button when not enabled', () => {
         render(<ContentSearchToolbar enabled={false} {...handlers()} />);
-        for (const id of ['refresh', 'clear-results', 'view-mode', 'collapse-all', 'open-in-editor']) {
+        for (const id of ['refresh', 'clear-results', 'view-mode', 'collapse-all', 'open-in-editor', 'replace-all']) {
             expect(screen.getByTestId(`content-search-${id}`)).toBeDisabled();
         }
     });

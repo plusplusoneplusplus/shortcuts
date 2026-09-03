@@ -22,6 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import { Spinner } from '../../../ui';
 import { SearchBar, type SearchBarToggle } from './SearchBar';
 import { SearchFilters } from './SearchFilters';
@@ -36,6 +37,12 @@ import {
     toggleCollapsedPath,
 } from './ContentSearchResults';
 import { buildSearchEditorText } from './searchEditorText';
+import {
+    buildReplaceFiles,
+    countReplaceTargets,
+    describeReplaceResult,
+    replaceConfirmMessage,
+} from './contentReplaceRequest';
 import { explorerApi } from './explorerApi';
 import {
     useExplorerContentFilters,
@@ -56,6 +63,13 @@ import {
     parseGlobList,
     type ContentSearchModes,
 } from './types';
+
+/**
+ * Replacing more than one span at a time asks first. A single match row applies
+ * straight away, as VS Code's does — one span is a change the user can see in
+ * full before clicking, and a modal per match would make the row action useless.
+ */
+export const REPLACE_CONFIRM_THRESHOLD = 2;
 
 /** Shown in place of the replace field for a query the endpoint would reject. */
 export const MULTILINE_REPLACE_NOTICE = 'Replace is not available for a multi-line query.';
@@ -150,6 +164,11 @@ export function ContentSearchPanel({
     // hidden behind a collapsed row.
     const [replaceExpanded, setReplaceExpanded] = useState(() => replace.replacement.length > 0);
 
+    // The outcome of the last replace, shown under the toolbar until the query
+    // changes. It survives the re-run a replace triggers on purpose: that re-run
+    // is how the results stop being stale, and it must not erase the report.
+    const [replaceNotice, setReplaceNotice] = useState<string | null>(null);
+
     // Bumped by the toolbar's Refresh. It is an effect dep but not part of
     // `typedSignature`, so the re-run it triggers takes the zero-delay path: a
     // refresh is intent, like a toggle, and must not wait out the debounce.
@@ -170,6 +189,10 @@ export function ContentSearchPanel({
     useEffect(() => {
         if (focusQueryToken > 0) queryInputRef.current?.focus();
     }, [focusQueryToken]);
+
+    // A new query makes the old report meaningless — it described a result set
+    // that is now gone.
+    useEffect(() => { setReplaceNotice(null); }, [query]);
 
     const trimmed = query.trim();
     // Keyed off the *parsed* glob lists, not the raw text, so typing a space
@@ -348,6 +371,62 @@ export function ContentSearchPanel({
         );
     }, [onOpenInEditor, state.query, state.truncated, trimmed, modes, filters, visibleMatches]);
 
+    // Replacing is possible only when the row is showing (so a replacement is
+    // visible and editable) and the query is single-line (the endpoint answers a
+    // multi-line one with a 400).
+    const replaceAvailable = replaceExpanded && !isMultiLineQuery(query);
+
+    // Guards against a second write while the first is in flight — the results
+    // on screen are already stale at that point.
+    const replacingRef = useRef(false);
+
+    /**
+     * Write the given matches. The request lists exactly these spans and the
+     * endpoint never re-searches, so a replace can only ever touch rows the user
+     * is looking at. Afterwards the result set describes a file that no longer
+     * says that, so the search is re-run.
+     */
+    const runReplace = useCallback(async (matches: readonly ExplorerContentMatch[]) => {
+        const files = buildReplaceFiles(matches);
+        if (files.length === 0 || replacingRef.current) return;
+        if (countReplaceTargets(files) >= REPLACE_CONFIRM_THRESHOLD
+            && typeof window !== 'undefined'
+            && typeof window.confirm === 'function'
+            && !window.confirm(replaceConfirmMessage(files))) return;
+
+        replacingRef.current = true;
+        setReplaceNotice(null);
+        try {
+            const response = await explorerApi.replaceContent(
+                workspaceId,
+                state.query || trimmed,
+                replace.replacement,
+                files,
+                {
+                    caseSensitive: modes.caseSensitive,
+                    wholeWord: modes.wholeWord,
+                    regex: modes.regex,
+                    preserveCase: replace.preserveCase,
+                },
+            );
+            setReplaceNotice(describeReplaceResult(response));
+            setRefreshTick(tick => tick + 1);
+        } catch (error) {
+            setReplaceNotice(error instanceof Error && error.message ? error.message : 'Replace failed');
+        } finally {
+            replacingRef.current = false;
+        }
+    }, [workspaceId, state.query, trimmed, replace, modes]);
+
+    const onReplaceRows = useMemo(
+        () => (replaceAvailable ? runReplace : undefined),
+        [replaceAvailable, runReplace],
+    );
+
+    // Replace All takes the dismissal-filtered set, like Open in Editor: it acts
+    // on the view, and a dismissed row is one the user has said to leave alone.
+    const onReplaceAll = useCallback(() => { void runReplace(visibleMatches); }, [runReplace, visibleMatches]);
+
     const onToggleCollapsed = useCallback((path: string) => {
         setState(prev => ({ ...prev, collapsed: toggleCollapsedPath(prev.collapsed, path) }));
     }, [setState]);
@@ -363,6 +442,8 @@ export function ContentSearchPanel({
                 onToggleResultView={onToggleResultView}
                 onOpenInEditor={onOpenInEditorClick}
                 hasResults={onOpenInEditor !== undefined && visibleMatches.length > 0}
+                onReplaceAll={onReplaceAll}
+                canReplaceAll={replaceAvailable && visibleMatches.length > 0}
                 testIdPrefix="content-search"
             />
             <ReplaceRow
@@ -385,6 +466,15 @@ export function ContentSearchPanel({
                     testIdPrefix="content-search"
                 />
             </ReplaceRow>
+            {replaceNotice && (
+                <p
+                    className="px-3 py-1 text-[11px] text-[#848484]"
+                    data-testid="content-search-replace-status"
+                    role="status"
+                >
+                    {replaceNotice}
+                </p>
+            )}
             <SearchFilters
                 filters={filters}
                 onChange={setFilters}
@@ -449,6 +539,7 @@ export function ContentSearchPanel({
                         onToggleCollapsed={onToggleCollapsed}
                         resultView={resultView}
                         onDismiss={onDismiss}
+                        onReplace={onReplaceRows}
                     />
                 </>
             )}
