@@ -9,6 +9,14 @@ export interface BuildRalphSubmitPromptInput {
     submitIndex: number;
     /** HEAD SHA recorded at session creation; absent on legacy sessions. */
     baselineSha?: string;
+    /**
+     * HEAD SHA recorded after the session's last completed iteration. Closes
+     * the commit range so commits made on the branch after the session ended
+     * are not swept in. Absent on legacy sessions.
+     */
+    endSha?: string;
+    /** Commit SHAs already submitted by earlier submits of this session. */
+    excludeShas?: string[];
     /** ISO timestamp of session creation (legacy commit-window fallback). */
     sessionStartedAt: string;
     /** ISO timestamp of session completion, if recorded. */
@@ -41,25 +49,52 @@ Rules:
 export function buildRalphSubmitPrompt(input: BuildRalphSubmitPromptInput): string {
     const {
         originalGoal, progressPath, sessionId, submitIndex,
-        baselineSha, sessionStartedAt, sessionCompletedAt,
+        baselineSha, endSha, excludeShas, sessionStartedAt, sessionCompletedAt,
     } = input;
 
     const goalSection = originalGoal.trim().startsWith('/')
         ? `Read the original goal from: ${originalGoal.trim()}`
         : `Original goal:\n${originalGoal.trim()}`;
 
-    const commitStrategy = baselineSha
-        ? [
-            `This session recorded baseline SHA ${baselineSha} at creation.`,
-            `The session's commits are exactly the range ${baselineSha}..HEAD on the current branch`,
+    const excluded = (excludeShas ?? []).filter(sha => sha.trim().length > 0);
+
+    let commitStrategy: string;
+    if (baselineSha && endSha) {
+        const parts = [
+            `This session recorded baseline SHA ${baselineSha} at creation and end SHA ${endSha} after its last completed iteration.`,
+            `The session's commits are exactly the closed range ${baselineSha}..${endSha} on the current branch`,
+            `(run: git --no-pager log --format=%H ${baselineSha}..${endSha}).`,
+            'Do NOT use HEAD as the upper bound — commits made after the session ended must not be included.',
+        ];
+        if (excluded.length > 0) {
+            parts.push(
+                `Earlier submits of this session already submitted these commits — OMIT them from this PR: ${excluded.join(', ')}.`,
+            );
+        }
+        commitStrategy = parts.join(' ');
+    } else if (baselineSha) {
+        const parts = [
+            `This session recorded baseline SHA ${baselineSha} at creation but no end SHA.`,
+            `Candidate commits are the range ${baselineSha}..HEAD on the current branch`,
             `(run: git --no-pager log --format=%H ${baselineSha}..HEAD).`,
-        ].join(' ')
-        : [
+            'CAUTION: the upper bound is unverified — HEAD may include commits made after this session ended.',
+            'Cross-check every candidate against the commit SHAs mentioned in the progress journal before submitting,',
+            'submit only the verified list, and note any mismatches in your response.',
+        ];
+        if (excluded.length > 0) {
+            parts.push(
+                `Earlier submits of this session already submitted these commits — OMIT them from this PR: ${excluded.join(', ')}.`,
+            );
+        }
+        commitStrategy = parts.join(' ');
+    } else {
+        commitStrategy = [
             'This legacy session has no recorded baseline SHA. Determine candidate commits from',
             `\`git log\` on the current branch between ${sessionStartedAt} and ${sessionCompletedAt ?? 'now'},`,
             'cross-check the candidates against commit SHAs mentioned in the progress journal,',
             'submit only the verified list, and note any mismatches in your response.',
         ].join(' ');
+    }
 
     return [
         `Submit the commits produced by Ralph session ${sessionId} as a GitHub pull request. This is PR submit ${submitIndex} for the session.`,

@@ -10,7 +10,9 @@
  * legacy in-flight sessions gracefully.
  */
 
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { RalphSessionStore } from './ralph-session-store';
+import { gitHeadSha } from './capture-baseline-sha';
 import type {
     RalphExitSignal,
     RalphIterationRecord,
@@ -43,6 +45,16 @@ export interface RecordIterationInput {
      * omitted, the safety-net section is always written.
      */
     iterationStartMs?: number;
+    /**
+     * Fallback execution directory for the post-iteration HEAD capture, used
+     * when the session record carries no worktree.
+     */
+    workingDirectory?: string;
+    /**
+     * Last-resort source for the workspace checkout root, mirroring
+     * `captureRalphBaselineSha`'s fallback.
+     */
+    processStore?: ProcessStore;
 }
 
 export interface RecordIterationResult {
@@ -79,6 +91,11 @@ export async function recordRalphIteration(
             body: input.progressBody || '(no RALPH_PROGRESS body provided)',
         });
     }
+
+    // Best-effort HEAD capture so PR submit can close the commit range at the
+    // session's last completed iteration instead of an open-ended `..HEAD`.
+    // Any failure leaves the field absent; a broken native addon propagates.
+    const headSha = await captureIterationHeadSha(store, input, workspaceId, sessionId);
 
     const phase: 'executing' | 'complete' = input.shouldContinue ? 'executing' : 'complete';
     let terminalReason: RalphTerminalReason | undefined;
@@ -120,10 +137,44 @@ export async function recordRalphIteration(
             status: 'completed',
             exitSignal: input.signal,
         };
+        if (headSha) entry.headSha = headSha;
         if (existing) Object.assign(existing, entry);
         else next.iterations.push(entry);
         return next;
     });
 
     return { skipped: false, aiWroteSection, record };
+}
+
+/**
+ * Resolve the directory this iteration ran in and read its HEAD SHA.
+ *
+ * A worktree-backed session MUST be read in the worktree checkout — the
+ * workspace root's HEAD says nothing about the session's commits. Falls back
+ * to the caller-supplied working directory, then to the workspace's registered
+ * root, the same way `captureRalphBaselineSha` does.
+ */
+async function captureIterationHeadSha(
+    store: RalphSessionStore,
+    input: RecordIterationInput,
+    workspaceId: string,
+    sessionId: string,
+): Promise<string | undefined> {
+    let cwd: string | undefined;
+    try {
+        cwd = (await store.readSessionRecord(workspaceId, sessionId))?.worktree?.path;
+    } catch {
+        cwd = undefined;
+    }
+    cwd = cwd ?? input.workingDirectory;
+    if (!cwd && input.processStore) {
+        try {
+            const workspaces = await input.processStore.getWorkspaces();
+            cwd = workspaces.find(w => w.id === workspaceId)?.rootPath;
+        } catch {
+            cwd = undefined;
+        }
+    }
+    if (!cwd) return undefined;
+    return gitHeadSha(cwd);
 }

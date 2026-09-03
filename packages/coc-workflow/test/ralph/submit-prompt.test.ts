@@ -25,6 +25,59 @@ describe('buildRalphSubmitPrompt', () => {
         expect(prompt).not.toContain('no recorded baseline SHA');
     });
 
+    it('closes the range at endSha when both bounds are recorded', () => {
+        const prompt = buildRalphSubmitPrompt({
+            ...BASE_INPUT,
+            baselineSha: 'abc1234',
+            endSha: 'def5678',
+        });
+
+        expect(prompt).toContain('abc1234..def5678');
+        expect(prompt).toContain('git --no-pager log --format=%H abc1234..def5678');
+        expect(prompt).toContain('Do NOT use HEAD as the upper bound');
+        // Regression: an open-ended range sweeps in commits made after the
+        // session ended on a shared (non-worktree) branch.
+        expect(prompt).not.toContain('abc1234..HEAD');
+        expect(prompt).not.toContain('no recorded baseline SHA');
+    });
+
+    it('lists the already-submitted SHAs to omit on a closed range', () => {
+        const prompt = buildRalphSubmitPrompt({
+            ...BASE_INPUT,
+            submitIndex: 2,
+            baselineSha: 'abc1234',
+            endSha: 'def5678',
+            excludeShas: ['aaa1111', 'bbb2222'],
+        });
+
+        expect(prompt).toContain('OMIT them from this PR: aaa1111, bbb2222');
+    });
+
+    it('omits the exclusion sentence when there is nothing to exclude', () => {
+        const prompt = buildRalphSubmitPrompt({
+            ...BASE_INPUT,
+            baselineSha: 'abc1234',
+            endSha: 'def5678',
+            excludeShas: [],
+        });
+
+        expect(prompt).not.toContain('OMIT them from this PR');
+    });
+
+    it('cautions that the upper bound is unverified when endSha is missing', () => {
+        const prompt = buildRalphSubmitPrompt({
+            ...BASE_INPUT,
+            baselineSha: 'abc1234',
+            excludeShas: ['aaa1111'],
+        });
+
+        expect(prompt).toContain('abc1234..HEAD');
+        expect(prompt).toContain('CAUTION: the upper bound is unverified');
+        expect(prompt).toContain('Cross-check every candidate');
+        expect(prompt).toContain('OMIT them from this PR: aaa1111');
+        expect(prompt).not.toContain('no recorded baseline SHA');
+    });
+
     it('falls back to the time-window + progress.md strategy for legacy sessions', () => {
         const prompt = buildRalphSubmitPrompt({
             ...BASE_INPUT,

@@ -72,8 +72,13 @@ Task construction and guards live in `server/ralph/enqueue-submit.ts` (mirrors
 `context.ralph.submit = { kind: 'submit-pr', submitIndex }` and taskGroup role `submit-pr`,
 deliberately carrying no provider/model selection so workspace defaults apply. The prompt
 comes from the portable `buildRalphSubmitPrompt` (`submit-prompt.ts`): determine commits via
-`baselineSha..HEAD` when a baseline exists, else a startedAt/completedAt time window
-cross-checked against `progress.md`; whole-session scope including gap-fix loops; invoke the
+the closed range `baselineSha..endSha` when both bounds exist, listing `excludeShas` (the
+commits earlier submits already sent) to omit; via `baselineSha..HEAD` with an
+unverified-upper-bound caution when only the baseline exists; else a startedAt/completedAt
+time window cross-checked against `progress.md`. `deriveSubmitCommitRange`
+(`enqueue-submit.ts`) derives `endSha` from the last completed iteration's `headSha` and
+`excludeShas` from the union of `submits[*].commitShas`. Whole-session scope including
+gap-fix loops; invoke the
 `submit-commits-as-pr` skill with an explicit comma-separated SHA list; PR title/body from
 the goal plus a journal summary, auto-merge on, not draft; never resolve cherry-pick
 conflicts (the skill aborts); end with a `RALPH_SUBMIT_RESULT` JSON block

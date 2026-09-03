@@ -36,6 +36,13 @@ paths capture it: ralph-launch, ralph-start, promote-to-ralph, work-item Ralph r
 (reusing `headBefore` when supplied), and Ralph schedules (only when
 `schedule.params.workingDirectory` is set).
 
+Each completed iteration record also carries optional `headSha` — the checkout HEAD read by
+`recordRalphIteration` after the iteration finished (same best-effort semantics as the
+baseline capture; only `NativeAddonLoadError` propagates). It runs in the session's
+worktree path when the record has one, else the caller's `workingDirectory`, else the
+workspace `rootPath`. PR submit uses the last completed iteration's `headSha` to close the
+commit range instead of an open-ended `..HEAD`.
+
 `progress.md` starts with a header from `initSession(...)`. Each iteration appends:
 
 ```text

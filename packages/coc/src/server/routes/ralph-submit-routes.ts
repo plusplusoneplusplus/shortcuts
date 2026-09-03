@@ -22,6 +22,7 @@ import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import {
     buildSubmitTaskPayload,
+    deriveSubmitCommitRange,
     findActiveSubmit,
     markSubmitEnqueued,
     nextSubmitIndex,
@@ -92,6 +93,8 @@ export function registerRalphSubmitRoutes(routes: Route[], ctx: RalphSubmitRoute
 
             const { workingDirectory, folderPath } = await recoverIterationPaths(record, store, workspaceId);
 
+            const { endSha, excludeShas } = deriveSubmitCommitRange(record);
+
             const taskInput = buildSubmitTaskPayload({
                 workspaceId,
                 sessionId,
@@ -99,6 +102,8 @@ export function registerRalphSubmitRoutes(routes: Route[], ctx: RalphSubmitRoute
                 submitIndex,
                 progressPath: journal.getProgressPath(workspaceId, sessionId),
                 baselineSha: record.baselineSha,
+                endSha,
+                excludeShas,
                 sessionStartedAt: record.startedAt,
                 sessionCompletedAt: record.completedAt,
                 workingDirectory,

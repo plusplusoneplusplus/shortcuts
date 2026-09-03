@@ -2,10 +2,11 @@
  * Tests for `recordRalphIteration` — the bridge's journal-write helper.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { recordRalphIteration } from '../../../src/server/ralph/record-iteration';
 import { RalphSessionStore, parseProgressSections } from '../../../src/server/ralph/ralph-session-store';
 
@@ -224,5 +225,158 @@ describe('recordRalphIteration', () => {
         expect(result.aiWroteSection).toBe(false);
         const md = await new (await import('../../../src/server/ralph/ralph-session-store')).RalphSessionStore({ dataDir }).readProgress(WS, SID);
         expect(md).toContain('safety-net body');
+    });
+});
+
+// ============================================================================
+// headSha capture — closes the PR-submit commit range at this iteration.
+// ============================================================================
+
+function git(dir: string, ...args: string[]): string {
+    return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf-8' }).replace(/\r?\n$/, '');
+}
+
+function makeRepo(prefix: string, message: string): { dir: string; sha: string } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+    git(dir, 'init', '-q');
+    git(dir, 'config', 'user.email', 'test@test.com');
+    git(dir, 'config', 'user.name', 'Test');
+    git(dir, 'config', 'commit.gpgsign', 'false');
+    fs.writeFileSync(path.join(dir, 'a.txt'), `${message}\n`, 'utf-8');
+    git(dir, 'add', '-A');
+    git(dir, 'commit', '-q', '-m', message);
+    return { dir, sha: git(dir, 'rev-parse', 'HEAD') };
+}
+
+describe('recordRalphIteration headSha capture', () => {
+    let workspaceRepo: { dir: string; sha: string };
+    let worktreeRepo: { dir: string; sha: string };
+    let nonGitDir: string;
+
+    beforeAll(() => {
+        workspaceRepo = makeRepo('record-iteration-ws-', 'workspace');
+        worktreeRepo = makeRepo('record-iteration-wt-', 'worktree');
+        nonGitDir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-iteration-nongit-'));
+    });
+
+    afterAll(() => {
+        for (const dir of [workspaceRepo.dir, worktreeRepo.dir, nonGitDir]) {
+            try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+        }
+    });
+
+    it('persists the checkout HEAD on the iteration record', async () => {
+        const r = await recordRalphIteration({
+            dataDir,
+            workspaceId: WS,
+            sessionId: SID,
+            iteration: 1,
+            maxIterations: 3,
+            signal: 'RALPH_NEXT',
+            progressBody: 'x',
+            taskId: 't1',
+            processId: 'p1',
+            shouldContinue: true,
+            workingDirectory: workspaceRepo.dir,
+        });
+
+        expect(r.record?.iterations[0].headSha).toBe(workspaceRepo.sha);
+    });
+
+    it('leaves headSha absent when git cannot be read', async () => {
+        const r = await recordRalphIteration({
+            dataDir,
+            workspaceId: WS,
+            sessionId: SID,
+            iteration: 1,
+            maxIterations: 3,
+            signal: 'RALPH_NEXT',
+            progressBody: 'x',
+            taskId: 't1',
+            processId: 'p1',
+            shouldContinue: true,
+            workingDirectory: nonGitDir,
+        });
+
+        expect(r.record?.iterations[0].headSha).toBeUndefined();
+    });
+
+    it('leaves headSha absent when no directory can be resolved', async () => {
+        const r = await recordRalphIteration({
+            dataDir,
+            workspaceId: WS,
+            sessionId: SID,
+            iteration: 1,
+            maxIterations: 3,
+            signal: 'RALPH_COMPLETE',
+            progressBody: 'x',
+            taskId: 't1',
+            processId: 'p1',
+            shouldContinue: false,
+        });
+
+        expect(r.record?.iterations[0].headSha).toBeUndefined();
+    });
+
+    it('reads the worktree checkout, not the workspace root, for a worktree session', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.updateSessionRecord(WS, SID, () => ({
+            sessionId: SID,
+            workspaceId: WS,
+            originalGoal: 'g',
+            maxIterations: 3,
+            currentIteration: 0,
+            phase: 'executing' as const,
+            startedAt: '2026-05-11T08:00:00.000Z',
+            iterations: [],
+            worktree: {
+                id: SID,
+                workspaceId: WS,
+                path: worktreeRepo.dir,
+                branch: 'coc/x',
+                baseSha: worktreeRepo.sha,
+                createdAt: '2026-05-11T08:00:00.000Z',
+                sourceDirty: false,
+            },
+        }));
+
+        const r = await recordRalphIteration({
+            dataDir,
+            workspaceId: WS,
+            sessionId: SID,
+            iteration: 1,
+            maxIterations: 3,
+            signal: 'RALPH_NEXT',
+            progressBody: 'x',
+            taskId: 't1',
+            processId: 'p1',
+            shouldContinue: true,
+            workingDirectory: workspaceRepo.dir,
+        });
+
+        expect(r.record?.iterations[0].headSha).toBe(worktreeRepo.sha);
+        expect(r.record?.iterations[0].headSha).not.toBe(workspaceRepo.sha);
+    });
+
+    it('falls back to the workspace rootPath from the process store', async () => {
+        const processStore = {
+            getWorkspaces: async () => [{ id: WS, rootPath: workspaceRepo.dir }],
+        } as any;
+
+        const r = await recordRalphIteration({
+            dataDir,
+            workspaceId: WS,
+            sessionId: SID,
+            iteration: 1,
+            maxIterations: 3,
+            signal: 'RALPH_NEXT',
+            progressBody: 'x',
+            taskId: 't1',
+            processId: 'p1',
+            shouldContinue: true,
+            processStore,
+        });
+
+        expect(r.record?.iterations[0].headSha).toBe(workspaceRepo.sha);
     });
 });
