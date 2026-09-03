@@ -35,6 +35,14 @@ export interface PreviewPaneProps {
      * a switch can prompt before discarding edits (AC-03 of preserve-explorer-state).
      */
     onDirtyChange?: (isDirty: boolean) => void;
+    /**
+     * Hands the owner a way to save this buffer, so a tab-close prompt can write
+     * the file without the user re-visiting the tab (AC-04). Called with the save
+     * function while the buffer is editable, and with `null` when it stops being
+     * editable or unmounts. The function resolves `true` only when the write
+     * succeeded — a failed save leaves the buffer dirty and shows the error here.
+     */
+    onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
 }
 
 interface BlobResponse {
@@ -51,7 +59,7 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -145,18 +153,36 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
         setIsDirty(true);
     }, [effectiveReadOnly]);
 
-    const handleSave = useCallback(async () => {
-        if (isTrusted) return; // never save trusted files
+    const handleSave = useCallback(async (): Promise<boolean> => {
+        if (isTrusted) return false; // never save trusted files
         setIsSaving(true);
         try {
             await explorerApi.writeBlob(repoId, actualPath, editedContent);
             setIsDirty(false);
+            return true;
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Save failed');
+            return false;
         } finally {
             setIsSaving(false);
         }
     }, [repoId, actualPath, editedContent, isTrusted]);
+
+    // Publish the save entry point to the owner. The registered function is a
+    // stable wrapper around a ref, so re-registering on every keystroke (the
+    // handler closes over the edited text) is avoided — the owner keeps one
+    // callback per buffer for the whole life of the tab.
+    const saveRef = useRef(handleSave);
+    saveRef.current = handleSave;
+    useEffect(() => {
+        if (!onRegisterSave) return;
+        if (effectiveReadOnly) {
+            onRegisterSave(null);
+            return;
+        }
+        onRegisterSave(() => saveRef.current());
+        return () => onRegisterSave(null);
+    }, [onRegisterSave, effectiveReadOnly]);
 
     const isImage = blob?.encoding === 'base64' && blob.mimeType.startsWith('image/');
     const isBinary = blob?.encoding === 'base64' && !isImage;

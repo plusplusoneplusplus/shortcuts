@@ -58,6 +58,8 @@ export {
 } from './explorerTabsModel';
 export type { ExplorerTab, ExplorerTabKind, ExplorerTabsState, TabCycleDirection, OpenFileTabInput, OpenSearchTabInput } from './explorerTabsModel';
 export { ExplorerTabStrip, tabTooltip } from './ExplorerTabStrip';
+export { ExplorerCloseTabsDialog } from './ExplorerCloseTabsDialog';
+export type { ExplorerCloseTabsDialogProps } from './ExplorerCloseTabsDialog';
 export type { ExplorerTabStripProps } from './ExplorerTabStrip';
 export { useExplorerTabs } from './useExplorerTabs';
 export type { ExplorerTabsApi } from './useExplorerTabs';

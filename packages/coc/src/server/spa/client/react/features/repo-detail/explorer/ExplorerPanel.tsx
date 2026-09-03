@@ -10,6 +10,7 @@ import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { FileTree } from './FileTree';
 import { PreviewPane } from './PreviewPane';
+import { ExplorerCloseTabsDialog } from './ExplorerCloseTabsDialog';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
@@ -18,7 +19,7 @@ import { SearchEditorPane } from './SearchEditorPane';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
 import { ExplorerTabStrip } from './ExplorerTabStrip';
 import { useExplorerTabs } from './useExplorerTabs';
-import { cycleTabsWithin, searchTabId, tabIdsToRight } from './explorerTabsModel';
+import { cycleTabsWithin, findTab, searchTabId, tabIdsToRight } from './explorerTabsModel';
 import { useExplorerEditorTabsEnabled } from '../../../hooks/feature-flags/useExplorerEditorTabsEnabled';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
@@ -276,6 +277,51 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         setExplorerInstanceDirty(workspaceId, dirtyInstanceId, dirtyTabIds.size > 0);
     }, [tabsEnabled, dirtyTabIds, workspaceId, dirtyInstanceId]);
 
+    // The freshest dirty set, read by the close path (which must stay
+    // referentially stable so the strip rows and the keyboard listener do not
+    // re-create on every edit).
+    const dirtyTabIdsRef = useRef(dirtyTabIds);
+    dirtyTabIdsRef.current = dirtyTabIds;
+
+    // Each editable buffer registers a save function here, so a close prompt can
+    // write the file without the user visiting the tab first (AC-04). Read-only
+    // and trusted buffers register nothing, which is what makes it impossible for
+    // a close to attempt a write on them.
+    const saveHandlers = useRef(new Map<string, () => Promise<boolean>>());
+    const saveRegistrars = useRef(new Map<string, (save: (() => Promise<boolean>) | null) => void>());
+    const saveRegistrarFor = useCallback((tabId: string) => {
+        const cached = saveRegistrars.current.get(tabId);
+        if (cached) return cached;
+        const registrar = (save: (() => Promise<boolean>) | null) => {
+            if (save) saveHandlers.current.set(tabId, save);
+            else saveHandlers.current.delete(tabId);
+        };
+        saveRegistrars.current.set(tabId, registrar);
+        return registrar;
+    }, []);
+
+    // The close that is waiting on the Save / Don't Save / Cancel prompt: the
+    // whole batch the user asked to close, plus the subset that is dirty and
+    // writable. Null while no prompt is up.
+    const [pendingClose, setPendingClose] = useState<{ ids: readonly string[]; dirtyIds: readonly string[] } | null>(null);
+    const pendingCloseRef = useRef(pendingClose);
+    pendingCloseRef.current = pendingClose;
+    const [closeSaving, setCloseSaving] = useState(false);
+    const [closeError, setCloseError] = useState<string | null>(null);
+
+    // A reload/navigation cannot prompt per tab, and dirty buffers are
+    // deliberately never persisted, so warn while any tab holds unsaved edits
+    // (AC-02).
+    useEffect(() => {
+        if (!tabsEnabled || dirtyTabIds.size === 0) return;
+        const handler = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = '';
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [tabsEnabled, dirtyTabIds]);
+
     /**
      * The file the editor area is showing, for "Reveal open file". With tabs on
      * that is the active tab (search tabs have no row to reveal); with tabs off
@@ -397,28 +443,116 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         setPreviewFile(file);
     }, [tabsEnabled, openFileTab, setPreviewFile]);
 
-    /** Close one tab, dropping the search text it owned (if it was a search tab). */
-    const handleCloseTab = useCallback((id: string) => {
-        closeTabById(id);
-        setSearchBuffers(prev => {
-            if (!prev.has(id)) return prev;
-            const next = new Map(prev);
-            next.delete(id);
+    /** Close tabs for real, dropping any search texts they owned. */
+    const closeTabsNow = useCallback((ids: readonly string[]) => {
+        if (ids.length === 0) return;
+        if (ids.length === 1) closeTabById(ids[0]);
+        else closeTabsByIds(ids);
+        // The registrars stay keyed by tab id (a reopened tab gets the same one,
+        // so a late unmount cannot unregister a fresh buffer); only the live save
+        // functions are dropped.
+        for (const id of ids) saveHandlers.current.delete(id);
+        // A closed buffer is gone, so it can no longer hold unsaved edits. Drop
+        // the flags here rather than waiting for each PreviewPane's unmount
+        // cleanup, so the aggregate the switch/unload guards read is correct in
+        // the same commit as the close.
+        setDirtyTabIds(prev => {
+            if (!ids.some(id => prev.has(id))) return prev;
+            const next = new Set(prev);
+            for (const id of ids) next.delete(id);
             return next;
         });
-    }, [closeTabById, setSearchBuffers]);
-
-    /** Close a batch of tabs (Close Others / to the Right / All) and their texts. */
-    const handleCloseTabs = useCallback((ids: readonly string[]) => {
-        if (ids.length === 0) return;
-        closeTabsByIds(ids);
         setSearchBuffers(prev => {
             if (!ids.some(id => prev.has(id))) return prev;
             const next = new Map(prev);
             for (const id of ids) next.delete(id);
             return next;
         });
-    }, [closeTabsByIds, setSearchBuffers]);
+    }, [closeTabById, closeTabsByIds, setSearchBuffers]);
+
+    /**
+     * Which of these tabs would lose unsaved work if they closed now. Only
+     * editable file buffers qualify: a read-only or trusted file tab and a
+     * search-result tab can never be dirty, so they never raise a save choice
+     * (AC-04).
+     */
+    const dirtyClosableIds = useCallback((ids: readonly string[]) => ids.filter(id => {
+        if (!dirtyTabIdsRef.current.has(id)) return false;
+        const tab = findTab(tabsRef.current, id);
+        return !!tab && tab.kind === 'file' && !tab.readOnly;
+    }), []);
+
+    /**
+     * Ask to close one or more tabs. Clean tabs go immediately; a batch holding
+     * unsaved edits raises the Save / Don't Save / Cancel prompt first (AC-04),
+     * so every close path — the close button, middle click, Ctrl/Cmd+W and each
+     * context-menu action — inherits the same guard.
+     */
+    const requestCloseTabs = useCallback((ids: readonly string[]) => {
+        if (ids.length === 0) return;
+        const dirtyIds = dirtyClosableIds(ids);
+        if (dirtyIds.length === 0) {
+            closeTabsNow(ids);
+            return;
+        }
+        setCloseError(null);
+        setPendingClose({ ids: [...ids], dirtyIds });
+    }, [closeTabsNow, dirtyClosableIds]);
+
+    const handleCloseTab = useCallback((id: string) => requestCloseTabs([id]), [requestCloseTabs]);
+    const handleCloseTabs = useCallback((ids: readonly string[]) => requestCloseTabs(ids), [requestCloseTabs]);
+
+    /** Cancel: the tab set is left exactly as it was. */
+    const handleCancelClose = useCallback(() => {
+        setPendingClose(null);
+        setCloseError(null);
+    }, []);
+
+    /** Don't Save: close the whole batch, discarding the buffers. */
+    const handleDiscardAndClose = useCallback(() => {
+        const pending = pendingCloseRef.current;
+        setPendingClose(null);
+        setCloseError(null);
+        if (pending) closeTabsNow(pending.ids);
+    }, [closeTabsNow]);
+
+    /**
+     * Save: write every dirty file in the batch, then close. A file whose write
+     * fails stays open and dirty and the prompt stays up carrying the error, so
+     * a partly-failed batch is never reported as a successful close (AC-04).
+     */
+    const handleSaveAndClose = useCallback(async () => {
+        const pending = pendingCloseRef.current;
+        if (!pending) return;
+        setCloseSaving(true);
+        setCloseError(null);
+        const failed: string[] = [];
+        for (const id of pending.dirtyIds) {
+            const save = saveHandlers.current.get(id);
+            const saved = save ? await save() : false;
+            if (!saved) failed.push(id);
+        }
+        setCloseSaving(false);
+        if (failed.length === 0) {
+            setPendingClose(null);
+            closeTabsNow(pending.ids);
+            return;
+        }
+        const closable = pending.ids.filter(id => !failed.includes(id));
+        if (closable.length > 0) closeTabsNow(closable);
+        setPendingClose({ ids: failed, dirtyIds: failed });
+        setCloseError(
+            failed.length === 1
+                ? 'Failed to save the file. It is still open with unsaved changes.'
+                : `Failed to save ${failed.length} files. They are still open with unsaved changes.`,
+        );
+    }, [closeTabsNow]);
+
+    /** Full paths of the files the prompt is asking about, in tab order. */
+    const pendingClosePaths = useMemo(
+        () => (pendingClose?.dirtyIds ?? []).map(id => findTab(tabsState, id)?.path ?? id),
+        [pendingClose, tabsState],
+    );
 
     const handleCloseOtherTabs = useCallback((id: string) => handleCloseTabs(idsOther(id)), [handleCloseTabs, idsOther]);
     const handleCloseTabsToRight = useCallback(
@@ -1168,12 +1302,22 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                                                     readOnly={tab.readOnly}
                                                     onClose={isMobile ? undefined : () => handleCloseTab(tab.id)}
                                                     onDirtyChange={dirtyHandlerFor(tab.id)}
+                                                    onRegisterSave={saveRegistrarFor(tab.id)}
                                                 />
                                             )}
                                     </div>
                                 );
                             })}
                         </div>
+                        <ExplorerCloseTabsDialog
+                            open={!!pendingClose}
+                            paths={pendingClosePaths}
+                            saving={closeSaving}
+                            error={closeError}
+                            onSave={handleSaveAndClose}
+                            onDontSave={handleDiscardAndClose}
+                            onCancel={handleCancelClose}
+                        />
                     </div>
                 ) : (<>
                 {searchEditor
