@@ -293,7 +293,7 @@ describe('Chat Folder REST API', () => {
         it('reports an empty member list for an empty folder', async () => {
             const folder = await createFolder('Release 1.9');
             const body = JSON.parse((await deleteJSON(`${baseUrl}/api/workspaces/${wsId}/chat-folders/${folder.id}`)).body);
-            expect(body).toEqual({ deleted: true, unfiled: [] });
+            expect(body).toEqual({ deleted: true, unfiled: [], unfiledGroups: [] });
         });
 
         it('404s on an unknown folder', async () => {

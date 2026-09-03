@@ -23,6 +23,7 @@ import {
     type TaskGroupRecord,
     type TaskGroupSummaryRecord,
 } from '@plusplusoneplusplus/forge';
+import type { GroupFolderStore } from './group-folder-store';
 import {
     DEFAULT_CHAT_FOLDER_COLOR,
     normalizeChatFolderColor,
@@ -158,7 +159,7 @@ function applyFolder(
  * The folder reference is checked here, at write time, so a concurrent delete
  * makes the move reject instead of filing into a folder that no longer exists.
  */
-function resolveTargetFolder(
+export function resolveTargetFolder(
     groups: ChatFolderGroupStore,
     workspaceId: string,
     folderId: string,
@@ -187,7 +188,7 @@ function processWorkspaceId(process: unknown): string {
     return record.workspaceId ?? '';
 }
 
-function parseFolderIdField(body: unknown): ValidationResult<string | null> {
+export function parseFolderIdField(body: unknown): ValidationResult<string | null> {
     const raw = (body as { folderId?: unknown } | null)?.folderId;
     if (raw === null) return { ok: true, value: null };
     if (typeof raw === 'string' && raw.length > 0) return { ok: true, value: raw };
@@ -202,6 +203,9 @@ export function registerChatFolderRoutes(
     routes: Route[],
     store: ProcessStore,
     groups: ChatFolderGroupStore,
+    // Optional so route tests that only exercise single-chat filing can keep
+    // constructing the handler with three arguments.
+    groupFolders?: GroupFolderStore,
 ): void {
     // GET /api/workspaces/:workspaceId/chat-folders — list folders
     routes.push({
@@ -353,8 +357,13 @@ export function registerChatFolderRoutes(
                 .map(child => child.processId)
                 .filter((id): id is string => typeof id === 'string');
 
+            // Filed groups live in a sidecar the cascade cannot reach, so they
+            // are unfiled explicitly; their keys join `unfiled` so the client
+            // can drop them from its optimistic map in the same round trip.
+            const unfiledGroups = groupFolders?.clearFolderEverywhere(ws.id, folderId, new Date().toISOString()) ?? [];
+
             groups.removeGroup(ws.id, folderId);
-            sendJSON(res, 200, { deleted: true, unfiled });
+            sendJSON(res, 200, { deleted: true, unfiled, unfiledGroups });
         },
     });
 
