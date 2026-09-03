@@ -2272,6 +2272,38 @@ describe('FollowUpExecutor chat-mode directive injection', () => {
         expect(disclosed).toEqual(sent);
     });
 
+    // AC-06 — repo config can be edited mid-chat. Drift is evaluated on the
+    // prompt side only (the route has no workingDirectory load), so this is
+    // the only place it can be exercised end to end.
+    it('re-injects once when the mode instructions change on disk', async () => {
+        const workingDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'follow-up-mode-drift-'));
+        const instructionsPath = path.join(workingDirectory, '.github', 'coc', 'instructions-ask.md');
+        fs.mkdirSync(path.dirname(instructionsPath), { recursive: true });
+        fs.writeFileSync(instructionsPath, 'Cite sources.');
+
+        try {
+            await seedAskChat('proc-mode-drift', { workingDirectory });
+            const executor = makeExecutor(store);
+
+            // The seeded marker carries prose only, so the instructions read as
+            // drift on the first follow-up.
+            await executor.executeFollowUp('proc-mode-drift', 'first', undefined, 'ask');
+            expect(sentPrompt(0)).toContain('Cite sources.');
+
+            await executor.executeFollowUp('proc-mode-drift', 'second', undefined, 'ask');
+            expect(sentPrompt(1)).not.toContain('<coc-chat-mode>');
+
+            fs.writeFileSync(instructionsPath, 'Cite sources and quote line numbers.');
+            await executor.executeFollowUp('proc-mode-drift', 'third', undefined, 'ask');
+            expect(sentPrompt(2)).toContain('quote line numbers');
+
+            await executor.executeFollowUp('proc-mode-drift', 'fourth', undefined, 'ask');
+            expect(sentPrompt(3)).not.toContain('<coc-chat-mode>');
+        } finally {
+            fs.rmSync(workingDirectory, { recursive: true, force: true });
+        }
+    });
+
     // A chat that never carried the block (pre-feature history) re-injects.
     it('injects when no earlier turn carries the directive', async () => {
         await store.addProcess(makeProcess({
