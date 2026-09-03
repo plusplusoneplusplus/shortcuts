@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from '../../../ui';
 import { SearchBar, type SearchBarToggle } from './SearchBar';
 import { SearchFilters } from './SearchFilters';
+import { ContentSearchToolbar } from './ContentSearchToolbar';
 import { ContentSearchResults, groupMatchesByFile, toggleCollapsedPath } from './ContentSearchResults';
 import { explorerApi } from './explorerApi';
 import {
@@ -31,7 +32,12 @@ import {
     NO_COLLAPSED_GROUPS,
     type ContentSearchState,
 } from './explorerStateStore';
-import { contentSearchFiltersActive, parseGlobList, type ContentSearchModes } from './types';
+import {
+    DEFAULT_CONTENT_SEARCH_FILTERS,
+    contentSearchFiltersActive,
+    parseGlobList,
+    type ContentSearchModes,
+} from './types';
 
 /** Quiet period after the last keystroke before a search request fires. */
 export const SEARCH_DEBOUNCE_MS = 250;
@@ -97,6 +103,11 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
     // The `…` section starts open when it is already filtering, so a persisted
     // filter is never hidden behind a collapsed chevron on the first render.
     const [filtersExpanded, setFiltersExpanded] = useState(() => contentSearchFiltersActive(filters));
+
+    // Bumped by the toolbar's Refresh. It is an effect dep but not part of
+    // `typedSignature`, so the re-run it triggers takes the zero-delay path: a
+    // refresh is intent, like a toggle, and must not wait out the debounce.
+    const [refreshTick, setRefreshTick] = useState(0);
 
     // Monotonic run id: only the newest request may write results.
     const runIdRef = useRef(0);
@@ -183,7 +194,7 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
             clearTimeout(timer);
             abortRef.current?.abort();
         };
-    }, [workspaceId, trimmed, typedSignature, include, exclude, scopePath, modes, filters.useIgnoreFiles, setState]);
+    }, [workspaceId, trimmed, typedSignature, include, exclude, scopePath, modes, filters.useIgnoreFiles, refreshTick, setState]);
 
     // Unmounting mid-request must not leave a request running: bump the run id
     // so any in-flight response is discarded, and abort the fetch itself.
@@ -224,12 +235,40 @@ export function ContentSearchPanel({ workspaceId, scopePath, onOpenMatch }: Cont
 
     const onClear = useCallback(() => setQuery(''), [setQuery]);
 
+    // Refresh is a re-run, never a no-op: the query is unchanged, so the effect
+    // only re-fires because this counter moved.
+    const onRefresh = useCallback(() => setRefreshTick(tick => tick + 1), []);
+
+    // Clear wipes the query and the filters together — the filters are part of
+    // the search, and leaving a stale include glob behind after "Clear" would
+    // silently narrow the next query.
+    const onClearAll = useCallback(() => {
+        setQuery('');
+        setFilters(DEFAULT_CONTENT_SEARCH_FILTERS);
+    }, [setQuery, setFilters]);
+
+    // Derived from `prev.matches` rather than the rendered `groups` so the
+    // updater stays pure and cannot collapse against a stale result set.
+    const onCollapseAll = useCallback(() => {
+        setState(prev => {
+            const paths = groupMatchesByFile(prev.matches).map(group => group.path);
+            return { ...prev, collapsed: paths.length > 0 ? paths : NO_COLLAPSED_GROUPS };
+        });
+    }, [setState]);
+
     const onToggleCollapsed = useCallback((path: string) => {
         setState(prev => ({ ...prev, collapsed: toggleCollapsedPath(prev.collapsed, path) }));
     }, [setState]);
 
     return (
         <div className="flex flex-col flex-1 min-h-0" data-testid="content-search-panel">
+            <ContentSearchToolbar
+                enabled={trimmed.length > 0}
+                onRefresh={onRefresh}
+                onClear={onClearAll}
+                onCollapseAll={onCollapseAll}
+                testIdPrefix="content-search"
+            />
             <SearchBar
                 value={query}
                 onChange={setQuery}

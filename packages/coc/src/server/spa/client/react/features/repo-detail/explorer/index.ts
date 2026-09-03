@@ -12,6 +12,8 @@ export { SearchBar } from './SearchBar';
 export type { SearchBarProps, SearchBarToggle } from './SearchBar';
 export { SearchFilters } from './SearchFilters';
 export type { SearchFiltersProps } from './SearchFilters';
+export { ContentSearchToolbar } from './ContentSearchToolbar';
+export type { ContentSearchToolbarProps } from './ContentSearchToolbar';
 export { ContentSearchPanel, SEARCH_DEBOUNCE_MS, classifySearchError, keepCollapsedPaths } from './ContentSearchPanel';
 export type { ContentSearchPanelProps } from './ContentSearchPanel';
 export { ContentSearchResults, groupMatchesByFile, splitMatchText, trimMatchIndent, toggleCollapsedPath } from './ContentSearchResults';

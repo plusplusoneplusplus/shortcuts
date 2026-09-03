@@ -231,6 +231,26 @@ describe('ExplorerPanel — Search view', () => {
         expect(screen.getByTestId('preview-stub').getAttribute('data-line')).toBe('17');
     });
 
+    it('swaps the Files header toolbar for the Search view\'s own strip', async () => {
+        await renderPanel();
+        expect(screen.getByTestId('explorer-refresh-btn')).toBeInTheDocument();
+        expect(screen.getByTestId('explorer-collapse-all-btn')).toBeInTheDocument();
+        expect(screen.queryByTestId('content-search-toolbar')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('explorer-view-search'));
+        await act(async () => { await Promise.resolve(); });
+
+        // The tree buttons say nothing about a content search, so they go away.
+        expect(screen.queryByTestId('explorer-refresh-btn')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('explorer-collapse-all-btn')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('explorer-reveal-file-btn')).not.toBeInTheDocument();
+        expect(screen.getByTestId('content-search-toolbar')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('explorer-view-tree'));
+        await act(async () => { await Promise.resolve(); });
+        expect(screen.getByTestId('explorer-refresh-btn')).toBeInTheDocument();
+    });
+
     it('restores the Search view on a remount for the same workspace', async () => {
         const { unmount } = await renderPanel();
         fireEvent.click(screen.getByTestId('explorer-view-search'));

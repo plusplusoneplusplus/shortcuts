@@ -752,6 +752,10 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                             </button>
                         ))}
                     </div>
+                    {/* The header toolbar belongs to the Files view: collapsing,
+                        revealing and refreshing the tree all say nothing in Search,
+                        which carries its own strip (ContentSearchToolbar) at the top
+                        of the panel instead. */}
                     <div className="flex items-center gap-2">
                         {view === 'tree' && (
                             <>
@@ -773,18 +777,18 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                                 >
                                     ⊙
                                 </button>
+                                <button
+                                    className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
+                                    onClick={handleRefresh}
+                                    title="Refresh"
+                                    disabled={refreshing}
+                                    aria-busy={refreshing}
+                                    data-testid="explorer-refresh-btn"
+                                >
+                                    ↻
+                                </button>
                             </>
                         )}
-                        <button
-                            className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
-                            onClick={handleRefresh}
-                            title="Refresh"
-                            disabled={refreshing}
-                            aria-busy={refreshing}
-                            data-testid="explorer-refresh-btn"
-                        >
-                            ↻
-                        </button>
                     </div>
                 </div>
                 {error && (
