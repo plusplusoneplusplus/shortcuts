@@ -575,9 +575,11 @@ all have their own `references/*.md`.
     `chat-base-executor.effectivePrompt`, which is never persisted) and
     follow-ups in the `POST /api/processes/:id/message` route (the last point
     before `ProcessMessageDeliveryService` writes `displayContent`). The block is
-    therefore stored and rendered verbatim in the user bubble — no stripping, no
-    hidden prefix, no special renderer. Do not add stripping without revisiting
-    that decision.
+    stored verbatim. On the user-bubble display path,
+    `conversation/injectedBlocks.ts` extracts a complete leading block and
+    `InjectedBlockDisclosure` renders it under the message as a collapsed
+    **Chat style** disclosure. Raw view, copy, rewind/edit, search, export, and
+    model input continue to use the original turn content.
   - Scope is `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
     follow-ups only, enforced by `isChatStyleEligiblePayload`. Ralph,
     classification, task generation, note creation, resolve-comments, Dreams,
@@ -806,8 +808,11 @@ all have their own `references/*.md`.
   `test/server/executors/codex-ask-user-discovery.test.ts` is the fence.
 - **The mode directive is disclosed in the transcript.** Because it rides the
   user message, the *stored* turn carries it too — the same rule the
-  `<chat-style>` block follows (AC-05), so the bubble shows what the model was
-  told. Injected by `ProcessLifecycleRunner` (turn 1), `POST /message` and the
+  `<chat-style>` block follows (AC-05). The user-bubble display path extracts a
+  complete leading `<coc-chat-mode>` block into a collapsed **Chat mode**
+  disclosure, ahead of Chat style and repo-group context; assistant content and
+  supported tags outside the leading prefix render as message text. Injected by
+  `ProcessLifecycleRunner` (turn 1), `POST /message` and the
   `send_to_conversation` binding (later turns), and `FollowUpExecutor` (the
   cron/wakeup turns it creates itself), always *inside* the style block and
   always via `buildChatModeDisplayBlock`, which omits the repo's mode

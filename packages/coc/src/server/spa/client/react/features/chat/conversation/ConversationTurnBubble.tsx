@@ -36,7 +36,9 @@ import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
 import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { CompactionSummaryDisclosure } from './CompactionSummaryDisclosure';
+import { InjectedBlockDisclosure } from './InjectedBlockDisclosure';
 import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
+import { extractInjectedBlocks } from './injectedBlocks';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
@@ -1110,9 +1112,13 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [isUser, turn.timeline, turn.content, turn.streaming, wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
     );
-    const parsedUserContent = useMemo(
-        () => isUser ? parseAttachedSessionContextBlocks(turn.content || '') : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], remainingContent: '' },
+    const injectedBlocks = useMemo(
+        () => isUser ? extractInjectedBlocks(turn.content || '') : { text: '' },
         [isUser, turn.content],
+    );
+    const parsedUserContent = useMemo(
+        () => isUser ? parseAttachedSessionContextBlocks(injectedBlocks.text) : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], remainingContent: '' },
+        [isUser, injectedBlocks.text],
     );
     const userContentText = isUser ? parsedUserContent.remainingContent : '';
     const largePasteParts = useMemo(
@@ -1710,6 +1716,20 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         >
                             ⚠ Failed to load images · Retry
                         </button>
+                    )}
+                    {isUser && injectedBlocks.chatMode && (
+                        <InjectedBlockDisclosure
+                            block={injectedBlocks.chatMode}
+                            label="Chat mode"
+                            testIdPrefix="chat-mode-block"
+                        />
+                    )}
+                    {isUser && injectedBlocks.chatStyle && (
+                        <InjectedBlockDisclosure
+                            block={injectedBlocks.chatStyle}
+                            label="Chat style"
+                            testIdPrefix="chat-style-block"
+                        />
                     )}
                     {isUser && turn.repoGroupContext && (
                         <RepoGroupContextDisclosure context={turn.repoGroupContext} />
