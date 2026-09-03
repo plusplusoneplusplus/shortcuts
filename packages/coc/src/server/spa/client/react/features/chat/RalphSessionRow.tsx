@@ -48,6 +48,13 @@ interface RalphSessionRowProps {
     onMoreActions?: (e: React.MouseEvent<HTMLButtonElement>) => void;
     /** Optional pointer-only context payload used when session-context dragging is enabled. */
     sessionContextPayload?: RalphSessionContextDragPayload | null;
+    /**
+     * Writes the chat-folder move flavour onto the SAME drag, so the session row
+     * can be dropped on a folder to file the whole session (AC-04). Called after
+     * the session-context writer so its wider `effectAllowed` wins.
+     */
+    onFolderMoveDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+    onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
     /** Render a single child task row. Mirrors `renderChatListRow`'s options
      *  object so we can request the muted, group-child variant. */
     renderTaskCard: (
@@ -92,8 +99,11 @@ export function RalphSessionRow({
     onTogglePin,
     onMoreActions,
     sessionContextPayload,
+    onFolderMoveDragStart,
+    onDragEnd,
     renderTaskCard,
 }: RalphSessionRowProps) {
+    const dragEnabled = !!sessionContextPayload || !!onFolderMoveDragStart;
     const iterCount = session.iterations.length;
 
     // Short muted suffix that fits inside the truncating title cell.
@@ -155,8 +165,12 @@ export function RalphSessionRow({
             isPinned={isPinned}
             onTogglePin={onTogglePin}
             onMoreActions={onMoreActions}
-            draggable={sessionContextPayload ? true : undefined}
-            onDragStart={sessionContextPayload ? (e) => writeRalphSessionContextDragData(e.dataTransfer, sessionContextPayload) : undefined}
+            draggable={dragEnabled ? true : undefined}
+            onDragStart={dragEnabled ? (e) => {
+                if (sessionContextPayload) {writeRalphSessionContextDragData(e.dataTransfer, sessionContextPayload);}
+                onFolderMoveDragStart?.(e);
+            } : undefined}
+            onDragEnd={dragEnabled ? onDragEnd : undefined}
             bodyDataAttributes={{
                 'data-session-context-source': sessionContextPayload ? 'true' : undefined,
                 'data-session-context-kind': sessionContextPayload ? 'ralph-session' : undefined,

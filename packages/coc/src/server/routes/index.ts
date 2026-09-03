@@ -65,6 +65,8 @@ import { registerRalphSessionChangeListener } from '../ralph/ralph-session-store
 import { backfillTaskGroups } from '../task-groups/backfill';
 import { registerPinArchiveRoutes } from '../processes/pin-archive-handler';
 import { registerChatFolderRoutes } from '../processes/chat-folder-handler';
+import { GroupFolderStore } from '../processes/group-folder-store';
+import { registerGroupFolderRoutes } from '../processes/group-folder-handler';
 import { registerTurnActionRoutes } from '../processes/turn-actions-handler';
 import { registerProcessHistoryRoutes } from '../processes/process-history-handler';
 import type { AutoPullManager } from '../git/auto-pull-manager';
@@ -622,7 +624,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerTaskGroupRoutes({ routes, store, taskGroupService });
     registerRalphSessionChangeListener(dataDir, record => syncRalphSessionToTaskGroup(taskGroupService, record));
     registerPinArchiveRoutes(routes, store as any);
-    registerChatFolderRoutes(routes, store, taskGroupService.getChatFolderStore());
+    const chatFolderStore = taskGroupService.getChatFolderStore();
+    const groupFolderStore = new GroupFolderStore(dataDir);
+    registerChatFolderRoutes(routes, store, chatFolderStore, groupFolderStore);
+    registerGroupFolderRoutes(routes, store, chatFolderStore, groupFolderStore);
     registerTurnActionRoutes(routes, store as any, getWsServer);
     registerProcessHistoryRoutes(routes, store as any);
     registerWorkspaceHistoryRoutes(routes, store, bridge);

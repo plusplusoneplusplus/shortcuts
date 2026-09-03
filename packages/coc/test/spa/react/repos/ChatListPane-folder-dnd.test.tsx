@@ -52,11 +52,19 @@ const deleteChatFolder = vi.fn(async () => ({ deleted: true, unfiled: [] as stri
 const setProcessFolderBatch = vi.fn(async (ids: string[], folderId: string | null) => ({ updated: ids, folderId }));
 const setProcessFolder = vi.fn(async (id: string, folderId: string | null) => ({ id, folderId }));
 
+// A remote SSH clone's server: reached only through `getCocClientFor(baseUrl)`
+// once the clone registry maps the workspace to its forwarded origin.
+const remoteListChatFolders = vi.fn(async () => ({ folders: [] as any[] }));
+const remoteSummaries = vi.fn(async () => ({ summaries: [] as any[] }));
+const remoteSetProcessFolder = vi.fn(async (id: string, folderId: string | null) => ({ id, folderId }));
+const remoteSetProcessFolderBatch = vi.fn(async (ids: string[], folderId: string | null) => ({ updated: ids, folderId }));
+
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         crons: { listAll: vi.fn().mockResolvedValue([]) },
         processes: {
             listChatFolders: (...args: any[]) => listChatFolders(...(args as [])),
+            summaries: async () => ({ summaries: mockProcesses }),
             createChatFolder: (...args: any[]) => (createChatFolder as any)(...args),
             updateChatFolder: (...args: any[]) => (updateChatFolder as any)(...args),
             deleteChatFolder: (...args: any[]) => (deleteChatFolder as any)(...args),
@@ -64,6 +72,17 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             setProcessFolder: (...args: any[]) => (setProcessFolder as any)(...args),
         },
     }),
+    getCocClientFor: (_baseUrl?: string) => ({
+        crons: { listAll: vi.fn().mockResolvedValue([]) },
+        processes: {
+            listChatFolders: (...args: any[]) => (remoteListChatFolders as any)(...args),
+            summaries: (...args: any[]) => (remoteSummaries as any)(...args),
+            setProcessFolder: (...args: any[]) => (remoteSetProcessFolder as any)(...args),
+            setProcessFolderBatch: (...args: any[]) => (remoteSetProcessFolderBatch as any)(...args),
+        },
+    }),
+    toSpaCocRequestOptions: (options?: unknown) => options ?? {},
+    translateSpaCocClientError: (error: unknown) => { throw error; },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useLongPress', () => ({
@@ -116,7 +135,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     }),
 }));
 
-// `folderId` rides on the process-summary index that AppContext already holds.
+// `folderId` rides on the workspace-scoped summaries fetch (`useChatFolderMembership`).
 let mockProcesses: any[] = [];
 const mockDispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -158,6 +177,10 @@ import {
 import { SESSION_CONTEXT_DRAG_MIME } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import { readSessionContextDropPayloads } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrop';
 import { QUEUE_DRAG_MIME } from '../../../../src/server/spa/client/react/queue/hooks/useQueueDragDrop';
+import {
+    registerCloneBaseUrls,
+    resetCloneRegistryForTests,
+} from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 /** A DataTransfer stand-in; jsdom ships no usable one. */
 function makeDataTransfer(): any {
@@ -554,5 +577,53 @@ describe('ChatListPane — folder drag and drop (AC-07)', () => {
 
         await act(async () => { fireEvent.dragEnd(rowByTitle('alpha chat'), { dataTransfer }); });
         expect(document.querySelectorAll('[data-testid="chat-folder-drag-image"]')).toHaveLength(0);
+    });
+
+    // ── Remote SSH workspaces ───────────────────────────────────────────────
+    // The regression this pins: folders rendered, the row dragged, the folder
+    // highlighted — and nothing landed, because membership was read from the
+    // page-origin summaries index that never holds a remote clone's processes.
+
+    describe('remote SSH workspace', () => {
+        const REMOTE_WS = 'ws-v2-remote';
+        const REMOTE_URL = 'http://127.0.0.1:4321';
+
+        beforeEach(() => {
+            registerCloneBaseUrls([{ workspaceId: REMOTE_WS, baseUrl: REMOTE_URL }]);
+            remoteListChatFolders.mockResolvedValue({ folders: FOLDERS });
+            remoteSummaries.mockResolvedValue({ summaries: [] });
+        });
+
+        afterEach(() => {
+            resetCloneRegistryForTests();
+        });
+
+        it('renders membership fetched from the remote server, not the page origin', async () => {
+            remoteSummaries.mockResolvedValue({ summaries: [{ id: 'proc-filed', folderId: 'folder-auth' }] });
+            await renderPane({
+                workspaceId: REMOTE_WS,
+                history: [makeChat({ id: 'proc-filed', title: 'filed chat' })],
+            });
+
+            expect(remoteSummaries).toHaveBeenCalledWith({ workspace: REMOTE_WS, limit: 5000 });
+            expect(folderById('folder-auth').textContent).toContain('filed chat');
+        });
+
+        it('a drop on a folder writes to the remote server and visibly moves the row', async () => {
+            await renderPane({
+                workspaceId: REMOTE_WS,
+                history: [makeChat({ id: 'proc-a', title: 'alpha chat' })],
+            });
+            expect(folderById('folder-auth').textContent).not.toContain('alpha chat');
+
+            const dataTransfer = await startChatDrag('alpha chat');
+            await drop(folderRow('folder-auth'), dataTransfer);
+
+            expect(remoteSetProcessFolder).toHaveBeenCalledWith('proc-a', 'folder-auth');
+            expect(setProcessFolder).not.toHaveBeenCalled();
+            // The optimistic membership override files the row into the tree
+            // immediately — the part that visibly failed before the fix.
+            expect(folderById('folder-auth').textContent).toContain('alpha chat');
+        });
     });
 });

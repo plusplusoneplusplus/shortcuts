@@ -48,6 +48,8 @@ import { isRalphEnabled, isCronEnabled, isSessionContextAttachmentsEnabled, isFo
 import { getListModeConfig } from './list-mode-config';
 import { useChatFoldersEnabled } from '../../hooks/feature-flags/useChatFoldersEnabled';
 import { useChatFolders } from './hooks/useChatFolders';
+import { useChatFolderMembership } from './hooks/useChatFolderMembership';
+import { useGroupFolders } from './hooks/useGroupFolders';
 import { ChatFolderSection, ChatFolderChip } from './ChatFolderSection';
 import { ChatFolderArchiveDialog } from './ChatFolderArchiveDialog';
 import { ChatFolderDeleteDialog } from './ChatFolderDeleteDialog';
@@ -68,14 +70,15 @@ import { CHAT_FOLDER_COLORS } from '../../../../../processes/chat-folder-validat
 import type { ChatFolderColor } from '@plusplusoneplusplus/coc-client';
 import {
     buildChatFolderRows,
-    buildFolderIdByProcess,
     buildFolderMemberCounts,
+    buildGroupFolderIndex,
     buildSearchChatFolderRows,
     groupEntriesByFolder,
     partitionFiledEntries,
     resolveEntryFolderId,
     type ChatFolderRow,
 } from './chat-folder-tree';
+import { getGroupFolderKey, type GroupFolderTarget } from './group-folder-key';
 import { collapseAllChatFolders, loadCollapsedChatFolderIds, toggleCollapsedChatFolder } from './chat-folder-view-state';
 import { useAllCrons, type ProcessCronState } from './hooks/useAllCrons';
 import { CronIcon } from './icons/CronIcon';
@@ -85,7 +88,7 @@ import { normalizeChatMode } from '../../repos/modeConfig';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragBundle, writeSessionContextDragData, type SessionContextDragPayload } from './sessionContextDrag';
 import { dataTransferHasSessionContext, readSessionContextDropPayloads } from './sessionContextDrop';
 import { pushNewChatSeedContext } from './newChatSeedContext';
-import type { AgentProvidersQuotaResponse, ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
+import type { AgentProvidersQuotaResponse, ForEachRunSummary, MapReduceRunSummary, ProcessGroupFolderType, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 import { useAgentProvidersQuota } from '../../shared/useAgentProvidersQuota';
 import { formatQuotaTypeLabel, getMostConstrainedProviderQuota, getQuotaPercent, getQuotaRiskClass, getTightestFiniteQuotaType } from '../../shared/quotaUtils';
 
@@ -1167,7 +1170,7 @@ export function ChatListPane({
         return false;
     }, [selectedTaskId]);
 
-    const { state: appState, dispatch: appDispatch } = useApp();
+    const { state: appState } = useApp();
     /**
      * The activity tab no longer renders a type-filter dropdown — chats and
      * automations are surfaced through the scope segmented control instead.
@@ -1191,23 +1194,30 @@ export function ChatListPane({
     const chatFoldersEnabled = useChatFoldersEnabled();
     const { folders: chatFolders, setFolders: setChatFolders, refresh: refreshChatFolders } = useChatFolders(workspaceId, chatFoldersEnabled);
     /**
-     * `processId -> folderId`, read straight off the process-summary index that
-     * `AppContext` already holds (AC-02 stamps `folderId` onto every
-     * `ProcessIndexEntry`). The queue and history endpoints that feed the list
-     * rows do not carry the field, so this is where the client reads it — it is
-     * a field lookup, not a join against a folder-members endpoint.
+     * `processId -> folderId`, fetched workspace-scoped through the clone
+     * registry — the queue and history endpoints that feed the list rows do not
+     * carry the field, and the global `appState.processes` index only ever holds
+     * page-origin processes, so a remote SSH workspace's membership would read
+     * as empty from it. It is a field lookup on the summaries, not a join
+     * against a folder-members endpoint.
      */
-    const folderIdByProcess = useMemo(
-        () => (chatFoldersEnabled ? buildFolderIdByProcess(appState.processes) : new Map<string, string>()),
-        [chatFoldersEnabled, appState.processes],
-    );
-    // Archived members are excluded so a folder whose chats are all archived
-    // reads as "empty everywhere" and stays on screen at count 0, rather than
-    // as "has members, none on this tab" — which would hide it (AC-09).
-    const folderMemberCounts = useMemo(
-        () => buildFolderMemberCounts(folderIdByProcess, archivedChatIds),
-        [folderIdByProcess, archivedChatIds],
-    );
+    const {
+        folderIdByProcess,
+        refresh: refreshFolderMembership,
+        applyOverride: applyFolderMembershipOverride,
+    } = useChatFolderMembership(workspaceId, chatFoldersEnabled);
+    /**
+     * `"<type>:<groupId>" -> folderId` for whole chat *groups* — ralph sessions,
+     * spawned trees, for-each and map-reduce runs. Kept separate from the
+     * per-chat map because a group is filed as a unit against a server-side
+     * sidecar keyed on the group, which is what lets a child enqueued after the
+     * move inherit the folder with no extra write.
+     */
+    const {
+        groupFolderMap,
+        refresh: refreshGroupFolders,
+        moveGroupToFolder,
+    } = useGroupFolders(workspaceId, chatFoldersEnabled, { onError: message => { toastCtx?.addToast?.(message, 'error'); } });
     const foldersById = useMemo(() => new Map(chatFolders.map(f => [f.id, f])), [chatFolders]);
     const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(() => loadCollapsedChatFolderIds(workspaceId));
     // Re-seed when the workspace changes; collapse state is per-workspace, like
@@ -1221,16 +1231,22 @@ export function ChatListPane({
     const [showFolders, setShowFolders] = useState(true);
 
     /**
-     * The one seam every optimistic membership change goes through: patch the
-     * process-summary index that `folderIdByProcess` is derived from, so a move
-     * is visible before the next summaries fetch reconciles it.
+     * The one seam every optimistic membership change goes through: layer the
+     * move onto the membership map so it is visible before the next
+     * workspace-scoped summaries fetch reconciles it.
      */
     const handleProcessFoldersChanged = useCallback((processIds: string[], folderId: string | null) => {
-        for (const id of processIds) {
-            appDispatch({ type: 'PROCESS_UPDATED', process: { id, folderId } });
-        }
-    }, [appDispatch]);
+        applyFolderMembershipOverride(processIds, folderId);
+    }, [applyFolderMembershipOverride]);
     const handleFolderError = useCallback((message: string) => { toastCtx?.addToast?.(message, 'error'); }, [toastCtx]);
+    /** Folders and membership reconcile together — a failed write rolls both back against the server. */
+    const refreshChatFoldersAndMembership = useCallback(() => {
+        refreshChatFolders();
+        refreshFolderMembership();
+        // Deleting a folder unfiles the groups keyed to it as well, so the
+        // group map has to be re-read alongside the per-chat membership.
+        refreshGroupFolders();
+    }, [refreshChatFolders, refreshFolderMembership, refreshGroupFolders]);
 
     // ── Folder mutations (AC-05) ───────────────────────────────────────────
     // Create / rename / recolor / delete, with a single-level undo. The
@@ -1238,7 +1254,7 @@ export function ChatListPane({
     const chatFolderMutations = useChatFolderMutations({
         workspaceId,
         setFolders: setChatFolders,
-        refresh: refreshChatFolders,
+        refresh: refreshChatFoldersAndMembership,
         folderIdByProcess,
         folders: chatFolders,
         // Undo re-files the remembered members into a brand-new folder id, so
@@ -1272,20 +1288,38 @@ export function ChatListPane({
      * cancelled create therefore moves nothing.
      */
     const pendingFileIdsRef = useRef<string[]>([]);
+    /**
+     * The group waiting on "+ New folder…". Kept apart from the id list because
+     * a group is filed with one write against its own key (AC-03), never as a
+     * batch over its children.
+     */
+    const pendingFileGroupRef = useRef<GroupFolderTarget | null>(null);
     const startCreateFolderAndFile = useCallback((ids: readonly string[]) => {
         pendingFileIdsRef.current = [...ids];
+        pendingFileGroupRef.current = null;
+        chatFolderMutations.startCreate();
+    }, [chatFolderMutations]);
+    const startCreateFolderAndFileGroup = useCallback((target: GroupFolderTarget) => {
+        pendingFileIdsRef.current = [];
+        pendingFileGroupRef.current = target;
         chatFolderMutations.startCreate();
     }, [chatFolderMutations]);
     const handleCommitFolderCreate = useCallback(async (name: string, color: ChatFolderColor) => {
         const ids = pendingFileIdsRef.current;
+        const group = pendingFileGroupRef.current;
         pendingFileIdsRef.current = [];
+        pendingFileGroupRef.current = null;
         const folder = await chatFolderMutations.commitCreate(name, color);
-        if (folder && ids.length > 0) {
+        if (!folder) {return;}
+        if (group) {
+            await moveGroupToFolder(group.type, group.groupId, folder.id);
+        } else if (ids.length > 0) {
             await moveToFolder(ids, folder.id);
         }
-    }, [chatFolderMutations, moveToFolder]);
+    }, [chatFolderMutations, moveToFolder, moveGroupToFolder]);
     const handleCancelFolderCreate = useCallback(() => {
         pendingFileIdsRef.current = [];
+        pendingFileGroupRef.current = null;
         chatFolderMutations.cancelCreate();
     }, [chatFolderMutations]);
     const isDuplicateFolderName = useCallback(
@@ -1385,6 +1419,44 @@ export function ChatListPane({
             }] : []),
         ];
     }, [chatFoldersEnabled, chatFolders, folderIdByProcess, moveToFolder, startCreateFolderAndFile]);
+    /**
+     * The same "Move to folder ▸" block for a whole *group* row (AC-03). Files
+     * the group with one PATCH against `"<type>:<groupId>"` instead of a batch
+     * over its children, which is what lets a child enqueued later inherit the
+     * folder for free (AC-05).
+     */
+    const buildGroupMoveToFolderItems = useCallback((target: GroupFolderTarget): ContextMenuItem[] => {
+        if (!chatFoldersEnabled) {return [];}
+        const currentFolderId = groupFolderMap.get(getGroupFolderKey(target.type, target.groupId));
+        const children: ContextMenuItem[] = [
+            ...chatFolders.map(folder => ({
+                label: folder.name,
+                icon: '●',
+                onClick: () => { void moveGroupToFolder(target.type, target.groupId, folder.id); },
+            })),
+            ...(chatFolders.length > 0 ? [{ label: '', separator: true, onClick: () => {} }] : []),
+            {
+                label: '+ New folder…',
+                keepOnFilter: true,
+                onClick: () => startCreateFolderAndFileGroup(target),
+            },
+        ];
+        return [
+            {
+                label: buildMoveToFolderLabel(1),
+                icon: '🗂️',
+                filterable: shouldShowFolderFilter(chatFolders.length),
+                filterPlaceholder: 'Filter folders…',
+                children,
+                onClick: () => { /* submenu parent */ },
+            },
+            ...(currentFolderId ? [{
+                label: 'Remove from folder',
+                icon: '↩',
+                onClick: () => { void moveGroupToFolder(target.type, target.groupId, null); },
+            }] : []),
+        ];
+    }, [chatFoldersEnabled, chatFolders, groupFolderMap, moveGroupToFolder, startCreateFolderAndFileGroup]);
 
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
@@ -1457,6 +1529,11 @@ export function ChatListPane({
         workspaceId,
         folderIdByProcess,
         moveToFolder,
+        // A dropped GROUP row files against its key with one write, never a
+        // batch over its children (AC-04) — the same call the context menu makes.
+        groupFolderByKey: groupFolderMap,
+        moveGroupToFolder: (type, groupId, folderId) =>
+            moveGroupToFolder(type as ProcessGroupFolderType, groupId, folderId),
         reorderFolders: chatFolderMutations.reorderFolders,
         onDragFinished: chatListAutoScroll.stop,
     });
@@ -1519,6 +1596,8 @@ export function ChatListPane({
         forEachRun?: ForEachRunGroup;
         mapReduceRun?: MapReduceRunGroup;
         groupPin?: GroupPinMenuTarget;
+        /** Present when the row is a filable group; "Move to folder" then files the group (AC-03). */
+        groupFolder?: GroupFolderTarget;
     } | null>(null);
     const [insertingPauseAt, setInsertingPauseAt] = useState<number | null>(null);
     const [pauseMarkerMenuIndex, setPauseMarkerMenuIndex] = useState<number | null>(null);
@@ -1692,6 +1771,7 @@ export function ChatListPane({
         task: any,
         primaryPayload: SessionContextDragPayload | null,
         folderFilable: boolean,
+        groupFolder?: GroupFolderTarget,
     ) => {
         const draggedId = task.id as string;
         const inSelection = selectedHistoryIds.size > 1 && selectedHistoryIds.has(draggedId);
@@ -1720,7 +1800,13 @@ export function ChatListPane({
         // its `effectAllowed = 'copyMove'` supersedes the session-context
         // writer's `'copy'`. A folder target then answers 'move' and a composer
         // still answers 'copy', so the cursor tells the truth either way.
-        if (folderFilable && folderDnd.writeChatRowMoveData(e.dataTransfer, selectionIds)) {
+        // A row that ROOTS a filable group (today: a spawned tree's root chat)
+        // writes the group flavour instead of its own id, so the drop files the
+        // whole tree — matching what its context menu already does (AC-03/AC-04).
+        const wroteMove = folderFilable && (groupFolder
+            ? folderDnd.writeGroupRowMoveData(e.dataTransfer, groupFolder, selectionIds)
+            : folderDnd.writeChatRowMoveData(e.dataTransfer, selectionIds));
+        if (wroteMove) {
             if (selectionIds.length > 1) {
                 chatDragImageRef.current = createMultiSelectDragImage(
                     e.dataTransfer,
@@ -1732,7 +1818,7 @@ export function ChatListPane({
         // `writeChatRowMoveData` is a stable callback, so this handler's identity
         // tracks the selection only — a folder highlight changing mid-drag must
         // not re-create the row renderer that depends on it.
-    }, [selectedHistoryIds, taskById, buildChatSessionContextPayload, folderDnd.writeChatRowMoveData]);
+    }, [selectedHistoryIds, taskById, buildChatSessionContextPayload, folderDnd.writeChatRowMoveData, folderDnd.writeGroupRowMoveData]);
 
     /**
      * One end for every drag this list starts: drops the off-screen drag image,
@@ -1745,6 +1831,32 @@ export function ChatListPane({
         chatDragImageRef.current = null;
         folderDnd.handleDragEnd();
     }, [folderDnd.handleDragEnd]);
+
+    /**
+     * Drag props for a whole-group row (a ralph session, a for-each or
+     * map-reduce run) so it can be dropped on a folder (AC-04). The payload is
+     * tagged with the group, so the drop issues one write against the group key
+     * rather than a batch over `memberIds` — the ids ride along only so the
+     * "already in this folder" check has something to look at.
+     *
+     * Empty when folders are off or there is no workspace to file into, which
+     * leaves the row exactly as draggable as it was before (Ralph rows still
+     * carry their session-context drag; the run rows stay undraggable).
+     */
+    const buildGroupRowDragProps = useCallback((target: GroupFolderTarget, memberIds: readonly string[]): {
+        draggable?: boolean;
+        onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+        onDragEnd?: () => void;
+    } => {
+        if (!chatFoldersEnabled || !workspaceId) {return {};}
+        return {
+            draggable: true,
+            onDragStart: (e: React.DragEvent<HTMLDivElement>) => {
+                folderDnd.writeGroupRowMoveData(e.dataTransfer, target, memberIds);
+            },
+            onDragEnd: handleChatRowDragEnd,
+        };
+    }, [chatFoldersEnabled, workspaceId, folderDnd.writeGroupRowMoveData, handleChatRowDragEnd]);
     const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
     const filteredQueued = useMemo(
         () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
@@ -2144,6 +2256,35 @@ export function ChatListPane({
         return { today, week, older };
     }, [groupedUnpinned, visibleFilteredUnpinned, unpinnedForEachRunGroups, unpinnedMapReduceRunGroups, activeSpawnedTreeGroups, listModeConfig, historyGrouping, unseenProcessIds, activityRalphGrouping]);
 
+    /**
+     * Which of the currently rendered group rows are filed, and which chats
+     * live inside them. Built from the group entries themselves rather than
+     * from the bucketed output, so one index serves both the Activity and the
+     * Chats pipelines — a group's key is the same whichever pipeline built the
+     * row. Groups absent from this render are not indexed, so a stale server
+     * assignment cannot inflate a folder's count badge.
+     */
+    const groupFolderIndex = useMemo(() => buildGroupFolderIndex([
+        ...forEachRunGroups,
+        ...mapReduceRunGroups,
+        ...activeSpawnedTreeGroups,
+        ...archivedSpawnedTreeGroups,
+        ...activityRalphGrouping.pinnedRalphGroups,
+        ...activityRalphGrouping.unpinnedRalphGroups,
+    ], groupFolderMap), [
+        forEachRunGroups, mapReduceRunGroups, activeSpawnedTreeGroups,
+        archivedSpawnedTreeGroups, activityRalphGrouping, groupFolderMap,
+    ]);
+
+    // Archived members are excluded so a folder whose chats are all archived
+    // reads as "empty everywhere" and stays on screen at count 0, rather than
+    // as "has members, none on this tab" — which would hide it (AC-09). A filed
+    // group counts as one member, and its children stop counting individually.
+    const folderMemberCounts = useMemo(
+        () => buildFolderMemberCounts(folderIdByProcess, archivedChatIds, groupFolderIndex),
+        [folderIdByProcess, archivedChatIds, groupFolderIndex],
+    );
+
     /** Ids of rows currently running, for the folder row's live-run dot. */
     const runningRowIds = useMemo(() => new Set<string>(running.map((r: any) => r.id)), [running]);
 
@@ -2171,8 +2312,8 @@ export function ChatListPane({
             .filter((t: any) => !(archivedChatIds?.has(t.id) ?? false))
             .filter((t: any) => !taskIdentityMatches(t, groupedTaskIds))
             .sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a));
-        return groupEntriesByFolder(candidates, folderIdByProcess, known);
-    }, [folderSearchQuery, chatFolders, history, activeTab, excludedTypes, runningRowIds, pinnedChatIds, archivedChatIds, groupedTaskIds, folderIdByProcess]);
+        return groupEntriesByFolder(candidates, folderIdByProcess, known, groupFolderIndex);
+    }, [folderSearchQuery, chatFolders, history, activeTab, excludedTypes, runningRowIds, pinnedChatIds, archivedChatIds, groupedTaskIds, folderIdByProcess, groupFolderIndex]);
 
     /**
      * Folder rows for the Activity / Tasks surfaces, derived from the *unfiled*
@@ -2204,11 +2345,12 @@ export function ChatListPane({
                 ...rawDateBucketedHistory.older,
             ],
             folderIdByProcess,
+            groupIndex: groupFolderIndex,
             folderMemberCounts,
             collapsedIds: collapsedFolderIds,
             runningIds: runningRowIds,
         });
-    }, [chatFoldersEnabled, chatFolders, folderSearchQuery, searchFolderMembersByFolder, rawDateBucketedHistory, folderIdByProcess, folderMemberCounts, collapsedFolderIds, runningRowIds]);
+    }, [chatFoldersEnabled, chatFolders, folderSearchQuery, searchFolderMembersByFolder, rawDateBucketedHistory, folderIdByProcess, groupFolderIndex, folderMemberCounts, collapsedFolderIds, runningRowIds]);
 
     const activityVisibleFolderIds = useMemo(
         () => new Set(activityFolderRows.map(row => row.folder.id)),
@@ -2218,11 +2360,11 @@ export function ChatListPane({
     const dateBucketedHistory = useMemo(() => {
         if (activityVisibleFolderIds.size === 0) {return rawDateBucketedHistory;}
         return {
-            today: partitionFiledEntries(rawDateBucketedHistory.today, folderIdByProcess, activityVisibleFolderIds).unfiled,
-            week: partitionFiledEntries(rawDateBucketedHistory.week, folderIdByProcess, activityVisibleFolderIds).unfiled,
-            older: partitionFiledEntries(rawDateBucketedHistory.older, folderIdByProcess, activityVisibleFolderIds).unfiled,
+            today: partitionFiledEntries(rawDateBucketedHistory.today, folderIdByProcess, activityVisibleFolderIds, groupFolderIndex).unfiled,
+            week: partitionFiledEntries(rawDateBucketedHistory.week, folderIdByProcess, activityVisibleFolderIds, groupFolderIndex).unfiled,
+            older: partitionFiledEntries(rawDateBucketedHistory.older, folderIdByProcess, activityVisibleFolderIds, groupFolderIndex).unfiled,
         };
-    }, [rawDateBucketedHistory, folderIdByProcess, activityVisibleFolderIds]);
+    }, [rawDateBucketedHistory, folderIdByProcess, activityVisibleFolderIds, groupFolderIndex]);
 
     const activityCompletedEntries = useMemo(
         () => [
@@ -2415,11 +2557,12 @@ export function ChatListPane({
             folders: chatFolders,
             entries: [...rawChatGroups.today, ...rawChatGroups.week, ...rawChatGroups.older],
             folderIdByProcess,
+            groupIndex: groupFolderIndex,
             folderMemberCounts,
             collapsedIds: collapsedFolderIds,
             runningIds: runningRowIds,
         });
-    }, [chatFoldersEnabled, chatFolders, folderSearchQuery, searchFolderMembersByFolder, rawChatGroups, folderIdByProcess, folderMemberCounts, collapsedFolderIds, runningRowIds]);
+    }, [chatFoldersEnabled, chatFolders, folderSearchQuery, searchFolderMembersByFolder, rawChatGroups, folderIdByProcess, groupFolderIndex, folderMemberCounts, collapsedFolderIds, runningRowIds]);
 
     const chatVisibleFolderIds = useMemo(
         () => new Set(chatFolderRows.map(row => row.folder.id)),
@@ -2428,9 +2571,9 @@ export function ChatListPane({
 
     const chatGroups = useMemo(() => {
         if (!rawChatGroups || chatVisibleFolderIds.size === 0) {return rawChatGroups;}
-        const today = partitionFiledEntries(rawChatGroups.today, folderIdByProcess, chatVisibleFolderIds).unfiled;
-        const week = partitionFiledEntries(rawChatGroups.week, folderIdByProcess, chatVisibleFolderIds).unfiled;
-        const older = partitionFiledEntries(rawChatGroups.older, folderIdByProcess, chatVisibleFolderIds).unfiled;
+        const today = partitionFiledEntries(rawChatGroups.today, folderIdByProcess, chatVisibleFolderIds, groupFolderIndex).unfiled;
+        const week = partitionFiledEntries(rawChatGroups.week, folderIdByProcess, chatVisibleFolderIds, groupFolderIndex).unfiled;
+        const older = partitionFiledEntries(rawChatGroups.older, folderIdByProcess, chatVisibleFolderIds, groupFolderIndex).unfiled;
         return {
             ...rawChatGroups,
             today,
@@ -2448,7 +2591,7 @@ export function ChatListPane({
                 ...older,
             ],
         };
-    }, [rawChatGroups, folderIdByProcess, chatVisibleFolderIds, chatFolderRows]);
+    }, [rawChatGroups, folderIdByProcess, chatVisibleFolderIds, groupFolderIndex, chatFolderRows]);
 
     /** Folder members in section order — shift-click spans them like any chat row. */
     const visibleFolderMemberRows = useMemo(
@@ -2675,6 +2818,7 @@ export function ChatListPane({
         forEachRun?: ForEachRunGroup;
         mapReduceRun?: MapReduceRunGroup;
         groupPin: GroupPinMenuTarget;
+        groupFolder?: GroupFolderTarget;
     } | null>(null);
     const groupLongPress = useLongPress(
         (x: number, y: number) => {
@@ -2692,6 +2836,7 @@ export function ChatListPane({
                 forEachRun: target.forEachRun,
                 mapReduceRun: target.mapReduceRun,
                 groupPin: target.groupPin,
+                groupFolder: target.groupFolder,
             });
         },
     );
@@ -2754,7 +2899,7 @@ export function ChatListPane({
         onPlainClick();
     }, [anchorHistoryId, isMobile]);
 
-    const handleTaskContextMenu= useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued' | 'completed') => {
+    const handleTaskContextMenu= useCallback((e: React.MouseEvent, taskId: string, taskStatus: 'running' | 'queued' | 'completed', groupFolder?: GroupFolderTarget) => {
         if (e.shiftKey) return; // Allow native browser context menu on shift+right-click
         e.preventDefault();
         e.stopPropagation();
@@ -2768,7 +2913,10 @@ export function ChatListPane({
                     ? [taskId]
                     : undefined;
 
-        setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus, bulkIds });
+        // A multi-row selection is about those rows, not about the group the
+        // right-clicked row happens to root, so the group affordance drops out.
+        const groupTarget = bulkIds && bulkIds.length > 1 ? undefined : groupFolder;
+        setContextMenu({ x: e.clientX, y: e.clientY, taskId, taskStatus, bulkIds, groupFolder: groupTarget });
     }, [selectedHistoryIds]);
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
@@ -2800,6 +2948,7 @@ export function ChatListPane({
         if (contextMenu.groupPin && !contextMenu.bulkIds) {
             return [
                 ...(groupPinAction ? [groupPinAction] : []),
+                ...(contextMenu.groupFolder ? buildGroupMoveToFolderItems(contextMenu.groupFolder) : []),
                 ...(contextMenu.forEachRun ? [{
                     label: 'Copy run info',
                     icon: '📎',
@@ -2855,7 +3004,9 @@ export function ChatListPane({
                 ...(groupPinAction ? [groupPinAction] : []),
                 ...(!groupPinAction && anyPinned && onUnpinChat   ? [{ label: 'Unpin',          icon: '📌', onClick: () => { ids.forEach(id => onUnpinChat!(id)); closeContextMenu(); } }] : []),
                 ...(!groupPinAction && anyUnpinned && onPinChat   ? [{ label: 'Pin to top',     icon: '📌', onClick: () => { ids.forEach(id => onPinChat!(id));   closeContextMenu(); } }] : []),
-                ...buildMoveToFolderItems(ids),
+                ...(contextMenu.groupFolder
+                    ? buildGroupMoveToFolderItems(contextMenu.groupFolder)
+                    : buildMoveToFolderItems(ids)),
                 ...(anyUnarchived && onArchiveChats  ? [{ label: 'Archive',   icon: '📦', onClick: () => { onArchiveChats!(ids);   closeContextMenu(); } }] : []),
                 ...(anyArchived  && onUnarchiveChats ? [{ label: 'Unarchive', icon: '📤', onClick: () => { onUnarchiveChats!(ids); closeContextMenu(); } }] : []),
                 ...(ids.length <= 20 ? [{
@@ -2927,7 +3078,9 @@ export function ChatListPane({
             return [
                 ...(isPinned && onUnpinChat ? [{ label: 'Unpin', icon: '📌', onClick: () => onUnpinChat(taskId) }] : []),
                 ...(!isPinned && onPinChat ? [{ label: 'Pin to top', icon: '📌', onClick: () => onPinChat(taskId) }] : []),
-                ...buildMoveToFolderItems([taskId]),
+                ...(contextMenu.groupFolder
+                    ? buildGroupMoveToFolderItems(contextMenu.groupFolder)
+                    : buildMoveToFolderItems([taskId])),
                 { label: 'Copy metadata', icon: '📋', onClick: () => {
                     const task = running.find((t: any) => t.id === taskId);
                     if (task) void copyToClipboard(formatMetadataText(task));
@@ -2951,7 +3104,9 @@ export function ChatListPane({
                     setRenameTarget({ taskId, title: (task as any)?.customTitle || '' });
                     closeContextMenu();
                 }},
-                ...buildMoveToFolderItems([taskId]),
+                ...(contextMenu.groupFolder
+                    ? buildGroupMoveToFolderItems(contextMenu.groupFolder)
+                    : buildMoveToFolderItems([taskId])),
                 ...(isArchived && onUnarchiveChat ? [{ label: 'Unarchive', icon: '📤', onClick: () => onUnarchiveChat(taskId) }] : []),
                 ...(!isArchived && onArchiveChat ? [{ label: 'Archive', icon: '📦', onClick: () => onArchiveChat(taskId) }] : []),
                 { label: '', icon: '', separator: true, onClick: () => {} },
@@ -2979,7 +3134,7 @@ export function ChatListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, onSetGroupPin, setGroupPinned, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused, buildMoveToFolderItems]);
+    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, onSetGroupPin, setGroupPinned, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused, buildMoveToFolderItems, buildGroupMoveToFolderItems]);
 
     /** Render a single history card (shared between flat and grouped layouts). */
     /**
@@ -3003,6 +3158,9 @@ export function ChatListPane({
         /** Replaces the status dot in the first grid column when provided (e.g. a
          *  spawned-tree expand/collapse chevron) so the mode pill/avatar stays aligned. */
         leadingElement?: React.ReactNode;
+        /** Files a whole group instead of this one chat when the row roots a
+         *  filable group — today the root of a spawned tree (AC-03). */
+        groupFolder?: GroupFolderTarget;
     }) => {
         const isUnseen = unseenProcessIds?.has(task.id) ?? false;
         const hasDraft = !!getDraft(task.id);
@@ -3034,7 +3192,7 @@ export function ChatListPane({
         // folder need no chip, and an unfiled row gets none rather than one
         // reading "Unfiled".
         const rowFolder = chatFoldersEnabled && !options?.isGroupChild && (isRunning || isQueued || !!folderSearchQuery)
-            ? foldersById.get(resolveEntryFolderId(task, folderIdByProcess) ?? '')
+            ? foldersById.get(resolveEntryFolderId(task, folderIdByProcess, groupFolderIndex) ?? '')
             : undefined;
         const forEachGenerationPreview = getForEachGenerationPreview(task);
         const mapReduceGenerationPreview = getMapReduceGenerationPreview(task);
@@ -3153,9 +3311,9 @@ export function ChatListPane({
                         }
                         handleHistoryItemClick(e, task, listForRange);
                     }}
-                    onContextMenu={(e) => handleTaskContextMenu(e, task.id, contextMenuKind)}
+                    onContextMenu={(e) => handleTaskContextMenu(e, task.id, contextMenuKind, options?.groupFolder)}
                     draggable={rowDraggable}
-                    onDragStart={rowDraggable ? (e) => handleChatRowDragStart(e, task, sessionContextPayload, folderFilable) : undefined}
+                    onDragStart={rowDraggable ? (e) => handleChatRowDragStart(e, task, sessionContextPayload, folderFilable, options?.groupFolder) : undefined}
                     onDragEnd={rowDraggable ? handleChatRowDragEnd : undefined}
                     onTouchStart={(e) => {
                         historyLongPressTaskRef.current = task.id;
@@ -3375,47 +3533,6 @@ export function ChatListPane({
         workspaceId,
     ]);
 
-    /**
-     * The Folders section, rendered from a single place for every list surface.
-     * Activity, Chats, Tasks and a repo group's Workspace tab all go through
-     * this component — one renderer, not four copies of the JSX.
-     */
-    const renderFoldersSection = useCallback((
-        rows: ChatFolderRow[],
-        listForRange: HistoryRangeInput[],
-    ): React.ReactNode => {
-        if (!chatFoldersEnabled) {return null;}
-        return (
-            <ChatFolderSection
-                rows={rows}
-                expanded={showFolders}
-                onToggleSection={() => setShowFolders(prev => !prev)}
-                onToggleFolder={toggleFolderCollapsed}
-                renderMember={entry => renderChatListRow(entry, listForRange, { isGroupChild: true })}
-                onOpenFolderMenu={openFolderMenu}
-                creating={chatFolderMutations.creating}
-                onCommitCreate={(name, color) => { void handleCommitFolderCreate(name, color); }}
-                onCancelCreate={handleCancelFolderCreate}
-                renamingFolderId={chatFolderMutations.renamingFolderId}
-                onStartRename={chatFolderMutations.startRename}
-                onCommitRename={(folderId, name) => { void chatFolderMutations.commitRename(folderId, name); }}
-                onCancelRename={chatFolderMutations.cancelRename}
-                isDuplicateName={isDuplicateFolderName}
-                dropTarget={folderDnd.dropTarget}
-                draggingFolderId={folderDnd.draggingFolderId}
-                onFolderDragStart={folderDnd.handleFolderDragStart}
-                onFolderDragEnd={folderDnd.handleDragEnd}
-                onFolderDragOver={folderDnd.handleFolderDragOver}
-                onFolderDragLeave={folderDnd.handleFolderDragLeave}
-                onFolderDrop={folderDnd.handleFolderDrop}
-                onNewFolder={() => { setShowFolders(true); chatFolderMutations.startCreate(); }}
-                onCollapseAll={collapseAllFolders}
-                collapseAllDisabled={chatFolders.length === 0}
-                showWhenEmpty={!folderSearchQuery}
-            />
-        );
-    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow, openFolderMenu, chatFolderMutations, isDuplicateFolderName, handleCommitFolderCreate, handleCancelFolderCreate, folderDnd, collapseAllFolders, chatFolders.length, folderSearchQuery]);
-
     const getGroupedChildTaskStatus = useCallback((task: any): 'running' | 'queued' | 'completed' => {
         if (tabFilteredRunning.some(candidate => candidate.id === task.id || candidate.processId === task.id || candidate.id === task.processId || candidate.processId === task.processId)) {
             return 'running';
@@ -3440,6 +3557,10 @@ export function ChatListPane({
         const ralphSessionContextPayload = sessionContextDragEnabled
             ? createRalphSessionContextDragPayload(session, { activeWorkspaceId: workspaceId })
             : null;
+        // Rides the SAME gesture as the session-context drag, written second so
+        // its wider `effectAllowed` wins — a composer still gets 'copy', a
+        // folder row gets 'move' (AC-04).
+        const ralphDragProps = buildGroupRowDragProps({ type: 'ralph-session', groupId: session.sessionId }, ralphSubIds);
         const openContextMenu = (x: number, y: number) => {
             const ids = [session.grillingProcess?.id, ...session.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
             setSelectedHistoryIds(new Set(ids));
@@ -3451,6 +3572,7 @@ export function ChatListPane({
                 bulkIds: ids,
                 ralphSession: session,
                 groupPin,
+                groupFolder: { type: 'ralph-session', groupId: session.sessionId },
             });
         };
         return (
@@ -3479,6 +3601,8 @@ export function ChatListPane({
                 onTogglePin={onSetGroupPin ? () => setGroupPinned('ralph-session', session.sessionId, !isPinned) : undefined}
                 onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
                 sessionContextPayload={ralphSessionContextPayload}
+                onFolderMoveDragStart={ralphDragProps.onDragStart}
+                onDragEnd={ralphDragProps.onDragEnd}
                 onContextMenu={e => {
                     if (e.shiftKey) return;
                     e.preventDefault();
@@ -3491,6 +3615,7 @@ export function ChatListPane({
                         bulkIds: ralphSubIds,
                         ralphSession: session,
                         groupPin,
+                        groupFolder: { type: 'ralph-session', groupId: session.sessionId },
                     };
                     groupLongPress.onTouchStart(e);
                 }}
@@ -3500,6 +3625,7 @@ export function ChatListPane({
             />
         );
     }, [
+        buildGroupRowDragProps,
         expandedRalphSessionIds,
         groupLongPress,
         isGroupPinned,
@@ -3540,6 +3666,7 @@ export function ChatListPane({
                 bulkIds: forEachSubIds.length > 0 ? forEachSubIds : undefined,
                 forEachRun: group,
                 groupPin,
+                groupFolder: { type: 'for-each-run', groupId: group.runId },
             });
         };
         return (
@@ -3564,6 +3691,7 @@ export function ChatListPane({
                 isPinned={isPinned}
                 onTogglePin={onSetGroupPin ? () => setGroupPinned('for-each-run', group.runId, !isPinned) : undefined}
                 onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
+                {...buildGroupRowDragProps({ type: 'for-each-run', groupId: group.runId }, forEachSubIds)}
                 onContextMenu={e => {
                     if (e.shiftKey) return;
                     e.preventDefault();
@@ -3576,6 +3704,7 @@ export function ChatListPane({
                         bulkIds: forEachSubIds.length > 0 ? forEachSubIds : undefined,
                         forEachRun: group,
                         groupPin,
+                        groupFolder: { type: 'for-each-run', groupId: group.runId },
                     };
                     groupLongPress.onTouchStart(e);
                 }}
@@ -3588,6 +3717,7 @@ export function ChatListPane({
             />
         );
     }, [
+        buildGroupRowDragProps,
         expandedForEachRunIds,
         getGroupedChildTaskStatus,
         groupLongPress,
@@ -3625,6 +3755,7 @@ export function ChatListPane({
                 bulkIds: mapReduceSubIds.length > 0 ? mapReduceSubIds : undefined,
                 mapReduceRun: group,
                 groupPin,
+                groupFolder: { type: 'map-reduce-run', groupId: group.runId },
             });
         };
         return (
@@ -3649,6 +3780,7 @@ export function ChatListPane({
                 isPinned={isPinned}
                 onTogglePin={onSetGroupPin ? () => setGroupPinned('map-reduce-run', group.runId, !isPinned) : undefined}
                 onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
+                {...buildGroupRowDragProps({ type: 'map-reduce-run', groupId: group.runId }, mapReduceSubIds)}
                 onContextMenu={e => {
                     if (e.shiftKey) return;
                     e.preventDefault();
@@ -3661,6 +3793,7 @@ export function ChatListPane({
                         bulkIds: mapReduceSubIds.length > 0 ? mapReduceSubIds : undefined,
                         mapReduceRun: group,
                         groupPin,
+                        groupFolder: { type: 'map-reduce-run', groupId: group.runId },
                     };
                     groupLongPress.onTouchStart(e);
                 }}
@@ -3673,6 +3806,7 @@ export function ChatListPane({
             />
         );
     }, [
+        buildGroupRowDragProps,
         expandedMapReduceRunIds,
         getGroupedChildTaskStatus,
         groupLongPress,
@@ -3700,10 +3834,70 @@ export function ChatListPane({
                     taskStatus: getGroupedChildTaskStatus(task),
                     isGroupChild: opts.isGroupChild,
                     leadingElement: opts.leadingElement,
+                    // Only the root row files the tree; a descendant keeps its
+                    // own single-chat "Move to folder".
+                    groupFolder: opts.isGroupChild
+                        ? undefined
+                        : { type: 'spawned-tree', groupId: entry.rootProcessId },
                 })}
             />
         );
     }, [collapsedSpawnedIds, toggleSpawnedCollapsed, renderChatListRow, getGroupedChildTaskStatus, workspaceId]);
+
+    /**
+     * One row inside a folder. A filed *group* — a ralph session, a for-each or
+     * map-reduce run, a spawned tree — renders with its own group renderer so
+     * it keeps its children nested and its header affordances, exactly as it
+     * would in a date bucket; only a plain chat falls through to the flat row.
+     */
+    const renderFolderMember = useCallback((entry: any, listForRange: HistoryRangeInput[]): React.ReactNode => {
+        if (entry?.kind === 'ralph-session') {return renderRalphSessionGroup(entry, listForRange);}
+        if (entry?.kind === 'for-each-run') {return renderForEachRunGroup(entry, listForRange);}
+        if (entry?.kind === 'map-reduce-run') {return renderMapReduceRunGroup(entry, listForRange);}
+        if (entry?.kind === 'spawned-tree') {return renderSpawnedTreeEntry(entry, listForRange);}
+        return renderChatListRow(entry, listForRange, { isGroupChild: true });
+    }, [renderRalphSessionGroup, renderForEachRunGroup, renderMapReduceRunGroup, renderSpawnedTreeEntry, renderChatListRow]);
+
+    /**
+     * The Folders section, rendered from a single place for every list surface.
+     * Activity, Chats, Tasks and a repo group's Workspace tab all go through
+     * this component — one renderer, not four copies of the JSX.
+     */
+    const renderFoldersSection = useCallback((
+        rows: ChatFolderRow[],
+        listForRange: HistoryRangeInput[],
+    ): React.ReactNode => {
+        if (!chatFoldersEnabled) {return null;}
+        return (
+            <ChatFolderSection
+                rows={rows}
+                expanded={showFolders}
+                onToggleSection={() => setShowFolders(prev => !prev)}
+                onToggleFolder={toggleFolderCollapsed}
+                renderMember={entry => renderFolderMember(entry, listForRange)}
+                onOpenFolderMenu={openFolderMenu}
+                creating={chatFolderMutations.creating}
+                onCommitCreate={(name, color) => { void handleCommitFolderCreate(name, color); }}
+                onCancelCreate={handleCancelFolderCreate}
+                renamingFolderId={chatFolderMutations.renamingFolderId}
+                onStartRename={chatFolderMutations.startRename}
+                onCommitRename={(folderId, name) => { void chatFolderMutations.commitRename(folderId, name); }}
+                onCancelRename={chatFolderMutations.cancelRename}
+                isDuplicateName={isDuplicateFolderName}
+                dropTarget={folderDnd.dropTarget}
+                draggingFolderId={folderDnd.draggingFolderId}
+                onFolderDragStart={folderDnd.handleFolderDragStart}
+                onFolderDragEnd={folderDnd.handleDragEnd}
+                onFolderDragOver={folderDnd.handleFolderDragOver}
+                onFolderDragLeave={folderDnd.handleFolderDragLeave}
+                onFolderDrop={folderDnd.handleFolderDrop}
+                onNewFolder={() => { setShowFolders(true); chatFolderMutations.startCreate(); }}
+                onCollapseAll={collapseAllFolders}
+                collapseAllDisabled={chatFolders.length === 0}
+                showWhenEmpty={!folderSearchQuery}
+            />
+        );
+    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderFolderMember, openFolderMenu, chatFolderMutations, isDuplicateFolderName, handleCommitFolderCreate, handleCancelFolderCreate, folderDnd, collapseAllFolders, chatFolders.length, folderSearchQuery]);
 
     const renderPinnedActivityEntry = useCallback((entry: PinnedListEntry) => {
         if (isPinnedGroupEntry(entry) && entry.kind === 'for-each-run') {

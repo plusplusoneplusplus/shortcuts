@@ -4,7 +4,7 @@
  *
  * Membership is a property of the process, so a move is a write against the
  * process endpoints, not against the folder. The update is optimistic: the
- * process-summary index is patched through `onProcessFoldersChanged` — the same
+ * membership map is patched through `onProcessFoldersChanged` — the same
  * seam AC-05's undo uses — and reconciled by the next summaries fetch.
  */
 import { useCallback, useRef } from 'react';
@@ -16,7 +16,7 @@ export interface UseChatFolderAssignmentOptions {
     workspaceId: string | undefined;
     /** `processId -> folderId` for the rows currently on screen. */
     folderIdByProcess: ReadonlyMap<string, string>;
-    /** Patch the process-summary index so the move shows before the refetch. */
+    /** Patch the membership map so the move shows before the refetch. */
     onProcessFoldersChanged?: (processIds: string[], folderId: string | null) => void;
     /** Surfaces failures; the list itself never blanks on an error. */
     onError?: (message: string) => void;

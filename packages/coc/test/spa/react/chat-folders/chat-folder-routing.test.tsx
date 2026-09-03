@@ -18,6 +18,7 @@ interface StubProcesses {
     deleteChatFolder: ReturnType<typeof vi.fn>;
     setProcessFolder: ReturnType<typeof vi.fn>;
     setProcessFolderBatch: ReturnType<typeof vi.fn>;
+    summaries: ReturnType<typeof vi.fn>;
 }
 
 const { LOCAL, stubsByBaseUrl, makeStub } = vi.hoisted(() => {
@@ -29,6 +30,7 @@ const { LOCAL, stubsByBaseUrl, makeStub } = vi.hoisted(() => {
             deleteChatFolder: vi.fn(async () => ({})),
             setProcessFolder: vi.fn(async () => ({})),
             setProcessFolderBatch: vi.fn(async () => ({})),
+            summaries: vi.fn(async () => ({ summaries: [] })),
         },
     });
     return { LOCAL: make(), stubsByBaseUrl: new Map<string, { processes: any }>(), makeStub: make };
@@ -52,6 +54,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 }));
 
 import { useChatFolders } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatFolders';
+import { useChatFolderMembership } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatFolderMembership';
 import { useChatFolderMutations } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatFolderMutations';
 import { useChatFolderAssignment } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatFolderAssignment';
 import {
@@ -177,6 +180,25 @@ describe('useChatFolderMutations clone routing', () => {
         await act(async () => { await result.current.commitCreate('Docs', 'blue'); });
 
         expect(LOCAL.processes.createChatFolder).toHaveBeenCalledWith(LOCAL_WS, { name: 'Docs', color: 'blue' });
+        expect(stubsByBaseUrl.size).toBe(0);
+    });
+});
+
+describe('useChatFolderMembership clone routing', () => {
+    it('reads a remote workspace’s membership from the remote server only', async () => {
+        remote().processes.summaries.mockResolvedValue({ summaries: [{ id: 'p1', folderId: 'f1' }] });
+
+        const { result } = renderHook(() => useChatFolderMembership(REMOTE_WS, true));
+
+        await waitFor(() => expect(result.current.folderIdByProcess.get('p1')).toBe('f1'));
+        expect(remote().processes.summaries).toHaveBeenCalledWith({ workspace: REMOTE_WS, limit: 5000 });
+        expect(LOCAL.processes.summaries).not.toHaveBeenCalled();
+    });
+
+    it('keeps a local workspace on the default SPA client', async () => {
+        renderHook(() => useChatFolderMembership(LOCAL_WS, true));
+
+        await waitFor(() => expect(LOCAL.processes.summaries).toHaveBeenCalledWith({ workspace: LOCAL_WS, limit: 5000 }));
         expect(stubsByBaseUrl.size).toBe(0);
     });
 });

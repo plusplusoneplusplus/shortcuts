@@ -285,6 +285,40 @@ export interface DeleteChatFolderResponse {
   deleted: boolean;
   /** Process IDs that became unfiled because their folder was deleted. */
   unfiled: string[];
+  /** `"<type>:<groupId>"` keys of groups unfiled by the same delete. */
+  unfiledGroups?: string[];
+}
+
+/**
+ * The chat-group types a folder can hold. Closed union, unlike
+ * `ProcessGroupPinType`: a group folder assignment the renderer cannot resolve
+ * would silently strand the group, so the server rejects unknown types.
+ */
+export type ProcessGroupFolderType =
+  | 'ralph-session'
+  | 'spawned-tree'
+  | 'for-each-run'
+  | 'map-reduce-run';
+
+/** One filed chat group. */
+export interface ProcessGroupFolder {
+  type: ProcessGroupFolderType;
+  groupId: string;
+  folderId: string;
+  updatedAt: string;
+}
+
+export interface ProcessGroupFoldersResponse {
+  /** `"<type>:<groupId>" -> folderId`, ready to use as a lookup map. */
+  groups: Record<string, string>;
+  assignments: ProcessGroupFolder[];
+}
+
+export interface ProcessGroupFolderResponse {
+  type: ProcessGroupFolderType;
+  groupId: string;
+  folderId: string | null;
+  updatedAt?: string;
 }
 
 export interface ProcessFolderResponse {

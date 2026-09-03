@@ -16,6 +16,7 @@ import {
     readChatFolderMoveDragPayload,
     readChatFolderReorderDragPayload,
     reorderChatFolders,
+    resolveFolderDropMove,
     resolveFolderDropMoveIds,
     resolveFolderDropTarget,
     writeChatFolderMoveDragData,
@@ -230,5 +231,91 @@ describe('chat-folder-drag — computeDragAutoScrollDelta', () => {
         expect(computeDragAutoScrollDelta(rect.top - 1, rect)).toBe(0);
         expect(computeDragAutoScrollDelta(rect.bottom + 1, rect)).toBe(0);
         expect(computeDragAutoScrollDelta(Number.NaN, rect)).toBe(0);
+    });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// AC-04 — a whole GROUP dragged onto a folder
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('chat-folder-drag — group move payload (AC-04)', () => {
+    it('round-trips the group ref through a DataTransfer', () => {
+        const dt = makeDataTransfer();
+        const payload = createChatFolderMoveDragPayload(
+            'ws-1',
+            ['iter-1', 'iter-2'],
+            { type: 'ralph-session', groupId: 'sess-1' },
+        )!;
+        writeChatFolderMoveDragData(dt, payload);
+
+        const read = readChatFolderMoveDragPayload(dt)!;
+        expect(read.group).toEqual({ type: 'ralph-session', groupId: 'sess-1' });
+        expect(read.processIds).toEqual(['iter-1', 'iter-2']);
+        expect(read).toEqual(payload);
+    });
+
+    it('is minted for a group with no children yet', () => {
+        const payload = createChatFolderMoveDragPayload('ws-1', [], { type: 'for-each-run', groupId: 'run-1' });
+        expect(payload?.group).toEqual({ type: 'for-each-run', groupId: 'run-1' });
+        expect(payload?.processIds).toEqual([]);
+    });
+
+    it('carries no group key for a plain chat drag', () => {
+        expect(createChatFolderMoveDragPayload('ws-1', ['proc-a'])).not.toHaveProperty('group');
+    });
+
+    it('drops a blank or half-filled group ref rather than minting an unresolvable key', () => {
+        expect(createChatFolderMoveDragPayload('ws-1', ['proc-a'], { type: '', groupId: 'run-1' } as any)?.group).toBeUndefined();
+        expect(createChatFolderMoveDragPayload('ws-1', ['proc-a'], { type: 'for-each-run', groupId: '  ' })?.group).toBeUndefined();
+        // ...and with no ids left to fall back on, there is nothing to drag.
+        expect(createChatFolderMoveDragPayload('ws-1', [], { type: 'for-each-run', groupId: '' })).toBeNull();
+    });
+
+    it('refuses a payload whose group survived but whose workspace did not', () => {
+        expect(createChatFolderMoveDragPayload('', ['a'], { type: 'ralph-session', groupId: 'sess-1' })).toBeNull();
+    });
+
+    it('ignores a group ref on a foreign-shaped JSON payload', () => {
+        const dt = makeDataTransfer();
+        dt.setData(CHAT_FOLDER_MOVE_MIME, JSON.stringify({ kind: 'coc.chat-folder-move', version: 2, workspaceId: 'ws-1', group: { type: 'ralph-session', groupId: 's' } }));
+        expect(readChatFolderMoveDragPayload(dt)).toBeNull();
+    });
+});
+
+describe('chat-folder-drag — resolveFolderDropMove (AC-04)', () => {
+    const chatFolders = new Map<string, string>([['proc-a', 'folder-1']]);
+    const groupFolders = new Map<string, string>([['ralph-session:sess-filed', 'folder-1']]);
+
+    it('resolves a group payload to ONE group write, never a child batch', () => {
+        const payload = createChatFolderMoveDragPayload('ws-1', ['iter-1', 'iter-2'], { type: 'ralph-session', groupId: 'sess-1' })!;
+        expect(resolveFolderDropMove(payload, chatFolders, 'folder-1', groupFolders)).toEqual({
+            kind: 'group',
+            group: { type: 'ralph-session', groupId: 'sess-1' },
+        });
+        // The id-only helper must stay silent for a group, so no caller can
+        // accidentally fan a group move out over its children.
+        expect(resolveFolderDropMoveIds(payload, chatFolders, 'folder-1')).toEqual([]);
+    });
+
+    it('is a no-op when the group already lives in the target folder', () => {
+        const payload = createChatFolderMoveDragPayload('ws-1', ['iter-1'], { type: 'ralph-session', groupId: 'sess-filed' })!;
+        expect(resolveFolderDropMove(payload, chatFolders, 'folder-1', groupFolders)).toBeNull();
+        // ...but moving it elsewhere, or unfiling it, still resolves.
+        expect(resolveFolderDropMove(payload, chatFolders, 'folder-2', groupFolders)?.kind).toBe('group');
+        expect(resolveFolderDropMove(payload, chatFolders, null, groupFolders)?.kind).toBe('group');
+    });
+
+    it('treats an unfiled group dropped on the unfiled region as a no-op', () => {
+        const payload = createChatFolderMoveDragPayload('ws-1', ['iter-1'], { type: 'for-each-run', groupId: 'run-new' })!;
+        expect(resolveFolderDropMove(payload, chatFolders, null, groupFolders)).toBeNull();
+    });
+
+    it('falls back to the chat id batch for a plain chat drag', () => {
+        const payload = createChatFolderMoveDragPayload('ws-1', ['proc-a', 'proc-b'])!;
+        expect(resolveFolderDropMove(payload, chatFolders, 'folder-1', groupFolders)).toEqual({
+            kind: 'chats',
+            processIds: ['proc-b'],
+        });
+        expect(resolveFolderDropMove(createChatFolderMoveDragPayload('ws-1', ['proc-a'])!, chatFolders, 'folder-1', groupFolders)).toBeNull();
     });
 });

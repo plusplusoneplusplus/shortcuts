@@ -56,6 +56,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         crons: { listAll: vi.fn().mockResolvedValue([]) },
         processes: {
             listChatFolders: (...args: any[]) => listChatFolders(...(args as [])),
+            summaries: async () => ({ summaries: mockProcesses }),
             createChatFolder: (...args: any[]) => (createChatFolder as any)(...args),
             updateChatFolder: (...args: any[]) => (updateChatFolder as any)(...args),
             deleteChatFolder: (...args: any[]) => (deleteChatFolder as any)(...args),
@@ -147,7 +148,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     }),
 }));
 
-// `folderId` rides on the process-summary index that AppContext already holds.
+// `folderId` rides on the workspace-scoped summaries fetch (`useChatFolderMembership`).
 let mockProcesses: any[] = [];
 const mockDispatch = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({

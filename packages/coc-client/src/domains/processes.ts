@@ -24,6 +24,9 @@ import type {
   ProcessOutputQuery,
   ProcessOutputResponse,
   ProcessPrewarmResponse,
+  ProcessGroupFolderResponse,
+  ProcessGroupFolderType,
+  ProcessGroupFoldersResponse,
   ProcessGroupPinResponse,
   ProcessGroupPinsResponse,
   ProcessGroupPinType,
@@ -248,6 +251,32 @@ export class ProcessesClient {
       method: 'POST',
       body: { ids, folderId },
     });
+  }
+
+  /** Every chat group filed into a folder in this workspace. */
+  listGroupFolders(workspaceId: string): Promise<ProcessGroupFoldersResponse> {
+    return this.transport.request<ProcessGroupFoldersResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/group-folders`,
+    );
+  }
+
+  /**
+   * File a whole chat group into a folder, or unfile it with `null`.
+   * Membership is keyed on the group, so children added later inherit it.
+   */
+  setGroupFolder(
+    workspaceId: string,
+    type: ProcessGroupFolderType,
+    groupId: string,
+    folderId: string | null,
+  ): Promise<ProcessGroupFolderResponse> {
+    return this.transport.request<ProcessGroupFolderResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/group-folders/${encodePathSegment(type)}/${encodePathSegment(groupId)}`,
+      {
+        method: 'PATCH',
+        body: { folderId },
+      },
+    );
   }
 
   listGroupPins(workspaceId: string): Promise<ProcessGroupPinsResponse> {

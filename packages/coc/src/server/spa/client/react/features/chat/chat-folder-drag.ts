@@ -33,6 +33,21 @@ export const CHAT_FOLDER_MOVE_DRAG_KIND = 'coc.chat-folder-move';
 export const CHAT_FOLDER_REORDER_MIME = 'application/vnd.coc.chat-folder-reorder+json';
 export const CHAT_FOLDER_REORDER_DRAG_KIND = 'coc.chat-folder-reorder';
 
+/**
+ * The whole chat *group* being dragged — a ralph session, a spawned tree, a
+ * for-each or map-reduce run (AC-04). Present only for a group row's drag; a
+ * chat row never writes one.
+ *
+ * `type` is left as a plain string here rather than the client's
+ * `ProcessGroupFolderType` union so this module stays free of contract
+ * imports; the value round-trips through JSON and is validated server-side,
+ * which is the only place an unknown type can do harm (it 400s).
+ */
+export interface ChatFolderMoveDragGroupRef {
+    type: string;
+    groupId: string;
+}
+
 export interface ChatFolderMoveDragPayload {
     kind: typeof CHAT_FOLDER_MOVE_DRAG_KIND;
     version: 1;
@@ -40,6 +55,14 @@ export interface ChatFolderMoveDragPayload {
     workspaceId: string;
     /** The whole selection when the drag started inside one, else a single id. */
     processIds: string[];
+    /**
+     * Set when a group ROW was dragged. The drop then files the group with one
+     * write against its key instead of a batch over `processIds`, so children
+     * enqueued later inherit the folder (AC-04/AC-05). `processIds` still
+     * carries the group's current members — they are what the drop-time
+     * highlight and the no-op check read — but they are never written.
+     */
+    group?: ChatFolderMoveDragGroupRef;
 }
 
 export interface ChatFolderReorderDragPayload {
@@ -68,9 +91,17 @@ function typeList(dataTransfer: Pick<ChatFolderDataTransfer, 'types'> | null | u
 // Move payload (a chat row dragged onto a folder)
 // ────────────────────────────────────────────────────────────────────────────
 
+function normalizeGroupRef(group: ChatFolderMoveDragGroupRef | null | undefined): ChatFolderMoveDragGroupRef | null {
+    const type = typeof group?.type === 'string' ? group.type.trim() : '';
+    const groupId = typeof group?.groupId === 'string' ? group.groupId.trim() : '';
+    if (!type || !groupId) {return null;}
+    return { type, groupId };
+}
+
 export function createChatFolderMoveDragPayload(
     workspaceId: string | null | undefined,
     processIds: readonly string[],
+    group?: ChatFolderMoveDragGroupRef | null,
 ): ChatFolderMoveDragPayload | null {
     const safeWorkspaceId = typeof workspaceId === 'string' ? workspaceId.trim() : '';
     if (!safeWorkspaceId) {return null;}
@@ -80,12 +111,16 @@ export function createChatFolderMoveDragPayload(
         const trimmed = id.trim();
         if (trimmed.length > 0 && !ids.includes(trimmed)) {ids.push(trimmed);}
     }
-    if (ids.length === 0) {return null;}
+    const safeGroup = normalizeGroupRef(group);
+    // A group row is draggable even before its first child exists, so an empty
+    // id list is only fatal for a chat drag.
+    if (ids.length === 0 && !safeGroup) {return null;}
     return {
         kind: CHAT_FOLDER_MOVE_DRAG_KIND,
         version: 1,
         workspaceId: safeWorkspaceId,
         processIds: ids,
+        ...(safeGroup ? { group: safeGroup } : {}),
     };
 }
 
@@ -183,7 +218,11 @@ function parseJson(raw: string): any {
 function parseMovePayload(raw: string): ChatFolderMoveDragPayload | null {
     const parsed = parseJson(raw);
     if (!parsed || parsed.kind !== CHAT_FOLDER_MOVE_DRAG_KIND || parsed.version !== 1) {return null;}
-    return createChatFolderMoveDragPayload(parsed.workspaceId, Array.isArray(parsed.processIds) ? parsed.processIds : []);
+    return createChatFolderMoveDragPayload(
+        parsed.workspaceId,
+        Array.isArray(parsed.processIds) ? parsed.processIds : [],
+        parsed.group ?? null,
+    );
 }
 
 function parseReorderPayload(raw: string): ChatFolderReorderDragPayload | null {
@@ -277,13 +316,44 @@ function splitAboveBelow(clientY: number | undefined, rect: { top: number; heigh
  * The ids a folder-move drop should actually write, dropping the rows already
  * filed in the target. Dropping a chat onto the folder it is already in must
  * issue no request at all.
+ *
+ * A group payload yields NO ids: a group is filed against its own key and must
+ * never fan out into per-child writes (AC-01). Callers that can act on a group
+ * should use {@link resolveFolderDropMove} instead.
  */
 export function resolveFolderDropMoveIds(
     payload: ChatFolderMoveDragPayload,
     folderIdByProcess: ReadonlyMap<string, string>,
     targetFolderId: string | null,
 ): string[] {
+    if (payload.group) {return [];}
     return payload.processIds.filter(id => (folderIdByProcess.get(id) ?? null) !== targetFolderId);
+}
+
+/** What a folder-move drop resolves to: one group write, or a chat id batch. */
+export type ChatFolderDropMove =
+    | { kind: 'group'; group: ChatFolderMoveDragGroupRef }
+    | { kind: 'chats'; processIds: string[] };
+
+/**
+ * Resolve a dropped move payload into the single write it should perform, or
+ * `null` when the drop is a no-op (everything dragged already lives in the
+ * target folder).
+ */
+export function resolveFolderDropMove(
+    payload: ChatFolderMoveDragPayload,
+    folderIdByProcess: ReadonlyMap<string, string>,
+    targetFolderId: string | null,
+    groupFolderByKey?: ReadonlyMap<string, string> | null,
+): ChatFolderDropMove | null {
+    if (payload.group) {
+        const key = `${payload.group.type}:${payload.group.groupId}`;
+        const current = groupFolderByKey?.get(key) ?? null;
+        if (current === targetFolderId) {return null;}
+        return { kind: 'group', group: payload.group };
+    }
+    const processIds = resolveFolderDropMoveIds(payload, folderIdByProcess, targetFolderId);
+    return processIds.length > 0 ? { kind: 'chats', processIds } : null;
 }
 
 /**
