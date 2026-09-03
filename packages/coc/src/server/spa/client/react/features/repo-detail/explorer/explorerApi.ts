@@ -1,6 +1,9 @@
 import type {
     CocRequestOptions,
     ExplorerBlobResponse,
+    ExplorerContentReplaceFile,
+    ExplorerContentReplaceOptions,
+    ExplorerContentReplaceResponse,
     ExplorerContentSearchOptions,
     ExplorerContentSearchResponse,
     ExplorerFilesOptions,
@@ -28,6 +31,16 @@ export const explorerApi = {
 
     searchContent(workspaceId: string, query: string, options?: ExplorerContentSearchOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerContentSearchResponse> {
         return getCocClientForWorkspace(workspaceId).explorer.searchContent(workspaceId, query, options);
+    },
+
+    replaceContent(
+        workspaceId: string,
+        query: string,
+        replacement: string,
+        files: ExplorerContentReplaceFile[],
+        options?: ExplorerContentReplaceOptions,
+    ): Promise<ExplorerContentReplaceResponse> {
+        return getCocClientForWorkspace(workspaceId).explorer.replaceContent(workspaceId, query, replacement, files, options);
     },
 
     readBlob(workspaceId: string, path: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<ExplorerBlobResponse> {

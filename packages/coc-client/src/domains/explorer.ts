@@ -1,5 +1,8 @@
 import type {
   ExplorerBlobResponse,
+  ExplorerContentReplaceFile,
+  ExplorerContentReplaceOptions,
+  ExplorerContentReplaceResponse,
   ExplorerContentSearchOptions,
   ExplorerContentSearchResponse,
   ExplorerFilesOptions,
@@ -99,6 +102,35 @@ export class ExplorerClient {
     return this.transport.request<ExplorerContentSearchResponse>(repoPath(repoId, '/search/content'), {
       query: serializeContentSearchOptions(query, options),
       signal: options?.signal,
+    });
+  }
+
+  /**
+   * Rewrite the matched spans a {@link searchContent} call returned.
+   *
+   * The spans are sent back verbatim — path, line, the line's text at search
+   * time and the matched columns — so only what the user is looking at is
+   * written, and a file that changed underneath the search is skipped and
+   * reported rather than overwritten.
+   */
+  replaceContent(
+    repoId: string,
+    query: string,
+    replacement: string,
+    files: ExplorerContentReplaceFile[],
+    options?: ExplorerContentReplaceOptions,
+  ): Promise<ExplorerContentReplaceResponse> {
+    return this.transport.request<ExplorerContentReplaceResponse>(repoPath(repoId, '/search/replace'), {
+      method: 'POST',
+      body: {
+        query,
+        replacement,
+        files,
+        caseSensitive: options?.caseSensitive ?? false,
+        wholeWord: options?.wholeWord ?? false,
+        regex: options?.regex ?? false,
+        preserveCase: options?.preserveCase ?? false,
+      },
     });
   }
 

@@ -103,6 +103,32 @@ describe('ExplorerClient', () => {
     });
   });
 
+  it('posts a replace with the matched spans and every mode defaulted', async () => {
+    const adapter = createMockAdapter({ replacedMatches: 1, replacedFiles: 1, skipped: [] });
+    const client = new ExplorerClient(adapter);
+    const files = [{ path: 'src/a.ts', targets: [{ line: 3, text: 'const needle = 1;', startColumn: 6, endColumn: 12 }] }];
+
+    await client.replaceContent('repo/a', 'needle', 'pin', files, { regex: true, preserveCase: true });
+
+    expect(adapter.calls).toMatchObject([
+      {
+        path: '/repos/repo%2Fa/search/replace',
+        options: {
+          method: 'POST',
+          body: {
+            query: 'needle',
+            replacement: 'pin',
+            files,
+            caseSensitive: false,
+            wholeWord: false,
+            regex: true,
+            preserveCase: true,
+          },
+        },
+      },
+    ]);
+  });
+
   it('forwards an abort signal so a superseded content search can be dropped', async () => {
     const adapter = createMockAdapter({ matches: [], truncated: false });
     const client = new ExplorerClient(adapter);

@@ -115,3 +115,50 @@ export interface ExplorerContentSearchOptions {
   /** Cap on total matches. Clamped server-side to 1..500. */
   limit?: number;
 }
+
+/** One matched span a replace should rewrite, as it looked when the search ran. */
+export interface ExplorerContentReplaceTarget {
+  /** One-based line number. */
+  line: number;
+  /** The line's full text at search time, without its terminator. */
+  text: string;
+  /** UTF-16 offset of the match within `text`. */
+  startColumn: number;
+  /** UTF-16 offset one past the end of the match within `text`. */
+  endColumn: number;
+}
+
+/** Every span to rewrite in one file. */
+export interface ExplorerContentReplaceFile {
+  /** Repo-relative path with `/` separators. */
+  path: string;
+  /** The spans to rewrite; at least one. */
+  targets: ExplorerContentReplaceTarget[];
+}
+
+/** Query modes for a replace — the same ones the search that produced it used. */
+export interface ExplorerContentReplaceOptions {
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  regex?: boolean;
+  /** Carry the matched text's casing over to the replacement. Default false. */
+  preserveCase?: boolean;
+}
+
+/** Why one file was left alone by a replace. */
+export interface ExplorerContentReplaceSkip {
+  path: string;
+  /** `stale` — the file changed since the search; `missing`/`unreadable` — it cannot be written. */
+  reason: 'stale' | 'missing' | 'unreadable';
+  /** Human-readable detail, safe to show in the UI. */
+  message: string;
+}
+
+export interface ExplorerContentReplaceResponse {
+  /** How many matched spans were rewritten. */
+  replacedMatches: number;
+  /** How many files were written. */
+  replacedFiles: number;
+  /** Files that were not written, and why. */
+  skipped: ExplorerContentReplaceSkip[];
+}

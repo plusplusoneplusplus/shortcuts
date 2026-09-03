@@ -7,6 +7,7 @@
  * GET  /api/repos/:repoId/files          — list all files recursively
  * GET  /api/repos/:repoId/search         — fuzzy file-path search
  * GET  /api/repos/:repoId/search/content — full-text search across file contents
+ * POST /api/repos/:repoId/search/replace — rewrite matched spans from a search
  * GET  /api/repos/:repoId/blob           — read file content
  * PUT  /api/repos/:repoId/blob           — write file content
  * GET  /api/repos/:repoId/reveal         — reveal file/folder in OS file manager
@@ -19,6 +20,7 @@ import type { Route } from '../types';
 import { sendJson, send400, send404, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
+import type { ContentReplaceFile } from './content-replace';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
@@ -57,6 +59,60 @@ function parseRepoRequest(
     }
 
     return { repoId, path: resolvedPath };
+}
+
+/** The JSON body of a replace request, before validation. */
+interface ReplaceBody {
+    query?: unknown;
+    replacement?: string;
+    files?: unknown;
+    caseSensitive?: unknown;
+    wholeWord?: unknown;
+    regex?: unknown;
+    preserveCase?: unknown;
+}
+
+/**
+ * Validate a replace body's shape.
+ *
+ * Strict on purpose: this endpoint writes to disk, and a malformed target
+ * (a missing column, a line number that is not a number) would otherwise reach
+ * the engine as `undefined` and be reported as a stale file rather than as the
+ * client bug it is.
+ *
+ * @returns an error message, or undefined when the body is usable.
+ */
+function validateReplaceBody(body: ReplaceBody): string | undefined {
+    if (typeof body.query !== 'string' || body.query === '') {
+        return 'Missing required field: query';
+    }
+    if (body.replacement !== undefined && typeof body.replacement !== 'string') {
+        return 'Field "replacement" must be a string';
+    }
+    if (!Array.isArray(body.files)) {
+        return 'Missing required field: files';
+    }
+    for (const file of body.files as unknown[]) {
+        const entry = file as { path?: unknown; targets?: unknown };
+        if (typeof entry?.path !== 'string' || entry.path === '') {
+            return 'Each file needs a non-empty "path"';
+        }
+        if (entry.path.split('/').includes('..') || entry.path.split('\\').includes('..')) {
+            return 'Invalid path: directory traversal not allowed';
+        }
+        if (!Array.isArray(entry.targets) || entry.targets.length === 0) {
+            return `File "${entry.path}" needs at least one target`;
+        }
+        for (const target of entry.targets as unknown[]) {
+            const t = target as Record<string, unknown>;
+            if (typeof t?.line !== 'number' || t.line < 1) return 'Each target needs a one-based "line"';
+            if (typeof t.text !== 'string') return 'Each target needs the matched line\'s "text"';
+            if (typeof t.startColumn !== 'number' || typeof t.endColumn !== 'number') {
+                return 'Each target needs "startColumn" and "endColumn"';
+            }
+        }
+    }
+    return undefined;
 }
 
 type Query = url.UrlWithParsedQuery['query'];
@@ -263,6 +319,62 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 // The addon reports a bad regex or an escaping path as
                 // InvalidArg — the caller's mistake, not a server failure.
                 if ((err as { code?: unknown } | null)?.code === 'InvalidArg') {
+                    send400(res, message);
+                } else if (/not found/i.test(message)) {
+                    send404(res, message);
+                } else {
+                    send500(res, message);
+                }
+            }
+        },
+    });
+
+    // -- Replace in search results -------------------------------------------
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/repos\/([^/]+)\/search\/replace$/,
+        handler: async (req, res, match) => {
+            try {
+                const repoId = decodeURIComponent(match![1]);
+
+                let body: ReplaceBody;
+                try {
+                    body = await readJsonBody<ReplaceBody>(req);
+                } catch {
+                    send400(res, 'Invalid JSON body');
+                    return;
+                }
+
+                const invalid = validateReplaceBody(body);
+                if (invalid) {
+                    send400(res, invalid);
+                    return;
+                }
+
+                const repoRoot = await svc.resolveRepoRoot(repoId);
+                if (!repoRoot) {
+                    send404(res, `Unknown repo: ${repoId}`);
+                    return;
+                }
+
+                const result = await svc.replaceContent(
+                    repoId,
+                    body.query as string,
+                    body.replacement ?? '',
+                    body.files as ContentReplaceFile[],
+                    {
+                        caseSensitive: body.caseSensitive === true,
+                        wholeWord: body.wholeWord === true,
+                        regex: body.regex === true,
+                        preserveCase: body.preserveCase === true,
+                    },
+                );
+                sendJson(res, result);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                // A bad query or an escaping path is the caller's mistake.
+                if ((err as { code?: unknown } | null)?.code === 'InvalidArg' || /Path traversal/i.test(message)) {
                     send400(res, message);
                 } else if (/not found/i.test(message)) {
                     send404(res, message);

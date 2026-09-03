@@ -18,6 +18,13 @@ import type {
     ContentSearchResult,
 } from './types';
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
+import { applyReplacements, buildReplaceMatcher } from './content-replace';
+import type {
+    ContentReplaceFile,
+    ContentReplaceOptions,
+    ContentReplaceResult,
+    ContentReplaceSkip,
+} from './content-replace';
 
 export interface RepoTreeServiceOptions {
     /**
@@ -880,6 +887,85 @@ export class RepoTreeService {
             exclude: options?.exclude,
             maxResults: limit,
         });
+    }
+
+    /**
+     * Rewrite the matched spans a content search returned.
+     *
+     * Writes only what the caller lists — this never re-searches the repo, so
+     * nothing outside the result set the user is looking at can be touched. A
+     * file whose lines no longer read the way they did when the search ran is
+     * skipped whole and reported, never half-written.
+     *
+     * Rejects with a `Repo not found` error for an unregistered repo, and
+     * throws `InvalidArg`-coded errors for a bad query so the route can turn
+     * them into 400s.
+     *
+     * @param repoId      Stable workspace ID.
+     * @param query       The query the search ran with.
+     * @param replacement Replacement text; `$1` backrefs apply under `regex`.
+     * @param files       The matched spans, grouped by repo-relative path.
+     * @param options     The same query modes the search used, plus preserveCase.
+     */
+    async replaceContent(
+        repoId: string,
+        query: string,
+        replacement: string,
+        files: readonly ContentReplaceFile[],
+        options?: ContentReplaceOptions,
+    ): Promise<ContentReplaceResult> {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
+            throw new Error(`Repo not found: ${repoId}`);
+        }
+
+        // Built once, and before any file is touched: a bad regex must fail the
+        // whole request rather than write the files it happened to reach first.
+        const matcher = buildReplaceMatcher(query, options);
+
+        const skipped: ContentReplaceSkip[] = [];
+        let replacedMatches = 0;
+        let replacedFiles = 0;
+
+        for (const file of files) {
+            const absPath = path.resolve(repoRoot, stripLeadingSeparators(file.path));
+            assertInsideRepo(repoRoot, absPath);
+
+            let buffer: Buffer;
+            try {
+                const stat = await fs.promises.stat(absPath);
+                if (!stat.isFile()) {
+                    skipped.push({ path: file.path, reason: 'unreadable', message: 'Not a file' });
+                    continue;
+                }
+                if (stat.size > MAX_BLOB_SIZE) {
+                    skipped.push({ path: file.path, reason: 'unreadable', message: 'File is too large to replace in' });
+                    continue;
+                }
+                buffer = await fs.promises.readFile(absPath);
+            } catch {
+                skipped.push({ path: file.path, reason: 'missing', message: 'File no longer exists' });
+                continue;
+            }
+
+            if (isBinary(buffer)) {
+                skipped.push({ path: file.path, reason: 'unreadable', message: 'File is binary' });
+                continue;
+            }
+
+            const outcome = applyReplacements(buffer.toString('utf-8'), file.targets, matcher, replacement, options);
+            if (!outcome.ok) {
+                skipped.push({ path: file.path, reason: outcome.reason, message: outcome.message });
+                continue;
+            }
+            if (outcome.replaced === 0) continue;
+
+            await fs.promises.writeFile(absPath, outcome.content, 'utf-8');
+            replacedMatches += outcome.replaced;
+            replacedFiles++;
+        }
+
+        return { replacedMatches, replacedFiles, skipped };
     }
 
     /**
