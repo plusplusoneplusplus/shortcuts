@@ -119,9 +119,16 @@ export function MarkdownView({ html, sectionMarkdown, fullMarkdown, hideSectionC
     }, [openFromTarget]);
 
     useEffect(() => {
+        // Highlight code blocks NOT already rendered by renderCodeBlock.
+        // renderCodeBlock applies hljs.highlight() at render time and wraps lines in
+        // .code-line spans with .line-number gutters. Calling hljs.highlightElement()
+        // on those blocks would replace the innerHTML and destroy that structure —
+        // since the markup carries no newlines, the block collapses onto one line
+        // with the gutter numbers baked into the code text.
         const hljs = (window as any).hljs;
         if (hljs && containerRef.current) {
             containerRef.current.querySelectorAll('pre code').forEach((block: Element) => {
+                if (block.closest('.code-block-container')) return;
                 hljs.highlightElement(block);
             });
         }

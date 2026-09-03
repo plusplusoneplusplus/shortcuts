@@ -9,7 +9,7 @@ import ReactDOM from 'react-dom';
 import { Spinner } from '../../../ui';
 import { clampToViewport } from '../../../tasks/comments/viewportUtils';
 import { MarkdownView } from '../../../shared/MarkdownView';
-import { renderMarkdownToHtml } from '../../../../diff/markdown-renderer';
+import { chatMarkdownToHtml } from '../conversation/markdownHtml';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { buildQuickAskTranscript, type ClientSideNote, type QuickAskTurn } from './types';
@@ -101,7 +101,12 @@ function ThreadTurn({ turn, index, onRetry }: {
             )}
             {turn.status === 'ready' && (
                 <div className="text-[12px] text-[#1e1e1e] dark:text-[#cccccc]" data-testid="quick-ask-popover-answer">
-                    <MarkdownView html={renderMarkdownToHtml(turn.answer)} />
+                    {/* A quick-ask answer IS chat content, so it renders with the chat
+                    renderer (clean <strong>/<code>), not the notes live-preview
+                    highlighter, which deliberately keeps the raw ** / ` markers.
+                    No wsId and no html/excalidraw/canvas embeds: these are short AI
+                    answers in a small popover, not authored chat content. */}
+                    <MarkdownView html={chatMarkdownToHtml(turn.answer)} />
                 </div>
             )}
         </div>
@@ -311,7 +316,9 @@ export function QuickAskSidenotePopover({
                     )}
                     {note.status === 'ready' && (
                         <div className={`overflow-y-auto text-[12px] text-[#1e1e1e] dark:text-[#cccccc] ${answerScrollCls}`} data-testid="quick-ask-popover-answer">
-                            <MarkdownView html={renderMarkdownToHtml(note.answer)} />
+                            {/* Chat renderer, not the notes live-preview highlighter — see the
+                                per-turn answer above for why (no wsId, no embeds). */}
+                            <MarkdownView html={chatMarkdownToHtml(note.answer)} />
                         </div>
                     )}
                 </>

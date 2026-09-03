@@ -208,6 +208,57 @@ describe('QuickAskSidenotePopover - AC-03 question rendering', () => {
     });
 });
 
+describe('QuickAskSidenotePopover answer rendering', () => {
+    const MARKDOWN = [
+        'Use **bold** and `inline code`.',
+        '',
+        '```python',
+        'x = torch.arange(12).reshape(3, 4)',
+        'y = x.T',
+        '',
+        'y.view(12)',
+        '```',
+    ].join('\n');
+
+    function renderAnswer() {
+        render(
+            <QuickAskSidenotePopover
+                note={note({ answer: MARKDOWN })}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+            />,
+        );
+        return screen.getByTestId('quick-ask-popover-answer');
+    }
+
+    it('renders markdown as chat content, with no leftover syntax markers', () => {
+        const answer = renderAnswer();
+
+        expect(answer.querySelector('strong')?.textContent).toBe('bold');
+        expect(answer.querySelector('code')?.textContent).toBe('inline code');
+        // The notes live-preview highlighter keeps the raw markers in .md-marker
+        // spans; the chat renderer must not.
+        expect(answer.querySelector('.md-marker')).toBeNull();
+        expect(answer.textContent).not.toContain('**');
+        expect(answer.textContent).not.toContain('`');
+    });
+
+    it('renders a fenced block as a real multi-line <pre><code>', () => {
+        const answer = renderAnswer();
+
+        const pre = answer.querySelector('pre code');
+        expect(pre).not.toBeNull();
+        expect(pre!.textContent).toContain('\n');
+        expect(pre!.textContent).toContain('x = torch.arange(12).reshape(3, 4)');
+        // No forge gutter chrome: the chat renderer emits plain code blocks, so
+        // line numbers are never inlined into the code text.
+        expect(answer.querySelector('.line-number')).toBeNull();
+    });
+});
+
 describe('QuickAskSidenotePopover - resolve/reopen control (Goal 4 AC-02)', () => {
     it('has no resolve button by default (chat side-notes)', () => {
         render(
