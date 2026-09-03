@@ -21,7 +21,7 @@ import { serializeTask, enqueueViaBridge } from './queue-shared';
 import type { QueueGlobalState } from './queue-shared';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
-import { buildChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
+import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
@@ -469,13 +469,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         const previousMode = normalizeChatModeOrDefault(proc.metadata?.mode);
         const deliveryInput: FollowUpMessageInput = {
             content,
-            // FollowUpExecutor sends the mode directive on this turn, so the
-            // stored turn discloses it — same as the POST /message route.
+            // Mirrors the decision FollowUpExecutor makes for this turn, so the
+            // stored turn discloses the directive exactly when the turn carries
+            // one — same as the POST /message route.
             displayContent: prependChatModeDirective(
                 content,
-                buildChatModeDisplayBlock({
+                buildFollowUpChatModeDisplayBlock({
                     mode: normalizeChatModeOrDefault(mode, previousMode),
                     previousMode,
+                    process: proc,
                 }),
             ),
             deliveryMode: resolvedDeliveryMode,

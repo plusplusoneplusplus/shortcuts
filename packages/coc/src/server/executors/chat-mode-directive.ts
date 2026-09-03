@@ -334,6 +334,42 @@ export function buildChatModeDisplayBlock(input: {
 }
 
 /**
+ * The disclosure block for a **follow-up** turn, or `undefined` when this turn
+ * sends nothing.
+ *
+ * The display counterpart of the executor's decision: same
+ * {@link shouldInjectChatModeDirective} call, evaluated from what the route
+ * already has on the process record, with `checkInstructionDrift` off because
+ * the route never loads a `workingDirectory`. Everything else is identical, so
+ * the stored turn carries the block on exactly the turns the prompt does — a
+ * drift-only re-injection is the single documented exception, and it errs
+ * towards disclosing less than was sent rather than more.
+ *
+ * Only evaluates; the executor that actually sends the block is the single
+ * writer of the `chatModeContext` marker both sides read.
+ */
+export function buildFollowUpChatModeDisplayBlock(input: {
+    mode: ChatMode;
+    previousMode?: ChatMode;
+    process: {
+        conversationTurns?: ConversationTurn[];
+        metadata?: { compaction?: ProcessCompactionState };
+        sdkSessionId?: string;
+    } | undefined;
+}): string | undefined {
+    if (!shouldInjectChatModeDirective({
+        mode: input.mode,
+        previousMode: input.previousMode,
+        turns: input.process?.conversationTurns,
+        compaction: input.process?.metadata?.compaction,
+        canResumeSession: !!input.process?.sdkSessionId,
+    })) {
+        return undefined;
+    }
+    return buildChatModeDisplayBlock({ mode: input.mode, previousMode: input.previousMode });
+}
+
+/**
  * The mode a brand-new chat's first turn actually runs in, or `undefined` when
  * the task routes to an executor that sends no mode directive at all.
  *

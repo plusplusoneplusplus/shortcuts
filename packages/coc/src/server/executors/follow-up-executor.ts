@@ -55,7 +55,7 @@ import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import {
     buildChatModeDirective,
-    buildChatModeDisplayBlock,
+    buildFollowUpChatModeDisplayBlock,
     loadChatModeInstructions,
     persistChatModeContextOnUserTurn,
     prependChatModeDirective,
@@ -388,10 +388,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         role: 'user' as const,
                         // Same disclosure the POST /message route applies to an
                         // interactive follow-up: the stored turn shows the mode
-                        // directive this turn was sent with.
+                        // directive this turn was sent with — and, on the turns
+                        // that send nothing, shows nothing.
                         content: prependChatModeDirective(
                             message,
-                            buildChatModeDisplayBlock({ mode: currentMode, previousMode }),
+                            buildFollowUpChatModeDisplayBlock({
+                                mode: currentMode,
+                                previousMode,
+                                process,
+                            }),
                         ),
                         timestamp: new Date(),
                         turnIndex: idx,
