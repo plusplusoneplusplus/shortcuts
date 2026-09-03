@@ -15,8 +15,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { AIProcess, ModelInfo, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
+import { MODE_SWITCHED_TO_AUTOPILOT_NOTE } from '../../../src/server/executors/chat-mode-directive';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import {
@@ -2047,5 +2048,188 @@ describe('FollowUpExecutor background-task snapshot teardown', () => {
         await makeExecutor(store).executeFollowUp('proc-bg-follow-err', 'continue');
 
         expect(backgroundTasksRegistry.get('proc-bg-follow-err')).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// Chat-mode directive injection
+// ============================================================================
+
+/**
+ * The `<coc-chat-mode>` block is session state, so a follow-up sends it only
+ * when the model provably does not already have the right one. These cover the
+ * decision as the executor actually wires it — `shouldInjectChatModeDirective`
+ * itself is unit-tested in `chat-mode-directive.test.ts`.
+ */
+describe('FollowUpExecutor chat-mode directive injection', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
+        mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
+        mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
+        mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
+        mockReadNoteContent.mockReset().mockResolvedValue(undefined);
+        mockBuildMemoryV2Addon.mockReset().mockResolvedValue({
+            systemMessageSuffix: undefined,
+            tools: [],
+            suffix: '',
+            excludedBuiltinTools: [],
+            dispose: vi.fn(),
+        });
+    });
+
+    /** The prompt the executor sent on the Nth (0-based) SDK call. */
+    function sentPrompt(index: number): string {
+        return (sdkMocks.mockSendMessage.mock.calls[index][0] as any).prompt as string;
+    }
+
+    /** Stand in for the POST /message route, which persists the user turn first. */
+    async function appendUserTurn(
+        target: ReturnType<typeof createMockProcessStore>,
+        id: string,
+        content: string,
+        timestamp: string,
+    ): Promise<void> {
+        await target.appendConversationTurn(id, (idx: number) => ({
+            role: 'user' as const,
+            content,
+            timestamp: new Date(timestamp),
+            turnIndex: idx,
+            timeline: [],
+        }));
+    }
+
+    /** A live-session chat whose only user turn already carries the ask block. */
+    async function seedAskChat(id: string, overrides?: Partial<AIProcess>): Promise<void> {
+        await store.addProcess(makeProcess({
+            id,
+            sdkSessionId: `sdk-${id}`,
+            metadata: { type: 'chat', mode: 'ask' },
+            conversationTurns: [
+                {
+                    role: 'user',
+                    content: 'Hello',
+                    timestamp: new Date('2026-01-01T00:00:00Z'),
+                    turnIndex: 0,
+                    timeline: [],
+                    chatModeContext: `<coc-chat-mode>\n${READ_ONLY_SYSTEM_MESSAGE.trim()}\n</coc-chat-mode>`,
+                },
+                { role: 'assistant', content: 'Hi', timestamp: new Date('2026-01-01T00:00:01Z'), turnIndex: 1, timeline: [] },
+            ],
+            ...overrides,
+        }));
+    }
+
+    // AC-01
+    it('sends nothing on a steady-state ask follow-up', async () => {
+        await seedAskChat('proc-mode-steady');
+        await makeExecutor(store).executeFollowUp('proc-mode-steady', 'still asking', undefined, 'ask');
+
+        expect(sentPrompt(0)).not.toContain('<coc-chat-mode>');
+        // Nothing was sent, so nothing is recorded: the next turn's decision
+        // still reads turn 0's marker.
+        expect(store.updateTurnChatModeContext).not.toHaveBeenCalled();
+    });
+
+    // AC-01 — several follow-ups in a stable mode stay silent.
+    it('stays silent across repeated ask follow-ups', async () => {
+        await seedAskChat('proc-mode-repeat');
+        const executor = makeExecutor(store);
+        for (let i = 0; i < 3; i++) {
+            await executor.executeFollowUp('proc-mode-repeat', `question ${i}`, undefined, 'ask');
+        }
+        for (let i = 0; i < 3; i++) {
+            expect(sentPrompt(i)).not.toContain('<coc-chat-mode>');
+        }
+    });
+
+    // AC-02
+    it('sends the autopilot transition note once on ask → autopilot', async () => {
+        await seedAskChat('proc-mode-to-auto');
+        const executor = makeExecutor(store);
+
+        await executor.executeFollowUp('proc-mode-to-auto', 'now edit it', undefined, 'autopilot');
+        expect(sentPrompt(0)).toContain(MODE_SWITCHED_TO_AUTOPILOT_NOTE);
+        // Recorded on the turn that carried it — the mock store appends no user
+        // turn here, so the marker lands on turn 0 (the most recent user turn).
+        expect(store.updateTurnChatModeContext).toHaveBeenCalledTimes(1);
+
+        await executor.executeFollowUp('proc-mode-to-auto', 'keep going', undefined, 'autopilot');
+        expect(sentPrompt(1)).not.toContain('<coc-chat-mode>');
+    });
+
+    // AC-03
+    it('sends the read-only block once on autopilot → ask', async () => {
+        await store.addProcess(makeProcess({
+            id: 'proc-mode-to-ask',
+            sdkSessionId: 'sdk-to-ask',
+            metadata: { type: 'chat', mode: 'autopilot' },
+            conversationTurns: [
+                {
+                    role: 'user',
+                    content: 'Hello',
+                    timestamp: new Date('2026-01-01T00:00:00Z'),
+                    turnIndex: 0,
+                    timeline: [],
+                    chatModeContext: `<coc-chat-mode>\n${MODE_SWITCHED_TO_AUTOPILOT_NOTE}\n</coc-chat-mode>`,
+                },
+                { role: 'assistant', content: 'Done', timestamp: new Date('2026-01-01T00:00:01Z'), turnIndex: 1, timeline: [] },
+            ],
+        }));
+        const executor = makeExecutor(store);
+
+        await executor.executeFollowUp('proc-mode-to-ask', 'just look', undefined, 'ask');
+        expect(sentPrompt(0)).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+
+        await executor.executeFollowUp('proc-mode-to-ask', 'look again', undefined, 'ask');
+        expect(sentPrompt(1)).not.toContain('<coc-chat-mode>');
+    });
+
+    // AC-04
+    it('re-injects when there is no live session to resume', async () => {
+        await seedAskChat('proc-mode-cold', { sdkSessionId: undefined });
+        await makeExecutor(store).executeFollowUp('proc-mode-cold', 'again', undefined, 'ask');
+
+        expect(sentPrompt(0)).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+    });
+
+    // AC-05
+    it('re-injects once after a completed compaction', async () => {
+        await seedAskChat('proc-mode-compact', {
+            metadata: {
+                type: 'chat',
+                mode: 'ask',
+                compaction: { state: 'completed', completedAt: '2026-01-02T00:00:00Z' },
+            } as any,
+        });
+        const executor = makeExecutor(store);
+
+        // The POST /message route appends the user turn before the executor
+        // runs; the executor marks that turn, so the marker carries a
+        // post-compaction timestamp.
+        await appendUserTurn(store, 'proc-mode-compact', 'after compact', '2026-01-03T00:00:00Z');
+        await executor.executeFollowUp('proc-mode-compact', 'after compact', undefined, 'ask');
+        expect(sentPrompt(0)).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+
+        // The re-injection is now the newest marker, so the compaction no
+        // longer post-dates it and the next turn goes quiet again.
+        await appendUserTurn(store, 'proc-mode-compact', 'and again', '2026-01-04T00:00:00Z');
+        await executor.executeFollowUp('proc-mode-compact', 'and again', undefined, 'ask');
+        expect(sentPrompt(1)).not.toContain('<coc-chat-mode>');
+    });
+
+    // A chat that never carried the block (pre-feature history) re-injects.
+    it('injects when no earlier turn carries the directive', async () => {
+        await store.addProcess(makeProcess({
+            id: 'proc-mode-legacy',
+            sdkSessionId: 'sdk-legacy',
+            metadata: { type: 'chat', mode: 'ask' },
+        }));
+        await makeExecutor(store).executeFollowUp('proc-mode-legacy', 'hello again', undefined, 'ask');
+
+        expect(sentPrompt(0)).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
     });
 });

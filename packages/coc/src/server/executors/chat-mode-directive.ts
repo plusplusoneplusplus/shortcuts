@@ -27,7 +27,7 @@
  */
 
 import { READ_ONLY_SYSTEM_MESSAGE, loadInstructions } from '@plusplusoneplusplus/forge';
-import type { ConversationTurn, ProcessCompactionState } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, ProcessCompactionState, ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ChatMode, ChatPayload, LegacyChatMode } from '../tasks/task-types';
 import {
     hasClassifyDiffContext,
@@ -244,6 +244,41 @@ export function shouldInjectChatModeDirective(check: ChatModeInjectionCheck): bo
     }
 
     return false;
+}
+
+/**
+ * Record the injected directive on the process's most recent user turn.
+ *
+ * The single writer of `chatModeContext`: the executor that actually sent the
+ * block writes the marker, verbatim. The display side only evaluates the same
+ * decision — it never writes — so the two can never disagree about which turns
+ * carried the directive. Resolves the turn index from a fresh store read, the
+ * same way `persistRepoGroupContextOnUserTurn` does, because the user turn is
+ * written by the dispatch route (or the process-creation path) before the
+ * executor computes anything, and cron/wakeup follow-ups append theirs
+ * mid-execution.
+ *
+ * Best-effort and never throws: bookkeeping must not be able to fail a turn. A
+ * lost write only costs one redundant re-injection on the next turn.
+ */
+export async function persistChatModeContextOnUserTurn(
+    store: ProcessStore,
+    processId: string,
+    directive: string | undefined,
+): Promise<void> {
+    if (!directive) return;
+    try {
+        const process = await store.getProcess(processId);
+        const turns = process?.conversationTurns ?? [];
+        for (let i = turns.length - 1; i >= 0; i--) {
+            if (turns[i].role === 'user') {
+                await store.updateTurnChatModeContext?.(processId, i, directive);
+                return;
+            }
+        }
+    } catch {
+        // Ignore — the block still reaches the model either way.
+    }
 }
 
 /**

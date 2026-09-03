@@ -61,7 +61,7 @@ import { resolveAutoFolderContext, suppressesAutoFolder } from './auto-folder-ut
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
-import { buildChatModeDirective, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
+import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import { buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
@@ -659,15 +659,16 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         // The read-only constraint and the mode-specific repo instructions ride
         // the user turn, not the system prompt, so a mid-chat mode switch does
-        // not invalidate the conversation's prefix cache. Follow-ups re-send the
-        // directive every turn (see `chat-mode-directive.ts`).
-        const effectivePrompt = prependChatModeDirective(
-            grilledPrompt,
-            buildChatModeDirective({
-                mode,
-                modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
-            }),
-        );
+        // not invalidate the conversation's prefix cache. A first turn always
+        // injects — there is no session that could already hold the block — and
+        // records it, so the first follow-up can tell the model already has it
+        // (see `shouldInjectChatModeDirective`).
+        const modeDirective = buildChatModeDirective({
+            mode,
+            modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
+        });
+        await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
+        const effectivePrompt = prependChatModeDirective(grilledPrompt, modeDirective);
 
         return {
             agentMode: 'interactive' as AgentMode,

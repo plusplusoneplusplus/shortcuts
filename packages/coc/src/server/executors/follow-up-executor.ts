@@ -53,7 +53,14 @@ import { readNoteContent } from './note-chat-executor';
 import { suppressesAutoFolder } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
-import { buildChatModeDirective, buildChatModeDisplayBlock, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
+import {
+    buildChatModeDirective,
+    buildChatModeDisplayBlock,
+    loadChatModeInstructions,
+    persistChatModeContextOnUserTurn,
+    prependChatModeDirective,
+    shouldInjectChatModeDirective,
+} from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import {
     buildCumulativeTokenUsage,
@@ -464,14 +471,28 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             })
                 ? repoGroupContext
                 : undefined;
-            // The mode directive rides the user turn on every follow-up, so a
-            // mode toggle never rewrites the (cached) system prefix. A switch
-            // out of ask also carries an explicit transition note.
-            const modeDirective = buildChatModeDirective({
+            // The mode directive rides the user turn, not the system prompt, so
+            // a mode toggle never rewrites the (cached) system prefix. It is
+            // session state, so it is sent only when the model provably does
+            // not already have the right one: a mode change (a switch out of
+            // ask carries an explicit transition note), a history rebuild, a
+            // compaction, or drift in the repo's mode instructions. See
+            // `shouldInjectChatModeDirective`.
+            const modeInstructions = await loadChatModeInstructions(workingDirectory, currentMode);
+            const modeDirective = shouldInjectChatModeDirective({
                 mode: currentMode,
                 previousMode,
-                modeInstructions: await loadChatModeInstructions(workingDirectory, currentMode),
-            });
+                modeInstructions,
+                // Prompt side only: the route that writes the stored turn cannot
+                // load the instructions file, so a drift-only re-injection is
+                // sent but not disclosed.
+                checkInstructionDrift: true,
+                turns: process.conversationTurns,
+                compaction: process.metadata?.compaction,
+                canResumeSession,
+            })
+                ? buildChatModeDirective({ mode: currentMode, previousMode, modeInstructions })
+                : undefined;
             const followUpMessage = appendRepoGroupContext(
                 prependChatModeDirective(
                     prependSelectedSkillsDirective(
@@ -487,6 +508,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // chat's disclosure never claims the model was told something it
             // was not.
             await persistRepoGroupContextOnUserTurn(this.store, processId, injectedRepoGroupContext);
+            // Same rule for the mode block: recorded only on the turns that
+            // actually carried it, so the next turn's decision (and the
+            // transcript's disclosure) reads a truthful history.
+            await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
             const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext

@@ -25,7 +25,7 @@ import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatTurnContext } from './chat-turn-context-builder';
-import { buildChatModeDirective, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
+import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 
 // ============================================================================
 // AutopilotExecutor
@@ -109,13 +109,15 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             askUserAvailable: this.askUserSurvivedFiltering(ctx.tools),
         });
 
-        const effectivePrompt = prependChatModeDirective(
-            prompt,
-            buildChatModeDirective({
-                mode: 'autopilot',
-                modeInstructions: await loadChatModeInstructions(workingDirectory, 'autopilot'),
-            }),
-        );
+        // Always injected (a first turn has no session that could already hold
+        // the block) and recorded, so the first follow-up can tell the model
+        // already has it — see `shouldInjectChatModeDirective`.
+        const modeDirective = buildChatModeDirective({
+            mode: 'autopilot',
+            modeInstructions: await loadChatModeInstructions(workingDirectory, 'autopilot'),
+        });
+        await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
+        const effectivePrompt = prependChatModeDirective(prompt, modeDirective);
 
         return {
             agentMode: 'autopilot' as AgentMode,
