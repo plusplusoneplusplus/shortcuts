@@ -56,5 +56,7 @@ export {
     parseExplorerTabs,
 } from './explorerTabsModel';
 export type { ExplorerTab, ExplorerTabKind, ExplorerTabsState, TabCycleDirection, OpenFileTabInput, OpenSearchTabInput } from './explorerTabsModel';
+export { useExplorerTabs } from './useExplorerTabs';
+export type { ExplorerTabsApi } from './useExplorerTabs';
 export type { TreeEntry, ExplorerView, ContentSearchModes, ContentSearchFilters, ContentSearchReplaceState, ContentSearchResultView, ContentSearchStatus, ContentSearchErrorKind } from './types';
 export { DEFAULT_CONTENT_SEARCH_MODES, DEFAULT_CONTENT_SEARCH_FILTERS, DEFAULT_CONTENT_SEARCH_REPLACE, DEFAULT_CONTENT_SEARCH_RESULT_VIEW, parseGlobList, contentSearchFiltersActive, isMultiLineQuery } from './types';

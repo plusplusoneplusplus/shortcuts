@@ -23,6 +23,12 @@
 import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react';
 import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import {
+    EMPTY_EXPLORER_TABS,
+    parseExplorerTabs,
+    serializeExplorerTabs,
+    type ExplorerTabsState,
+} from './explorerTabsModel';
+import {
     DEFAULT_CONTENT_SEARCH_FILTERS,
     DEFAULT_CONTENT_SEARCH_MODES,
     DEFAULT_CONTENT_SEARCH_REPLACE,
@@ -63,6 +69,15 @@ export function explorerSelectedStorageKey(workspaceId: string): string {
 /** localStorage key for the open preview file (path + name), per workspace. */
 export function explorerPreviewStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:explorer-preview`;
+}
+
+/**
+ * localStorage key for the open editor-tab session (tabs, active tab, MRU),
+ * per workspace. Only the tab *structure* is stored here — see
+ * `serializeExplorerTabs`; unsaved buffer contents never leave memory.
+ */
+export function explorerTabsStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-tabs`;
 }
 
 /** localStorage key for which sidebar view (tree or search) is showing. */
@@ -149,6 +164,16 @@ const PREVIEW_CODEC: Codec<ExplorerPreviewFile | null> = {
     },
     serialize(value) {
         return JSON.stringify(value);
+    },
+};
+
+const TABS_CODEC: Codec<ExplorerTabsState> = {
+    fallback: EMPTY_EXPLORER_TABS,
+    parse(raw) {
+        return parseExplorerTabs(raw);
+    },
+    serialize(value) {
+        return serializeExplorerTabs(value);
     },
 };
 
@@ -333,6 +358,17 @@ export function useExplorerPreviewFile(workspaceId: string): [ExplorerPreviewFil
     return usePersistedValue(explorerPreviewStorageKey(workspaceId), PREVIEW_CODEC);
 }
 
+
+/**
+ * Persisted editor-tab session for a workspace: the raw
+ * `[state, setState]` pair. Callers normally want the operation-shaped
+ * `useExplorerTabs` wrapper instead of driving `ExplorerTabsState` by hand.
+ */
+export function useExplorerTabsState(
+    workspaceId: string,
+): [ExplorerTabsState, Dispatch<SetStateAction<ExplorerTabsState>>] {
+    return usePersistedValue(explorerTabsStorageKey(workspaceId), TABS_CODEC);
+}
 
 /** Persisted sidebar view (tree or search) for a workspace. */
 export function useExplorerView(workspaceId: string): [ExplorerView, Dispatch<SetStateAction<ExplorerView>>] {
