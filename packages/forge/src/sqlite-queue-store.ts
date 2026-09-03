@@ -4,7 +4,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import type { QueuedTask, QueueStatus, PauseReason, QueueItem, PauseMarker, PauseDurationHours } from './queue/types';
+import type { QueuedTask, QueueStatus, PauseReason, QueueItem, PauseMarker, PauseDurationHours, PauseScope } from './queue/types';
 
 // ============================================================================
 // Row types (snake_case, matching SQLite columns)
@@ -30,6 +30,7 @@ interface QueueTaskRow {
     kind?: string | null;
     queue_position?: number | null;
     duration_hours?: number | null;
+    scope?: string | null;
     payload: string;
     config: string;
     result: string | null;
@@ -66,6 +67,18 @@ function normalizePauseDurationHours(value: number | null | undefined): PauseDur
     throw new Error(`Invalid persisted pause marker durationHours: ${value}`);
 }
 
+/**
+ * Hydrate a persisted pause-marker scope.
+ *
+ * Unlike `normalizePauseDurationHours` this never throws. A row written before
+ * the column existed has no scope at all and stays that way — absent already
+ * means `'all'`. A row with an unrecognised value falls back to `'all'`.
+ */
+function normalizePauseScope(value: string | null | undefined): PauseScope | undefined {
+    if (value === null || value === undefined) return undefined;
+    return value === 'autopilot' ? 'autopilot' : 'all';
+}
+
 function taskToRow(task: QueuedTask, queuePosition?: number): QueueTaskRow {
     return {
         id: task.id,
@@ -87,6 +100,7 @@ function taskToRow(task: QueuedTask, queuePosition?: number): QueueTaskRow {
         kind: 'task',
         queue_position: queuePosition ?? null,
         duration_hours: null,
+        scope: null,
         payload: JSON.stringify(task.payload),
         config: JSON.stringify(task.config),
         result: task.result !== undefined ? JSON.stringify(task.result) : null,
@@ -114,6 +128,7 @@ function pauseMarkerToRow(marker: PauseMarker, repoId: string, queuePosition?: n
         kind: 'pause-marker',
         queue_position: queuePosition ?? null,
         duration_hours: marker.durationHours ?? null,
+        scope: marker.scope ?? null,
         payload: '{}',
         config: '{}',
         result: null,
@@ -150,12 +165,14 @@ function rowToTask(row: QueueTaskRow): QueuedTask {
 function rowToQueueItem(row: QueueTaskRow): QueueItem {
     if (row.kind === 'pause-marker' || row.type === 'pause-marker') {
         const durationHours = normalizePauseDurationHours(row.duration_hours);
+        const scope = normalizePauseScope(row.scope);
         return {
             kind: 'pause-marker',
             id: row.id,
             ...(row.repo_id ? { repoId: row.repo_id } : {}),
             createdAt: row.created_at,
             ...(durationHours !== undefined ? { durationHours } : {}),
+            ...(scope !== undefined ? { scope } : {}),
         };
     }
     return rowToTask(row);
@@ -194,13 +211,13 @@ export class SqliteQueueStore {
                 (id, repo_id, folder_path, type, priority, status,
                  created_at, started_at, completed_at, display_name,
                  process_id, error, retry_count, concurrency_mode,
-                 frozen, admitted, kind, queue_position, duration_hours,
+                 frozen, admitted, kind, queue_position, duration_hours, scope,
                  payload, config, result)
             VALUES
                 (@id, @repo_id, @folder_path, @type, @priority, @status,
                  @created_at, @started_at, @completed_at, @display_name,
                  @process_id, @error, @retry_count, @concurrency_mode,
-                 @frozen, @admitted, @kind, @queue_position, @duration_hours,
+                 @frozen, @admitted, @kind, @queue_position, @duration_hours, @scope,
                  @payload, @config, @result)
         `);
         stmt.run(row);
@@ -215,13 +232,13 @@ export class SqliteQueueStore {
                     (id, repo_id, folder_path, type, priority, status,
                      created_at, started_at, completed_at, display_name,
                      process_id, error, retry_count, concurrency_mode,
-                     frozen, admitted, kind, queue_position, duration_hours,
+                     frozen, admitted, kind, queue_position, duration_hours, scope,
                      payload, config, result)
                 VALUES
                     (@id, @repo_id, @folder_path, @type, @priority, @status,
                      @created_at, @started_at, @completed_at, @display_name,
                      @process_id, @error, @retry_count, @concurrency_mode,
-                     @frozen, @admitted, @kind, @queue_position, @duration_hours,
+                     @frozen, @admitted, @kind, @queue_position, @duration_hours, @scope,
                      @payload, @config, @result)
             `);
             stmt.run(row);

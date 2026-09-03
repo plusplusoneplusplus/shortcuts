@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(29);
+        expect(SCHEMA_VERSION).toBe(30);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -138,6 +138,7 @@ describe('sqlite-schema', () => {
         expect(colNames).toContain('kind');
         expect(colNames).toContain('queue_position');
         expect(colNames).toContain('duration_hours');
+        expect(colNames).toContain('scope');
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {
@@ -1174,7 +1175,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(29);
+            expect(SCHEMA_VERSION).toBe(30);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1324,7 +1325,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(29);
+            expect(SCHEMA_VERSION).toBe(30);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1356,6 +1357,77 @@ describe('sqlite-schema', () => {
             const parentCols = (db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>)
                 .filter(c => c.name === 'parent_group_id');
             expect(parentCols).toHaveLength(1);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+        });
+    });
+
+    describe('V29 -> V30 migration (queue_tasks.scope)', () => {
+        it('adds scope to an existing V29 queue_tasks table without data loss', () => {
+            // Simulate a V29 queue_tasks table that predates the scope column.
+            db.exec(`
+                CREATE TABLE queue_tasks (
+                    id                TEXT PRIMARY KEY,
+                    repo_id           TEXT NOT NULL,
+                    folder_path       TEXT,
+                    type              TEXT NOT NULL,
+                    priority          TEXT NOT NULL DEFAULT 'normal',
+                    status            TEXT NOT NULL DEFAULT 'queued',
+                    created_at        INTEGER NOT NULL,
+                    started_at        INTEGER,
+                    completed_at      INTEGER,
+                    display_name      TEXT,
+                    process_id        TEXT,
+                    error             TEXT,
+                    retry_count       INTEGER DEFAULT 0,
+                    concurrency_mode  TEXT,
+                    frozen            INTEGER DEFAULT 0,
+                    admitted          INTEGER DEFAULT 0,
+                    kind              TEXT NOT NULL DEFAULT 'task',
+                    queue_position    INTEGER,
+                    duration_hours    INTEGER,
+                    payload           TEXT NOT NULL DEFAULT '{}',
+                    config            TEXT NOT NULL DEFAULT '{}',
+                    result            TEXT
+                );
+            `);
+            db.prepare(`
+                INSERT INTO queue_tasks (id, repo_id, type, created_at, kind, queue_position, duration_hours)
+                VALUES ('pause-v29', 'repo-1', 'pause-marker', 1000, 'pause-marker', 0, 2)
+            `).run();
+            db.pragma('user_version = 29');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+
+            const cols = db.prepare("PRAGMA table_info(queue_tasks)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('scope');
+
+            // No backfill: the pre-existing marker keeps its data and gets NULL,
+            // which the store reads back as the all-queue default.
+            const row = db.prepare(`
+                SELECT duration_hours, kind, scope FROM queue_tasks WHERE id = 'pause-v29'
+            `).get() as any;
+            expect(row.duration_hours).toBe(2);
+            expect(row.kind).toBe('pause-marker');
+            expect(row.scope).toBeNull();
+
+            // New column is writable.
+            db.prepare('UPDATE queue_tasks SET scope = ? WHERE id = ?').run('autopilot', 'pause-v29');
+            const updated = db.prepare("SELECT scope FROM queue_tasks WHERE id = 'pause-v29'").get() as any;
+            expect(updated.scope).toBe('autopilot');
+        });
+
+        it('is idempotent when initializeDatabase runs twice on a V29 database', () => {
+            initializeDatabase(db);
+            db.pragma('user_version = 29');
+
+            expect(() => initializeDatabase(db)).not.toThrow();
+            expect(() => initializeDatabase(db)).not.toThrow();
+
+            const scopeCols = (db.prepare("PRAGMA table_info(queue_tasks)").all() as Array<{ name: string }>)
+                .filter(c => c.name === 'scope');
+            expect(scopeCols).toHaveLength(1);
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
         });
     });

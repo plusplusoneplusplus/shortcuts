@@ -61,6 +61,7 @@ export {
 
     // Pause marker
     PauseDurationHours,
+    PauseScope,
     PauseMarker,
     QueueItem,
 

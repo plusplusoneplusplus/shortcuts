@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 29;
+export const SCHEMA_VERSION = 30;
 
 /**
  * Read the current schema version from the database.
@@ -152,6 +152,7 @@ export function initializeDatabase(db: Database.Database): void {
                 kind              TEXT NOT NULL DEFAULT 'task',
                 queue_position    INTEGER,
                 duration_hours    INTEGER,
+                scope             TEXT,
                 payload           TEXT NOT NULL DEFAULT '{}',
                 config            TEXT NOT NULL DEFAULT '{}',
                 result            TEXT
@@ -160,6 +161,7 @@ export function initializeDatabase(db: Database.Database): void {
         ensureColumn(db, 'queue_tasks', 'kind', "TEXT NOT NULL DEFAULT 'task'");
         ensureColumn(db, 'queue_tasks', 'queue_position', 'INTEGER');
         ensureColumn(db, 'queue_tasks', 'duration_hours', 'INTEGER');
+        ensureColumn(db, 'queue_tasks', 'scope', 'TEXT');
 
         // ── queue_repo_state ────────────────────────────────────────
         db.exec(`
@@ -523,6 +525,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 29) {
             migrateV28toV29(db);
+        }
+        if (versionBefore < 30) {
+            migrateV29toV30(db);
         }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -902,6 +907,15 @@ function migrateV27toV28(db: Database.Database): void {
  */
 function migrateV28toV29(db: Database.Database): void {
     ensureColumn(db, 'task_groups', 'parent_group_id', 'TEXT');
+}
+
+/**
+ * V29 -> V30: add `scope` to `queue_tasks` so a pause marker can record what it
+ * holds back — the whole queue (`'all'`, and what NULL means for every existing
+ * marker) or autopilot only (`'autopilot'`). No backfill needed.
+ */
+function migrateV29toV30(db: Database.Database): void {
+    ensureColumn(db, 'queue_tasks', 'scope', 'TEXT');
 }
 
 /**

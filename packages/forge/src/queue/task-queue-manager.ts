@@ -664,14 +664,21 @@ export class TaskQueueManager extends EventEmitter {
      * @param afterIndex 0-based index of the item after which the marker is inserted.
      *   Pass -1 to insert at the very beginning.
      *   Values >= queue.length insert at the end.
+     * @param durationHours Optional timed pause length; omitted means "until resumed".
+     * @param scope What the marker pauses — `'all'` (default) or `'autopilot'`.
      * @returns The id of the newly created marker.
      */
-    insertPauseMarker(afterIndex: number, durationHours?: PauseMarker['durationHours']): string {
+    insertPauseMarker(
+        afterIndex: number,
+        durationHours?: PauseMarker['durationHours'],
+        scope?: PauseMarker['scope'],
+    ): string {
         const marker: PauseMarker = {
             kind: 'pause-marker',
             id: generateTaskId(),
             createdAt: Date.now(),
             ...(durationHours !== undefined ? { durationHours } : {}),
+            ...(scope !== undefined ? { scope } : {}),
         };
 
         // Clamp insertion index
