@@ -112,6 +112,9 @@ export type ActivityTabMode = 'chats' | 'tasks';
 type QueuePauseOptions = { durationHours?: number; until?: number | string };
 type PauseMenuScope = 'all' | 'autopilot';
 type PauseDurationHours = NonNullable<QueuePauseOptions['durationHours']>;
+
+/** A pause-marker insertion also carries the scope the marker will pause. */
+type QueuePauseInsertOptions = QueuePauseOptions & { scope?: PauseMenuScope };
 type GroupPinMenuTarget = {
     type: ProcessGroupPinType;
     groupId: string;
@@ -905,17 +908,35 @@ function formatPauseResumeTime(value: number | string | undefined): string | und
     return new Date(until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-function PauseDurationMenu({
-    testIdScope,
-    onSelect,
-    quotaData,
-}: {
+/** One selectable group in {@link PauseDurationMenu}. */
+type PauseMenuSectionSpec = {
+    /** Section heading. Omitted for a single-section menu (the top pause pill). */
+    label?: string;
+    /** Suffix for every `data-testid` inside the section. */
     testIdScope: string;
     onSelect: (options?: QueuePauseOptions) => void;
-    quotaData?: AgentProvidersQuotaResponse | null;
-}) {
-    const now = Date.now();
+};
 
+/**
+ * One labelled group inside {@link PauseDurationMenu}: "Until resumed", the hour
+ * presets, the custom-hours editor and (when quota data is available) the
+ * quota-derived rows. Each section owns its own custom-hours state so two
+ * sections in the same menu do not share an open editor.
+ */
+function PauseDurationSection({
+    label,
+    testIdScope,
+    onSelect,
+    now,
+    mostConstrained,
+    mostConstrainedResetFuture,
+    allConstrainedResetMs,
+}: PauseMenuSectionSpec & {
+    now: number;
+    mostConstrained: ReturnType<typeof getMostConstrainedProviderQuota>;
+    mostConstrainedResetFuture?: number;
+    allConstrainedResetMs?: number;
+}) {
     const [customOpen, setCustomOpen] = useState(false);
     const [customValue, setCustomValue] = useState('');
     const [customError, setCustomError] = useState<string | null>(null);
@@ -930,58 +951,14 @@ function PauseDurationMenu({
         onSelect({ durationHours: parsed });
     };
 
-    const mostConstrained = getMostConstrainedProviderQuota(quotaData);
-    const mostConstrainedResetDate = mostConstrained?.quotaType.resetDate;
-    const mostConstrainedResetMs = mostConstrainedResetDate ? Date.parse(mostConstrainedResetDate) : undefined;
-    const mostConstrainedResetFuture =
-        mostConstrainedResetMs !== undefined && Number.isFinite(mostConstrainedResetMs) && mostConstrainedResetMs > now
-            ? mostConstrainedResetMs
-            : undefined;
-
-    // max(resetDate) across constrained (<50%) providers for "until all recover"
-    let allConstrainedResetMs: number | undefined;
-    for (const provider of quotaData?.providers ?? []) {
-        if (provider.error) continue;
-        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
-        if (!tightest) continue;
-        if (getQuotaPercent(tightest.remainingPercentage) >= 50) continue;
-        if (!tightest.resetDate) continue;
-        const ms = Date.parse(tightest.resetDate);
-        if (!Number.isFinite(ms) || ms <= now) continue;
-        if (allConstrainedResetMs === undefined || ms > allConstrainedResetMs) allConstrainedResetMs = ms;
-    }
-
     return (
-        <div
-            className="absolute right-0 top-full mt-1 z-30 min-w-52 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
-            data-testid={`pause-duration-menu-${testIdScope}`}
-            onClick={(e) => e.stopPropagation()}
-        >
-            {quotaData && quotaData.providers.some(p => !p.error && getTightestFiniteQuotaType(p.quotaTypes)) && (
+        <>
+            {label && (
                 <div
-                    className="px-2 pt-1 pb-1.5 mb-1 border-b border-[#e8e8e8] dark:border-[#3f3f46]"
-                    data-testid={`pause-duration-quota-strip-${testIdScope}`}
+                    className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#6e6e6e] dark:text-[#999]"
+                    data-testid={`pause-duration-${testIdScope}-label`}
                 >
-                    {quotaData.providers.map(provider => {
-                        if (provider.error) return null;
-                        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
-                        if (!tightest) return null;
-                        const pct = getQuotaPercent(tightest.remainingPercentage);
-                        const barColor = pct < 25 ? '#d1242f' : pct < 50 ? '#bf8700' : '#1a7f37';
-                        const countdown = formatPauseRemaining(tightest.resetDate, now);
-                        return (
-                            <div key={provider.id} className="flex items-center gap-1.5 py-0.5" data-testid={`pause-duration-quota-row-${provider.id}`}>
-                                <span className="w-12 shrink-0 text-[10px] text-[#6e6e6e] dark:text-[#999] capitalize">{provider.id}</span>
-                                <div className="flex-1 h-1 rounded-full bg-[#e8e8e8] dark:bg-[#3f3f46] overflow-hidden">
-                                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor }} />
-                                </div>
-                                <span className="w-8 text-right text-[10px] font-medium" style={{ color: barColor }}>{pct}%</span>
-                                {countdown && (
-                                    <span className="text-[10px] text-[#6e6e6e] dark:text-[#999] whitespace-nowrap">{countdown}</span>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {label}
                 </div>
             )}
             <button
@@ -1081,6 +1058,93 @@ function PauseDurationMenu({
                     </span>
                 </button>
             )}
+        </>
+    );
+}
+
+/**
+ * Pause duration picker. Renders one or more labelled sections — the top pause
+ * pill passes a single unlabelled section, the queue insert zone passes a
+ * "Pause all" and a "Pause autopilot" section so one click picks scope and
+ * duration together.
+ */
+function PauseDurationMenu({
+    testIdScope,
+    sections,
+    quotaData,
+}: {
+    testIdScope: string;
+    sections: PauseMenuSectionSpec[];
+    quotaData?: AgentProvidersQuotaResponse | null;
+}) {
+    const now = Date.now();
+
+    const mostConstrained = getMostConstrainedProviderQuota(quotaData);
+    const mostConstrainedResetDate = mostConstrained?.quotaType.resetDate;
+    const mostConstrainedResetMs = mostConstrainedResetDate ? Date.parse(mostConstrainedResetDate) : undefined;
+    const mostConstrainedResetFuture =
+        mostConstrainedResetMs !== undefined && Number.isFinite(mostConstrainedResetMs) && mostConstrainedResetMs > now
+            ? mostConstrainedResetMs
+            : undefined;
+
+    // max(resetDate) across constrained (<50%) providers for "until all recover"
+    let allConstrainedResetMs: number | undefined;
+    for (const provider of quotaData?.providers ?? []) {
+        if (provider.error) continue;
+        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
+        if (!tightest) continue;
+        if (getQuotaPercent(tightest.remainingPercentage) >= 50) continue;
+        if (!tightest.resetDate) continue;
+        const ms = Date.parse(tightest.resetDate);
+        if (!Number.isFinite(ms) || ms <= now) continue;
+        if (allConstrainedResetMs === undefined || ms > allConstrainedResetMs) allConstrainedResetMs = ms;
+    }
+
+    return (
+        <div
+            className="absolute right-0 top-full mt-1 z-30 min-w-52 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
+            data-testid={`pause-duration-menu-${testIdScope}`}
+            onClick={(e) => e.stopPropagation()}
+        >
+            {quotaData && quotaData.providers.some(p => !p.error && getTightestFiniteQuotaType(p.quotaTypes)) && (
+                <div
+                    className="px-2 pt-1 pb-1.5 mb-1 border-b border-[#e8e8e8] dark:border-[#3f3f46]"
+                    data-testid={`pause-duration-quota-strip-${testIdScope}`}
+                >
+                    {quotaData.providers.map(provider => {
+                        if (provider.error) return null;
+                        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
+                        if (!tightest) return null;
+                        const pct = getQuotaPercent(tightest.remainingPercentage);
+                        const barColor = pct < 25 ? '#d1242f' : pct < 50 ? '#bf8700' : '#1a7f37';
+                        const countdown = formatPauseRemaining(tightest.resetDate, now);
+                        return (
+                            <div key={provider.id} className="flex items-center gap-1.5 py-0.5" data-testid={`pause-duration-quota-row-${provider.id}`}>
+                                <span className="w-12 shrink-0 text-[10px] text-[#6e6e6e] dark:text-[#999] capitalize">{provider.id}</span>
+                                <div className="flex-1 h-1 rounded-full bg-[#e8e8e8] dark:bg-[#3f3f46] overflow-hidden">
+                                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                                </div>
+                                <span className="w-8 text-right text-[10px] font-medium" style={{ color: barColor }}>{pct}%</span>
+                                {countdown && (
+                                    <span className="text-[10px] text-[#6e6e6e] dark:text-[#999] whitespace-nowrap">{countdown}</span>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            {sections.map((section, sectionIndex) => (
+                <React.Fragment key={section.testIdScope}>
+                    {sectionIndex > 0 && <div className="my-1 border-t border-[#e8e8e8] dark:border-[#3f3f46]" />}
+                    <PauseDurationSection
+                        {...section}
+                        now={now}
+                        mostConstrained={mostConstrained}
+                        mostConstrainedResetFuture={mostConstrainedResetFuture}
+                        allConstrainedResetMs={allConstrainedResetMs}
+                    />
+                </React.Fragment>
+            ))}
         </div>
     );
 }
@@ -2758,13 +2822,16 @@ export function ChatListPane({
         fetchQueue();
     };
 
-    const handleInsertPauseMarker = async (afterIndex: number, options?: QueuePauseOptions) => {
+    const handleInsertPauseMarker = async (afterIndex: number, options?: QueuePauseInsertOptions) => {
         setInsertingPauseAt(null);
         setPauseMarkerMenuIndex(null);
         await cloneClient.queue.insertPauseMarker({
             afterIndex,
             ...(workspaceId ? { repoId: workspaceId } : {}),
             ...(options?.durationHours !== undefined ? { durationHours: options.durationHours } : {}),
+            // An all-scoped marker omits `scope` entirely, so the request stays
+            // byte-identical to what pre-scope clients sent.
+            ...(options?.scope === 'autopilot' ? { scope: 'autopilot' as const } : {}),
         });
         fetchQueue();
     };
@@ -4468,7 +4535,10 @@ export function ChatListPane({
                         {pauseMenuScope && (
                             <PauseDurationMenu
                                 testIdScope={pauseMenuScope}
-                                onSelect={(options) => selectPauseDuration(pauseMenuScope, options)}
+                                sections={[{
+                                    testIdScope: pauseMenuScope,
+                                    onSelect: (options) => selectPauseDuration(pauseMenuScope, options),
+                                }]}
                                 quotaData={quotaData}
                             />
                         )}
@@ -4703,6 +4773,7 @@ export function ChatListPane({
                                                 key={item.id}
                                                 markerId={item.id}
                                                 durationHours={item.durationHours}
+                                                scope={item.scope}
                                                 onRemove={() => handleRemovePauseMarker(item.id)}
                                             />
                                         );
@@ -5200,20 +5271,32 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
     );
 }
 
-function PauseMarkerRow({ markerId, durationHours, onRemove }: {
+function PauseMarkerRow({ markerId, durationHours, scope, onRemove }: {
     markerId: string;
     durationHours?: PauseDurationHours;
+    /** Absent means all-scope, matching the wire and DB contract. */
+    scope?: PauseMenuScope;
     onRemove: () => void;
 }) {
+    const isAutopilotScoped = scope === 'autopilot';
     const durationLabel = durationHours === undefined ? undefined : formatPauseDurationLabel(durationHours);
-    const label = durationLabel === undefined ? 'Queue pauses here' : `Queue pauses here · ${durationLabel}`;
+    const subject = isAutopilotScoped ? 'Autopilot' : 'Queue';
+    const label = durationLabel === undefined ? `${subject} pauses here` : `${subject} pauses here · ${durationLabel}`;
+    const what = isAutopilotScoped ? 'Autopilot tasks' : 'Queue';
     return (
         <div
-            className="flex items-center gap-1.5 px-2 py-1 rounded border border-dashed border-yellow-400/60 dark:border-yellow-500/50 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400 text-xs"
+            className={cn(
+                'flex items-center gap-1.5 px-2 py-1 rounded border border-dashed text-xs',
+                isAutopilotScoped
+                    // Match the AP pill's amber accent rather than inventing a colour.
+                    ? 'border-amber-400/60 dark:border-amber-500/50 bg-amber-500/5 text-amber-700 dark:text-amber-400'
+                    : 'border-yellow-400/60 dark:border-yellow-500/50 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400',
+            )}
             data-testid="pause-marker-row"
+            data-scope={isAutopilotScoped ? 'autopilot' : 'all'}
             title={durationLabel === undefined
-                ? 'Queue will pause when it reaches this point'
-                : `Queue will pause for ${durationLabel} when it reaches this point`}
+                ? `${what} will pause when it reaches this point`
+                : `${what} will pause for ${durationLabel} when it reaches this point`}
         >
             <span className="shrink-0 text-[11px]">⏸</span>
             <span className="flex-1 text-[11px]">{label}</span>
@@ -5237,7 +5320,7 @@ function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMou
     onMouseEnter: () => void;
     onMouseLeave: () => void;
     onClick: () => void;
-    onSelectDuration: (options?: QueuePauseOptions) => void;
+    onSelectDuration: (options?: QueuePauseInsertOptions) => void;
 }) {
     return (
         <div
@@ -5261,7 +5344,19 @@ function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMou
             {menuOpen && (
                 <PauseDurationMenu
                     testIdScope={`insert-${index}`}
-                    onSelect={onSelectDuration}
+                    sections={[
+                        {
+                            label: 'Pause all',
+                            // Unsuffixed so the pre-scope insert-zone test ids stay stable.
+                            testIdScope: `insert-${index}`,
+                            onSelect: (options) => onSelectDuration(options),
+                        },
+                        {
+                            label: 'Pause autopilot',
+                            testIdScope: `insert-${index}-autopilot`,
+                            onSelect: (options) => onSelectDuration({ ...options, scope: 'autopilot' }),
+                        },
+                    ]}
                 />
             )}
         </div>
