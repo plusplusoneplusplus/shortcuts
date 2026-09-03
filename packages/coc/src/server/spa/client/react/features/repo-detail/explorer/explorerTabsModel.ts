@@ -420,12 +420,27 @@ export function moveTab(state: ExplorerTabsState, fromIndex: number, toIndex: nu
  * of ping-ponging between the first two.
  */
 export function cycleTabs(state: ExplorerTabsState, direction: TabCycleDirection): string | null {
-    if (state.mru.length < 2) return null;
-    const current = state.activeId === null ? 0 : state.mru.indexOf(state.activeId);
+    return cycleTabsWithin(state.mru, state.activeId, direction);
+}
+
+/**
+ * The same walk against an explicit MRU list. A held Ctrl+Tab activates every
+ * step it passes through so the user sees where they are, and activating
+ * rewrites the MRU — so the caller snapshots the list when the walk starts and
+ * keeps stepping through that snapshot until the modifier is released.
+ * Returns the id to activate, or null when there is nothing to cycle to.
+ */
+export function cycleTabsWithin(
+    mru: readonly string[],
+    fromId: string | null,
+    direction: TabCycleDirection,
+): string | null {
+    if (mru.length < 2) return null;
+    const current = fromId === null ? 0 : mru.indexOf(fromId);
     const from = current < 0 ? 0 : current;
     const step = direction === 'forward' ? 1 : -1;
-    const next = (from + step + state.mru.length) % state.mru.length;
-    return state.mru[next];
+    const next = (from + step + mru.length) % mru.length;
+    return mru[next];
 }
 
 // ---------------------------------------------------------------------------

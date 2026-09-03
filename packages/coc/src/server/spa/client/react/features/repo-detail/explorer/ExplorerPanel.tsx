@@ -18,7 +18,7 @@ import { SearchEditorPane } from './SearchEditorPane';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
 import { ExplorerTabStrip } from './ExplorerTabStrip';
 import { useExplorerTabs } from './useExplorerTabs';
-import { searchTabId, tabIdsToRight } from './explorerTabsModel';
+import { cycleTabsWithin, searchTabId, tabIdsToRight } from './explorerTabsModel';
 import { useExplorerEditorTabsEnabled } from '../../../hooks/feature-flags/useExplorerEditorTabsEnabled';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
@@ -216,7 +216,18 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
     const tabsEnabled = useExplorerEditorTabsEnabled();
     const tabs = useExplorerTabs(workspaceId);
     const tabsState = tabs.state;
-    const { openFile: openFileTab, openSearch: openSearchTab, close: closeTabById, closeMany: closeTabsByIds, pin: pinTabById, idsOther, idsAll } = tabs;
+    const { openFile: openFileTab, openSearch: openSearchTab, close: closeTabById, closeMany: closeTabsByIds, pin: pinTabById, activate: activateTabById, idsOther, idsAll } = tabs;
+    // The freshest session, readable from the keyboard listener without making
+    // that listener depend on (and re-register on) every tab change.
+    const tabsRef = useRef(tabsState);
+    tabsRef.current = tabsState;
+    // The in-progress Ctrl+Tab walk: the MRU order as it was when the user
+    // first pressed Tab, plus the step currently highlighted. Null when no
+    // walk is running.
+    const tabWalkRef = useRef<{ mru: readonly string[]; at: string | null } | null>(null);
+    // The Explorer's root element, used to tell whether this panel owns the
+    // keyboard before it claims Ctrl/Cmd+W.
+    const rootRef = useRef<HTMLDivElement>(null);
     // Search-tab texts: in memory, shared by both mounts of this workspace, and
     // deliberately never persisted (see explorerStateStore).
     const [searchBuffers, setSearchBuffers] = useExplorerSearchBuffers(workspaceId);
@@ -845,6 +856,64 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         if (orphaned.length > 0) closeTabsByIds(orphaned);
     }, [tabsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Tab keyboard shortcuts (AC-03). Unlike '/' , Ctrl+P and Ctrl+O above,
+    // these are scoped: Ctrl/Cmd+W is a browser shortcut, so the Explorer may
+    // only take it while it actually owns the keyboard — focus inside this
+    // panel (the tree, the strip, a Monaco buffer). With focus anywhere else on
+    // the dashboard, or nowhere at all, the browser keeps its shortcut.
+    useEffect(() => {
+        if (!tabsEnabled) return;
+
+        const ownsKeyboard = () => {
+            const root = rootRef.current;
+            const focused = document.activeElement;
+            if (!root || !focused || focused === document.body) return false;
+            return root.contains(focused);
+        };
+
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (!ownsKeyboard()) return;
+            const { tabs: openTabs, activeId, mru } = tabsRef.current;
+
+            if (e.key === 'Tab' && (e.ctrlKey || e.metaKey)) {
+                // A held Ctrl walks further down the list on every Tab. Each
+                // step is activated so the user sees where they are, which
+                // rewrites the MRU — so the walk steps through the list as it
+                // was when the walk began, and only a modifier release ends it.
+                const walk = tabWalkRef.current ?? { mru, at: activeId };
+                const next = cycleTabsWithin(walk.mru, walk.at, e.shiftKey ? 'backward' : 'forward');
+                if (next === null) return;
+                e.preventDefault();
+                tabWalkRef.current = { mru: walk.mru, at: next };
+                activateTabById(next);
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'w' || e.key === 'W')) {
+                if (activeId === null || openTabs.length === 0) return;
+                e.preventDefault();
+                handleCloseTab(activeId);
+            }
+        };
+
+        // Releasing Ctrl/Cmd (or leaving the window with it held) ends the walk,
+        // so the next Ctrl+Tab starts again from the freshly ordered MRU.
+        const endWalk = (e?: KeyboardEvent) => {
+            if (e && e.key !== 'Control' && e.key !== 'Meta') return;
+            tabWalkRef.current = null;
+        };
+        const onBlur = () => { tabWalkRef.current = null; };
+
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', endWalk);
+        window.addEventListener('blur', onBlur);
+        return () => {
+            document.removeEventListener('keydown', onKeyDown);
+            document.removeEventListener('keyup', endWalk);
+            window.removeEventListener('blur', onBlur);
+        };
+    }, [tabsEnabled, activateTabById, handleCloseTab]);
+
     const breadcrumbSegments = useMemo(() => {
         if (!selectedPath) return [];
         return selectedPath.split('/').filter(Boolean);
@@ -891,7 +960,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
     const showMobilePreview = isMobile && editorHasContent && !(tabsEnabled && mobileTreeVisible);
 
     return (
-        <div className={`flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="explorer-panel">
+        <div ref={rootRef} className={`flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="explorer-panel">
             {/* Left aside — file tree (hidden on mobile when previewing a file) */}
             <aside
                 className="w-full flex-1 min-h-0 lg:flex-none border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col"

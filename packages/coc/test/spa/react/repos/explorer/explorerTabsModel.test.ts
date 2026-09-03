@@ -8,6 +8,7 @@ import {
     closeTab,
     closeTabs,
     cycleTabs,
+    cycleTabsWithin,
     fileTabId,
     findTab,
     hasFileTab,
@@ -195,6 +196,21 @@ describe('explorerTabsModel — activation and MRU', () => {
 
         const onOldest = activateTab(state, fileTabId('a.ts'));
         expect(cycleTabs(onOldest, 'forward')).toBe(fileTabId('c.ts'));
+    });
+
+    it('walks an explicit MRU snapshot, which is how a held Ctrl reaches the third tab', () => {
+        const snapshot = [fileTabId('c.ts'), fileTabId('b.ts'), fileTabId('a.ts')];
+        const first = cycleTabsWithin(snapshot, fileTabId('c.ts'), 'forward');
+        expect(first).toBe(fileTabId('b.ts'));
+        // The caller activated b, reordering the live MRU — walking the
+        // snapshot still moves on to a instead of bouncing back to c.
+        expect(cycleTabsWithin(snapshot, first, 'forward')).toBe(fileTabId('a.ts'));
+        expect(cycleTabsWithin(snapshot, fileTabId('a.ts'), 'forward')).toBe(fileTabId('c.ts'));
+        expect(cycleTabsWithin(snapshot, fileTabId('c.ts'), 'backward')).toBe(fileTabId('a.ts'));
+        expect(cycleTabsWithin(snapshot, null, 'forward')).toBe(fileTabId('b.ts'));
+        expect(cycleTabsWithin(snapshot, 'file:gone', 'forward')).toBe(fileTabId('b.ts'));
+        expect(cycleTabsWithin([fileTabId('a.ts')], fileTabId('a.ts'), 'forward')).toBeNull();
+        expect(cycleTabsWithin([], null, 'forward')).toBeNull();
     });
 
     it('has nothing to cycle to with fewer than two tabs', () => {

@@ -51,6 +51,7 @@ export {
     allTabIds,
     moveTab,
     cycleTabs,
+    cycleTabsWithin,
     tabLabels,
     serializeExplorerTabs,
     parseExplorerTabs,
