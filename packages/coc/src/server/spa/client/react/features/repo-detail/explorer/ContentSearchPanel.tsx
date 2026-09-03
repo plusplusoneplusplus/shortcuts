@@ -55,10 +55,12 @@ export const SEARCH_DEBOUNCE_MS = 250;
 export interface ContentSearchPanelProps {
     workspaceId: string;
     /**
-     * Repo-relative directory to scope the search to. Empty/undefined searches
-     * the whole repo. Wired to the Explorer's currently selected directory.
+     * Bump to move focus into the query box. A counter rather than a boolean
+     * because the request ("Find in Folder") can arrive while the view is
+     * already showing, when there is no mount to hang an autoFocus on; every
+     * distinct value is one focus request. Zero means "never asked".
      */
-    scopePath?: string;
+    focusQueryToken?: number;
     /** Open a file at a one-based line — the click-through for a match. */
     onOpenMatch: (path: string, line: number) => void;
     /**
@@ -116,7 +118,7 @@ function isAbortError(error: unknown): boolean {
 
 export function ContentSearchPanel({
     workspaceId,
-    scopePath,
+    focusQueryToken = 0,
     onOpenMatch,
     onOpenInEditor,
 }: ContentSearchPanelProps) {
@@ -144,6 +146,13 @@ export function ContentSearchPanel({
     // to a toggle is intent and re-runs at once, because no further keystroke is
     // coming.
     const lastTypedRef = useRef<string | null>(null);
+    const queryInputRef = useRef<HTMLInputElement>(null);
+
+    // Focus on request from the host (Find in Folder). Skipped at zero so a
+    // plain mount does not steal focus from wherever the user actually is.
+    useEffect(() => {
+        if (focusQueryToken > 0) queryInputRef.current?.focus();
+    }, [focusQueryToken]);
 
     const trimmed = query.trim();
     // Keyed off the *parsed* glob lists, not the raw text, so typing a space
@@ -185,7 +194,6 @@ export function ContentSearchPanel({
             abortRef.current = controller;
             setState(prev => ({ ...prev, status: 'loading', error: null, errorKind: null }));
             explorerApi.searchContent(workspaceId, trimmed, {
-                path: scopePath || undefined,
                 caseSensitive: modes.caseSensitive,
                 wholeWord: modes.wholeWord,
                 regex: modes.regex,
@@ -226,7 +234,7 @@ export function ContentSearchPanel({
             clearTimeout(timer);
             abortRef.current?.abort();
         };
-    }, [workspaceId, trimmed, typedSignature, include, exclude, scopePath, modes, filters.useIgnoreFiles, refreshTick, setState]);
+    }, [workspaceId, trimmed, typedSignature, include, exclude, modes, filters.useIgnoreFiles, refreshTick, setState]);
 
     // Unmounting mid-request must not leave a request running: bump the run id
     // so any in-flight response is discarded, and abort the fetch itself.
@@ -345,6 +353,7 @@ export function ContentSearchPanel({
                 onClear={onClear}
                 placeholder="Search in files…"
                 toggles={toggles}
+                inputRef={queryInputRef}
                 testIdPrefix="content-search"
             />
             <SearchFilters
@@ -354,11 +363,6 @@ export function ContentSearchPanel({
                 onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
                 testIdPrefix="content-search"
             />
-            {scopePath && (
-                <div className="px-3 pb-1 text-[11px] text-[#848484] truncate" data-testid="content-search-scope">
-                    in {scopePath}
-                </div>
-            )}
 
             {state.status === 'idle' && (
                 <p className="px-3 py-2 text-xs text-[#848484]" data-testid="content-search-idle">

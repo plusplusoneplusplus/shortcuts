@@ -214,8 +214,8 @@ describe('ContentSearchPanel — request behaviour', () => {
         const [workspaceId, query, options] = searchContentSpy.mock.calls[0];
         expect(workspaceId).toBe(WS);
         expect(query).toBe('needle');
+        expect(options.path).toBeUndefined();
         expect(options).toMatchObject({
-            path: undefined,
             caseSensitive: false,
             wholeWord: false,
             regex: false,
@@ -223,12 +223,23 @@ describe('ContentSearchPanel — request behaviour', () => {
         expect(options.signal).toBeInstanceOf(AbortSignal);
     });
 
-    it('scopes the search to the selected directory', async () => {
-        renderPanel({ scopePath: 'packages/coc' });
-        expect(screen.getByTestId('content-search-scope').textContent).toContain('packages/coc');
+    // §2.6: the panel has no scope of its own any more — the include glob is the
+    // only scope, so the request never carries a `path` and there is no caption.
+    it('never sends a scope path and shows no scope caption', async () => {
+        renderPanel();
+        expect(screen.queryByTestId('content-search-scope')).toBeNull();
         type('needle');
         await advance(SEARCH_DEBOUNCE_MS);
-        expect(searchContentSpy.mock.calls[0][2]).toMatchObject({ path: 'packages/coc' });
+        expect(searchContentSpy.mock.calls[0][2].path).toBeUndefined();
+    });
+
+    it('focuses the query box when the host bumps focusQueryToken', async () => {
+        const { rerender } = renderPanel({ focusQueryToken: 0 });
+        const input = screen.getByTestId('content-search-input');
+        expect(document.activeElement).not.toBe(input);
+
+        rerender(<ContentSearchPanel workspaceId={WS} focusQueryToken={1} onOpenMatch={vi.fn()} />);
+        expect(document.activeElement).toBe(input);
     });
 
     it.each([

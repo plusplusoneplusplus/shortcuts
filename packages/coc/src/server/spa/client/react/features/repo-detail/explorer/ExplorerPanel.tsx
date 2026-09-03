@@ -19,7 +19,13 @@ import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './Exa
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
-import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile, useExplorerView } from './explorerStateStore';
+import {
+    useExplorerContentFilters,
+    useExplorerExpandedPaths,
+    useExplorerPreviewFile,
+    useExplorerSelectedPath,
+    useExplorerView,
+} from './explorerStateStore';
 import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
 import { setExplorerInstanceDirty } from './explorerDirtyStore';
 
@@ -157,39 +163,6 @@ export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set
     return next;
 }
 
-/**
- * True when `path` names a directory according to the tree data already
- * fetched. A directory the user has opened is a key of `childrenMap`; otherwise
- * fall back to its own entry in the parent listing. Unknown paths read as files,
- * which is the safe answer for the caller below (it then scopes to the parent).
- */
-export function isDirectoryPath(
-    path: string,
-    rootEntries: TreeEntry[],
-    childrenMap: Map<string, TreeEntry[]>,
-): boolean {
-    if (childrenMap.has(path)) return true;
-    const slash = path.lastIndexOf('/');
-    const siblings = slash < 0 ? rootEntries : childrenMap.get(path.slice(0, slash));
-    return siblings?.find(entry => entry.path === path)?.type === 'dir';
-}
-
-/**
- * The directory content search is scoped to: the selection itself when it is a
- * directory, its parent when it is a file, and the whole repo when nothing is
- * selected or the selection sits at the root.
- */
-export function resolveSearchScope(
-    selectedPath: string | null,
-    rootEntries: TreeEntry[],
-    childrenMap: Map<string, TreeEntry[]>,
-): string | undefined {
-    if (!selectedPath) return undefined;
-    if (isDirectoryPath(selectedPath, rootEntries, childrenMap)) return selectedPath;
-    const slash = selectedPath.lastIndexOf('/');
-    return slash < 0 ? undefined : selectedPath.slice(0, slash);
-}
-
 export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
@@ -243,6 +216,11 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
     // Which sidebar view is showing. Persisted per workspace, so the choice
     // survives a remount; the tree's own state is untouched while Search is up.
     const [view, setView] = useExplorerView(workspaceId);
+    // Owned here only so "Find in Folder" can write the include glob; the Search
+    // panel reads the same persisted store, so the write lands in its box.
+    const [, setContentFilters] = useExplorerContentFilters(workspaceId);
+    // Bumped by "Find in Folder" to move focus into the Search panel's query box.
+    const [searchFocusToken, setSearchFocusToken] = useState(0);
 
     // Search state
     const [searchInput, setSearchInput] = useState('');
@@ -410,6 +388,18 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         setContextMenu({ position: { x: e.clientX, y: e.clientY }, entry });
     }, []);
 
+    /**
+     * VS Code's "Find in Folder": switch to the Search view and express the
+     * scope as an *include* glob rather than a hidden request field, so it is
+     * visible and the user can edit or clear it. Replaces the include box
+     * outright — two folder scopes at once is never what the click meant.
+     */
+    const handleFindInFolder = useCallback((dirPath: string) => {
+        setContentFilters(prev => ({ ...prev, include: `${dirPath}/**` }));
+        setView('search');
+        setSearchFocusToken(token => token + 1);
+    }, [setContentFilters, setView]);
+
     const buildContextMenuItems = useCallback((entry: TreeEntry): ContextMenuItem[] => {
         const isDir = entry.type === 'dir';
         const isExpanded = expandedPaths.has(entry.path);
@@ -420,6 +410,11 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                 label: isExpanded ? 'Collapse' : 'Expand',
                 icon: isExpanded ? '📂' : '📁',
                 onClick: () => handleToggle(entry.path),
+            });
+            items.push({
+                label: 'Find in Folder',
+                icon: '🔍',
+                onClick: () => handleFindInFolder(entry.path),
             });
         } else {
             items.push({
@@ -464,7 +459,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         });
 
         return items;
-    }, [expandedPaths, handleToggle]);
+    }, [expandedPaths, handleToggle, handleFindInFolder]);
 
     /** Collapse All — clears expansion only; selection, preview and filter stay put. */
     const handleCollapseAll = useCallback(() => {
@@ -706,12 +701,6 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         return () => document.removeEventListener('keydown', handler);
     }, [searchInput, onSearchClear]);
 
-    // Content search is scoped to the directory the user has selected in the tree.
-    const searchScope = useMemo(
-        () => resolveSearchScope(selectedPath, rootEntries, childrenMap),
-        [selectedPath, rootEntries, childrenMap],
-    );
-
     const breadcrumbSegments = useMemo(() => {
         if (!selectedPath) return [];
         return selectedPath.split('/').filter(Boolean);
@@ -833,7 +822,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                 {view === 'search' ? (
                     <ContentSearchPanel
                         workspaceId={workspaceId}
-                        scopePath={searchScope}
+                        focusQueryToken={searchFocusToken}
                         onOpenMatch={handleOpenMatch}
                         onOpenInEditor={handleOpenSearchInEditor}
                     />

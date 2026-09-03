@@ -132,6 +132,23 @@ describe('Explorer Context Menu', () => {
             expect(explorerPanelSource).toContain("'Expand'");
         });
 
+        it('includes Find in Folder for directories only', () => {
+            expect(explorerPanelSource).toContain("'Find in Folder'");
+            // It sits inside the `isDir` branch, before the file branch's `else`.
+            const item = explorerPanelSource.indexOf("'Find in Folder'");
+            const elseBranch = explorerPanelSource.indexOf("'Open Preview'");
+            expect(item).toBeGreaterThan(0);
+            expect(item).toBeLessThan(elseBranch);
+        });
+
+        it('Find in Folder writes the directory as an include glob', () => {
+            expect(explorerPanelSource).toContain('include: `${dirPath}/**`');
+        });
+
+        it('Find in Folder switches to the Search view', () => {
+            expect(explorerPanelSource).toContain("setView('search')");
+        });
+
         it('includes Copy Path action', () => {
             expect(explorerPanelSource).toContain("'Copy Path'");
         });
