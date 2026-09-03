@@ -17,7 +17,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ preferences: mocks.preferences }),
 }));
 
-import { appReducer, SIDEBAR_KEY, REPO_TAB_STATE_KEY, REPO_ROUTE_STATE_KEY, getInitialSidebarCollapsed, getInitialRepoTabState, getInitialRepoRouteState, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { appReducer, SIDEBAR_KEY, REPO_TAB_STATE_KEY, REPO_ROUTE_STATE_KEY, LAST_CLONE_BY_REMOTE_KEY, getInitialSidebarCollapsed, getInitialRepoTabState, getInitialRepoRouteState, getInitialLastCloneByRemote, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
     return {
@@ -58,6 +58,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeAdminSubTab: 'settings',
         repoTabState: {},
         repoRouteState: {},
+        lastCloneByRemote: {},
         notePathState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
@@ -630,6 +631,115 @@ describe('AppContext reducer', () => {
         it('returns an empty map for corrupt JSON', () => {
             localStorage.setItem(REPO_ROUTE_STATE_KEY, '{not valid json');
             expect(getInitialRepoRouteState()).toEqual({});
+        });
+    });
+
+    // ── Last-visited clone per git-remote cluster ──────────────────
+    // Keyed by `groupKey(group)`, valued with a repo selection id. This is what
+    // lets a pinned repo tab (and the remotes picker) return you to the machine
+    // you were last on instead of the cluster's primary clone.
+    describe('RECORD_REMOTE_CLONE', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it('records the clone and persists the map', () => {
+            const state = makeState();
+            const result = appReducer(state, {
+                type: 'RECORD_REMOTE_CLONE',
+                groupKey: 'github.com/acme/app',
+                cloneId: 'remote:box-2:ws-9',
+            });
+            expect(result.lastCloneByRemote).toEqual({ 'github.com/acme/app': 'remote:box-2:ws-9' });
+            expect(JSON.parse(localStorage.getItem(LAST_CLONE_BY_REMOTE_KEY)!))
+                .toEqual({ 'github.com/acme/app': 'remote:box-2:ws-9' });
+        });
+
+        it('keeps entries for other clusters', () => {
+            const state = makeState({ lastCloneByRemote: { 'github.com/acme/other': 'ws-1' } });
+            const result = appReducer(state, {
+                type: 'RECORD_REMOTE_CLONE',
+                groupKey: 'github.com/acme/app',
+                cloneId: 'ws-2',
+            });
+            expect(result.lastCloneByRemote).toEqual({
+                'github.com/acme/other': 'ws-1',
+                'github.com/acme/app': 'ws-2',
+            });
+        });
+
+        // Dispatched from an effect on every render of the scope switcher, so an
+        // unchanged value must return the SAME state object or it re-renders the
+        // whole tree in a loop.
+        it('is a no-op returning the same state when unchanged', () => {
+            const state = makeState({ lastCloneByRemote: { 'github.com/acme/app': 'ws-2' } });
+            const result = appReducer(state, {
+                type: 'RECORD_REMOTE_CLONE',
+                groupKey: 'github.com/acme/app',
+                cloneId: 'ws-2',
+            });
+            expect(result).toBe(state);
+            expect(localStorage.getItem(LAST_CLONE_BY_REMOTE_KEY)).toBeNull();
+        });
+
+        it('ignores an empty key or clone id', () => {
+            const state = makeState();
+            expect(appReducer(state, { type: 'RECORD_REMOTE_CLONE', groupKey: '', cloneId: 'ws-2' })).toBe(state);
+            expect(appReducer(state, { type: 'RECORD_REMOTE_CLONE', groupKey: 'k', cloneId: '' })).toBe(state);
+        });
+
+        it('does not throw when localStorage.setItem fails', () => {
+            vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+            const state = makeState();
+            expect(() => appReducer(state, {
+                type: 'RECORD_REMOTE_CLONE',
+                groupKey: 'k',
+                cloneId: 'ws-2',
+            })).not.toThrow();
+        });
+    });
+
+    describe('getInitialLastCloneByRemote', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it('returns an empty map when localStorage is empty', () => {
+            expect(getInitialLastCloneByRemote()).toEqual({});
+        });
+
+        it('parses a persisted map, including a `workspace:` group key', () => {
+            localStorage.setItem(LAST_CLONE_BY_REMOTE_KEY, JSON.stringify({
+                'github.com/acme/app': 'remote:box-2:ws-9',
+                'workspace:ws-1': 'ws-1',
+            }));
+            expect(getInitialLastCloneByRemote()).toEqual({
+                'github.com/acme/app': 'remote:box-2:ws-9',
+                'workspace:ws-1': 'ws-1',
+            });
+        });
+
+        it('drops non-string and empty values', () => {
+            localStorage.setItem(LAST_CLONE_BY_REMOTE_KEY, JSON.stringify({ a: 'ws-1', b: 42, c: null, d: '' }));
+            expect(getInitialLastCloneByRemote()).toEqual({ a: 'ws-1' });
+        });
+
+        it('returns an empty map for corrupt JSON or a non-object', () => {
+            localStorage.setItem(LAST_CLONE_BY_REMOTE_KEY, '{not valid json');
+            expect(getInitialLastCloneByRemote()).toEqual({});
+            localStorage.setItem(LAST_CLONE_BY_REMOTE_KEY, JSON.stringify(['ws-1']));
+            expect(getInitialLastCloneByRemote()).toEqual({});
+        });
+
+        it('returns an empty map when localStorage.getItem throws', () => {
+            vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+            expect(getInitialLastCloneByRemote()).toEqual({});
         });
     });
 

@@ -195,7 +195,9 @@ describe('ScopeSlideSwitcher — interactions', () => {
         fireEvent.click(screen.getByTestId('remote-chip'));
 
         expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
-        expect(mockDispatch).not.toHaveBeenCalled();
+        // The chip's bookkeeping of "which clone of this cluster am I on" is not
+        // a scope change; nothing else may dispatch from merely opening it.
+        expect(mockDispatch.mock.calls.map(([a]) => a.type)).toEqual(['RECORD_REMOTE_CLONE']);
         expect(mockSelectClone).not.toHaveBeenCalled();
     });
 

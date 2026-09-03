@@ -100,6 +100,43 @@ function persistRepoRouteState(repoRouteState: Record<string, string>): void {
     } catch { /* SSR / test / quota */ }
 }
 
+// ── Last-visited clone per git-remote cluster ──────────────────────────
+
+export const LAST_CLONE_BY_REMOTE_KEY = 'coc-last-clone-by-remote';
+
+/**
+ * Read the persisted "which clone of this remote was I last on" map from
+ * localStorage. Keys are `groupKey(group)` (a normalized remote URL, or the
+ * `workspace:<id>` fallback); values are repo selection ids — the space
+ * `selectClone` accepts, so a remote clone is `remote:<serverId>:<workspaceId>`.
+ *
+ * Which machine's clone you were viewing is a per-device fact, so this is local
+ * storage rather than a server-shared preference. Non-string entries are dropped
+ * and any parse/access failure (SSR, disabled storage, corrupt JSON) yields an
+ * empty map — a missing entry just falls back to the cluster's primary clone.
+ */
+export function getInitialLastCloneByRemote(): Record<string, string> {
+    try {
+        const raw = localStorage.getItem(LAST_CLONE_BY_REMOTE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        const result: Record<string, string> = {};
+        for (const [key, cloneId] of Object.entries(parsed as Record<string, unknown>)) {
+            if (key && typeof cloneId === 'string' && cloneId.length > 0) result[key] = cloneId;
+        }
+        return result;
+    } catch {
+        return {};
+    }
+}
+
+function persistLastCloneByRemote(lastCloneByRemote: Record<string, string>): void {
+    try {
+        localStorage.setItem(LAST_CLONE_BY_REMOTE_KEY, JSON.stringify(lastCloneByRemote));
+    } catch { /* SSR / test / quota */ }
+}
+
 // ── State ──────────────────────────────────────────────────────────────
 
 export interface OnboardingProgress {
@@ -179,6 +216,13 @@ export interface AppContextState {
     repoTabState: Record<string, RepoSubTab>;
     /** Per-repo remembered inner route suffix, persisted locally and restored on workspace switch. */
     repoRouteState: Record<string, string>;
+    /**
+     * Which clone (machine) of each git-remote cluster the user was last on,
+     * keyed by `groupKey(group)`, valued with a repo selection id. Persisted
+     * locally so the remotes picker and the pinned scope segments both return
+     * you to that clone across tab switches and reloads.
+     */
+    lastCloneByRemote: Record<string, string>;
     /** Per-workspace remembered note path (in-memory only, resets on page refresh). */
     notePathState: Record<string, string | null>;
     /** Per-wiki remembered project tab (in-memory only, resets on page refresh). */
@@ -251,6 +295,7 @@ const initialState: AppContextState = {
     adminDbOrder: null,
     repoTabState: getInitialRepoTabState(),
     repoRouteState: getInitialRepoRouteState(),
+    lastCloneByRemote: getInitialLastCloneByRemote(),
     notePathState: {},
     wikiTabState: {},
     repoSubTabNavState: {},
@@ -288,6 +333,7 @@ export type AppAction =
     | { type: 'SET_CURRENT_AGENT'; agentId: string | null }
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
     | { type: 'RECORD_REPO_ROUTE_SUFFIX'; repoId: string; suffix: string }
+    | { type: 'RECORD_REMOTE_CLONE'; groupKey: string; cloneId: string }
     | { type: 'TOGGLE_REPOS_SIDEBAR' }
     | { type: 'SET_REPOS_SIDEBAR_COLLAPSED'; value: boolean }
     | { type: 'SET_WIKI_VIEW'; wikiId: string | null; componentId: string | null; view: WikiViewMode }
@@ -477,6 +523,14 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             if (updatedTabState !== currentTabState) persistRepoTabState(updatedTabState);
             if (updatedRouteState === state.repoRouteState && updatedTabState === state.repoTabState) return state;
             return { ...state, repoRouteState: updatedRouteState, repoTabState: updatedTabState };
+        }
+        case 'RECORD_REMOTE_CLONE': {
+            if (!action.groupKey || !action.cloneId) return state;
+            const current = state.lastCloneByRemote ?? {};
+            if (current[action.groupKey] === action.cloneId) return state;
+            const updated = { ...current, [action.groupKey]: action.cloneId };
+            persistLastCloneByRemote(updated);
+            return { ...state, lastCloneByRemote: updated };
         }
         case 'TOGGLE_REPOS_SIDEBAR': {
             const next = !state.reposSidebarCollapsed;
