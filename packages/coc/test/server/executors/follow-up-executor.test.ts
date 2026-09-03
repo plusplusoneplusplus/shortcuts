@@ -17,10 +17,15 @@ import * as path from 'path';
 import type { AIProcess, ModelInfo, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
-import { MODE_SWITCHED_TO_AUTOPILOT_NOTE } from '../../../src/server/executors/chat-mode-directive';
+import {
+    buildFollowUpChatModeDisplayBlock,
+    MODE_SWITCHED_TO_AUTOPILOT_NOTE,
+    prependChatModeDirective,
+} from '../../../src/server/executors/chat-mode-directive';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import {
+    normalizeChatModeOrDefault,
     STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
     STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
 } from '../../../src/server/tasks/task-types';
@@ -2219,6 +2224,52 @@ describe('FollowUpExecutor chat-mode directive injection', () => {
         await appendUserTurn(store, 'proc-mode-compact', 'and again', '2026-01-04T00:00:00Z');
         await executor.executeFollowUp('proc-mode-compact', 'and again', undefined, 'ask');
         expect(sentPrompt(1)).not.toContain('<coc-chat-mode>');
+    });
+
+    // AC-07 — the prompt and the transcript are produced by two different
+    // code paths (the executor and the route), so this drives BOTH in one run
+    // and asserts they name the same set of turns.
+    it('agrees between sent prompt and stored turn across a mode toggle', async () => {
+        await seedAskChat('proc-mode-agree');
+        const executor = makeExecutor(store);
+
+        /** Drive one follow-up exactly as production does: route first, executor second. */
+        async function routeThenExecute(text: string, mode: 'ask' | 'autopilot', timestamp: string): Promise<void> {
+            const proc = await store.getProcess('proc-mode-agree');
+            const previousMode = normalizeChatModeOrDefault(proc!.metadata?.mode);
+            // What POST /message stores: the display copy, decided before the
+            // executor has run.
+            const displayContent = prependChatModeDirective(
+                text,
+                buildFollowUpChatModeDisplayBlock({ mode, previousMode, process: proc! }),
+            );
+            await appendUserTurn(store, 'proc-mode-agree', displayContent, timestamp);
+            await executor.executeFollowUp('proc-mode-agree', text, undefined, mode);
+        }
+
+        const sequence: Array<'ask' | 'autopilot'> = ['ask', 'ask', 'autopilot', 'autopilot', 'ask'];
+        for (const [i, mode] of sequence.entries()) {
+            await routeThenExecute(`turn ${i}`, mode, `2026-01-0${i + 2}T00:00:00Z`);
+        }
+
+        const proc = await store.getProcess('proc-mode-agree');
+        // Turn 0 is the seeded first turn; the follow-ups are the rest.
+        const storedFollowUps = (proc!.conversationTurns ?? [])
+            .filter((turn) => turn.role === 'user')
+            .sort((a, b) => a.turnIndex - b.turnIndex)
+            .slice(1);
+        expect(storedFollowUps).toHaveLength(sequence.length);
+
+        const disclosed = storedFollowUps
+            .map((turn, i) => (turn.content.includes('<coc-chat-mode>') ? i : -1))
+            .filter((i) => i >= 0);
+        const sent = sequence
+            .map((_, i) => (sentPrompt(i).includes('<coc-chat-mode>') ? i : -1))
+            .filter((i) => i >= 0);
+
+        // ask, ask, autopilot, autopilot, ask -> only the two switches speak.
+        expect(sent).toEqual([2, 4]);
+        expect(disclosed).toEqual(sent);
     });
 
     // A chat that never carried the block (pre-feature history) re-injects.
