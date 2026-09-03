@@ -376,6 +376,18 @@ describe('ExplorerTabStrip', () => {
             expect(screen.getByTestId('explorer-tab-list').className).toContain('overflow-x-auto');
         });
 
+        // jsdom does no layout, so the only thing that can be checked here is the
+        // rule that produces the overflow. Without `flex-shrink-0` the tabs share
+        // the row instead: the strip never overflows, the labels truncate to
+        // nothing, and the reveal-on-activate effect above becomes unreachable.
+        it('keeps every tab at its own width so the row can overflow', () => {
+            const tabs = [fileTab('src/a.ts'), fileTab('src/b.ts'), fileTab('src/c.ts')];
+            renderStrip(tabs, tabs[0].id);
+            for (const tab of tabs) {
+                expect(screen.getByTestId(`explorer-tab-${tab.id}`).className).toContain('flex-shrink-0');
+            }
+        });
+
         it('reveals the active tab when it changes', () => {
             const tabs = [fileTab('src/a.ts'), fileTab('src/b.ts')];
             const scrollIntoView = vi.fn();

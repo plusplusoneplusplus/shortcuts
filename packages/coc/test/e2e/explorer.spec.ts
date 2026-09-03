@@ -23,8 +23,10 @@
  *   content-search-file-header, content-search-file-count,
  *   content-search-filters-toggle, content-search-filters-dot,
  *   content-search-include,
- *   explorer-tab-list, explorer-tab-{id}, explorer-tab-label-{id},
- *   explorer-tab-close-{id}, explorer-tab-panel-{id}
+ *   explorer-tab-strip, explorer-tab-list, explorer-tab-{id},
+ *   explorer-tab-label-{id}, explorer-tab-close-{id}, explorer-tab-dirty-{id},
+ *   explorer-tab-panel-{id}, explorer-tabbed-editor,
+ *   explorer-mobile-back-bar, explorer-mobile-back-btn
  */
 
 import * as fs from 'fs';
@@ -77,6 +79,76 @@ function createExplorerRepoFixture(tmpDir: string): string {
         ['# Notes', '', `The token ${SEARCH_NEEDLE} also lives here.`, ''].join('\n'),
     );
     return repoDir;
+}
+
+/**
+ * Add files whose names are long enough to hit the tab's 180 px cap, so the
+ * number of tabs needed to overflow the strip stays predictable.
+ *
+ * Returns the repo-relative paths, in creation order.
+ */
+function createOverflowFiles(repoDir: string, count: number): string[] {
+    const dir = path.join(repoDir, 'overflow');
+    fs.mkdirSync(dir, { recursive: true });
+    const paths: string[] = [];
+    for (let i = 0; i < count; i++) {
+        const name = `overflow-tab-fixture-${String(i).padStart(2, '0')}.ts`;
+        fs.writeFileSync(path.join(dir, name), `export const overflow${i} = ${i};\n`);
+        paths.push(`overflow/${name}`);
+    }
+    return paths;
+}
+
+/** A narrow phone-sized viewport: below the 767 px mobile breakpoint. */
+const MOBILE_VIEWPORT = { width: 390, height: 844 };
+
+/**
+ * The strip's horizontal scroll geometry, plus whether one tab currently sits
+ * inside the visible slice of it. Read in one evaluate so the numbers describe
+ * the same frame.
+ */
+async function stripGeometry(page: Page, tabId: string) {
+    return page.evaluate((id: string) => {
+        const list = document.querySelector('[data-testid="explorer-tab-list"]') as HTMLElement | null;
+        const tab = list?.querySelector(`[data-tab-id="${id}"]`) as HTMLElement | null;
+        if (!list || !tab) return null;
+        const listBox = list.getBoundingClientRect();
+        const tabBox = tab.getBoundingClientRect();
+        return {
+            scrollWidth: list.scrollWidth,
+            clientWidth: list.clientWidth,
+            scrollLeft: list.scrollLeft,
+            // 1 px of slack: sub-pixel layout should not decide this.
+            fullyVisible: tabBox.left >= listBox.left - 1 && tabBox.right <= listBox.right + 1,
+        };
+    }, tabId);
+}
+
+/**
+ * Put the caret in a Monaco buffer and wait until it really has the keystrokes.
+ *
+ * Clicking the text is not enough on its own: Monaco attaches its hidden input
+ * a beat after the view paints, so under load a `keyboard.type` right after the
+ * click can land on nothing at all.
+ */
+async function focusMonacoBuffer(page: Page, panelTestId: string): Promise<void> {
+    const editor = page.locator(`[data-testid="${panelTestId}"] [data-testid="monaco-container"] .monaco-editor`);
+    await expect(editor).toBeVisible({ timeout: 15_000 });
+    await editor.locator('.view-lines').click();
+    await expect
+        .poll(
+            () =>
+                page.evaluate(
+                    (id: string) =>
+                        !!document.activeElement &&
+                        !!document
+                            .querySelector(`[data-testid="${id}"] [data-testid="monaco-container"]`)
+                            ?.contains(document.activeElement),
+                    panelTestId,
+                ),
+            { timeout: 10_000 },
+        )
+        .toBe(true);
 }
 
 /** Switch the Explorer sidebar to the Search view and wait for the panel. */
@@ -603,6 +675,289 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             await expect(page.locator('[data-testid="explorer-panel"]')).toBeVisible({ timeout: 10_000 });
             await expectEditorTabs(page, ['file:README.md', 'file:docs/README.md']);
             await expect(editorTab(page, 'file:docs/README.md')).toHaveAttribute('aria-selected', 'true');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.20 on a narrow viewport the strip sits above the buffer and Files keeps the session', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+
+            // Navigate at the default desktop size, then shrink: `useBreakpoint`
+            // listens for matchMedia changes, so the panel re-lays-out live and
+            // the repos navigation never has to be driven at phone width.
+            await gotoExplorer(page, serverUrl);
+            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
+            await page.locator('[data-testid="tree-node-src"]').click();
+            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
+            await page.locator('[data-testid="tree-node-src/utils.ts"]').dblclick();
+            await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
+
+            await page.setViewportSize(MOBILE_VIEWPORT);
+
+            // Mobile shows the editor OR the tree, never both: the tree is gone
+            // and the back bar appears in its place.
+            await expect(page.locator('[data-testid="explorer-mobile-back-bar"]')).toBeVisible({ timeout: 5_000 });
+            await expect(page.locator('[data-testid="file-tree"]')).not.toBeVisible();
+
+            // The strip stays a horizontal strip stacked above the buffer — it
+            // never becomes a column beside it, and it spans the editor area.
+            const editorBox = (await page.locator('[data-testid="explorer-tabbed-editor"]').boundingBox())!;
+            const stripBox = (await page.locator('[data-testid="explorer-tab-strip"]').boundingBox())!;
+            const panelBox = (await page.locator('[data-testid="explorer-tab-panel-file:src/utils.ts"]').boundingBox())!;
+            expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(panelBox.y + 1);
+            expect(stripBox.width).toBeGreaterThan(editorBox.width * 0.9);
+            expect(panelBox.height).toBeGreaterThan(0);
+
+            // Files goes back to the tree WITHOUT closing anything (AC-06): both
+            // tabs are still open and the active one is still the active one.
+            await page.locator('[data-testid="explorer-mobile-back-btn"]').click();
+            await expect(page.locator('[data-testid="file-tree"]')).toBeVisible({ timeout: 5_000 });
+            await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
+            await expect(editorTab(page, 'file:src/utils.ts')).toHaveAttribute('aria-selected', 'true');
+
+            // And tapping a file returns to the editor with that tab active.
+            await page.locator('[data-testid="tree-node-src/index.ts"]').click();
+            await expect(page.locator('[data-testid="explorer-mobile-back-bar"]')).toBeVisible({ timeout: 5_000 });
+            await expect(editorTab(page, 'file:src/index.ts')).toHaveAttribute('aria-selected', 'true');
+            await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.21 the active tab is legible in both light and dark themes', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+
+            await gotoExplorer(page, serverUrl);
+            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
+            await page.locator('[data-testid="tree-node-src"]').click();
+            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
+            await page.locator('[data-testid="tree-node-src/utils.ts"]').dblclick();
+            await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
+
+            const active = editorTab(page, 'file:src/utils.ts');
+            const inactive = editorTab(page, 'file:src/index.ts');
+            const styleOf = (id: string) =>
+                editorTab(page, id).evaluate(el => {
+                    const style = getComputedStyle(el);
+                    return {
+                        background: style.backgroundColor,
+                        color: style.color,
+                        accent: style.borderBottomColor,
+                        accentWidth: style.borderBottomWidth,
+                    };
+                });
+
+            // The toggle cycles auto → dark → light, so drive it explicitly
+            // rather than trusting whatever the system preference resolves to.
+            await page.locator('#theme-toggle').click();
+            await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+            await expect(active).toHaveAttribute('aria-selected', 'true');
+            const dark = await styleOf('file:src/utils.ts');
+            const darkInactive = await styleOf('file:src/index.ts');
+            expect(dark.background).toBe('rgb(30, 30, 30)');
+            expect(dark.color).toBe('rgb(255, 255, 255)');
+            expect(dark.accent).toBe('rgb(55, 148, 255)');
+            expect(dark.accentWidth).toBe('2px');
+            // The active tab is distinguishable from its neighbour, not just tinted.
+            expect(darkInactive.background).not.toBe(dark.background);
+
+            await page.locator('#theme-toggle').click();
+            await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+            const light = await styleOf('file:src/utils.ts');
+            const lightInactive = await styleOf('file:src/index.ts');
+            expect(light.background).toBe('rgb(255, 255, 255)');
+            expect(light.color).toBe('rgb(30, 30, 30)');
+            expect(light.accent).toBe('rgb(0, 120, 212)');
+            expect(light.accentWidth).toBe('2px');
+            expect(lightInactive.background).not.toBe(light.background);
+
+            // Same tab, genuinely repainted for the theme.
+            expect(light.background).not.toBe(dark.background);
+            await expect(inactive).toHaveAttribute('aria-selected', 'false');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.22 the strip overflows instead of squeezing, and reveals an off-screen tab', async ({ page, serverUrl }) => {
+        test.setTimeout(90_000);
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            const overflowPaths = createOverflowFiles(repoDir, 8);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+
+            await gotoExplorer(page, serverUrl);
+            await expect(page.locator('[data-testid="tree-node-overflow"]')).toBeVisible({ timeout: 8_000 });
+            await page.locator('[data-testid="tree-node-overflow"]').click();
+            await expect(page.locator(`[data-testid="tree-node-${overflowPaths[0]}"]`)).toBeVisible({ timeout: 5_000 });
+
+            // Pin every file so they stack instead of replacing one preview tab.
+            for (const filePath of overflowPaths) {
+                await page.locator(`[data-testid="tree-node-${filePath}"]`).dblclick();
+            }
+            await expectEditorTabs(page, overflowPaths.map(p => `file:${p}`));
+
+            const firstId = `file:${overflowPaths[0]}`;
+            const lastId = `file:${overflowPaths[overflowPaths.length - 1]}`;
+            await expect(editorTab(page, lastId)).toHaveAttribute('aria-selected', 'true');
+
+            // With more tabs than fit, the strip scrolls: it does not shrink the
+            // tabs down until every label is unreadable.
+            const overflowing = await stripGeometry(page, firstId);
+            expect(overflowing).not.toBeNull();
+            expect(overflowing!.scrollWidth).toBeGreaterThan(overflowing!.clientWidth);
+
+            // Opening the last tab scrolled the strip past the first one.
+            await expect.poll(async () => (await stripGeometry(page, firstId))!.scrollLeft, { timeout: 5_000 })
+                .toBeGreaterThan(0);
+            expect((await stripGeometry(page, firstId))!.fullyVisible).toBe(false);
+
+            // Activating that off-screen tab from outside the strip (the tree)
+            // has to scroll it back into view — it is unreachable otherwise.
+            await page.locator(`[data-testid="tree-node-${overflowPaths[0]}"]`).click();
+            await expect(editorTab(page, firstId)).toHaveAttribute('aria-selected', 'true');
+            await expect.poll(async () => (await stripGeometry(page, firstId))!.fullyVisible, { timeout: 5_000 })
+                .toBe(true);
+
+            // The tab really is clickable now that it has been revealed.
+            await editorTab(page, firstId).click();
+            await expect(editorTab(page, firstId)).toHaveAttribute('aria-selected', 'true');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.23 a dragged tab is marked while dragging, and keyboard focus is visible', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+
+            await gotoExplorer(page, serverUrl);
+            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
+            await page.locator('[data-testid="tree-node-src"]').click();
+            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
+            await page.locator('[data-testid="tree-node-src/utils.ts"]').dblclick();
+            await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
+
+            const indexTab = editorTab(page, 'file:src/index.ts');
+            const utilsTab = editorTab(page, 'file:src/utils.ts');
+
+            // 1. Dragging state. A real HTML5 drag needs a live DataTransfer, so
+            //    hand the same one to both ends of the gesture.
+            await expect(indexTab).toHaveAttribute('draggable', 'true');
+            const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+            await indexTab.dispatchEvent('dragstart', { dataTransfer });
+            await expect(indexTab).toHaveAttribute('data-dragging', 'true');
+            await expect(utilsTab).not.toHaveAttribute('data-dragging', 'true');
+            // The dragged tab is dimmed while it travels.
+            expect(await indexTab.evaluate(el => getComputedStyle(el).opacity)).toBe('0.5');
+
+            // 2. Dropping it on its neighbour reorders and clears the state.
+            await utilsTab.dispatchEvent('dragover', { dataTransfer });
+            await utilsTab.dispatchEvent('drop', { dataTransfer });
+            await expectEditorTabs(page, ['file:src/utils.ts', 'file:src/index.ts']);
+            await expect(indexTab).not.toHaveAttribute('data-dragging', 'true');
+            expect(await indexTab.evaluate(el => getComputedStyle(el).opacity)).toBe('1');
+
+            // 3. Roving tabindex: only the active tab is in the tab order.
+            await utilsTab.click();
+            await expect(utilsTab).toHaveAttribute('tabindex', '0');
+            await expect(indexTab).toHaveAttribute('tabindex', '-1');
+
+            // 4. Arrow keys walk the strip, moving DOM focus with the selection,
+            //    and the focused tab paints a focus ring (a box-shadow) that a
+            //    mouse click alone does not draw.
+            await utilsTab.focus();
+            const restingShadow = await indexTab.evaluate(el => getComputedStyle(el).boxShadow);
+            await page.keyboard.press('ArrowRight');
+            await expect(indexTab).toBeFocused();
+            await expect(indexTab).toHaveAttribute('aria-selected', 'true');
+            await expect(indexTab).toHaveAttribute('tabindex', '0');
+            const focusedShadow = await indexTab.evaluate(el => getComputedStyle(el).boxShadow);
+            expect(focusedShadow).not.toBe(restingShadow);
+            expect(focusedShadow).not.toBe('none');
+
+            // 5. Home/End jump to the ends of the strip, still by keyboard.
+            await page.keyboard.press('Home');
+            await expect(utilsTab).toBeFocused();
+            await expect(utilsTab).toHaveAttribute('aria-selected', 'true');
+            await page.keyboard.press('End');
+            await expect(indexTab).toBeFocused();
+            await expect(indexTab).toHaveAttribute('aria-selected', 'true');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.24 an edited tab shows a dirty dot that swaps with the close button on hover', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+
+            await gotoExplorer(page, serverUrl);
+            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
+            await page.locator('[data-testid="tree-node-src"]').click();
+            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
+            await expectEditorTabs(page, ['file:src/index.ts']);
+
+            const tab = editorTab(page, 'file:src/index.ts');
+            const dot = page.locator('[data-testid="explorer-tab-dirty-file:src/index.ts"]');
+            const closeBtn = page.locator('[data-testid="explorer-tab-close-file:src/index.ts"]');
+
+            // Clean to start with: no dot, close button offered.
+            await expect(tab).not.toHaveAttribute('data-dirty', 'true');
+            await expect(dot).toHaveCount(0);
+            await expect(closeBtn).toBeVisible();
+
+            const panel = page.locator('[data-testid="explorer-tab-panel-file:src/index.ts"]');
+            const editor = panel.locator('[data-testid="monaco-container"] .monaco-editor');
+            await expect(editor).toBeVisible({ timeout: 15_000 });
+            await expect(editor.locator('.view-lines')).toContainText('main entry', { timeout: 15_000 });
+
+            await focusMonacoBuffer(page, 'explorer-tab-panel-file:src/index.ts');
+            await page.keyboard.type('EDITED_BY_E24');
+            await expect(editor.locator('.view-lines')).toContainText('EDITED_BY_E24', { timeout: 10_000 });
+
+            // The edit marks the tab, and the buffer's own toolbar agrees.
+            await expect(tab).toHaveAttribute('data-dirty', 'true', { timeout: 10_000 });
+            await expect(panel.locator('[data-testid="dirty-indicator"]')).toBeVisible();
+            // The pointer is in the editor, so the tab shows its resting state:
+            // the dot, with the close button folded away behind it.
+            await expect(dot).toBeVisible();
+            await expect(closeBtn).not.toBeVisible();
+
+            // Hovering swaps them, so a dirty tab never loses its close affordance.
+            await tab.hover();
+            await expect(closeBtn).toBeVisible();
+            await expect(dot).not.toBeVisible();
+
+            // Closing a dirty tab asks before discarding rather than dropping the
+            // edit on the floor; Cancel leaves the tab open and still dirty.
+            await closeBtn.click();
+            await expect(page.locator('[data-testid="explorer-close-tabs-prompt"]')).toBeVisible({ timeout: 5_000 });
+            await page.locator('[data-testid="explorer-close-cancel-btn"]').click();
+            await expectEditorTabs(page, ['file:src/index.ts']);
+            await expect(tab).toHaveAttribute('data-dirty', 'true');
         } finally {
             safeRmSync(tmpDir);
         }

@@ -202,7 +202,10 @@ export function ExplorerTabStrip({
                                 onMove(from, index);
                             }}
                             className={cn(
-                                'group relative flex items-center gap-1.5 min-w-0 max-w-[180px] h-9 px-3',
+                                // `flex-shrink-0` is what makes the strip scroll: without it the
+                                // tabs squeeze to share the row and every label truncates to
+                                // nothing long before the strip ever overflows.
+                                'group relative flex items-center gap-1.5 flex-shrink-0 min-w-0 max-w-[180px] h-9 px-3',
                                 'cursor-pointer select-none border-r border-[#e0e0e0] dark:border-[#3c3c3c]',
                                 'text-xs whitespace-nowrap',
                                 'focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:focus-visible:ring-[#3794ff]',
