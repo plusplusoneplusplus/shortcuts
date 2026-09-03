@@ -22,6 +22,14 @@ export interface TreeNodeProps {
     onToggle: (path: string) => void;
     onSelect: (path: string, isDirectory: boolean) => void;
     onFileOpen?: (entry: TreeEntry) => void;
+    /**
+     * Double click on a file row. With the editor-tab strip on, a double click
+     * *pins* the file rather than repeating the single click's preview open, so
+     * the panel needs to tell the two gestures apart. Absent, a double click
+     * falls back to `onFileOpen` — which is what the single-preview Explorer has
+     * always done.
+     */
+    onFilePin?: (entry: TreeEntry) => void;
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
     onContextMenu?: (e: React.MouseEvent, entry: TreeEntry) => void;
     isFocused?: boolean;
@@ -41,7 +49,7 @@ function getFileIcon(entry: TreeEntry): string {
 
 export function TreeNode({
     entry, depth, workspaceId, selectedPath, expandedPaths, childrenMap,
-    onToggle, onSelect, onFileOpen, onChildrenLoaded, onContextMenu, isFocused, treeIndex, filterQuery,
+    onToggle, onSelect, onFileOpen, onFilePin, onChildrenLoaded, onContextMenu, isFocused, treeIndex, filterQuery,
 }: TreeNodeProps) {
     const isDir = entry.type === 'dir';
     const isExpanded = expandedPaths.has(entry.path);
@@ -137,7 +145,7 @@ export function TreeNode({
                 onDragStart={handleDragStart}
                 onClick={handleClick}
                 onContextMenu={handleContextMenu}
-                onDoubleClick={() => { if (!isDir) onFileOpen?.(entry); }} /* kept for accessibility */
+                onDoubleClick={() => { if (!isDir) (onFilePin ?? onFileOpen)?.(entry); }} /* pins the tab; kept for accessibility */
             >
                 {isDir && (
                     <span className={cn('text-[10px] transition-transform inline-block', isExpanded && 'rotate-90')}>▶</span>
@@ -171,6 +179,7 @@ export function TreeNode({
                     onToggle={onToggle}
                     onSelect={onSelect}
                     onFileOpen={onFileOpen}
+                    onFilePin={onFilePin}
                     onChildrenLoaded={onChildrenLoaded}
                     onContextMenu={onContextMenu}
                     filterQuery={filterQuery}

@@ -16,6 +16,10 @@ import { QuickOpen } from './QuickOpen';
 import { ContentSearchPanel } from './ContentSearchPanel';
 import { SearchEditorPane } from './SearchEditorPane';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
+import { ExplorerTabStrip } from './ExplorerTabStrip';
+import { useExplorerTabs } from './useExplorerTabs';
+import { searchTabId, tabIdsToRight } from './explorerTabsModel';
+import { useExplorerEditorTabsEnabled } from '../../../hooks/feature-flags/useExplorerEditorTabsEnabled';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
@@ -23,6 +27,7 @@ import {
     useExplorerContentFilters,
     useExplorerExpandedPaths,
     useExplorerPreviewFile,
+    useExplorerSearchBuffers,
     useExplorerSelectedPath,
     useExplorerView,
 } from './explorerStateStore';
@@ -163,6 +168,9 @@ export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set
     return next;
 }
 
+/** Stable empty dirty-tab set — a fresh `Set` per render would loop consumers. */
+const NO_DIRTY_TABS: ReadonlySet<string> = new Set<string>();
+
 export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
@@ -200,6 +208,23 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
     // result set, and a stale one restored after a reload would be a lie.
     const [searchEditor, setSearchEditor] = useState<{ text: string; query: string } | null>(null);
 
+    // VS Code-style editor tabs (`features.explorerEditorTabs`, off by default).
+    // With the flag off nothing below runs: every open still writes the single
+    // `previewFile`/`searchEditor` pair above. With it on the same opens go
+    // through the persisted per-workspace tab session and the editor area
+    // renders one buffer per tab, each owning its own loading/error/dirty state.
+    const tabsEnabled = useExplorerEditorTabsEnabled();
+    const tabs = useExplorerTabs(workspaceId);
+    const tabsState = tabs.state;
+    const { openFile: openFileTab, openSearch: openSearchTab, close: closeTabById, closeMany: closeTabsByIds, pin: pinTabById, idsOther, idsAll } = tabs;
+    // Search-tab texts: in memory, shared by both mounts of this workspace, and
+    // deliberately never persisted (see explorerStateStore).
+    const [searchBuffers, setSearchBuffers] = useExplorerSearchBuffers(workspaceId);
+    const [dirtyTabIds, setDirtyTabIds] = useState<ReadonlySet<string>>(NO_DIRTY_TABS);
+    // Mobile only: the Files back action hides the editor without closing the
+    // active tab, so a trip back to the tree keeps the whole tab set (AC-06).
+    const [mobileTreeVisible, setMobileTreeVisible] = useState(false);
+
     // Report the preview editor's unsaved-edits state into the per-workspace dirty
     // store so the workspace-switch guard (nav hooks) can prompt before discarding
     // it (AC-03). A stable per-mount id keeps sibling mounts (RepoDetail tab +
@@ -212,6 +237,42 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         () => () => setExplorerInstanceDirty(workspaceId, dirtyInstanceId, false),
         [workspaceId, dirtyInstanceId],
     );
+
+    // With tabs on, dirtiness is per buffer, so the guard sees the aggregate:
+    // this mount is dirty while ANY of its tabs has unsaved edits (AC-02).
+    const dirtyHandlers = useRef(new Map<string, (isDirty: boolean) => void>());
+    const dirtyHandlerFor = useCallback((tabId: string) => {
+        const cached = dirtyHandlers.current.get(tabId);
+        if (cached) return cached;
+        const handler = (isDirty: boolean) => {
+            // "An edit promotes a preview tab before it becomes dirty": the pin
+            // is applied with the same event that reports the first edit, so a
+            // tab is never both replaceable and unsaved.
+            if (isDirty) pinTabById(tabId);
+            setDirtyTabIds(prev => {
+                if (prev.has(tabId) === isDirty) return prev;
+                const next = new Set(prev);
+                if (isDirty) next.add(tabId);
+                else next.delete(tabId);
+                return next;
+            });
+        };
+        dirtyHandlers.current.set(tabId, handler);
+        return handler;
+    }, [pinTabById]);
+    useEffect(() => {
+        if (!tabsEnabled) return;
+        setExplorerInstanceDirty(workspaceId, dirtyInstanceId, dirtyTabIds.size > 0);
+    }, [tabsEnabled, dirtyTabIds, workspaceId, dirtyInstanceId]);
+
+    /**
+     * The file the editor area is showing, for "Reveal open file". With tabs on
+     * that is the active tab (search tabs have no row to reveal); with tabs off
+     * it is the single preview file.
+     */
+    const openFilePath = tabsEnabled
+        ? (tabs.active?.kind === 'file' ? tabs.active.path : null)
+        : previewFile?.path ?? null;
 
     // Which sidebar view is showing. Persisted per workspace, so the choice
     // survives a remount; the tree's own state is untouched while Search is up.
@@ -299,10 +360,61 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
             const segments = decoded.split('/').filter(Boolean);
             const lastName = segments[segments.length - 1] ?? '';
             if (lastName.includes('.')) {
-                setPreviewFile({ path: decoded, name: lastName });
+                // A deep link is an explicit request for one file, so with tabs
+                // on it opens pinned and the workspace's other tabs stay put.
+                if (tabsEnabled) openFileTab({ path: decoded, name: lastName, preview: false });
+                else setPreviewFile({ path: decoded, name: lastName });
             }
         }
     }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /**
+     * Show a file in the editor area. With tabs on this opens — or re-activates,
+     * never duplicates — a tab, where `preview` decides whether it takes the
+     * single replaceable slot; with tabs off it replaces the one preview file,
+     * exactly as the Explorer has always done.
+     */
+    const openFileInEditor = useCallback((
+        file: { path: string; name: string; line?: number },
+        options: { preview: boolean; readOnly?: boolean },
+    ) => {
+        if (tabsEnabled) {
+            setMobileTreeVisible(false);
+            openFileTab({ ...file, preview: options.preview, readOnly: options.readOnly });
+            return;
+        }
+        setPreviewFile(file);
+    }, [tabsEnabled, openFileTab, setPreviewFile]);
+
+    /** Close one tab, dropping the search text it owned (if it was a search tab). */
+    const handleCloseTab = useCallback((id: string) => {
+        closeTabById(id);
+        setSearchBuffers(prev => {
+            if (!prev.has(id)) return prev;
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+        });
+    }, [closeTabById, setSearchBuffers]);
+
+    /** Close a batch of tabs (Close Others / to the Right / All) and their texts. */
+    const handleCloseTabs = useCallback((ids: readonly string[]) => {
+        if (ids.length === 0) return;
+        closeTabsByIds(ids);
+        setSearchBuffers(prev => {
+            if (!ids.some(id => prev.has(id))) return prev;
+            const next = new Map(prev);
+            for (const id of ids) next.delete(id);
+            return next;
+        });
+    }, [closeTabsByIds, setSearchBuffers]);
+
+    const handleCloseOtherTabs = useCallback((id: string) => handleCloseTabs(idsOther(id)), [handleCloseTabs, idsOther]);
+    const handleCloseTabsToRight = useCallback(
+        (id: string) => handleCloseTabs(tabIdsToRight(tabsState, id)),
+        [handleCloseTabs, tabsState],
+    );
+    const handleCloseAllTabs = useCallback(() => handleCloseTabs(idsAll()), [handleCloseTabs, idsAll]);
 
     const handleSelect = useCallback((path: string, isDirectory: boolean) => {
         setSelectedPath(path);
@@ -328,9 +440,15 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         setChildrenMap(prev => new Map(prev).set(parentPath, children));
     }, []);
 
+    /** Single click on a file row: the replaceable preview open. */
     const handleFileOpen = useCallback((entry: TreeEntry) => {
-        setPreviewFile({ path: entry.path, name: entry.name });
-    }, []);
+        openFileInEditor({ path: entry.path, name: entry.name }, { preview: true });
+    }, [openFileInEditor]);
+
+    /** Double click on a file row: open it pinned, or promote its preview tab. */
+    const handleFilePin = useCallback((entry: TreeEntry) => {
+        openFileInEditor({ path: entry.path, name: entry.name }, { preview: false });
+    }, [openFileInEditor]);
 
     /**
      * Open a content-search hit: show the file in the preview pane scrolled to
@@ -341,10 +459,12 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
         setSelectedPath(filePath);
         // Opening a hit is a request to see the file, so the search buffer that
-        // was covering the preview pane steps aside.
-        setSearchEditor(null);
-        setPreviewFile({ path: filePath, name, line });
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        // was covering the preview pane steps aside. With tabs on there is
+        // nothing to step aside: the hit gets its own preview tab beside the
+        // search buffer's.
+        if (!tabsEnabled) setSearchEditor(null);
+        openFileInEditor({ path: filePath, name, line }, { preview: true });
+    }, [tabsEnabled, openFileInEditor]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /**
      * "Open in Editor": park the rendered result set in the preview pane as a
@@ -352,8 +472,18 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
      * closing the buffer returns to the file that was open.
      */
     const handleOpenSearchInEditor = useCallback((text: string, query: string) => {
-        setSearchEditor({ text, query });
-    }, []);
+        if (!tabsEnabled) {
+            setSearchEditor({ text, query });
+            return;
+        }
+        // With tabs on the buffer is a read-only tab of its own, so it coexists
+        // with the open files instead of covering them. The text is written
+        // before the tab so the panel never renders an empty buffer.
+        const id = searchTabId(query);
+        setSearchBuffers(prev => new Map(prev).set(id, text));
+        setMobileTreeVisible(false);
+        openSearchTab({ query, name: `Search: ${query}` });
+    }, [tabsEnabled, setSearchBuffers, openSearchTab]);
 
     const handleQuickOpenSelect = useCallback((filePath: string) => {
         // Trusted absolute-path from ExactOpen — skip tree expansion and hash update
@@ -361,13 +491,15 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
             const absPath = filePath.slice(TRUSTED_PATH_PREFIX.length);
             const name = exactFileName(absPath);
             setSelectedPath(null);
-            setPreviewFile({ path: filePath, name });
+            // Trusted files are never editable and always deliberate, so they
+            // open as pinned read-only tabs rather than taking the preview slot.
+            openFileInEditor({ path: filePath, name }, { preview: false, readOnly: true });
             return;
         }
 
         const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
         setSelectedPath(filePath);
-        setPreviewFile({ path: filePath, name });
+        openFileInEditor({ path: filePath, name }, { preview: true });
         // Expand ancestor directories
         const segments = filePath.split('/');
         if (segments.length > 1) {
@@ -382,7 +514,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         if (deepLink) {
             location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(filePath)}`;
         }
-    }, [workspaceId, deepLink]);
+    }, [workspaceId, deepLink, openFileInEditor]);
 
     const handleTreeContextMenu = useCallback((e: React.MouseEvent, entry: TreeEntry) => {
         setContextMenu({ position: { x: e.clientX, y: e.clientY }, entry });
@@ -421,7 +553,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                 label: 'Open Preview',
                 icon: '👁️',
                 onClick: () => {
-                    setPreviewFile({ path: entry.path, name: entry.name });
+                    openFileInEditor({ path: entry.path, name: entry.name }, { preview: true });
                 },
             });
         }
@@ -459,7 +591,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         });
 
         return items;
-    }, [expandedPaths, handleToggle, handleFindInFolder]);
+    }, [expandedPaths, handleToggle, handleFindInFolder, openFileInEditor]);
 
     /** Collapse All — clears expansion only; selection, preview and filter stay put. */
     const handleCollapseAll = useCallback(() => {
@@ -477,7 +609,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
      * manager; this is purely client-side tree navigation.
      */
     const handleRevealOpenFile = useCallback(async () => {
-        const target = previewFile?.path;
+        const target = openFilePath;
         // A trusted absolute path is outside the repo tree — it has no row to reveal.
         if (!target || target.startsWith(TRUSTED_PATH_PREFIX)) return;
 
@@ -509,7 +641,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         }
         setSelectedPath(target);
         setRevealTarget(failedAt ?? target);
-    }, [previewFile, childrenMap, workspaceId, handleChildrenLoaded]);
+    }, [openFilePath, childrenMap, workspaceId, handleChildrenLoaded]);
 
     // Centre the revealed row once the expansion above has rendered. Runs against
     // the tree's own scroll container so nothing outside the sidebar moves.
@@ -701,6 +833,18 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         return () => document.removeEventListener('keydown', handler);
     }, [searchInput, onSearchClear]);
 
+    // A search tab's text lives in memory only, so a page reload restores the
+    // tab with nothing behind it. Close those once, on mount, rather than
+    // showing an empty buffer. A second mount for the same workspace finds the
+    // text still in the shared store and closes nothing.
+    const prunedSearchTabsRef = useRef(false);
+    useEffect(() => {
+        if (!tabsEnabled || prunedSearchTabsRef.current) return;
+        prunedSearchTabsRef.current = true;
+        const orphaned = tabsState.tabs.filter(tab => tab.kind === 'search' && !searchBuffers.has(tab.id)).map(tab => tab.id);
+        if (orphaned.length > 0) closeTabsByIds(orphaned);
+    }, [tabsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const breadcrumbSegments = useMemo(() => {
         if (!selectedPath) return [];
         return selectedPath.split('/').filter(Boolean);
@@ -741,8 +885,10 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         );
     }
 
-    // On mobile: show file tree OR preview pane, not both
-    const showMobilePreview = isMobile && !!previewFile;
+    // On mobile: show file tree OR the editor area, not both. With tabs on the
+    // Files back action only hides the editor, so the tab set survives it.
+    const editorHasContent = tabsEnabled ? tabsState.tabs.length > 0 : (!!previewFile || !!searchEditor);
+    const showMobilePreview = isMobile && editorHasContent && !(tabsEnabled && mobileTreeVisible);
 
     return (
         <div className={`flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="explorer-panel">
@@ -792,7 +938,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                                     className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
                                     onClick={handleRevealOpenFile}
                                     title="Reveal open file"
-                                    disabled={!previewFile}
+                                    disabled={!openFilePath}
                                     data-testid="explorer-reveal-file-btn"
                                 >
                                     ⊙
@@ -853,6 +999,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                             onSelect={handleSelect}
                             onToggle={handleToggle}
                             onFileOpen={handleFileOpen}
+                            onFilePin={tabsEnabled ? handleFilePin : undefined}
                             onChildrenLoaded={handleChildrenLoaded}
                             onContextMenu={handleTreeContextMenu}
                             filterQuery={searchQuery}
@@ -876,10 +1023,90 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
 
             {/* Right main — preview pane (full-screen on mobile when file is open) */}
             <main
-                className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${previewFile || searchEditor ? '' : ' flex items-center justify-center'}`}
-                style={isMobile && !previewFile && !searchEditor ? { display: 'none' } : undefined}
+                className={`flex-1 min-h-0 min-w-0 bg-white dark:bg-[#1e1e1e] overflow-hidden${editorHasContent ? '' : ' flex items-center justify-center'}`}
+                style={isMobile && !showMobilePreview ? { display: 'none' } : undefined}
                 data-testid="explorer-preview-pane"
             >
+                {tabsEnabled ? (
+                    <div className="flex flex-col w-full h-full" data-testid="explorer-tabbed-editor">
+                        {/* Mobile back bar — leaves every tab open (AC-06). */}
+                        {isMobile && (
+                            <div
+                                className="flex items-center gap-2 h-10 px-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] flex-shrink-0"
+                                data-testid="explorer-mobile-back-bar"
+                            >
+                                <button
+                                    className="text-xs text-[#0078d4] dark:text-[#3794ff] hover:underline flex items-center gap-1"
+                                    onClick={() => setMobileTreeVisible(true)}
+                                    data-testid="explorer-mobile-back-btn"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                                    </svg>
+                                    Files
+                                </button>
+                                <span className="text-xs text-[#848484] truncate flex-1 text-right">{tabs.active?.name ?? ''}</span>
+                            </div>
+                        )}
+                        <ExplorerTabStrip
+                            tabs={tabsState.tabs}
+                            activeId={tabsState.activeId}
+                            labels={tabs.labels}
+                            dirtyIds={dirtyTabIds}
+                            onActivate={tabs.activate}
+                            onPin={tabs.pin}
+                            onClose={handleCloseTab}
+                            onCloseOthers={handleCloseOtherTabs}
+                            onCloseToRight={handleCloseTabsToRight}
+                            onCloseAll={handleCloseAllTabs}
+                            onMove={tabs.move}
+                        />
+                        <div className="flex-1 min-h-0">
+                            {tabsState.tabs.length === 0 ? (
+                                <div className="flex items-center justify-center w-full h-full">
+                                    <p className="text-[#848484] text-sm">Click a file to preview</p>
+                                </div>
+                            ) : tabsState.tabs.map(tab => {
+                                // Every tab stays mounted: its buffer owns its own
+                                // loading, error, content, dirty and editor state, so
+                                // switching tabs cannot reset another one (AC-05).
+                                const isActive = tab.id === tabsState.activeId;
+                                const searchText = tab.kind === 'search' ? searchBuffers.get(tab.id) : undefined;
+                                return (
+                                    <div
+                                        key={tab.id}
+                                        role="tabpanel"
+                                        aria-labelledby={`explorer-tab-${tab.id}`}
+                                        className="w-full h-full"
+                                        style={isActive ? undefined : { display: 'none' }}
+                                        data-testid={`explorer-tab-panel-${tab.id}`}
+                                        data-active={isActive || undefined}
+                                    >
+                                        {tab.kind === 'search'
+                                            ? (searchText === undefined ? null : (
+                                                <SearchEditorPane
+                                                    query={tab.query ?? ''}
+                                                    text={searchText}
+                                                    onClose={() => handleCloseTab(tab.id)}
+                                                />
+                                            ))
+                                            : (
+                                                <PreviewPane
+                                                    repoId={workspaceId}
+                                                    filePath={tab.path}
+                                                    fileName={tab.name}
+                                                    revealLine={tab.line}
+                                                    readOnly={tab.readOnly}
+                                                    onClose={isMobile ? undefined : () => handleCloseTab(tab.id)}
+                                                    onDirtyChange={dirtyHandlerFor(tab.id)}
+                                                />
+                                            )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ) : (<>
                 {searchEditor
                     ? (
                         <SearchEditorPane
@@ -923,6 +1150,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                         </div>
                     )
                     : <p className="text-[#848484] text-sm">Click a file to preview</p>}
+                </>)}
             </main>
 
             {/* Explorer context menu */}

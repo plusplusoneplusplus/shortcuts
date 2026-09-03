@@ -528,3 +528,79 @@ export function clearExplorerContentResults(workspaceId?: string): void {
         contentSearchListeners.get(key)?.forEach(listener => listener());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Search-buffer texts — in-memory, per workspace.
+//
+// A `search` tab holds the text "Open in Editor" built from a result set. That
+// text is a snapshot, sometimes a large one, so it follows the same rule as the
+// results above: it lives outside React state (both Explorer mounts for a
+// workspace read the same buffer, and the tree/search view swap must not lose
+// it) but never reaches localStorage. A page reload therefore comes back with
+// the tab structure restored and no text; ExplorerPanel closes those orphaned
+// search tabs on mount rather than showing an empty buffer.
+// ---------------------------------------------------------------------------
+
+/** Stable empty buffer map — a fresh `Map` per render would loop consumers. */
+export const NO_SEARCH_BUFFERS: ReadonlyMap<string, string> = new Map();
+
+const searchBuffers = new Map<string, ReadonlyMap<string, string>>();
+const searchBufferListeners = new Map<string, Set<() => void>>();
+
+function searchBufferKey(workspaceId: string): string {
+    return `search-buffers::${workspaceId}`;
+}
+
+/**
+ * Tab id → buffer text for this workspace's open search tabs, shared across
+ * every mounted consumer. Same `[value, setValue]` shape as the hooks above.
+ */
+export function useExplorerSearchBuffers(
+    workspaceId: string,
+): [ReadonlyMap<string, string>, Dispatch<SetStateAction<ReadonlyMap<string, string>>>] {
+    const key = searchBufferKey(workspaceId);
+    const getSnapshot = useCallback(
+        () => searchBuffers.get(key) ?? NO_SEARCH_BUFFERS,
+        [key],
+    );
+    const value = useSyncExternalStore(
+        useCallback(listener => {
+            let set = searchBufferListeners.get(key);
+            if (!set) {
+                set = new Set();
+                searchBufferListeners.set(key, set);
+            }
+            set.add(listener);
+            return () => {
+                set!.delete(listener);
+                if (set!.size === 0) searchBufferListeners.delete(key);
+            };
+        }, [key]),
+        getSnapshot,
+        getSnapshot,
+    );
+    const setValue = useCallback<Dispatch<SetStateAction<ReadonlyMap<string, string>>>>(action => {
+        const current = searchBuffers.get(key) ?? NO_SEARCH_BUFFERS;
+        const next = typeof action === 'function'
+            ? (action as (prev: ReadonlyMap<string, string>) => ReadonlyMap<string, string>)(current)
+            : action;
+        if (next === current) return;
+        searchBuffers.set(key, next);
+        searchBufferListeners.get(key)?.forEach(listener => listener());
+    }, [key]);
+    return [value, setValue];
+}
+
+/**
+ * Drops cached search-buffer texts — for one workspace, or all of them with no
+ * argument (used to isolate tests). Subscribers re-render against empty.
+ */
+export function clearExplorerSearchBuffers(workspaceId?: string): void {
+    const keys = workspaceId === undefined
+        ? [...searchBuffers.keys()]
+        : [searchBufferKey(workspaceId)];
+    for (const key of keys) {
+        searchBuffers.delete(key);
+        searchBufferListeners.get(key)?.forEach(listener => listener());
+    }
+}

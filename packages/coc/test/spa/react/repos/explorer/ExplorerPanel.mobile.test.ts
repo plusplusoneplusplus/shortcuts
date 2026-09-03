@@ -42,7 +42,7 @@ describe('ExplorerPanel mobile responsiveness', () => {
 
     describe('mobile toggle pattern — show file tree OR preview', () => {
         it('computes showMobilePreview flag', () => {
-            expect(source).toContain('const showMobilePreview = isMobile && !!previewFile');
+            expect(source).toContain('const showMobilePreview = isMobile && editorHasContent && !(tabsEnabled && mobileTreeVisible);');
         });
 
         it('hides sidebar via display:none when showing mobile preview', () => {
@@ -50,9 +50,12 @@ describe('ExplorerPanel mobile responsiveness', () => {
         });
 
         // The search-editor buffer (§2.7 Open in Editor) lives in the same pane,
-        // so "nothing to show" now means neither a file nor a buffer.
+        // so "nothing to show" means neither a file nor a buffer — which is what
+        // `editorHasContent` folds together for both the single-preview and the
+        // tabbed editor.
         it('hides preview pane on mobile when there is nothing to show', () => {
-            expect(source).toContain("isMobile && !previewFile && !searchEditor ? { display: 'none' }");
+            expect(source).toContain("isMobile && !showMobilePreview ? { display: 'none' }");
+            expect(source).toContain("const editorHasContent = tabsEnabled ? tabsState.tabs.length > 0 : (!!previewFile || !!searchEditor);");
         });
     });
 

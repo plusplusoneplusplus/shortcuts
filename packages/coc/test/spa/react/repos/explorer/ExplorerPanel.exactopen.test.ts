@@ -116,10 +116,10 @@ describe('ExplorerPanel — Exact Open (Ctrl+O) integration', () => {
             expect(handler![0]).toContain('setSelectedPath(null)');
         });
 
-        it('sets previewFile with the full trusted-prefixed path', () => {
+        it('opens the editor with the full trusted-prefixed path', () => {
             const handler = panelSource.match(/if \(filePath\.startsWith\(TRUSTED_PATH_PREFIX\)\)[\s\S]*?return;\s*\}/);
             expect(handler).toBeTruthy();
-            expect(handler![0]).toContain('setPreviewFile');
+            expect(handler![0]).toContain('openFileInEditor({ path: filePath, name }, { preview: false, readOnly: true })');
         });
     });
 });
