@@ -26,12 +26,14 @@ import {
     dataTransferHasChatFolderReorder,
     readChatFolderMoveDragPayload,
     readChatFolderReorderDragPayload,
-    resolveFolderDropMoveIds,
+    resolveFolderDropMove,
     resolveFolderDropTarget,
     writeChatFolderMoveDragData,
     writeChatFolderReorderDragData,
     type ChatFolderDropTarget,
     type ChatFolderDropZone,
+    type ChatFolderMoveDragGroupRef,
+    type ChatFolderMoveDragPayload,
 } from '../chat-folder-drag';
 
 export interface UseChatFolderDragDropOptions {
@@ -41,6 +43,13 @@ export interface UseChatFolderDragDropOptions {
     folderIdByProcess: ReadonlyMap<string, string>;
     /** File (or, with `null`, unfile) rows. Reuses AC-06's assignment hook. */
     moveToFolder: (ids: readonly string[], folderId: string | null) => Promise<void>;
+    /**
+     * `"<type>:<groupId>" -> folderId` for whole groups, so a group dropped on
+     * the folder it already lives in issues no request (AC-04).
+     */
+    groupFolderByKey?: ReadonlyMap<string, string>;
+    /** File (or unfile) a whole group with one write against its key (AC-04). */
+    moveGroupToFolder?: (type: string, groupId: string, folderId: string | null) => Promise<void>;
     /** Persist a folder reorder. */
     reorderFolders: (draggedFolderId: string, targetFolderId: string, position: 'above' | 'below') => Promise<void>;
     /** Stop the edge auto-scroll when the gesture ends. */
@@ -57,6 +66,15 @@ export interface UseChatFolderDragDropResult {
 
     /** Chat-row drag source: writes the move MIME alongside session context. */
     writeChatRowMoveData: (dataTransfer: DataTransfer, processIds: readonly string[]) => boolean;
+    /**
+     * Group-row drag source: the same MIME, but tagged with the group so the
+     * drop files the group rather than its children (AC-04).
+     */
+    writeGroupRowMoveData: (
+        dataTransfer: DataTransfer,
+        group: ChatFolderMoveDragGroupRef,
+        processIds?: readonly string[],
+    ) => boolean;
     /** Folder-row drag source. */
     handleFolderDragStart: (folderId: string, event: React.DragEvent) => void;
     /** Ends any drag started in the list: clears highlights and the scroll timer. */
@@ -72,7 +90,16 @@ export interface UseChatFolderDragDropResult {
 }
 
 export function useChatFolderDragDrop(options: UseChatFolderDragDropOptions): UseChatFolderDragDropResult {
-    const { enabled, workspaceId, folderIdByProcess, moveToFolder, reorderFolders, onDragFinished } = options;
+    const {
+        enabled,
+        workspaceId,
+        folderIdByProcess,
+        moveToFolder,
+        reorderFolders,
+        onDragFinished,
+        groupFolderByKey,
+        moveGroupToFolder,
+    } = options;
 
     const [dropTarget, setDropTarget] = useState<ChatFolderDropTarget | null>(null);
     const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null);
@@ -82,6 +109,8 @@ export function useChatFolderDragDrop(options: UseChatFolderDragDropOptions): Us
     // now, never against an index or a snapshot taken at dragstart.
     const folderIdByProcessRef = useRef(folderIdByProcess);
     folderIdByProcessRef.current = folderIdByProcess;
+    const groupFolderByKeyRef = useRef<ReadonlyMap<string, string>>(groupFolderByKey ?? new Map());
+    groupFolderByKeyRef.current = groupFolderByKey ?? new Map();
     // Where the dragged rows currently live. Only known for a drag that started
     // in this list, and only used to suppress a pointless highlight — the drop
     // itself re-derives everything from the payload.
@@ -109,6 +138,23 @@ export function useChatFolderDragDrop(options: UseChatFolderDragDropOptions): Us
             source.add(folderIdByProcessRef.current.get(id) ?? '');
         }
         sourceFolderIdsRef.current = source;
+        return true;
+    }, [enabled, workspaceId]);
+
+    const writeGroupRowMoveData = useCallback((
+        dataTransfer: DataTransfer,
+        group: ChatFolderMoveDragGroupRef,
+        processIds: readonly string[] = [],
+    ): boolean => {
+        if (!enabled) {return false;}
+        const payload = createChatFolderMoveDragPayload(workspaceId, processIds, group);
+        if (!payload?.group) {return false;}
+        writeChatFolderMoveDragData(dataTransfer, payload);
+        // A group lives in exactly one folder, so the "already here" highlight
+        // suppression reads its key, not its children's rows — a child filed
+        // elsewhere on its own is irrelevant while the group is filed (AC-06).
+        const key = `${payload.group.type}:${payload.group.groupId}`;
+        sourceFolderIdsRef.current = new Set([groupFolderByKeyRef.current.get(key) ?? '']);
         return true;
     }, [enabled, workspaceId]);
 
@@ -162,6 +208,29 @@ export function useChatFolderDragDrop(options: UseChatFolderDragDropOptions): Us
         setDropTarget(prev => (prev && prev.folderId === folderId ? null : prev));
     }, [enabled]);
 
+    /**
+     * Perform the write a dropped move payload asks for. A group payload files
+     * the group with ONE request against its key; anything else falls back to
+     * the chat id batch. A payload that resolves to nothing issues no request.
+     */
+    const applyMove = useCallback((move: ChatFolderMoveDragPayload, targetFolderId: string | null) => {
+        const resolved = resolveFolderDropMove(
+            move,
+            folderIdByProcessRef.current,
+            targetFolderId,
+            groupFolderByKeyRef.current,
+        );
+        if (!resolved) {return;}
+        if (resolved.kind === 'group') {
+            // No group mover wired (the flag path that only files chats): the
+            // gesture is declined rather than silently fanned out to children.
+            if (!moveGroupToFolder) {return;}
+            void moveGroupToFolder(resolved.group.type, resolved.group.groupId, targetFolderId);
+            return;
+        }
+        void moveToFolder(resolved.processIds, targetFolderId);
+    }, [moveGroupToFolder, moveToFolder]);
+
     const handleFolderDrop = useCallback((folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => {
         if (!enabled) {return;}
         const target = resolve(folderId, zone, event);
@@ -183,11 +252,9 @@ export function useChatFolderDragDrop(options: UseChatFolderDragDropOptions): Us
         }
         if (move && target.mode === 'into') {
             if (move.workspaceId !== workspaceId) {return;}
-            const ids = resolveFolderDropMoveIds(move, folderIdByProcessRef.current, target.folderId);
-            if (ids.length === 0) {return;}
-            void moveToFolder(ids, target.folderId);
+            applyMove(move, target.folderId);
         }
-    }, [enabled, resolve, handleDragEnd, reorderFolders, moveToFolder, workspaceId]);
+    }, [enabled, resolve, handleDragEnd, reorderFolders, applyMove, workspaceId]);
 
     const handleUnfiledDragOver = useCallback((event: React.DragEvent) => {
         if (!enabled) {return;}
@@ -209,17 +276,16 @@ export function useChatFolderDragDrop(options: UseChatFolderDragDropOptions): Us
         if (!move || move.workspaceId !== workspaceId) {return;}
         event.preventDefault();
         event.stopPropagation();
-        const ids = resolveFolderDropMoveIds(move, folderIdByProcessRef.current, null);
         handleDragEnd();
-        if (ids.length === 0) {return;}
-        void moveToFolder(ids, null);
-    }, [enabled, workspaceId, handleDragEnd, moveToFolder]);
+        applyMove(move, null);
+    }, [enabled, workspaceId, handleDragEnd, applyMove]);
 
     return {
         dropTarget,
         draggingFolderId,
         unfiledDropActive,
         writeChatRowMoveData,
+        writeGroupRowMoveData,
         handleFolderDragStart,
         handleDragEnd,
         handleFolderDragOver,

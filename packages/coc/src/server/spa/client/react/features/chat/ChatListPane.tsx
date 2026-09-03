@@ -88,7 +88,7 @@ import { normalizeChatMode } from '../../repos/modeConfig';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragBundle, writeSessionContextDragData, type SessionContextDragPayload } from './sessionContextDrag';
 import { dataTransferHasSessionContext, readSessionContextDropPayloads } from './sessionContextDrop';
 import { pushNewChatSeedContext } from './newChatSeedContext';
-import type { AgentProvidersQuotaResponse, ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
+import type { AgentProvidersQuotaResponse, ForEachRunSummary, MapReduceRunSummary, ProcessGroupFolderType, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 import { useAgentProvidersQuota } from '../../shared/useAgentProvidersQuota';
 import { formatQuotaTypeLabel, getMostConstrainedProviderQuota, getQuotaPercent, getQuotaRiskClass, getTightestFiniteQuotaType } from '../../shared/quotaUtils';
 
@@ -1529,6 +1529,11 @@ export function ChatListPane({
         workspaceId,
         folderIdByProcess,
         moveToFolder,
+        // A dropped GROUP row files against its key with one write, never a
+        // batch over its children (AC-04) — the same call the context menu makes.
+        groupFolderByKey: groupFolderMap,
+        moveGroupToFolder: (type, groupId, folderId) =>
+            moveGroupToFolder(type as ProcessGroupFolderType, groupId, folderId),
         reorderFolders: chatFolderMutations.reorderFolders,
         onDragFinished: chatListAutoScroll.stop,
     });
@@ -1766,6 +1771,7 @@ export function ChatListPane({
         task: any,
         primaryPayload: SessionContextDragPayload | null,
         folderFilable: boolean,
+        groupFolder?: GroupFolderTarget,
     ) => {
         const draggedId = task.id as string;
         const inSelection = selectedHistoryIds.size > 1 && selectedHistoryIds.has(draggedId);
@@ -1794,7 +1800,13 @@ export function ChatListPane({
         // its `effectAllowed = 'copyMove'` supersedes the session-context
         // writer's `'copy'`. A folder target then answers 'move' and a composer
         // still answers 'copy', so the cursor tells the truth either way.
-        if (folderFilable && folderDnd.writeChatRowMoveData(e.dataTransfer, selectionIds)) {
+        // A row that ROOTS a filable group (today: a spawned tree's root chat)
+        // writes the group flavour instead of its own id, so the drop files the
+        // whole tree — matching what its context menu already does (AC-03/AC-04).
+        const wroteMove = folderFilable && (groupFolder
+            ? folderDnd.writeGroupRowMoveData(e.dataTransfer, groupFolder, selectionIds)
+            : folderDnd.writeChatRowMoveData(e.dataTransfer, selectionIds));
+        if (wroteMove) {
             if (selectionIds.length > 1) {
                 chatDragImageRef.current = createMultiSelectDragImage(
                     e.dataTransfer,
@@ -1806,7 +1818,7 @@ export function ChatListPane({
         // `writeChatRowMoveData` is a stable callback, so this handler's identity
         // tracks the selection only — a folder highlight changing mid-drag must
         // not re-create the row renderer that depends on it.
-    }, [selectedHistoryIds, taskById, buildChatSessionContextPayload, folderDnd.writeChatRowMoveData]);
+    }, [selectedHistoryIds, taskById, buildChatSessionContextPayload, folderDnd.writeChatRowMoveData, folderDnd.writeGroupRowMoveData]);
 
     /**
      * One end for every drag this list starts: drops the off-screen drag image,
@@ -1819,6 +1831,32 @@ export function ChatListPane({
         chatDragImageRef.current = null;
         folderDnd.handleDragEnd();
     }, [folderDnd.handleDragEnd]);
+
+    /**
+     * Drag props for a whole-group row (a ralph session, a for-each or
+     * map-reduce run) so it can be dropped on a folder (AC-04). The payload is
+     * tagged with the group, so the drop issues one write against the group key
+     * rather than a batch over `memberIds` — the ids ride along only so the
+     * "already in this folder" check has something to look at.
+     *
+     * Empty when folders are off or there is no workspace to file into, which
+     * leaves the row exactly as draggable as it was before (Ralph rows still
+     * carry their session-context drag; the run rows stay undraggable).
+     */
+    const buildGroupRowDragProps = useCallback((target: GroupFolderTarget, memberIds: readonly string[]): {
+        draggable?: boolean;
+        onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+        onDragEnd?: () => void;
+    } => {
+        if (!chatFoldersEnabled || !workspaceId) {return {};}
+        return {
+            draggable: true,
+            onDragStart: (e: React.DragEvent<HTMLDivElement>) => {
+                folderDnd.writeGroupRowMoveData(e.dataTransfer, target, memberIds);
+            },
+            onDragEnd: handleChatRowDragEnd,
+        };
+    }, [chatFoldersEnabled, workspaceId, folderDnd.writeGroupRowMoveData, handleChatRowDragEnd]);
     const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
     const filteredQueued = useMemo(
         () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
@@ -3275,7 +3313,7 @@ export function ChatListPane({
                     }}
                     onContextMenu={(e) => handleTaskContextMenu(e, task.id, contextMenuKind, options?.groupFolder)}
                     draggable={rowDraggable}
-                    onDragStart={rowDraggable ? (e) => handleChatRowDragStart(e, task, sessionContextPayload, folderFilable) : undefined}
+                    onDragStart={rowDraggable ? (e) => handleChatRowDragStart(e, task, sessionContextPayload, folderFilable, options?.groupFolder) : undefined}
                     onDragEnd={rowDraggable ? handleChatRowDragEnd : undefined}
                     onTouchStart={(e) => {
                         historyLongPressTaskRef.current = task.id;
@@ -3519,6 +3557,10 @@ export function ChatListPane({
         const ralphSessionContextPayload = sessionContextDragEnabled
             ? createRalphSessionContextDragPayload(session, { activeWorkspaceId: workspaceId })
             : null;
+        // Rides the SAME gesture as the session-context drag, written second so
+        // its wider `effectAllowed` wins — a composer still gets 'copy', a
+        // folder row gets 'move' (AC-04).
+        const ralphDragProps = buildGroupRowDragProps({ type: 'ralph-session', groupId: session.sessionId }, ralphSubIds);
         const openContextMenu = (x: number, y: number) => {
             const ids = [session.grillingProcess?.id, ...session.iterations.map((i: any) => i.id)].filter(Boolean) as string[];
             setSelectedHistoryIds(new Set(ids));
@@ -3559,6 +3601,8 @@ export function ChatListPane({
                 onTogglePin={onSetGroupPin ? () => setGroupPinned('ralph-session', session.sessionId, !isPinned) : undefined}
                 onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
                 sessionContextPayload={ralphSessionContextPayload}
+                onFolderMoveDragStart={ralphDragProps.onDragStart}
+                onDragEnd={ralphDragProps.onDragEnd}
                 onContextMenu={e => {
                     if (e.shiftKey) return;
                     e.preventDefault();
@@ -3581,6 +3625,7 @@ export function ChatListPane({
             />
         );
     }, [
+        buildGroupRowDragProps,
         expandedRalphSessionIds,
         groupLongPress,
         isGroupPinned,
@@ -3646,6 +3691,7 @@ export function ChatListPane({
                 isPinned={isPinned}
                 onTogglePin={onSetGroupPin ? () => setGroupPinned('for-each-run', group.runId, !isPinned) : undefined}
                 onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
+                {...buildGroupRowDragProps({ type: 'for-each-run', groupId: group.runId }, forEachSubIds)}
                 onContextMenu={e => {
                     if (e.shiftKey) return;
                     e.preventDefault();
@@ -3671,6 +3717,7 @@ export function ChatListPane({
             />
         );
     }, [
+        buildGroupRowDragProps,
         expandedForEachRunIds,
         getGroupedChildTaskStatus,
         groupLongPress,
@@ -3733,6 +3780,7 @@ export function ChatListPane({
                 isPinned={isPinned}
                 onTogglePin={onSetGroupPin ? () => setGroupPinned('map-reduce-run', group.runId, !isPinned) : undefined}
                 onMoreActions={onSetGroupPin ? e => openContextMenu(e.clientX, e.clientY) : undefined}
+                {...buildGroupRowDragProps({ type: 'map-reduce-run', groupId: group.runId }, mapReduceSubIds)}
                 onContextMenu={e => {
                     if (e.shiftKey) return;
                     e.preventDefault();
@@ -3758,6 +3806,7 @@ export function ChatListPane({
             />
         );
     }, [
+        buildGroupRowDragProps,
         expandedMapReduceRunIds,
         getGroupedChildTaskStatus,
         groupLongPress,

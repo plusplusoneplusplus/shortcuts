@@ -87,6 +87,7 @@ export interface TaskGroupRunRowProps {
     /** Optional drag support for the row body (e.g. Ralph session-context drags). */
     draggable?: boolean;
     onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+    onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
     /** Extra data attributes applied to the row body. */
     bodyDataAttributes?: Record<string, string | undefined>;
     /** Tooltip for the row body. */
@@ -113,6 +114,7 @@ export function TaskGroupRunRow({
     onMoreActions,
     draggable,
     onDragStart,
+    onDragEnd,
     bodyDataAttributes,
     bodyTitle,
     renderTaskCard,
@@ -175,6 +177,7 @@ export function TaskGroupRunRow({
                 onTouchMove={onTouchMove}
                 draggable={draggable}
                 onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
                 data-testid={`${display.testIdPrefix}-body`}
                 {...statusAttribute}
                 {...bodyDataAttributes}

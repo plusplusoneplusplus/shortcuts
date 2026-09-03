@@ -20,6 +20,10 @@ interface MapReduceRunRowProps {
     isPinned?: boolean;
     onTogglePin?: () => void;
     onMoreActions?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+    /** Drag support for the row body — folder filing rides this gesture (AC-04). */
+    draggable?: boolean;
+    onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
+    onDragEnd?: (e: React.DragEvent<HTMLDivElement>) => void;
     renderTaskCard: (task: any) => React.ReactNode;
 }
 
