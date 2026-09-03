@@ -316,8 +316,9 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 sendJson(res, result);
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
-                // The addon reports a bad regex or an escaping path as
-                // InvalidArg — the caller's mistake, not a server failure.
+                // The addon reports a bad regex, an escaping path or a
+                // malformed include/exclude glob as InvalidArg — the caller's
+                // mistake, not a server failure.
                 if ((err as { code?: unknown } | null)?.code === 'InvalidArg') {
                     send400(res, message);
                 } else if (/not found/i.test(message)) {

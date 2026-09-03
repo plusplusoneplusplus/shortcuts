@@ -61,8 +61,20 @@ import {
     contentSearchFiltersActive,
     isMultiLineQuery,
     parseGlobList,
+    type ContentSearchErrorKind,
     type ContentSearchModes,
 } from './types';
+
+/**
+ * One testid per error kind, so a test can assert *which* input the message is
+ * blaming without parsing the message itself. `regex` and `request` keep the
+ * ids they have always had.
+ */
+const SEARCH_ERROR_TESTIDS: Record<ContentSearchErrorKind, string> = {
+    regex: 'content-search-regex-error',
+    glob: 'content-search-glob-error',
+    request: 'content-search-error',
+};
 
 /**
  * Replacing more than one span at a time asks first. A single match row applies
@@ -99,21 +111,31 @@ export interface ContentSearchPanelProps {
 }
 
 /**
- * Classify a failed search. The route answers an unparseable pattern with 400
- * and the engine's own message, which belongs inline against the query box; any
- * other failure is generic and retryable.
+ * Classify a failed search. The route answers an unparseable pattern — or an
+ * unparseable include/exclude glob — with 400 and the engine's own message,
+ * which belongs inline against the input at fault; any other failure is generic
+ * and retryable.
+ *
+ * The glob check runs first and is message-driven rather than mode-driven: a
+ * bad glob is a 400 whether or not `.*` happens to be on, so keying off
+ * `regexMode` alone would file it under the query box.
  */
 export function classifySearchError(error: unknown, regexMode: boolean): ContentSearchState {
     const message = error instanceof Error ? error.message : '';
     const status = (error as { status?: unknown } | null)?.status;
-    const isRegexError = status === 400
+    const isGlobError = status === 400 && /invalid glob/i.test(message);
+    const isRegexError = !isGlobError
+        && status === 400
         && (regexMode || /regular expression/i.test(message));
+    const errorKind: ContentSearchErrorKind = isGlobError
+        ? 'glob'
+        : isRegexError ? 'regex' : 'request';
     return {
         status: 'error',
         matches: [],
         truncated: false,
         error: message || 'Search failed',
-        errorKind: isRegexError ? 'regex' : 'request',
+        errorKind,
         query: '',
         collapsed: NO_COLLAPSED_GROUPS,
         dismissed: NO_DISMISSED_ROWS,
@@ -501,7 +523,7 @@ export function ContentSearchPanel({
             {state.status === 'error' && (
                 <div
                     className="px-3 py-2 text-xs text-[#d32f2f] dark:text-[#f48771]"
-                    data-testid={state.errorKind === 'regex' ? 'content-search-regex-error' : 'content-search-error'}
+                    data-testid={SEARCH_ERROR_TESTIDS[state.errorKind ?? 'request']}
                 >
                     {state.error}
                 </div>

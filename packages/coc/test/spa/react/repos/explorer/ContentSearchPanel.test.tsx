@@ -167,6 +167,24 @@ describe('ContentSearchPanel — UX states', () => {
         expect(screen.queryByTestId('content-search-empty')).toBeNull();
     });
 
+    it('error (glob): a malformed include glob shows the server message inline', async () => {
+        searchContentSpy.mockRejectedValue(
+            Object.assign(new Error('invalid glob: unclosed character class'), { status: 400 }),
+        );
+        renderPanel();
+        fireEvent.click(screen.getByTestId('content-search-filters-toggle'));
+        fireEvent.change(screen.getByTestId('content-search-include'), {
+            target: { value: '[unclosed' },
+        });
+        type('needle');
+        await advance(SEARCH_DEBOUNCE_MS);
+
+        expect(screen.getByTestId('content-search-glob-error').textContent)
+            .toContain('invalid glob: unclosed character class');
+        expect(screen.queryByTestId('content-search-error')).toBeNull();
+        expect(screen.queryByTestId('content-search-regex-error')).toBeNull();
+    });
+
     it('error (request): a server failure is generic, not a regex complaint', async () => {
         searchContentSpy.mockRejectedValue(Object.assign(new Error('boom'), { status: 500 }));
         renderPanel();
@@ -499,6 +517,20 @@ describe('classifySearchError', () => {
         const state = classifySearchError(
             Object.assign(new Error('invalid regular expression: x'), { status: 400 }), false);
         expect(state.errorKind).toBe('regex');
+    });
+
+    it('blames the glob, not the query, when a 400 names a bad glob in regex mode', () => {
+        const state = classifySearchError(
+            Object.assign(new Error('invalid glob: unclosed character class'), { status: 400 }),
+            true,
+        );
+        expect(state.errorKind).toBe('glob');
+    });
+
+    it('recognises a glob 400 outside regex mode too', () => {
+        const state = classifySearchError(
+            Object.assign(new Error('invalid glob: x'), { status: 400 }), false);
+        expect(state.errorKind).toBe('glob');
     });
 
     it('treats a non-400 failure as a generic request error even in regex mode', () => {

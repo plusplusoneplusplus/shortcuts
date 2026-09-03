@@ -49,10 +49,12 @@ export const DEFAULT_CONTENT_SEARCH_MODES: ContentSearchModes = {
 export type ContentSearchStatus = 'idle' | 'loading' | 'success' | 'empty' | 'error';
 
 /**
- * An invalid regex is reported inline against the query box with the engine's
- * own parse message; anything else is a generic, retryable request failure.
+ * An invalid regex, and an invalid include/exclude glob, are both the caller's
+ * own mistake: the route answers 400 and the engine's own parse message, which
+ * belongs inline against the input that caused it. Anything else is a generic,
+ * retryable request failure.
  */
-export type ContentSearchErrorKind = 'regex' | 'request';
+export type ContentSearchErrorKind = 'regex' | 'glob' | 'request';
 
 /**
  * The Search view's file filters — the `…` section under the query box.

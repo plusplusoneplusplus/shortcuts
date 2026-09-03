@@ -613,6 +613,18 @@ describe('GET /api/repos/:repoId/search/content', () => {
         expect(body.error).toMatch(/invalid regular expression/i);
     });
 
+    it('returns 400 with the glob message for a malformed include or exclude glob', async () => {
+        seedSearchableRepo();
+
+        const badInclude = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&include=${encodeURIComponent('[unclosed')}`);
+        expect(badInclude.status).toBe(400);
+        expect(((await badInclude.json()) as any).error).toMatch(/invalid glob/i);
+
+        const badExclude = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&exclude=${encodeURIComponent('[unclosed')}`);
+        expect(badExclude.status).toBe(400);
+        expect(((await badExclude.json()) as any).error).toMatch(/invalid glob/i);
+    });
+
     it('honours showIgnored', async () => {
         seedDefaultRepo();
         initGitRepo(repoDir);

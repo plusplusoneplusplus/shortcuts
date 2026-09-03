@@ -82,7 +82,10 @@ pub enum SearchError {
     InvalidRegex(String),
     /// A `path` that escapes the root, is not a directory, or does not exist.
     InvalidPath(String),
-    /// The root could not be read, or a glob in `include`/`exclude` is malformed.
+    /// A glob in `include`/`exclude` the matcher could not parse. Carries the
+    /// glob engine's own message, which names the offending pattern.
+    InvalidGlob(String),
+    /// The root could not be read.
     Io(io::Error),
 }
 
@@ -91,6 +94,7 @@ impl fmt::Display for SearchError {
         match self {
             Self::InvalidRegex(message) => write!(f, "invalid regular expression: {message}"),
             Self::InvalidPath(message) => write!(f, "invalid search path: {message}"),
+            Self::InvalidGlob(message) => write!(f, "invalid glob: {message}"),
             Self::Io(error) => write!(f, "{error}"),
         }
     }
@@ -312,16 +316,12 @@ fn build_overrides(
 ) -> Result<ignore::overrides::Override, SearchError> {
     let mut builder = OverrideBuilder::new(scope);
     for glob in &options.include {
-        builder
-            .add(glob)
-            .map_err(|e| SearchError::Io(io::Error::new(io::ErrorKind::InvalidInput, e)))?;
+        builder.add(glob).map_err(|e| SearchError::InvalidGlob(e.to_string()))?;
     }
     for glob in &options.exclude {
-        builder
-            .add(&format!("!{glob}"))
-            .map_err(|e| SearchError::Io(io::Error::new(io::ErrorKind::InvalidInput, e)))?;
+        builder.add(&format!("!{glob}")).map_err(|e| SearchError::InvalidGlob(e.to_string()))?;
     }
-    builder.build().map_err(|e| SearchError::Io(io::Error::new(io::ErrorKind::InvalidInput, e)))
+    builder.build().map_err(|e| SearchError::InvalidGlob(e.to_string()))
 }
 
 /// Join a scope prefix onto a scope-relative path, both already `/`-separated.

@@ -354,6 +354,28 @@ fn include_globs_whitelist_and_exclude_globs_subtract() {
 }
 
 #[test]
+fn a_malformed_glob_is_a_distinct_error_the_server_can_answer_with_400() {
+    let dir = repo(&[("a.ts", "needle\n")]);
+
+    let from_include = search(
+        dir.path(),
+        "needle",
+        &ContentSearchOptions { include: vec!["[unclosed".into()], ..Default::default() },
+    )
+    .expect_err("malformed include glob rejected");
+    assert!(matches!(from_include, SearchError::InvalidGlob(_)), "got {from_include:?}");
+    assert!(from_include.to_string().contains("invalid glob"), "{from_include}");
+
+    let from_exclude = search(
+        dir.path(),
+        "needle",
+        &ContentSearchOptions { exclude: vec!["[unclosed".into()], ..Default::default() },
+    )
+    .expect_err("malformed exclude glob rejected");
+    assert!(matches!(from_exclude, SearchError::InvalidGlob(_)), "got {from_exclude:?}");
+}
+
+#[test]
 fn decodes_non_utf8_bytes_lossily_without_breaking_columns() {
     let dir = repo(&[]);
     // A lone 0xFF is not valid UTF-8; it becomes one replacement character.
