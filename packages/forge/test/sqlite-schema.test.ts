@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(30);
+        expect(SCHEMA_VERSION).toBe(31);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1175,7 +1175,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(30);
+            expect(SCHEMA_VERSION).toBe(31);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1278,6 +1278,83 @@ describe('sqlite-schema', () => {
         });
     });
 
+    describe('V30 → V31 migration (chat_mode_context on conversation_turns)', () => {
+        it('fresh DB includes chat_mode_context column on conversation_turns', () => {
+            initializeDatabase(db);
+
+            const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('chat_mode_context');
+        });
+
+        it('adds chat_mode_context to an existing V30 database without data loss', () => {
+            db.exec(`
+                CREATE TABLE processes (
+                    id                    TEXT PRIMARY KEY,
+                    workspace_id          TEXT NOT NULL,
+                    type                  TEXT,
+                    status                TEXT NOT NULL,
+                    start_time            TEXT NOT NULL,
+                    parent_process_id     TEXT,
+                    sdk_session_id        TEXT,
+                    archived              INTEGER DEFAULT 0,
+                    last_event_at         TEXT
+                );
+
+                CREATE TABLE conversation_turns (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    process_id        TEXT NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+                    turn_index        INTEGER NOT NULL,
+                    role              TEXT NOT NULL,
+                    content           TEXT,
+                    timestamp         TEXT NOT NULL,
+                    streaming         INTEGER DEFAULT 0,
+                    tool_calls        TEXT,
+                    timeline          TEXT,
+                    model             TEXT,
+                    mode              TEXT,
+                    sdk_event_id      TEXT,
+                    display_only      INTEGER DEFAULT 0,
+                    compaction_summary TEXT,
+                    repo_group_context TEXT,
+                    UNIQUE(process_id, turn_index)
+                );
+            `);
+            db.prepare(`
+                INSERT INTO processes (id, workspace_id, status, start_time)
+                VALUES ('p-v30', 'ws1', 'completed', '2026-01-01T00:00:00.000Z')
+            `).run();
+            db.prepare(`
+                INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp)
+                VALUES ('p-v30', 0, 'user', 'hello', '2026-01-01T00:00:01.000Z')
+            `).run();
+            db.pragma('user_version = 30');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+
+            const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('chat_mode_context');
+
+            // Existing turn preserved with a null chat_mode_context — a turn that
+            // predates the field carried no recorded directive, so the next
+            // follow-up re-injects once.
+            const row = db.prepare(`
+                SELECT content, chat_mode_context FROM conversation_turns WHERE process_id = 'p-v30'
+            `).get() as any;
+            expect(row.content).toBe('hello');
+            expect(row.chat_mode_context).toBeNull();
+
+            // New column is writable.
+            db.prepare('UPDATE conversation_turns SET chat_mode_context = ? WHERE process_id = ? AND turn_index = ?')
+                .run('<coc-chat-mode>x</coc-chat-mode>', 'p-v30', 0);
+            const updated = db.prepare(`
+                SELECT chat_mode_context FROM conversation_turns WHERE process_id = 'p-v30'
+            `).get() as any;
+            expect(updated.chat_mode_context).toBe('<coc-chat-mode>x</coc-chat-mode>');
+        });
+    });
+
     describe('V28 → V29 migration (parent_group_id on task_groups)', () => {
         it('fresh DB includes parent_group_id column on task_groups', () => {
             initializeDatabase(db);
@@ -1325,7 +1402,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(30);
+            expect(SCHEMA_VERSION).toBe(31);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');

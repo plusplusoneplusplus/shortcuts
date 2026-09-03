@@ -123,6 +123,8 @@ export interface ClientConversationTurn {
     compactionSummary?: string;
     /** Verbatim repo-group member listing injected into this user turn's prompt, revealed behind a disclosure. */
     repoGroupContext?: string;
+    /** Verbatim `<coc-chat-mode>` directive injected into this user turn's prompt, revealed behind a disclosure. */
+    chatModeContext?: string;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (set on user turns when mode override was active) */

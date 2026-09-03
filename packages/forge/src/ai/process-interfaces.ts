@@ -210,6 +210,17 @@ export interface ConversationTurn {
      * workspaces, and on turns recorded before the field existed.
      */
     repoGroupContext?: string;
+    /**
+     * Verbatim `<coc-chat-mode>` directive injected into this user turn's
+     * outgoing prompt, including the repo's mode-specific instructions.
+     * Persisted so the chat can reveal exactly which mode constraint the model
+     * was given, and — because it is written only on turns that actually
+     * carried the block — it doubles as the durable "last injected here, with
+     * this content" marker `shouldInjectChatModeDirective` reads back. Absent
+     * on assistant turns, on turns that sent no directive, and on turns
+     * recorded before the field existed.
+     */
+    chatModeContext?: string;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
@@ -277,6 +288,17 @@ export interface SerializedConversationTurn {
      * workspaces, and on turns recorded before the field existed.
      */
     repoGroupContext?: string;
+    /**
+     * Verbatim `<coc-chat-mode>` directive injected into this user turn's
+     * outgoing prompt, including the repo's mode-specific instructions.
+     * Persisted so the chat can reveal exactly which mode constraint the model
+     * was given, and — because it is written only on turns that actually
+     * carried the block — it doubles as the durable "last injected here, with
+     * this content" marker `shouldInjectChatModeDirective` reads back. Absent
+     * on assistant turns, on turns that sent no directive, and on turns
+     * recorded before the field existed.
+     */
+    chatModeContext?: string;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */

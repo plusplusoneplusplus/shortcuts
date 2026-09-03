@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 
 /**
  * Read the current schema version from the database.
@@ -97,6 +97,7 @@ export function initializeDatabase(db: Database.Database): void {
                 display_only      INTEGER DEFAULT 0,
                 compaction_summary TEXT,
                 repo_group_context TEXT,
+                chat_mode_context TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -529,6 +530,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 30) {
             migrateV29toV30(db);
         }
+        if (versionBefore < 31) {
+            migrateV30toV31(db);
+        }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });
@@ -916,6 +920,17 @@ function migrateV28toV29(db: Database.Database): void {
  */
 function migrateV29toV30(db: Database.Database): void {
     ensureColumn(db, 'queue_tasks', 'scope', 'TEXT');
+}
+
+/**
+ * V30 -> V31: add `chat_mode_context` to `conversation_turns` — the verbatim
+ * `<coc-chat-mode>` directive injected into that user turn's prompt. Doubles as
+ * the marker that decides whether a later follow-up needs the directive again,
+ * so existing rows staying NULL is correct: they predate the field and the
+ * first follow-up after the upgrade re-injects once.
+ */
+function migrateV30toV31(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'chat_mode_context', 'TEXT');
 }
 
 /**

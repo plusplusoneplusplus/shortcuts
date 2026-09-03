@@ -580,6 +580,24 @@ export interface ProcessStore {
     ): Promise<void>;
 
     /**
+     * Atomically persist the `<coc-chat-mode>` directive that was injected into
+     * a user turn's outgoing prompt. Stored verbatim (mode prose plus the repo's
+     * mode-specific instructions) so the chat can reveal exactly what constraint
+     * the model was given, and so a later follow-up can tell whether the model
+     * already has the right directive. Only updates `role: 'user'` turns — a
+     * mismatched index or non-user turn is a safe no-op.
+     *
+     * @param processId - Target process ID.
+     * @param turnIndex - Array index of the user turn to update.
+     * @param chatModeContext - The injected directive, verbatim.
+     */
+    updateTurnChatModeContext(
+        processId: string,
+        turnIndex: number,
+        chatModeContext: string,
+    ): Promise<void>;
+
+    /**
      * Hard-delete every conversation turn at or after `fromTurnIndex` (a
      * destructive rewind/truncate). The matched rows are permanently removed —
      * not soft-deleted — so the CoC conversation ends up consistent with the SDK
