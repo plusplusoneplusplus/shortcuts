@@ -104,7 +104,7 @@ export function SettingsShell<SectionId extends string>({
                 )}
 
                 <div className="sm:flex-1 sm:min-h-0 sm:overflow-y-auto">
-                    <div className="px-1.5 pb-3 flex flex-col gap-3">
+                    <div className={`px-1.5 pb-3 flex flex-col gap-3 ${showFilter ? '' : 'pt-3'}`}>
                         {filteredGroups.length === 0 ? (
                             <div className="px-2.5 py-3 text-[11px] text-[#6e7781] dark:text-[#8b949e]" data-testid="settings-filter-empty">
                                 No settings match “{filterQuery.trim()}”.
