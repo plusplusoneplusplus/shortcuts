@@ -527,6 +527,22 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
+     * Whether CoC's custom `ask_user` tool is actually in the turn's final tool
+     * bundle. Read from the filtered array, not from `this.askUser.enabled`, so
+     * a workspace that disabled the tool (or a context that excluded it) never
+     * receives prompt text claiming it is available.
+     *
+     * One documented exception, shared with the mode-invariant tool block: the
+     * Ralph grill terminal round strips `ask_user` *after* the system message is
+     * assembled. Rewriting the prompt there would churn the cached prefix for a
+     * single round, so the block stays; with the tool genuinely gone, a Codex
+     * lookup simply finds nothing.
+     */
+    protected askUserSurvivedFiltering(tools: { name: string }[]): boolean {
+        return tools.some(tool => tool.name === 'ask_user');
+    }
+
+    /**
      * Assemble the first-turn system message for a chat task.
      *
      * Shared by every first-turn path (ask and autopilot) so a chat's session
@@ -544,6 +560,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         autoFolderContext: AutoFolderContext | undefined;
         memoryV2: MemoryV2Addon;
         toolGuidance: string;
+        /** Whether `ask_user` survived the turn's tool filtering — see `askUserSurvivedFiltering`. */
+        askUserAvailable: boolean;
     }): Promise<SystemMessageConfig | undefined> {
         const payload = input.task.payload as unknown as ChatPayload;
         // During grilling, the user-message directive owns the output contract
@@ -569,6 +587,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             })(),
             memoryV2: input.memoryV2,
             toolGuidance: input.toolGuidance,
+            askUserAvailable: input.askUserAvailable,
             autoFolderContext: autoFolderSuppressed ? undefined : input.autoFolderContext,
             notePath: payload.context?.noteChat?.notePath,
         });
@@ -628,6 +647,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             autoFolderContext,
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
+            askUserAvailable: this.askUserSurvivedFiltering(ctx.tools),
         });
 
         // When this is a Ralph grilling session, prepend the grilling directive

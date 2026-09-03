@@ -789,6 +789,21 @@ all have their own `references/*.md`.
   fence. Known remaining divergence: autopilot first turns still opt out of
   Memory V2, which costs nothing while the Memory V2 recall block is rebuilt
   per turn anyway.
+- **Codex `ask_user` discovery:** Codex models in `code_mode_only` (e.g.
+  `gpt-5.6-sol`) are shown no bare top-level `ask_user` — CoC's MCP tools are
+  deferred behind `functions.exec` under `mcp__coc_llm_tools__`, so a skill that
+  names plain `ask_user` (Ralph grilling, `grill-me`) made the model report the
+  tool missing and demand Codex Plan mode. `buildCodexAskUserDiscoveryBlock`
+  (`chat-turn-system-message.ts`) appends a `<codex-ask-user-discovery>` block
+  after the tool guidance mapping the bare name to
+  `tools.mcp__coc_llm_tools__ask_user(...)` and separating it from the Codex
+  built-in `request_user_input`. Codex-only, and gated on `askUserAvailable`,
+  which every call site derives from the *filtered* tool array via
+  `ChatBaseExecutor.askUserSurvivedFiltering()` — never from
+  `chat.askUser.enabled`, which would advertise a tool workspace preferences
+  removed. Discovery only: batching, question types, deferred answers, and
+  unattended-run safety stay in the tool's own description.
+  `test/server/executors/codex-ask-user-discovery.test.ts` is the fence.
 - **The mode directive is disclosed in the transcript.** Because it rides the
   user message, the *stored* turn carries it too — the same rule the
   `<chat-style>` block follows (AC-05), so the bubble shows what the model was

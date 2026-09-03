@@ -439,6 +439,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 mapReduceGeneration,
                 memoryV2: chatCtx.memoryV2,
                 toolGuidance: chatCtx.toolGuidance,
+                askUserAvailable: this.askUserSurvivedFiltering(filteredTools),
                 // Unconditional on mode: the block is a save-location
                 // directive (inert in autopilot), and gating it on the mode
                 // would put a mode-dependent byte back into the prefix.

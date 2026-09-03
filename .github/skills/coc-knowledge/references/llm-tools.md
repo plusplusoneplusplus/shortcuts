@@ -199,6 +199,17 @@ opt in based on `options.tools`; no executor changes are needed. See
   `ExecutorRegistry.getAskUserHandles()` searches the chat, follow-up, and autopilot executors.
 - **Ralph grill exception:** the grill terminal round strips `ask_user` from the already-built
   array to end the questioning phase. It is the one path that mutates the tool block mid-turn.
+  Because it runs after the system message is assembled, the Codex discovery block below can
+  outlive the tool for that single round.
+- **Codex discovery block:** Codex models in `code_mode_only` (e.g. `gpt-5.6-sol`) see no bare
+  top-level `ask_user`; CoC's MCP tools are deferred behind `functions.exec` under the
+  `mcp__coc_llm_tools__` prefix. `buildCodexAskUserDiscoveryBlock()`
+  (`chat-turn-system-message.ts`) appends a `<codex-ask-user-discovery>` block, after the tool
+  guidance, mapping the bare name to `tools.mcp__coc_llm_tools__ask_user(...)` and separating it
+  from the Codex built-in `request_user_input` (whose Plan-mode restriction does not apply).
+  It is Codex-only and gated on `askUserAvailable`, derived from the *filtered* `ctx.tools` via
+  `ChatBaseExecutor.askUserSurvivedFiltering()`, so a workspace that disabled the tool receives
+  neither the tool nor the claim. It is discovery-only — behavior stays in the tool description.
 - **Ask-user answer routing:** resolvers live in each bridge's own `ExecutorRegistry`, but
   `pendingAskUser` is persisted in the single shared `ProcessStore`, so a foreign repo's bridge
   sees a matching batch with absent handles. `MultiRepoQueueRouter` therefore addresses the

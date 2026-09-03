@@ -106,6 +106,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             autoFolderContext,
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
+            askUserAvailable: this.askUserSurvivedFiltering(ctx.tools),
         });
 
         const effectivePrompt = prependChatModeDirective(
