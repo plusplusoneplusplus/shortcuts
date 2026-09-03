@@ -291,6 +291,14 @@ describe('RepoSettingsTab redesigned sidebar', () => {
         expect(screen.getByTestId('settings-section-description').textContent).toContain('Workspace metadata');
     });
 
+    it.each(['skills', 'mcp'] as const)('lets the %s panel supply its own header', async (section) => {
+        await act(async () => { await renderSettingsTab({ initialSection: section }); });
+        await waitFor(() => expect(screen.getByTestId('settings-content-panel')).toBeTruthy());
+
+        expect(screen.queryByTestId('settings-section-title')).toBeNull();
+        expect(screen.queryByTestId('settings-section-description')).toBeNull();
+    });
+
     it('renders the Info workspace, description, and activity cards with stat values', async () => {
         const repoWithStats = {
             ...makeRepo('ws-1'),
