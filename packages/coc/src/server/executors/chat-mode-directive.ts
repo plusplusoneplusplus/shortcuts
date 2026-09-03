@@ -14,15 +14,20 @@
  * Same contract the repo-group member listing and the Ralph grilling directive
  * already follow (see `repo-group-chat-context.ts`).
  *
- * The directive is injected on **every** turn. That is stateless, immune to
- * compaction, and immune to a cold resume (a rebuilt history replays persisted
- * turns, which never carry the ride-along block), and it keeps the read-only
- * constraint as the most recent instruction in context — which matters because
- * ask mode auto-approves `Bash` and the prompt is the whole enforcement
- * mechanism.
+ * First turns and one-shot executors inject unconditionally. Follow-ups ask
+ * {@link shouldInjectChatModeDirective} first: the block is session state, so a
+ * live, uncompacted chat that has not changed mode already has it and gets
+ * nothing.
+ *
+ * ACCEPTED COST: in a long ask chat the read-only constraint stops being the
+ * most recent instruction, while ask mode keeps auto-approving `Bash` and the
+ * prompt is the whole enforcement mechanism. That recency loss is a deliberate
+ * tradeoff for not re-sending the block on every turn; the signals below are
+ * the safety valves.
  */
 
 import { READ_ONLY_SYSTEM_MESSAGE, loadInstructions } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, ProcessCompactionState } from '@plusplusoneplusplus/forge';
 import type { ChatMode, ChatPayload, LegacyChatMode } from '../tasks/task-types';
 import {
     hasClassifyDiffContext,
@@ -73,23 +78,27 @@ export interface ModeDirectiveInput {
  * fresh autopilot chat with no mode instructions.
  */
 export function buildChatModeDirective(input: ModeDirectiveInput): string | undefined {
-    const mode = normalizeChatModeOrDefault(input.mode);
-    const previousMode = normalizeChatMode(input.previousMode);
-    const parts: string[] = [];
+    const prose = buildChatModeProse(input.mode, input.previousMode);
+    const modeInstructions = input.modeInstructions?.trim() || undefined;
 
-    if (mode === 'ask') {
-        parts.push(READ_ONLY_SYSTEM_MESSAGE.trim());
-    } else if (previousMode === 'ask') {
-        parts.push(MODE_SWITCHED_TO_AUTOPILOT_NOTE);
-    }
-
-    const modeInstructions = input.modeInstructions?.trim();
-    if (modeInstructions) {
-        parts.push(modeInstructions);
-    }
-
+    const parts = [prose, modeInstructions].filter((part): part is string => !!part);
     if (parts.length === 0) return undefined;
     return tagBlock(CHAT_MODE_DIRECTIVE_TAG, parts.join('\n\n'));
+}
+
+/**
+ * The mode prose half of the directive: the one fixed sentence-block this
+ * turn's mode calls for, untagged, or `undefined` when the mode says nothing.
+ *
+ * Exactly one of two known constants, which is what makes a stored directive
+ * splittable back into (prose, instructions) — see {@link parseChatModeMarker}.
+ */
+function buildChatModeProse(rawMode: ChatMode, rawPreviousMode: ChatMode | undefined): string | undefined {
+    const mode = normalizeChatModeOrDefault(rawMode);
+    const previousMode = normalizeChatMode(rawPreviousMode);
+    if (mode === 'ask') return READ_ONLY_SYSTEM_MESSAGE.trim();
+    if (previousMode === 'ask') return MODE_SWITCHED_TO_AUTOPILOT_NOTE;
+    return undefined;
 }
 
 /**
@@ -121,6 +130,150 @@ export async function loadChatModeInstructions(
     } catch {
         return undefined;
     }
+}
+
+// ============================================================================
+// Injection decision
+// ============================================================================
+
+/** Inputs for {@link shouldInjectChatModeDirective}. */
+export interface ChatModeInjectionCheck {
+    /** Mode this turn runs in. */
+    mode: ChatMode;
+    /** Mode the previous turn ran in; `undefined` on the first turn. */
+    previousMode?: ChatMode;
+    /**
+     * Resolved `.github/coc/instructions-<mode>.md` for this turn.
+     *
+     * Only the prompt side has this — the route that persists the user turn
+     * never loads a `workingDirectory`. Pass it together with
+     * `checkInstructionDrift: true`; leave both off on the display side.
+     */
+    modeInstructions?: string;
+    /**
+     * Whether `modeInstructions` is authoritative. `false` (the display side)
+     * means "unknown", which disables signal 5 rather than reading the absent
+     * value as "no instructions".
+     */
+    checkInstructionDrift?: boolean;
+    /** The process's persisted turns (the current user turn may or may not be present yet). */
+    turns: ConversationTurn[] | undefined;
+    /** `metadata.compaction` — the lifecycle of the most recent `/compact` run. */
+    compaction: ProcessCompactionState | undefined;
+    /**
+     * False when the turn cannot resume a live SDK session and the executor
+     * instead rebuilds history from persisted turns. Those turns inline the
+     * *display* copy of the block, and `buildConversationHistoryContext` wraps
+     * the replay in `<conversation_history>` — a quoted instruction, not an
+     * active one.
+     */
+    canResumeSession: boolean;
+}
+
+/**
+ * Decide whether this follow-up turn's outgoing prompt needs the mode block.
+ *
+ * The block is session state, so the default answer is "no" — a live,
+ * uncompacted session in a stable mode already has it from an earlier turn. It
+ * is re-injected only when the model provably does not have the right one:
+ *
+ *  1. **No live session to resume** (`canResumeSession === false`). History is
+ *     rebuilt from persisted turns, which carry the block only as replayed
+ *     quotation inside `<conversation_history>`.
+ *  2. **Mode changed since the last injection**, in both directions —
+ *     `→ ask` sends the read-only block, `ask → autopilot` sends
+ *     {@link MODE_SWITCHED_TO_AUTOPILOT_NOTE}. This is the primary trigger and
+ *     the reason the check exists.
+ *  3. **Never injected before** — no earlier turn carries a `chatModeContext`.
+ *  4. **Compaction since the last injection** — the summarizer may have dropped
+ *     the block.
+ *  5. **Mode-instruction drift** — the resolved
+ *     `.github/coc/instructions-<mode>.md` differs from the copy last injected.
+ *     Repo config can be edited mid-chat. Prompt side only: the route that
+ *     writes the stored turn cannot load the file, so a *drift-only*
+ *     re-injection is sent to the model but not disclosed in the transcript.
+ *     Every other signal is evaluated identically on both sides, so the
+ *     transcript and the prompt agree on which turns carried the block.
+ *
+ * Compaction detection mirrors `shouldInjectRepoGroupContext`: the
+ * display-only result turn `/compact` appends (the only kind of `displayOnly`
+ * assistant turn CoC produces) and `metadata.compaction`, checked
+ * independently because they settle independently. NOTE: this only sees
+ * explicit `/compact` runs. Provider-side background compaction is not
+ * surfaced to the server by any SDK wrapper, so an invisible compaction can
+ * drop the block with no re-injection. If a wrapper ever forwards
+ * `compact_boundary`, feed it in as a further signal.
+ *
+ * ACCEPTED RISK: between injections the read-only constraint is no longer the
+ * most recent instruction in a long ask chat, and ask mode auto-approves
+ * `Bash`. Deliberate — see the file header.
+ */
+export function shouldInjectChatModeDirective(check: ChatModeInjectionCheck): boolean {
+    const expectedProse = buildChatModeProse(check.mode, check.previousMode);
+    const expectedInstructions = check.checkInstructionDrift ? check.modeInstructions?.trim() || undefined : undefined;
+
+    // Nothing this turn could say. The display side lands here for every
+    // autopilot turn, which is exactly what `buildChatModeDisplayBlock` already
+    // returns nothing for.
+    if (!expectedProse && !expectedInstructions) return false;
+    if (!check.canResumeSession) return true;
+
+    const turns = check.turns ?? [];
+    let lastInjectedIndex = -1;
+    for (let i = turns.length - 1; i >= 0; i--) {
+        if (turns[i]?.chatModeContext) {
+            lastInjectedIndex = i;
+            break;
+        }
+    }
+    if (lastInjectedIndex === -1) return true;
+
+    const last = parseChatModeMarker(turns[lastInjectedIndex].chatModeContext ?? '');
+    if (last.prose !== expectedProse) return true;
+    if (check.checkInstructionDrift && last.instructions !== expectedInstructions) return true;
+
+    for (let i = lastInjectedIndex + 1; i < turns.length; i++) {
+        if (turns[i]?.role === 'assistant' && turns[i]?.displayOnly === true) return true;
+    }
+
+    const compaction = check.compaction;
+    if (compaction?.state === 'completed' && compaction.completedAt) {
+        const completedMs = Date.parse(compaction.completedAt);
+        const injectedMs = toEpochMs(turns[lastInjectedIndex].timestamp);
+        if (Number.isFinite(completedMs) && (injectedMs === undefined || completedMs > injectedMs)) return true;
+    }
+
+    return false;
+}
+
+/**
+ * Split a stored `chatModeContext` marker back into the two halves
+ * {@link buildChatModeDirective} joined.
+ *
+ * The prose half is always one of two known constants, so the split is exact
+ * rather than a guess at where the repo instructions begin. A marker written by
+ * the display side carries no instructions; one written by the prompt side may.
+ */
+function parseChatModeMarker(marker: string): { prose?: string; instructions?: string } {
+    const open = `<${CHAT_MODE_DIRECTIVE_TAG}>\n`;
+    const close = `\n</${CHAT_MODE_DIRECTIVE_TAG}>`;
+    let body = marker;
+    if (body.startsWith(open)) body = body.slice(open.length);
+    if (body.endsWith(close)) body = body.slice(0, -close.length);
+
+    for (const prose of [READ_ONLY_SYSTEM_MESSAGE.trim(), MODE_SWITCHED_TO_AUTOPILOT_NOTE]) {
+        if (body === prose) return { prose };
+        if (body.startsWith(`${prose}\n\n`)) {
+            return { prose, instructions: body.slice(prose.length + 2) || undefined };
+        }
+    }
+    return { instructions: body || undefined };
+}
+
+/** Epoch millis for a turn timestamp (a `Date` in memory, an ISO string once serialized). */
+function toEpochMs(timestamp: unknown): number | undefined {
+    const ms = timestamp instanceof Date ? timestamp.getTime() : Date.parse(String(timestamp));
+    return Number.isFinite(ms) ? ms : undefined;
 }
 
 // ============================================================================

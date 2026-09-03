@@ -19,7 +19,10 @@ import {
     loadChatModeInstructions,
     prependChatModeDirective,
     resolveFirstTurnDirectiveMode,
+    shouldInjectChatModeDirective,
 } from '../../../src/server/executors/chat-mode-directive';
+import type { ChatModeInjectionCheck } from '../../../src/server/executors/chat-mode-directive';
+import type { ChatMode } from '../../../src/server/tasks/task-types';
 
 // ============================================================================
 // buildChatModeDirective
@@ -225,5 +228,182 @@ describe('resolveFirstTurnDirectiveMode', () => {
             type: 'dream-analyzer',
             payload: { kind: 'chat', mode: 'ask', prompt: 'Analyze these conversations.' },
         })).toBeUndefined();
+    });
+});
+
+// ============================================================================
+// shouldInjectChatModeDirective
+// ============================================================================
+
+describe('shouldInjectChatModeDirective', () => {
+    const askMarker = buildChatModeDirective({ mode: 'ask' })!;
+    const switchMarker = buildChatModeDirective({ mode: 'autopilot', previousMode: 'ask' })!;
+
+    /** A user turn that carried the directive, with `marker` as its verbatim content. */
+    const injected = (turnIndex: number, marker: string, timestamp = '2026-01-01T00:00:00.000Z') =>
+        ({
+            role: 'user' as const,
+            content: 'hi',
+            timestamp: new Date(timestamp),
+            turnIndex,
+            timeline: [],
+            chatModeContext: marker,
+        });
+
+    const plain = (turnIndex: number, role: 'user' | 'assistant' = 'user') =>
+        ({ role, content: 'x', timestamp: new Date('2026-01-01T00:00:00.000Z'), turnIndex, timeline: [] });
+
+    const compactionNotice = (turnIndex: number) => ({ ...plain(turnIndex, 'assistant'), displayOnly: true });
+
+    const cases: Array<{
+        name: string;
+        check: Partial<ChatModeInjectionCheck> & { mode: ChatMode };
+        expected: boolean;
+    }> = [
+        {
+            name: 'steady-state ask on a live session sends nothing',
+            check: { mode: 'ask', previousMode: 'ask', turns: [injected(0, askMarker), plain(1, 'assistant')] },
+            expected: false,
+        },
+        {
+            name: 'signal 1: no resumable session re-injects',
+            check: { mode: 'ask', previousMode: 'ask', turns: [injected(0, askMarker)], canResumeSession: false },
+            expected: true,
+        },
+        {
+            name: 'signal 2: autopilot -> ask re-injects',
+            check: { mode: 'ask', previousMode: 'autopilot', turns: [injected(0, switchMarker)] },
+            expected: true,
+        },
+        {
+            name: 'signal 2: ask -> autopilot sends the switch note',
+            check: { mode: 'autopilot', previousMode: 'ask', turns: [injected(0, askMarker)] },
+            expected: true,
+        },
+        {
+            name: 'steady-state autopilot after the switch note sends nothing',
+            check: { mode: 'autopilot', previousMode: 'autopilot', turns: [injected(0, switchMarker)] },
+            expected: false,
+        },
+        {
+            name: 'signal 3: never injected re-injects',
+            check: { mode: 'ask', previousMode: 'ask', turns: [plain(0), plain(1, 'assistant')] },
+            expected: true,
+        },
+        {
+            name: 'signal 4: a displayOnly compaction notice after the last injection re-injects',
+            check: { mode: 'ask', previousMode: 'ask', turns: [injected(0, askMarker), compactionNotice(1)] },
+            expected: true,
+        },
+        {
+            name: 'signal 4: a completed compaction newer than the injection re-injects',
+            check: {
+                mode: 'ask',
+                previousMode: 'ask',
+                turns: [injected(0, askMarker, '2026-01-01T00:00:00.000Z')],
+                compaction: { state: 'completed', completedAt: '2026-01-02T00:00:00.000Z' } as never,
+            },
+            expected: true,
+        },
+        {
+            name: 'a completed compaction older than the injection is ignored',
+            check: {
+                mode: 'ask',
+                previousMode: 'ask',
+                turns: [injected(0, askMarker, '2026-01-03T00:00:00.000Z')],
+                compaction: { state: 'completed', completedAt: '2026-01-02T00:00:00.000Z' } as never,
+            },
+            expected: false,
+        },
+        {
+            name: 'signal 5: mode-instruction drift re-injects when the caller knows the instructions',
+            check: {
+                mode: 'ask',
+                previousMode: 'ask',
+                turns: [injected(0, buildChatModeDirective({ mode: 'ask', modeInstructions: 'old' })!)],
+                modeInstructions: 'new',
+                checkInstructionDrift: true,
+            },
+            expected: true,
+        },
+        {
+            name: 'signal 5: unchanged instructions send nothing',
+            check: {
+                mode: 'ask',
+                previousMode: 'ask',
+                turns: [injected(0, buildChatModeDirective({ mode: 'ask', modeInstructions: 'same' })!)],
+                modeInstructions: 'same',
+                checkInstructionDrift: true,
+            },
+            expected: false,
+        },
+        {
+            name: 'signal 5 is off for the display side, so drift is not disclosed',
+            check: {
+                mode: 'ask',
+                previousMode: 'ask',
+                turns: [injected(0, buildChatModeDirective({ mode: 'ask', modeInstructions: 'old' })!)],
+            },
+            expected: false,
+        },
+        {
+            name: 'an instructions-only autopilot chat injects once',
+            check: {
+                mode: 'autopilot',
+                previousMode: 'autopilot',
+                turns: [plain(0)],
+                modeInstructions: 'be terse',
+                checkInstructionDrift: true,
+            },
+            expected: true,
+        },
+        {
+            name: 'an instructions-only autopilot chat then sends nothing',
+            check: {
+                mode: 'autopilot',
+                previousMode: 'autopilot',
+                turns: [injected(0, buildChatModeDirective({ mode: 'autopilot', modeInstructions: 'be terse' })!)],
+                modeInstructions: 'be terse',
+                checkInstructionDrift: true,
+            },
+            expected: false,
+        },
+        {
+            name: 'a bare autopilot turn has nothing to say, even on a cold resume',
+            check: { mode: 'autopilot', previousMode: 'autopilot', turns: [], canResumeSession: false },
+            expected: false,
+        },
+    ];
+
+    for (const { name, check, expected } of cases) {
+        it(name, () => {
+            const decision = shouldInjectChatModeDirective({
+                canResumeSession: true,
+                compaction: undefined,
+                turns: [],
+                ...check,
+            });
+            expect(decision).toBe(expected);
+        });
+    }
+
+    it('agrees with buildChatModeDirective on what a stable ask chat sends', () => {
+        // Turn 1 injects, turns 2..N do not — AC-01 at the unit level.
+        const turns: Array<ReturnType<typeof injected> | ReturnType<typeof plain>> = [];
+        const sent: Array<string | undefined> = [];
+        for (let turn = 0; turn < 4; turn++) {
+            const inject = shouldInjectChatModeDirective({
+                mode: 'ask',
+                previousMode: turn === 0 ? undefined : 'ask',
+                turns,
+                compaction: undefined,
+                canResumeSession: turn > 0,
+            });
+            const directive = inject ? buildChatModeDirective({ mode: 'ask' }) : undefined;
+            sent.push(directive);
+            turns.push(directive ? injected(turn, directive) : plain(turn));
+        }
+
+        expect(sent).toEqual([askMarker, undefined, undefined, undefined]);
     });
 });
