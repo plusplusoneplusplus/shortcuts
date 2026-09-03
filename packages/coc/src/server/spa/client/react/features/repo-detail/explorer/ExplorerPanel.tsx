@@ -9,7 +9,7 @@ import { Spinner } from '../../../ui';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { FileTree } from './FileTree';
-import { PreviewPane } from './PreviewPane';
+import { PreviewPane, type PreviewStatus } from './PreviewPane';
 import { ExplorerCloseTabsDialog } from './ExplorerCloseTabsDialog';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
@@ -169,8 +169,8 @@ export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set
     return next;
 }
 
-/** Stable empty dirty-tab set — a fresh `Set` per render would loop consumers. */
-const NO_DIRTY_TABS: ReadonlySet<string> = new Set<string>();
+/** Stable empty tab-id set — a fresh `Set` per render would loop consumers. */
+const NO_TAB_IDS: ReadonlySet<string> = new Set<string>();
 
 export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
@@ -232,7 +232,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
     // Search-tab texts: in memory, shared by both mounts of this workspace, and
     // deliberately never persisted (see explorerStateStore).
     const [searchBuffers, setSearchBuffers] = useExplorerSearchBuffers(workspaceId);
-    const [dirtyTabIds, setDirtyTabIds] = useState<ReadonlySet<string>>(NO_DIRTY_TABS);
+    const [dirtyTabIds, setDirtyTabIds] = useState<ReadonlySet<string>>(NO_TAB_IDS);
     // Mobile only: the Files back action hides the editor without closing the
     // active tab, so a trip back to the tree keeps the whole tab set (AC-06).
     const [mobileTreeVisible, setMobileTreeVisible] = useState(false);
@@ -276,6 +276,30 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         if (!tabsEnabled) return;
         setExplorerInstanceDirty(workspaceId, dirtyInstanceId, dirtyTabIds.size > 0);
     }, [tabsEnabled, dirtyTabIds, workspaceId, dirtyInstanceId]);
+
+    // Per-tab load/error, so the strip can show a spinner or a warning for a
+    // buffer the user is not looking at (AC-05/AC-06). Like the dirty handlers,
+    // the callbacks are memoized per tab id so a buffer never re-registers.
+    const [loadingTabIds, setLoadingTabIds] = useState<ReadonlySet<string>>(NO_TAB_IDS);
+    const [errorTabIds, setErrorTabIds] = useState<ReadonlySet<string>>(NO_TAB_IDS);
+    const statusHandlers = useRef(new Map<string, (status: PreviewStatus) => void>());
+    const statusHandlerFor = useCallback((tabId: string) => {
+        const cached = statusHandlers.current.get(tabId);
+        if (cached) return cached;
+        const handler = (status: PreviewStatus) => {
+            const apply = (member: boolean) => (prev: ReadonlySet<string>) => {
+                if (prev.has(tabId) === member) return prev;
+                const next = new Set(prev);
+                if (member) next.add(tabId);
+                else next.delete(tabId);
+                return next;
+            };
+            setLoadingTabIds(apply(status === 'loading'));
+            setErrorTabIds(apply(status === 'error'));
+        };
+        statusHandlers.current.set(tabId, handler);
+        return handler;
+    }, []);
 
     // The freshest dirty set, read by the close path (which must stay
     // referentially stable so the strip rows and the keyboard listener do not
@@ -452,16 +476,19 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         // so a late unmount cannot unregister a fresh buffer); only the live save
         // functions are dropped.
         for (const id of ids) saveHandlers.current.delete(id);
-        // A closed buffer is gone, so it can no longer hold unsaved edits. Drop
-        // the flags here rather than waiting for each PreviewPane's unmount
-        // cleanup, so the aggregate the switch/unload guards read is correct in
-        // the same commit as the close.
-        setDirtyTabIds(prev => {
+        // A closed buffer is gone, so it can no longer be dirty, loading or
+        // errored. Drop the flags here rather than waiting for each PreviewPane's
+        // unmount cleanup, so the aggregate the switch/unload guards read is
+        // correct in the same commit as the close.
+        const drop = (prev: ReadonlySet<string>) => {
             if (!ids.some(id => prev.has(id))) return prev;
             const next = new Set(prev);
             for (const id of ids) next.delete(id);
             return next;
-        });
+        };
+        setDirtyTabIds(drop);
+        setLoadingTabIds(drop);
+        setErrorTabIds(drop);
         setSearchBuffers(prev => {
             if (!ids.some(id => prev.has(id))) return prev;
             const next = new Map(prev);
@@ -1256,6 +1283,8 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                             activeId={tabsState.activeId}
                             labels={tabs.labels}
                             dirtyIds={dirtyTabIds}
+                            loadingIds={loadingTabIds}
+                            errorIds={errorTabIds}
                             onActivate={tabs.activate}
                             onPin={tabs.pin}
                             onClose={handleCloseTab}
@@ -1303,6 +1332,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                                                     onClose={isMobile ? undefined : () => handleCloseTab(tab.id)}
                                                     onDirtyChange={dirtyHandlerFor(tab.id)}
                                                     onRegisterSave={saveRegistrarFor(tab.id)}
+                                                    onStatusChange={statusHandlerFor(tab.id)}
                                                 />
                                             )}
                                     </div>

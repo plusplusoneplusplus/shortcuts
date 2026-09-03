@@ -6,6 +6,8 @@
  *   - Refresh: reloads the file tree
  *   - Content search: Search view, grouped results, click-to-open-at-line,
  *     include filter + collapse + keyboard navigation
+ *   - Editor tabs (behind `features.explorerEditorTabs`): preview replacement,
+ *     pinning, switching, closing, duplicate-name labels, reload persistence
  *
  * Relies on existing data-testid attributes in the explorer components
  * (no new testids added):
@@ -20,7 +22,9 @@
  *   content-search-summary, content-search-empty, content-search-regex-error,
  *   content-search-file-header, content-search-file-count,
  *   content-search-filters-toggle, content-search-filters-dot,
- *   content-search-include
+ *   content-search-include,
+ *   explorer-tab-list, explorer-tab-{id}, explorer-tab-label-{id},
+ *   explorer-tab-close-{id}, explorer-tab-panel-{id}
  */
 
 import * as fs from 'fs';
@@ -28,6 +32,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
+import { editorTab, enableExplorerEditorTabs, expectEditorTabs } from './fixtures/explorer-tabs-seed';
 import type { Page } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
@@ -514,6 +519,90 @@ test.describe('ExplorerPanel – Content search', () => {
                 String(SEARCH_NEEDLE_LINE),
                 { timeout: 15_000 },
             );
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Editor tabs (features.explorerEditorTabs)
+// ---------------------------------------------------------------------------
+
+test.describe('ExplorerPanel – Editor tabs', () => {
+    test('E.18 preview replacement, pinning, switching and closing across a tab strip', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            // Live flag: must be on before the SPA loads its runtime config.
+            await enableExplorerEditorTabs(serverUrl);
+
+            await gotoExplorer(page, serverUrl);
+            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
+            await page.locator('[data-testid="tree-node-src"]').click();
+            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+
+            // 1. A single click opens ONE replaceable preview tab, and a second
+            //    single click replaces it rather than stacking.
+            await page.locator('[data-testid="tree-node-src/index.ts"]').click();
+            await expectEditorTabs(page, ['file:src/index.ts']);
+            await expect(editorTab(page, 'file:src/index.ts')).toHaveAttribute('data-preview', 'true');
+
+            await page.locator('[data-testid="tree-node-src/utils.ts"]').click();
+            await expectEditorTabs(page, ['file:src/utils.ts']);
+
+            // 2. A double click pins, so the next single click adds a tab.
+            await page.locator('[data-testid="tree-node-src/utils.ts"]').dblclick();
+            await expect(editorTab(page, 'file:src/utils.ts')).not.toHaveAttribute('data-preview', 'true');
+            await page.locator('[data-testid="tree-node-src/index.ts"]').click();
+            await expectEditorTabs(page, ['file:src/utils.ts', 'file:src/index.ts']);
+
+            // 3. Both buffers stay mounted; clicking a tab switches which one shows.
+            const utilsPanel = page.locator('[data-testid="explorer-tab-panel-file:src/utils.ts"]');
+            const indexPanel = page.locator('[data-testid="explorer-tab-panel-file:src/index.ts"]');
+            await expect(indexPanel).toHaveAttribute('data-active', 'true');
+            await editorTab(page, 'file:src/utils.ts').click();
+            await expect(utilsPanel).toHaveAttribute('data-active', 'true');
+            await expect(indexPanel).not.toHaveAttribute('data-active', 'true');
+            await expect(
+                utilsPanel.locator('[data-testid="monaco-container"] .monaco-editor .view-lines'),
+            ).toContainText('add', { timeout: 15_000 });
+
+            // 4. The close button on a clean tab closes just that tab.
+            await page.locator('[data-testid="explorer-tab-close-file:src/utils.ts"]').click();
+            await expectEditorTabs(page, ['file:src/index.ts']);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.19 the tab session survives a full reload, and colliding names widen', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+
+            await gotoExplorer(page, serverUrl);
+            await expect(page.locator('[data-testid="tree-node-docs"]')).toBeVisible({ timeout: 8_000 });
+            await page.locator('[data-testid="tree-node-docs"]').click();
+            await expect(page.locator('[data-testid="tree-node-docs/README.md"]')).toBeVisible({ timeout: 5_000 });
+
+            // Two files with the SAME filename: the labels widen to the shortest
+            // distinguishing path, and every tab still tooltips its full path.
+            await page.locator('[data-testid="tree-node-README.md"]').dblclick();
+            await page.locator('[data-testid="tree-node-docs/README.md"]').dblclick();
+            await expectEditorTabs(page, ['file:README.md', 'file:docs/README.md']);
+            await expect(page.locator('[data-testid="explorer-tab-label-file:docs/README.md"]'))
+                .toHaveText('docs/README.md');
+            await expect(editorTab(page, 'file:docs/README.md')).toHaveAttribute('title', 'docs/README.md');
+
+            // A real reload (not a same-hash navigation) restores the session.
+            await page.reload();
+            await expect(page.locator('[data-testid="explorer-panel"]')).toBeVisible({ timeout: 10_000 });
+            await expectEditorTabs(page, ['file:README.md', 'file:docs/README.md']);
+            await expect(editorTab(page, 'file:docs/README.md')).toHaveAttribute('aria-selected', 'true');
         } finally {
             safeRmSync(tmpDir);
         }

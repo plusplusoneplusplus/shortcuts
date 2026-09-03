@@ -43,7 +43,16 @@ export interface PreviewPaneProps {
      * succeeded — a failed save leaves the buffer dirty and shows the error here.
      */
     onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
+    /**
+     * Notified whenever this buffer starts loading, fails, or settles (and with
+     * `'ready'` on unmount). Lets the owner mark the matching tab as loading or
+     * errored in the tab strip without reaching into the buffer (AC-05/AC-06).
+     */
+    onStatusChange?: (status: PreviewStatus) => void;
 }
+
+/** What a buffer is doing, as reported to its owner through `onStatusChange`. */
+export type PreviewStatus = 'loading' | 'error' | 'ready';
 
 interface BlobResponse {
     content: string;
@@ -59,7 +68,7 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -118,6 +127,14 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
         onDirtyChange?.(isDirty);
     }, [isDirty, onDirtyChange]);
     useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
+
+    // Same contract for load/error, so the tab strip can show a spinner or a
+    // warning for a buffer the user is not currently looking at (AC-05). A
+    // closed buffer is neither loading nor errored, hence 'ready' on unmount.
+    useEffect(() => {
+        onStatusChange?.(loading ? 'loading' : error ? 'error' : 'ready');
+    }, [loading, error, onStatusChange]);
+    useEffect(() => () => { onStatusChange?.('ready'); }, [onStatusChange]);
 
     const doRetry = () => {
         abortRef.current?.abort();

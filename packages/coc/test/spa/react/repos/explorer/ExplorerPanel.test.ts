@@ -260,7 +260,7 @@ describe('ExplorerPanel', () => {
 
     describe('preview pane integration', () => {
         it('imports PreviewPane', () => {
-            expect(source).toContain("import { PreviewPane } from './PreviewPane'");
+            expect(source).toContain("import { PreviewPane, type PreviewStatus } from './PreviewPane'");
         });
 
         it('renders PreviewPane when previewFile is set', () => {

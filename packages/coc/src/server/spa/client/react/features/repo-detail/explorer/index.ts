@@ -5,7 +5,7 @@ export type { FileTreeProps } from './FileTree';
 export { TreeNode } from './TreeNode';
 export type { TreeNodeProps } from './TreeNode';
 export { PreviewPane } from './PreviewPane';
-export type { PreviewPaneProps } from './PreviewPane';
+export type { PreviewPaneProps, PreviewStatus } from './PreviewPane';
 export { MonacoFileEditor, getMonacoLanguage, revealEditorLine, buildHighlightDecorations, EDITOR_HIGHLIGHT_CLASS } from './MonacoFileEditor';
 export type { MonacoFileEditorProps, EditorHighlightRange } from './MonacoFileEditor';
 export { SearchBar, autoGrowRows, SEARCH_BAR_MAX_ROWS } from './SearchBar';
