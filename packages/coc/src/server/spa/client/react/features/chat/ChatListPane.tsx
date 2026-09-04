@@ -3209,6 +3209,8 @@ export function ChatListPane({
      * across both the chats and activity branches.
      *
      * Layout (CSS grid): [status-dot 10px] [MODE pill 20px] [title 1fr] [right auto]
+     * - The right column holds the optional folder chip *and* the timestamp in a
+     *   single child, so the four-column template is never overflowed.
      * - Mode pill: ASK / AUTO (chat) or AUTO / SCRP (non-chat).
      * - Status dot encodes runtime state independently of the mode pill.
      * - On hover the timestamp swaps to inline pin/archive/more buttons.
@@ -3228,6 +3230,12 @@ export function ChatListPane({
         /** Files a whole group instead of this one chat when the row roots a
          *  filable group — today the root of a spawned tree (AC-03). */
         groupFolder?: GroupFolderTarget;
+        /** True when the row is rendered underneath its own folder in the Folders
+         *  section. Suppresses the folder-name chip, which would only repeat the
+         *  name of the folder the row already sits in. `isGroupChild` is not a
+         *  substitute: a spawned-tree root renders at depth 0 inside a folder and
+         *  is therefore not a group child. */
+        insideFolder?: boolean;
     }) => {
         const isUnseen = unseenProcessIds?.has(task.id) ?? false;
         const hasDraft = !!getDraft(task.id);
@@ -3258,7 +3266,7 @@ export function ChatListPane({
         // left saying where a result lives (AC-08). Rows rendered *inside* a
         // folder need no chip, and an unfiled row gets none rather than one
         // reading "Unfiled".
-        const rowFolder = chatFoldersEnabled && !options?.isGroupChild && (isRunning || isQueued || !!folderSearchQuery)
+        const rowFolder = chatFoldersEnabled && !options?.isGroupChild && !options?.insideFolder && (isRunning || isQueued || !!folderSearchQuery)
             ? foldersById.get(resolveEntryFolderId(task, folderIdByProcess, groupFolderIndex) ?? '')
             : undefined;
         const forEachGenerationPreview = getForEachGenerationPreview(task);
@@ -3504,67 +3512,73 @@ export function ChatListPane({
                             );
                         })()}
                     </span>
-                    {rowFolder && <ChatFolderChip name={rowFolder.name} color={rowFolder.color} />}
-                    <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
-                        <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
-                            {isRunning ? (
-                                isAwaitingInput ? (
-                                    <span className="inline-flex items-center gap-1" data-testid="awaiting-input-indicator">
-                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
-                                        Needs input
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-1" data-testid="thinking-indicator">
-                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />
-                                        {statusLabel('running', task.type)}
-                                    </span>
-                                )
-                            ) : timeText}
-                        </span>
-                        <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
-                            {!isQueued && (
+                    {/* The folder chip and the time/hover-actions share ONE grid child:
+                        the row template has exactly four columns, so rendering the chip as a
+                        fifth direct child would auto-place the time span onto an implicit
+                        second grid row at column 1 — outside the fixed-height row box. */}
+                    <span className="flex items-center gap-2">
+                        {rowFolder && <ChatFolderChip name={rowFolder.name} color={rowFolder.color} />}
+                        <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
+                            <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
+                                {isRunning ? (
+                                    isAwaitingInput ? (
+                                        <span className="inline-flex items-center gap-1" data-testid="awaiting-input-indicator">
+                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
+                                            Needs input
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1" data-testid="thinking-indicator">
+                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />
+                                            {statusLabel('running', task.type)}
+                                        </span>
+                                    )
+                                ) : timeText}
+                            </span>
+                            <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
+                                {!isQueued && (
+                                    <button
+                                        type="button"
+                                        className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                        title={isPinned ? 'Unpin' : 'Pin'}
+                                        aria-label={isPinned ? 'Unpin chat' : 'Pin chat'}
+                                        data-testid="chat-row-pin"
+                                        onClick={stopAndCall(() => (isPinned ? onUnpinChat?.(task.id) : onPinChat?.(task.id)))}
+                                    >
+                                        <svg width="12" height="12" viewBox="0 0 14 14" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                            <path d="M9 1.5l3.5 3.5-2 1-1.5 4-2-2-3 3-.5-.5 3-3-2-2 4-1.5 1-1z"/>
+                                        </svg>
+                                    </button>
+                                )}
+                                {!isRunning && !isQueued && (
+                                    <button
+                                        type="button"
+                                        className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                        title={isArchived ? 'Unarchive' : 'Archive'}
+                                        aria-label={isArchived ? 'Unarchive chat' : 'Archive chat'}
+                                        data-testid="chat-row-archive"
+                                        onClick={stopAndCall(() => (isArchived ? onUnarchiveChat?.(task.id) : onArchiveChat?.(task.id)))}
+                                    >
+                                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                                            <rect x="2" y="2.5" width="10" height="2.5" rx=".5"/>
+                                            <path d="M3 5v6.5h8V5M5.5 7.5h3"/>
+                                        </svg>
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
-                                    title={isPinned ? 'Unpin' : 'Pin'}
-                                    aria-label={isPinned ? 'Unpin chat' : 'Pin chat'}
-                                    data-testid="chat-row-pin"
-                                    onClick={stopAndCall(() => (isPinned ? onUnpinChat?.(task.id) : onPinChat?.(task.id)))}
+                                    title="More"
+                                    aria-label="More actions"
+                                    data-testid="chat-row-more"
+                                    onClick={(e) => { e.stopPropagation(); handleTaskContextMenu(e, task.id, contextMenuKind); }}
                                 >
-                                    <svg width="12" height="12" viewBox="0 0 14 14" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
-                                        <path d="M9 1.5l3.5 3.5-2 1-1.5 4-2-2-3 3-.5-.5 3-3-2-2 4-1.5 1-1z"/>
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                                        <circle cx="3.5" cy="7" r="1"/>
+                                        <circle cx="7" cy="7" r="1"/>
+                                        <circle cx="10.5" cy="7" r="1"/>
                                     </svg>
                                 </button>
-                            )}
-                            {!isRunning && !isQueued && (
-                                <button
-                                    type="button"
-                                    className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
-                                    title={isArchived ? 'Unarchive' : 'Archive'}
-                                    aria-label={isArchived ? 'Unarchive chat' : 'Archive chat'}
-                                    data-testid="chat-row-archive"
-                                    onClick={stopAndCall(() => (isArchived ? onUnarchiveChat?.(task.id) : onArchiveChat?.(task.id)))}
-                                >
-                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-                                        <rect x="2" y="2.5" width="10" height="2.5" rx=".5"/>
-                                        <path d="M3 5v6.5h8V5M5.5 7.5h3"/>
-                                    </svg>
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
-                                title="More"
-                                aria-label="More actions"
-                                data-testid="chat-row-more"
-                                onClick={(e) => { e.stopPropagation(); handleTaskContextMenu(e, task.id, contextMenuKind); }}
-                            >
-                                <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
-                                    <circle cx="3.5" cy="7" r="1"/>
-                                    <circle cx="7" cy="7" r="1"/>
-                                    <circle cx="10.5" cy="7" r="1"/>
-                                </svg>
-                            </button>
+                            </span>
                         </span>
                     </span>
                 </div>
@@ -3610,7 +3624,7 @@ export function ChatListPane({
         return 'completed';
     }, [tabFilteredRunning, tabFilteredQueued]);
 
-    const renderRalphSessionGroup = useCallback((session: RalphSession, listForRange: HistoryRangeInput[]) => {
+    const renderRalphSessionGroup = useCallback((session: RalphSession, listForRange: HistoryRangeInput[], insideFolder = false) => {
         const ralphSubIds = getRalphSessionSubIds(session);
         const { isFullySelected: isRalphRangeSelected, isPartiallySelected: isRalphPartiallySelected } =
             resolveGroupSelectionState(ralphSubIds, selectedHistoryIds);
@@ -3688,7 +3702,7 @@ export function ChatListPane({
                 }}
                 onTouchEnd={groupLongPress.onTouchEnd}
                 onTouchMove={groupLongPress.onTouchMove}
-                renderTaskCard={(task) => renderChatListRow(task, listForRange, { isGroupChild: true })}
+                renderTaskCard={(task) => renderChatListRow(task, listForRange, { isGroupChild: true, insideFolder })}
             />
         );
     }, [
@@ -3712,7 +3726,7 @@ export function ChatListPane({
         setGroupPinned,
     ]);
 
-    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[]) => {
+    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[], insideFolder = false) => {
         const forEachSubIds = getForEachRunSubIds(group);
         const { isFullySelected: isForEachRangeSelected, isPartiallySelected: isForEachPartiallySelected } =
             resolveGroupSelectionState(forEachSubIds, selectedHistoryIds);
@@ -3780,6 +3794,7 @@ export function ChatListPane({
                 renderTaskCard={(task) => renderChatListRow(task, listForRange, {
                     taskStatus: getGroupedChildTaskStatus(task),
                     isGroupChild: true,
+                    insideFolder,
                 })}
             />
         );
@@ -3801,7 +3816,7 @@ export function ChatListPane({
         workspaceId,
     ]);
 
-    const renderMapReduceRunGroup = useCallback((group: MapReduceRunGroup, listForRange: HistoryRangeInput[]) => {
+    const renderMapReduceRunGroup = useCallback((group: MapReduceRunGroup, listForRange: HistoryRangeInput[], insideFolder = false) => {
         const mapReduceSubIds = getMapReduceRunSubIds(group);
         const { isFullySelected: isMapReduceRangeSelected, isPartiallySelected: isMapReducePartiallySelected } =
             resolveGroupSelectionState(mapReduceSubIds, selectedHistoryIds);
@@ -3869,6 +3884,7 @@ export function ChatListPane({
                 renderTaskCard={(task) => renderChatListRow(task, listForRange, {
                     taskStatus: getGroupedChildTaskStatus(task),
                     isGroupChild: true,
+                    insideFolder,
                 })}
             />
         );
@@ -3890,7 +3906,7 @@ export function ChatListPane({
         workspaceId,
     ]);
 
-    const renderSpawnedTreeEntry = useCallback((entry: SpawnedTreeEntry, listForRange: HistoryRangeInput[]) => {
+    const renderSpawnedTreeEntry = useCallback((entry: SpawnedTreeEntry, listForRange: HistoryRangeInput[], insideFolder = false) => {
         return (
             <SpawnedTreeRow
                 key={`${workspaceId ?? '__all'}:spawned-tree:${entry.rootProcessId}`}
@@ -3900,6 +3916,7 @@ export function ChatListPane({
                 renderTaskCard={(task, opts) => renderChatListRow(task, listForRange, {
                     taskStatus: getGroupedChildTaskStatus(task),
                     isGroupChild: opts.isGroupChild,
+                    insideFolder,
                     leadingElement: opts.leadingElement,
                     // Only the root row files the tree; a descendant keeps its
                     // own single-chat "Move to folder".
@@ -3916,13 +3933,17 @@ export function ChatListPane({
      * map-reduce run, a spawned tree — renders with its own group renderer so
      * it keeps its children nested and its header affordances, exactly as it
      * would in a date bucket; only a plain chat falls through to the flat row.
+     *
+     * Every branch passes `insideFolder` so no row here repeats the name of the
+     * folder it is already sitting under — including a spawned-tree root, which
+     * renders at depth 0 and so is not flagged as a group child.
      */
     const renderFolderMember = useCallback((entry: any, listForRange: HistoryRangeInput[]): React.ReactNode => {
-        if (entry?.kind === 'ralph-session') {return renderRalphSessionGroup(entry, listForRange);}
-        if (entry?.kind === 'for-each-run') {return renderForEachRunGroup(entry, listForRange);}
-        if (entry?.kind === 'map-reduce-run') {return renderMapReduceRunGroup(entry, listForRange);}
-        if (entry?.kind === 'spawned-tree') {return renderSpawnedTreeEntry(entry, listForRange);}
-        return renderChatListRow(entry, listForRange, { isGroupChild: true });
+        if (entry?.kind === 'ralph-session') {return renderRalphSessionGroup(entry, listForRange, true);}
+        if (entry?.kind === 'for-each-run') {return renderForEachRunGroup(entry, listForRange, true);}
+        if (entry?.kind === 'map-reduce-run') {return renderMapReduceRunGroup(entry, listForRange, true);}
+        if (entry?.kind === 'spawned-tree') {return renderSpawnedTreeEntry(entry, listForRange, true);}
+        return renderChatListRow(entry, listForRange, { isGroupChild: true, insideFolder: true });
     }, [renderRalphSessionGroup, renderForEachRunGroup, renderMapReduceRunGroup, renderSpawnedTreeEntry, renderChatListRow]);
 
     /**
