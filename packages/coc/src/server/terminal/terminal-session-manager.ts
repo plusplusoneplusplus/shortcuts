@@ -32,7 +32,18 @@ import {
 // Constants
 // ============================================================================
 
-const DEFAULT_MAX_SESSIONS = 10;
+/**
+ * Safety cap on simultaneously *live* terminals. Terminals never expire on
+ * their own, so this exists only to stop a runaway client from spawning an
+ * unbounded number of shells; exceeding it is a clear error, never a reap.
+ */
+export const MAX_LIVE_SESSIONS = 100;
+/**
+ * How many exited tombstones are kept. Beyond this the oldest (by `exitedAt`)
+ * are evicted along with their persisted `.json`/`.log`, so a long-lived
+ * workspace directory does not grow forever.
+ */
+export const MAX_CLOSED_SESSIONS = 50;
 /**
  * Approximate scrollback cap per session, ~1 MiB (~10,000 lines at ~100 B/line).
  * The cap is by bytes, not lines: chunks are dropped whole from the front once
@@ -52,8 +63,10 @@ const DEFAULT_ROWS = 24;
 // ============================================================================
 
 export interface TerminalSessionManagerOptions {
-    /** Max concurrent terminal sessions across all workspaces (default: 10) */
+    /** Max concurrent *live* sessions across all workspaces (default: 100) */
     maxSessions?: number;
+    /** Max retained exited tombstones across all workspaces (default: 50) */
+    maxClosedSessions?: number;
     /** Override platform for testing (default: process.platform) */
     platform?: NodeJS.Platform;
     /** Override environment for spawned shells (default: process.env) */
@@ -165,7 +178,7 @@ export function appendToScrollback(session: TerminalSession, data: string): void
 export class TerminalSessionManager {
     private readonly sessions = new Map<string, TerminalSession>();
     private readonly options: Required<Pick<TerminalSessionManagerOptions,
-        'maxSessions' | 'platform'>>;
+        'maxSessions' | 'maxClosedSessions' | 'platform'>>;
     private readonly env: Record<string, string> | undefined;
     private readonly onData?: (sessionId: string, data: string) => void;
     private readonly onExit?: (sessionId: string, exitCode: number, signal?: number) => void;
@@ -187,7 +200,8 @@ export class TerminalSessionManager {
 
     constructor(options?: TerminalSessionManagerOptions) {
         this.options = {
-            maxSessions: options?.maxSessions ?? DEFAULT_MAX_SESSIONS,
+            maxSessions: options?.maxSessions ?? MAX_LIVE_SESSIONS,
+            maxClosedSessions: options?.maxClosedSessions ?? MAX_CLOSED_SESSIONS,
             platform: options?.platform ?? process.platform,
         };
         this.env = options?.env;
@@ -235,7 +249,10 @@ export class TerminalSessionManager {
             throw new Error(`Terminal is not available: ${this.nodePtyError ?? 'node-pty not installed'}`);
         }
         if (this.liveSize >= this.options.maxSessions) {
-            throw new Error(`Maximum terminal sessions (${this.options.maxSessions}) reached`);
+            throw new Error(
+                `Maximum terminal sessions (${this.options.maxSessions}) reached. ` +
+                'Close a terminal before opening a new one.',
+            );
         }
 
         const { shell, args } = this.detectShell(rootPath);
@@ -285,6 +302,7 @@ export class TerminalSessionManager {
             }
             // The session stays in the map as a tombstone: it is still listed,
             // still replays its scrollback, and can be restarted (AC-05).
+            this.evictClosedSessions();
             this.onExit?.(id, exitCode, signal);
         });
 
@@ -330,6 +348,26 @@ export class TerminalSessionManager {
                 bufferBytes: scrollback.length,
                 truncated: meta.truncated,
             });
+        }
+        this.evictClosedSessions();
+    }
+
+    /**
+     * Trim the exited tombstones back to `maxClosedSessions`, oldest
+     * `exitedAt` first, deleting each evicted entry's persisted files. Running
+     * sessions are never touched; an entry with no `exitedAt` (legacy or
+     * corrupt) counts as the oldest.
+     */
+    private evictClosedSessions(): void {
+        const closed = [...this.sessions.values()].filter(s => s.status === 'exited');
+        const excess = closed.length - this.options.maxClosedSessions;
+        if (excess <= 0) return;
+        closed.sort((a, b) => (a.exitedAt ?? 0) - (b.exitedAt ?? 0));
+        for (const session of closed.slice(0, excess)) {
+            this.clearFlushTimer(session.id);
+            this.sessions.delete(session.id);
+            // `remove()` tolerates files that are already gone.
+            this.persistence?.remove(session.workspaceId, session.id);
         }
     }
 
