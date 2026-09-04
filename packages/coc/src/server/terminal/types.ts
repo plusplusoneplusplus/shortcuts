@@ -31,10 +31,22 @@ export interface TerminalSession {
     readonly pty: IPty;
     cols: number;
     rows: number;
+    /** Shell executable the PTY was spawned with */
+    readonly shell: string;
+    /** Working directory the PTY was spawned in */
+    readonly cwd: string;
+    /** Display title (defaults to the shell's basename) */
+    title: string;
     /** Unix timestamp of creation */
     readonly createdAt: number;
     /** Unix timestamp of last input or output activity */
     lastActivity: number;
+    /** Lifecycle state; flips to 'exited' when the PTY process ends */
+    status: 'running' | 'exited';
+    /** Unix timestamp of the PTY exit, set alongside `status: 'exited'` */
+    exitedAt?: number;
+    /** Exit code of the PTY process, set alongside `status: 'exited'` */
+    exitCode?: number;
     /** Whether this session is pinned (exempt from the soft session limit) */
     pinned: boolean;
     /**

@@ -86,7 +86,7 @@ src/
 | `preferences/` | Schemas/types, repo-scoped and global JSON repositories, pure PATCH/import merge policy, sync/work-item live effects, route registration. `preferences-handler.ts` is a compatibility barrel |
 | `dreams/` | Workspace-scoped card/run types, deterministic candidate prefiltering, eligible conversation source selection, process-lifecycle-backed read-only analyzer/critic validation, lifecycle storage with provider/model/timeout attribution and analyzer/critic process links, durable dedup/coverage history, queue-backed visible `dream-run` orchestration with quiet-window readiness checks, opt-in idle scheduling, Dreams REST routes |
 | `wiki/` | Wiki integration (manager, data, routes, context-builder, conversation-sessions) |
-| `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
+| `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server, persistence). Sessions never auto-expire: no idle reaper, and WS close/panel unmount detach only. Each session keeps a ~1 MiB scrollback ring buffer (`SCROLLBACK_MAX_BYTES`) replayed as `terminal-replay` on attach, and `terminal-persistence.ts` mirrors metadata + scrollback to disk (create, 5 s debounce while output flows, PTY exit, shutdown) so sessions come back as `exited` after a restart |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
 | `for-each/` | For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, sequential child-chat orchestration |
@@ -237,5 +237,6 @@ Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 - `for-each-runs/<runId>/` — `run.json` metadata and `items.json` reviewed item plan/state
 - `map-reduce-runs/<runId>/` — `run.json` metadata, `items.json` map item plan/state, `reduce-step.json`
 - `paste-context/` — temp files for large pasted content
+- `terminals/<sessionId>.json` + `<sessionId>.log` — terminal metadata and raw scrollback (dir 0700, files 0600); reloaded as `exited` sessions after a server restart
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` for all per-repo path construction.

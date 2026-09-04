@@ -31,10 +31,13 @@ export interface TerminalInfrastructure {
  * detects this at runtime and gracefully falls back to `undefined`.
  *
  * @param resolvedConfig - Resolved CLI config (checked for `terminal.enabled`).
+ * @param dataDir - Root data dir; terminal state is persisted under
+ *                  `<dataDir>/repos/<workspaceId>/terminals/`.
  */
 export function createTerminalInfrastructure(
     store: ProcessStore,
     resolvedConfig: ResolvedCLIConfig,
+    dataDir?: string,
 ): TerminalInfrastructure | undefined {
     if (!resolvedConfig.terminal.enabled) {
         return undefined;
@@ -55,7 +58,7 @@ export function createTerminalInfrastructure(
         return undefined;
     }
 
-    const terminalWsServer = new TerminalWebSocketServerCtor(store);
+    const terminalWsServer = new TerminalWebSocketServerCtor(store, dataDir ? { dataDir } : undefined);
     const terminalSessionManager = terminalWsServer.getSessionManager();
 
     getServerLogger().info('[Terminal] web terminal enabled');

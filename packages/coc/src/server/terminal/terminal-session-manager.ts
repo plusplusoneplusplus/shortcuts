@@ -18,7 +18,14 @@ import {
     getWslExecutablePath,
     resolveWorkspaceExecutionContext,
 } from '@plusplusoneplusplus/forge';
+import * as path from 'path';
 import type { IPty, TerminalSession, TerminalSessionInfo } from './types';
+import {
+    SERVER_SHUTDOWN_EXIT_CODE,
+    TerminalPersistence,
+    type LoadedTerminalSession,
+    type PersistedTerminalMeta,
+} from './terminal-persistence';
 
 // ============================================================================
 // Constants
@@ -31,6 +38,11 @@ const DEFAULT_MAX_SESSIONS = 10;
  * the total exceeds it, so the retained size can dip slightly under the cap.
  */
 export const SCROLLBACK_MAX_BYTES = 1_048_576;
+/**
+ * How long output has to settle before the scrollback is flushed to disk.
+ * A crash therefore loses at most this much output.
+ */
+export const PERSIST_DEBOUNCE_MS = 5_000;
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 
@@ -49,6 +61,14 @@ export interface TerminalSessionManagerOptions {
     onData?: (sessionId: string, data: string) => void;
     /** Callback: fired when a session's PTY process exits */
     onExit?: (sessionId: string, exitCode: number, signal?: number) => void;
+    /**
+     * Root data directory (e.g. `~/.coc`). When set, sessions are persisted to
+     * `<dataDir>/repos/<workspaceId>/terminals/`. When omitted, persistence is
+     * disabled entirely.
+     */
+    dataDir?: string;
+    /** Debounce for the output-driven disk flush (default: 5000 ms) */
+    persistDebounceMs?: number;
     /** Override node-pty module for testing (default: require('node-pty')) */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     nodePtyModule?: { spawn: (...args: any[]) => IPty } | null;
@@ -120,6 +140,16 @@ export class TerminalSessionManager {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private nodePty: { spawn: (...args: any[]) => IPty } | null = null;
     private nodePtyError: string | null = null;
+    private readonly persistence: TerminalPersistence | null;
+    private readonly persistDebounceMs: number;
+    /** Pending debounced flushes, keyed by session id. */
+    private readonly flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    /**
+     * Sessions whose on-disk state has already been settled by an explicit
+     * action (user kill, shutdown flush), so the PTY's own exit event must not
+     * write over it.
+     */
+    private readonly exitPersistSuppressed = new Set<string>();
 
     constructor(options?: TerminalSessionManagerOptions) {
         this.options = {
@@ -127,6 +157,8 @@ export class TerminalSessionManager {
             platform: options?.platform ?? process.platform,
         };
         this.env = options?.env;
+        this.persistence = options?.dataDir ? new TerminalPersistence(options.dataDir) : null;
+        this.persistDebounceMs = options?.persistDebounceMs ?? PERSIST_DEBOUNCE_MS;
         this.onData = options?.onData;
         this.onExit = options?.onExit;
 
@@ -189,8 +221,12 @@ export class TerminalSessionManager {
             pty,
             cols,
             rows,
+            shell,
+            cwd: rootPath,
+            title: path.basename(shell),
             createdAt: Date.now(),
             lastActivity: Date.now(),
+            status: 'running',
             pinned: false,
             buffer: [],
             bufferBytes: 0,
@@ -201,14 +237,25 @@ export class TerminalSessionManager {
         pty.onData((data: string) => {
             session.lastActivity = Date.now();
             appendToScrollback(session, data);
+            this.schedulePersist(session);
             this.onData?.(id, data);
         });
         pty.onExit(({ exitCode, signal }) => {
+            session.status = 'exited';
+            session.exitedAt = Date.now();
+            session.exitCode = exitCode;
+            this.clearFlushTimer(id);
+            if (this.exitPersistSuppressed.delete(id)) {
+                // Already settled on disk by destroySession()/destroyAll().
+            } else {
+                this.persistNow(session);
+            }
             this.sessions.delete(id);
             this.onExit?.(id, exitCode, signal);
         });
 
         this.sessions.set(id, session);
+        this.persistNow(session);
         return session;
     }
 
@@ -241,6 +288,7 @@ export class TerminalSessionManager {
     writeToSession(id: string, data: string): void {
         const session = this.sessions.get(id);
         if (!session) throw new Error(`Terminal session not found: ${id}`);
+        if (session.status === 'exited') throw new Error(`Terminal session has exited: ${id}`);
         session.lastActivity = Date.now();
         session.pty.write(data);
     }
@@ -254,11 +302,19 @@ export class TerminalSessionManager {
         session.rows = rows;
     }
 
+    /**
+     * Explicit user kill: the terminal is gone for good, so its persisted files
+     * go with it rather than lingering as a restartable tombstone.
+     */
     destroySession(id: string): boolean {
         const session = this.sessions.get(id);
         if (!session) return false;
+        this.clearFlushTimer(id);
+        this.exitPersistSuppressed.add(id);
+        this.persistence?.remove(session.workspaceId, id);
         try { session.pty.kill(); } catch { /* already dead */ }
         this.sessions.delete(id);
+        this.exitPersistSuppressed.delete(id);
         return true;
     }
 
@@ -285,11 +341,98 @@ export class TerminalSessionManager {
         return this.sessions.get(id)?.pinned === true;
     }
 
+    /**
+     * Shutdown path: flush every session to disk as `exited` (with a
+     * distinguishable exit code) before killing its PTY, so the next server
+     * start can list them as restartable tombstones.
+     */
     destroyAll(): void {
-        for (const [, session] of this.sessions) {
+        for (const [id, session] of this.sessions) {
+            this.clearFlushTimer(id);
+            session.status = 'exited';
+            session.exitedAt = Date.now();
+            session.exitCode = SERVER_SHUTDOWN_EXIT_CODE;
+            this.exitPersistSuppressed.add(id);
+            this.persistNow(session);
             try { session.pty.kill(); } catch { /* ignore */ }
         }
         this.sessions.clear();
+        this.exitPersistSuppressed.clear();
+    }
+
+    // --------------------------------------------------------------------
+    // Persistence
+    // --------------------------------------------------------------------
+
+    /** True when this manager writes terminal state to disk. */
+    get persistenceEnabled(): boolean {
+        return this.persistence !== null;
+    }
+
+    /**
+     * Read back every persisted session for a workspace. PTYs do not survive a
+     * server restart, so everything on disk comes back as `exited`; corrupt
+     * entries are skipped.
+     */
+    loadPersistedSessions(workspaceId: string): LoadedTerminalSession[] {
+        return this.persistence?.load(workspaceId) ?? [];
+    }
+
+    /** Drop a session's persisted files. */
+    removePersistedSession(workspaceId: string, sessionId: string): void {
+        this.persistence?.remove(workspaceId, sessionId);
+    }
+
+    /** Flush a session to disk right now, bypassing the debounce. */
+    flushSession(id: string): void {
+        const session = this.sessions.get(id);
+        if (!session) return;
+        this.clearFlushTimer(id);
+        this.persistNow(session);
+    }
+
+    private toPersistedMeta(session: TerminalSession): PersistedTerminalMeta {
+        return {
+            id: session.id,
+            workspaceId: session.workspaceId,
+            shell: session.shell,
+            cwd: session.cwd,
+            title: session.title,
+            createdAt: session.createdAt,
+            lastActivity: session.lastActivity,
+            status: session.status,
+            exitedAt: session.exitedAt,
+            exitCode: session.exitCode,
+            truncated: session.truncated,
+        };
+    }
+
+    private persistNow(session: TerminalSession): void {
+        if (!this.persistence) return;
+        try {
+            this.persistence.save(this.toPersistedMeta(session), Buffer.concat(session.buffer));
+        } catch {
+            // Persistence is best-effort: a full disk or a read-only data dir
+            // must never take a live terminal down with it.
+        }
+    }
+
+    private schedulePersist(session: TerminalSession): void {
+        if (!this.persistence || this.flushTimers.has(session.id)) return;
+        const timer = setTimeout(() => {
+            this.flushTimers.delete(session.id);
+            if (this.sessions.has(session.id)) this.persistNow(session);
+        }, this.persistDebounceMs);
+        timer.unref?.();
+        this.flushTimers.set(session.id, timer);
+    }
+
+    private clearFlushTimer(id: string): void {
+        const timer = this.flushTimers.get(id);
+        if (timer) {
+            clearTimeout(timer);
+            this.flushTimers.delete(id);
+        }
     }
 
     // --------------------------------------------------------------------
