@@ -24,6 +24,16 @@ selected clone's server. `useGitOperationActions` owns the pull poller and hands
 auto-pull skips and failures report through `useTransientToast`, not the `actionError`
 banner.
 
+### Stale working-tree recovery
+
+`git-changed` broadcasts come only from server-initiated git operations, so a file
+deleted by an external process (an agent task, an editor) can linger in the
+working-tree list until the next refresh. When the untracked-file preview's blob
+read 404s, `PreviewPane` fires `onNotFound`; `WorkingTreeFileDiff` replaces the
+preview with a missing-file notice and calls `onFileMissing` once, which
+`RepoGitTab` wires to `bumpWorkingChanges` so the refetched list drops the ghost
+entry. Non-404 preview failures keep the plain error + Retry presentation.
+
 ### Job polling
 
 A git operation response carrying a `jobId` is pending work: poll operation history to

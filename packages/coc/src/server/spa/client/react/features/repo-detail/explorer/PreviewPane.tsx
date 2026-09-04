@@ -49,6 +49,12 @@ export interface PreviewPaneProps {
      * errored in the tab strip without reaching into the buffer (AC-05/AC-06).
      */
     onStatusChange?: (status: PreviewStatus) => void;
+    /**
+     * Notified when the blob read fails with a 404 — the file no longer exists
+     * on disk. Lets an owner whose file list may be stale (e.g. the working-tree
+     * panel) react by refreshing instead of leaving a dead Retry loop.
+     */
+    onNotFound?: () => void;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
@@ -68,7 +74,7 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -80,6 +86,9 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
+    // Ref so a changing callback identity never re-triggers the fetch effect.
+    const onNotFoundRef = useRef(onNotFound);
+    onNotFoundRef.current = onNotFound;
 
     const fetchBlob = useCallback((signal: AbortSignal) => (
         isTrusted
@@ -111,6 +120,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
             .catch((err: Error) => {
                 if (!controller.signal.aborted) {
                     setError(err.message || 'Failed to load file');
+                    if ((err as { status?: number }).status === 404) onNotFoundRef.current?.();
                 }
             })
             .finally(() => {
@@ -157,6 +167,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
             .catch((err: Error) => {
                 if (!controller.signal.aborted) {
                     setError(err.message || 'Failed to load file');
+                    if ((err as { status?: number }).status === 404) onNotFoundRef.current?.();
                 }
             })
             .finally(() => {
