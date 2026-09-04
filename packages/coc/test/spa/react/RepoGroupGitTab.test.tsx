@@ -12,12 +12,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 // The real panel drags in websockets, clone routing and a dozen git hooks; the
-// point here is WHICH workspace id it is handed, so stub it down to that.
-vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
-    RepoGitTab: ({ workspaceId }: { workspaceId: string }) => (
-        <div data-testid="stub-repo-git-tab" data-workspace={workspaceId} />
-    ),
-}));
+// point here is WHICH workspace id it is handed, so stub it down to that. The
+// stub is deliberately STATEFUL — it records every mount and holds a scratch
+// value — so the tests below can prove the host remounts it per member instead
+// of leaking one repo's panel state into the next.
+const panelMounts: string[] = [];
+vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', async () => {
+    const { useEffect, useState } = await import('react');
+    return {
+        RepoGitTab: ({ workspaceId }: { workspaceId: string }) => {
+            const [scratch, setScratch] = useState('clean');
+            useEffect(() => {
+                panelMounts.push(workspaceId);
+            }, [workspaceId]);
+            return (
+                <div data-testid="stub-repo-git-tab" data-workspace={workspaceId} data-scratch={scratch}>
+                    <button type="button" data-testid="stub-panel-dirty" onClick={() => setScratch('dirty')}>
+                        dirty
+                    </button>
+                </div>
+            );
+        },
+    };
+});
 
 // Badge plumbing: one batch call plus targeted refreshes driven by `git-changed`.
 const batchSpy = vi.fn();
@@ -54,6 +71,7 @@ function member(id: string, overrides: Partial<RepoGroupMember> = {}): RepoGroup
 
 beforeEach(() => {
     wsListener = undefined;
+    panelMounts.length = 0;
     batchSpy.mockReset();
     singleSpy.mockReset();
     batchSpy.mockResolvedValue({ results: {} });
@@ -227,5 +245,67 @@ describe('RepoGroupGitTab member picker (AC-02)', () => {
         expect(screen.getByTestId('repo-group-git-empty')).toBeTruthy();
         expect(screen.getByTestId('repo-group-git-member-gone')).toBeTruthy();
         expect(batchSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('RepoGroupGitTab panel isolation across members (AC-03)', () => {
+    /**
+     * The manual demo's step (e)/(f): after working in member A, switching to B
+     * must not show A's panel state, and coming back to A must not show B's.
+     * The host gets that from `key={selectedId}` — without the key, React would
+     * reuse one panel instance and carry its state across repos. These tests
+     * fail the moment that key is dropped.
+     */
+    it('remounts the panel per member so no state leaks between repos', () => {
+        render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a'), member('repo-b')]} />);
+        expect(panelMounts).toEqual(['repo-a']);
+
+        // Dirty up member A's panel.
+        fireEvent.click(screen.getByTestId('stub-panel-dirty'));
+        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-scratch')).toBe('dirty');
+
+        // Switch to B: a brand new panel, none of A's state.
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
+        expect(panelMounts).toEqual(['repo-a', 'repo-b']);
+        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-workspace')).toBe('repo-b');
+        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-scratch')).toBe('clean');
+
+        // Back to A: also a fresh mount, so B's state cannot follow either.
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-a'));
+        expect(panelMounts).toEqual(['repo-a', 'repo-b', 'repo-a']);
+        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-scratch')).toBe('clean');
+    });
+
+    it('keeps a single panel mounted — one repo at a time, never the group id', () => {
+        render(
+            <RepoGroupGitTab
+                workspaceId={GROUP_ID}
+                members={[member('repo-a'), member('repo-b'), member('repo-c')]}
+            />
+        );
+        expect(screen.getAllByTestId('stub-repo-git-tab')).toHaveLength(1);
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-c'));
+        expect(screen.getAllByTestId('stub-repo-git-tab')).toHaveLength(1);
+        expect(panelMounts).toEqual(['repo-a', 'repo-c']);
+        expect(panelMounts).not.toContain(GROUP_ID);
+    });
+
+    it('does not remount the panel when an unrelated member goes stale', () => {
+        const { rerender } = render(
+            <RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a'), member('repo-b')]} />
+        );
+        fireEvent.click(screen.getByTestId('stub-panel-dirty'));
+        expect(panelMounts).toEqual(['repo-a']);
+
+        rerender(
+            <RepoGroupGitTab
+                workspaceId={GROUP_ID}
+                members={[member('repo-a'), member('repo-b', { stale: true, staleReason: 'path-missing' })]}
+            />
+        );
+
+        // Selection is unchanged, so the user's in-progress panel survives.
+        expect(panelMounts).toEqual(['repo-a']);
+        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-scratch')).toBe('dirty');
     });
 });
