@@ -26,6 +26,7 @@ import {
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
+import { backgroundTasksRegistry } from '../../../src/server/streaming/background-tasks-registry';
 
 // ============================================================================
 // Mocks
@@ -1996,5 +1997,55 @@ describe('FollowUpExecutor plan save-location block', () => {
         const content = await runFollowUp('proc-fu-plain', {});
         expect(content).toContain('Save location');
         expect(content).toContain('.plan.md');
+    });
+});
+
+// ============================================================================
+// Background-task snapshot lifecycle (SSE replay state)
+// ============================================================================
+
+describe('FollowUpExecutor background-task snapshot teardown', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    const activeTasks = {
+        backgroundAgents: [],
+        backgroundShells: [{ id: 's1', type: 'shell', description: 'npm run test' }],
+        backgroundTotalActive: 1,
+        backgroundWaitingForDrain: true,
+    };
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        backgroundTasksRegistry.dispose();
+    });
+
+    it('records during the turn and clears it on completion', async () => {
+        let seenDuringTurn: unknown;
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onBackgroundTasksChanged?.(activeTasks);
+            seenDuringTurn = backgroundTasksRegistry.get('proc-bg-follow');
+            return { success: true, response: 'answer', sessionId: 'sess-1' };
+        });
+        await store.addProcess(makeProcess({ id: 'proc-bg-follow' }));
+
+        await makeExecutor(store).executeFollowUp('proc-bg-follow', 'continue');
+
+        expect(seenDuringTurn).toEqual(activeTasks);
+        expect(backgroundTasksRegistry.get('proc-bg-follow')).toBeUndefined();
+    });
+
+    it('clears the snapshot when the turn fails', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onBackgroundTasksChanged?.(activeTasks);
+            throw new Error('turn exploded');
+        });
+        await store.addProcess(makeProcess({ id: 'proc-bg-follow-err' }));
+
+        // The follow-up path records the failure on the process instead of
+        // rethrowing; the `finally` teardown must still drop the snapshot.
+        await makeExecutor(store).executeFollowUp('proc-bg-follow-err', 'continue');
+
+        expect(backgroundTasksRegistry.get('proc-bg-follow-err')).toBeUndefined();
     });
 });

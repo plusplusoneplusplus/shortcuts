@@ -795,6 +795,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // Timing state is settled on both success and error paths; this is
             // a leak guard for throws that bypass both settles.
             this.turnPerformance.abandon(processId);
+            // Background tasks cannot outlive the turn; drop the replay snapshot
+            // on every exit path, including a drain-cap abort that never settles.
+            this.backgroundTasks.clear(processId);
             chatCtx?.dispose();
             this.cancelAskUserHandles(processId);
             try {

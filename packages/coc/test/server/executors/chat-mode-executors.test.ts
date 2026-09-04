@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { ModelInfo, QueuedTask } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, toQueueProcessId, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
@@ -29,6 +29,7 @@ import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning';
 import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
+import { backgroundTasksRegistry } from '../../../src/server/streaming/background-tasks-registry';
 
 // ============================================================================
 // Mocks
@@ -2095,5 +2096,58 @@ describe('turn performance recording (first turn)', () => {
 
         expect(recorder.record).toHaveBeenCalledTimes(1);
         expect(result.response).toBe('ok');
+    });
+});
+
+// ============================================================================
+// Background-task replay snapshot lifecycle
+//
+// Regression: the snapshot fed to the SSE replay must not outlive the turn.
+// A turn killed by the drain cap aborts without a settle emission, so the
+// `finally` teardown is the only guarantee that the indicator ever goes away.
+// ============================================================================
+
+describe('background-task snapshot teardown', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    const activeTasks = {
+        backgroundAgents: [],
+        backgroundShells: [{ id: 's1', type: 'shell', description: 'npm run test' }],
+        backgroundTotalActive: 1,
+        backgroundWaitingForDrain: true,
+    };
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        backgroundTasksRegistry.dispose();
+    });
+
+    it('records while the turn runs and clears it when the turn completes', async () => {
+        let seenDuringTurn: unknown;
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onBackgroundTasksChanged?.(activeTasks);
+            seenDuringTurn = backgroundTasksRegistry.get(toQueueProcessId('task-bg-ok'));
+            return { success: true, response: 'AI answer', sessionId: 'sess-1', toolCalls: [] };
+        });
+
+        const executor = new ChatExecutor(store, makeOptions(store));
+        await executor.execute(makeChatTask('ask', 'task-bg-ok'), 'Hello');
+
+        expect(seenDuringTurn).toEqual(activeTasks);
+        expect(backgroundTasksRegistry.get(toQueueProcessId('task-bg-ok'))).toBeUndefined();
+    });
+
+    it('clears the snapshot when the turn throws', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onBackgroundTasksChanged?.(activeTasks);
+            throw new Error('turn exploded');
+        });
+
+        const executor = new ChatExecutor(store, makeOptions(store));
+        await expect(executor.execute(makeChatTask('ask', 'task-bg-throw'), 'Hello')).rejects.toThrow();
+
+        expect(backgroundTasksRegistry.get(toQueueProcessId('task-bg-throw'))).toBeUndefined();
     });
 });

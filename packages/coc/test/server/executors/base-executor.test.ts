@@ -10,6 +10,7 @@ import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
 import { BaseExecutor, type StreamingTurnState } from '../../../src/server/executors/base-executor';
 import type { RalphGrillProcessState } from '../../../src/server/ralph/grill-planning';
 import { createMockProcessStore } from '../helpers/mock-process-store';
+import { BackgroundTasksRegistry } from '../../../src/server/streaming/background-tasks-registry';
 
 // ============================================================================
 // Concrete test subclass
@@ -65,6 +66,9 @@ class TestExecutor extends BaseExecutor {
     }
     public buildBackgroundTaskHandlerPublic(processId: string) {
         return this.buildBackgroundTaskHandler(processId);
+    }
+    public get backgroundTasksPublic() {
+        return this.backgroundTasks;
     }
     public buildMidTurnTokenUsageHandlerPublic(processId: string) {
         return this.buildMidTurnTokenUsageHandler(processId);
@@ -508,6 +512,65 @@ describe('BaseExecutor', () => {
                 backgroundTotalActive: 0,
                 backgroundWaitingForDrain: false,
             })).not.toThrow();
+        });
+
+        // Regression: the snapshot must also be recorded, or a stream that
+        // connects after the task registered never learns the turn is parked.
+        it('records the snapshot into the registry as well as emitting', () => {
+            const registry = new BackgroundTasksRegistry();
+            const injected = new TestExecutor(store, undefined, registry);
+            const info = {
+                backgroundAgents: [],
+                backgroundShells: [{ id: 's1', description: 'npm test' }],
+                backgroundTotalActive: 1,
+                backgroundWaitingForDrain: true,
+            };
+
+            injected.buildBackgroundTaskHandlerPublic('proc-bg4')(info);
+
+            expect(registry.get('proc-bg4')).toEqual(info);
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-bg4', {
+                type: 'background-tasks',
+                ...info,
+            });
+        });
+
+        it('leaves no registry entry once the tasks drain', () => {
+            const registry = new BackgroundTasksRegistry();
+            const injected = new TestExecutor(store, undefined, registry);
+            const handler = injected.buildBackgroundTaskHandlerPublic('proc-bg5');
+
+            handler({
+                backgroundAgents: [],
+                backgroundShells: [{ id: 's1' }],
+                backgroundTotalActive: 1,
+                backgroundWaitingForDrain: true,
+            });
+            handler({
+                backgroundAgents: [],
+                backgroundShells: [],
+                backgroundTotalActive: 0,
+                backgroundWaitingForDrain: false,
+            });
+
+            expect(registry.get('proc-bg5')).toBeUndefined();
+        });
+
+        it('does not propagate a registry failure into the SDK callback', () => {
+            const registry = new BackgroundTasksRegistry();
+            registry.record = vi.fn(() => { throw new Error('registry crash'); });
+            const injected = new TestExecutor(store, undefined, registry);
+
+            expect(() => injected.buildBackgroundTaskHandlerPublic('proc-bg6')({
+                backgroundAgents: [],
+                backgroundShells: [],
+                backgroundTotalActive: 1,
+                backgroundWaitingForDrain: true,
+            })).not.toThrow();
+        });
+
+        it('defaults to the shared registry when none is injected', () => {
+            expect(executor.backgroundTasksPublic).toBeInstanceOf(BackgroundTasksRegistry);
         });
     });
 

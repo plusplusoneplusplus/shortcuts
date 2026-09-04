@@ -11,6 +11,7 @@ import type { WarmStatus } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getServerLogger } from '../logging/server-logger';
 import type { RalphGrillPlanningProgress } from '../ralph/grill-planning';
 import { warmStatusBridge, type WarmStatusBridge } from './warm-status-bridge';
+import { backgroundTasksRegistry, type BackgroundTasksRegistry } from './background-tasks-registry';
 
 // ============================================================================
 // SSE Event Payload Types
@@ -157,7 +158,8 @@ export async function handleProcessStream(
     res: ServerResponse,
     processId: string,
     store: ProcessStore,
-    warmBridge: WarmStatusBridge = warmStatusBridge
+    warmBridge: WarmStatusBridge = warmStatusBridge,
+    backgroundTasks: BackgroundTasksRegistry = backgroundTasksRegistry
 ): Promise<void> {
     // Parse workspaceId hint from the query string for direct-path lookup
     const parsed = new URL(req.url ?? '/', 'http://x');
@@ -230,6 +232,10 @@ export async function handleProcessStream(
     // 6. Subscribe to output chunks via store.onProcessOutput
     let cleaned = false;
     let eventCount = 0;
+    // Set by the live `background-tasks` relay below. The replayed snapshot is
+    // older than any live event, and the client applies last-write-wins, so a
+    // live event that lands between the subscribe and the replay must win.
+    let sentLiveBackgroundTasks = false;
 
     // Relay WarmClientRegistry transitions for this conversation process onto
     // this stream as `warm_status` events (AC-01). Interest lives for the life of
@@ -333,6 +339,7 @@ export async function handleProcessStream(
         } else if (event.type === 'hook-step') {
             sendEvent(res, 'hook-step', { hookStep: event.hookStep });
         } else if (event.type === 'background-tasks') {
+            sentLiveBackgroundTasks = true;
             sendEvent(res, 'background-tasks', {
                 backgroundAgents: event.backgroundAgents,
                 backgroundShells: event.backgroundShells,
@@ -365,6 +372,24 @@ export async function handleProcessStream(
             res.end();
         }
     });
+
+    // 6b. Replay the live background-tasks snapshot so a stream that connects
+    // mid-turn learns the turn is parked on a background shell/agent. The
+    // `background-tasks` event only fires on change, so without this replay a
+    // reload leaves the indicator hidden until the task finally settles.
+    // Sent after the subscribe so a live event racing this replay wins; nothing
+    // is sent when there is no snapshot (the client must not be told "zero").
+    if (!sentLiveBackgroundTasks) {
+        const snapshot = backgroundTasks.get(processId);
+        if (snapshot) {
+            sendEvent(res, 'background-tasks', {
+                backgroundAgents: snapshot.backgroundAgents,
+                backgroundShells: snapshot.backgroundShells,
+                backgroundTotalActive: snapshot.backgroundTotalActive,
+                backgroundWaitingForDrain: snapshot.backgroundWaitingForDrain,
+            });
+        }
+    }
 
     // 7a. Immediate heartbeat signals the client that the stream is ready
     sendEvent(res, 'heartbeat', {});
