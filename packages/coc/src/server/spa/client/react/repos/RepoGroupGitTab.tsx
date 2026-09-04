@@ -13,9 +13,14 @@
  * (`workspace-removed` / `path-missing`) are listed but disabled and are never
  * selected: they have no usable root path, so the host falls back to the first
  * healthy member.
+ *
+ * The pick is remembered per group id in the AppContext per-workspace memory
+ * (`repoGroupGitMemberState`, persisted to localStorage), so returning to the
+ * group — after a tab switch or a full reload — lands on the same member.
  */
 
 import { useCallback, useMemo, useState } from 'react';
+import { useAppOptional } from '../contexts/AppContext';
 import { RepoGitTab } from '../features/git/RepoGitTab';
 import { RepoGroupGitMemberPicker } from './RepoGroupGitMemberPicker';
 import type { RepoGroupMember } from './repoGroupService';
@@ -47,11 +52,28 @@ export interface RepoGroupGitTabProps {
     members: readonly RepoGroupMember[] | undefined;
 }
 
+/**
+ * The remembered member pick for a group, backed by AppContext when it is
+ * mounted and by local state otherwise (pop-out shells and unit tests render
+ * this panel standalone, and a forgotten pick there is harmless).
+ */
+function useRepoGroupGitMemberPreference(groupId: string): [string | null, (memberId: string) => void] {
+    const app = useAppOptional();
+    const [localPreferredId, setLocalPreferredId] = useState<string | null>(null);
+    const dispatch = app?.dispatch;
+    const persisted = app?.state.repoGroupGitMemberState?.[groupId] ?? null;
+    const setPreferred = useCallback((memberId: string) => {
+        setLocalPreferredId(memberId);
+        dispatch?.({ type: 'SET_REPO_GROUP_GIT_MEMBER', groupId, memberId });
+    }, [dispatch, groupId]);
+    return [app ? persisted : localPreferredId, setPreferred];
+}
+
 export function RepoGroupGitTab({ workspaceId, members }: RepoGroupGitTabProps) {
-    // What the user last clicked. It is a *preference*, not the answer: a member
-    // that goes stale (or leaves the group) falls back to the first healthy one
-    // without the user having to re-pick.
-    const [preferredId, setPreferredId] = useState<string | null>(null);
+    // What the user last picked, remembered across reloads. It is a
+    // *preference*, not the answer: a member that goes stale (or leaves the
+    // group) falls back to the first healthy one without the user re-picking.
+    const [preferredId, setPreferredId] = useRepoGroupGitMemberPreference(workspaceId);
     const selectedId = useMemo(
         () => resolveRepoGroupGitMember(members, preferredId),
         [members, preferredId],
@@ -64,7 +86,7 @@ export function RepoGroupGitTab({ workspaceId, members }: RepoGroupGitTabProps) 
     );
     const gitInfo = useRepoGroupMemberGitInfo(healthyIds);
 
-    const handleSelect = useCallback((memberId: string) => setPreferredId(memberId), []);
+    const handleSelect = useCallback((memberId: string) => setPreferredId(memberId), [setPreferredId]);
 
     if (members === undefined) {
         return (
