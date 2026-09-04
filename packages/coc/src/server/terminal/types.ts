@@ -35,7 +35,7 @@ export interface TerminalSession {
     readonly createdAt: number;
     /** Unix timestamp of last input or output activity */
     lastActivity: number;
-    /** Whether this session is pinned (exempt from idle cleanup and soft session limit) */
+    /** Whether this session is pinned (exempt from the soft session limit) */
     pinned: boolean;
 }
 

@@ -6,7 +6,8 @@
  * Features:
  *   - Platform-aware shell detection (PowerShell on Windows, $SHELL on Unix)
  *   - Graceful handling when node-pty is not installed (optional dep)
- *   - Auto-cleanup of idle sessions (configurable timeout)
+ *   - Sessions never expire on their own: there is no idle reaper. A PTY
+ *     lives until the shell exits or someone explicitly destroys it.
  *   - Max concurrent sessions limit
  *   - Per-session event callbacks for output and exit
  */
@@ -22,9 +23,7 @@ import type { IPty, TerminalSession, TerminalSessionInfo } from './types';
 // Constants
 // ============================================================================
 
-const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;      // 30 minutes
 const DEFAULT_MAX_SESSIONS = 10;
-const DEFAULT_CLEANUP_INTERVAL_MS = 60 * 1000;        // 1 minute
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 
@@ -33,12 +32,8 @@ const DEFAULT_ROWS = 24;
 // ============================================================================
 
 export interface TerminalSessionManagerOptions {
-    /** Max idle time in ms before auto-destroy (default: 1_800_000 = 30 minutes) */
-    idleTimeoutMs?: number;
     /** Max concurrent terminal sessions across all workspaces (default: 10) */
     maxSessions?: number;
-    /** How often to check for idle sessions in ms (default: 60_000 = 1 minute) */
-    cleanupIntervalMs?: number;
     /** Override platform for testing (default: process.platform) */
     platform?: NodeJS.Platform;
     /** Override environment for spawned shells (default: process.env) */
@@ -85,20 +80,17 @@ export function toSessionInfo(session: TerminalSession): TerminalSessionInfo {
 export class TerminalSessionManager {
     private readonly sessions = new Map<string, TerminalSession>();
     private readonly options: Required<Pick<TerminalSessionManagerOptions,
-        'idleTimeoutMs' | 'maxSessions' | 'cleanupIntervalMs' | 'platform'>>;
+        'maxSessions' | 'platform'>>;
     private readonly env: Record<string, string> | undefined;
     private readonly onData?: (sessionId: string, data: string) => void;
     private readonly onExit?: (sessionId: string, exitCode: number, signal?: number) => void;
-    private cleanupTimer: ReturnType<typeof setInterval> | null = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private nodePty: { spawn: (...args: any[]) => IPty } | null = null;
     private nodePtyError: string | null = null;
 
     constructor(options?: TerminalSessionManagerOptions) {
         this.options = {
-            idleTimeoutMs: options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
             maxSessions: options?.maxSessions ?? DEFAULT_MAX_SESSIONS,
-            cleanupIntervalMs: options?.cleanupIntervalMs ?? DEFAULT_CLEANUP_INTERVAL_MS,
             platform: options?.platform ?? process.platform,
         };
         this.env = options?.env;
@@ -109,15 +101,6 @@ export class TerminalSessionManager {
             this.nodePty = options.nodePtyModule;
         } else {
             this.loadNodePty();
-        }
-
-        this.cleanupTimer = setInterval(
-            () => this.cleanupIdleSessions(),
-            this.options.cleanupIntervalMs,
-        );
-        // Don't prevent Node.js from exiting
-        if (this.cleanupTimer.unref) {
-            this.cleanupTimer.unref();
         }
     }
 
@@ -214,6 +197,7 @@ export class TerminalSessionManager {
     resizeSession(id: string, cols: number, rows: number): void {
         const session = this.sessions.get(id);
         if (!session) throw new Error(`Terminal session not found: ${id}`);
+        session.lastActivity = Date.now();
         session.pty.resize(cols, rows);
         session.cols = cols;
         session.rows = rows;
@@ -255,10 +239,6 @@ export class TerminalSessionManager {
             try { session.pty.kill(); } catch { /* ignore */ }
         }
         this.sessions.clear();
-        if (this.cleanupTimer) {
-            clearInterval(this.cleanupTimer);
-            this.cleanupTimer = null;
-        }
     }
 
     // --------------------------------------------------------------------
@@ -291,17 +271,5 @@ export class TerminalSessionManager {
         // macOS/Linux: use $SHELL or fallback to /bin/bash
         const shell = process.env.SHELL || '/bin/bash';
         return { shell, args: ['--login'] };
-    }
-
-    private cleanupIdleSessions(): void {
-        const now = Date.now();
-        for (const [id, session] of this.sessions) {
-            if (this.isSessionPinned(id)) continue;
-            if ((now - session.lastActivity) > this.options.idleTimeoutMs) {
-                try { session.pty.kill(); } catch { /* ignore */ }
-                this.sessions.delete(id);
-                this.onExit?.(id, -1); // signal idle-kill to listeners
-            }
-        }
     }
 }

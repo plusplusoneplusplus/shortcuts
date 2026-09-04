@@ -71,7 +71,6 @@ function createTestServer(
 
     const terminalWs = new TerminalWebSocketServer(store, {
         nodePtyModule: { spawn: mockSpawn },
-        cleanupIntervalMs: 999_999, // effectively disabled for tests
     });
     const server = http.createServer();
     // Use the dispatch function so /ws/terminal routes correctly
@@ -239,7 +238,6 @@ describe('TerminalWebSocketServer', () => {
         (storeForFail.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([TEST_WORKSPACE]);
         const failTerminalWs = new TerminalWebSocketServer(storeForFail, {
             nodePtyModule: null, // node-pty not available
-            cleanupIntervalMs: 999_999,
         });
         const failServer = http.createServer();
         attachWebSocketUpgradeHandler(failServer, { handleUpgrade: () => {} } as any, failTerminalWs);

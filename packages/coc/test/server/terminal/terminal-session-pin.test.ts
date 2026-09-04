@@ -4,7 +4,6 @@
  * Covers:
  * - pinSession() / unpinSession() toggle the flag
  * - unpinSession() resets lastActivity
- * - cleanupIdleSessions() skips pinned sessions
  * - createSession() max-session limit excludes pinned sessions
  * - toSessionInfo() includes pinned field
  * - pin/unpin unknown session returns false
@@ -127,10 +126,10 @@ describe('TerminalSessionManager pin/unpin', () => {
             expect(manager.unpinSession('nonexistent')).toBe(false);
         });
 
-        it('should reset lastActivity to give fresh idle window', () => {
+        it('should reset lastActivity on unpin', () => {
             vi.useFakeTimers();
             try {
-                manager = createManager({ idleTimeoutMs: 1000, cleanupIntervalMs: 999_999 });
+                manager = createManager();
                 const session = manager.createSession('ws-abc', '/tmp');
                 manager.pinSession(session.id);
 
@@ -141,96 +140,6 @@ describe('TerminalSessionManager pin/unpin', () => {
                 manager.unpinSession(session.id);
                 const now = Date.now();
                 expect(session.lastActivity).toBe(now);
-            } finally {
-                vi.useRealTimers();
-            }
-        });
-    });
-
-    // ----------------------------------------------------------------
-    // cleanupIdleSessions() skips pinned sessions
-    // ----------------------------------------------------------------
-
-    describe('cleanupIdleSessions() with pinned sessions', () => {
-        it('should not destroy pinned sessions even when idle', () => {
-            vi.useFakeTimers();
-            const onExit = vi.fn();
-            try {
-                manager = createManager({
-                    idleTimeoutMs: 50,
-                    cleanupIntervalMs: 25,
-                    onExit,
-                });
-
-                const session = manager.createSession('ws-abc', '/tmp');
-                manager.pinSession(session.id);
-
-                // Advance past the idle timeout
-                vi.advanceTimersByTime(100);
-
-                // Pinned session should still exist
-                expect(manager.getSession(session.id)).toBeDefined();
-                expect(manager.size).toBe(1);
-                expect(onExit).not.toHaveBeenCalled();
-            } finally {
-                vi.useRealTimers();
-            }
-        });
-
-        it('should destroy unpinned idle sessions but keep pinned ones', () => {
-            vi.useFakeTimers();
-            const onExit = vi.fn();
-            try {
-                manager = createManager({
-                    maxSessions: 10,
-                    idleTimeoutMs: 50,
-                    cleanupIntervalMs: 25,
-                    onExit,
-                });
-
-                const pinned = manager.createSession('ws-abc', '/tmp');
-                const unpinned = manager.createSession('ws-abc', '/tmp');
-                manager.pinSession(pinned.id);
-
-                // Advance past the idle timeout
-                vi.advanceTimersByTime(100);
-
-                // Pinned stays, unpinned goes
-                expect(manager.getSession(pinned.id)).toBeDefined();
-                expect(manager.getSession(unpinned.id)).toBeUndefined();
-                expect(manager.size).toBe(1);
-                expect(onExit).toHaveBeenCalledWith(unpinned.id, -1);
-                expect(onExit).not.toHaveBeenCalledWith(pinned.id, expect.anything());
-            } finally {
-                vi.useRealTimers();
-            }
-        });
-
-        it('should destroy previously-pinned session after unpin and idle timeout', () => {
-            vi.useFakeTimers();
-            const onExit = vi.fn();
-            try {
-                manager = createManager({
-                    idleTimeoutMs: 50,
-                    cleanupIntervalMs: 25,
-                    onExit,
-                });
-
-                const session = manager.createSession('ws-abc', '/tmp');
-                manager.pinSession(session.id);
-
-                // Advance past idle timeout — session survives
-                vi.advanceTimersByTime(100);
-                expect(manager.getSession(session.id)).toBeDefined();
-
-                // Unpin — lastActivity resets
-                manager.unpinSession(session.id);
-
-                // Advance past idle timeout again
-                vi.advanceTimersByTime(100);
-
-                expect(manager.getSession(session.id)).toBeUndefined();
-                expect(onExit).toHaveBeenCalledWith(session.id, -1);
             } finally {
                 vi.useRealTimers();
             }

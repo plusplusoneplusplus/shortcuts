@@ -56,7 +56,6 @@ function createTestServer() {
 
     const terminalWs = new TerminalWebSocketServer(store, {
         nodePtyModule: { spawn: vi.fn(() => createMockPty()) },
-        cleanupIntervalMs: 999_999,
     });
     const server = http.createServer();
     attachWebSocketUpgradeHandler(server, { handleUpgrade: () => {} } as any, terminalWs);
