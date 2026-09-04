@@ -40,7 +40,7 @@
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
     "coverage:diff": "bash ../../scripts/coverage-diff.sh",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src"
   },
   "dependencies": {
     "@plusplusoneplusplus/coc-agent-sdk": "*",

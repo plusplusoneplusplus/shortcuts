@@ -78,6 +78,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: ESLint config guard tests
+        run: node --test scripts/eslint-config.test.mjs
+
   forge-test:
     runs-on: ${{ matrix.os }}
     needs: [coc-native]
