@@ -10,6 +10,7 @@ import yaml from 'js-yaml';
 import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { validateConfigWithSchema } from './config/schema';
+import type { ChatStylePromptOverrides } from './config/chat-style-prompts';
 import { TOP_LEVEL_ADMIN_SETTING_KEYS } from './config/admin-setting-definitions';
 import {
     CONFIG_NAMESPACE_SOURCE_KEYS,
@@ -308,6 +309,8 @@ export interface CLIConfig {
         chatStyleSelector?: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle?: ChatStyle;
+        /** Admin-edited prompt text per style. An absent key uses the built-in default. */
+        chatStylePrompts?: ChatStylePromptOverrides;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -658,6 +661,8 @@ export interface ResolvedCLIConfig {
         chatStyleSelector: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle: ChatStyle;
+        /** Admin-edited prompt text per style. An absent key uses the built-in default. */
+        chatStylePrompts: ChatStylePromptOverrides;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -924,6 +929,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         explorerEditorTabs: false,
         chatStyleSelector: true,
         defaultChatStyle: 'default',
+        chatStylePrompts: {},
     },
     memoryPromotion: {
         batchSize: 50,

@@ -1,4 +1,5 @@
 import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { CHAT_STYLE_FOCUS_LINES, resolveChatStylePrompt } from '../../config/chat-style-prompts';
 import type { ChatPayload } from '../tasks/task-types';
 import {
     hasClassifyDiffContext,
@@ -14,18 +15,40 @@ import {
 } from '../tasks/task-types';
 
 /**
- * One focus line per real style. `'default'` deliberately has no entry: Default
- * means the model is told nothing at all about how to write.
+ * The per-style prompt text — built-in defaults plus any admin override — lives
+ * in `config/chat-style-prompts.ts` so the admin SPA can render the same
+ * strings. Re-exported here because this module is the historical home and
+ * every server import points at it.
  */
-const CHAT_STYLE_FOCUS_LINES: Readonly<Partial<Record<ChatStyle, string>>> = {
-  human:
-    'Write like a helpful coworker in a normal conversation. Keep the flow natural and let the wording carry the answer instead of structure.',
-  direct:
-    'Lead with the answer or action, then only what the user needs to act on it. '
-    + 'Short sentences, plain words. Cut preamble, softening, and background they did not ask for — short, not compressed.',
-  structured:
-    'Make the answer easy to scan: outcome, key points, decisions, risks, and next steps. Only organize this way when the answer benefits from it, and never pad a one-line answer into a template. Do not invent owners, dates, decisions, risks, or certainty the context does not support.',
-};
+export { CHAT_STYLE_FOCUS_LINES };
+
+/**
+ * Live read of `features.chatStylePrompts`. Registered once at server start,
+ * mirroring how the chat-style feature flag and default style are wired: the
+ * injector stays synchronous and never touches the config file itself.
+ */
+let chatStylePromptOverridesProvider: (() => unknown) | undefined;
+
+/** Install the live override reader. Pass `undefined` to fall back to built-ins. */
+export function setChatStylePromptOverridesProvider(provider: (() => unknown) | undefined): void {
+    chatStylePromptOverridesProvider = provider;
+}
+
+/**
+ * Current overrides, or `undefined` when none are readable. A throwing or
+ * malformed provider degrades to the built-in defaults — style injection must
+ * never fail a chat.
+ */
+function readChatStylePromptOverrides(): unknown {
+    if (!chatStylePromptOverridesProvider) {
+        return undefined;
+    }
+    try {
+        return chatStylePromptOverridesProvider();
+    } catch {
+        return undefined;
+    }
+}
 
 /**
  * Build the four-line `<chat-style>` block for a style.
@@ -37,7 +60,7 @@ export function buildChatStyleBlock(style: unknown): string | undefined {
   if (!isChatStyle(style)) {
     return undefined;
   }
-  const focus = CHAT_STYLE_FOCUS_LINES[style];
+  const focus = resolveChatStylePrompt(style, readChatStylePromptOverrides());
   if (!focus) {
     return undefined;
   }

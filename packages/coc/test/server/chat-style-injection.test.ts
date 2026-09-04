@@ -21,7 +21,7 @@ import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { ProcessLifecycleRunner } from '../../src/server/executors/process-lifecycle-runner';
-import { buildChatStyleBlock } from '../../src/server/executors/chat-style-prompt';
+import { buildChatStyleBlock, setChatStylePromptOverridesProvider } from '../../src/server/executors/chat-style-prompt';
 import { buildChatModeDisplayBlock } from '../../src/server/executors/chat-mode-directive';
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
@@ -99,6 +99,35 @@ describe('chat style on the first turn of a conversation', () => {
         expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?', HUMAN_BLOCK));
         expect(executedPrompt).toBe(`${HUMAN_BLOCK}\n\nWhat broke the build?`);
         expect(process?.metadata?.chatStyle).toBe('human');
+    });
+
+    // AC-03 — an admin edit to the style's prompt text reaches the injected
+    // block on the next chat, without a restart and without changing the
+    // 'Selected style:' line.
+    it('injects the admin-edited prompt text when an override is configured', async () => {
+        setChatStylePromptOverridesProvider(() => ({ human: 'SENTINEL-HUMAN-PROMPT' }));
+        try {
+            const { process, executedPrompt } = await runTask(chatTask('t-human-override', 'human'));
+
+            const expected = ['<chat-style>', 'Selected style: Human.', 'SENTINEL-HUMAN-PROMPT', '</chat-style>'].join('\n');
+            expect(executedPrompt).toBe(`${expected}\n\nWhat broke the build?`);
+            expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?', expected));
+            expect(process?.metadata?.chatStyle).toBe('human');
+        } finally {
+            setChatStylePromptOverridesProvider(undefined);
+        }
+    });
+
+    // The other half of the same rule: with no override the block must be
+    // byte-for-byte what it was before overrides existed.
+    it('injects the built-in block when the override map is empty', async () => {
+        setChatStylePromptOverridesProvider(() => ({}));
+        try {
+            const { executedPrompt } = await runTask(chatTask('t-human-no-override', 'human'));
+            expect(executedPrompt).toBe(`${HUMAN_BLOCK}\n\nWhat broke the build?`);
+        } finally {
+            setChatStylePromptOverridesProvider(undefined);
+        }
     });
 
     it('injects nothing on Default and stores the message byte-for-byte', async () => {

@@ -576,6 +576,10 @@ export function AdminPanel() {
                                                     defaultChatStyle={chatStyle.defaultChatStyle}
                                                     setDefaultChatStyle={chatStyle.setDefaultChatStyle}
                                                     selectorEnabled={chatStyleSelectorEnabled}
+                                                    prompts={chatStyle.prompts}
+                                                    setPrompt={chatStyle.setPrompt}
+                                                    resetPrompt={chatStyle.resetPrompt}
+                                                    isPromptCustomized={chatStyle.isPromptCustomized}
                                                     dirty={chatStyle.dirty}
                                                     saving={chatStyle.saving}
                                                     onSave={chatStyle.handleSave}

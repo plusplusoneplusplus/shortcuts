@@ -14,12 +14,23 @@
 import { CHAT_STYLES, CHAT_STYLE_LABELS, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { SettingsCard } from './SettingsCard';
 import { AdminRow, SourceBadge } from './adminControls';
+import {
+    CHAT_STYLE_PROMPT_MAX_LENGTH,
+    EDITABLE_CHAT_STYLES,
+    type EditableChatStyle,
+} from '../../../../../config/chat-style-prompts';
+import type { ChatStylePromptDraft } from './useAdminChatStyleSettings';
 
 export interface ChatStyleSettingsCardProps {
     defaultChatStyle: ChatStyle;
     setDefaultChatStyle: (style: ChatStyle) => void;
     /** Current value of `features.chatStyleSelector`, mirrored read-only. */
     selectorEnabled: boolean;
+    /** Effective prompt text per editable style. */
+    prompts: ChatStylePromptDraft;
+    setPrompt: (style: EditableChatStyle, text: string) => void;
+    resetPrompt: (style: EditableChatStyle) => void;
+    isPromptCustomized: (style: EditableChatStyle) => boolean;
     dirty: boolean;
     saving: boolean;
     onSave: () => void;
@@ -32,6 +43,10 @@ export function ChatStyleSettingsCard({
     defaultChatStyle,
     setDefaultChatStyle,
     selectorEnabled,
+    prompts,
+    setPrompt,
+    resetPrompt,
+    isPromptCustomized,
     dirty,
     saving,
     onSave,
@@ -68,6 +83,40 @@ export function ChatStyleSettingsCard({
                     ))}
                 </select>
             </AdminRow>
+
+            {EDITABLE_CHAT_STYLES.map(style => (
+                <AdminRow
+                    key={style}
+                    name={`${CHAT_STYLE_LABELS[style]} prompt`}
+                    hint={`Instruction injected when a chat switches to ${CHAT_STYLE_LABELS[style]}. Takes effect on the next chat that switches style — conversations already running keep the text they were given. Leave it blank to fall back to the built-in wording.`}
+                >
+                    <div className="ar-stack" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
+                        <textarea
+                            className="ar-input"
+                            rows={4}
+                            value={prompts[style] ?? ''}
+                            maxLength={CHAT_STYLE_PROMPT_MAX_LENGTH}
+                            onChange={e => setPrompt(style, e.target.value)}
+                            data-testid={`textarea-chat-style-prompt-${style}`}
+                            style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit' }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="ar-muted" style={{ fontSize: 12 }} data-testid={`chat-style-prompt-state-${style}`}>
+                                {isPromptCustomized(style) ? 'Customized' : 'Built-in default'}
+                            </span>
+                            <button
+                                type="button"
+                                className="ar-btn ar-btn-ghost ar-btn-sm"
+                                disabled={!isPromptCustomized(style)}
+                                onClick={() => resetPrompt(style)}
+                                data-testid={`reset-chat-style-prompt-${style}`}
+                            >
+                                Reset to default
+                            </button>
+                        </div>
+                    </div>
+                </AdminRow>
+            ))}
 
             <AdminRow
                 name="Style selector"

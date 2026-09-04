@@ -22,6 +22,10 @@
  */
 
 import { CHAT_STYLES } from '@plusplusoneplusplus/coc-client';
+import {
+    normalizeChatStylePromptOverrides,
+    validateChatStylePromptOverrides,
+} from './chat-style-prompts';
 import type { CLIConfig } from '../config';
 
 /** Runtime behavior classification for admin-editable config fields. */
@@ -130,6 +134,12 @@ export interface AdminSettingDefinition {
      * namespace descriptor in namespace-registry.ts owns its resolution.
      */
     customMerge?: boolean;
+    /**
+     * Rewrite an already-validated value before it is persisted. Lets a
+     * structured setting drop cleared/blank members so the config file only
+     * ever holds real values.
+     */
+    normalize?: (value: unknown) => unknown;
     /** Admin Features card exposure. Omit for settings rendered bespoke elsewhere. */
     ui?: AdminSettingUiSpec;
 }
@@ -256,7 +266,7 @@ export function applyAdminSettingValue(config: CLIConfig, def: AdminSettingDefin
     if (clearsStoredValue(def, value)) {
         deleteConfigValueAtPath(target, def.key);
     } else {
-        setConfigValueAtPath(target, def.key, value);
+        setConfigValueAtPath(target, def.key, def.normalize ? def.normalize(value) : value);
     }
 }
 
@@ -912,6 +922,18 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         default: 'default',
         runtime: 'live',
         runtimeFlag: 'defaultChatStyle',
+    },
+
+    // Per-style prompt text, edited on the Chat Style settings section. No
+    // `ui` (multiline text has no registry control shape) and no `runtimeFlag`:
+    // the text is only ever read server-side when a style is injected, and the
+    // admin card hydrates from the resolved config it already fetches.
+    {
+        key: 'features.chatStylePrompts',
+        value: { kind: 'custom', validate: validateChatStylePromptOverrides },
+        default: {},
+        runtime: 'live',
+        normalize: normalizeChatStylePromptOverrides,
     },
 
     bool({

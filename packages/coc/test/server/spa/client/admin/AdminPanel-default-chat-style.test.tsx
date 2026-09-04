@@ -94,6 +94,10 @@ beforeEach(() => {
 });
 
 import { AdminPanel } from '../../../../../src/server/spa/client/react/admin/AdminPanel';
+import {
+    CHAT_STYLE_FOCUS_LINES,
+    EDITABLE_CHAT_STYLES,
+} from '../../../../../src/config/chat-style-prompts';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -245,6 +249,127 @@ describe('AdminPanel — Default chat style select', () => {
             const putCalls = mockFetch.mock.calls.filter(([url, opts]: any[]) => opts?.method === 'PUT' && String(url).includes('/admin/config'));
             expect(putCalls.length).toBeGreaterThan(0);
             expect(JSON.parse(putCalls[0][1].body)['features.defaultChatStyle']).toBe('direct');
+        });
+    });
+});
+
+// ── AC-03: per-style prompt text ───────────────────────────────────────────
+
+describe('AdminPanel — chat style prompt overrides', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    function withFeatures(features: Record<string, unknown>) {
+        mockFetch.mockImplementation((url: string, opts?: any) => {
+            if (opts?.method === 'PUT' && url.includes('/admin/config')) {
+                return Promise.resolve({ ok: true, json: async () => ({}) });
+            }
+            if (url.includes('/admin/config')) return Promise.resolve(mockConfigResponse({ features }));
+            if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
+            if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
+            return Promise.resolve({ ok: true, json: async () => ({}) });
+        });
+    }
+
+    async function openSection(features: Record<string, unknown>) {
+        withFeatures(features);
+        window.location.hash = 'admin/settings/chat-style';
+        render(<AdminPanel />);
+        await waitFor(() => expect(screen.getByTestId('settings-chat-style')).toBeTruthy());
+    }
+
+    function putBodies() {
+        return mockFetch.mock.calls
+            .filter(([url, opts]: any[]) => opts?.method === 'PUT' && String(url).includes('/admin/config'))
+            .map(([, opts]: any[]) => JSON.parse(opts.body));
+    }
+
+    function saveSection() {
+        const save = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-chat-style"]'));
+        expect(save).toBeTruthy();
+        fireEvent.click(save!);
+    }
+
+    it('prefills each editable style with its built-in text and marks it uncustomized', async () => {
+        await openSection({ chatStyleSelector: true, defaultChatStyle: 'default' });
+
+        for (const style of EDITABLE_CHAT_STYLES) {
+            const textarea = screen.getByTestId(`textarea-chat-style-prompt-${style}`) as HTMLTextAreaElement;
+            expect(textarea.value).toBe(CHAT_STYLE_FOCUS_LINES[style]);
+            expect(screen.getByTestId(`chat-style-prompt-state-${style}`).textContent).toBe('Built-in default');
+            expect((screen.getByTestId(`reset-chat-style-prompt-${style}`) as HTMLButtonElement).disabled).toBe(true);
+        }
+        // 'default' carries no prompt, so it gets no textarea.
+        expect(screen.queryByTestId('textarea-chat-style-prompt-default')).toBeNull();
+    });
+
+    it('shows a configured override and enables its reset action', async () => {
+        await openSection({
+            chatStyleSelector: true,
+            defaultChatStyle: 'default',
+            chatStylePrompts: { direct: 'SENTINEL-DIRECT' },
+        });
+
+        expect((screen.getByTestId('textarea-chat-style-prompt-direct') as HTMLTextAreaElement).value)
+            .toBe('SENTINEL-DIRECT');
+        expect(screen.getByTestId('chat-style-prompt-state-direct').textContent).toBe('Customized');
+        expect((screen.getByTestId('reset-chat-style-prompt-direct') as HTMLButtonElement).disabled).toBe(false);
+        // Untouched styles stay on their built-in wording.
+        expect((screen.getByTestId('textarea-chat-style-prompt-human') as HTMLTextAreaElement).value)
+            .toBe(CHAT_STYLE_FOCUS_LINES.human);
+    });
+
+    it('sends only the edited style in features.chatStylePrompts', async () => {
+        await openSection({ chatStyleSelector: true, defaultChatStyle: 'default' });
+
+        fireEvent.change(screen.getByTestId('textarea-chat-style-prompt-direct'), {
+            target: { value: '  SENTINEL-DIRECT  ' },
+        });
+        saveSection();
+
+        await waitFor(() => {
+            expect(putBodies()[0]?.['features.chatStylePrompts']).toEqual({ direct: 'SENTINEL-DIRECT' });
+        });
+    });
+
+    // Reset writes the built-in text back into the box; saving then drops the
+    // key entirely rather than persisting a copy of the default.
+    it('clears the override when a style is reset to default and saved', async () => {
+        await openSection({
+            chatStyleSelector: true,
+            defaultChatStyle: 'default',
+            chatStylePrompts: { direct: 'SENTINEL-DIRECT' },
+        });
+
+        fireEvent.click(screen.getByTestId('reset-chat-style-prompt-direct'));
+        expect((screen.getByTestId('textarea-chat-style-prompt-direct') as HTMLTextAreaElement).value)
+            .toBe(CHAT_STYLE_FOCUS_LINES.direct);
+        expect((screen.getByTestId('reset-chat-style-prompt-direct') as HTMLButtonElement).disabled).toBe(true);
+
+        saveSection();
+        await waitFor(() => {
+            expect(putBodies()[0]?.['features.chatStylePrompts']).toEqual({});
+        });
+    });
+
+    it('treats whitespace-only text as no override', async () => {
+        await openSection({
+            chatStyleSelector: true,
+            defaultChatStyle: 'default',
+            chatStylePrompts: { human: 'SENTINEL-HUMAN' },
+        });
+
+        fireEvent.change(screen.getByTestId('textarea-chat-style-prompt-human'), { target: { value: '   ' } });
+        expect(screen.getByTestId('chat-style-prompt-state-human').textContent).toBe('Built-in default');
+
+        saveSection();
+        await waitFor(() => {
+            expect(putBodies()[0]?.['features.chatStylePrompts']).toEqual({});
         });
     });
 });
