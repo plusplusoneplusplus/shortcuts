@@ -4,13 +4,19 @@
  * color theme with the dashboard's light/dark mode.
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
 import { useTerminalWebSocket } from './hooks/useTerminalWebSocket';
+import {
+    buildTerminalContextMenuItems,
+    useTerminalClipboard,
+    type TerminalKeyEventLike,
+} from './hooks/useTerminalClipboard';
+import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import { detectDarkMode } from '../../utils/theme';
 import type { ITheme } from '@xterm/xterm';
 import type { TerminalSessionInfo } from './hooks/useTerminalWebSocket';
@@ -114,6 +120,24 @@ export function TerminalPanel({
         },
     });
 
+    const getTerminal = useCallback(() => xtermRef.current, []);
+    const clipboard = useTerminalClipboard({ getTerminal, sendInput });
+
+    // The key handler is attached once on mount, so route it through a ref to
+    // always reach the current closure over `sendInput`.
+    const keyHandlerRef = useRef(clipboard.handleKeyEvent);
+    keyHandlerRef.current = clipboard.handleKeyEvent;
+
+    const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+
+    const handleContextMenu = useCallback((event: React.MouseEvent) => {
+        // Suppress the browser menu so the terminal owns right-click.
+        event.preventDefault();
+        setMenu({ x: event.clientX, y: event.clientY, hasSelection: clipboard.hasSelection() });
+    }, [clipboard]);
+
+    const closeMenu = useCallback(() => setMenu(null), []);
+
     // Initialize xterm.js once on mount
     useEffect(() => {
         if (!termRef.current) return;
@@ -129,6 +153,9 @@ export function TerminalPanel({
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
         term.loadAddon(new WebLinksAddon());
+        term.attachCustomKeyEventHandler((event) =>
+            keyHandlerRef.current(event as TerminalKeyEventLike),
+        );
         term.open(termRef.current);
         fitAddon.fit();
 
@@ -221,10 +248,20 @@ export function TerminalPanel({
     }, [isActive, sendResize]);
 
     return (
-        <div
-            ref={termRef}
-            className="h-full w-full"
-            data-testid={`terminal-panel-${sessionId}`}
-        />
+        <>
+            <div
+                ref={termRef}
+                className="h-full w-full"
+                data-testid={`terminal-panel-${sessionId}`}
+                onContextMenu={handleContextMenu}
+            />
+            {menu && (
+                <ContextMenu
+                    position={{ x: menu.x, y: menu.y }}
+                    items={buildTerminalContextMenuItems(clipboard, { hasSelection: menu.hasSelection })}
+                    onClose={closeMenu}
+                />
+            )}
+        </>
     );
 }
