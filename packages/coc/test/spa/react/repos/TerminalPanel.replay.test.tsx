@@ -128,6 +128,20 @@ describe('TerminalPanel scrollback replay (AC-03)', function () {
         expect(mocks.write.mock.calls.map(function (c) { return c[0]; })).toEqual(['old', 'new']);
     });
 
+    it('AC-07: renders a client notice as a dim line, not an error', function () {
+        renderPanel();
+
+        mocks.onMessage!({
+            type: 'terminal-notice',
+            sessionId: null,
+            message: 'Previous terminal session is gone \u2014 started a new shell.',
+        });
+
+        expect(mocks.write).toHaveBeenCalledWith(
+            '\r\n\x1b[90m[Previous terminal session is gone \u2014 started a new shell.]\x1b[0m\r\n',
+        );
+    });
+
     it('sizes xterm scrollback to match the server-side cap', function () {
         renderPanel();
 

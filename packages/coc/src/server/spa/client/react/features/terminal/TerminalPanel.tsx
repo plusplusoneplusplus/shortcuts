@@ -133,6 +133,11 @@ export function TerminalPanel({
                 case 'terminal-error':
                     term.write(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m\r\n`);
                     break;
+                case 'terminal-notice':
+                    // Client-side status line (AC-07 reattach fallback) — dim,
+                    // not red, because nothing actually failed for the user.
+                    term.write(`\r\n\x1b[90m[${msg.message}]\x1b[0m\r\n`);
+                    break;
             }
         },
     });

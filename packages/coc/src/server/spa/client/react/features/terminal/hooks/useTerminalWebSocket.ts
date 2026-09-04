@@ -46,6 +46,12 @@ export type TerminalServerMessage =
     | { type: 'terminal-exit'; sessionId: string; exitCode: number; signal?: number }
     | { type: 'terminal-error'; sessionId: string | null; message: string }
     | { type: 'terminal-replay'; sessionId: string; data: string; truncated: boolean }
+    /**
+     * Synthesized client-side (never sent by the server): a one-line status
+     * note for the user, e.g. the AC-07 fallback when a reattach finds the
+     * session gone and a fresh shell is spawned instead.
+     */
+    | { type: 'terminal-notice'; sessionId: string | null; message: string }
     | { type: 'pong' };
 
 export interface UseTerminalWebSocketOptions {
@@ -89,6 +95,12 @@ export function useTerminalWebSocket({
     const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const manualCloseRef = useRef(false);
+    /**
+     * True once a create-mode tab has adopted the session id the server handed
+     * back (AC-07). Only an adopted attach may fall back to creating a new
+     * shell — an attach the caller asked for explicitly keeps failing loudly.
+     */
+    const adoptedRef = useRef(false);
     const onMessageRef = useRef(onMessage);
     const onConnectRef = useRef(onConnect);
     const onDisconnectRef = useRef(onDisconnect);
@@ -116,7 +128,11 @@ export function useTerminalWebSocket({
         if (!params) return;
 
         cleanup();
-        sessionIdRef.current = params.mode === 'attach' ? params.sessionId ?? null : null;
+        // Keep the id a create-mode tab already adopted: a reconnect reattaches
+        // to that PTY instead of spawning a second shell (AC-07).
+        if (params.mode === 'attach') {
+            sessionIdRef.current = params.sessionId ?? null;
+        }
         if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
             wsRef.current.close();
         }
@@ -168,6 +184,43 @@ export function useTerminalWebSocket({
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'terminal-created' && msg.session?.id) {
                     sessionIdRef.current = msg.session.id;
+                    // AC-07: adopt the session the server just spawned, so a
+                    // dropped socket reattaches to it rather than creating a
+                    // second PTY behind the same tab.
+                    if (params.mode === 'create') {
+                        params.mode = 'attach';
+                        params.sessionId = msg.session.id;
+                        adoptedRef.current = true;
+                    }
+                }
+                if (
+                    msg.type === 'terminal-error'
+                    && adoptedRef.current
+                    && params.mode === 'attach'
+                    && msg.sessionId === params.sessionId
+                ) {
+                    // The adopted PTY is genuinely gone (server restart, kill
+                    // from elsewhere). Fall back to a fresh shell on the same
+                    // socket and tell the user why, instead of leaving the tab
+                    // showing a bare error.
+                    adoptedRef.current = false;
+                    params.mode = 'create';
+                    params.sessionId = undefined;
+                    sessionIdRef.current = null;
+                    onMessageRef.current({
+                        type: 'terminal-notice',
+                        sessionId: null,
+                        message: 'Previous terminal session is gone — started a new shell.',
+                    });
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'terminal-create',
+                            workspaceId: params.workspaceId,
+                            cols: params.cols,
+                            rows: params.rows,
+                        }));
+                    }
+                    return;
                 }
                 onMessageRef.current(msg);
             } catch { /* ignore parse errors */ }
@@ -193,6 +246,7 @@ export function useTerminalWebSocket({
 
     const connect = useCallback((workspaceId: string, cols: number, rows: number, options?: TerminalConnectOptions) => {
         manualCloseRef.current = false;
+        adoptedRef.current = false;
         const mode = options?.mode ?? 'create';
         if (mode === 'attach') {
             connectParamsRef.current = { workspaceId, cols, rows, mode, sessionId: options.sessionId };
@@ -215,6 +269,7 @@ export function useTerminalWebSocket({
             wsRef.current = null;
         }
         sessionIdRef.current = null;
+        adoptedRef.current = false;
         setStatus('closed');
     }, [cleanup]);
 
