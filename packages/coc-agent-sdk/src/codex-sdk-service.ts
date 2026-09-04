@@ -527,6 +527,25 @@ interface CodexReasoningLevel {
     effort?: unknown;
 }
 
+/**
+ * Canonical low→high ordering of the reasoning levels Codex can advertise,
+ * mirroring `ModelReasoningEffort` in `@openai/codex-sdk`'s `index.d.ts`. The
+ * catalog reports levels in arbitrary order, so `normalizeReasoningLevels`
+ * intersects against this list to both sort and drop anything unrecognised.
+ * A level missing from here is silently dropped from the model's options, so it
+ * must be extended whenever the SDK adds one.
+ */
+const REASONING_LEVEL_ORDER: readonly string[] = [
+    'minimal',
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+    'ultra',
+    'persistent',
+];
+
 // ============================================================================
 // Codex app-server RPC response types
 // ============================================================================
@@ -585,7 +604,7 @@ interface CodexTokenUsageUpdatedParams {
 
 /**
  * `thread/compacted` notification params (deprecated upstream in favor of a
- * `context_compaction` `item/completed`, but still emitted by 0.144.4).
+ * `context_compaction` `item/completed`, but still emitted by 0.153.2).
  */
 interface CodexThreadCompactedParams {
     threadId?: string;
@@ -716,7 +735,7 @@ export class CodexSDKService implements ISDKService {
             this.availabilityCache = {
                 available: false,
                 error:
-                    'Codex SDK not installed (~239 MB). To enable Codex, run:\n' +
+                    'Codex SDK not installed (~280 MB). To enable Codex, run:\n' +
                     `  ${installCmd}\n` +
                     'Then restart CoC.',
             };
@@ -836,7 +855,7 @@ export class CodexSDKService implements ISDKService {
                 efforts.add(level.effort);
             }
         }
-        return ['minimal', 'low', 'medium', 'high', 'xhigh'].filter(effort => efforts.has(effort));
+        return REASONING_LEVEL_ORDER.filter(effort => efforts.has(effort));
     }
 
     // ── Account quota via codex app-server RPC ────────────────────────────────

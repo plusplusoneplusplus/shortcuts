@@ -14,7 +14,7 @@
  * It is display metadata only: every failure path returns `undefined` and the
  * caller falls back to the registry-derived estimate.
  *
- * Envelope shape (pinned to `@openai/codex-sdk` 0.144.4 / `rust-v0.144.4`):
+ * Envelope shape (verified against `@openai/codex-sdk` 0.153.2 / `rust-v0.153.2`):
  *   { timestamp, type: "event_msg", payload: {
  *       type: "token_count",
  *       info: { total_token_usage, last_token_usage, model_context_window } | null,
