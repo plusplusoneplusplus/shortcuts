@@ -164,6 +164,7 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                     originalGoal: action.originalGoal,
                     terminalReason: action.terminalReason,
                     iterationStartMs: action.iterationStartMs,
+                    workingDirectory: deps.workingDirectory,
                 }).catch(err => {
                     logger.debug(LogCategory.AI, `[Ralph] journal persist failed for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
                 });

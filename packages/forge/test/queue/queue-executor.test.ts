@@ -1210,6 +1210,115 @@ describe('QueueExecutor', () => {
 
             expect(completedCount).toBe(2);
         });
+
+        it('an autopilot-scoped marker pauses autopilot only, not the whole queue', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+
+            queueManager.insertPauseMarker(0, undefined, 'autopilot');
+
+            executor.start();
+
+            await waitFor(() => queueManager.isAutopilotPaused(), 2000);
+
+            expect(queueManager.isAutopilotPaused()).toBe(true);
+            expect(queueManager.isPaused()).toBe(false);
+            expect(queueManager.getStats().autopilotPausedUntil).toBeUndefined();
+            expect(queueManager.getQueueItems().some(i => (i as any).kind === 'pause-marker')).toBe(false);
+        });
+
+        it('an ask task behind an autopilot marker still runs while an autopilot task holds', async () => {
+            const executed: string[] = [];
+            const recordingExecutor = createSimpleTaskExecutor(async (task) => {
+                executed.push(task.type);
+                return 'done';
+            });
+            // Mirrors defaultIsExclusive: autopilot-style tasks are exclusive, ask ones are not.
+            queueManager = createTaskQueueManager({
+                isExclusive: (task) => task.type === 'autopilot',
+            });
+            executor = new QueueExecutor(queueManager, recordingExecutor, {
+                autoStart: false,
+                isExclusive: (task) => task.type === 'autopilot',
+            });
+
+            queueManager.insertPauseMarker(0, undefined, 'autopilot');
+            queueManager.enqueue(createTestTask({ type: 'autopilot' }));
+            queueManager.enqueue(createTestTask({ type: 'ask' }));
+
+            executor.start();
+
+            await waitFor(() => executed.includes('ask'), 2000);
+            // Give the loop extra turns to prove the autopilot task stays held.
+            await delay(100);
+
+            expect(queueManager.isAutopilotPaused()).toBe(true);
+            expect(queueManager.isPaused()).toBe(false);
+            expect(executed).toEqual(['ask']);
+        });
+
+        it('a timed autopilot marker sets autopilotPausedUntil, not pausedUntil', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            const before = Date.now();
+
+            queueManager.insertPauseMarker(0, 1, 'autopilot');
+
+            executor.start();
+
+            await waitFor(() => queueManager.isAutopilotPaused(), 2000);
+
+            const stats = queueManager.getStats();
+            expect(stats.autopilotPausedUntil).toBeDefined();
+            expect(stats.autopilotPausedUntil!).toBeGreaterThanOrEqual(before + 60 * 60 * 1000);
+            expect(stats.autopilotPausedUntil!).toBeLessThanOrEqual(Date.now() + 60 * 60 * 1000);
+            expect(stats.pausedUntil).toBeUndefined();
+            expect(queueManager.isPaused()).toBe(false);
+        });
+
+        it('clearExpiredTimedPauses releases a timed autopilot marker once it lapses', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+
+            // ~0.18s, expressed in hours, so the deadline lapses within the test.
+            queueManager.insertPauseMarker(0, 0.00005, 'autopilot');
+
+            executor.start();
+
+            await waitFor(() => queueManager.isAutopilotPaused(), 2000);
+
+            // isAutopilotPaused() runs clearExpiredTimedPauses() on every call.
+            await waitFor(() => !queueManager.isAutopilotPaused(), 2000);
+
+            expect(queueManager.getStats().autopilotPausedUntil).toBeUndefined();
+        });
+
+        it('an explicitly all-scoped marker pauses the whole queue', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+
+            queueManager.insertPauseMarker(0, undefined, 'all');
+
+            executor.start();
+
+            await waitFor(() => queueManager.isPaused(), 2000);
+
+            expect(queueManager.isPaused()).toBe(true);
+            expect(queueManager.isAutopilotPaused()).toBe(false);
+        });
+
+        it('emits pause-marker-reached carrying the scope for autopilot markers', async () => {
+            executor = new QueueExecutor(queueManager, taskExecutor, { autoStart: false });
+            const handler = vi.fn();
+            executor.on('pause-marker-reached', handler);
+
+            queueManager.insertPauseMarker(0, undefined, 'autopilot');
+
+            executor.start();
+
+            await waitFor(() => handler.mock.calls.length > 0, 2000);
+
+            expect(handler.mock.calls[0][0]).toMatchObject({
+                kind: 'pause-marker',
+                scope: 'autopilot',
+            });
+        });
     });
 
     // ========================================================================

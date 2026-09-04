@@ -36,7 +36,9 @@ import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
 import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { CompactionSummaryDisclosure } from './CompactionSummaryDisclosure';
+import { InjectedBlockDisclosure } from './InjectedBlockDisclosure';
 import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
+import { extractInjectedBlocks } from './injectedBlocks';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
@@ -50,6 +52,7 @@ import {
     type ParsedSessionContextBlock,
 } from '../hooks/useAttachedContext';
 import { chatMarkdownToHtml, toContentHtml } from './markdownHtml';
+import { ChatRenderContextProvider, type ChatRenderContextValue } from './ChatRenderContext';
 
 export {
     chatMarkdownToHtml,
@@ -1097,15 +1100,25 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     // canvas feature is on (the legacy excalidraw flag still enables it too).
     const canvasEmbedEnabled = isCanvasEnabled() && !turn.streaming;
     const excalidrawEmbedEnabled = SHOW_EXCALIDRAW_DIAGRAMS && (isExcalidrawEnabled() || isCanvasEnabled()) && !turn.streaming;
+    // Shared with nested chat-markdown renderers (e.g. the expanded task_complete
+    // body) so they resolve the same workspace and embed options as this turn.
+    const chatRenderContext = useMemo<ChatRenderContextValue>(
+        () => ({ wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
+        [wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
+    );
     const assistantRender = useMemo(
         () => isUser ? null : buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
         // turn.timeline + turn.content drive the markdown HTML; embed flags toggle inline-HTML/excalidraw rendering.
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [isUser, turn.timeline, turn.content, turn.streaming, wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
     );
-    const parsedUserContent = useMemo(
-        () => isUser ? parseAttachedSessionContextBlocks(turn.content || '') : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], remainingContent: '' },
+    const injectedBlocks = useMemo(
+        () => isUser ? extractInjectedBlocks(turn.content || '') : { text: '' },
         [isUser, turn.content],
+    );
+    const parsedUserContent = useMemo(
+        () => isUser ? parseAttachedSessionContextBlocks(injectedBlocks.text) : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], remainingContent: '' },
+        [isUser, injectedBlocks.text],
     );
     const userContentText = isUser ? parsedUserContent.remainingContent : '';
     const largePasteParts = useMemo(
@@ -1395,6 +1408,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     }
 
     return (
+        <ChatRenderContextProvider value={chatRenderContext}>
         <div className={cn(
             'flex', isUser ? 'justify-end' : 'justify-start',
             'chat-message', isUser ? 'user' : 'assistant',
@@ -1703,6 +1717,20 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             ⚠ Failed to load images · Retry
                         </button>
                     )}
+                    {isUser && injectedBlocks.chatMode && (
+                        <InjectedBlockDisclosure
+                            block={injectedBlocks.chatMode}
+                            label="Chat mode"
+                            testIdPrefix="chat-mode-block"
+                        />
+                    )}
+                    {isUser && injectedBlocks.chatStyle && (
+                        <InjectedBlockDisclosure
+                            block={injectedBlocks.chatStyle}
+                            label="Chat style"
+                            testIdPrefix="chat-style-block"
+                        />
+                    )}
                     {isUser && turn.repoGroupContext && (
                         <RepoGroupContextDisclosure context={turn.repoGroupContext} />
                     )}
@@ -1861,5 +1889,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                 document.body and renders null while closed. */}
             <ImageLightbox src={lightboxSrc} onClose={closeLightbox} />
         </div>
+        </ChatRenderContextProvider>
     );
 }

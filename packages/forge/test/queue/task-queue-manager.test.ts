@@ -2318,6 +2318,43 @@ describe('pause markers', () => {
         expect(marker!.durationHours).toBeUndefined();
     });
 
+    it('insertPauseMarker stores an autopilot scope when provided', () => {
+        manager.enqueue(createTestTask());
+
+        const markerId = manager.insertPauseMarker(0, 2, 'autopilot');
+        const marker = manager.getQueueItems().find((item): item is PauseMarker => (item as any).kind === 'pause-marker');
+
+        expect(marker).toMatchObject({
+            kind: 'pause-marker',
+            id: markerId,
+            durationHours: 2,
+            scope: 'autopilot',
+        });
+    });
+
+    it('insertPauseMarker omits scope when not provided, so it defaults to all', () => {
+        manager.enqueue(createTestTask());
+
+        manager.insertPauseMarker(0);
+        const marker = manager.getQueueItems().find((item): item is PauseMarker => (item as any).kind === 'pause-marker');
+
+        expect(marker!.scope).toBeUndefined();
+    });
+
+    it('pause-marker-added carries the scope on the emitted marker', () => {
+        const added = vi.fn();
+        manager.on('pause-marker-added', added);
+        manager.enqueue(createTestTask());
+
+        const markerId = manager.insertPauseMarker(0, undefined, 'autopilot');
+
+        expect(added).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'pause-marker',
+            id: markerId,
+            scope: 'autopilot',
+        }));
+    });
+
     it('insertPauseMarker inserts marker at given index (0-based task offset)', () => {
         manager.enqueue(createTestTask({ displayName: 'T1' }));
         manager.enqueue(createTestTask({ displayName: 'T2' }));

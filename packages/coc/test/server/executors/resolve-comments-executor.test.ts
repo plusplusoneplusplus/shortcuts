@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { ResolveCommentsExecutor } from '../../../src/server/executors/resolve-comments-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
@@ -315,6 +316,20 @@ describe('ResolveCommentsExecutor — multi-file diff comments', () => {
         const result = await executor.executeTask(task);
 
         expect(result.commentIds).toEqual(['mc-1', 'mc-2', 'mc-3']);
+    });
+
+    // AC-08 — one-shot executors are out of scope for the "inject only on
+    // change" rule: they have no earlier turn to have carried the block, so
+    // they still send it unconditionally.
+    it('always rides the ask block on the single-file prompt', async () => {
+        const executor = new ResolveCommentsExecutor(store, makeOptions(store));
+
+        await executor.executeTask(makeResolveCommentsTask('rc-mode-1'));
+        await executor.executeTask(makeResolveCommentsTask('rc-mode-2'));
+
+        for (const call of sdkMocks.mockSendMessage.mock.calls) {
+            expect((call[0] as any).prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+        }
     });
 
     it('sets agentMode to autopilot in buildModeOptions for multi-file context', async () => {

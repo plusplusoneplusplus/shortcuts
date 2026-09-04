@@ -183,6 +183,82 @@ describe('upsertQueueItem', () => {
             createdAt: 5678,
         });
     });
+
+    it('round-trips an autopilot-scoped pause marker', () => {
+        const marker: PauseMarker = {
+            kind: 'pause-marker',
+            id: 'pause-ap',
+            createdAt: 9001,
+            durationHours: 3,
+            scope: 'autopilot',
+        };
+
+        store.upsertQueueItem(marker, 'repo-1', 0);
+
+        const [item] = store.getQueueItems('repo-1', ['queued']);
+        expect(item).toEqual({
+            kind: 'pause-marker',
+            id: 'pause-ap',
+            repoId: 'repo-1',
+            createdAt: 9001,
+            durationHours: 3,
+            scope: 'autopilot',
+        });
+    });
+
+    it('round-trips an explicitly all-scoped pause marker', () => {
+        const marker: PauseMarker = {
+            kind: 'pause-marker',
+            id: 'pause-all',
+            createdAt: 9002,
+            scope: 'all',
+        };
+
+        store.upsertQueueItem(marker, 'repo-1', 0);
+
+        const [item] = store.getQueueItems('repo-1', ['queued']);
+        expect(item).toEqual({
+            kind: 'pause-marker',
+            id: 'pause-all',
+            repoId: 'repo-1',
+            createdAt: 9002,
+            scope: 'all',
+        });
+    });
+
+    it('leaves scope absent for a marker inserted without one', () => {
+        const marker: PauseMarker = {
+            kind: 'pause-marker',
+            id: 'pause-noscope',
+            createdAt: 9003,
+        };
+
+        store.upsertQueueItem(marker, 'repo-1', 0);
+
+        expect(db.prepare('SELECT scope FROM queue_tasks WHERE id = ?').get('pause-noscope'))
+            .toEqual({ scope: null });
+        const [item] = store.getQueueItems('repo-1', ['queued']);
+        expect(item).not.toHaveProperty('scope');
+    });
+
+    it('hydrates an unrecognised persisted scope as all, without throwing', () => {
+        const marker: PauseMarker = {
+            kind: 'pause-marker',
+            id: 'pause-garbage',
+            createdAt: 9004,
+        };
+        store.upsertQueueItem(marker, 'repo-1', 0);
+        db.prepare('UPDATE queue_tasks SET scope = ? WHERE id = ?').run('nonsense', 'pause-garbage');
+
+        const [item] = store.getQueueItems('repo-1', ['queued']);
+        expect(item).toEqual({
+            kind: 'pause-marker',
+            id: 'pause-garbage',
+            repoId: 'repo-1',
+            createdAt: 9004,
+            scope: 'all',
+        });
+    });
 });
 
 // ============================================================================

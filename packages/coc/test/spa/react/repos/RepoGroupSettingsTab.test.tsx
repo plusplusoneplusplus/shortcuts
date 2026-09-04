@@ -41,13 +41,30 @@ beforeEach(() => {
 });
 
 describe('RepoGroupSettingsTab', () => {
+    it('renders the shared settings shell with one selected Repos item and no filter or inner card', async () => {
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+
+        const tab = screen.getByTestId('repo-group-settings-tab');
+        expect(tab.getAttribute('data-workspace')).toBe(GROUP_ID);
+        expect(screen.getByTestId('settings-sidebar')).toBeTruthy();
+        expect(screen.getByTestId('settings-content-panel')).toBeTruthy();
+        expect(screen.getByTestId('nav-item-repos').textContent).toBe('Repos');
+        expect(screen.getByTestId('nav-item-repos').getAttribute('aria-current')).toBe('page');
+        expect(screen.getByTestId('settings-section-title').textContent).toBe('Repos');
+        expect(screen.getByTestId('settings-section-description').textContent).toContain('what each repo is for');
+        expect(screen.queryByTestId('settings-filter-input')).toBeNull();
+        expect(screen.queryByTestId('repo-group-settings-members-card')).toBeNull();
+
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-list')).toBeTruthy());
+    });
+
     it('makes no group read while it is not the visible tab', () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active={false} />);
         expect(mockGetRepoGroup).not.toHaveBeenCalled();
         expect(screen.queryByTestId('repo-group-member-list')).toBeNull();
     });
 
-    it('lists every member with its name, path, stale badge and description', async () => {
+    it('lists every member directly in the section body with its name, path, stale badge and description', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));
 
@@ -59,6 +76,8 @@ describe('RepoGroupSettingsTab', () => {
         expect(staleRow.textContent).toContain('gone');
         expect(staleRow.textContent).toContain('/r/r3');
         expect(screen.getAllByTestId('repo-group-stale-badge')).toHaveLength(1);
+        expect(screen.getByTestId('repo-group-member-list').parentElement?.parentElement)
+            .toBe(screen.getByTestId('settings-content-panel'));
     });
 
     it('saves an edited description on Enter', async () => {

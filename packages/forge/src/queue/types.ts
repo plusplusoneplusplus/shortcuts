@@ -9,6 +9,11 @@
 export type PauseDurationHours = number;
 
 /**
+ * What a pause marker holds back. Absent means `'all'`.
+ */
+export type PauseScope = 'all' | 'autopilot';
+
+/**
  * A pause marker inserted into the queue.
  * When the executor dequeues this item, it pauses the queue
  * (same as clicking ⏸ manually) and discards the marker.
@@ -21,6 +26,12 @@ export interface PauseMarker {
     createdAt: number;
     /** Omitted for an indefinite pause; otherwise a duration in hours within (0, 24]. */
     durationHours?: PauseDurationHours;
+    /**
+     * What the marker pauses when it is reached.
+     * `'all'` (the default when omitted) stops the whole queue; `'autopilot'`
+     * stops only autopilot/ralph work so ask and script tasks keep flowing.
+     */
+    scope?: PauseScope;
 }
 
 /**

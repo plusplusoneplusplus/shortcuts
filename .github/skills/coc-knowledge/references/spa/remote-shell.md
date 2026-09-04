@@ -242,21 +242,23 @@ construction. `getRepoGroupHeaderConfig(workspaceId, label)` supplies the
 `VirtualWorkspaceHeaderConfig` (`testIdPrefix: 'repo-group'`, `defaultTab: 'chats'`, no
 actions), labeled with the registered workspace name (id fallback while loading).
 
-**Settings tab.** A group has no git, no MCP config and no per-repo preferences, so it
-does *not* reuse `RepoSettingsTab` or the `SettingsSection` sub-route machinery — it is a
-single scrolling pane of cards, and `#repos/<groupId>/settings` (no section suffix) is
-its canonical URL. `buildWorkspaceSubTabSuffix(workspaceId, tab, state, taskId)` in
-`layout/dashboardRoutes.ts` is what enforces that: it returns a bare `/settings` for a
-`group-*` id and otherwise delegates to `buildRepoSubTabSuffix`. Every navigator that
-knows its target id calls it (`Router`'s Alt-shortcut handler, `useVirtualWorkspaceHeader`,
-`useShellNavigation`, `resolveWorkspaceRouteSuffix`). `GlobalStatusDock` also exempts
-groups from its settings stand-down, since there is no nav-sidebar footer to defer to.
+**Settings tab.** `features/repo-settings/SettingsShell.tsx` supplies the same sidebar
+and content-panel chrome used by `RepoSettingsTab`. A group renders one selected sidebar
+item, **Repos**, with no filter or group heading. `RepoGroupMemberList` sits directly in
+the section body: one row per member (name, `rootPath`, stale badge) with an
+inline-editable description. Editing is type / Enter-or-blur to save, Escape to cancel;
+the save is optimistic and rolls back with a per-row error message when
+`PATCH /api/repo-groups/:id` (`{ descriptions: { [id]: next } }`) fails. Membership
+itself stays in `RepoGroupDialog`, which edits the same descriptions.
 
-The pane's only card today is **Member repos** — `RepoGroupMemberList`, one row per
-member (name, `rootPath`, stale badge) with an inline-editable description. Editing is
-type / Enter-or-blur to save, Escape to cancel; the save is optimistic and rolls back with
-a per-row error message when `PATCH /api/repo-groups/:id` (`{ descriptions: { [id]: next } }`)
-fails. Membership itself stays in `RepoGroupDialog`, which edits the same descriptions.
+A group has no git, MCP config, per-repo preferences, or `SettingsSection` sub-route.
+`#repos/<groupId>/settings` (no section suffix) is its canonical URL.
+`buildWorkspaceSubTabSuffix(workspaceId, tab, state, taskId)` in
+`layout/dashboardRoutes.ts` returns a bare `/settings` for a `group-*` id and otherwise
+delegates to `buildRepoSubTabSuffix`. Every navigator that knows its target id calls it
+(`Router`'s Alt-shortcut handler, `useVirtualWorkspaceHeader`, `useShellNavigation`,
+`resolveWorkspaceRouteSuffix`). `GlobalStatusDock` exempts groups from its settings
+stand-down because the group shell has no docked sidebar footer.
 Members come from `useRepoGroupMembers(workspaceId, baseUrl, enabled)`
 (`repos/useRepoGroupMembers.ts`), gated on the tab being visible so a group nobody opens
 Settings on costs no request.

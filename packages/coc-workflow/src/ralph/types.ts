@@ -48,6 +48,11 @@ export interface RalphIterationRecord {
     endedAt?: string;
     status: 'running' | 'completed' | 'failed' | 'cancelled';
     exitSignal?: RalphExitSignal;
+    /**
+     * HEAD SHA of the checkout after this iteration completed; absent on
+     * legacy sessions and when git could not be read.
+     */
+    headSha?: string;
 }
 
 /**

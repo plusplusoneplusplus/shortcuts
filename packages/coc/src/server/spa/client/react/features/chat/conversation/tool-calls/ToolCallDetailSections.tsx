@@ -2,7 +2,7 @@
  * ToolCallDetailSections — the expandable detail body shared by both the
  * whisper-row and default-card ToolCallView variants. Given a computed
  * ToolCallRenderModel it renders shell/sql sections, edit/create/view/patch
- * previews, generic args, task_complete markdown, result, error, and a trailing
+ * previews, generic args, the task_complete markdown body, result, error, and a trailing
  * timing line (start time + duration) — the same
  * facts in the same order for every variant. Only the error color differs, so
  * variants pass an `errorClassName`.
@@ -12,11 +12,11 @@ import React, { useMemo } from 'react';
 import { cn, FilePathLink } from '../../../../ui';
 import { isImageFile, getImageMimeType } from '../../../../shared/file-path-utils';
 import { computeLineDiff, type DiffLine } from '../../../../../diff/diff-utils';
-import { renderMarkdownToHtml } from '../../../../../diff/markdown-renderer';
 import { copyToClipboard } from '../../../../utils/format';
 import { parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 import { getCodexFileChanges } from './toolNormalization';
 import { shortenPath, isImageDataUrl, type ToolCallRenderModel } from './toolCallRenderModel';
+import { TaskCompleteBody } from './TaskCompleteBody';
 
 /** Small inline copy button for the Command section header. */
 export function CopyCommandBtn({ command }: { command: string }) {
@@ -308,11 +308,6 @@ export function ToolCallDetailSections({ model, errorClassName, onImageClick }: 
         duration,
     } = model;
 
-    const taskCompleteHtml = useMemo(() => {
-        if (!isTaskComplete || !taskCompleteSummary) return '';
-        return renderMarkdownToHtml(taskCompleteSummary);
-    }, [isTaskComplete, taskCompleteSummary]);
-
     const showGenericArgs = !isShellLike && !isSql
         && name !== 'edit' && name !== 'create' && name !== 'view'
         && !(name === 'apply_patch' && (applyPatchText || codexFileChanges.length > 0))
@@ -384,13 +379,7 @@ export function ToolCallDetailSections({ model, errorClassName, onImageClick }: 
                     </pre>
                 </div>
             )}
-            {isTaskComplete && taskCompleteHtml && (
-                <div
-                    className="markdown-body text-xs text-[#1e1e1e] dark:text-[#cccccc]"
-                    data-testid="task-complete-markdown"
-                    dangerouslySetInnerHTML={{ __html: taskCompleteHtml }}
-                />
-            )}
+            {isTaskComplete && taskCompleteSummary && <TaskCompleteBody summary={taskCompleteSummary} />}
             {name !== 'view' && !isTaskComplete && resultText && (
                 <div>
                     <div className="text-[10px] uppercase text-[#848484] mb-0.5">Result</div>

@@ -7,6 +7,7 @@ import type {
   QueueModelsResponse,
   QueueMoveResponse,
   QueuePauseMarkerResponse,
+  QueuePauseScope,
   QueueReposResponse,
   QueueResolvedPromptResponse,
   QueueSummarizeRequest,
@@ -38,6 +39,7 @@ export interface QueuePauseMarkerRequest {
   afterIndex?: number;
   repoId?: string;
   durationHours?: 1 | 2 | 3 | 4 | 8;
+  scope?: QueuePauseScope;
 }
 
 export type QueueScope = string | Pick<QueueQuery, 'workspace' | 'repoId'>;

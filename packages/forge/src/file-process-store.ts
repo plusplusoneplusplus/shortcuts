@@ -629,6 +629,19 @@ export class FileProcessStore implements ProcessStore {
         await this.patchUserTurn(processId, turnIndex, { repoGroupContext });
     }
 
+    /**
+     * Atomically persist the injected `<coc-chat-mode>` directive on a user turn.
+     * Only updates `role: 'user'` turns; a mismatched index or non-user turn is a
+     * safe no-op.
+     */
+    async updateTurnChatModeContext(
+        processId: string,
+        turnIndex: number,
+        chatModeContext: string,
+    ): Promise<void> {
+        await this.patchUserTurn(processId, turnIndex, { chatModeContext });
+    }
+
     /** Shared write path for the narrow per-field user-turn updates above. */
     private async patchUserTurn(
         processId: string,

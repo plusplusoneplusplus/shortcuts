@@ -232,6 +232,33 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/submit-pr', () =>
         expect(rec.submits[1]).toMatchObject({ submitIndex: 2, status: 'queued' });
     });
 
+    it('closes the range at the last iteration headSha and excludes already-submitted SHAs', async () => {
+        await seedSession(dataDir, 'ws-range', 'sess-range', {
+            iterations: [
+                { iteration: 1, loopIndex: 1, taskId: 't1', processId: 'p1', startedAt: '2026-08-19T01:00:00Z', endedAt: '2026-08-19T01:30:00Z', status: 'completed', headSha: 'a'.repeat(40) },
+                { iteration: 2, loopIndex: 1, taskId: 't2', processId: 'p2', startedAt: '2026-08-19T02:00:00Z', endedAt: '2026-08-19T02:30:00Z', status: 'completed', headSha: 'b'.repeat(40) },
+            ],
+        });
+        const journal = new RalphSessionStore({ dataDir });
+        await journal.upsertSubmitRecord('ws-range', 'sess-range', 1, {
+            status: 'submitted',
+            taskId: 'old-task',
+            startedAt: '2026-08-19T04:00:00Z',
+            completedAt: '2026-08-19T04:01:00Z',
+            commitShas: ['c'.repeat(40)],
+        });
+
+        const res = await post(baseUrl, '/api/workspaces/ws-range/ralph-sessions/sess-range/submit-pr');
+        expect(res.status).toBe(200);
+
+        const prompt = bridgeStub.enqueue.mock.calls[0][0].payload.prompt;
+        expect(prompt).toContain(`${'f'.repeat(40)}..${'b'.repeat(40)}`);
+        // Regression: submit 2 must not re-send submit 1's commits, and must
+        // not sweep in commits made on the branch after the session ended.
+        expect(prompt).not.toContain('..HEAD');
+        expect(prompt).toContain(`OMIT them from this PR: ${'c'.repeat(40)}`);
+    });
+
     // -----------------------------------------------------------------------
     // 404
     // -----------------------------------------------------------------------

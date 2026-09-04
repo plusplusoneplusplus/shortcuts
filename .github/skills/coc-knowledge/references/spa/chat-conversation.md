@@ -19,6 +19,14 @@ escaped and never injected); the raw toggle shows literal source. Turns with
 `pasteExternalized: true` keep the typed prompt visible and render the payload as an
 in-bubble card, with no extra persisted display state.
 
+For rendered user-message text, `extractInjectedBlocks` removes complete leading
+`<coc-chat-mode>` and `<chat-style>` prefixes in either order. Each extracted block hangs
+under the bubble as an independent collapsed `InjectedBlockDisclosure`, ordered Chat mode
+then Chat style. The `<pre>` body preserves the block verbatim. Parsing is client-only;
+raw view, copy, rewind/edit, search, export, persisted content, and model input use the
+original turn content. Assistant turns are not parsed; non-leading supported tags and
+every other tag name stay in the displayed message text.
+
 In a repo-group chat, a user turn carrying `repoGroupContext` hangs a collapsed "Repo
 group context" toggle (`RepoGroupContextDisclosure`) under its content, revealing the
 `<repo_group_context>` block that dispatch appended to the outgoing prompt — verbatim,

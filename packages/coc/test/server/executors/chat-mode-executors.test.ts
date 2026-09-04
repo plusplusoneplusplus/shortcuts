@@ -571,6 +571,48 @@ describe('ChatExecutor system message content', () => {
     });
 });
 
+/**
+ * A first turn always injects the mode block — there is no session that could
+ * already hold it — and records the marker on the user turn so the first
+ * follow-up can tell the model already has it (`shouldInjectChatModeDirective`).
+ */
+describe('first-turn chat-mode directive is recorded', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+    });
+
+    it('persists the ask directive verbatim on the first user turn', async () => {
+        const task = makeChatTask('ask', 'task-mode-record');
+        const processId = toQueueProcessId(task.id);
+        await store.addProcess({
+            id: processId,
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'Hi',
+            conversationTurns: [
+                { role: 'user', content: 'Hi', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ],
+        });
+
+        await new ChatExecutor(store, makeOptions(store)).execute(task, 'Hi');
+
+        expect(store.updateTurnChatModeContext).toHaveBeenCalledWith(
+            processId,
+            0,
+            expect.stringContaining(READ_ONLY_SYSTEM_MESSAGE.trim()),
+        );
+        const recorded = store.processes.get(processId)?.conversationTurns?.[0].chatModeContext ?? '';
+        // Verbatim: the marker is the exact block the prompt carried.
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].prompt).toContain(recorded);
+    });
+});
+
 describe('ChatExecutor legacy plan-mode system message content', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 

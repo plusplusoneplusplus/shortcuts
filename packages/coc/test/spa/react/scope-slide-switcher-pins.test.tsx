@@ -203,9 +203,9 @@ describe('pinned segments — navigation', () => {
         mockAppState.lastCloneByRemote = { 'github.com/acme/shortcuts': 'b' };
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
 
-        const icon = pinSegment(SHORTCUTS_PIN)!.querySelector('[data-testid="scope-segment-popout"]')!;
-        expect(icon.getAttribute('data-workspace-id')).toBe('b');
-        fireEvent.click(icon);
+        fireEvent.contextMenu(pinSegment(SHORTCUTS_PIN)!);
+        fireEvent.click(screen.getByTestId('scope-switcher-context-open-window'));
+
         expect(String(openSpy.mock.calls[0][0])).toContain('window=b');
     });
 
@@ -227,14 +227,13 @@ describe('pinned segments — navigation', () => {
         expect(mockSelectClone).toHaveBeenCalledWith('group-ai-repos');
     });
 
-    it('inherits the per-segment pop-out icon', async () => {
+    it('pops a group pin out from its context menu', async () => {
         const openSpy = vi.fn().mockReturnValue({ focus: vi.fn() });
         vi.stubGlobal('open', openSpy);
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
 
-        const icon = screen.getAllByTestId('scope-segment-popout')
-            .find(el => el.getAttribute('data-workspace-id') === 'group-ai-repos')!;
-        fireEvent.click(icon);
+        fireEvent.contextMenu(pinSegment(AI_GROUP_PIN)!);
+        fireEvent.click(screen.getByTestId('scope-switcher-context-open-window'));
 
         expect(String(openSpy.mock.calls[0][0])).toContain('window=group-ai-repos');
         expect(mockSelectClone).not.toHaveBeenCalled();
@@ -275,30 +274,42 @@ describe('pinned segments — active scope and the chip identity clash', () => {
         expect(mockSelectClone).not.toHaveBeenCalled();
     });
 
-    it('gives the thumb to a pinned group and stops the chip claiming the group identity', async () => {
+    it('gives the thumb to a pinned group and stops the chip claiming ANY identity', async () => {
         mockAppState = { ...mockAppState, selectedRepoId: 'group-ai-repos' };
         await renderWithPins({ repo: mockRepos[0], repos: mockRepos });
 
         expect(pinSegment(AI_GROUP_PIN)!.getAttribute('aria-selected')).toBe('true');
         expect(segment('workspace')!.getAttribute('aria-selected')).toBe('false');
-        // The group name appears once, on the pin — the chip falls back to the
-        // remembered repo instead of rendering "ai-repos" a second time.
+        // The group name appears once, on the pin. The chip does not fall back to
+        // the remembered repo either — a second name in the bar was the bug.
         const chip = screen.getByTestId('remote-chip');
-        expect(chip.textContent).toContain('shortcuts');
+        expect(chip.getAttribute('data-identity-suppressed')).toBe('true');
+        expect(chip.textContent).not.toContain('shortcuts');
         expect(chip.textContent).not.toContain('ai-repos');
         expect(screen.queryByTestId('remote-chip-group-icon')).toBeNull();
     });
 
-    it('offers switch-back from the chip while a pinned group is active', async () => {
+    it('keeps the picker reachable from the bare chevron while a pinned group is active', async () => {
         mockAppState = { ...mockAppState, selectedRepoId: 'group-ai-repos' };
         await renderWithPins({ repo: mockRepos[0], repos: mockRepos });
 
-        // Split button: body switches back, chevron opens the picker — the same
-        // shape My Work / My Life already uses.
-        expect(screen.getByTestId('remote-chip-chevron')).toBeTruthy();
+        // No split button any more — the single trigger opens the picker.
+        expect(screen.queryByTestId('remote-chip-chevron')).toBeNull();
         fireEvent.click(screen.getByTestId('remote-chip'));
 
-        expect(mockSelectClone).toHaveBeenCalledWith('a');
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+        expect(mockSelectClone).not.toHaveBeenCalled();
+    });
+
+    it('drops the workspace segment pop-out and context menu while a pinned group is active', async () => {
+        mockAppState = { ...mockAppState, selectedRepoId: 'group-ai-repos' };
+        await renderWithPins({ repo: mockRepos[0], repos: mockRepos });
+
+        // Scoped to the workspace segment: the `shortcuts` repo pin carries its
+        // own pop-out for the same workspace id, and that one stays.
+        expect(segment('workspace')!.querySelector('[data-testid="scope-segment-popout"]')).toBeNull();
+        fireEvent.contextMenu(segment('workspace')!);
+        expect(screen.queryByTestId('scope-switcher-context-menu')).toBeNull();
     });
 
     it('keeps the chip owning an UNPINNED group exactly as before', async () => {
@@ -314,7 +325,10 @@ describe('pinned segments — active scope and the chip identity clash', () => {
         expect(screen.getByTestId('scope-switcher').getAttribute('data-active-scope')).toBe('group');
         expect(screen.getByTestId('scope-switcher').getAttribute('data-active-pin')).toBeNull();
         expect(segment('workspace')!.getAttribute('aria-selected')).toBe('true');
-        expect(screen.getByTestId('remote-chip').textContent).toContain('other-group');
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.getAttribute('data-identity-suppressed')).toBeNull();
+        expect(chip.textContent).toContain('other-group');
+        expect(screen.getByTestId('remote-chip-group-icon').textContent).toBe('🗂️');
     });
 
     it('leaves a pin unselected while a virtual scope owns the thumb', async () => {
@@ -323,8 +337,10 @@ describe('pinned segments — active scope and the chip identity clash', () => {
 
         expect(segment('work')!.getAttribute('aria-selected')).toBe('true');
         expect(pinSegments().every(el => el.getAttribute('aria-selected') === 'false')).toBe(true);
-        // The chip keeps the remembered workspace and its switch-back.
-        expect(screen.getByTestId('remote-chip').textContent).toContain('shortcuts');
+        // The chip is suppressed here too — My Work owns the scope.
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.getAttribute('data-identity-suppressed')).toBe('true');
+        expect(chip.textContent).not.toContain('shortcuts');
     });
 
     it('leaves pins unselected off the repos tab', async () => {
@@ -411,35 +427,98 @@ describe('pinned segments — reorder and unpin', () => {
         }
     });
 
-    it('reveals the remaining hover controls by display so idle pins reserve no width', async () => {
+    it('keeps no inline pop-out or unpin control inside the pin segment', async () => {
+        // Both moved into the context menu: a pill already carries a dot/glyph,
+        // a label and an unseen badge, and two more hover icons crowded it.
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
 
-        const seg = pinSegment(SHORTCUTS_PIN)!;
-        const controls = [
-            seg.querySelector('[data-testid="scope-pin-unpin"]')!,
-            seg.querySelector('[data-testid="scope-segment-popout"]')!,
-        ];
-        for (const el of controls) {
-            const cls = el.getAttribute('class') || '';
-            // `hidden` takes them out of flow (and out of the segment's `gap-1`)
-            // until the segment is hovered or focused.
-            expect(cls.split(/\s+/)).toContain('hidden');
-            expect(cls).toContain('group-hover:inline-flex');
-            expect(cls).toContain('group-focus-within:inline-flex');
-            expect(cls).not.toContain('opacity-0');
+        for (const seg of pinSegments()) {
+            expect(seg.querySelector('[data-testid="scope-segment-popout"]')).toBeNull();
+            expect(seg.querySelector('[data-testid="scope-pin-unpin"]')).toBeNull();
         }
+        // The pill itself is unchanged otherwise, and hints at the menu.
+        const seg = pinSegment(SHORTCUTS_PIN)!;
+        expect(seg.querySelector('span.truncate')!.textContent).toBe('shortcuts');
+        expect(seg.getAttribute('title')).toContain('right-click');
     });
 
-    it('unpins from the segment without navigating', async () => {
+    // Regression guard for the pins-only scope of the move: the virtual segments
+    // and the workspace identity chip keep their inline pop-out icons.
+    it('leaves the pop-out icon on the virtual segments and the workspace chip', async () => {
         await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
 
-        const unpin = screen.getAllByTestId('scope-pin-unpin')
-            .find(el => el.getAttribute('data-pin-id') === SHORTCUTS_PIN)!;
-        fireEvent.click(unpin);
+        expect(segment('work')!.querySelector('[data-testid="scope-segment-popout"]')).toBeTruthy();
+        expect(segment('life')!.querySelector('[data-testid="scope-segment-popout"]')).toBeTruthy();
+        expect(segment('workspace')!.querySelector('[data-testid="scope-segment-popout"]')).toBeTruthy();
+    });
+
+    it('lists the pin menu items in order, with Unpin last behind a separator', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        const menu = openPinMenu(SHORTCUTS_PIN);
+        expect([...menu.querySelectorAll('[role="menuitem"]')].map(el => el.getAttribute('data-testid')))
+            .toEqual([
+                'scope-switcher-context-open-window',
+                'scope-pin-move-right',
+                'scope-pin-context-unpin',
+            ]);
+        // Unpin sits behind its own separator, after the move items.
+        const kids = [...menu.children];
+        const unpinIdx = kids.findIndex(el => el.getAttribute('data-testid') === 'scope-pin-context-unpin');
+        expect(kids[unpinIdx - 1].getAttribute('aria-hidden')).toBe('true');
+        expect(kids[unpinIdx - 2].getAttribute('data-testid')).toBe('scope-pin-move-right');
+    });
+
+    it('unpins a repo pin from the context menu without navigating', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        openPinMenu(SHORTCUTS_PIN);
+        fireEvent.click(screen.getByTestId('scope-pin-context-unpin'));
 
         expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([AI_GROUP_PIN]);
         expect(patchGlobal).toHaveBeenCalledWith({ pinnedScopes: [AI_GROUP_PIN] });
         expect(mockSelectClone).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('scope-switcher-context-menu')).toBeNull();
+    });
+
+    it('unpins a group pin from the context menu', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        openPinMenu(AI_GROUP_PIN);
+        fireEvent.click(screen.getByTestId('scope-pin-context-unpin'));
+
+        expect(pinSegments().map(el => el.getAttribute('data-pin-id'))).toEqual([SHORTCUTS_PIN]);
+        expect(patchGlobal).toHaveBeenCalledWith({ pinnedScopes: [SHORTCUTS_PIN] });
+    });
+
+    it('offers no Unpin item on the non-pin segments', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        fireEvent.contextMenu(segment('workspace')!);
+
+        expect(screen.getByTestId('scope-switcher-context-open-window')).toBeTruthy();
+        expect(screen.queryByTestId('scope-pin-context-unpin')).toBeNull();
+    });
+
+    // Keyboard parity: with both icons gone the menu is the only pill-level route
+    // to pop-out and unpin, so it has to be openable without a mouse.
+    it('opens the pin menu with Shift+F10 and the ContextMenu key', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        fireEvent.keyDown(pinSegment(SHORTCUTS_PIN)!, { key: 'F10', shiftKey: true });
+        expect(screen.getByTestId('scope-pin-context-unpin').getAttribute('data-pin-id')).toBe(SHORTCUTS_PIN);
+        fireEvent.keyDown(document, { key: 'Escape' });
+
+        fireEvent.keyDown(pinSegment(AI_GROUP_PIN)!, { key: 'ContextMenu' });
+        expect(screen.getByTestId('scope-pin-context-unpin').getAttribute('data-pin-id')).toBe(AI_GROUP_PIN);
+    });
+
+    it('ignores a bare F10 on a pin pill', async () => {
+        await renderWithPins({ repo: mockRepos[2], repos: mockRepos });
+
+        fireEvent.keyDown(pinSegment(SHORTCUTS_PIN)!, { key: 'F10' });
+
+        expect(screen.queryByTestId('scope-switcher-context-menu')).toBeNull();
     });
 });
 

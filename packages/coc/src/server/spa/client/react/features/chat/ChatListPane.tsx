@@ -112,6 +112,9 @@ export type ActivityTabMode = 'chats' | 'tasks';
 type QueuePauseOptions = { durationHours?: number; until?: number | string };
 type PauseMenuScope = 'all' | 'autopilot';
 type PauseDurationHours = NonNullable<QueuePauseOptions['durationHours']>;
+
+/** A pause-marker insertion also carries the scope the marker will pause. */
+type QueuePauseInsertOptions = QueuePauseOptions & { scope?: PauseMenuScope };
 type GroupPinMenuTarget = {
     type: ProcessGroupPinType;
     groupId: string;
@@ -905,17 +908,35 @@ function formatPauseResumeTime(value: number | string | undefined): string | und
     return new Date(until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-function PauseDurationMenu({
-    testIdScope,
-    onSelect,
-    quotaData,
-}: {
+/** One selectable group in {@link PauseDurationMenu}. */
+type PauseMenuSectionSpec = {
+    /** Section heading. Omitted for a single-section menu (the top pause pill). */
+    label?: string;
+    /** Suffix for every `data-testid` inside the section. */
     testIdScope: string;
     onSelect: (options?: QueuePauseOptions) => void;
-    quotaData?: AgentProvidersQuotaResponse | null;
-}) {
-    const now = Date.now();
+};
 
+/**
+ * One labelled group inside {@link PauseDurationMenu}: "Until resumed", the hour
+ * presets, the custom-hours editor and (when quota data is available) the
+ * quota-derived rows. Each section owns its own custom-hours state so two
+ * sections in the same menu do not share an open editor.
+ */
+function PauseDurationSection({
+    label,
+    testIdScope,
+    onSelect,
+    now,
+    mostConstrained,
+    mostConstrainedResetFuture,
+    allConstrainedResetMs,
+}: PauseMenuSectionSpec & {
+    now: number;
+    mostConstrained: ReturnType<typeof getMostConstrainedProviderQuota>;
+    mostConstrainedResetFuture?: number;
+    allConstrainedResetMs?: number;
+}) {
     const [customOpen, setCustomOpen] = useState(false);
     const [customValue, setCustomValue] = useState('');
     const [customError, setCustomError] = useState<string | null>(null);
@@ -930,58 +951,14 @@ function PauseDurationMenu({
         onSelect({ durationHours: parsed });
     };
 
-    const mostConstrained = getMostConstrainedProviderQuota(quotaData);
-    const mostConstrainedResetDate = mostConstrained?.quotaType.resetDate;
-    const mostConstrainedResetMs = mostConstrainedResetDate ? Date.parse(mostConstrainedResetDate) : undefined;
-    const mostConstrainedResetFuture =
-        mostConstrainedResetMs !== undefined && Number.isFinite(mostConstrainedResetMs) && mostConstrainedResetMs > now
-            ? mostConstrainedResetMs
-            : undefined;
-
-    // max(resetDate) across constrained (<50%) providers for "until all recover"
-    let allConstrainedResetMs: number | undefined;
-    for (const provider of quotaData?.providers ?? []) {
-        if (provider.error) continue;
-        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
-        if (!tightest) continue;
-        if (getQuotaPercent(tightest.remainingPercentage) >= 50) continue;
-        if (!tightest.resetDate) continue;
-        const ms = Date.parse(tightest.resetDate);
-        if (!Number.isFinite(ms) || ms <= now) continue;
-        if (allConstrainedResetMs === undefined || ms > allConstrainedResetMs) allConstrainedResetMs = ms;
-    }
-
     return (
-        <div
-            className="absolute right-0 top-full mt-1 z-30 min-w-52 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
-            data-testid={`pause-duration-menu-${testIdScope}`}
-            onClick={(e) => e.stopPropagation()}
-        >
-            {quotaData && quotaData.providers.some(p => !p.error && getTightestFiniteQuotaType(p.quotaTypes)) && (
+        <>
+            {label && (
                 <div
-                    className="px-2 pt-1 pb-1.5 mb-1 border-b border-[#e8e8e8] dark:border-[#3f3f46]"
-                    data-testid={`pause-duration-quota-strip-${testIdScope}`}
+                    className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#6e6e6e] dark:text-[#999]"
+                    data-testid={`pause-duration-${testIdScope}-label`}
                 >
-                    {quotaData.providers.map(provider => {
-                        if (provider.error) return null;
-                        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
-                        if (!tightest) return null;
-                        const pct = getQuotaPercent(tightest.remainingPercentage);
-                        const barColor = pct < 25 ? '#d1242f' : pct < 50 ? '#bf8700' : '#1a7f37';
-                        const countdown = formatPauseRemaining(tightest.resetDate, now);
-                        return (
-                            <div key={provider.id} className="flex items-center gap-1.5 py-0.5" data-testid={`pause-duration-quota-row-${provider.id}`}>
-                                <span className="w-12 shrink-0 text-[10px] text-[#6e6e6e] dark:text-[#999] capitalize">{provider.id}</span>
-                                <div className="flex-1 h-1 rounded-full bg-[#e8e8e8] dark:bg-[#3f3f46] overflow-hidden">
-                                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor }} />
-                                </div>
-                                <span className="w-8 text-right text-[10px] font-medium" style={{ color: barColor }}>{pct}%</span>
-                                {countdown && (
-                                    <span className="text-[10px] text-[#6e6e6e] dark:text-[#999] whitespace-nowrap">{countdown}</span>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {label}
                 </div>
             )}
             <button
@@ -1081,6 +1058,93 @@ function PauseDurationMenu({
                     </span>
                 </button>
             )}
+        </>
+    );
+}
+
+/**
+ * Pause duration picker. Renders one or more labelled sections — the top pause
+ * pill passes a single unlabelled section, the queue insert zone passes a
+ * "Pause all" and a "Pause autopilot" section so one click picks scope and
+ * duration together.
+ */
+function PauseDurationMenu({
+    testIdScope,
+    sections,
+    quotaData,
+}: {
+    testIdScope: string;
+    sections: PauseMenuSectionSpec[];
+    quotaData?: AgentProvidersQuotaResponse | null;
+}) {
+    const now = Date.now();
+
+    const mostConstrained = getMostConstrainedProviderQuota(quotaData);
+    const mostConstrainedResetDate = mostConstrained?.quotaType.resetDate;
+    const mostConstrainedResetMs = mostConstrainedResetDate ? Date.parse(mostConstrainedResetDate) : undefined;
+    const mostConstrainedResetFuture =
+        mostConstrainedResetMs !== undefined && Number.isFinite(mostConstrainedResetMs) && mostConstrainedResetMs > now
+            ? mostConstrainedResetMs
+            : undefined;
+
+    // max(resetDate) across constrained (<50%) providers for "until all recover"
+    let allConstrainedResetMs: number | undefined;
+    for (const provider of quotaData?.providers ?? []) {
+        if (provider.error) continue;
+        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
+        if (!tightest) continue;
+        if (getQuotaPercent(tightest.remainingPercentage) >= 50) continue;
+        if (!tightest.resetDate) continue;
+        const ms = Date.parse(tightest.resetDate);
+        if (!Number.isFinite(ms) || ms <= now) continue;
+        if (allConstrainedResetMs === undefined || ms > allConstrainedResetMs) allConstrainedResetMs = ms;
+    }
+
+    return (
+        <div
+            className="absolute right-0 top-full mt-1 z-30 min-w-52 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
+            data-testid={`pause-duration-menu-${testIdScope}`}
+            onClick={(e) => e.stopPropagation()}
+        >
+            {quotaData && quotaData.providers.some(p => !p.error && getTightestFiniteQuotaType(p.quotaTypes)) && (
+                <div
+                    className="px-2 pt-1 pb-1.5 mb-1 border-b border-[#e8e8e8] dark:border-[#3f3f46]"
+                    data-testid={`pause-duration-quota-strip-${testIdScope}`}
+                >
+                    {quotaData.providers.map(provider => {
+                        if (provider.error) return null;
+                        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
+                        if (!tightest) return null;
+                        const pct = getQuotaPercent(tightest.remainingPercentage);
+                        const barColor = pct < 25 ? '#d1242f' : pct < 50 ? '#bf8700' : '#1a7f37';
+                        const countdown = formatPauseRemaining(tightest.resetDate, now);
+                        return (
+                            <div key={provider.id} className="flex items-center gap-1.5 py-0.5" data-testid={`pause-duration-quota-row-${provider.id}`}>
+                                <span className="w-12 shrink-0 text-[10px] text-[#6e6e6e] dark:text-[#999] capitalize">{provider.id}</span>
+                                <div className="flex-1 h-1 rounded-full bg-[#e8e8e8] dark:bg-[#3f3f46] overflow-hidden">
+                                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                                </div>
+                                <span className="w-8 text-right text-[10px] font-medium" style={{ color: barColor }}>{pct}%</span>
+                                {countdown && (
+                                    <span className="text-[10px] text-[#6e6e6e] dark:text-[#999] whitespace-nowrap">{countdown}</span>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            {sections.map((section, sectionIndex) => (
+                <React.Fragment key={section.testIdScope}>
+                    {sectionIndex > 0 && <div className="my-1 border-t border-[#e8e8e8] dark:border-[#3f3f46]" />}
+                    <PauseDurationSection
+                        {...section}
+                        now={now}
+                        mostConstrained={mostConstrained}
+                        mostConstrainedResetFuture={mostConstrainedResetFuture}
+                        allConstrainedResetMs={allConstrainedResetMs}
+                    />
+                </React.Fragment>
+            ))}
         </div>
     );
 }
@@ -2758,13 +2822,16 @@ export function ChatListPane({
         fetchQueue();
     };
 
-    const handleInsertPauseMarker = async (afterIndex: number, options?: QueuePauseOptions) => {
+    const handleInsertPauseMarker = async (afterIndex: number, options?: QueuePauseInsertOptions) => {
         setInsertingPauseAt(null);
         setPauseMarkerMenuIndex(null);
         await cloneClient.queue.insertPauseMarker({
             afterIndex,
             ...(workspaceId ? { repoId: workspaceId } : {}),
             ...(options?.durationHours !== undefined ? { durationHours: options.durationHours } : {}),
+            // An all-scoped marker omits `scope` entirely, so the request stays
+            // byte-identical to what pre-scope clients sent.
+            ...(options?.scope === 'autopilot' ? { scope: 'autopilot' as const } : {}),
         });
         fetchQueue();
     };
@@ -3142,6 +3209,8 @@ export function ChatListPane({
      * across both the chats and activity branches.
      *
      * Layout (CSS grid): [status-dot 10px] [MODE pill 20px] [title 1fr] [right auto]
+     * - The right column holds the optional folder chip *and* the timestamp in a
+     *   single child, so the four-column template is never overflowed.
      * - Mode pill: ASK / AUTO (chat) or AUTO / SCRP (non-chat).
      * - Status dot encodes runtime state independently of the mode pill.
      * - On hover the timestamp swaps to inline pin/archive/more buttons.
@@ -3161,6 +3230,12 @@ export function ChatListPane({
         /** Files a whole group instead of this one chat when the row roots a
          *  filable group — today the root of a spawned tree (AC-03). */
         groupFolder?: GroupFolderTarget;
+        /** True when the row is rendered underneath its own folder in the Folders
+         *  section. Suppresses the folder-name chip, which would only repeat the
+         *  name of the folder the row already sits in. `isGroupChild` is not a
+         *  substitute: a spawned-tree root renders at depth 0 inside a folder and
+         *  is therefore not a group child. */
+        insideFolder?: boolean;
     }) => {
         const isUnseen = unseenProcessIds?.has(task.id) ?? false;
         const hasDraft = !!getDraft(task.id);
@@ -3191,7 +3266,7 @@ export function ChatListPane({
         // left saying where a result lives (AC-08). Rows rendered *inside* a
         // folder need no chip, and an unfiled row gets none rather than one
         // reading "Unfiled".
-        const rowFolder = chatFoldersEnabled && !options?.isGroupChild && (isRunning || isQueued || !!folderSearchQuery)
+        const rowFolder = chatFoldersEnabled && !options?.isGroupChild && !options?.insideFolder && (isRunning || isQueued || !!folderSearchQuery)
             ? foldersById.get(resolveEntryFolderId(task, folderIdByProcess, groupFolderIndex) ?? '')
             : undefined;
         const forEachGenerationPreview = getForEachGenerationPreview(task);
@@ -3437,67 +3512,73 @@ export function ChatListPane({
                             );
                         })()}
                     </span>
-                    {rowFolder && <ChatFolderChip name={rowFolder.name} color={rowFolder.color} />}
-                    <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
-                        <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
-                            {isRunning ? (
-                                isAwaitingInput ? (
-                                    <span className="inline-flex items-center gap-1" data-testid="awaiting-input-indicator">
-                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
-                                        Needs input
-                                    </span>
-                                ) : (
-                                    <span className="inline-flex items-center gap-1" data-testid="thinking-indicator">
-                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />
-                                        {statusLabel('running', task.type)}
-                                    </span>
-                                )
-                            ) : timeText}
-                        </span>
-                        <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
-                            {!isQueued && (
+                    {/* The folder chip and the time/hover-actions share ONE grid child:
+                        the row template has exactly four columns, so rendering the chip as a
+                        fifth direct child would auto-place the time span onto an implicit
+                        second grid row at column 1 — outside the fixed-height row box. */}
+                    <span className="flex items-center gap-2">
+                        {rowFolder && <ChatFolderChip name={rowFolder.name} color={rowFolder.color} />}
+                        <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
+                            <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
+                                {isRunning ? (
+                                    isAwaitingInput ? (
+                                        <span className="inline-flex items-center gap-1" data-testid="awaiting-input-indicator">
+                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
+                                            Needs input
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1" data-testid="thinking-indicator">
+                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0078d4] dark:bg-[#3794ff] animate-pulse" />
+                                            {statusLabel('running', task.type)}
+                                        </span>
+                                    )
+                                ) : timeText}
+                            </span>
+                            <span className="chat-row-actions hidden group-hover:flex items-center gap-0">
+                                {!isQueued && (
+                                    <button
+                                        type="button"
+                                        className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                        title={isPinned ? 'Unpin' : 'Pin'}
+                                        aria-label={isPinned ? 'Unpin chat' : 'Pin chat'}
+                                        data-testid="chat-row-pin"
+                                        onClick={stopAndCall(() => (isPinned ? onUnpinChat?.(task.id) : onPinChat?.(task.id)))}
+                                    >
+                                        <svg width="12" height="12" viewBox="0 0 14 14" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+                                            <path d="M9 1.5l3.5 3.5-2 1-1.5 4-2-2-3 3-.5-.5 3-3-2-2 4-1.5 1-1z"/>
+                                        </svg>
+                                    </button>
+                                )}
+                                {!isRunning && !isQueued && (
+                                    <button
+                                        type="button"
+                                        className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
+                                        title={isArchived ? 'Unarchive' : 'Archive'}
+                                        aria-label={isArchived ? 'Unarchive chat' : 'Archive chat'}
+                                        data-testid="chat-row-archive"
+                                        onClick={stopAndCall(() => (isArchived ? onUnarchiveChat?.(task.id) : onArchiveChat?.(task.id)))}
+                                    >
+                                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                                            <rect x="2" y="2.5" width="10" height="2.5" rx=".5"/>
+                                            <path d="M3 5v6.5h8V5M5.5 7.5h3"/>
+                                        </svg>
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
-                                    title={isPinned ? 'Unpin' : 'Pin'}
-                                    aria-label={isPinned ? 'Unpin chat' : 'Pin chat'}
-                                    data-testid="chat-row-pin"
-                                    onClick={stopAndCall(() => (isPinned ? onUnpinChat?.(task.id) : onPinChat?.(task.id)))}
+                                    title="More"
+                                    aria-label="More actions"
+                                    data-testid="chat-row-more"
+                                    onClick={(e) => { e.stopPropagation(); handleTaskContextMenu(e, task.id, contextMenuKind); }}
                                 >
-                                    <svg width="12" height="12" viewBox="0 0 14 14" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
-                                        <path d="M9 1.5l3.5 3.5-2 1-1.5 4-2-2-3 3-.5-.5 3-3-2-2 4-1.5 1-1z"/>
+                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                                        <circle cx="3.5" cy="7" r="1"/>
+                                        <circle cx="7" cy="7" r="1"/>
+                                        <circle cx="10.5" cy="7" r="1"/>
                                     </svg>
                                 </button>
-                            )}
-                            {!isRunning && !isQueued && (
-                                <button
-                                    type="button"
-                                    className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
-                                    title={isArchived ? 'Unarchive' : 'Archive'}
-                                    aria-label={isArchived ? 'Unarchive chat' : 'Archive chat'}
-                                    data-testid="chat-row-archive"
-                                    onClick={stopAndCall(() => (isArchived ? onUnarchiveChat?.(task.id) : onArchiveChat?.(task.id)))}
-                                >
-                                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-                                        <rect x="2" y="2.5" width="10" height="2.5" rx=".5"/>
-                                        <path d="M3 5v6.5h8V5M5.5 7.5h3"/>
-                                    </svg>
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                className="h-5 w-5 grid place-items-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#ececec] dark:hover:bg-[#2f2f30]"
-                                title="More"
-                                aria-label="More actions"
-                                data-testid="chat-row-more"
-                                onClick={(e) => { e.stopPropagation(); handleTaskContextMenu(e, task.id, contextMenuKind); }}
-                            >
-                                <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
-                                    <circle cx="3.5" cy="7" r="1"/>
-                                    <circle cx="7" cy="7" r="1"/>
-                                    <circle cx="10.5" cy="7" r="1"/>
-                                </svg>
-                            </button>
+                            </span>
                         </span>
                     </span>
                 </div>
@@ -3543,7 +3624,7 @@ export function ChatListPane({
         return 'completed';
     }, [tabFilteredRunning, tabFilteredQueued]);
 
-    const renderRalphSessionGroup = useCallback((session: RalphSession, listForRange: HistoryRangeInput[]) => {
+    const renderRalphSessionGroup = useCallback((session: RalphSession, listForRange: HistoryRangeInput[], insideFolder = false) => {
         const ralphSubIds = getRalphSessionSubIds(session);
         const { isFullySelected: isRalphRangeSelected, isPartiallySelected: isRalphPartiallySelected } =
             resolveGroupSelectionState(ralphSubIds, selectedHistoryIds);
@@ -3621,7 +3702,7 @@ export function ChatListPane({
                 }}
                 onTouchEnd={groupLongPress.onTouchEnd}
                 onTouchMove={groupLongPress.onTouchMove}
-                renderTaskCard={(task) => renderChatListRow(task, listForRange, { isGroupChild: true })}
+                renderTaskCard={(task) => renderChatListRow(task, listForRange, { isGroupChild: true, insideFolder })}
             />
         );
     }, [
@@ -3645,7 +3726,7 @@ export function ChatListPane({
         setGroupPinned,
     ]);
 
-    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[]) => {
+    const renderForEachRunGroup = useCallback((group: ForEachRunGroup, listForRange: HistoryRangeInput[], insideFolder = false) => {
         const forEachSubIds = getForEachRunSubIds(group);
         const { isFullySelected: isForEachRangeSelected, isPartiallySelected: isForEachPartiallySelected } =
             resolveGroupSelectionState(forEachSubIds, selectedHistoryIds);
@@ -3713,6 +3794,7 @@ export function ChatListPane({
                 renderTaskCard={(task) => renderChatListRow(task, listForRange, {
                     taskStatus: getGroupedChildTaskStatus(task),
                     isGroupChild: true,
+                    insideFolder,
                 })}
             />
         );
@@ -3734,7 +3816,7 @@ export function ChatListPane({
         workspaceId,
     ]);
 
-    const renderMapReduceRunGroup = useCallback((group: MapReduceRunGroup, listForRange: HistoryRangeInput[]) => {
+    const renderMapReduceRunGroup = useCallback((group: MapReduceRunGroup, listForRange: HistoryRangeInput[], insideFolder = false) => {
         const mapReduceSubIds = getMapReduceRunSubIds(group);
         const { isFullySelected: isMapReduceRangeSelected, isPartiallySelected: isMapReducePartiallySelected } =
             resolveGroupSelectionState(mapReduceSubIds, selectedHistoryIds);
@@ -3802,6 +3884,7 @@ export function ChatListPane({
                 renderTaskCard={(task) => renderChatListRow(task, listForRange, {
                     taskStatus: getGroupedChildTaskStatus(task),
                     isGroupChild: true,
+                    insideFolder,
                 })}
             />
         );
@@ -3823,7 +3906,7 @@ export function ChatListPane({
         workspaceId,
     ]);
 
-    const renderSpawnedTreeEntry = useCallback((entry: SpawnedTreeEntry, listForRange: HistoryRangeInput[]) => {
+    const renderSpawnedTreeEntry = useCallback((entry: SpawnedTreeEntry, listForRange: HistoryRangeInput[], insideFolder = false) => {
         return (
             <SpawnedTreeRow
                 key={`${workspaceId ?? '__all'}:spawned-tree:${entry.rootProcessId}`}
@@ -3833,6 +3916,7 @@ export function ChatListPane({
                 renderTaskCard={(task, opts) => renderChatListRow(task, listForRange, {
                     taskStatus: getGroupedChildTaskStatus(task),
                     isGroupChild: opts.isGroupChild,
+                    insideFolder,
                     leadingElement: opts.leadingElement,
                     // Only the root row files the tree; a descendant keeps its
                     // own single-chat "Move to folder".
@@ -3849,13 +3933,17 @@ export function ChatListPane({
      * map-reduce run, a spawned tree — renders with its own group renderer so
      * it keeps its children nested and its header affordances, exactly as it
      * would in a date bucket; only a plain chat falls through to the flat row.
+     *
+     * Every branch passes `insideFolder` so no row here repeats the name of the
+     * folder it is already sitting under — including a spawned-tree root, which
+     * renders at depth 0 and so is not flagged as a group child.
      */
     const renderFolderMember = useCallback((entry: any, listForRange: HistoryRangeInput[]): React.ReactNode => {
-        if (entry?.kind === 'ralph-session') {return renderRalphSessionGroup(entry, listForRange);}
-        if (entry?.kind === 'for-each-run') {return renderForEachRunGroup(entry, listForRange);}
-        if (entry?.kind === 'map-reduce-run') {return renderMapReduceRunGroup(entry, listForRange);}
-        if (entry?.kind === 'spawned-tree') {return renderSpawnedTreeEntry(entry, listForRange);}
-        return renderChatListRow(entry, listForRange, { isGroupChild: true });
+        if (entry?.kind === 'ralph-session') {return renderRalphSessionGroup(entry, listForRange, true);}
+        if (entry?.kind === 'for-each-run') {return renderForEachRunGroup(entry, listForRange, true);}
+        if (entry?.kind === 'map-reduce-run') {return renderMapReduceRunGroup(entry, listForRange, true);}
+        if (entry?.kind === 'spawned-tree') {return renderSpawnedTreeEntry(entry, listForRange, true);}
+        return renderChatListRow(entry, listForRange, { isGroupChild: true, insideFolder: true });
     }, [renderRalphSessionGroup, renderForEachRunGroup, renderMapReduceRunGroup, renderSpawnedTreeEntry, renderChatListRow]);
 
     /**
@@ -4468,7 +4556,10 @@ export function ChatListPane({
                         {pauseMenuScope && (
                             <PauseDurationMenu
                                 testIdScope={pauseMenuScope}
-                                onSelect={(options) => selectPauseDuration(pauseMenuScope, options)}
+                                sections={[{
+                                    testIdScope: pauseMenuScope,
+                                    onSelect: (options) => selectPauseDuration(pauseMenuScope, options),
+                                }]}
                                 quotaData={quotaData}
                             />
                         )}
@@ -4703,6 +4794,7 @@ export function ChatListPane({
                                                 key={item.id}
                                                 markerId={item.id}
                                                 durationHours={item.durationHours}
+                                                scope={item.scope}
                                                 onRemove={() => handleRemovePauseMarker(item.id)}
                                             />
                                         );
@@ -5200,20 +5292,32 @@ export function QueueTaskItem({ task, status, now, selected, isPinned, isAutopil
     );
 }
 
-function PauseMarkerRow({ markerId, durationHours, onRemove }: {
+function PauseMarkerRow({ markerId, durationHours, scope, onRemove }: {
     markerId: string;
     durationHours?: PauseDurationHours;
+    /** Absent means all-scope, matching the wire and DB contract. */
+    scope?: PauseMenuScope;
     onRemove: () => void;
 }) {
+    const isAutopilotScoped = scope === 'autopilot';
     const durationLabel = durationHours === undefined ? undefined : formatPauseDurationLabel(durationHours);
-    const label = durationLabel === undefined ? 'Queue pauses here' : `Queue pauses here · ${durationLabel}`;
+    const subject = isAutopilotScoped ? 'Autopilot' : 'Queue';
+    const label = durationLabel === undefined ? `${subject} pauses here` : `${subject} pauses here · ${durationLabel}`;
+    const what = isAutopilotScoped ? 'Autopilot tasks' : 'Queue';
     return (
         <div
-            className="flex items-center gap-1.5 px-2 py-1 rounded border border-dashed border-yellow-400/60 dark:border-yellow-500/50 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400 text-xs"
+            className={cn(
+                'flex items-center gap-1.5 px-2 py-1 rounded border border-dashed text-xs',
+                isAutopilotScoped
+                    // Match the AP pill's amber accent rather than inventing a colour.
+                    ? 'border-amber-400/60 dark:border-amber-500/50 bg-amber-500/5 text-amber-700 dark:text-amber-400'
+                    : 'border-yellow-400/60 dark:border-yellow-500/50 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400',
+            )}
             data-testid="pause-marker-row"
+            data-scope={isAutopilotScoped ? 'autopilot' : 'all'}
             title={durationLabel === undefined
-                ? 'Queue will pause when it reaches this point'
-                : `Queue will pause for ${durationLabel} when it reaches this point`}
+                ? `${what} will pause when it reaches this point`
+                : `${what} will pause for ${durationLabel} when it reaches this point`}
         >
             <span className="shrink-0 text-[11px]">⏸</span>
             <span className="flex-1 text-[11px]">{label}</span>
@@ -5237,7 +5341,7 @@ function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMou
     onMouseEnter: () => void;
     onMouseLeave: () => void;
     onClick: () => void;
-    onSelectDuration: (options?: QueuePauseOptions) => void;
+    onSelectDuration: (options?: QueuePauseInsertOptions) => void;
 }) {
     return (
         <div
@@ -5261,7 +5365,19 @@ function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMou
             {menuOpen && (
                 <PauseDurationMenu
                     testIdScope={`insert-${index}`}
-                    onSelect={onSelectDuration}
+                    sections={[
+                        {
+                            label: 'Pause all',
+                            // Unsuffixed so the pre-scope insert-zone test ids stay stable.
+                            testIdScope: `insert-${index}`,
+                            onSelect: (options) => onSelectDuration(options),
+                        },
+                        {
+                            label: 'Pause autopilot',
+                            testIdScope: `insert-${index}-autopilot`,
+                            onSelect: (options) => onSelectDuration({ ...options, scope: 'autopilot' }),
+                        },
+                    ]}
                 />
             )}
         </div>

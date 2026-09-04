@@ -14,7 +14,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import type { AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
 import { renderWithProviders } from '../test-utils';
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
@@ -288,6 +288,68 @@ describe('PauseDurationMenu — Custom… float-hours row', () => {
     });
 });
 
+describe('PauseDurationMenu — per-section custom hours in the insert menu', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockQuotaData = null;
+        globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ markerId: 'pm-new' }), {
+            status: 201,
+            headers: { 'content-type': 'application/json' },
+        }));
+    });
+
+    function openInsertMenu() {
+        const insertZone = screen.getByTestId('pause-insert-zone-0');
+        fireEvent.mouseEnter(insertZone);
+        fireEvent.click(insertZone);
+    }
+
+    it('keeps the two sections\' custom editors independent', () => {
+        renderPane({ workspaceId: 'ws-1', queued: [{ id: 'q-1', displayName: 'Queued' }] });
+        openInsertMenu();
+
+        fireEvent.click(screen.getByTestId('pause-duration-insert-0-autopilot-custom'));
+        expect(screen.getByTestId('pause-duration-insert-0-autopilot-custom-input')).toBeTruthy();
+        // Opening the autopilot editor must not open the all-scope one.
+        expect(screen.queryByTestId('pause-duration-insert-0-custom-input')).toBeNull();
+        expect(screen.getByTestId('pause-duration-insert-0-custom')).toBeTruthy();
+    });
+
+    it('submits a custom autopilot duration with scope=autopilot', async () => {
+        const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+        renderPane({ workspaceId: 'ws-1', queued: [{ id: 'q-1', displayName: 'Queued' }] });
+        openInsertMenu();
+
+        submitCustomValue('insert-0-autopilot', '1.5');
+
+        await waitFor(() => {
+            const call = fetchMock.mock.calls.find(
+                (c: any[]) => typeof c[0] === 'string' && c[0].includes('/queue/pause-marker'),
+            );
+            expect(call).toBeTruthy();
+            expect(JSON.parse(call![1].body)).toEqual({
+                afterIndex: 0,
+                repoId: 'ws-1',
+                durationHours: 1.5,
+                scope: 'autopilot',
+            });
+        });
+    });
+
+    it('rejects an out-of-range autopilot custom value without inserting', async () => {
+        const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+        renderPane({ workspaceId: 'ws-1', queued: [{ id: 'q-1', displayName: 'Queued' }] });
+        openInsertMenu();
+
+        submitCustomValue('insert-0-autopilot', '25');
+
+        expect(screen.getByTestId('pause-duration-insert-0-autopilot-custom-error')).toBeTruthy();
+        expect(fetchMock.mock.calls.some(
+            (c: any[]) => typeof c[0] === 'string' && c[0].includes('/queue/pause-marker'),
+        )).toBe(false);
+    });
+});
+
 describe('PauseMarkerRow — fractional-hour formatting', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -302,6 +364,15 @@ describe('PauseMarkerRow — fractional-hour formatting', () => {
         expect(screen.getByText('Queue pauses here · 1h 30m')).toBeTruthy();
         expect(screen.getByTestId('pause-marker-row').getAttribute('title'))
             .toContain('pause for 1h 30m');
+    });
+
+    it('renders an autopilot-scoped fractional duration with the autopilot wording', () => {
+        renderPane({
+            queued: [{ id: 'pm-timed', kind: 'pause-marker', scope: 'autopilot', durationHours: 1.5 }],
+        });
+        expect(screen.getByText('Autopilot pauses here · 1h 30m')).toBeTruthy();
+        expect(screen.getByTestId('pause-marker-row').getAttribute('title'))
+            .toContain('Autopilot tasks will pause for 1h 30m');
     });
 
     it('renders sub-hour durations as minutes only', () => {

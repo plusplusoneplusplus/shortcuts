@@ -13,7 +13,7 @@
  */
 
 import { buildRalphSubmitPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
-import type { RalphSessionRecord, RalphSubmitRecord } from './types';
+import type { RalphIterationRecord, RalphSessionRecord, RalphSubmitRecord } from './types';
 
 // ============================================================================
 // In-memory idempotency guard
@@ -71,6 +71,42 @@ export function nextSubmitIndex(session: RalphSessionRecord): number {
 }
 
 // ============================================================================
+// Commit-range derivation
+// ============================================================================
+
+/**
+ * Derive the closed commit range bounds for the next submit of a session.
+ *
+ * `endSha` is the HEAD SHA recorded after the session's last *completed*
+ * iteration — running/failed/cancelled iterations are skipped, and legacy
+ * iterations without a `headSha` yield `undefined`. `excludeShas` is the
+ * de-duplicated union of every commit SHA earlier submits already sent, so a
+ * second submit does not re-send them.
+ */
+export function deriveSubmitCommitRange(session: RalphSessionRecord): {
+    endSha?: string;
+    excludeShas: string[];
+} {
+    let last: RalphIterationRecord | undefined;
+    for (const it of session.iterations ?? []) {
+        if (it.status !== 'completed') continue;
+        if (!last || it.iteration >= last.iteration) last = it;
+    }
+
+    const seen = new Set<string>();
+    const excludeShas: string[] = [];
+    for (const submit of session.submits ?? []) {
+        for (const sha of submit.commitShas ?? []) {
+            if (!sha || seen.has(sha)) continue;
+            seen.add(sha);
+            excludeShas.push(sha);
+        }
+    }
+
+    return { endSha: last?.headSha, excludeShas };
+}
+
+// ============================================================================
 // Task payload builder
 // ============================================================================
 
@@ -82,6 +118,10 @@ export interface BuildSubmitTaskInput {
     progressPath: string;
     /** HEAD SHA recorded at session creation; absent on legacy sessions. */
     baselineSha?: string;
+    /** HEAD SHA after the session's last completed iteration; closes the range. */
+    endSha?: string;
+    /** Commit SHAs already submitted by earlier submits of this session. */
+    excludeShas?: string[];
     sessionStartedAt: string;
     sessionCompletedAt?: string;
     workingDirectory?: string;
@@ -103,7 +143,7 @@ export interface BuildSubmitTaskInput {
 export function buildSubmitTaskPayload(input: BuildSubmitTaskInput) {
     const {
         workspaceId, sessionId, originalGoal, submitIndex, progressPath,
-        baselineSha, sessionStartedAt, sessionCompletedAt,
+        baselineSha, endSha, excludeShas, sessionStartedAt, sessionCompletedAt,
         workingDirectory, folderPath, repoId, extraContext,
     } = input;
 
@@ -113,6 +153,8 @@ export function buildSubmitTaskPayload(input: BuildSubmitTaskInput) {
         sessionId,
         submitIndex,
         baselineSha,
+        endSha,
+        excludeShas,
         sessionStartedAt,
         sessionCompletedAt,
     });

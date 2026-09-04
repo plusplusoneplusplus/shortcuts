@@ -575,9 +575,11 @@ all have their own `references/*.md`.
     `chat-base-executor.effectivePrompt`, which is never persisted) and
     follow-ups in the `POST /api/processes/:id/message` route (the last point
     before `ProcessMessageDeliveryService` writes `displayContent`). The block is
-    therefore stored and rendered verbatim in the user bubble — no stripping, no
-    hidden prefix, no special renderer. Do not add stripping without revisiting
-    that decision.
+    stored verbatim. On the user-bubble display path,
+    `conversation/injectedBlocks.ts` extracts a complete leading block and
+    `InjectedBlockDisclosure` renders it under the message as a collapsed
+    **Chat style** disclosure. Raw view, copy, rewind/edit, search, export, and
+    model input continue to use the original turn content.
   - Scope is `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
     follow-ups only, enforced by `isChatStyleEligiblePayload`. Ralph,
     classification, task generation, note creation, resolve-comments, Dreams,
@@ -789,10 +791,28 @@ all have their own `references/*.md`.
   fence. Known remaining divergence: autopilot first turns still opt out of
   Memory V2, which costs nothing while the Memory V2 recall block is rebuilt
   per turn anyway.
+- **Codex `ask_user` discovery:** Codex models in `code_mode_only` (e.g.
+  `gpt-5.6-sol`) are shown no bare top-level `ask_user` — CoC's MCP tools are
+  deferred behind `functions.exec` under `mcp__coc_llm_tools__`, so a skill that
+  names plain `ask_user` (Ralph grilling, `grill-me`) made the model report the
+  tool missing and demand Codex Plan mode. `buildCodexAskUserDiscoveryBlock`
+  (`chat-turn-system-message.ts`) appends a `<codex-ask-user-discovery>` block
+  after the tool guidance mapping the bare name to
+  `tools.mcp__coc_llm_tools__ask_user(...)` and separating it from the Codex
+  built-in `request_user_input`. Codex-only, and gated on `askUserAvailable`,
+  which every call site derives from the *filtered* tool array via
+  `ChatBaseExecutor.askUserSurvivedFiltering()` — never from
+  `chat.askUser.enabled`, which would advertise a tool workspace preferences
+  removed. Discovery only: batching, question types, deferred answers, and
+  unattended-run safety stay in the tool's own description.
+  `test/server/executors/codex-ask-user-discovery.test.ts` is the fence.
 - **The mode directive is disclosed in the transcript.** Because it rides the
   user message, the *stored* turn carries it too — the same rule the
-  `<chat-style>` block follows (AC-05), so the bubble shows what the model was
-  told. Injected by `ProcessLifecycleRunner` (turn 1), `POST /message` and the
+  `<chat-style>` block follows (AC-05). The user-bubble display path extracts a
+  complete leading `<coc-chat-mode>` block into a collapsed **Chat mode**
+  disclosure, ahead of Chat style and repo-group context; assistant content and
+  supported tags outside the leading prefix render as message text. Injected by
+  `ProcessLifecycleRunner` (turn 1), `POST /message` and the
   `send_to_conversation` binding (later turns), and `FollowUpExecutor` (the
   cron/wakeup turns it creates itself), always *inside* the style block and
   always via `buildChatModeDisplayBlock`, which omits the repo's mode

@@ -61,7 +61,7 @@ import { resolveAutoFolderContext, suppressesAutoFolder } from './auto-folder-ut
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
-import { buildChatModeDirective, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
+import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import { buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
@@ -527,6 +527,22 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
+     * Whether CoC's custom `ask_user` tool is actually in the turn's final tool
+     * bundle. Read from the filtered array, not from `this.askUser.enabled`, so
+     * a workspace that disabled the tool (or a context that excluded it) never
+     * receives prompt text claiming it is available.
+     *
+     * One documented exception, shared with the mode-invariant tool block: the
+     * Ralph grill terminal round strips `ask_user` *after* the system message is
+     * assembled. Rewriting the prompt there would churn the cached prefix for a
+     * single round, so the block stays; with the tool genuinely gone, a Codex
+     * lookup simply finds nothing.
+     */
+    protected askUserSurvivedFiltering(tools: { name: string }[]): boolean {
+        return tools.some(tool => tool.name === 'ask_user');
+    }
+
+    /**
      * Assemble the first-turn system message for a chat task.
      *
      * Shared by every first-turn path (ask and autopilot) so a chat's session
@@ -544,6 +560,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         autoFolderContext: AutoFolderContext | undefined;
         memoryV2: MemoryV2Addon;
         toolGuidance: string;
+        /** Whether `ask_user` survived the turn's tool filtering — see `askUserSurvivedFiltering`. */
+        askUserAvailable: boolean;
     }): Promise<SystemMessageConfig | undefined> {
         const payload = input.task.payload as unknown as ChatPayload;
         // During grilling, the user-message directive owns the output contract
@@ -569,6 +587,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             })(),
             memoryV2: input.memoryV2,
             toolGuidance: input.toolGuidance,
+            askUserAvailable: input.askUserAvailable,
             autoFolderContext: autoFolderSuppressed ? undefined : input.autoFolderContext,
             notePath: payload.context?.noteChat?.notePath,
         });
@@ -628,6 +647,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             autoFolderContext,
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
+            askUserAvailable: this.askUserSurvivedFiltering(ctx.tools),
         });
 
         // When this is a Ralph grilling session, prepend the grilling directive
@@ -639,15 +659,16 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         // The read-only constraint and the mode-specific repo instructions ride
         // the user turn, not the system prompt, so a mid-chat mode switch does
-        // not invalidate the conversation's prefix cache. Follow-ups re-send the
-        // directive every turn (see `chat-mode-directive.ts`).
-        const effectivePrompt = prependChatModeDirective(
-            grilledPrompt,
-            buildChatModeDirective({
-                mode,
-                modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
-            }),
-        );
+        // not invalidate the conversation's prefix cache. A first turn always
+        // injects — there is no session that could already hold the block — and
+        // records it, so the first follow-up can tell the model already has it
+        // (see `shouldInjectChatModeDirective`).
+        const modeDirective = buildChatModeDirective({
+            mode,
+            modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
+        });
+        await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
+        const effectivePrompt = prependChatModeDirective(grilledPrompt, modeDirective);
 
         return {
             agentMode: 'interactive' as AgentMode,

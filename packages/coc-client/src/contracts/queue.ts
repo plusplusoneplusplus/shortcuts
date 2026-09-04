@@ -43,11 +43,15 @@ export interface QueueTaskSummary extends Partial<QueuedTask> {
   id: string;
 }
 
+/** Which part of the queue a pause marker holds. Absent means 'all'. */
+export type QueuePauseScope = 'all' | 'autopilot';
+
 export interface QueuePauseMarker {
   kind: 'pause-marker';
   id: string;
   createdAt: number;
   durationHours?: 1 | 2 | 3 | 4 | 8;
+  scope?: QueuePauseScope;
   [key: string]: unknown;
 }
 
@@ -122,6 +126,7 @@ export interface QueuePauseMarkerResponse {
   markerId: string;
   afterIndex: number;
   durationHours?: 1 | 2 | 3 | 4 | 8;
+  scope?: QueuePauseScope;
 }
 
 export interface QueueMoveResponse {

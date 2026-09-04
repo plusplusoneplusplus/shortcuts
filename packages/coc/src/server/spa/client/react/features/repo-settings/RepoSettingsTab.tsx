@@ -30,6 +30,8 @@ import { LlmToolsPanel } from './LlmToolsPanel';
 import { NotesSettingsSection } from './NotesSettingsSection';
 import { SyncSettingsSection } from './SyncSettingsSection';
 import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
+import { SettingsShell } from './SettingsShell';
+import type { SettingsShellNavGroup } from './SettingsShell';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -43,20 +45,7 @@ interface RepoSettingsTabProps {
 
 type ActiveSection = SettingsSection;
 
-interface NavItem {
-    id: ActiveSection;
-    label: string;
-    title: string;
-    description: string;
-}
-
-interface NavGroup {
-    id: 'repository' | 'agent';
-    label: string;
-    items: NavItem[];
-}
-
-const NAV_GROUPS: NavGroup[] = [
+const NAV_GROUPS: SettingsShellNavGroup<ActiveSection>[] = [
     {
         id: 'repository',
         label: 'Repository',
@@ -198,15 +187,6 @@ function RefreshIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
             <path d="M21 12a9 9 0 1 1-3.2-6.9" />
             <path d="M21 4v5h-5" />
-        </svg>
-    );
-}
-
-function SearchIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-            <circle cx="11" cy="11" r="6" />
-            <path d="M20 20l-3.5-3.5" />
         </svg>
     );
 }
@@ -454,46 +434,16 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
     const activeSection = state.settingsSection;
     const isVirtualWorkspace = isVirtualWorkspaceId(workspaceId);
 
-    const visibleGroups = useMemo<NavGroup[]>(() => {
-        return NAV_GROUPS.map(group => ({
-            ...group,
-            items: group.items,
-        })).filter(g => g.items.length > 0);
-    }, []);
-
-    const setActiveSection= useCallback((section: ActiveSection) => {
+    const setActiveSection = useCallback((section: ActiveSection) => {
         dispatch({ type: 'SET_SETTINGS_SECTION', section });
         location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/settings/' + section;
     }, [dispatch, workspaceId]);
-
-    // Filter input — client-side narrowing of the sidebar list.
-    const [filterQuery, setFilterQuery] = useState('');
-    const normalizedQuery = filterQuery.trim().toLowerCase();
-    const filteredGroups = useMemo<NavGroup[]>(() => {
-        if (!normalizedQuery) return visibleGroups;
-        return visibleGroups
-            .map(group => ({
-                ...group,
-                items: group.items.filter(item =>
-                    item.label.toLowerCase().includes(normalizedQuery) ||
-                    item.title.toLowerCase().includes(normalizedQuery)
-                ),
-            }))
-            .filter(g => g.items.length > 0);
-    }, [visibleGroups, normalizedQuery]);
 
     const enabledMcpCount = mcp.availableServers.filter(s => mcp.isEnabled(s.name)).length;
     const installedSkillsCount = skillsController.skills.length;
     const hasInstructions = Object.values(instrContents).some(v => v !== null && v !== '');
     const memoryHint = !isVirtualWorkspace;
     const preferencesHint = !!ws.description || tasksFolder !== null;
-
-    const activeNav = useMemo(() => {
-        for (const g of NAV_GROUPS) {
-            for (const it of g.items) if (it.id === activeSection) return it;
-        }
-        return NAV_GROUPS[0].items[0];
-    }, [activeSection]);
 
     function renderBadge(id: ActiveSection): React.ReactNode {
         if (id === 'mcp' && !mcp.loading) {
@@ -522,136 +472,59 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
         return null;
     }
 
+    const suppressSectionHeader = activeSection === 'skills' || activeSection === 'mcp';
+
     return (
-        <div className="flex flex-col sm:flex-row h-full overflow-hidden bg-[var(--vscode-editor-background,#fff)] dark:bg-[#191919]">
-            {/* ── Left sidebar ── */}
-            <nav
-                className="flex-shrink-0 flex flex-col border-b sm:border-b-0 sm:border-r border-[#e0e0e0] dark:border-[#2d2d30] bg-[var(--vscode-sideBar-background,#fafbfc)] dark:bg-[#1c1c1c] sm:w-[210px]"
-                data-testid="settings-sidebar"
-            >
-                {/* Filter input */}
-                <div className="px-3 pt-3 pb-2 sticky top-0 z-10 bg-inherit">
-                    <label className="flex items-center gap-1.5 h-7 rounded-md border border-[#d8dee4] dark:border-[#2d2d30] bg-white dark:bg-[#252526] px-2 focus-within:border-[#0969da] dark:focus-within:border-[#3794ff]">
-                        <SearchIcon className="h-3 w-3 text-[#6e7781] dark:text-[#8b949e]" />
-                        <input
-                            type="search"
-                            value={filterQuery}
-                            onChange={e => setFilterQuery(e.target.value)}
-                            placeholder="Filter settings"
-                            className="flex-1 min-w-0 bg-transparent text-[12px] text-[#1f2328] dark:text-[#e6edf3] placeholder:text-[#6e7781] dark:placeholder:text-[#8b949e] outline-none"
-                            data-testid="settings-filter-input"
-                        />
-                        <kbd
-                            className="hidden sm:inline-flex items-center justify-center h-[18px] px-1 rounded text-[10px] font-mono text-[#6e7781] dark:text-[#8b949e] bg-[#eaeef2] dark:bg-[#2d2d30] border border-[#d8dee4] dark:border-[#3c3c3c] select-none"
-                            aria-hidden
+        <SettingsShell
+            groups={NAV_GROUPS}
+            activeSectionId={activeSection}
+            onSelect={setActiveSection}
+            renderIcon={id => <Icon id={id} />}
+            renderBadge={renderBadge}
+            footer={dockStatusFooter ? <DockedStatusFooter /> : undefined}
+            suppressSectionHeader={suppressSectionHeader}
+            headerActions={activeSection === 'info' ? (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                    {(savingDesc || savedAgoLabel) && (
+                        <span
+                            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-[#d8dee4] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] text-[11.5px] text-[#1f2328] dark:text-[#e6edf3]"
+                            data-testid="settings-saved-indicator"
                         >
-                            ⌘K
-                        </kbd>
-                    </label>
-                </div>
-
-                {/* Grouped nav */}
-                <div className="sm:flex-1 sm:min-h-0 sm:overflow-y-auto">
-                    <div className="px-1.5 pb-3 flex flex-col gap-3">
-                        {filteredGroups.length === 0 ? (
-                            <div className="px-2.5 py-3 text-[11px] text-[#6e7781] dark:text-[#8b949e]" data-testid="settings-filter-empty">
-                                No settings match “{filterQuery.trim()}”.
-                            </div>
-                        ) : (
-                            filteredGroups.map(group => (
-                                <div key={group.id} className="flex flex-col" data-testid={`nav-group-${group.id}`}>
-                                    <div className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6e7781] dark:text-[#8b949e]">
-                                        {group.label}
-                                    </div>
-                                    {group.items.map(item => {
-                                        const isActive = activeSection === item.id;
-                                        return (
-                                            <button
-                                                key={item.id}
-                                                onClick={() => setActiveSection(item.id)}
-                                                className={`group flex items-center gap-2 h-7 px-2.5 rounded-md text-[12.5px] text-left transition-colors whitespace-nowrap ${
-                                                    isActive
-                                                        ? 'bg-white dark:bg-[#252526] text-[#1f2328] dark:text-[#e6edf3] border border-[#d8dee4] dark:border-[#3c3c3c] font-semibold shadow-[0_1px_0_rgba(31,35,40,0.04)]'
-                                                        : 'border border-transparent text-[#1f2328] dark:text-[#c9d1d9] hover:bg-[#eef1f4] dark:hover:bg-[#252526]'
-                                                }`}
-                                                data-testid={`nav-item-${item.id}`}
-                                                aria-current={isActive ? 'page' : undefined}
-                                            >
-                                                <span className={`flex-shrink-0 ${isActive ? 'text-[#1f2328] dark:text-[#e6edf3]' : 'text-[#6e7781] dark:text-[#8b949e]'}`}>
-                                                    <Icon id={item.id} />
-                                                </span>
-                                                <span className="flex-1 truncate">{item.label}</span>
-                                                {renderBadge(item.id)}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-                {dockStatusFooter && <DockedStatusFooter />}
-            </nav>
-
-            {/* ── Right content panel ── */}
-            <div className="flex-1 overflow-y-auto min-w-0" data-testid="settings-content-panel">
-                {/* Section header (hidden for Agent Skills / MCP — panels ship their own header) */}
-                {activeSection !== 'skills' && activeSection !== 'mcp' && (
-                <header className="flex items-start justify-between gap-4 px-6 pt-5 pb-4">
-                    <div className="min-w-0">
-                        <h2 className="text-[18px] font-semibold leading-tight text-[#1f2328] dark:text-[#e6edf3]" data-testid="settings-section-title">
-                            {activeNav.title}
-                        </h2>
-                        <p className="mt-0.5 text-[12.5px] text-[#6e7781] dark:text-[#8b949e]" data-testid="settings-section-description">
-                            {activeNav.description}
-                        </p>
-                    </div>
-                    {activeSection === 'info' && (
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                            {(savingDesc || savedAgoLabel) && (
-                                <span
-                                    className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-[#d8dee4] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] text-[11.5px] text-[#1f2328] dark:text-[#e6edf3]"
-                                    data-testid="settings-saved-indicator"
-                                >
-                                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${savingDesc ? 'bg-[#bf8700] dark:bg-[#d29922] animate-pulse' : 'bg-[#1f883d] dark:bg-[#3fb950]'}`} />
-                                    {savingDesc ? (
-                                        <>Saving<span className="text-[#6e7781] dark:text-[#8b949e]">…</span></>
-                                    ) : (
-                                        <>
-                                            <span className="font-semibold">Saved</span>
-                                            <span className="text-[#6e7781] dark:text-[#8b949e]">{savedAgoLabel}</span>
-                                        </>
-                                    )}
-                                </span>
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${savingDesc ? 'bg-[#bf8700] dark:bg-[#d29922] animate-pulse' : 'bg-[#1f883d] dark:bg-[#3fb950]'}`} />
+                            {savingDesc ? (
+                               <>Saving<span className="text-[#6e7781] dark:text-[#8b949e]">…</span></>
+                            ) : (
+                               <>
+                                   <span className="font-semibold">Saved</span>
+                                   <span className="text-[#6e7781] dark:text-[#8b949e]">{savedAgoLabel}</span>
+                               </>
                             )}
-                            <button
-                                type="button"
-                                onClick={handleCopyPath}
-                                title="Copy workspace path"
-                                aria-label="Copy workspace path"
-                                className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-transparent text-[#6e7781] dark:text-[#8b949e] hover:bg-[#eaeef2] dark:hover:bg-[#252526] hover:text-[#1f2328] dark:hover:text-[#e6edf3]"
-                                data-testid="settings-header-copy"
-                            >
-                                <CopyIcon />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void fetchProcesses()}
-                                title="Refresh recent runs"
-                                aria-label="Refresh recent runs"
-                                className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-transparent text-[#6e7781] dark:text-[#8b949e] hover:bg-[#eaeef2] dark:hover:bg-[#252526] hover:text-[#1f2328] dark:hover:text-[#e6edf3]"
-                                data-testid="settings-header-refresh"
-                            >
-                                <RefreshIcon />
-                            </button>
-                        </div>
+                        </span>
                     )}
-                </header>
-                )}
-
-                {/* Section body */}
-                <div className={activeSection === 'skills' || activeSection === 'mcp' ? '' : 'px-6 pb-8 flex flex-col gap-4'}>
-                    {activeSection === 'info' && (
+                    <button
+                        type="button"
+                        onClick={handleCopyPath}
+                        title="Copy workspace path"
+                        aria-label="Copy workspace path"
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-transparent text-[#6e7781] dark:text-[#8b949e] hover:bg-[#eaeef2] dark:hover:bg-[#252526] hover:text-[#1f2328] dark:hover:text-[#e6edf3]"
+                        data-testid="settings-header-copy"
+                    >
+                        <CopyIcon />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void fetchProcesses()}
+                        title="Refresh recent runs"
+                        aria-label="Refresh recent runs"
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-transparent text-[#6e7781] dark:text-[#8b949e] hover:bg-[#eaeef2] dark:hover:bg-[#252526] hover:text-[#1f2328] dark:hover:text-[#e6edf3]"
+                        data-testid="settings-header-refresh"
+                    >
+                        <RefreshIcon />
+                    </button>
+                </div>
+            ) : undefined}
+        >
+            {activeSection === 'info' && (
                         <>
                             {/* WORKSPACE card */}
                             <SectionCard label="Workspace" testId="info-workspace-card">
@@ -824,8 +697,6 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
                             <SyncSettingsSection workspaceId={workspaceId} />
                         </SectionCard>
                     )}
-                </div>
-            </div>
-        </div>
+        </SettingsShell>
     );
 }

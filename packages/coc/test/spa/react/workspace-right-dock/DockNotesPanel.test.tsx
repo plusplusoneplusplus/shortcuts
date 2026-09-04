@@ -200,6 +200,72 @@ describe('DockNotesPanel', () => {
         await waitFor(() => expect(getTree).toHaveBeenCalledTimes(2));
     });
 
+    // Regression: the panel shipped without its own surface/text colours, so in
+    // dark mode the preview inherited a light-mode foreground and the whole view
+    // read as low-contrast grey-on-grey. Every text-bearing surface must carry a
+    // `dark:` colour of its own.
+    describe('dark mode colours', () => {
+        it('gives the panel an explicit surface and foreground in both themes', async () => {
+            render(<DockNotesPanel workspaceId="ws1" />);
+            await waitFor(() => expect(itemPaths()).toHaveLength(2));
+
+            const cls = screen.getByTestId('workspace-dock-notes-panel').className;
+            expect(cls).toContain('bg-white');
+            expect(cls).toContain('dark:bg-[#1e1e1e]');
+            expect(cls).toContain('text-[#1f1f1f]');
+            expect(cls).toContain('dark:text-[#cccccc]');
+        });
+
+        it('sets the markdown preview foreground like every other markdown-body surface', async () => {
+            render(<DockNotesPanel workspaceId="ws1" />);
+            await waitFor(() => expect(itemPaths()).toHaveLength(2));
+
+            const cls = (await screen.findByTestId('workspace-dock-notes-preview')).className;
+            expect(cls).toContain('markdown-body');
+            expect(cls).toContain('text-[#1e1e1e]');
+            expect(cls).toContain('dark:text-[#cccccc]');
+        });
+
+        it('lightens the folder line on the selected row so it stays readable on the blue', async () => {
+            render(<DockNotesPanel workspaceId="ws1" />);
+            await waitFor(() => expect(itemPaths()).toHaveLength(2));
+
+            // Only the nested note has a folder line, and it is auto-selected.
+            const selected = screen.getAllByTestId('workspace-dock-notes-item')[0];
+            expect(selected.getAttribute('aria-selected')).toBe('true');
+            expect(selected.className).toContain('dark:bg-[#04395e]');
+            const folder = screen.getByText('Plans');
+            expect(folder.className).toContain('dark:text-[#a7c8e6]');
+            expect(folder.className).not.toContain('text-[#8c8c8c]');
+
+            // Deselect it: the folder line falls back to the muted pair.
+            fireEvent.click(screen.getAllByTestId('workspace-dock-notes-item')[1]);
+            await waitFor(() => expect(screen.getByText('Plans').className).toContain('text-[#8c8c8c]'));
+            expect(screen.getByText('Plans').className).toContain('dark:text-[#9a9a9a]');
+        });
+
+        it('brightens the list and preview error text for the dark surface', async () => {
+            getTree.mockRejectedValue(new Error('boom'));
+            render(<DockNotesPanel workspaceId="ws1" />);
+            const err = await screen.findByTestId('workspace-dock-notes-error');
+            expect(err.className).toContain('dark:text-[#f48771]');
+        });
+
+        it('brightens the note-load error text for the dark surface', async () => {
+            getContent.mockRejectedValue(new Error('no read'));
+            render(<DockNotesPanel workspaceId="ws1" />);
+            const err = await screen.findByTestId('workspace-dock-notes-preview-error');
+            expect(err.className).toContain('dark:text-[#f48771]');
+        });
+
+        it('brightens the empty state for the dark surface', async () => {
+            getTree.mockResolvedValue({ tree: [], notesRoot: '/n' });
+            render(<DockNotesPanel workspaceId="ws1" />);
+            const empty = await screen.findByTestId('workspace-dock-notes-empty');
+            expect(empty.className).toContain('dark:text-[#9a9a9a]');
+        });
+    });
+
     it('reads notes from the workspace it is given (repo group ids included)', async () => {
         render(<DockNotesPanel workspaceId="group-ai-repos" />);
         await waitFor(() => expect(getTree).toHaveBeenCalledWith('group-ai-repos'));

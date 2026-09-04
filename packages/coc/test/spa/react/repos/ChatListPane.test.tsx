@@ -989,6 +989,154 @@ describe('ChatListPane', () => {
             expect(screen.getByText('Queue pauses here · 2h')).toBeTruthy();
         });
 
+        it('renders an autopilot-scoped marker with its own wording and data-scope', () => {
+            renderPane({
+                queued: [
+                    { id: 'pm-ap', kind: 'pause-marker', scope: 'autopilot' },
+                    { id: 'pm-ap-timed', kind: 'pause-marker', scope: 'autopilot', durationHours: 2 },
+                ],
+            });
+
+            expect(screen.getByText('Autopilot pauses here')).toBeTruthy();
+            expect(screen.getByText('Autopilot pauses here · 2h')).toBeTruthy();
+            const rows = screen.getAllByTestId('pause-marker-row');
+            expect(rows.map(r => r.getAttribute('data-scope'))).toEqual(['autopilot', 'autopilot']);
+            expect(rows[0].getAttribute('title')).toContain('Autopilot tasks will pause');
+            // The remove affordance stays addressable for both scopes.
+            expect(screen.getAllByTestId('pause-marker-remove-btn').length).toBe(2);
+        });
+
+        it('keeps data-scope="all" for markers with an explicit or absent all scope', () => {
+            renderPane({
+                queued: [
+                    { id: 'pm-absent', kind: 'pause-marker' },
+                    { id: 'pm-all', kind: 'pause-marker', scope: 'all' },
+                ],
+            });
+
+            const rows = screen.getAllByTestId('pause-marker-row');
+            expect(rows.map(r => r.getAttribute('data-scope'))).toEqual(['all', 'all']);
+            expect(screen.getAllByText('Queue pauses here').length).toBe(2);
+        });
+
+        it('offers both a Pause all and a Pause autopilot section in the insert menu', () => {
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({ id: 'q-1' })],
+            });
+
+            const insertZone = screen.getByTestId('pause-insert-zone-0');
+            fireEvent.mouseEnter(insertZone);
+            fireEvent.click(insertZone);
+
+            expect(screen.getByTestId('pause-duration-insert-0-label').textContent).toBe('Pause all');
+            expect(screen.getByTestId('pause-duration-insert-0-autopilot-label').textContent)
+                .toBe('Pause autopilot');
+            // One menu, two sections — not two menus.
+            expect(screen.getAllByTestId(/^pause-duration-menu-/).length).toBe(1);
+            for (const hours of [1, 2, 3, 4, 8]) {
+                expect(screen.getByTestId(`pause-duration-insert-0-autopilot-${hours}h`)).toBeTruthy();
+            }
+            expect(screen.getByTestId('pause-duration-insert-0-autopilot-indefinite')).toBeTruthy();
+            expect(screen.getByTestId('pause-duration-insert-0-autopilot-custom')).toBeTruthy();
+        });
+
+        it('sends scope=autopilot when an autopilot preset is chosen', async () => {
+            const fetchQueue = vi.fn().mockResolvedValue(undefined);
+            const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+            fetchMock.mockResolvedValue(new Response(
+                JSON.stringify({ markerId: 'pm-new', afterIndex: 0, durationHours: 3, scope: 'autopilot' }),
+                { status: 201, headers: { 'content-type': 'application/json' } },
+            ));
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({ id: 'q-1' })],
+                fetchQueue,
+            });
+
+            const insertZone = screen.getByTestId('pause-insert-zone-0');
+            fireEvent.mouseEnter(insertZone);
+            fireEvent.click(insertZone);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pause-duration-insert-0-autopilot-3h'));
+            });
+
+            await waitFor(() => {
+                const pauseMarkerCall = fetchMock.mock.calls.find(
+                    (call: any[]) => typeof call[0] === 'string' && call[0].includes('/queue/pause-marker'),
+                );
+                expect(pauseMarkerCall).toBeTruthy();
+                expect(JSON.parse(pauseMarkerCall![1].body)).toEqual({
+                    afterIndex: 0,
+                    repoId: 'ws-1',
+                    durationHours: 3,
+                    scope: 'autopilot',
+                });
+                expect(fetchQueue).toHaveBeenCalled();
+            });
+        });
+
+        it('sends scope=autopilot with no duration for the autopilot Until resumed row', async () => {
+            const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+            fetchMock.mockResolvedValue(new Response(
+                JSON.stringify({ markerId: 'pm-new', afterIndex: -1, scope: 'autopilot' }),
+                { status: 201, headers: { 'content-type': 'application/json' } },
+            ));
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({ id: 'q-1' })],
+            });
+
+            const insertZone = screen.getByTestId('pause-insert-zone--1');
+            fireEvent.mouseEnter(insertZone);
+            fireEvent.click(insertZone);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pause-duration-insert--1-autopilot-indefinite'));
+            });
+
+            await waitFor(() => {
+                const pauseMarkerCall = fetchMock.mock.calls.find(
+                    (call: any[]) => typeof call[0] === 'string' && call[0].includes('/queue/pause-marker'),
+                );
+                expect(pauseMarkerCall).toBeTruthy();
+                const body = JSON.parse(pauseMarkerCall![1].body);
+                expect(body).toEqual({ afterIndex: -1, repoId: 'ws-1', scope: 'autopilot' });
+                expect(body).not.toHaveProperty('durationHours');
+            });
+        });
+
+        it('omits scope entirely when an all-scope preset is chosen', async () => {
+            const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+            fetchMock.mockResolvedValue(new Response(
+                JSON.stringify({ markerId: 'pm-new', afterIndex: 0, durationHours: 1 }),
+                { status: 201, headers: { 'content-type': 'application/json' } },
+            ));
+            renderPane({
+                workspaceId: 'ws-1',
+                queued: [makeQueuedTask({ id: 'q-1' })],
+            });
+
+            const insertZone = screen.getByTestId('pause-insert-zone-0');
+            fireEvent.mouseEnter(insertZone);
+            fireEvent.click(insertZone);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('pause-duration-insert-0-1h'));
+            });
+
+            await waitFor(() => {
+                const pauseMarkerCall = fetchMock.mock.calls.find(
+                    (call: any[]) => typeof call[0] === 'string' && call[0].includes('/queue/pause-marker'),
+                );
+                expect(pauseMarkerCall).toBeTruthy();
+                const body = JSON.parse(pauseMarkerCall![1].body);
+                expect(body).toEqual({ afterIndex: 0, repoId: 'ws-1', durationHours: 1 });
+                expect(body).not.toHaveProperty('scope');
+            });
+        });
+
         it('opens a duration menu from the insert zone and inserts a timed pause marker', async () => {
             const fetchQueue = vi.fn().mockResolvedValue(undefined);
             const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;

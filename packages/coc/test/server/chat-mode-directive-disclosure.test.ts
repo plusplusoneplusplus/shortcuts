@@ -9,7 +9,9 @@
  * Covers both halves:
  *  - turn 1, via ProcessLifecycleRunner, including the executors that send no
  *    directive and therefore must disclose none,
- *  - every later turn, via POST /api/processes/:id/message.
+ *  - every later turn, via POST /api/processes/:id/message, where the block
+ *    rides only the turns FollowUpExecutor actually sends it on: the stored
+ *    transcript must not claim a constraint the model was never given.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -209,10 +211,30 @@ describe('mode directive disclosure on follow-up turns', () => {
         await store.addProcess(proc);
     }
 
+    /**
+     * Stand in for the executor, the single writer of the `chatModeContext`
+     * marker: record on the freshly-stored user turn whatever block the route
+     * just disclosed. The mock bridge never runs FollowUpExecutor, so without
+     * this every turn would look like "never injected" and re-disclose.
+     */
+    async function recordInjectedDirective(id: string) {
+        const proc = await store.getProcess(id);
+        const turns = proc?.conversationTurns ?? [];
+        for (let i = turns.length - 1; i >= 0; i--) {
+            if (turns[i].role !== 'user') continue;
+            const block = turns[i].content.startsWith('<coc-chat-mode>')
+                ? turns[i].content.slice(0, turns[i].content.indexOf('</coc-chat-mode>') + '</coc-chat-mode>'.length)
+                : undefined;
+            if (block) await store.updateTurnChatModeContext!(id, i, block);
+            return;
+        }
+    }
+
     /** Send a turn, then reset the process to 'completed' so the next one is accepted. */
     async function sendTurn(id: string, content: string, mode?: string) {
         const res = await postMessage(id, { content, ...(mode ? { mode } : {}) });
         expect(res.status).toBe(202);
+        await recordInjectedDirective(id);
         await store.updateProcess(id, { status: 'completed' });
     }
 
@@ -229,16 +251,88 @@ describe('mode directive disclosure on follow-up turns', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    it('discloses the block on every ask follow-up', async () => {
+    it('discloses the block on the first ask follow-up and stays silent while the mode holds', async () => {
         await startServer();
         await seedProcess('p-ask');
 
         await sendTurn('p-ask', 'first');
         await sendTurn('p-ask', 'second');
+        await sendTurn('p-ask', 'third');
 
+        // AC-01: the block is session state. Turn 1 tells the model; turns 2+
+        // must not claim to have told it again, because they did not.
         expect(await userTurns('p-ask')).toEqual([
             `${ASK_BLOCK}\n\nfirst`,
+            'second',
+            'third',
+        ]);
+    });
+
+    it('re-discloses once per mode toggle and never in between', async () => {
+        await startServer();
+        await seedProcess('p-toggle');
+
+        await sendTurn('p-toggle', 'look around', 'ask');
+        await sendTurn('p-toggle', 'still looking', 'ask');
+        await sendTurn('p-toggle', 'now fix it', 'autopilot');
+        await sendTurn('p-toggle', 'keep fixing', 'autopilot');
+        await sendTurn('p-toggle', 'back to reading', 'ask');
+
+        const turns = await userTurns('p-toggle');
+        expect(turns[0]).toBe(`${ASK_BLOCK}\n\nlook around`);
+        expect(turns[1]).toBe('still looking');
+        // AC-02
+        expect(turns[2]).toContain(MODE_SWITCHED_TO_AUTOPILOT_NOTE);
+        expect(turns[2].endsWith('now fix it')).toBe(true);
+        expect(turns[3]).toBe('keep fixing');
+        // AC-03
+        expect(turns[4]).toBe(`${ASK_BLOCK}\n\nback to reading`);
+    });
+
+    it('re-discloses when there is no SDK session to resume', async () => {
+        await startServer();
+        await seedProcess('p-nosession');
+        await store.updateProcess('p-nosession', { sdkSessionId: undefined });
+
+        await sendTurn('p-nosession', 'first');
+        await store.updateProcess('p-nosession', { sdkSessionId: undefined });
+        await sendTurn('p-nosession', 'second');
+
+        // AC-04: history is rebuilt from persisted turns, where the block is
+        // only a quotation inside `<conversation_history>`.
+        expect(await userTurns('p-nosession')).toEqual([
+            `${ASK_BLOCK}\n\nfirst`,
             `${ASK_BLOCK}\n\nsecond`,
+        ]);
+    });
+
+    it('re-discloses once after a completed compaction', async () => {
+        await startServer();
+        await seedProcess('p-compact');
+
+        await sendTurn('p-compact', 'first');
+        // Dated just after the turn that carried the block, so it invalidates
+        // that injection and nothing later.
+        const injectedAt = (await store.getProcess('p-compact'))!.conversationTurns![0].timestamp;
+        await store.updateProcess('p-compact', {
+            metadata: {
+                type: 'chat',
+                mode: 'ask',
+                compaction: {
+                    state: 'completed',
+                    completedAt: new Date(new Date(injectedAt).getTime() + 1).toISOString(),
+                },
+            },
+        });
+        await sendTurn('p-compact', 'second');
+        await sendTurn('p-compact', 'third');
+
+        // AC-05: the summarizer may have dropped the block, so re-send it —
+        // once. The third turn is back in steady state.
+        expect(await userTurns('p-compact')).toEqual([
+            `${ASK_BLOCK}\n\nfirst`,
+            `${ASK_BLOCK}\n\nsecond`,
+            'third',
         ]);
     });
 

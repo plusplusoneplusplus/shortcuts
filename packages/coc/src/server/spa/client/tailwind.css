@@ -1081,6 +1081,13 @@
     margin: 0.15rem 0;
 }
 
+/* task_complete summaries render through the shared chat MarkdownView but stay
+   at the compact tool-call type scale. */
+.task-complete-body > .markdown-body {
+    font-size: 0.75rem;
+    line-height: 1.55;
+}
+
 .markdown-body .md-h1,
 .markdown-body .md-h2,
 .markdown-body .md-h3,

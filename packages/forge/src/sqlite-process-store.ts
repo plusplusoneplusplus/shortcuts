@@ -143,6 +143,7 @@ interface TurnRow {
     display_only: number;
     compaction_summary: string | null;
     repo_group_context: string | null;
+    chat_mode_context: string | null;
 }
 
 interface PromptAutocompleteHistoryRow {
@@ -478,6 +479,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         display_only: boolToInt(turn.displayOnly),
         compaction_summary: turn.compactionSummary ?? null,
         repo_group_context: turn.repoGroupContext ?? null,
+        chat_mode_context: turn.chatModeContext ?? null,
         deleted_at: dateToIso(turn.deletedAt),
         pinned_at: dateToIso(turn.pinnedAt),
         archived: boolToInt(turn.archived),
@@ -532,6 +534,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         displayOnly: intToBool(row.display_only),
         ...(row.compaction_summary ? { compactionSummary: row.compaction_summary } : {}),
         ...(row.repo_group_context ? { repoGroupContext: row.repo_group_context } : {}),
+        ...(row.chat_mode_context ? { chatModeContext: row.chat_mode_context } : {}),
         ...(row.model ? { model: row.model } : {}),
         ...(row.mode ? { mode: row.mode } : {}),
         ...(row.sdk_event_id ? { sdkEventId: row.sdk_event_id } : {}),
@@ -665,12 +668,12 @@ export class SqliteProcessStore implements ProcessStore {
                 process_id, turn_index, role, content, timestamp, streaming,
                 interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
                 token_usage, paste_externalized, model, mode, sdk_event_id, display_only,
-                compaction_summary, repo_group_context
+                compaction_summary, repo_group_context, chat_mode_context
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @interrupted, @interruption_reason, @tool_calls, @timeline, @images, @historical, @suggestions,
                 @token_usage, @paste_externalized, @model, @mode, @sdk_event_id, @display_only,
-                @compaction_summary, @repo_group_context
+                @compaction_summary, @repo_group_context, @chat_mode_context
             )
         `);
 
@@ -831,12 +834,12 @@ export class SqliteProcessStore implements ProcessStore {
                   (process_id, turn_index, role, content, timestamp, streaming,
                    interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
                    token_usage, paste_externalized, model, mode, display_only, compaction_summary,
-                   repo_group_context)
+                   repo_group_context, chat_mode_context)
                 SELECT
                   ?, turn_index, role, content, timestamp, 0,
                   interrupted, interruption_reason, tool_calls, timeline, images, 1, suggestions,
                   token_usage, paste_externalized, model, mode, display_only, compaction_summary,
-                  repo_group_context
+                  repo_group_context, chat_mode_context
                 FROM conversation_turns
                 WHERE process_id = ?
                   AND deleted_at IS NULL
@@ -1342,6 +1345,7 @@ export class SqliteProcessStore implements ProcessStore {
                     display_only: 0,
                     compaction_summary: null,
                     repo_group_context: null,
+                    chat_mode_context: null,
                 });
             }
         });
@@ -1513,6 +1517,21 @@ export class SqliteProcessStore implements ProcessStore {
 
         if (result.changes === 0) {
             getLogger().warn('SqliteProcessStore', `User turn not found for repoGroupContext update: processId=${processId}, turnIndex=${turnIndex}`);
+        }
+        this.onProcessChange?.({ type: 'process-updated' });
+    }
+
+    async updateTurnChatModeContext(
+        processId: string,
+        turnIndex: number,
+        chatModeContext: string,
+    ): Promise<void> {
+        const result = this.db.prepare(
+            "UPDATE conversation_turns SET chat_mode_context = ? WHERE process_id = ? AND turn_index = ? AND role = 'user'"
+        ).run(chatModeContext, processId, turnIndex);
+
+        if (result.changes === 0) {
+            getLogger().warn('SqliteProcessStore', `User turn not found for chatModeContext update: processId=${processId}, turnIndex=${turnIndex}`);
         }
         this.onProcessChange?.({ type: 'process-updated' });
     }

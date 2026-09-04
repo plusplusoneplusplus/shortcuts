@@ -311,7 +311,14 @@ export class QueueExecutor extends EventEmitter {
                 const pauseUntil = marker.durationHours !== undefined
                     ? Date.now() + marker.durationHours * 60 * 60 * 1000
                     : undefined;
-                this.queueManager.pause(pauseUntil); // same as clicking ⏸, optionally timed
+                if (marker.scope === 'autopilot') {
+                    // Autopilot-scoped: hold autopilot/ralph tasks only. Ask and
+                    // script tasks queued behind the marker keep flowing via the
+                    // existing `isExclusiveFn(task) && !task.admitted` filter in peek().
+                    this.queueManager.pauseAutopilot(pauseUntil);
+                } else {
+                    this.queueManager.pause(pauseUntil); // same as clicking ⏸, optionally timed
+                }
                 this.emit('pause-marker-reached', item);
                 continue;
             }
