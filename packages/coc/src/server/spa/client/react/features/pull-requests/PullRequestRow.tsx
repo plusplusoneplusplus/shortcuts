@@ -205,13 +205,13 @@ export function PullRequestRow({
                         <span className="pr-number font-mono tabular-nums">#{pr.number}</span>
                     )}
                     <span>{filesLabel}</span>
-                    {pr.updatedAt && (
+                    {pr.createdAt && (
                         <span
-                            className="pr-updated-at"
-                            data-testid="pr-updated-at"
-                            title={formatTimestamp(pr.updatedAt)}
+                            className="pr-created-at"
+                            data-testid="pr-created-at"
+                            title={formatTimestamp(pr.createdAt)}
                         >
-                            {formatRelativeTime(pr.updatedAt)}
+                            opened {formatRelativeTime(pr.createdAt)}
                         </span>
                     )}
                 </div>
