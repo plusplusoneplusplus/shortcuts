@@ -39,6 +39,8 @@ const POPOUT_NAVIGATE_CHANNEL = 'coc-desktop:popout-navigate';
 const POPOUT_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:popout-open-external';
 const POPOUT_COPY_URL_CHANNEL = 'coc-desktop:popout-copy-url';
 const POPOUT_STATE_CHANNEL = 'coc-desktop:popout-state';
+const MENU_COPY_CHANNEL = 'coc-desktop:menu-copy';
+const MENU_COPY_HANDLED_CHANNEL = 'coc-desktop:menu-copy-handled';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
@@ -188,6 +190,21 @@ const api = {
      * the popped-out page only sends `nav` for its injected Alt+←/→, Ctrl+R and
      * Ctrl+L shortcuts. The main process routes each request by sender.
      */
+    /**
+     * Native Edit ▸ Copy bridge (see `terminal-copy.ts`). The main process pushes
+     * `onCopy` when the menu item fires; a focused xterm terminal that owns a
+     * selection copies it and calls `copyHandled()` so the main process skips its
+     * `webContents.copy()` fallback. Silence means "not a terminal" and the
+     * fallback copies the DOM selection as usual.
+     */
+    menu: {
+        onCopy: (callback: () => void) => {
+            const listener = () => callback();
+            ipcRenderer.on(MENU_COPY_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(MENU_COPY_CHANNEL, listener);
+        },
+        copyHandled: () => ipcRenderer.send(MENU_COPY_HANDLED_CHANNEL),
+    },
     popout: {
         nav: (action: string) => ipcRenderer.send(POPOUT_NAV_CHANNEL, action),
         navigate: (url: string) => ipcRenderer.send(POPOUT_NAVIGATE_CHANNEL, url),

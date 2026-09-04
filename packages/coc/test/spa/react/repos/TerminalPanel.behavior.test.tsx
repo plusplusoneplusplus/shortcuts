@@ -21,6 +21,10 @@ vi.mock('@xterm/xterm', function () { return ({
         dispose: vi.fn(),
         write: vi.fn(),
         onData: vi.fn(function () { return ({ dispose: vi.fn() }); }),
+        attachCustomKeyEventHandler: vi.fn(),
+        getSelection: vi.fn(function () { return ''; }),
+        selectAll: vi.fn(),
+        clear: vi.fn(),
         options: {},
     }); }),
 }); });
