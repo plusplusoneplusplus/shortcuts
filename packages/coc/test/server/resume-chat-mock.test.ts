@@ -187,16 +187,6 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
     it('returns 409 when two simultaneous resume requests target the same process', async () => {
         const { taskId, processId } = await enqueueChatTask();
 
-        // Wait for the fire-and-forget title generator (triggered by task completion)
-        // to finish calling store.getProcess before we install the pausing mock.
-        // Without this wait, the title generator's getProcess call triggers the
-        // pause signal prematurely — before any resume-chat request has added pid
-        // to resumeInProgress — causing both requests to slip through the 409 guard.
-        await vi.waitFor(
-            () => { expect(store.processes.get(processId)?.title).toBeDefined(); },
-            { timeout: 3000 }
-        );
-
         // Override process: valid sdkSessionId + conversation history
         const existing = store.processes.get(processId)!;
         store.processes.set(processId, {
@@ -213,15 +203,24 @@ describe('POST /api/queue/:id/resume-chat (mock store)', () => {
         // Use Promise-based signaling (not polling) so the test is deterministic
         // under parallel load: the signal fires the exact moment the mock is entered,
         // guaranteeing pid is already in resumeInProgress when request 2 fires.
+        //
+        // Only pause the resume route's own call. The route reads the task's
+        // workspace id and calls getProcess(pid, wsId); fire-and-forget callers
+        // that may still be running here — notably the title generator kicked off
+        // by task completion — call getProcess(processId) with the id alone.
+        // Keying the pause on the route's call shape (rather than on "whichever
+        // call lands first") means a stray background call can never consume the
+        // pause and let both requests slip past the 409 guard.
         let signalRequest1AtPause!: () => void;
         const request1AtPause = new Promise<void>(r => { signalRequest1AtPause = r; });
         let releaseRequest1!: () => void;
         const request1Release = new Promise<void>(r => { releaseRequest1 = r; });
-        let isFirstCall = true;
+        let request1Paused = false;
         store.getProcess = vi.fn().mockImplementation(
-            async (id: string) => {
-                if (isFirstCall) {
-                    isFirstCall = false;
+            async (id: string, ...rest: unknown[]) => {
+                const isResumeRouteCall = rest.length > 0;
+                if (isResumeRouteCall && !request1Paused) {
+                    request1Paused = true;
                     signalRequest1AtPause(); // signal: pid is in resumeInProgress
                     await request1Release;  // hold until test releases us
                 }
