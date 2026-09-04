@@ -163,11 +163,26 @@ describe('RepoGroupView', () => {
         expect(screen.queryByTestId('stub-group-git')).toBeNull();
     });
 
-    it('deep-links Settings to a bare #repos/<groupId>/settings, with no section suffix', () => {
+    // A group's Settings tab is sectioned like a repo's, so its hash carries the
+    // open section — but only one the group actually has. Coming from a repo
+    // that left `info` behind must not write a hash the group cannot honour.
+    it('deep-links Settings to the open section, pinned to one the group has', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
-        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings');
+        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/members');
+
+        cleanup();
+        mockAppState.settingsSection = 'llm-tools';
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
+        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/llm-tools');
+
+        cleanup();
+        mockAppState.settingsSection = 'info';
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
+        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/members');
     });
 
     it('shows the Settings pane (and hides chat/notes) when Settings is active', () => {

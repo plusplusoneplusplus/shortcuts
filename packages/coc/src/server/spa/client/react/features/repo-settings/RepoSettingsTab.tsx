@@ -30,8 +30,13 @@ import { LlmToolsPanel } from './LlmToolsPanel';
 import { NotesSettingsSection } from './NotesSettingsSection';
 import { SyncSettingsSection } from './SyncSettingsSection';
 import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
-import { SettingsShell } from './SettingsShell';
-import type { SettingsShellNavGroup } from './SettingsShell';
+import {
+    SectionCard,
+    SettingsNavCountBadge,
+    SettingsNavDotBadge,
+    type SettingsNavGroup,
+    SettingsShell,
+} from './SettingsShell';
 
 interface RepoSettingsTabProps {
     workspaceId: string;
@@ -45,7 +50,7 @@ interface RepoSettingsTabProps {
 
 type ActiveSection = SettingsSection;
 
-const NAV_GROUPS: SettingsShellNavGroup<ActiveSection>[] = [
+const NAV_GROUPS: SettingsNavGroup<ActiveSection>[] = [
     {
         id: 'repository',
         label: 'Repository',
@@ -83,94 +88,6 @@ const STATUS_DOT: Record<string, string> = {
     queued:    'bg-[#bf8700] dark:bg-[#d29922]',
 };
 
-// ── Inline SVG icons used in the sidebar navigation ────────────────────────
-
-function Icon({ id, className = 'h-3.5 w-3.5' }: { id: ActiveSection; className?: string }) {
-    const stroke = 'currentColor';
-    const common = {
-        xmlns: 'http://www.w3.org/2000/svg',
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        stroke,
-        strokeWidth: 1.7,
-        strokeLinecap: 'round' as const,
-        strokeLinejoin: 'round' as const,
-        className,
-        'aria-hidden': true,
-    };
-    switch (id) {
-        case 'info':
-            return (
-                <svg {...common}>
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M12 11v5" />
-                    <circle cx="12" cy="8" r="0.6" fill={stroke} stroke="none" />
-                </svg>
-            );
-        case 'preferences':
-            return (
-                <svg {...common}>
-                    <path d="M4 7h10" /><path d="M18 7h2" />
-                    <circle cx="16" cy="7" r="2" />
-                    <path d="M4 17h2" /><path d="M10 17h10" />
-                    <circle cx="8" cy="17" r="2" />
-                </svg>
-            );
-        case 'tasks':
-            return (
-                <svg {...common}>
-                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                </svg>
-            );
-        case 'notes':
-            return (
-                <svg {...common}>
-                    <path d="M4 20h4l11-11-4-4L4 16z" />
-                    <path d="M14 6l4 4" />
-                </svg>
-            );
-        case 'mcp':
-            return (
-                <svg {...common}>
-                    <rect x="3" y="5" width="18" height="10" rx="1.5" />
-                    <path d="M8 19h8" /><path d="M12 15v4" />
-                </svg>
-            );
-        case 'skills':
-            return (
-                <svg {...common}>
-                    <path d="M12 3l8 4-8 4-8-4z" />
-                    <path d="M4 11l8 4 8-4" />
-                    <path d="M4 15l8 4 8-4" />
-                </svg>
-            );
-        case 'llm-tools':
-            return (
-                <svg {...common}>
-                    <path d="M14.7 6.3a4 4 0 0 1 5 5l-2.5 2.5-3.5-3.5z" />
-                    <path d="M13 9l-9 9v3h3l9-9" />
-                </svg>
-            );
-        case 'instructions':
-            return (
-                <svg {...common}>
-                    <path d="M6 3h9l4 4v14H6z" />
-                    <path d="M14 3v5h5" />
-                    <path d="M9 13h6" /><path d="M9 17h4" />
-                </svg>
-            );
-        case 'memory':
-            return (
-                <svg {...common}>
-                    <rect x="5" y="5" width="14" height="14" rx="2" />
-                    <path d="M9 5V3M15 5V3M9 21v-2M15 21v-2M5 9H3M5 15H3M21 9h-2M21 15h-2" />
-                </svg>
-            );
-        default:
-            return null;
-    }
-}
-
 // ── Header action icons ───────────────────────────────────────────────────
 
 function CopyIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
@@ -188,41 +105,6 @@ function RefreshIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
             <path d="M21 12a9 9 0 1 1-3.2-6.9" />
             <path d="M21 4v5h-5" />
         </svg>
-    );
-}
-
-// ── Card primitive used across sections ────────────────────────────────────
-
-function SectionCard({
-    label,
-    right,
-    children,
-    className = '',
-    testId,
-}: {
-    label?: string;
-    right?: React.ReactNode;
-    children: React.ReactNode;
-    className?: string;
-    testId?: string;
-}) {
-    return (
-        <section
-            data-testid={testId}
-            className={`rounded-lg border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] ${className}`}
-        >
-            {(label || right) && (
-                <div className="flex items-center justify-between px-4 pt-3 pb-2">
-                    {label && (
-                        <span className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6e7781] dark:text-[#8b949e]">
-                            {label}
-                        </span>
-                    )}
-                    {right}
-                </div>
-            )}
-            <div className="px-4 pb-4">{children}</div>
-        </section>
     );
 }
 
@@ -446,29 +328,11 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
     const preferencesHint = !!ws.description || tasksFolder !== null;
 
     function renderBadge(id: ActiveSection): React.ReactNode {
-        if (id === 'mcp' && !mcp.loading) {
-            return (
-                <span className="ml-auto text-[10px] font-mono px-1.5 py-px rounded text-[#6e7781] dark:text-[#8b949e] bg-[#eaeef2] dark:bg-[#2d2d30]">
-                    {enabledMcpCount}
-                </span>
-            );
-        }
-        if (id === 'skills' && !skillsController.skillsLoading) {
-            return (
-                <span className="ml-auto text-[10px] font-mono px-1.5 py-px rounded text-[#6e7781] dark:text-[#8b949e] bg-[#eaeef2] dark:bg-[#2d2d30]">
-                    {installedSkillsCount}
-                </span>
-            );
-        }
-        if (id === 'instructions' && hasInstructions) {
-            return <span className="ml-auto inline-block w-1.5 h-1.5 rounded-full bg-[#0969da] dark:bg-[#3794ff]" aria-label="Configured" />;
-        }
-        if (id === 'preferences' && preferencesHint) {
-            return <span className="ml-auto inline-block w-1.5 h-1.5 rounded-full bg-[#0969da] dark:bg-[#3794ff]" aria-label="Configured" />;
-        }
-        if (id === 'memory' && memoryHint) {
-            return <span className="ml-auto inline-block w-1.5 h-1.5 rounded-full bg-[#0969da] dark:bg-[#3794ff]" aria-label="Available" />;
-        }
+        if (id === 'mcp' && !mcp.loading) return <SettingsNavCountBadge count={enabledMcpCount} />;
+        if (id === 'skills' && !skillsController.skillsLoading) return <SettingsNavCountBadge count={installedSkillsCount} />;
+        if (id === 'instructions' && hasInstructions) return <SettingsNavDotBadge label="Configured" />;
+        if (id === 'preferences' && preferencesHint) return <SettingsNavDotBadge label="Configured" />;
+        if (id === 'memory' && memoryHint) return <SettingsNavDotBadge label="Available" />;
         return null;
     }
 
@@ -479,7 +343,6 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
             groups={NAV_GROUPS}
             activeSectionId={activeSection}
             onSelect={setActiveSection}
-            renderIcon={id => <Icon id={id} />}
             renderBadge={renderBadge}
             footer={dockStatusFooter ? <DockedStatusFooter /> : undefined}
             suppressSectionHeader={suppressSectionHeader}
