@@ -17,6 +17,8 @@ export interface FileTreeProps {
     onSelect: (path: string, isDirectory: boolean) => void;
     onToggle: (path: string) => void;
     onFileOpen?: (entry: TreeEntry) => void;
+    /** Double click on a file row; see TreeNodeProps.onFilePin. */
+    onFilePin?: (entry: TreeEntry) => void;
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
     onContextMenu?: (e: React.MouseEvent, entry: TreeEntry) => void;
     filterQuery?: string;
@@ -84,7 +86,7 @@ export function filterEntries(
 
 export function FileTree({
     workspaceId, entries, selectedPath, expandedPaths, childrenMap,
-    onSelect, onToggle, onFileOpen, onChildrenLoaded, onContextMenu, filterQuery, scrollRef,
+    onSelect, onToggle, onFileOpen, onFilePin, onChildrenLoaded, onContextMenu, filterQuery, scrollRef,
 }: FileTreeProps) {
     const [focusedIndex, setFocusedIndex] = useState(-1);
 
@@ -163,6 +165,7 @@ export function FileTree({
                         onToggle={onToggle}
                         onSelect={onSelect}
                         onFileOpen={onFileOpen}
+                        onFilePin={onFilePin}
                         onChildrenLoaded={onChildrenLoaded}
                         onContextMenu={onContextMenu}
                         isFocused={entry.path === focusedPath}

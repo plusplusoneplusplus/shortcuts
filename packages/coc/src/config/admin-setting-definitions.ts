@@ -933,6 +933,15 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     // way to reach it and a second flag would have no reachable state of its
     // own. Split them if a use for async-without-the-model ever appears.
     bool({
+        key: 'features.explorerEditorTabs', default: false, runtime: 'live', runtimeFlag: 'explorerEditorTabsEnabled',
+        ui: {
+            group: 'dashboard', order: 70, label: 'Explorer editor tabs', badge: 'experimental',
+            hint: 'VS Code-style multiple editor tabs in the File Explorer: a preview tab that single-clicks replace, pinned tabs from double-click or editing, drag reorder, MRU cycling, and per-workspace restore. Disabled by default — with the flag off the Explorer keeps its single preview pane.',
+            testId: 'toggle-explorer-editor-tabs-enabled',
+        },
+    }),
+
+    bool({
         key: 'features.canvasHostApis', default: false, runtime: 'live',
         ui: {
             group: 'review', order: 63, label: 'Canvas host APIs', badge: 'experimental',

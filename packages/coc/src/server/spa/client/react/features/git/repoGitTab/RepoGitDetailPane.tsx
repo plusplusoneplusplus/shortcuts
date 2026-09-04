@@ -37,6 +37,8 @@ export interface RepoGitDetailPaneProps {
     onNavigateToBranchFile: (filePath: string, target: 'first' | 'last') => void;
     onNavigateToCommitFile: (hash: string, filePath: string, target: 'first' | 'last') => void;
     onNavigateToWorkingTreeFile: (filePath: string, target: 'first' | 'last') => void;
+    /** Refreshes the working-tree list when a selected untracked file no longer exists on disk. */
+    onWorkingTreeFileMissing?: () => void;
     onAllBranchCommentsClick: () => void;
     onBranchAskAI: (mode: 'ask' | 'task') => void;
     onCommitClassified: () => void;
@@ -46,7 +48,7 @@ export function RepoGitDetailPane({
     workspaceId, view, commits, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
-    onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
+    onWorkingTreeFileMissing, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
     if (view?.type === 'commit') {
         return (
@@ -119,6 +121,7 @@ export function RepoGitDetailPane({
                 repoRoot={repoRoot}
                 onNavigateToFile={onNavigateToWorkingTreeFile}
                 initialHunkTarget={hunkTarget}
+                onFileMissing={onWorkingTreeFileMissing}
             />
         );
     }

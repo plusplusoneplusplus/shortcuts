@@ -469,6 +469,30 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { chatFolders: true } }).chatFoldersEnabled).toBe(true);
     });
 
+    // Explorer multi-tab editor: a default-off Features toggle with a live
+    // runtime flag, so the SPA can gate the whole tab strip while the existing
+    // single-preview Explorer stays the shipped behavior.
+    it('exposes explorer editor tabs as a default-off experimental feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.explorerEditorTabs');
+        expect(def, 'features.explorerEditorTabs must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default, 'explorer editor tabs must default off (opt-in)').toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('explorerEditorTabsEnabled');
+        expect(def!.ui, 'explorer editor tabs must appear on the Features card').toBeDefined();
+        expect(def!.ui!.group).toBe('dashboard');
+        expect(def!.ui!.label).toBe('Explorer editor tabs');
+        expect(def!.ui!.badge).toBe('experimental');
+        expect(def!.ui!.hint).toMatch(/disabled by default/i);
+        expect(getFeatureCardSettings('dashboard').some(d => d.key === 'features.explorerEditorTabs')).toBe(true);
+        // Off in the resolved default config, off when absent from a partial
+        // config, and on only when the config file opts in.
+        expect(DEFAULT_CONFIG.features.explorerEditorTabs).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).explorerEditorTabsEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).explorerEditorTabsEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { explorerEditorTabs: true } }).explorerEditorTabsEnabled).toBe(true);
+    });
+
     it('exposes triggers as a default-on, restart-required feature', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'triggers.enabled');
         expect(def, 'triggers.enabled must be an admin setting').toBeDefined();

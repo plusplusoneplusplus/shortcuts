@@ -260,7 +260,7 @@ describe('ExplorerPanel', () => {
 
     describe('preview pane integration', () => {
         it('imports PreviewPane', () => {
-            expect(source).toContain("import { PreviewPane } from './PreviewPane'");
+            expect(source).toContain("import { PreviewPane, type PreviewStatus } from './PreviewPane'");
         });
 
         it('renders PreviewPane when previewFile is set', () => {
@@ -284,9 +284,11 @@ describe('ExplorerPanel', () => {
             expect(source).toContain('onClose={isMobile ? undefined : () => setPreviewFile(null)}');
         });
 
-        it('has handleFileOpen callback that sets previewFile', () => {
+        // A single click is the replaceable *preview* open — with the editor-tab
+        // flag off `openFileInEditor` still writes the single previewFile.
+        it('has handleFileOpen callback that opens the file as a preview', () => {
             expect(source).toContain('handleFileOpen');
-            expect(source).toContain('setPreviewFile({ path: entry.path, name: entry.name })');
+            expect(source).toContain('openFileInEditor({ path: entry.path, name: entry.name }, { preview: true })');
         });
     });
 });

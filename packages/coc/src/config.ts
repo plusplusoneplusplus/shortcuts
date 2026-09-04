@@ -302,6 +302,8 @@ export interface CLIConfig {
         gitWorktreeExecution?: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis?: boolean;
+        /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
+        explorerEditorTabs?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector?: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
@@ -650,6 +652,8 @@ export interface ResolvedCLIConfig {
         gitWorktreeExecution: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis: boolean;
+        /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
+        explorerEditorTabs: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
@@ -917,6 +921,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         chatFolders: false,
         gitWorktreeExecution: false,
         canvasHostApis: false,
+        explorerEditorTabs: false,
         chatStyleSelector: true,
         defaultChatStyle: 'default',
     },

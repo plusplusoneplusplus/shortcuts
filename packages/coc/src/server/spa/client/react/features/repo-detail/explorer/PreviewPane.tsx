@@ -35,7 +35,30 @@ export interface PreviewPaneProps {
      * a switch can prompt before discarding edits (AC-03 of preserve-explorer-state).
      */
     onDirtyChange?: (isDirty: boolean) => void;
+    /**
+     * Hands the owner a way to save this buffer, so a tab-close prompt can write
+     * the file without the user re-visiting the tab (AC-04). Called with the save
+     * function while the buffer is editable, and with `null` when it stops being
+     * editable or unmounts. The function resolves `true` only when the write
+     * succeeded — a failed save leaves the buffer dirty and shows the error here.
+     */
+    onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
+    /**
+     * Notified whenever this buffer starts loading, fails, or settles (and with
+     * `'ready'` on unmount). Lets the owner mark the matching tab as loading or
+     * errored in the tab strip without reaching into the buffer (AC-05/AC-06).
+     */
+    onStatusChange?: (status: PreviewStatus) => void;
+    /**
+     * Notified when the blob read fails with a 404 — the file no longer exists
+     * on disk. Lets an owner whose file list may be stale (e.g. the working-tree
+     * panel) react by refreshing instead of leaving a dead Retry loop.
+     */
+    onNotFound?: () => void;
 }
+
+/** What a buffer is doing, as reported to its owner through `onStatusChange`. */
+export type PreviewStatus = 'loading' | 'error' | 'ready';
 
 interface BlobResponse {
     content: string;
@@ -51,7 +74,7 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -63,6 +86,9 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
     const [isDirty, setIsDirty] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
+    // Ref so a changing callback identity never re-triggers the fetch effect.
+    const onNotFoundRef = useRef(onNotFound);
+    onNotFoundRef.current = onNotFound;
 
     const fetchBlob = useCallback((signal: AbortSignal) => (
         isTrusted
@@ -94,6 +120,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
             .catch((err: Error) => {
                 if (!controller.signal.aborted) {
                     setError(err.message || 'Failed to load file');
+                    if ((err as { status?: number }).status === 404) onNotFoundRef.current?.();
                 }
             })
             .finally(() => {
@@ -110,6 +137,14 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
         onDirtyChange?.(isDirty);
     }, [isDirty, onDirtyChange]);
     useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
+
+    // Same contract for load/error, so the tab strip can show a spinner or a
+    // warning for a buffer the user is not currently looking at (AC-05). A
+    // closed buffer is neither loading nor errored, hence 'ready' on unmount.
+    useEffect(() => {
+        onStatusChange?.(loading ? 'loading' : error ? 'error' : 'ready');
+    }, [loading, error, onStatusChange]);
+    useEffect(() => () => { onStatusChange?.('ready'); }, [onStatusChange]);
 
     const doRetry = () => {
         abortRef.current?.abort();
@@ -132,6 +167,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
             .catch((err: Error) => {
                 if (!controller.signal.aborted) {
                     setError(err.message || 'Failed to load file');
+                    if ((err as { status?: number }).status === 404) onNotFoundRef.current?.();
                 }
             })
             .finally(() => {
@@ -145,18 +181,36 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
         setIsDirty(true);
     }, [effectiveReadOnly]);
 
-    const handleSave = useCallback(async () => {
-        if (isTrusted) return; // never save trusted files
+    const handleSave = useCallback(async (): Promise<boolean> => {
+        if (isTrusted) return false; // never save trusted files
         setIsSaving(true);
         try {
             await explorerApi.writeBlob(repoId, actualPath, editedContent);
             setIsDirty(false);
+            return true;
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Save failed');
+            return false;
         } finally {
             setIsSaving(false);
         }
     }, [repoId, actualPath, editedContent, isTrusted]);
+
+    // Publish the save entry point to the owner. The registered function is a
+    // stable wrapper around a ref, so re-registering on every keystroke (the
+    // handler closes over the edited text) is avoided — the owner keeps one
+    // callback per buffer for the whole life of the tab.
+    const saveRef = useRef(handleSave);
+    saveRef.current = handleSave;
+    useEffect(() => {
+        if (!onRegisterSave) return;
+        if (effectiveReadOnly) {
+            onRegisterSave(null);
+            return;
+        }
+        onRegisterSave(() => saveRef.current());
+        return () => onRegisterSave(null);
+    }, [onRegisterSave, effectiveReadOnly]);
 
     const isImage = blob?.encoding === 'base64' && blob.mimeType.startsWith('image/');
     const isBinary = blob?.encoding === 'base64' && !isImage;

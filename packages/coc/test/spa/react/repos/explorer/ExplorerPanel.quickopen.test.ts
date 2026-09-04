@@ -85,8 +85,8 @@ describe('ExplorerPanel — Quick Open (Ctrl+P) integration', () => {
             expect(panelSource).toContain('setSelectedPath(filePath)');
         });
 
-        it('opens preview pane for selected file', () => {
-            expect(panelSource).toContain('setPreviewFile({ path: filePath, name }');
+        it('opens the selected file as a preview', () => {
+            expect(panelSource).toContain('openFileInEditor({ path: filePath, name }, { preview: true })');
         });
 
         it('expands ancestor directories', () => {

@@ -33,16 +33,22 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     useQueue: () => ({ state: { dialogLaunchMode: 'default', dialogMode: 'task' }, dispatch: vi.fn() }),
 }));
 
+/** Captures the onNotFound callback PreviewPane receives so tests can fire it. */
+const previewNotFound = vi.hoisted(() => ({ current: null as null | (() => void) }));
+
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer', () => ({
-    PreviewPane: ({ repoId, filePath, fileName, readOnly }: any) => (
-        <div
-            data-testid="mock-preview-pane"
-            data-repo-id={repoId}
-            data-file-path={filePath}
-            data-file-name={fileName}
-            data-read-only={String(!!readOnly)}
-        />
-    ),
+    PreviewPane: ({ repoId, filePath, fileName, readOnly, onNotFound }: any) => {
+        previewNotFound.current = onNotFound ?? null;
+        return (
+            <div
+                data-testid="mock-preview-pane"
+                data-repo-id={repoId}
+                data-file-path={filePath}
+                data-file-name={fileName}
+                data-read-only={String(!!readOnly)}
+            />
+        );
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
@@ -178,5 +184,67 @@ describe('WorkingTreeFileDiff — untracked file rendering', () => {
         await renderDiff('staged');
         expect(screen.queryByTestId('mock-preview-pane')).toBeNull();
         expect(screen.getByTestId('working-tree-file-diff-content')).toBeTruthy();
+    });
+});
+
+describe('WorkingTreeFileDiff — untracked file missing from disk', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        previewNotFound.current = null;
+        mockGetWorkingTreeFileDiff.mockResolvedValue({ diff: '+added line\n context' });
+        mockUseDiffComments.mockReturnValue(makeHook());
+    });
+
+    async function renderUntracked(onFileMissing?: () => void) {
+        await act(async () => {
+            render(
+                <WorkingTreeFileDiff
+                    workspaceId="ws1"
+                    filePath="src/gone.ts"
+                    stage="untracked"
+                    onFileMissing={onFileMissing}
+                />
+            );
+        });
+    }
+
+    it('replaces the preview with a clear missing-file message when the read 404s', async () => {
+        await renderUntracked();
+        expect(previewNotFound.current).toBeTruthy();
+
+        await act(async () => { previewNotFound.current!(); });
+
+        const missing = screen.getByTestId('working-tree-file-diff-missing');
+        expect(missing.textContent).toContain('no longer exists on disk');
+        expect(screen.queryByTestId('mock-preview-pane')).toBeNull();
+    });
+
+    it('notifies onFileMissing so the owner can refresh the stale change list', async () => {
+        const onFileMissing = vi.fn();
+        await renderUntracked(onFileMissing);
+
+        await act(async () => { previewNotFound.current!(); });
+
+        expect(onFileMissing).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies onFileMissing at most once even if not-found fires repeatedly', async () => {
+        const onFileMissing = vi.fn();
+        await renderUntracked(onFileMissing);
+
+        const fire = previewNotFound.current!;
+        await act(async () => { fire(); });
+        await act(async () => { fire(); });
+
+        expect(onFileMissing).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('working-tree-file-diff-missing')).toBeTruthy();
+    });
+
+    it('shows the missing-file state without an onFileMissing handler', async () => {
+        await renderUntracked();
+
+        await act(async () => { previewNotFound.current!(); });
+
+        expect(screen.getByTestId('working-tree-file-diff-missing')).toBeTruthy();
     });
 });

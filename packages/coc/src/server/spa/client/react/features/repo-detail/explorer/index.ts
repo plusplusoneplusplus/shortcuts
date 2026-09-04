@@ -5,7 +5,7 @@ export type { FileTreeProps } from './FileTree';
 export { TreeNode } from './TreeNode';
 export type { TreeNodeProps } from './TreeNode';
 export { PreviewPane } from './PreviewPane';
-export type { PreviewPaneProps } from './PreviewPane';
+export type { PreviewPaneProps, PreviewStatus } from './PreviewPane';
 export { MonacoFileEditor, getMonacoLanguage, revealEditorLine, buildHighlightDecorations, EDITOR_HIGHLIGHT_CLASS } from './MonacoFileEditor';
 export type { MonacoFileEditorProps, EditorHighlightRange } from './MonacoFileEditor';
 export { SearchBar, autoGrowRows, SEARCH_BAR_MAX_ROWS } from './SearchBar';
@@ -31,5 +31,37 @@ export { ExactOpen, exactMatchScore } from './ExactOpen';
 export type { ExactOpenProps } from './ExactOpen';
 export { Breadcrumbs } from './Breadcrumbs';
 export type { BreadcrumbsProps } from './Breadcrumbs';
+export {
+    EMPTY_EXPLORER_TABS,
+    fileTabId,
+    searchTabId,
+    activeTab,
+    findTab,
+    hasFileTab,
+    previewTab,
+    openFileTab,
+    openSearchTab,
+    activateTab,
+    pinTab,
+    clearTabRevealLine,
+    closeTab,
+    closeTabs,
+    otherTabIds,
+    tabIdsToRight,
+    allTabIds,
+    moveTab,
+    cycleTabs,
+    cycleTabsWithin,
+    tabLabels,
+    serializeExplorerTabs,
+    parseExplorerTabs,
+} from './explorerTabsModel';
+export type { ExplorerTab, ExplorerTabKind, ExplorerTabsState, TabCycleDirection, OpenFileTabInput, OpenSearchTabInput } from './explorerTabsModel';
+export { ExplorerTabStrip, tabTooltip } from './ExplorerTabStrip';
+export { ExplorerCloseTabsDialog } from './ExplorerCloseTabsDialog';
+export type { ExplorerCloseTabsDialogProps } from './ExplorerCloseTabsDialog';
+export type { ExplorerTabStripProps } from './ExplorerTabStrip';
+export { useExplorerTabs } from './useExplorerTabs';
+export type { ExplorerTabsApi } from './useExplorerTabs';
 export type { TreeEntry, ExplorerView, ContentSearchModes, ContentSearchFilters, ContentSearchReplaceState, ContentSearchResultView, ContentSearchStatus, ContentSearchErrorKind } from './types';
 export { DEFAULT_CONTENT_SEARCH_MODES, DEFAULT_CONTENT_SEARCH_FILTERS, DEFAULT_CONTENT_SEARCH_REPLACE, DEFAULT_CONTENT_SEARCH_RESULT_VIEW, parseGlobList, contentSearchFiltersActive, isMultiLineQuery } from './types';

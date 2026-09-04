@@ -2406,4 +2406,13 @@ describe('RepoGitTab', () => {
             expect(source).toContain('workspaceId,');
         });
     });
+
+    describe('stale untracked file recovery', () => {
+        it('refreshes the working-tree list when a selected untracked file no longer exists', () => {
+            // Shell wires the refresh into the detail pane…
+            expect(source).toContain('onWorkingTreeFileMissing={data.bumpWorkingChanges}');
+            // …and the detail pane hands it to the working-tree file view.
+            expect(readRepoGitTabModuleSource('RepoGitDetailPane.tsx')).toContain('onFileMissing={onWorkingTreeFileMissing}');
+        });
+    });
 });

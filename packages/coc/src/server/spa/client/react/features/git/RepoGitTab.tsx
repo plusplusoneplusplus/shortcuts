@@ -528,6 +528,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             onNavigateToBranchFile={selection.navigateToBranchFile}
             onNavigateToCommitFile={selection.navigateToCommitFile}
             onNavigateToWorkingTreeFile={selection.navigateToWorkingTreeFile}
+            onWorkingTreeFileMissing={data.bumpWorkingChanges}
             onAllBranchCommentsClick={selection.selectBranchRangeComments}
             onBranchAskAI={skillActions.askAboutBranch}
             onCommitClassified={refreshClassificationStatus}

@@ -42,6 +42,12 @@ export interface WorkingTreeFileDiffProps {
     onNavigateToFile?: (filePath: string, hunkTarget: 'first' | 'last') => void;
     /** When set, auto-scrolls to the first or last hunk after the diff loads. */
     initialHunkTarget?: 'first' | 'last';
+    /**
+     * Called once when the untracked file turns out to no longer exist on disk
+     * (the working-tree list was stale). Lets the owner refresh the change list
+     * so the ghost entry disappears.
+     */
+    onFileMissing?: () => void;
 }
 
 const STAGE_LABEL: Record<string, string> = {
@@ -56,7 +62,7 @@ type PopupState = {
     selectedText: string;
 } | null;
 
-export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget }: WorkingTreeFileDiffProps) {
+export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing }: WorkingTreeFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -72,6 +78,16 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [viewMode, setViewMode] = useDiffViewMode();
+    // The untracked file vanished from disk after the change list was fetched.
+    const [fileMissing, setFileMissing] = useState(false);
+    const fileMissingNotifiedRef = useRef(false);
+
+    const handlePreviewNotFound = useCallback(() => {
+        setFileMissing(true);
+        if (fileMissingNotifiedRef.current) return;
+        fileMissingNotifiedRef.current = true;
+        onFileMissing?.();
+    }, [onFileMissing]);
 
     // Route this file's diff fetch to the selected clone's server (AC-07).
     const cloneClient = useCocClient(workspaceId);
@@ -220,13 +236,26 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
                 <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="working-tree-file-diff-section">
-                    {stage === 'untracked' ? (
+                    {stage === 'untracked' && fileMissing ? (
+                        <div
+                            className="flex flex-col items-start gap-1 px-4 py-4"
+                            data-testid="working-tree-file-diff-missing"
+                        >
+                            <span className="text-xs font-medium text-[#616161] dark:text-[#999]">
+                                This file no longer exists on disk.
+                            </span>
+                            <span className="text-xs text-[#848484]">
+                                The change list was out of date and has been refreshed.
+                            </span>
+                        </div>
+                    ) : stage === 'untracked' ? (
                         <div className="h-full w-full" data-testid="working-tree-file-diff-untracked">
                             <PreviewPane
                                 repoId={workspaceId}
                                 filePath={repoRoot ? repoRelative(filePath, repoRoot) : filePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
                                 readOnly
+                                onNotFound={handlePreviewNotFound}
                             />
                         </div>
                     ) : loading ? (
