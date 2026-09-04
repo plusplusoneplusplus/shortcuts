@@ -10,6 +10,7 @@
  *     lives until the shell exits or someone explicitly destroys it.
  *   - Max concurrent sessions limit
  *   - Per-session event callbacks for output and exit
+ *   - A per-session scrollback ring buffer, replayed when a client attaches
  */
 
 import {
@@ -24,6 +25,12 @@ import type { IPty, TerminalSession, TerminalSessionInfo } from './types';
 // ============================================================================
 
 const DEFAULT_MAX_SESSIONS = 10;
+/**
+ * Approximate scrollback cap per session, ~1 MiB (~10,000 lines at ~100 B/line).
+ * The cap is by bytes, not lines: chunks are dropped whole from the front once
+ * the total exceeds it, so the retained size can dip slightly under the cap.
+ */
+export const SCROLLBACK_MAX_BYTES = 1_048_576;
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 
@@ -71,6 +78,32 @@ export function toSessionInfo(session: TerminalSession): TerminalSessionInfo {
         pid: session.pty.pid,
         pinned: session.pinned,
     };
+}
+
+/**
+ * Append a PTY chunk to a session's scrollback, trimming the oldest chunks
+ * whole once the byte cap is exceeded. A single chunk larger than the cap is
+ * kept as its tail, which is the part the user would still be looking at.
+ */
+export function appendToScrollback(session: TerminalSession, data: string): void {
+    let chunk = Buffer.from(data, 'utf-8');
+    if (chunk.length === 0) return;
+
+    if (chunk.length > SCROLLBACK_MAX_BYTES) {
+        chunk = chunk.subarray(chunk.length - SCROLLBACK_MAX_BYTES);
+        session.buffer.length = 0;
+        session.bufferBytes = 0;
+        session.truncated = true;
+    }
+
+    session.buffer.push(chunk);
+    session.bufferBytes += chunk.length;
+
+    while (session.bufferBytes > SCROLLBACK_MAX_BYTES && session.buffer.length > 1) {
+        const dropped = session.buffer.shift()!;
+        session.bufferBytes -= dropped.length;
+        session.truncated = true;
+    }
 }
 
 // ============================================================================
@@ -159,11 +192,15 @@ export class TerminalSessionManager {
             createdAt: Date.now(),
             lastActivity: Date.now(),
             pinned: false,
+            buffer: [],
+            bufferBytes: 0,
+            truncated: false,
         };
 
         // Wire PTY events
         pty.onData((data: string) => {
             session.lastActivity = Date.now();
+            appendToScrollback(session, data);
             this.onData?.(id, data);
         });
         pty.onExit(({ exitCode, signal }) => {
@@ -181,6 +218,20 @@ export class TerminalSessionManager {
 
     getSessionsByWorkspace(workspaceId: string): TerminalSession[] {
         return [...this.sessions.values()].filter(s => s.workspaceId === workspaceId);
+    }
+
+    /**
+     * Snapshot a session's scrollback for replay. The chunks are concatenated
+     * before decoding so a multi-byte UTF-8 sequence split across two PTY
+     * chunks still decodes correctly.
+     */
+    getScrollback(id: string): { data: string; truncated: boolean } | undefined {
+        const session = this.sessions.get(id);
+        if (!session) return undefined;
+        return {
+            data: Buffer.concat(session.buffer).toString('utf-8'),
+            truncated: session.truncated,
+        };
     }
 
     // --------------------------------------------------------------------

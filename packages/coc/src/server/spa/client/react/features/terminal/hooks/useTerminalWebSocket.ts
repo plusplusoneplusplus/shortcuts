@@ -41,6 +41,7 @@ export type TerminalServerMessage =
     | { type: 'terminal-output'; sessionId: string; data: string }
     | { type: 'terminal-exit'; sessionId: string; exitCode: number; signal?: number }
     | { type: 'terminal-error'; sessionId: string | null; message: string }
+    | { type: 'terminal-replay'; sessionId: string; data: string; truncated: boolean }
     | { type: 'terminal-pin-changed'; sessionId: string; pinned: boolean }
     | { type: 'pong' };
 

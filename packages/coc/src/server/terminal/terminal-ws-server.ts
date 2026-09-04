@@ -222,6 +222,18 @@ export class TerminalWebSocketServer {
                     type: 'terminal-created',
                     session: toSessionInfo(session),
                 });
+                // Replay the server-side scrollback so the attaching client sees
+                // the terminal as it was. Sent synchronously right after the
+                // attach so no live `terminal-output` can slip in ahead of it.
+                const scrollback = this.sessionManager.getScrollback(session.id);
+                if (scrollback) {
+                    this.sendMessage(client.socket, {
+                        type: 'terminal-replay',
+                        sessionId: session.id,
+                        data: scrollback.data,
+                        truncated: scrollback.truncated,
+                    });
+                }
                 break;
             }
             case 'terminal-input': {

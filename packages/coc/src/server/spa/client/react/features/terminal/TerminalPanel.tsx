@@ -107,6 +107,15 @@ export function TerminalPanel({
                 case 'terminal-created':
                     onServerSessionCreated?.(msg.session);
                     break;
+                case 'terminal-replay':
+                    // Server-side scrollback for a session we just attached to.
+                    // Arrives before any live output, so writing it straight in
+                    // restores the screen exactly as it was.
+                    if (msg.truncated) {
+                        term.write('\x1b[90m[scrollback truncated]\x1b[0m\r\n');
+                    }
+                    term.write(msg.data);
+                    break;
                 case 'terminal-output':
                     term.write(msg.data);
                     break;
@@ -161,6 +170,9 @@ export function TerminalPanel({
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
             theme: detectDarkMode() ? DARK_THEME : LIGHT_THEME,
             allowProposedApi: true,
+            // Match the ~10,000-line server-side scrollback cap so a replayed
+            // buffer is not immediately clipped by xterm's 1,000-line default.
+            scrollback: 10000,
         });
 
         const fitAddon = new FitAddon();

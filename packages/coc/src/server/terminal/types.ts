@@ -37,6 +37,16 @@ export interface TerminalSession {
     lastActivity: number;
     /** Whether this session is pinned (exempt from the soft session limit) */
     pinned: boolean;
+    /**
+     * Server-side scrollback: raw PTY output chunks (ANSI escapes included),
+     * trimmed from the front on whole-chunk boundaries once the byte cap is
+     * exceeded. Replayed to a client when it attaches.
+     */
+    buffer: Buffer[];
+    /** Sum of `buffer` chunk byte lengths, kept in step with `buffer`. */
+    bufferBytes: number;
+    /** True once any output has been dropped from the front of `buffer`. */
+    truncated: boolean;
 }
 
 /**
@@ -76,4 +86,5 @@ export type TerminalServerMessage =
     | { type: 'terminal-output'; sessionId: string; data: string }
     | { type: 'terminal-exit'; sessionId: string; exitCode: number; signal?: number }
     | { type: 'terminal-error'; sessionId: string | null; message: string }
+    | { type: 'terminal-replay'; sessionId: string; data: string; truncated: boolean }
     | { type: 'terminal-pin-changed'; sessionId: string; pinned: boolean };

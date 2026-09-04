@@ -11,6 +11,7 @@ import * as http from 'http';
 import type { AddressInfo } from 'net';
 import { WebSocket } from 'ws';
 import { TerminalWebSocketServer } from '../../../src/server/terminal/terminal-ws-server';
+import { appendToScrollback, SCROLLBACK_MAX_BYTES } from '../../../src/server/terminal';
 import { attachWebSocketUpgradeHandler } from '../../../src/server/streaming/websocket';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import type { MockProcessStore } from '../helpers/mock-process-store';
@@ -286,11 +287,12 @@ describe('TerminalWebSocketServer', () => {
         const { sessionId } = await connectAndCreate();
         const { ws, messages } = await connect();
 
+        // attach yields terminal-created + terminal-replay (AC-03)
         sendMsg(ws, { type: 'terminal-attach', sessionId });
-        await waitForMessages(messages, 1);
+        await waitForMessages(messages, 2);
 
         lastMockPty._emitData('attached output\r\n');
-        await waitForMessages(messages, 2);
+        await waitForMessages(messages, 3);
 
         const outputMsg = messages.find(m => m.type === 'terminal-output');
         expect(outputMsg).toBeDefined();
@@ -367,13 +369,13 @@ describe('TerminalWebSocketServer', () => {
 
         const { ws: ws2, messages: messages2 } = await connect();
         sendMsg(ws2, { type: 'terminal-attach', sessionId });
-        await waitForMessages(messages2, 1);
+        await waitForMessages(messages2, 2);
         expect(messages2[0].type).toBe('terminal-created');
         expect(messages2[0].session.id).toBe(sessionId);
 
         pty._emitData('still-here');
-        await waitForMessages(messages2, 2);
-        expect(messages2[1]).toMatchObject({ type: 'terminal-output', sessionId, data: 'still-here' });
+        await waitForMessages(messages2, 3);
+        expect(messages2[2]).toMatchObject({ type: 'terminal-output', sessionId, data: 'still-here' });
     });
 
     it('AC-02: one client disconnecting leaves a second attached client streaming', async () => {
@@ -382,15 +384,15 @@ describe('TerminalWebSocketServer', () => {
 
         const { ws: ws2, messages: messages2 } = await connect();
         sendMsg(ws2, { type: 'terminal-attach', sessionId });
-        await waitForMessages(messages2, 1);
+        await waitForMessages(messages2, 2);
 
         ws1.close();
         await waitForCondition(() => terminalWs.clientCount === 1);
 
         expect(terminalWs.getSessionManager().getSession(sessionId)).toBeDefined();
         pty._emitData('after-peer-left');
-        await waitForMessages(messages2, 2);
-        expect(messages2[1]).toMatchObject({ type: 'terminal-output', sessionId, data: 'after-peer-left' });
+        await waitForMessages(messages2, 3);
+        expect(messages2[2]).toMatchObject({ type: 'terminal-output', sessionId, data: 'after-peer-left' });
     });
 
     it('AC-02: repeated detach/attach does not duplicate output for one session', async () => {
@@ -400,7 +402,7 @@ describe('TerminalWebSocketServer', () => {
         const { ws: ws2, messages: messages2 } = await connect();
         for (let i = 0; i < 3; i++) {
             sendMsg(ws2, { type: 'terminal-attach', sessionId });
-            await waitForMessages(messages2, i + 1);
+            await waitForMessages(messages2, (i + 1) * 2);
         }
 
         pty._emitData('once');
@@ -473,6 +475,104 @@ describe('TerminalWebSocketServer', () => {
         expect(outputs).toHaveLength(2);
         expect(outputs.find(m => m.sessionId === session1Id)?.data).toBe('from-pty1');
         expect(outputs.find(m => m.sessionId === session2Id)?.data).toBe('from-pty2');
+    });
+
+    // ========================================================================
+    // AC-03 — scrollback replay on attach
+    // ========================================================================
+
+    it('should replay buffered output when a client attaches', async () => {
+        const { ws: creator, messages: created } = await connect();
+        sendMsg(creator, { type: 'terminal-create', workspaceId: 'test-ws', cols: 80, rows: 24 });
+        await waitForMessages(created, 1);
+        const sessionId = created[0].session.id;
+        const pty = lastMockPty;
+
+        pty._emitData('line 1\r\n');
+        pty._emitData('line 2\r\n');
+        await waitForMessages(created, 3);
+
+        const { ws: attacher, messages: attached } = await connect();
+        sendMsg(attacher, { type: 'terminal-attach', sessionId });
+        await waitForMessages(attached, 2);
+
+        expect(attached[0].type).toBe('terminal-created');
+        expect(attached[1]).toEqual({
+            type: 'terminal-replay',
+            sessionId,
+            data: 'line 1\r\nline 2\r\n',
+            truncated: false,
+        });
+    });
+
+    it('should deliver the replay before any live output', async () => {
+        const { ws: creator, messages: created } = await connect();
+        sendMsg(creator, { type: 'terminal-create', workspaceId: 'test-ws', cols: 80, rows: 24 });
+        await waitForMessages(created, 1);
+        const sessionId = created[0].session.id;
+        const pty = lastMockPty;
+
+        pty._emitData('old output');
+        await waitForMessages(created, 2);
+
+        const { ws: attacher, messages: attached } = await connect();
+        sendMsg(attacher, { type: 'terminal-attach', sessionId });
+        await waitForMessages(attached, 2);
+
+        pty._emitData('new output');
+        await waitForMessages(attached, 3);
+
+        const replayIndex = attached.findIndex(m => m.type === 'terminal-replay');
+        const firstOutputIndex = attached.findIndex(m => m.type === 'terminal-output');
+        expect(replayIndex).toBeGreaterThanOrEqual(0);
+        expect(firstOutputIndex).toBeGreaterThan(replayIndex);
+        expect(attached[firstOutputIndex].data).toBe('new output');
+    });
+
+    it('should send an empty replay when the session has produced no output', async () => {
+        const { ws: creator, messages: created } = await connect();
+        sendMsg(creator, { type: 'terminal-create', workspaceId: 'test-ws', cols: 80, rows: 24 });
+        await waitForMessages(created, 1);
+        const sessionId = created[0].session.id;
+
+        const { ws: attacher, messages: attached } = await connect();
+        sendMsg(attacher, { type: 'terminal-attach', sessionId });
+        await waitForMessages(attached, 2);
+
+        expect(attached[1]).toEqual({
+            type: 'terminal-replay',
+            sessionId,
+            data: '',
+            truncated: false,
+        });
+    });
+
+    it('should flag the replay as truncated once output has been dropped', async () => {
+        const { ws: creator, messages: created } = await connect();
+        sendMsg(creator, { type: 'terminal-create', workspaceId: 'test-ws', cols: 80, rows: 24 });
+        await waitForMessages(created, 1);
+        const sessionId = created[0].session.id;
+
+        // Overflow the buffer directly rather than pushing megabytes over the socket.
+        const session = terminalWs.getSessionManager().getSession(sessionId)!;
+        appendToScrollback(session, 'z'.repeat(SCROLLBACK_MAX_BYTES + 1));
+
+        const { ws: attacher, messages: attached } = await connect();
+        sendMsg(attacher, { type: 'terminal-attach', sessionId });
+        await waitForMessages(attached, 2);
+
+        expect(attached[1].type).toBe('terminal-replay');
+        expect(attached[1].truncated).toBe(true);
+    });
+
+    it('should not send a replay when the attach fails', async () => {
+        const { ws, messages } = await connect();
+        sendMsg(ws, { type: 'terminal-attach', sessionId: 'does-not-exist' });
+        await waitForMessages(messages, 1);
+        await delay(100);
+
+        expect(messages[0].type).toBe('terminal-error');
+        expect(messages.some(m => m.type === 'terminal-replay')).toBe(false);
     });
 
     // ========================================================================

@@ -8,7 +8,7 @@ export type {
 } from './types';
 
 // Manager
-export { TerminalSessionManager, toSessionInfo } from './terminal-session-manager';
+export { TerminalSessionManager, toSessionInfo, appendToScrollback, SCROLLBACK_MAX_BYTES } from './terminal-session-manager';
 export type { TerminalSessionManagerOptions } from './terminal-session-manager';
 
 // WebSocket server
