@@ -12,7 +12,13 @@ import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
 // @ts-expect-error — a .mjs build script with no type declarations.
-import { BINDINGS_FILE, nativeBinaryName as scriptBinaryName, renderBindings } from '../scripts/build-native.mjs';
+import {
+    BINDINGS_FILE,
+    buildArgs,
+    napiCli,
+    nativeBinaryName as scriptBinaryName,
+    renderBindings,
+} from '../scripts/build-native.mjs';
 import { nativeBinaryName, nativeTriple } from '../src/loader';
 
 const PACKAGE_ROOT = path.resolve(__dirname, '..');
@@ -169,5 +175,54 @@ describe('the built binary', () => {
         if (built.length === 0) return; // nothing built here; CI's native job covers it
         // napi's own triple naming has to keep matching nativeTriple().
         expect(built, `expected a binary for ${nativeTriple()}`).toContain(expected);
+    });
+});
+
+describe('driving @napi-rs/cli', () => {
+    // The CLI is a devDependency the script spawns by path rather than through
+    // its bin shim, and the paths and flags both moved in v3: the entry point
+    // went from scripts/index.js to the one package.json declares, --cargo-cwd
+    // became --manifest-path and `--js false` became --no-js. None of that
+    // fails loudly — a stale entry path only breaks at build time, and an
+    // unrecognised flag can just be ignored — so pin both here.
+    const cliPackageJson = require.resolve('@napi-rs/cli/package.json', { paths: [PACKAGE_ROOT] });
+
+    it('spawns the entry point the installed CLI declares as its bin', () => {
+        const declared = JSON.parse(fs.readFileSync(cliPackageJson, 'utf-8')).bin.napi;
+        expect(napiCli()).toBe(path.resolve(path.dirname(cliPackageJson), declared));
+    });
+
+    describe('buildArgs', () => {
+        const base = { profile: 'release', target: undefined, dts: '.napi.d.ts' };
+
+        it('points the CLI at the addon crate and back at the package root', () => {
+            const args = buildArgs(base);
+            // Without --output-dir the artifacts land next to the crate, where
+            // neither the loader nor the byproduct cleanup looks for them.
+            expect(args).toContain('--manifest-path');
+            expect(args[args.indexOf('--manifest-path') + 1]).toBe(path.join('rust', 'napi', 'Cargo.toml'));
+            expect(args[args.indexOf('--output-dir') + 1]).toBe('.');
+            expect(args).not.toContain('--cargo-cwd');
+        });
+
+        it('asks for the platform-suffixed binary and the type defs', () => {
+            const args = buildArgs(base);
+            expect(args[0]).toBe('build');
+            expect(args).toContain('--platform');
+            expect(args[args.indexOf('--dts') + 1]).toBe('.napi.d.ts');
+            expect(args).toContain('--release');
+        });
+
+        it('builds debug without --release', () => {
+            expect(buildArgs({ ...base, profile: 'debug' })).not.toContain('--release');
+        });
+
+        it('suppresses the JS shim when cross-compiling, with the negated flag', () => {
+            const args = buildArgs({ ...base, target: 'aarch64-apple-darwin' });
+            expect(args[args.indexOf('--target') + 1]).toBe('aarch64-apple-darwin');
+            expect(args).toContain('--no-js');
+            // `--js false` was the v2 spelling; in v3 it names an output file.
+            expect(args[args.indexOf('--js') + 1]).not.toBe('false');
+        });
     });
 });

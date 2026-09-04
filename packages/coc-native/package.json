@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Rust/N-API indexes for CoC quick-open file search and bounded Notes content search",
   "napi": {
-    "name": "coc-native"
+    "binaryName": "coc-native"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

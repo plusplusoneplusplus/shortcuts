@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 coc-native-core = { path = "../core" }
-napi = { version = "2", default-features = false, features = ["napi4"] }
-napi-derive = "2"
+napi = { version = "3", default-features = false, features = ["napi4"] }
+napi-derive = "3"
 
 [build-dependencies]
 napi-build = "2"

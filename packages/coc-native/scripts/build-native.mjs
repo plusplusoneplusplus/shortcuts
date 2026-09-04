@@ -92,17 +92,13 @@ function main() {
     if (target) clean.push('--target', target);
     execFileSync('cargo', clean, { cwd: packageRoot, stdio: 'inherit' });
 
-    const args = ['build', '--cargo-cwd', cargoCwd, '--platform', '--dts', dts];
-    if (profile === 'release') args.push('--release');
-    // `--target` makes the CLI also emit a JS binding shim that resolves
-    // per-platform npm packages. The loader does that itself, from disk.
-    if (target) args.push('--target', target, '--js', 'false');
+    const args = buildArgs({ profile, target, dts });
 
     const destination = path.join(packageRoot, nativeBinaryName());
     try {
         execFileSync(process.execPath, [napiCli(), ...args], { cwd: packageRoot, stdio: 'inherit' });
 
-        // napi names the binary from `napi.name` in package.json; the loader
+        // napi names the binary from `napi.binaryName` in package.json; the loader
         // computes the same name independently. Fail loudly if they diverge.
         if (!fs.existsSync(destination)) {
             throw new Error(
@@ -143,11 +139,39 @@ function main() {
     console.log(`native addon: generated ${BINDINGS_FILE}`);
 }
 
+/**
+ * Arguments for `napi build`.
+ *
+ * Split out so a test can pin the flag spelling: the CLI renamed several of
+ * these in v3 (`--cargo-cwd` became `--manifest-path`, `--js false` became
+ * `--no-js`) and an unknown flag is not always an error, it can just be
+ * ignored and leave the build subtly wrong.
+ */
+export function buildArgs({ profile, target, dts }) {
+    // v3 puts artifacts next to the crate unless told otherwise; everything
+    // here — the loader, the byproduct cleanup — expects the package root.
+    const args = [
+        'build',
+        '--manifest-path',
+        path.join(cargoCwd, 'Cargo.toml'),
+        '--output-dir',
+        '.',
+        '--platform',
+        '--dts',
+        dts,
+    ];
+    if (profile === 'release') args.push('--release');
+    // `--target` makes the CLI also emit a JS binding shim that resolves
+    // per-platform npm packages. The loader does that itself, from disk.
+    if (target) args.push('--target', target, '--no-js');
+    return args;
+}
+
 /** Resolve the napi CLI from wherever npm hoisted it. */
-function napiCli() {
+export function napiCli() {
     const candidates = [
-        path.join(packageRoot, 'node_modules', '@napi-rs', 'cli', 'scripts', 'index.js'),
-        path.join(packageRoot, '..', '..', 'node_modules', '@napi-rs', 'cli', 'scripts', 'index.js'),
+        path.join(packageRoot, 'node_modules', '@napi-rs', 'cli', 'dist', 'cli.js'),
+        path.join(packageRoot, '..', '..', 'node_modules', '@napi-rs', 'cli', 'dist', 'cli.js'),
     ];
     const found = candidates.find(candidate => fs.existsSync(candidate));
     if (!found) {
