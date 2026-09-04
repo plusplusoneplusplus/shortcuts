@@ -19,6 +19,7 @@ interface AiExecSnapshot {
     model: string;
     parallel: string;
     timeout: string;
+    idleTimeout: string;
     output: string;
 }
 
@@ -37,7 +38,7 @@ export interface UseAdminConfigFormOptions {
 export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
     // AI & Execution
     const [configForm, setConfigForm] = useState<Record<string, string>>({});
-    const [aiExecSnapshot, setAiExecSnapshot] = useState<AiExecSnapshot>({ model: '', parallel: '1', timeout: '', output: 'table' });
+    const [aiExecSnapshot, setAiExecSnapshot] = useState<AiExecSnapshot>({ model: '', parallel: '1', timeout: '', idleTimeout: '', output: 'table' });
     const [aiExecSaving, setAiExecSaving] = useState(false);
 
     // Chat Experience
@@ -55,10 +56,11 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
             model: resolved.model ?? '',
             parallel: String(resolved.parallel ?? 1),
             timeout: resolved.timeout != null ? String(resolved.timeout) : '',
+            idleTimeout: resolved.idleTimeout != null ? String(resolved.idleTimeout) : '',
             output: resolved.output ?? 'table',
         };
         setConfigForm(form);
-        setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
+        setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, idleTimeout: form.idleTimeout, output: form.output });
 
         const sri = resolved.showReportIntent ?? false;
         const tc = (resolved.toolCompactness ?? 1) as ToolCompactness;
@@ -76,6 +78,7 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
     const aiExecDirty = configForm.model !== aiExecSnapshot.model ||
         configForm.parallel !== aiExecSnapshot.parallel ||
         configForm.timeout !== aiExecSnapshot.timeout ||
+        configForm.idleTimeout !== aiExecSnapshot.idleTimeout ||
         configForm.output !== aiExecSnapshot.output;
 
     const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
@@ -98,6 +101,16 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
                 timeoutValue = timeout;
             }
         }
+        const idleTimeoutStr = (configForm.idleTimeout ?? '').trim();
+        let idleTimeoutValue: number | null = null;
+        if (idleTimeoutStr !== '') {
+            const idleTimeout = Number(idleTimeoutStr);
+            if (isNaN(idleTimeout) || !Number.isInteger(idleTimeout) || idleTimeout < 1) {
+                errors.push('Idle timeout must be a positive integer');
+            } else {
+                idleTimeoutValue = idleTimeout;
+            }
+        }
         if (!(VALID_OUTPUT_OPTIONS as readonly string[]).includes(configForm.output)) {
             errors.push(`Output must be one of: ${VALID_OUTPUT_OPTIONS.join(', ')}`);
         }
@@ -107,9 +120,10 @@ export function useAdminConfigForm({ addToast }: UseAdminConfigFormOptions) {
             const payload: Record<string, unknown> = { parallel, output: configForm.output };
             if (configForm.model?.trim()) payload.model = configForm.model.trim();
             payload.timeout = timeoutValue;
+            payload.idleTimeout = idleTimeoutValue;
             await getSpaCocClient().admin.updateConfig(payload);
             addToast('Settings saved', 'success');
-            setAiExecSnapshot({ model: configForm.model, parallel: configForm.parallel, timeout: configForm.timeout, output: configForm.output });
+            setAiExecSnapshot({ model: configForm.model, parallel: configForm.parallel, timeout: configForm.timeout, idleTimeout: configForm.idleTimeout, output: configForm.output });
         } catch (err: unknown) {
             addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
         } finally {

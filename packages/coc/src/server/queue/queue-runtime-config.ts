@@ -22,7 +22,7 @@
  *   config path can never execute tasks against a different file.
  */
 
-import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { DEFAULT_AI_IDLE_TIMEOUT_MS, DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { DEFAULT_CONFIG } from '../../config';
 import type { CLIConfig, ResolvedCLIConfig } from '../../config';
 
@@ -65,6 +65,8 @@ export interface QueueRalphFinalCheckPolicy {
 export interface QueueRuntimeConfig {
     /** Default AI task timeout in ms, for tasks with no `config.timeoutMs`. */
     getDefaultTimeoutMs(): number;
+    /** Default AI idle (no streaming activity) timeout in ms. */
+    getDefaultIdleTimeoutMs(): number;
     /** Follow-up suggestion policy for the next completed turn. */
     getFollowUpSuggestions(): QueueFollowUpSuggestionsConfig;
     /** Ask User policy for the next turn built. */
@@ -89,6 +91,15 @@ export function resolveDefaultTimeoutMs(timeoutSeconds: number | undefined): num
 }
 
 /**
+ * Convert the config file's `idleTimeout` (seconds) into milliseconds. Unset or
+ * zero falls back to {@link DEFAULT_AI_IDLE_TIMEOUT_MS}, so leaving the admin
+ * field blank keeps the 1-hour SDK behaviour.
+ */
+export function resolveDefaultIdleTimeoutMs(idleTimeoutSeconds: number | undefined): number {
+    return idleTimeoutSeconds ? idleTimeoutSeconds * 1000 : DEFAULT_AI_IDLE_TIMEOUT_MS;
+}
+
+/**
  * Read every queue-owned setting out of one resolved config snapshot.
  *
  * Kept separate from the adapters so the live adapter and the fixed adapter
@@ -96,6 +107,7 @@ export function resolveDefaultTimeoutMs(timeoutSeconds: number | undefined): num
  */
 function readFromSnapshot(config: ResolvedCLIConfig): {
     timeoutMs: number;
+    idleTimeoutMs: number;
     followUpSuggestions: QueueFollowUpSuggestionsConfig;
     askUser: QueueAskUserConfig;
     skillFolders: QueueSkillFoldersConfig;
@@ -103,6 +115,7 @@ function readFromSnapshot(config: ResolvedCLIConfig): {
 } {
     return {
         timeoutMs: resolveDefaultTimeoutMs(config.timeout),
+        idleTimeoutMs: resolveDefaultIdleTimeoutMs(config.idleTimeout),
         followUpSuggestions: config.chat.followUpSuggestions,
         askUser: config.chat.askUser,
         skillFolders: {
@@ -138,6 +151,7 @@ export interface QueueConfigSource {
 export function createQueueRuntimeConfig(source: QueueConfigSource): QueueRuntimeConfig {
     return Object.freeze({
         getDefaultTimeoutMs: () => readFromSnapshot(source.config).timeoutMs,
+        getDefaultIdleTimeoutMs: () => readFromSnapshot(source.config).idleTimeoutMs,
         getFollowUpSuggestions: () => readFromSnapshot(source.config).followUpSuggestions,
         getAskUser: () => readFromSnapshot(source.config).askUser,
         getSkillFolders: () => readFromSnapshot(source.config).skillFolders,
@@ -158,6 +172,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
     /** Config snapshot the caller already resolved from its own explicit path. */
     config?: CLIConfig;
     defaultTimeoutMs?: number;
+    defaultIdleTimeoutMs?: number;
     followUpSuggestions?: QueueFollowUpSuggestionsConfig;
     askUser?: QueueAskUserConfig;
     skillFolders?: QueueSkillFoldersConfig;
@@ -167,6 +182,8 @@ export function createFixedQueueRuntimeConfig(overrides: {
 
     const timeoutMs = overrides.defaultTimeoutMs
         ?? resolveDefaultTimeoutMs(file?.timeout);
+    const idleTimeoutMs = overrides.defaultIdleTimeoutMs
+        ?? resolveDefaultIdleTimeoutMs(file?.idleTimeout);
     const followUpSuggestions: QueueFollowUpSuggestionsConfig = overrides.followUpSuggestions ?? {
         enabled: file?.chat?.followUpSuggestions?.enabled
             ?? DEFAULT_CONFIG.chat.followUpSuggestions.enabled,
@@ -187,6 +204,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
 
     return Object.freeze({
         getDefaultTimeoutMs: () => timeoutMs,
+        getDefaultIdleTimeoutMs: () => idleTimeoutMs,
         getFollowUpSuggestions: () => followUpSuggestions,
         getAskUser: () => askUser,
         getSkillFolders: () => skillFolders,

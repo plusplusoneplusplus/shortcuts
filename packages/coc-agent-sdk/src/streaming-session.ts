@@ -241,25 +241,24 @@ export class StreamingSession {
                     this.session.disconnect().catch(() => {});
                     this.settleError(new Error(`Request timed out after ${this.options.timeoutMs}ms`));
                 },
+                // Suppress idle timeout while tool calls are in flight.
+                // A long-running tool (e.g. ask_user, which blocks on a
+                // user widget) emits no SDK events while waiting; the
+                // agent is provably not idle, just blocked on a tool.
+                // The wall-clock `timeoutMs` still applies as a hard cap.
+                isIdleSuppressed: () => this.telemetry.activeToolCalls.size > 0,
+                onIdleSuppressed: (elapsedMs: number) => {
+                    this.sessionLog.debug(
+                        {
+                            elapsedMs,
+                            activeToolCount: this.telemetry.activeToolCalls.size,
+                            activeTools: this.telemetry.getActiveToolDescriptions(),
+                        },
+                        'Idle timeout suppressed — tool call(s) in flight; rescheduling',
+                    );
+                },
                 onIdleTimeout: () => {
                     const effectiveIdleMs = this.options.idleTimeoutMs ?? 0;
-                    // Suppress idle timeout while tool calls are in flight.
-                    // A long-running tool (e.g. ask_user, which blocks on a
-                    // user widget) emits no SDK events while waiting; the
-                    // agent is provably not idle, just blocked on a tool.
-                    // The wall-clock `timeoutMs` still applies as a hard cap.
-                    if (this.telemetry.activeToolCalls.size > 0) {
-                        this.sessionLog.debug(
-                            {
-                                elapsedMs: effectiveIdleMs,
-                                activeToolCount: this.telemetry.activeToolCalls.size,
-                                activeTools: this.telemetry.getActiveToolDescriptions(),
-                            },
-                            'Idle timeout suppressed — tool call(s) in flight; rescheduling',
-                        );
-                        this.timers.resetIdleTimer();
-                        return;
-                    }
                     this.sessionLog.error(
                         { elapsedMs: effectiveIdleMs },
                         'Force-disconnecting session due to idle timeout',

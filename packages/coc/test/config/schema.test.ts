@@ -118,6 +118,19 @@ describe('CLIConfigSchema', () => {
     });
 
     // ========================================================================
+    // idleTimeout
+    // ========================================================================
+
+    it('accepts a positive idleTimeout', () => {
+        expect(CLIConfigSchema.parse({ idleTimeout: 900 }).idleTimeout).toBe(900);
+    });
+
+    it('rejects zero or negative idleTimeout', () => {
+        expect(() => CLIConfigSchema.parse({ idleTimeout: 0 })).toThrow();
+        expect(() => CLIConfigSchema.parse({ idleTimeout: -1 })).toThrow();
+    });
+
+    // ========================================================================
     // Invalid configs - approvePermissions / persist
     // ========================================================================
 

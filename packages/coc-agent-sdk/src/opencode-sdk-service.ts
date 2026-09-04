@@ -51,6 +51,7 @@ import { RewindUnsupportedError, CompactUnsupportedError } from './sdk-service-i
 import { sdkServiceRegistry, OPENCODE_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { getSDKLogger } from './logger';
+import { IdleWatchdog, idleTimeoutErrorMessage } from './idle-watchdog';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
@@ -218,6 +219,21 @@ interface ActiveOpenCodeSession {
 // ============================================================================
 // Constants
 // ============================================================================
+
+/** Resolves when `signal` aborts (immediately if it already has). */
+function whenAborted(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return Promise.resolve();
+    return new Promise<void>(resolve => {
+        signal.addEventListener('abort', () => resolve(), { once: true });
+    });
+}
+
+/** An AbortError-shaped rejection, so the catch path classifies it as an abort. */
+function makeAbortError(): Error {
+    const err = new Error('Request aborted');
+    err.name = 'AbortError';
+    return err;
+}
 
 const OPENCODE_SDK_PACKAGE = '@opencode-ai/sdk';
 const OPENCODE_DEFAULT_PORT = 4096;
@@ -394,6 +410,35 @@ export class OpenCodeSDKService implements ISDKService {
             }, options.timeoutMs);
         }
 
+        // Idle watchdog, armed only on the streaming path: the non-streaming
+        // path produces no events at all, so an idle timer there would kill
+        // every request longer than the window. Wall-clock covers that case.
+        let idleTimedOut = false;
+        const activeToolCalls = new Set<string>();
+        const idleWatchdog = new IdleWatchdog({
+            idleTimeoutMs: options.idleTimeoutMs,
+            // A tool call still running (e.g. ask_user blocked on a user widget)
+            // emits nothing while it waits; the agent is blocked, not idle.
+            isSuppressed: () => activeToolCalls.size > 0,
+            onSuppressed: elapsedMs => {
+                getSDKLogger().debug(
+                    { provider: OPENCODE_PROVIDER, sessionId, elapsedMs, activeToolCount: activeToolCalls.size },
+                    'Idle timeout suppressed — tool call(s) in flight; rescheduling',
+                );
+            },
+            onIdle: elapsedMs => {
+                idleTimedOut = true;
+                getSDKLogger().error(
+                    { provider: OPENCODE_PROVIDER, sessionId, elapsedMs },
+                    'Aborting OpenCode turn due to idle timeout',
+                );
+                // Local abort settles our side; the server-side abort actually
+                // stops the run (the prompt call carries no signal).
+                if (sessionId) void client.session.abort({ path: { id: sessionId } }).catch(() => {});
+                abortController.abort();
+            },
+        });
+
         let mcpCleanup: () => void = () => {};
         const chunks: string[] = [];
         let tokenUsage: TokenUsage | undefined;
@@ -454,19 +499,28 @@ export class OpenCodeSDKService implements ISDKService {
             const useStreaming = Boolean(options.onStreamingChunk || options.onToolEvent);
             let eventStreamPromise: Promise<void> | undefined;
             if (useStreaming) {
+                idleWatchdog.start();
                 eventStreamPromise = this.consumeEventStream(
                     client, sessionId, abortController.signal, options, chunks,
+                    idleWatchdog, activeToolCalls,
                 );
             }
 
-            const result = await client.session.prompt({
-                path: { id: sessionId },
-                body: promptBody,
-            });
+            // The prompt call carries no abort signal, so race it against the
+            // controller: without this an idle (or wall-clock) kill would abort
+            // nothing and the turn would hang exactly as before.
+            const aborted = whenAborted(abortController.signal);
+            const result = await Promise.race([
+                client.session.prompt({
+                    path: { id: sessionId },
+                    body: promptBody,
+                }),
+                aborted.then((): never => { throw makeAbortError(); }),
+            ]);
 
             // If streaming, wait for the event stream to finish processing
             if (eventStreamPromise) {
-                await eventStreamPromise;
+                await Promise.race([eventStreamPromise, aborted]);
             }
 
             // If SSE streaming produced no chunks, fall back to response parts
@@ -482,6 +536,13 @@ export class OpenCodeSDKService implements ISDKService {
                 }
             }
 
+            // An idle kill settles as a failure, matching every other provider —
+            // the SSE loop exits quietly on abort, so without this it would look
+            // like a clean (empty) turn.
+            if (idleTimedOut) {
+                return { success: false, error: idleTimeoutErrorMessage(options.idleTimeoutMs ?? 0), sessionId };
+            }
+
             // Signal end-of-stream
             options.onStreamingChunk?.('');
 
@@ -495,6 +556,9 @@ export class OpenCodeSDKService implements ISDKService {
                 ...(tokenUsage ? { tokenUsage } : {}),
             };
         } catch (err) {
+            if (idleTimedOut) {
+                return { success: false, error: idleTimeoutErrorMessage(options.idleTimeoutMs ?? 0), sessionId };
+            }
             const isAbort = err instanceof Error && (err.name === 'AbortError' || abortController.signal.aborted);
             if (isAbort) {
                 return { success: false, error: 'Request aborted', sessionId };
@@ -512,6 +576,7 @@ export class OpenCodeSDKService implements ISDKService {
             const message = err instanceof Error ? err.message : String(err);
             return { success: false, error: `OpenCode SDK error: ${message}`, sessionId };
         } finally {
+            idleWatchdog.dispose();
             if (timeoutTimer) clearTimeout(timeoutTimer);
             signalCleanup?.();
             mcpCleanup();
@@ -570,10 +635,14 @@ export class OpenCodeSDKService implements ISDKService {
         signal: AbortSignal,
         options: SendMessageOptions,
         chunks: string[],
+        idleWatchdog?: IdleWatchdog,
+        activeToolCalls?: Set<string>,
     ): Promise<void> {
         try {
             const { stream } = await client.event.subscribe();
             for await (const event of stream) {
+                // Every provider frame counts as activity, whatever its type.
+                idleWatchdog?.reset();
                 if (signal.aborted) break;
 
                 // Only process events for our session
@@ -596,18 +665,27 @@ export class OpenCodeSDKService implements ISDKService {
                     case 'tool.start':
                     case 'tool-invocation': {
                         const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
-                        if (part) this.emitToolEvent({ ...part, state: part.state ?? 'running' }, options);
+                        if (part) {
+                            if (part.toolCallID) activeToolCalls?.add(part.toolCallID);
+                            this.emitToolEvent({ ...part, state: part.state ?? 'running' }, options);
+                        }
                         break;
                     }
                     case 'tool.complete':
                     case 'tool.done': {
                         const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
-                        if (part) this.emitToolEvent({ ...part, state: 'completed' }, options);
+                        if (part) {
+                            if (part.toolCallID) activeToolCalls?.delete(part.toolCallID);
+                            this.emitToolEvent({ ...part, state: 'completed' }, options);
+                        }
                         break;
                     }
                     case 'tool.error': {
                         const part = event.part ?? event.properties as unknown as OpenCodeResponsePart | undefined;
-                        if (part) this.emitToolEvent({ ...part, state: 'error' }, options);
+                        if (part) {
+                            if (part.toolCallID) activeToolCalls?.delete(part.toolCallID);
+                            this.emitToolEvent({ ...part, state: 'error' }, options);
+                        }
                         break;
                     }
                     case 'message.complete':

@@ -42,6 +42,7 @@ import { isSupportedCodexImagePath } from './image-converter';
 import { getModelContextWindow } from './model-registry';
 import { readCodexRolloutContextUsage } from './codex-rollout-usage';
 import { createMidTurnUsagePoller, type MidTurnTokenUsage } from './mid-turn-usage';
+import { IdleWatchdog, idleTimeoutErrorMessage } from './idle-watchdog';
 import { resolveCodexExecutablePath } from './codex-exec-path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
@@ -1267,6 +1268,45 @@ export class CodexSDKService implements ISDKService {
         // Releases the per-invocation CoC LLM-tool MCP bridge (no-op when no tools).
         let mcpCleanup: () => void = () => {};
 
+        // Wall-clock + idle watchdog. Both abort the turn's controller; the flags
+        // let the catch path report which one fired instead of a generic abort.
+        let idleTimedOut = false;
+        let wallClockTimedOut = false;
+        const watchdog = new IdleWatchdog({
+            idleTimeoutMs: options.idleTimeoutMs,
+            timeoutMs: options.timeoutMs,
+            // A long-running tool (e.g. ask_user blocked on a user widget) emits
+            // nothing while it waits; the agent is blocked, not idle.
+            isSuppressed: () => startedToolCalls.size > completedToolCalls.size,
+            onSuppressed: elapsedMs => {
+                getSDKLogger().debug(
+                    {
+                        provider: CODEX_PROVIDER,
+                        threadId,
+                        elapsedMs,
+                        activeToolCount: startedToolCalls.size - completedToolCalls.size,
+                    },
+                    'Idle timeout suppressed — tool call(s) in flight; rescheduling',
+                );
+            },
+            onIdle: elapsedMs => {
+                idleTimedOut = true;
+                getSDKLogger().error(
+                    { provider: CODEX_PROVIDER, threadId, elapsedMs },
+                    'Aborting Codex turn due to idle timeout',
+                );
+                abortController.abort();
+            },
+            onTimeout: elapsedMs => {
+                wallClockTimedOut = true;
+                getSDKLogger().error(
+                    { provider: CODEX_PROVIDER, threadId, elapsedMs },
+                    'Aborting Codex turn due to wall-clock timeout',
+                );
+                abortController.abort();
+            },
+        });
+
         // Codex has no mid-turn usage event on the SDK stream, but codex core
         // appends a `token_count` record to the thread's rollout JSONL after
         // every model request. Poll that same file the turn-end enrichment
@@ -1321,8 +1361,11 @@ export class CodexSDKService implements ISDKService {
             let tokenUsage: TokenUsage | undefined;
             await fileChangeDiffTracker.initialize();
             const streamed = await thread.runStreamed(this.buildCodexInput(options), { signal: abortController.signal });
+            watchdog.start();
 
             for await (const event of streamed.events) {
+                // Every provider frame counts as activity, whatever its type.
+                watchdog.reset();
                 if (event.type === 'thread.started') {
                     notifySessionCreated(event.thread_id);
                     continue;
@@ -1356,6 +1399,12 @@ export class CodexSDKService implements ISDKService {
                 }
             }
 
+            // A timed-out turn settles as a failure even when the provider ends
+            // the stream quietly on abort instead of throwing.
+            if (idleTimedOut || wallClockTimedOut) {
+                throw new Error(this.codexTimeoutError(options, idleTimedOut));
+            }
+
             if (!sessionCreatedNotified && thread.id) notifySessionCreated(thread.id);
 
             // Overwrite the registry-derived context meter with the provider's
@@ -1381,15 +1430,27 @@ export class CodexSDKService implements ISDKService {
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
             } as IInvocationResult;
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            // An idle/wall-clock kill aborts the controller, so without this the
+            // failure is indistinguishable from a user cancel in the UI.
+            const message = (idleTimedOut || wallClockTimedOut)
+                ? this.codexTimeoutError(options, idleTimedOut)
+                : err instanceof Error ? err.message : String(err);
             return { success: false, error: message, sessionId: options.sessionId ?? threadId, effectiveModel: this.normalizeCodexModel(options.model) };
         } finally {
             // Idempotent; also covers the error path, so no timer outlives the turn.
+            watchdog.dispose();
             midTurnUsagePoll.dispose();
             signalCleanup?.();
             mcpCleanup();
             if (threadId) this.sessions.delete(threadId);
         }
+    }
+
+    /** Error text for a turn killed by the idle or wall-clock watchdog. */
+    private codexTimeoutError(options: SendMessageOptions, idle: boolean): string {
+        return idle
+            ? idleTimeoutErrorMessage(options.idleTimeoutMs ?? 0)
+            : `Request timed out after ${options.timeoutMs ?? 0}ms`;
     }
 
     /**

@@ -22,7 +22,8 @@ Forge imports directly from this package.
 | `session-manager.ts` | Active session tracking and cancellation |
 | `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`) |
 | `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled \| Cancelled` |
-| `session-timer-manager.ts` | Overall timeout, idle timeout, turn-end grace |
+| `session-timer-manager.ts` | Copilot session timers: delegates overall + idle to `IdleWatchdog`, owns the turn-end grace timer |
+| `idle-watchdog.ts` | `IdleWatchdog` — shared idle + wall-clock timers used by every provider; `idleTimeoutErrorMessage()` is the single error text |
 | `session-telemetry.ts` | Token usage accumulation, tool-call tracking |
 | `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust, `resolveCopilotCli` |
 | `sdk-loader.ts` | SDK binary discovery + ESM import workaround |
@@ -283,6 +284,22 @@ Step 9 avoids the SDK's `sendAndWait`, whose `session.error` handler can reject 
 ### Context tier
 
 `SendMessageOptions.contextTier` (`"default" | "long_context"`) selects the Copilot context-window tier. It rides the session-options object on create and resume; in the delayed model-switch path (model + reasoningEffort both present) it moves to `session.setModel(model, { reasoningEffort, contextTier })`. Set it only for models whose catalog metadata advertises a long-context tier — `getCopilotContextTierForModel` (`model-context-tier.ts`) derives it strictly from `billing.tokenPrices.longContext.contextMax` (camelCase or snake_case), never from model names or `max_context_window_tokens`. Passing `long_context` without metadata support can leave the session on normal limits while reporting long-context.
+
+## Idle Timeout (all providers)
+
+`idle-watchdog.ts` implements `idleTimeoutMs` once for every provider: `reset()` is the first
+statement of each service's stream loop, so **any** provider frame is activity. On expiry with
+work in flight the watchdog reschedules instead of firing — suppression is tool calls in flight
+for Copilot/Codex/OpenCode, plus pending background tasks for Claude (a draining session is
+quiet on purpose). `0`/undefined disables it. On fire the turn aborts its `AbortController` and
+settles as a **failure** with `Request idle-timed out after <ms>ms with no activity`; the
+services keep an `idleTimedOut` flag so an idle kill is not reported as a user cancel.
+
+Per provider: Copilot via `SessionTimerManager` (also arms the wall-clock cap); Codex arms both
+idle and `timeoutMs`; Claude arms idle only (`timeoutMs` stays with the background-drain cap);
+OpenCode arms idle only on the streaming path (a non-streaming request emits no events, so the
+wall-clock timer covers it) and races `session.prompt` against the controller plus a server-side
+`session.abort`, since the prompt call carries no signal.
 
 ## Streaming Internals
 

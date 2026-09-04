@@ -41,6 +41,8 @@ export interface ExecutorRegistryOptions {
     /** Ignored when `queueConfig` is supplied. */
     defaultTimeoutMs?: number;
     /** Ignored when `queueConfig` is supplied. */
+    defaultIdleTimeoutMs?: number;
+    /** Ignored when `queueConfig` is supplied. */
     followUpSuggestions?: { enabled: boolean; count: number };
     /** Ignored when `queueConfig` is supplied. */
     askUser?: { enabled: boolean };
@@ -110,6 +112,7 @@ export class ExecutorRegistry {
             aiService: options.aiService,
             queueConfig: options.queueConfig,
             defaultTimeoutMs: options.defaultTimeoutMs,
+            defaultIdleTimeoutMs: options.defaultIdleTimeoutMs,
             followUpSuggestions: options.followUpSuggestions,
             askUser: options.askUser,
             resolveSkillConfig: options.resolveSkillConfig,

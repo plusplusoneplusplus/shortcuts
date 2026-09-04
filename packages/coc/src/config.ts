@@ -57,6 +57,8 @@ export interface CLIConfig {
     mcpConfig?: string;
     /** Default timeout in seconds */
     timeout?: number;
+    /** Default AI idle timeout in seconds */
+    idleTimeout?: number;
     /** Save CLI run results to process store (default: true) */
     persist?: boolean;
     /** Show report_intent tool calls in conversation views (default: false) */
@@ -418,6 +420,7 @@ export interface ResolvedCLIConfig {
     approvePermissions: boolean;
     mcpConfig?: string;
     timeout?: number;
+    idleTimeout?: number;
     persist: boolean;
     showReportIntent: boolean;
     showPlanDepTab: boolean;

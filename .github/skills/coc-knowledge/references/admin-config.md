@@ -40,11 +40,12 @@ Behavior-specific tests (what the flag gates) belong with the feature; the stand
 
 ## Queue Configuration Boundary
 
-Queue execution never loads a config file itself. `packages/coc/src/server/queue/queue-runtime-config.ts` defines `QueueRuntimeConfig`, a narrow port of typed getters for the five queue-owned settings:
+Queue execution never loads a config file itself. `packages/coc/src/server/queue/queue-runtime-config.ts` defines `QueueRuntimeConfig`, a narrow port of typed getters for the queue-owned settings:
 
 | Getter | Backing config | Read at |
 |--------|----------------|---------|
 | `getDefaultTimeoutMs()` | `timeout` (seconds → ms) | execution start, when a task has no `config.timeoutMs` |
+| `getDefaultIdleTimeoutMs()` | `idleTimeout` (seconds → ms) | execution start; unset falls back to `DEFAULT_AI_IDLE_TIMEOUT_MS` (1 h) |
 | `getFollowUpSuggestions()` | `chat.followUpSuggestions` | chat-turn context build |
 | `getAskUser()` | `chat.askUser` | chat-turn context build |
 | `getSkillFolders()` | `skills.globalExtraFolders`, `skills.autoDetectDefaultFolders` | each `resolveSkillConfig` call |
@@ -56,7 +57,7 @@ Rules:
 
 - Do not call `loadConfigFile()` from the queue or executor graph. A no-argument call resolves `~/.coc/config.yaml`, which diverges from `options.configPath` and silently executes tasks against a different file than the admin surface shows.
 - Do not pass `RuntimeConfigService` itself down — the port exists so persistence, revisions, listeners, and the admin APIs stay out of the queue.
-- CLI-only and test composition roots pass `createFixedQueueRuntimeConfig({...})` (or `DEFAULT_QUEUE_RUNTIME_CONFIG`), which derives everything from explicit values plus `DEFAULT_CONFIG` and never touches disk. `CLITaskExecutorOptions.defaultTimeoutMs` / `followUpSuggestions` / `askUser` remain as direct options and are folded into a fixed adapter when no `queueConfig` is supplied; they are ignored when one is.
+- CLI-only and test composition roots pass `createFixedQueueRuntimeConfig({...})` (or `DEFAULT_QUEUE_RUNTIME_CONFIG`), which derives everything from explicit values plus `DEFAULT_CONFIG` and never touches disk. `CLITaskExecutorOptions.defaultTimeoutMs` / `defaultIdleTimeoutMs` / `followUpSuggestions` / `askUser` remain as direct options and are folded into a fixed adapter when no `queueConfig` is supplied; they are ignored when one is.
 - Adding a queue-visible setting means one getter here plus its `ADMIN_SETTING_DEFINITIONS` entry — not a new startup capture or a new config read.
 
 ## Namespaced Config Merge & Source Tracking

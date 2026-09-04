@@ -18,13 +18,14 @@ import * as os from 'os';
 import * as path from 'path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { DEFAULT_AI_IDLE_TIMEOUT_MS, DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { RuntimeConfigService } from '../../src/config/runtime-config-service';
 import { DEFAULT_CONFIG } from '../../src/config';
 import {
     createQueueRuntimeConfig,
     createFixedQueueRuntimeConfig,
     resolveDefaultTimeoutMs,
+    resolveDefaultIdleTimeoutMs,
     DEFAULT_QUEUE_RUNTIME_CONFIG,
 } from '../../src/server/queue/queue-runtime-config';
 
@@ -156,6 +157,21 @@ describe('QueueRuntimeConfig — live updates', () => {
         expect(queueConfig.getDefaultTimeoutMs()).toBe(90_000);
     });
 
+    it('re-reads the idle timeout after an admin edit', async () => {
+        const queueConfig = createQueueRuntimeConfig(service);
+        // Nothing set in the file yet, so the SDK default applies.
+        expect(queueConfig.getDefaultIdleTimeoutMs()).toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
+
+        await service.updateConfig({ idleTimeout: 900 });
+
+        // Same port instance — `runtime: 'live'`, so no restart is needed.
+        expect(queueConfig.getDefaultIdleTimeoutMs()).toBe(900_000);
+
+        // Clearing the override restores the default in place.
+        await service.updateConfig({ idleTimeout: null });
+        expect(queueConfig.getDefaultIdleTimeoutMs()).toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
+    });
+
     it('re-reads follow-up suggestions after an admin edit', async () => {
         const queueConfig = createQueueRuntimeConfig(service);
         expect(queueConfig.getFollowUpSuggestions()).toEqual({ enabled: true, count: 3 });
@@ -233,6 +249,7 @@ describe('QueueRuntimeConfig — restart boundary', () => {
         // into the queue.
         expect(Object.keys(queueConfig).sort()).toEqual([
             'getAskUser',
+            'getDefaultIdleTimeoutMs',
             'getDefaultTimeoutMs',
             'getFollowUpSuggestions',
             'getRalphFinalCheckPolicy',
@@ -248,6 +265,7 @@ describe('QueueRuntimeConfig — restart boundary', () => {
 describe('createFixedQueueRuntimeConfig', () => {
     it('falls back to DEFAULT_CONFIG, never to disk', () => {
         expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getDefaultTimeoutMs()).toBe(DEFAULT_AI_TIMEOUT_MS);
+        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getDefaultIdleTimeoutMs()).toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
         expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getFollowUpSuggestions())
             .toEqual(DEFAULT_CONFIG.chat.followUpSuggestions);
         expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getAskUser())
@@ -263,6 +281,7 @@ describe('createFixedQueueRuntimeConfig', () => {
         const queueConfig = createFixedQueueRuntimeConfig({
             config: {
                 timeout: 15,
+                idleTimeout: 45,
                 chat: { followUpSuggestions: { enabled: false, count: 1 }, askUser: { enabled: false } },
                 skills: { globalExtraFolders: ['/a'], autoDetectDefaultFolders: false },
                 ralph: { finalCheck: { maxGapFixLoops: 4 } },
@@ -270,6 +289,7 @@ describe('createFixedQueueRuntimeConfig', () => {
         });
 
         expect(queueConfig.getDefaultTimeoutMs()).toBe(15_000);
+        expect(queueConfig.getDefaultIdleTimeoutMs()).toBe(45_000);
         expect(queueConfig.getFollowUpSuggestions()).toEqual({ enabled: false, count: 1 });
         expect(queueConfig.getAskUser()).toEqual({ enabled: false });
         expect(queueConfig.getSkillFolders())
@@ -279,12 +299,14 @@ describe('createFixedQueueRuntimeConfig', () => {
 
     it('lets direct overrides win over the supplied config', () => {
         const queueConfig = createFixedQueueRuntimeConfig({
-            config: { timeout: 15, chat: { askUser: { enabled: false } } },
+            config: { timeout: 15, idleTimeout: 45, chat: { askUser: { enabled: false } } },
             defaultTimeoutMs: 777,
+            defaultIdleTimeoutMs: 888,
             askUser: { enabled: true },
         });
 
         expect(queueConfig.getDefaultTimeoutMs()).toBe(777);
+        expect(queueConfig.getDefaultIdleTimeoutMs()).toBe(888);
         expect(queueConfig.getAskUser()).toEqual({ enabled: true });
     });
 
@@ -292,5 +314,12 @@ describe('createFixedQueueRuntimeConfig', () => {
         expect(resolveDefaultTimeoutMs(undefined)).toBe(DEFAULT_AI_TIMEOUT_MS);
         expect(resolveDefaultTimeoutMs(0)).toBe(DEFAULT_AI_TIMEOUT_MS);
         expect(resolveDefaultTimeoutMs(60)).toBe(60_000);
+    });
+
+    it('converts the config idleTimeout from seconds to milliseconds', () => {
+        // Blank/zero means "use the default", not "disable the idle timer".
+        expect(resolveDefaultIdleTimeoutMs(undefined)).toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
+        expect(resolveDefaultIdleTimeoutMs(0)).toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
+        expect(resolveDefaultIdleTimeoutMs(900)).toBe(900_000);
     });
 });

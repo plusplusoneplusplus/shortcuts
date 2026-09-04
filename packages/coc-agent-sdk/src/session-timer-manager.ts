@@ -6,9 +6,15 @@
  *   - idle timeout (resets on activity)
  *   - turn-end grace timer (2s after turn_end, cancelled by turn_start)
  *
+ * The wall-clock and idle timers are delegated to the shared {@link IdleWatchdog}
+ * so Copilot and the other providers run the exact same idle semantics; the
+ * turn-end grace timer has no analogue elsewhere and stays here.
+ *
  * All timers fire callbacks provided by the caller (the orchestrator).
  * No direct state machine or SDK interaction.
  */
+
+import { IdleWatchdog } from './idle-watchdog';
 
 export interface SessionTimerCallbacks {
     /** Called when the overall wall-clock timeout fires. */
@@ -17,6 +23,14 @@ export interface SessionTimerCallbacks {
     onIdleTimeout: () => void;
     /** Called when the turn-end grace period expires without a new turn_start. */
     onTurnEndGrace: () => void;
+    /**
+     * Optional: whether the idle timeout should be suppressed at fire time
+     * (e.g. tool calls in flight). When it returns true the idle window is
+     * rescheduled and `onIdleTimeout` is not called.
+     */
+    isIdleSuppressed?: () => boolean;
+    /** Optional: called instead of `onIdleTimeout` when a fire was suppressed. */
+    onIdleSuppressed?: (elapsedMs: number) => void;
 }
 
 export interface SessionTimerConfig {
@@ -31,8 +45,7 @@ export interface SessionTimerConfig {
 const DEFAULT_TURN_END_GRACE_MS = 2000;
 
 export class SessionTimerManager {
-    private timeoutId?: ReturnType<typeof setTimeout>;
-    private idleTimerId?: ReturnType<typeof setTimeout>;
+    private readonly watchdog: IdleWatchdog;
     private _turnEndGraceTimer: ReturnType<typeof setTimeout> | null = null;
 
     private readonly callbacks: SessionTimerCallbacks;
@@ -45,6 +58,14 @@ export class SessionTimerManager {
             idleTimeoutMs: config.idleTimeoutMs ?? 0,
             turnEndGraceMs: config.turnEndGraceMs ?? DEFAULT_TURN_END_GRACE_MS,
         };
+        this.watchdog = new IdleWatchdog({
+            timeoutMs: this.config.timeoutMs,
+            onTimeout: () => this.callbacks.onTimeout(),
+            idleTimeoutMs: this.config.idleTimeoutMs,
+            isSuppressed: callbacks.isIdleSuppressed,
+            onSuppressed: callbacks.onIdleSuppressed,
+            onIdle: () => this.callbacks.onIdleTimeout(),
+        });
     }
 
     /** Whether a turn-end grace timer is currently active. */
@@ -54,21 +75,12 @@ export class SessionTimerManager {
 
     /** Start the overall and idle timers. Call once after session starts. */
     start(): void {
-        this.timeoutId = setTimeout(() => {
-            this.callbacks.onTimeout();
-        }, this.config.timeoutMs);
-
-        this.resetIdleTimer();
+        this.watchdog.start();
     }
 
     /** Reset the idle timer (call on every activity event). */
     resetIdleTimer(): void {
-        const effectiveIdleMs = this.config.idleTimeoutMs;
-        if (effectiveIdleMs <= 0) { return; }
-        if (this.idleTimerId !== undefined) { clearTimeout(this.idleTimerId); }
-        this.idleTimerId = setTimeout(() => {
-            this.callbacks.onIdleTimeout();
-        }, effectiveIdleMs);
+        this.watchdog.reset();
     }
 
     /** Start the turn-end grace timer (call on turn_end). No-op if already active. */
@@ -90,10 +102,7 @@ export class SessionTimerManager {
 
     /** Clear all timers. Call on settlement or cancellation. */
     cleanup(): void {
-        clearTimeout(this.timeoutId);
-        if (this.idleTimerId !== undefined) {
-            clearTimeout(this.idleTimerId);
-        }
+        this.watchdog.dispose();
         this.cancelTurnEndGrace();
     }
 }

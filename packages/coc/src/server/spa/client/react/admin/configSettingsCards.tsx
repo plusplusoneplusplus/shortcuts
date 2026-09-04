@@ -66,7 +66,7 @@ export function AiExecutionCard({ configForm, setConfigForm, dirty, saving, onSa
             </AdminRow>
             <AdminRow
                 name="Timeout"
-                hint="Per-task wall-clock limit. Leave blank for the 1-hour default."
+                hint="Per-task wall-clock limit. Leave blank for the 6-hour default."
             >
                 <AdminInputSuffix suffix="sec">
                     <input
@@ -80,6 +80,23 @@ export function AiExecutionCard({ configForm, setConfigForm, dirty, saving, onSa
                     />
                 </AdminInputSuffix>
                 <SourceBadge source={sources['timeout']} isDefault={isDefaultValue('timeout')} />
+            </AdminRow>
+            <AdminRow
+                name="Idle timeout"
+                hint="Kills a session after this long with no streaming activity. Leave blank for the 1-hour default. Copilot sessions only."
+            >
+                <AdminInputSuffix suffix="sec">
+                    <input
+                        id="admin-config-idle-timeout"
+                        type="number"
+                        min={1}
+                        placeholder="3600"
+                        className="ar-input ar-short"
+                        value={configForm.idleTimeout ?? ''}
+                        onChange={e => setConfigForm(f => ({ ...f, idleTimeout: e.target.value }))}
+                    />
+                </AdminInputSuffix>
+                <SourceBadge source={sources['idleTimeout']} isDefault={isDefaultValue('idleTimeout')} />
             </AdminRow>
             <AdminRow
                 name="Output"

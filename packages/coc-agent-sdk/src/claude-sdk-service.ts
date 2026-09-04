@@ -41,6 +41,7 @@ import { dynamicImportModule } from './sdk-esm-loader';
 import { preferUnpackedPath } from './asar-path';
 import { getSDKLogger } from './logger';
 import { createMidTurnUsagePoller, type MidTurnTokenUsage, type MidTurnUsagePoller } from './mid-turn-usage';
+import { IdleWatchdog, idleTimeoutErrorMessage } from './idle-watchdog';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
@@ -974,6 +975,10 @@ export class ClaudeSDKService implements ISDKService {
         const chunks: string[] = [];
         const toolCalls = new Map<string, ToolCall>();
         const startedToolCalls = new Set<string>();
+        // Tool calls started but not yet answered by a `tool_result`. Drives
+        // idle-timeout suppression: a tool blocked on a user widget emits
+        // nothing while it waits.
+        const activeToolCalls = new Set<string>();
         let tokenUsage: TokenUsage | undefined;
         let latestRateLimitInfo: ClaudeRateLimitInfo | null = null;
 
@@ -1055,6 +1060,39 @@ export class ClaudeSDKService implements ISDKService {
             backgroundTasks.set(id, { id, kind, ...(type ? { type } : {}), ...(description ? { description } : {}) });
             emitBackgroundTasksChanged();
         };
+        // Idle watchdog for the turn: aborts the controller when the stream goes
+        // quiet for the whole window. The flag lets the settle paths report an
+        // idle kill instead of a generic abort. The wall-clock budget stays with
+        // the background-task drain cap, which owns `options.timeoutMs` here.
+        let idleTimedOut = false;
+        const watchdog = new IdleWatchdog({
+            idleTimeoutMs: options.idleTimeoutMs,
+            // A tool call still in flight (e.g. ask_user blocked on a user
+            // widget) or pending background work means the session is quiet on
+            // purpose — blocked, not idle. The wall-clock cap still applies.
+            isSuppressed: () => activeToolCalls.size > 0 || backgroundTasks.size > 0,
+            onSuppressed: elapsedMs => {
+                getSDKLogger().debug(
+                    {
+                        provider: CLAUDE_PROVIDER,
+                        event: 'claude_idle_timeout_suppressed',
+                        elapsedMs,
+                        activeToolCount: activeToolCalls.size,
+                        backgroundTaskCount: backgroundTasks.size,
+                    },
+                    'Idle timeout suppressed — tool call(s)/background task(s) in flight; rescheduling',
+                );
+            },
+            onIdle: elapsedMs => {
+                idleTimedOut = true;
+                getSDKLogger().error(
+                    { provider: CLAUDE_PROVIDER, event: 'claude_idle_timeout', elapsedMs, sessionId: currentSessionId },
+                    'Aborting Claude turn due to idle timeout',
+                );
+                abortController.abort();
+            },
+        });
+
         const settleBackgroundTasks = (...ids: Array<string | undefined>) => {
             let changed = false;
             for (const id of ids) {
@@ -1205,7 +1243,11 @@ export class ClaudeSDKService implements ISDKService {
                 armPostDrainSettle();
             };
 
+            watchdog.start();
+
             for await (const msg of handle) {
+                // Every provider frame counts as activity, whatever its type.
+                watchdog.reset();
                 if (abortController.signal.aborted) break;
                 // The stream is not quiet — a re-invocation (or anything else)
                 // is still arriving, so restart the post-drain window.
@@ -1217,7 +1259,7 @@ export class ClaudeSDKService implements ISDKService {
                             chunks.push(block.text);
                             options.onStreamingChunk?.(block.text);
                         } else if (this.isClaudeToolUseBlock(block)) {
-                            this.handleClaudeToolUse(block, options, toolCalls, startedToolCalls, msg.parent_tool_use_id ?? undefined);
+                            this.handleClaudeToolUse(block, options, toolCalls, startedToolCalls, msg.parent_tool_use_id ?? undefined, activeToolCalls);
                             // A tool launched with run_in_background keeps the
                             // session alive until its task_notification settles.
                             if (isClaudeBackgroundToolUse(block)) {
@@ -1235,7 +1277,7 @@ export class ClaudeSDKService implements ISDKService {
                         await settleIfReady();
                     }
                 } else if (this.isUserMessage(msg)) {
-                    this.handleClaudeUserToolResults(msg, options, toolCalls);
+                    this.handleClaudeUserToolResults(msg, options, toolCalls, activeToolCalls);
                 } else if (this.isResultMessage(msg)) {
                     if (msg.subtype !== 'success' || msg.is_error) {
                         this.logClaudeResultFailure(msg, {
@@ -1344,6 +1386,18 @@ export class ClaudeSDKService implements ISDKService {
                 }
             }
 
+            // A timed-out turn settles as a failure rather than a partial
+            // success: the loop above breaks on abort, so without this an idle
+            // kill would be indistinguishable from a clean end-of-stream.
+            if (idleTimedOut) {
+                return {
+                    success: false,
+                    error: idleTimeoutErrorMessage(options.idleTimeoutMs ?? 0),
+                    sessionId: currentSessionId,
+                    effectiveModel: model,
+                };
+            }
+
             // Empty chunk signals end-of-stream. The context-window snapshot was
             // already captured at turn end (before the input gate closed), while
             // the subprocess was still alive to answer the control request.
@@ -1366,9 +1420,12 @@ export class ClaudeSDKService implements ISDKService {
                 mcpServerNames,
                 sensitiveValues: collectClaudeRequestSensitiveValues(options),
             });
-            const message = err instanceof Error ? err.message : String(err);
+            const message = idleTimedOut
+                ? idleTimeoutErrorMessage(options.idleTimeoutMs ?? 0)
+                : err instanceof Error ? err.message : String(err);
             return { success: false, error: message, sessionId: currentSessionId, effectiveModel: model };
         } finally {
+            watchdog.dispose();
             clearDrainCap();
             clearPostDrainSettle();
             midTurnUsagePoll.dispose();
@@ -1672,6 +1729,7 @@ export class ClaudeSDKService implements ISDKService {
         toolCalls: Map<string, ToolCall>,
         startedToolCalls: Set<string>,
         parentToolCallId?: string,
+        activeToolCalls?: Set<string>,
     ): void {
         const id = block.id ?? crypto.randomUUID();
         const toolName = normalizeClaudeToolName(block.name ?? 'unknown_tool');
@@ -1679,6 +1737,7 @@ export class ClaudeSDKService implements ISDKService {
 
         if (!startedToolCalls.has(id)) {
             startedToolCalls.add(id);
+            activeToolCalls?.add(id);
             const now = new Date();
             toolCalls.set(id, {
                 id,
@@ -1702,10 +1761,12 @@ export class ClaudeSDKService implements ISDKService {
         msg: ClaudeUserMessage,
         options: SendMessageOptions,
         toolCalls: Map<string, ToolCall>,
+        activeToolCalls?: Set<string>,
     ): void {
         const handledIds = new Set<string>();
         for (const block of this.getToolResultBlocks(msg)) {
             handledIds.add(block.tool_use_id);
+            activeToolCalls?.delete(block.tool_use_id);
             this.handleClaudeToolResult(block.tool_use_id, block.content, !!block.is_error, options, toolCalls);
         }
 
@@ -1713,6 +1774,7 @@ export class ClaudeSDKService implements ISDKService {
             ? msg.parent_tool_use_id
             : undefined;
         if (fallbackId && !handledIds.has(fallbackId) && msg.tool_use_result !== undefined) {
+            activeToolCalls?.delete(fallbackId);
             this.handleClaudeToolResult(fallbackId, msg.tool_use_result, false, options, toolCalls);
         }
     }

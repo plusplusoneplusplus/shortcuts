@@ -16,7 +16,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { ModelInfo, QueuedTask } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
@@ -328,6 +329,26 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             expect(call.infiniteSessions).toEqual({ enabled: true });
+        });
+
+        it('sends the configured idle timeout, and the 1-hour default when unset', async () => {
+            // Regression: `idleTimeoutMs` was never set on the first-turn send
+            // options, so the admin idle-timeout setting had no effect at all.
+            const configured = makeExecutor(store, {
+                queueConfig: createFixedQueueRuntimeConfig({
+                    defaultTimeoutMs: 30_000,
+                    defaultIdleTimeoutMs: 45_000,
+                }),
+            });
+            await configured.execute(makeTask('task-idle-set'), 'Hello');
+            expect(sdkMocks.mockSendMessage.mock.calls[0][0].idleTimeoutMs).toBe(45_000);
+
+            sdkMocks.mockSendMessage.mockClear();
+
+            const unset = makeExecutor(store);
+            await unset.execute(makeTask('task-idle-unset'), 'Hello');
+            expect(sdkMocks.mockSendMessage.mock.calls[0][0].idleTimeoutMs)
+                .toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
         });
 
         it('opts into warm-client keep-alive (keepWarm: true)', async () => {

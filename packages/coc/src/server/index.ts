@@ -1042,7 +1042,7 @@ export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, DEFAULT
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue/queue-executor-bridge';
 // The configuration boundary into the queue. External composition roots build
 // an adapter here rather than letting the queue read a config file itself.
-export { createQueueRuntimeConfig, createFixedQueueRuntimeConfig, DEFAULT_QUEUE_RUNTIME_CONFIG, resolveDefaultTimeoutMs } from './queue/queue-runtime-config';
+export { createQueueRuntimeConfig, createFixedQueueRuntimeConfig, DEFAULT_QUEUE_RUNTIME_CONFIG, resolveDefaultTimeoutMs, resolveDefaultIdleTimeoutMs } from './queue/queue-runtime-config';
 export type { QueueRuntimeConfig, QueueConfigSource, QueueSkillFoldersConfig, QueueRalphFinalCheckPolicy } from './queue/queue-runtime-config';
 export { ExecutorRegistry } from './executors/executor-registry';
 export type { ExecutorRegistryOptions } from './executors/executor-registry';
