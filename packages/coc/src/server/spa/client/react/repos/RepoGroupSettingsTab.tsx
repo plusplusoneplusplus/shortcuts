@@ -155,6 +155,7 @@ function RepoGroupSettingsPane({ workspaceId, baseUrl, active }: RepoGroupSettin
                             isEnabled={mcp.isEnabled}
                             onToggle={mcp.toggleServer}
                             onRefresh={() => mcp.refresh(true)}
+                            groupMode
                         />
                     )}
                     {activeSection === 'skills' && (
