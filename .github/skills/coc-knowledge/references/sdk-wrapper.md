@@ -128,6 +128,10 @@ Quota and model-catalog lookups spawn the `@openai/codex` CLI shipped as a depen
 
 `mapCodexRateLimitsToQuota` surfaces **both** rolling windows per limit entry: `primary` (~5h) and `secondary` (weekly) become snapshots keyed `five_hour` / `seven_day`, matching Claude's keys so the dashboard renders the same "5h"/"Weekly" labels. A window is skipped when absent or carrying a non-numeric `usedPercent`. With >1 entry in `rateLimitsByLimitId`, keys are prefixed by limit id (e.g. `codex-pro_five_hour`).
 
+### Model catalog and reasoning levels
+
+`mapCatalogModel` keeps only `visibility: 'list'` models and normalizes `supported_reasoning_levels` against `REASONING_LEVEL_ORDER` — a hardcoded low→high list mirroring `ModelReasoningEffort` in `@openai/codex-sdk`'s `index.d.ts` (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, `persistent`). The intersection both sorts the catalog's arbitrary order and drops unknown levels, so a level the SDK adds is invisible in the UI until the list is extended — check it on every `@openai/codex-sdk` bump. `default_reasoning_level` is advertised only when it survives that filter.
+
 ### Compaction
 
 `compactSession()` compacts a thread in place over the same app-server stdio channel (shared `runAppServerRpc` helper). After the handshake it issues `thread/resume` (id 1) — **not** `thread/read`, which fails "thread not found" on a thread this app-server process never resumed — then `thread/compact/start` (id 2, `{ threadId }`), which rewrites the rollout JSONL under the same thread id and summarizes asynchronously.

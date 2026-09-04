@@ -2148,7 +2148,7 @@ describe('GET /api/admin/providers/availability', () => {
     });
 
     it('returns available:false with install hint for unavailable codex provider', async () => {
-        const error = 'Codex SDK not installed (~239 MB). To enable Codex, run:\n  npm install -g @openai/codex-sdk\nThen restart CoC.';
+        const error = 'Codex SDK not installed (~280 MB). To enable Codex, run:\n  npm install -g @openai/codex-sdk\nThen restart CoC.';
         srv = makeAvailabilityServer(makeRegistryWith({ codex: { available: false, error } }));
         baseUrl = await startHttpServer(srv);
         const res = await fetch(`${baseUrl}/api/admin/providers/availability`);

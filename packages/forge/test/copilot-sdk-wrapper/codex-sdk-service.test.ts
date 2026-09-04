@@ -109,7 +109,7 @@ function forceCodexUnavailable(svc: CodexSDKService): void {
     svc['availabilityCache'] = {
         available: false,
         error:
-            'Codex SDK not installed (~239 MB). To enable Codex, run:\n' +
+            'Codex SDK not installed (~280 MB). To enable Codex, run:\n' +
             '  npm install @openai/codex-sdk --no-save  # run from the repo root\n' +
             'Then restart CoC.',
     };
@@ -293,6 +293,55 @@ describe('CodexSDKService — SDK mocked', () => {
             },
         });
         expect(mapCatalogModel({ slug: 'codex-auto-review', visibility: 'hide' })).toBeUndefined();
+    });
+
+    // Regression: the reasoning-level allowlist is a hardcoded low→high ordering,
+    // so a level the Codex SDK adds (`max`/`ultra`/`persistent`, new in 0.153.x)
+    // silently disappears from the model's options unless the list is extended.
+    it('keeps every reasoning level @openai/codex-sdk can report, in low→high order', () => {
+        const mapCatalogModel = svc['mapCatalogModel'].bind(svc);
+
+        // Deliberately shuffled — the mapper must sort, not preserve input order.
+        expect(mapCatalogModel({
+            slug: 'gpt-5.6',
+            display_name: 'GPT-5.6',
+            visibility: 'list',
+            default_reasoning_level: 'persistent',
+            supported_reasoning_levels: [
+                { effort: 'ultra' },
+                { effort: 'low' },
+                { effort: 'persistent' },
+                { effort: 'xhigh' },
+                { effort: 'minimal' },
+                { effort: 'max' },
+                { effort: 'high' },
+                { effort: 'medium' },
+            ],
+        })).toMatchObject({
+            id: 'gpt-5.6',
+            supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra', 'persistent'],
+            defaultReasoningEffort: 'persistent',
+        });
+    });
+
+    it('drops reasoning levels it does not recognise', () => {
+        const mapCatalogModel = svc['mapCatalogModel'].bind(svc);
+
+        expect(mapCatalogModel({
+            slug: 'gpt-5.6',
+            visibility: 'list',
+            default_reasoning_level: 'brand-new-level',
+            supported_reasoning_levels: [{ effort: 'high' }, { effort: 'brand-new-level' }, { effort: '' }],
+        })).toMatchObject({
+            supportedReasoningEfforts: ['high'],
+        });
+        // An unrecognised default is not advertised either.
+        expect(mapCatalogModel({
+            slug: 'gpt-5.6',
+            visibility: 'list',
+            default_reasoning_level: 'brand-new-level',
+            supported_reasoning_levels: [{ effort: 'high' }],
+        })).not.toHaveProperty('defaultReasoningEffort');
     });
 
     it('sendMessage creates a new thread and returns response', async () => {
