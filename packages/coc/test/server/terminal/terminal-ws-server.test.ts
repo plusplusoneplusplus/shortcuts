@@ -341,20 +341,74 @@ describe('TerminalWebSocketServer', () => {
     });
 
     // ========================================================================
-    // WebSocket close → PTY cleanup
+    // AC-02: WebSocket close detaches, never kills
     // ========================================================================
 
-    it('should destroy PTY session when WebSocket closes', async () => {
-        const { ws, messages, sessionId } = await connectAndCreate();
+    it('AC-02: should keep the PTY session alive when the WebSocket closes', async () => {
+        const { ws, sessionId } = await connectAndCreate();
 
         const sessionManager = terminalWs.getSessionManager();
         expect(sessionManager.getSession(sessionId)).toBeDefined();
 
         ws.close();
-        await delay(100);
+        await waitForCondition(() => terminalWs.clientCount === 0);
 
-        expect(sessionManager.getSession(sessionId)).toBeUndefined();
+        // The client is gone, but the PTY keeps running so it can be reattached.
+        expect(sessionManager.getSession(sessionId)).toBeDefined();
         expect(terminalWs.clientCount).toBe(0);
+    });
+
+    it('AC-02: a dropped client can reattach to its still-running session', async () => {
+        const { ws, sessionId } = await connectAndCreate();
+        const pty = lastMockPty;
+
+        ws.close();
+        await waitForCondition(() => terminalWs.clientCount === 0);
+
+        const { ws: ws2, messages: messages2 } = await connect();
+        sendMsg(ws2, { type: 'terminal-attach', sessionId });
+        await waitForMessages(messages2, 1);
+        expect(messages2[0].type).toBe('terminal-created');
+        expect(messages2[0].session.id).toBe(sessionId);
+
+        pty._emitData('still-here');
+        await waitForMessages(messages2, 2);
+        expect(messages2[1]).toMatchObject({ type: 'terminal-output', sessionId, data: 'still-here' });
+    });
+
+    it('AC-02: one client disconnecting leaves a second attached client streaming', async () => {
+        const { ws: ws1, sessionId } = await connectAndCreate();
+        const pty = lastMockPty;
+
+        const { ws: ws2, messages: messages2 } = await connect();
+        sendMsg(ws2, { type: 'terminal-attach', sessionId });
+        await waitForMessages(messages2, 1);
+
+        ws1.close();
+        await waitForCondition(() => terminalWs.clientCount === 1);
+
+        expect(terminalWs.getSessionManager().getSession(sessionId)).toBeDefined();
+        pty._emitData('after-peer-left');
+        await waitForMessages(messages2, 2);
+        expect(messages2[1]).toMatchObject({ type: 'terminal-output', sessionId, data: 'after-peer-left' });
+    });
+
+    it('AC-02: repeated detach/attach does not duplicate output for one session', async () => {
+        const { ws, sessionId } = await connectAndCreate();
+        const pty = lastMockPty;
+
+        const { ws: ws2, messages: messages2 } = await connect();
+        for (let i = 0; i < 3; i++) {
+            sendMsg(ws2, { type: 'terminal-attach', sessionId });
+            await waitForMessages(messages2, i + 1);
+        }
+
+        pty._emitData('once');
+        await delay(100);
+        const outputs = messages2.filter(m => m.type === 'terminal-output');
+        expect(outputs).toHaveLength(1);
+        expect(outputs[0].data).toBe('once');
+        ws.close();
     });
 
     // ========================================================================

@@ -110,7 +110,10 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
         };
     }, [workspaceId, client]);
 
+    // The tab's ✕ is the explicit kill (AC-02): panel unmount only detaches now,
+    // so the server session has to be ended here or the PTY would outlive its tab.
     const closeTerminal = useCallback((id: string) => {
+        const serverSessionId = terminals.find(t => t.id === id)?.serverSessionId;
         setTerminals(prev => {
             const next = prev.filter(t => t.id !== id);
             if (next.length === 0) {
@@ -120,7 +123,14 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
             }
             return next;
         });
-    }, [activeId]);
+        if (serverSessionId) {
+            client.workspaces.deleteTerminal(workspaceId, serverSessionId).catch(err => {
+                // A 404 just means the session is already gone — nothing to kill.
+                if (err instanceof CocApiError && err.status === 404) return;
+                console.error('Failed to close terminal session:', err);
+            });
+        }
+    }, [activeId, client, terminals, workspaceId]);
 
     const handleExit = useCallback((id: string, code: number) => {
         setTerminals(prev =>

@@ -407,6 +407,17 @@ export class WorkspacesClient {
     return this.transport.request<TerminalSessionsResponse>(`/workspaces/${encodePathSegment(workspaceId)}/terminals`);
   }
 
+  /**
+   * End a terminal session. This is the explicit kill path — closing a socket
+   * or unmounting the panel only detaches, so the tab's close control calls this.
+   */
+  deleteTerminal(workspaceId: string, sessionId: string): Promise<void> {
+    return this.transport.request<void>(
+      `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
   pinTerminal(workspaceId: string, sessionId: string, pinned: boolean): Promise<TerminalPinResponse> {
     return this.transport.request<TerminalPinResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}/pin`,

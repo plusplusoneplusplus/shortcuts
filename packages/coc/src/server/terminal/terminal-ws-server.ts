@@ -328,13 +328,15 @@ export class TerminalWebSocketServer {
         return clients;
     }
 
+    /**
+     * Detach a client from the server (AC-02): drop its socket and its
+     * attachment to every session it was watching. The PTYs keep running —
+     * a dropped socket, a closed tab, or a heartbeat-pruned dead connection
+     * must never end a terminal session. Sessions only end on an explicit
+     * `terminal-close` message or `DELETE /api/workspaces/:id/terminals/:sessionId`.
+     */
     private cleanupClient(client: TerminalWSClient): void {
-        for (const sessionId of [...client.sessions]) {
-            if (!this.sessionManager.isSessionPinned(sessionId)) {
-                this.sessionManager.destroySession(sessionId);
-            }
-            client.sessions.delete(sessionId);
-        }
+        client.sessions.clear();
         this.clients.delete(client.id);
     }
 

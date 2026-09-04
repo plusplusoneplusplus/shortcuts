@@ -238,6 +238,35 @@ describe('TerminalView', () => {
             expect(screen.queryByTestId('mock-terminal-panel-server-sess-unpinned')).toBeNull();
         });
 
+        it('AC-02: closing a tab kills the server session over REST', async () => {
+            const fetchMock = vi.fn().mockImplementation((url: string, init?: { method?: string }) => {
+                if (init?.method === 'DELETE') {
+                    return Promise.resolve({ ok: true, status: 204, statusText: 'No Content', json: vi.fn() });
+                }
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    statusText: 'OK',
+                    json: vi.fn().mockResolvedValue({ sessions: [pinnedSession] }),
+                });
+            });
+            vi.stubGlobal('fetch', fetchMock);
+
+            render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
+            await screen.findByTestId('mock-terminal-panel-server-sess-pinned');
+
+            fireEvent.click(screen.getByTestId('terminal-picker-btn'));
+            fireEvent.click(screen.getByTestId('terminal-tab-close-server-sess-pinned'));
+
+            await waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledWith(
+                    '/api/workspaces/ws-123/terminals/sess-pinned',
+                    expect.objectContaining({ method: 'DELETE' }),
+                );
+            });
+            expect(screen.queryByTestId('mock-terminal-panel-server-sess-pinned')).toBeNull();
+        });
+
         it('keeps new terminal creation in create mode after hydration', async () => {
             mockFetchSessions([]);
             vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'client-tab-id') });

@@ -226,15 +226,19 @@ describe('TerminalWebSocketServer pin/unpin', () => {
         expect(mgr.getSession(sessionId)?.pinned).toBe(false);
     });
 
-    it('should destroy unpinned sessions when the WebSocket closes', async () => {
+    // AC-02: an unpinned session used to be destroyed here. Survival is now
+    // unconditional, so this asserts the opposite — see also the AC-02 cases in
+    // terminal-ws-server.test.ts.
+    it('AC-02: should keep unpinned sessions alive when the WebSocket closes', async () => {
         const { ws, sessionId } = await connectAndCreate();
         const mgr = terminalWs.getSessionManager();
         const pty = mgr.getSession(sessionId)?.pty;
 
         ws.close();
-        await waitForCondition(() => terminalWs.clientCount === 0 && mgr.getSession(sessionId) === undefined);
+        await waitForCondition(() => terminalWs.clientCount === 0);
 
-        expect(pty?.kill).toHaveBeenCalledTimes(1);
+        expect(mgr.getSession(sessionId)).toBeDefined();
+        expect(pty?.kill).not.toHaveBeenCalled();
     });
 
     it('should keep pinned sessions alive when the WebSocket closes', async () => {

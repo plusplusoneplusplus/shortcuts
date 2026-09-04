@@ -304,6 +304,15 @@ describe('WorkspacesClient mock server contract', () => {
     expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/terminals');
   });
 
+  it('deletes a terminal session', async () => {
+    mock = await startMockServer();
+    mock.on('DELETE', '/api/workspaces/repo%2Fone/terminals/sess-1', { noContent: true });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.deleteTerminal('repo/one', 'sess-1')).resolves.toBeUndefined();
+    expectEmptyRequest(mock.requests[0], 'DELETE', '/api/workspaces/repo%2Fone/terminals/sess-1');
+  });
+
   it('pins and unpins a terminal session', async () => {
     mock = await startMockServer();
     const pinResponse = { sessionId: 'sess-1', pinned: true };

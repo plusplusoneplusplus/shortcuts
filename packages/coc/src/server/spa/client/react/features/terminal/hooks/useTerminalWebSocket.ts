@@ -53,7 +53,10 @@ export interface UseTerminalWebSocketOptions {
 export interface UseTerminalWebSocketReturn {
     status: WsStatus;
     connect: (workspaceId: string, cols: number, rows: number, options?: TerminalConnectOptions) => void;
+    /** Detach only: closes the socket and leaves the server-side PTY running. */
     disconnect: () => void;
+    /** Explicit user action: ends the server-side PTY, then closes the socket. */
+    killSession: () => void;
     sendInput: (data: string) => void;
     sendResize: (cols: number, rows: number) => void;
 }
@@ -195,19 +198,33 @@ export function useTerminalWebSocket({
         doConnect();
     }, [doConnect]);
 
+    /**
+     * Detach from the terminal without ending it (AC-02). Unmounting the panel,
+     * navigating away, or losing the tab closes the socket only — the PTY keeps
+     * running on the server and can be reattached later.
+     */
     const disconnect = useCallback(() => {
         manualCloseRef.current = true;
         cleanup();
         if (wsRef.current) {
-            if (wsRef.current.readyState === WebSocket.OPEN && sessionIdRef.current) {
-                wsRef.current.send(JSON.stringify({ type: 'terminal-close', sessionId: sessionIdRef.current }));
-            }
             wsRef.current.close();
             wsRef.current = null;
         }
         sessionIdRef.current = null;
         setStatus('closed');
     }, [cleanup]);
+
+    /**
+     * End the server-side session. This is the only client path that kills a
+     * PTY, and it must be driven by an explicit user action (the tab's close
+     * control), never by a lifecycle or network event.
+     */
+    const killSession = useCallback(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN && sessionIdRef.current) {
+            wsRef.current.send(JSON.stringify({ type: 'terminal-close', sessionId: sessionIdRef.current }));
+        }
+        disconnect();
+    }, [disconnect]);
 
     const sendInput = useCallback((data: string) => {
         if (wsRef.current?.readyState === WebSocket.OPEN && sessionIdRef.current) {
@@ -232,5 +249,5 @@ export function useTerminalWebSocket({
         };
     }, [cleanup]);
 
-    return { status, connect, disconnect, sendInput, sendResize };
+    return { status, connect, disconnect, killSession, sendInput, sendResize };
 }

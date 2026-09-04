@@ -266,11 +266,13 @@ describe('useTerminalWebSocket', () => {
         );
     });
 
-    it('disconnect() sends terminal-close then closes WebSocket', () => {
-        const { result } = renderHook(() =>
+    // ── AC-02: detach vs kill ─────────────────────────────────────────
+
+    function connectAndCreate() {
+        const rendered = renderHook(() =>
             useTerminalWebSocket({ onMessage: vi.fn() }),
         );
-        act(() => { result.current.connect('ws-123', 80, 24); });
+        act(() => { rendered.result.current.connect('ws-123', 80, 24); });
         act(() => { MockWebSocket.last._open(); });
         act(() => {
             MockWebSocket.last._message({
@@ -278,8 +280,28 @@ describe('useTerminalWebSocket', () => {
                 session: { id: 'sess-abc', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
             });
         });
+        return rendered;
+    }
+
+    it('AC-02: disconnect() closes the WebSocket without sending terminal-close', () => {
+        const { result } = connectAndCreate();
 
         act(() => { result.current.disconnect(); });
+
+        const sent = MockWebSocket.last.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw).type);
+        expect(sent).not.toContain('terminal-close');
+        expect(MockWebSocket.last.close).toHaveBeenCalled();
+        expect(result.current.status).toBe('closed');
+
+        // Manual close — no reconnect.
+        act(() => { vi.advanceTimersByTime(5000); });
+        expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    it('AC-02: killSession() sends terminal-close then closes WebSocket', () => {
+        const { result } = connectAndCreate();
+
+        act(() => { result.current.killSession(); });
         expect(MockWebSocket.last.send).toHaveBeenCalledWith(
             JSON.stringify({ type: 'terminal-close', sessionId: 'sess-abc' })
         );
@@ -287,6 +309,17 @@ describe('useTerminalWebSocket', () => {
 
         act(() => { vi.advanceTimersByTime(5000); });
         expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    it('AC-02: unmount detaches without sending terminal-close', () => {
+        const { unmount } = connectAndCreate();
+        const socket = MockWebSocket.last;
+
+        act(() => { unmount(); });
+
+        const sent = socket.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw).type);
+        expect(sent).not.toContain('terminal-close');
+        expect(socket.close).toHaveBeenCalled();
     });
 
     it('reconnects with exponential backoff on unexpected close', () => {
