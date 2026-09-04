@@ -480,16 +480,21 @@ describe('TerminalSessionManager', () => {
             expect(onExit).toHaveBeenCalledWith(session.id, 0, 15);
         });
 
-        it('should auto-remove session on PTY exit', () => {
+        it('AC-05: should keep the session as an exited tombstone on PTY exit', () => {
             manager = createManager();
             const session = manager.createSession('ws-abc', '/tmp');
             const id = session.id;
 
             const mock = session.pty as unknown as MockPty;
-            mock._emitExit(0);
+            mock._emitExit(7);
 
-            expect(manager.getSession(id)).toBeUndefined();
-            expect(manager.size).toBe(0);
+            const tombstone = manager.getSession(id);
+            expect(tombstone).toBeDefined();
+            expect(tombstone!.status).toBe('exited');
+            expect(tombstone!.exitCode).toBe(7);
+            expect(tombstone!.pty).toBeNull();
+            expect(manager.liveSize).toBe(0);
+            expect(manager.getSessionsByWorkspace('ws-abc')).toHaveLength(1);
         });
     });
 
@@ -582,7 +587,7 @@ describe('TerminalSessionManager', () => {
             expect(info.rows).toBe(session.rows);
             expect(info.createdAt).toBe(session.createdAt);
             expect(info.lastActivity).toBe(session.lastActivity);
-            expect(info.pid).toBe(session.pty.pid);
+            expect(info.pid).toBe(session.pty!.pid);
             expect((info as any).pty).toBeUndefined();
         });
     });

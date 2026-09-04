@@ -18,6 +18,7 @@ import {
     getWslExecutablePath,
     resolveWorkspaceExecutionContext,
 } from '@plusplusoneplusplus/forge';
+import * as fs from 'fs';
 import * as path from 'path';
 import type { IPty, TerminalSession, TerminalSessionInfo } from './types';
 import {
@@ -95,9 +96,41 @@ export function toSessionInfo(session: TerminalSession): TerminalSessionInfo {
         rows: session.rows,
         createdAt: session.createdAt,
         lastActivity: session.lastActivity,
-        pid: session.pty.pid,
+        pid: session.pty?.pid ?? null,
         pinned: session.pinned,
+        status: session.status,
+        exitedAt: session.exitedAt,
+        exitCode: session.exitCode,
+        cwd: session.cwd,
+        title: session.title,
     };
+}
+
+/**
+ * Thrown by `restartSession()` when the target session still has a live PTY —
+ * restarting it would orphan a running shell, so the caller has to kill it
+ * first (the REST route turns this into a 409).
+ */
+export class TerminalSessionRunningError extends Error {
+    constructor(id: string) {
+        super(`Terminal session is still running: ${id}`);
+        this.name = 'TerminalSessionRunningError';
+    }
+}
+
+/** Dim rule written into the restarted session's scrollback. */
+export function restartSeparator(at: Date): string {
+    return `\r\n\x1b[2m\u2500\u2500 restarted ${at.toISOString()} \u2500\u2500\x1b[0m\r\n`;
+}
+
+/** Re-trim a buffer that was rebuilt wholesale (restart carry-over, hydration). */
+function trimScrollback(session: TerminalSession): void {
+    session.bufferBytes = session.buffer.reduce((sum, chunk) => sum + chunk.length, 0);
+    while (session.bufferBytes > SCROLLBACK_MAX_BYTES && session.buffer.length > 1) {
+        const dropped = session.buffer.shift()!;
+        session.bufferBytes -= dropped.length;
+        session.truncated = true;
+    }
 }
 
 /**
@@ -150,6 +183,8 @@ export class TerminalSessionManager {
      * write over it.
      */
     private readonly exitPersistSuppressed = new Set<string>();
+    /** Workspaces whose persisted tombstones have already been loaded. */
+    private readonly hydratedWorkspaces = new Set<string>();
 
     constructor(options?: TerminalSessionManagerOptions) {
         this.options = {
@@ -200,7 +235,7 @@ export class TerminalSessionManager {
         if (!this.nodePty) {
             throw new Error(`Terminal is not available: ${this.nodePtyError ?? 'node-pty not installed'}`);
         }
-        const unpinnedCount = [...this.sessions.values()].filter(s => !s.pinned).length;
+        const unpinnedCount = [...this.sessions.values()].filter(s => s.status === 'running' && !s.pinned).length;
         if (unpinnedCount >= this.options.maxSessions) {
             throw new Error(`Maximum terminal sessions (${this.options.maxSessions}) reached`);
         }
@@ -244,13 +279,15 @@ export class TerminalSessionManager {
             session.status = 'exited';
             session.exitedAt = Date.now();
             session.exitCode = exitCode;
+            session.pty = null;
             this.clearFlushTimer(id);
             if (this.exitPersistSuppressed.delete(id)) {
                 // Already settled on disk by destroySession()/destroyAll().
             } else {
                 this.persistNow(session);
             }
-            this.sessions.delete(id);
+            // The session stays in the map as a tombstone: it is still listed,
+            // still replays its scrollback, and can be restarted (AC-05).
             this.onExit?.(id, exitCode, signal);
         });
 
@@ -264,7 +301,78 @@ export class TerminalSessionManager {
     }
 
     getSessionsByWorkspace(workspaceId: string): TerminalSession[] {
+        this.hydrateWorkspace(workspaceId);
         return [...this.sessions.values()].filter(s => s.workspaceId === workspaceId);
+    }
+
+    /**
+     * Pull a workspace's persisted terminals into the map as `exited`
+     * tombstones, once per workspace per server run. Sessions created in this
+     * run are already in the map and are never overwritten.
+     */
+    hydrateWorkspace(workspaceId: string): void {
+        if (!this.persistence || this.hydratedWorkspaces.has(workspaceId)) return;
+        this.hydratedWorkspaces.add(workspaceId);
+        for (const { meta, scrollback } of this.persistence.load(workspaceId)) {
+            if (this.sessions.has(meta.id)) continue;
+            this.sessions.set(meta.id, {
+                id: meta.id,
+                workspaceId: meta.workspaceId,
+                pty: null,
+                cols: DEFAULT_COLS,
+                rows: DEFAULT_ROWS,
+                shell: meta.shell,
+                cwd: meta.cwd,
+                title: meta.title || path.basename(meta.shell) || 'terminal',
+                createdAt: meta.createdAt,
+                lastActivity: meta.lastActivity,
+                status: 'exited',
+                exitedAt: meta.exitedAt,
+                exitCode: meta.exitCode,
+                pinned: false,
+                buffer: scrollback.length > 0 ? [scrollback] : [],
+                bufferBytes: scrollback.length,
+                truncated: meta.truncated,
+            });
+        }
+    }
+
+    /**
+     * Respawn a shell for an exited session, in its recorded cwd (falling back
+     * to `fallbackCwd` when that directory is gone). The replacement gets a new
+     * id and inherits the old scrollback, separated by a dim restart rule; the
+     * old tombstone and its files go away.
+     */
+    restartSession(
+        id: string,
+        fallbackCwd: string,
+        cols = DEFAULT_COLS,
+        rows = DEFAULT_ROWS,
+    ): { session: TerminalSession; cwdFallback: boolean } {
+        const old = this.sessions.get(id);
+        if (!old) throw new Error(`Terminal session not found: ${id}`);
+        if (old.status === 'running') throw new TerminalSessionRunningError(id);
+
+        const cwdExists = Boolean(old.cwd) && (() => {
+            try { return fs.statSync(old.cwd).isDirectory(); } catch { return false; }
+        })();
+        const cwd = cwdExists ? old.cwd : fallbackCwd;
+
+        const carried = [...old.buffer];
+        const carriedTruncated = old.truncated;
+
+        const session = this.createSession(old.workspaceId, cwd, cols, rows);
+        session.title = old.title;
+        session.buffer = [...carried, Buffer.from(restartSeparator(new Date()), 'utf-8'), ...session.buffer];
+        session.truncated = carriedTruncated;
+        trimScrollback(session);
+
+        this.clearFlushTimer(id);
+        this.sessions.delete(id);
+        this.persistence?.remove(old.workspaceId, id);
+        this.persistNow(session);
+
+        return { session, cwdFallback: !cwdExists };
     }
 
     /**
@@ -288,7 +396,7 @@ export class TerminalSessionManager {
     writeToSession(id: string, data: string): void {
         const session = this.sessions.get(id);
         if (!session) throw new Error(`Terminal session not found: ${id}`);
-        if (session.status === 'exited') throw new Error(`Terminal session has exited: ${id}`);
+        if (session.status === 'exited' || !session.pty) throw new Error(`Terminal session has exited: ${id}`);
         session.lastActivity = Date.now();
         session.pty.write(data);
     }
@@ -296,6 +404,7 @@ export class TerminalSessionManager {
     resizeSession(id: string, cols: number, rows: number): void {
         const session = this.sessions.get(id);
         if (!session) throw new Error(`Terminal session not found: ${id}`);
+        if (session.status === 'exited' || !session.pty) throw new Error(`Terminal session has exited: ${id}`);
         session.lastActivity = Date.now();
         session.pty.resize(cols, rows);
         session.cols = cols;
@@ -312,7 +421,7 @@ export class TerminalSessionManager {
         this.clearFlushTimer(id);
         this.exitPersistSuppressed.add(id);
         this.persistence?.remove(session.workspaceId, id);
-        try { session.pty.kill(); } catch { /* already dead */ }
+        try { session.pty?.kill(); } catch { /* already dead */ }
         this.sessions.delete(id);
         this.exitPersistSuppressed.delete(id);
         return true;
@@ -349,12 +458,13 @@ export class TerminalSessionManager {
     destroyAll(): void {
         for (const [id, session] of this.sessions) {
             this.clearFlushTimer(id);
+            if (session.status === 'exited') continue;
             session.status = 'exited';
             session.exitedAt = Date.now();
             session.exitCode = SERVER_SHUTDOWN_EXIT_CODE;
             this.exitPersistSuppressed.add(id);
             this.persistNow(session);
-            try { session.pty.kill(); } catch { /* ignore */ }
+            try { session.pty?.kill(); } catch { /* ignore */ }
         }
         this.sessions.clear();
         this.exitPersistSuppressed.clear();
@@ -441,6 +551,11 @@ export class TerminalSessionManager {
 
     get size(): number {
         return this.sessions.size;
+    }
+
+    /** Sessions with a live PTY, excluding exited tombstones. */
+    get liveSize(): number {
+        return [...this.sessions.values()].filter(s => s.status === 'running').length;
     }
 
     get sessionIds(): string[] {

@@ -28,6 +28,7 @@ import type {
   RegisterWorkspaceRequest,
   TerminalPinResponse,
   TerminalSessionsResponse,
+  TerminalRestartResponse,
   UpdateWorkspaceInstructionRequest,
   UpdateWorkspaceMcpConfigRequest,
   UpdateWorkspaceMcpConfigResponse,
@@ -415,6 +416,17 @@ export class WorkspacesClient {
     return this.transport.request<void>(
       `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}`,
       { method: 'DELETE' },
+    );
+  }
+
+  /**
+   * Respawn an exited terminal in its recorded working directory. The
+   * replacement gets a new session id and inherits the old scrollback.
+   */
+  restartTerminal(workspaceId: string, sessionId: string): Promise<TerminalRestartResponse> {
+    return this.transport.request<TerminalRestartResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}/restart`,
+      { method: 'POST' },
     );
   }
 

@@ -27,8 +27,12 @@ export interface TerminalSession {
     /** Unique session identifier (12-char random alphanum) */
     readonly id: string;
     readonly workspaceId: string;
-    /** The underlying PTY process (internal use only) */
-    readonly pty: IPty;
+    /**
+     * The underlying PTY process (internal use only). `null` for an exited
+     * session: the tombstone stays in the map so it can be listed and
+     * restarted, but there is no live process behind it.
+     */
+    pty: IPty | null;
     cols: number;
     rows: number;
     /** Shell executable the PTY was spawned with */
@@ -72,8 +76,17 @@ export interface TerminalSessionInfo {
     rows: number;
     createdAt: number;
     lastActivity: number;
-    pid: number;
+    /** PID of the live PTY, or `null` for an exited session. */
+    pid: number | null;
     pinned: boolean;
+    /** Lifecycle state; exited sessions are read-only and restartable */
+    status: 'running' | 'exited';
+    exitedAt?: number;
+    exitCode?: number;
+    /** Working directory the PTY was spawned in (reused by restart) */
+    cwd: string;
+    /** Display title (defaults to the shell's basename) */
+    title: string;
 }
 
 // ============================================================================

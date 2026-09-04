@@ -394,11 +394,24 @@ export interface TerminalSession {
   id: string;
   pinned: boolean;
   workspaceId: string;
+  /** Lifecycle state; exited sessions are read-only and restartable */
+  status?: 'running' | 'exited';
+  exitedAt?: number;
+  exitCode?: number;
+  cwd?: string;
+  title?: string;
   [key: string]: unknown;
 }
 
 export interface TerminalSessionsResponse {
   sessions?: TerminalSession[];
+}
+
+export interface TerminalRestartResponse {
+  session: TerminalSession;
+  /** True when the recorded cwd was gone and the workspace root was used */
+  cwdFallback?: boolean;
+  notice?: string;
 }
 
 export interface TerminalPinResponse {

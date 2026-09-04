@@ -313,6 +313,19 @@ describe('WorkspacesClient mock server contract', () => {
     expectEmptyRequest(mock.requests[0], 'DELETE', '/api/workspaces/repo%2Fone/terminals/sess-1');
   });
 
+  it('restarts an exited terminal session', async () => {
+    mock = await startMockServer();
+    const response = {
+      session: { id: 'sess-2', workspaceId: 'repo/one', pinned: false, status: 'running' },
+      cwdFallback: false,
+    };
+    mock.on('POST', '/api/workspaces/repo%2Fone/terminals/sess-1/restart', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.restartTerminal('repo/one', 'sess-1')).resolves.toEqual(response);
+    expectEmptyRequest(mock.requests[0], 'POST', '/api/workspaces/repo%2Fone/terminals/sess-1/restart');
+  });
+
   it('pins and unpins a terminal session', async () => {
     mock = await startMockServer();
     const pinResponse = { sessionId: 'sess-1', pinned: true };

@@ -8,7 +8,7 @@ export type {
 } from './types';
 
 // Manager
-export { TerminalSessionManager, toSessionInfo, appendToScrollback, SCROLLBACK_MAX_BYTES, PERSIST_DEBOUNCE_MS } from './terminal-session-manager';
+export { TerminalSessionManager, toSessionInfo, appendToScrollback, restartSeparator, TerminalSessionRunningError, SCROLLBACK_MAX_BYTES, PERSIST_DEBOUNCE_MS } from './terminal-session-manager';
 export type { TerminalSessionManagerOptions } from './terminal-session-manager';
 
 // Persistence
