@@ -38,13 +38,8 @@ export interface RepoGroupMember {
      * group. The server appends it to the member listing it injects into chats.
      */
     description?: string;
-    /**
-     * True when this repo is marked read-only inside THIS group. It is a prompt
-     * hint only: the server marks the member `[read-only]` in the context block
-     * it injects into group chats, but nothing stops a write. Absent means
-     * writable.
-     */
-    readOnly?: boolean;
+    /** Whether provider tools enforce this member root as read-only. */
+    readOnly: boolean;
 }
 
 /** Max length of a member description, mirrored from the server. */
@@ -126,7 +121,12 @@ export function searchRepoGroupFiles(
  * one (the server never persists a `false`), and members left out keep their
  * flag.
  */
-export function updateRepoGroup(groupId: string, updates: { name?: string; members?: string[]; descriptions?: Record<string, string>; readOnly?: Record<string, boolean> }, baseUrl?: string): Promise<RepoGroupDetails> {
+export function updateRepoGroup(groupId: string, updates: {
+    name?: string;
+    members?: string[];
+    descriptions?: Record<string, string>;
+    readOnly?: Record<string, boolean>;
+}, baseUrl?: string): Promise<RepoGroupDetails> {
     return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}`, { method: 'PATCH', body: updates });
 }
 

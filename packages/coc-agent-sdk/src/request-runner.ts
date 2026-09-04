@@ -39,6 +39,8 @@ import {
 } from './dangerous-command-guard';
 import { resolveWorkspaceExecutionContext, translatePathForExecution } from './platform/workspace-execution';
 import { DEFAULT_AI_TIMEOUT_MS, DEFAULT_AI_IDLE_TIMEOUT_MS } from './timeout-defaults';
+import * as os from 'os';
+import * as path from 'path';
 
 /**
  * Wrap a Copilot permission handler with the dangerous-command guard (AC-07).
@@ -135,7 +137,19 @@ export class RequestRunner {
             );
             const toolCallsMap = new Map<string, ToolCall>();
 
-            const sessionOptions: SessionConfig = {
+            const sessionOptions: SessionConfig & {
+                additionalDirectories?: string[];
+                sandboxConfig?: {
+                    enabled: boolean;
+                    addCurrentWorkingDirectory: boolean;
+                    userPolicy: {
+                        filesystem: {
+                            readwritePaths: string[];
+                            readonlyPaths: string[];
+                        };
+                    };
+                };
+            } = {
                 onPermissionRequest: (request: PermissionRequest, invocation: { sessionId: string }) => {
                     const sessionLog = createSessionLogger(invocation.sessionId);
                     sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as ExtendedSdkRequest).resource, operation: (request as ExtendedSdkRequest).operation }, 'Permission request');
@@ -158,7 +172,10 @@ export class RequestRunner {
                             }
                         }
                     };
-                    const handlerResult = effectiveHandler(request, invocation);
+                    const handlerResult = options.readOnlyDirectories?.length
+                        && (request as PermissionRequest & { requestSandboxBypass?: boolean }).requestSandboxBypass
+                        ? { kind: 'reject' as const }
+                        : effectiveHandler(request, invocation);
                     if (handlerResult && typeof (handlerResult as Promise<PermissionRequestResult>).then === 'function') {
                         return (handlerResult as Promise<PermissionRequestResult>).then(r => {
                             createSessionLogger(invocation.sessionId).debug({ kind: r.kind, requestKind: request.kind }, 'Permission result');
@@ -171,6 +188,29 @@ export class RequestRunner {
                     return handlerResult;
                 },
             };
+            const accessibleDirectories = [
+                ...(options.additionalDirectories ?? []),
+                ...(options.readOnlyDirectories ?? []),
+            ];
+            if (accessibleDirectories.length > 0) {
+                sessionOptions.additionalDirectories = [...new Set(accessibleDirectories)];
+            }
+            if (options.readOnlyDirectories?.length) {
+                sessionOptions.sandboxConfig = {
+                    enabled: true,
+                    addCurrentWorkingDirectory: true,
+                    userPolicy: {
+                        filesystem: {
+                            readwritePaths: [
+                                ...(options.additionalDirectories ?? []),
+                                path.join(os.homedir(), '.coc'),
+                                os.tmpdir(),
+                            ],
+                            readonlyPaths: options.readOnlyDirectories,
+                        },
+                    },
+                };
+            }
 
             const switchModelAfterSessionCreate = !!(options.model && options.reasoningEffort);
 
