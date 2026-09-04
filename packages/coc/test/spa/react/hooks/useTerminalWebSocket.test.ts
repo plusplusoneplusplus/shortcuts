@@ -170,7 +170,7 @@ describe('useTerminalWebSocket', () => {
         act(() => {
             MockWebSocket.last._message({
                 type: 'terminal-created',
-                session: { id: 'sess-existing', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234, pinned: true },
+                session: { id: 'sess-existing', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
             });
         });
         act(() => { result.current.sendInput('attached input'); });

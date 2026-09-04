@@ -97,7 +97,6 @@ export function toSessionInfo(session: TerminalSession): TerminalSessionInfo {
         createdAt: session.createdAt,
         lastActivity: session.lastActivity,
         pid: session.pty?.pid ?? null,
-        pinned: session.pinned,
         status: session.status,
         exitedAt: session.exitedAt,
         exitCode: session.exitCode,
@@ -235,8 +234,7 @@ export class TerminalSessionManager {
         if (!this.nodePty) {
             throw new Error(`Terminal is not available: ${this.nodePtyError ?? 'node-pty not installed'}`);
         }
-        const unpinnedCount = [...this.sessions.values()].filter(s => s.status === 'running' && !s.pinned).length;
-        if (unpinnedCount >= this.options.maxSessions) {
+        if (this.liveSize >= this.options.maxSessions) {
             throw new Error(`Maximum terminal sessions (${this.options.maxSessions}) reached`);
         }
 
@@ -262,7 +260,6 @@ export class TerminalSessionManager {
             createdAt: Date.now(),
             lastActivity: Date.now(),
             status: 'running',
-            pinned: false,
             buffer: [],
             bufferBytes: 0,
             truncated: false,
@@ -329,7 +326,6 @@ export class TerminalSessionManager {
                 status: 'exited',
                 exitedAt: meta.exitedAt,
                 exitCode: meta.exitCode,
-                pinned: false,
                 buffer: scrollback.length > 0 ? [scrollback] : [],
                 bufferBytes: scrollback.length,
                 truncated: meta.truncated,
@@ -425,29 +421,6 @@ export class TerminalSessionManager {
         this.sessions.delete(id);
         this.exitPersistSuppressed.delete(id);
         return true;
-    }
-
-    // --------------------------------------------------------------------
-    // Pin / Unpin
-    // --------------------------------------------------------------------
-
-    pinSession(id: string): boolean {
-        const session = this.sessions.get(id);
-        if (!session) return false;
-        session.pinned = true;
-        return true;
-    }
-
-    unpinSession(id: string): boolean {
-        const session = this.sessions.get(id);
-        if (!session) return false;
-        session.pinned = false;
-        session.lastActivity = Date.now();
-        return true;
-    }
-
-    isSessionPinned(id: string): boolean {
-        return this.sessions.get(id)?.pinned === true;
     }
 
     /**

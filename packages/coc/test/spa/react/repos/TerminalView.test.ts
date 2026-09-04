@@ -19,12 +19,14 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel
             serverSessionId?: string;
             connectionMode?: 'create' | 'attach';
             isActive: boolean;
-            onServerSessionCreated?: (session: typeof pinnedSession) => void;
+            readOnly?: boolean;
+            onServerSessionCreated?: (session: typeof runningSession) => void;
         }) => React.createElement('div', {
             'data-testid': `mock-terminal-panel-${props.sessionId}`,
             'data-server-session-id': props.serverSessionId ?? '',
             'data-connection-mode': props.connectionMode ?? 'create',
             'data-active': String(props.isActive),
+            'data-read-only': String(props.readOnly ?? false),
         }),
     };
 });
@@ -39,21 +41,26 @@ const COMPONENT_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'terminal', 'TerminalView.tsx'
 );
 
-const pinnedSession = {
-    id: 'sess-pinned',
+const runningSession = {
+    id: 'sess-running',
     workspaceId: 'ws-123',
     cols: 80,
     rows: 24,
     createdAt: 1,
     lastActivity: 2,
     pid: 1234,
-    pinned: true,
+    status: 'running' as const,
+    cwd: '/repo',
+    title: 'bash',
 };
 
-const unpinnedSession = {
-    ...pinnedSession,
-    id: 'sess-unpinned',
-    pinned: false,
+const exitedSession = {
+    ...runningSession,
+    id: 'sess-exited',
+    pid: null,
+    status: 'exited' as const,
+    exitedAt: 5,
+    exitCode: 0,
 };
 
 function mockFetchSessions(sessions: unknown[]) {
@@ -193,26 +200,15 @@ describe('TerminalView', () => {
         });
     });
 
-    describe('pinned terminal hydration', () => {
-        it('persists pin clicks through the terminal REST endpoint', () => {
-            expect(source).toContain('pinTerminal');
-            expect(source).toContain('requestedPinned');
-            expect(source).toContain('body.pinned');
+    describe('AC-06: no pin surface remains', () => {
+        it('does not reference pin state, controls, or the pin endpoint', () => {
+            expect(source).not.toMatch(/pinTerminal|togglePin|pinned|hydratePinnedTerminals/);
         });
+    });
 
-        it('does not pin tabs before a server session id exists', () => {
-            expect(source).toContain('!tab.serverSessionId');
-            expect(source).toContain('Waiting for terminal session');
-        });
-
-        it('surfaces pin failures and clears false pinned state for missing sessions', () => {
-            expect(source).toContain('terminal-pin-error');
-            expect(source).toContain('markSessionMissing');
-            expect(source).toContain('Terminal session no longer exists.');
-        });
-
-        it('fetches workspace terminal sessions and restores only pinned tabs in attach mode', async () => {
-            mockFetchSessions([pinnedSession, unpinnedSession]);
+    describe('AC-05/AC-06: hydration lists every session', () => {
+        it('restores running and exited sessions alike in attach mode', async () => {
+            mockFetchSessions([runningSession, exitedSession]);
 
             render(React.createElement(TerminalView, { workspaceId: 'ws 123' }));
 
@@ -220,14 +216,36 @@ describe('TerminalView', () => {
                 expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws%20123/terminals', expect.any(Object));
             });
 
-            const restoredPanel = await screen.findByTestId('mock-terminal-panel-server-sess-pinned');
-            expect(restoredPanel.getAttribute('data-server-session-id')).toBe('sess-pinned');
-            expect(restoredPanel.getAttribute('data-connection-mode')).toBe('attach');
-            expect(screen.queryByTestId('mock-terminal-panel-server-sess-unpinned')).toBeNull();
+            const runningPanel = await screen.findByTestId('mock-terminal-panel-server-sess-running');
+            expect(runningPanel.getAttribute('data-server-session-id')).toBe('sess-running');
+            expect(runningPanel.getAttribute('data-connection-mode')).toBe('attach');
+
+            const exitedPanel = await screen.findByTestId('mock-terminal-panel-server-sess-exited');
+            expect(exitedPanel.getAttribute('data-connection-mode')).toBe('attach');
         });
 
-        it('preserves the empty state when no pinned terminal sessions are returned', async () => {
-            mockFetchSessions([unpinnedSession]);
+        it('renders an exited session read-only and badged, and a live one writable', async () => {
+            mockFetchSessions([runningSession, exitedSession]);
+
+            render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
+            await screen.findByTestId('mock-terminal-panel-server-sess-exited');
+
+            expect(
+                screen.getByTestId('mock-terminal-panel-server-sess-exited').getAttribute('data-read-only'),
+            ).toBe('true');
+            expect(
+                screen.getByTestId('mock-terminal-panel-server-sess-running').getAttribute('data-read-only'),
+            ).toBe('false');
+
+            fireEvent.click(screen.getByTestId('terminal-picker-btn'));
+            expect(screen.getByTestId('terminal-tab-exited-badge-server-sess-exited')).toBeTruthy();
+            expect(screen.queryByTestId('terminal-tab-exited-badge-server-sess-running')).toBeNull();
+            expect(screen.getByTestId('terminal-tab-restart-server-sess-exited')).toBeTruthy();
+            expect(screen.queryByTestId('terminal-tab-restart-server-sess-running')).toBeNull();
+        });
+
+        it('preserves the empty state when the workspace has no sessions', async () => {
+            mockFetchSessions([]);
 
             render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
 
@@ -235,9 +253,89 @@ describe('TerminalView', () => {
                 expect(fetch).toHaveBeenCalledWith('/api/workspaces/ws-123/terminals', expect.any(Object));
             });
             expect(screen.getByTestId('terminal-empty-state')).toBeTruthy();
-            expect(screen.queryByTestId('mock-terminal-panel-server-sess-unpinned')).toBeNull();
+        });
+    });
+
+    describe('AC-05: restart shell here', () => {
+        it('POSTs to the restart endpoint and re-keys the tab onto the new session', async () => {
+            const fetchMock = vi.fn().mockImplementation((url: string, init?: { method?: string }) => {
+                if (init?.method === 'POST') {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        statusText: 'OK',
+                        json: vi.fn().mockResolvedValue({
+                            session: { ...runningSession, id: 'sess-new' },
+                            cwdFallback: true,
+                            notice: 'Previous directory is gone; started in /repo instead.',
+                        }),
+                    });
+                }
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    statusText: 'OK',
+                    json: vi.fn().mockResolvedValue({ sessions: [exitedSession] }),
+                });
+            });
+            vi.stubGlobal('fetch', fetchMock);
+
+            render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
+            await screen.findByTestId('mock-terminal-panel-server-sess-exited');
+
+            fireEvent.click(screen.getByTestId('terminal-picker-btn'));
+            fireEvent.click(screen.getByTestId('terminal-tab-restart-server-sess-exited'));
+
+            await waitFor(() => {
+                expect(fetchMock).toHaveBeenCalledWith(
+                    '/api/workspaces/ws-123/terminals/sess-exited/restart',
+                    expect.objectContaining({ method: 'POST' }),
+                );
+            });
+
+            const restarted = await screen.findByTestId('mock-terminal-panel-server-sess-new');
+            expect(restarted.getAttribute('data-server-session-id')).toBe('sess-new');
+            expect(restarted.getAttribute('data-connection-mode')).toBe('attach');
+            expect(restarted.getAttribute('data-read-only')).toBe('false');
+            expect(restarted.getAttribute('data-active')).toBe('true');
+            expect(screen.queryByTestId('mock-terminal-panel-server-sess-exited')).toBeNull();
+            expect(screen.getByTestId('terminal-notice').textContent).toContain('Previous directory is gone');
         });
 
+        it('surfaces a missing session instead of silently failing', async () => {
+            const fetchMock = vi.fn().mockImplementation((url: string, init?: { method?: string }) => {
+                if (init?.method === 'POST') {
+                    return Promise.resolve({
+                        ok: false,
+                        status: 404,
+                        statusText: 'Not Found',
+                        json: vi.fn().mockResolvedValue({ error: 'Terminal session not found' }),
+                        text: vi.fn().mockResolvedValue('{"error":"Terminal session not found"}'),
+                    });
+                }
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    statusText: 'OK',
+                    json: vi.fn().mockResolvedValue({ sessions: [exitedSession] }),
+                });
+            });
+            vi.stubGlobal('fetch', fetchMock);
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+
+            render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
+            await screen.findByTestId('mock-terminal-panel-server-sess-exited');
+
+            fireEvent.click(screen.getByTestId('terminal-picker-btn'));
+            fireEvent.click(screen.getByTestId('terminal-tab-restart-server-sess-exited'));
+
+            await waitFor(() => {
+                expect(screen.getByTestId('terminal-notice').textContent).toBe('Terminal session no longer exists.');
+            });
+        });
+    });
+
+    describe('tab lifecycle', () => {
         it('AC-02: closing a tab kills the server session over REST', async () => {
             const fetchMock = vi.fn().mockImplementation((url: string, init?: { method?: string }) => {
                 if (init?.method === 'DELETE') {
@@ -247,24 +345,24 @@ describe('TerminalView', () => {
                     ok: true,
                     status: 200,
                     statusText: 'OK',
-                    json: vi.fn().mockResolvedValue({ sessions: [pinnedSession] }),
+                    json: vi.fn().mockResolvedValue({ sessions: [runningSession] }),
                 });
             });
             vi.stubGlobal('fetch', fetchMock);
 
             render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
-            await screen.findByTestId('mock-terminal-panel-server-sess-pinned');
+            await screen.findByTestId('mock-terminal-panel-server-sess-running');
 
             fireEvent.click(screen.getByTestId('terminal-picker-btn'));
-            fireEvent.click(screen.getByTestId('terminal-tab-close-server-sess-pinned'));
+            fireEvent.click(screen.getByTestId('terminal-tab-close-server-sess-running'));
 
             await waitFor(() => {
                 expect(fetchMock).toHaveBeenCalledWith(
-                    '/api/workspaces/ws-123/terminals/sess-pinned',
+                    '/api/workspaces/ws-123/terminals/sess-running',
                     expect.objectContaining({ method: 'DELETE' }),
                 );
             });
-            expect(screen.queryByTestId('mock-terminal-panel-server-sess-pinned')).toBeNull();
+            expect(screen.queryByTestId('mock-terminal-panel-server-sess-running')).toBeNull();
         });
 
         it('keeps new terminal creation in create mode after hydration', async () => {

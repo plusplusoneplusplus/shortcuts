@@ -27,7 +27,7 @@ vi.stubGlobal('crypto', {
     randomUUID: () => `test-uuid-${++uuidCounter}`,
 });
 
-// Pinned-terminal hydration fetch resolves with no sessions.
+// Terminal hydration fetch resolves with no sessions.
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
     ok: true,
     status: 200,

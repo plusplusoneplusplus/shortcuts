@@ -26,7 +26,6 @@ import type {
   RalphSessionResponse,
   RalphSubmitPrResponse,
   RegisterWorkspaceRequest,
-  TerminalPinResponse,
   TerminalSessionsResponse,
   TerminalRestartResponse,
   UpdateWorkspaceInstructionRequest,
@@ -427,13 +426,6 @@ export class WorkspacesClient {
     return this.transport.request<TerminalRestartResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}/restart`,
       { method: 'POST' },
-    );
-  }
-
-  pinTerminal(workspaceId: string, sessionId: string, pinned: boolean): Promise<TerminalPinResponse> {
-    return this.transport.request<TerminalPinResponse>(
-      `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}/pin`,
-      { method: 'PATCH', body: { pinned } },
     );
   }
 }

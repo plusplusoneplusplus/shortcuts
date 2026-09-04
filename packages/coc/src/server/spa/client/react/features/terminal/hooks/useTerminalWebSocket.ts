@@ -20,8 +20,6 @@ export type TerminalClientMessage =
     | { type: 'terminal-input'; sessionId: string; data: string }
     | { type: 'terminal-resize'; sessionId: string; cols: number; rows: number }
     | { type: 'terminal-close'; sessionId: string }
-    | { type: 'terminal-pin'; sessionId: string }
-    | { type: 'terminal-unpin'; sessionId: string }
     | { type: 'ping' };
 
 // Server → Client (aligned with packages/coc/src/server/terminal/types.ts)
@@ -32,8 +30,14 @@ export interface TerminalSessionInfo {
     rows: number;
     createdAt: number;
     lastActivity: number;
-    pid: number;
-    pinned: boolean;
+    /** PID of the live PTY, or `null` for an exited session. */
+    pid: number | null;
+    /** Lifecycle state; exited sessions are read-only and restartable */
+    status?: 'running' | 'exited';
+    exitedAt?: number;
+    exitCode?: number;
+    cwd?: string;
+    title?: string;
 }
 
 export type TerminalServerMessage =
@@ -42,7 +46,6 @@ export type TerminalServerMessage =
     | { type: 'terminal-exit'; sessionId: string; exitCode: number; signal?: number }
     | { type: 'terminal-error'; sessionId: string | null; message: string }
     | { type: 'terminal-replay'; sessionId: string; data: string; truncated: boolean }
-    | { type: 'terminal-pin-changed'; sessionId: string; pinned: boolean }
     | { type: 'pong' };
 
 export interface UseTerminalWebSocketOptions {

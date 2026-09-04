@@ -28,6 +28,12 @@ export interface TerminalPanelProps {
     connectionMode?: 'create' | 'attach';
     workspaceId: string;
     isActive: boolean;
+    /**
+     * Attached to an exited session (AC-05): the replayed scrollback is still
+     * rendered, but keystrokes go nowhere — the server rejects input for a
+     * tombstone, so swallowing it here avoids a stream of terminal-errors.
+     */
+    readOnly?: boolean;
     onExit?: (code: number) => void;
     onTitleChange?: (title: string) => void;
     onServerSessionCreated?: (session: TerminalSessionInfo) => void;
@@ -89,6 +95,7 @@ export function TerminalPanel({
     connectionMode = 'create',
     workspaceId,
     isActive,
+    readOnly = false,
     onExit,
     onTitleChange,
     onServerSessionCreated,
@@ -233,12 +240,15 @@ export function TerminalPanel({
         const term = xtermRef.current;
         if (!term) return;
 
+        term.options.disableStdin = readOnly;
+        if (readOnly) return;
+
         const disposable = term.onData((data) => {
             sendInput(data);
         });
 
         return () => disposable.dispose();
-    }, [sendInput]);
+    }, [sendInput, readOnly]);
 
     // Resize handling — ResizeObserver on container
     useEffect(() => {

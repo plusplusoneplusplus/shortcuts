@@ -51,8 +51,6 @@ export interface TerminalSession {
     exitedAt?: number;
     /** Exit code of the PTY process, set alongside `status: 'exited'` */
     exitCode?: number;
-    /** Whether this session is pinned (exempt from the soft session limit) */
-    pinned: boolean;
     /**
      * Server-side scrollback: raw PTY output chunks (ANSI escapes included),
      * trimmed from the front on whole-chunk boundaries once the byte cap is
@@ -78,7 +76,6 @@ export interface TerminalSessionInfo {
     lastActivity: number;
     /** PID of the live PTY, or `null` for an exited session. */
     pid: number | null;
-    pinned: boolean;
     /** Lifecycle state; exited sessions are read-only and restartable */
     status: 'running' | 'exited';
     exitedAt?: number;
@@ -98,9 +95,7 @@ export type TerminalClientMessage =
     | { type: 'terminal-attach'; sessionId: string }
     | { type: 'terminal-input'; sessionId: string; data: string }
     | { type: 'terminal-resize'; sessionId: string; cols: number; rows: number }
-    | { type: 'terminal-close'; sessionId: string }
-    | { type: 'terminal-pin'; sessionId: string }
-    | { type: 'terminal-unpin'; sessionId: string };
+    | { type: 'terminal-close'; sessionId: string };
 
 // ============================================================================
 // Server → Client messages (sent over WebSocket)
@@ -111,5 +106,4 @@ export type TerminalServerMessage =
     | { type: 'terminal-output'; sessionId: string; data: string }
     | { type: 'terminal-exit'; sessionId: string; exitCode: number; signal?: number }
     | { type: 'terminal-error'; sessionId: string | null; message: string }
-    | { type: 'terminal-replay'; sessionId: string; data: string; truncated: boolean }
-    | { type: 'terminal-pin-changed'; sessionId: string; pinned: boolean };
+    | { type: 'terminal-replay'; sessionId: string; data: string; truncated: boolean };
