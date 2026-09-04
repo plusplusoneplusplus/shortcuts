@@ -155,4 +155,44 @@ describe('RepoGroupSettingsTab', () => {
         resolveRead({ id: GROUP_ID, name: 'AI Repos', members: MEMBERS });
         await waitFor(() => expect(screen.getByTestId('repo-group-member-list')).toBeTruthy());
     });
+
+    it('ticks a member read-only and PATCHes just that flag', async () => {
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-r2')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-r2'));
+
+        await waitFor(() => expect(mockUpdateRepoGroup)
+            .toHaveBeenCalledWith(GROUP_ID, { readOnly: { r2: true } }, undefined));
+        expect((screen.getByTestId('repo-group-member-read-only-r2') as HTMLInputElement).checked).toBe(true);
+    });
+
+    it('shows a loaded flag as ticked and clears it with an explicit false', async () => {
+        mockGetRepoGroup.mockResolvedValue({
+            id: GROUP_ID,
+            name: 'AI Repos',
+            members: [{ workspaceId: 'r1', stale: false, name: 'shortcuts', rootPath: '/r/r1', readOnly: true }],
+        });
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        await waitFor(() => expect((screen.getByTestId('repo-group-member-read-only-r1') as HTMLInputElement).checked)
+            .toBe(true));
+        expect(screen.getByTestId('repo-group-read-only-badge-r1')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-r1'));
+
+        await waitFor(() => expect(mockUpdateRepoGroup)
+            .toHaveBeenCalledWith(GROUP_ID, { readOnly: { r1: false } }, undefined));
+    });
+
+    it('reverts the checkbox and shows the server error when the flag save fails', async () => {
+        mockUpdateRepoGroup.mockRejectedValue(new Error('readOnly must be a boolean'));
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-r1')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-r1'));
+
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-description-error-r1').textContent)
+            .toContain('readOnly must be a boolean'));
+        expect((screen.getByTestId('repo-group-member-read-only-r1') as HTMLInputElement).checked).toBe(false);
+    });
 });

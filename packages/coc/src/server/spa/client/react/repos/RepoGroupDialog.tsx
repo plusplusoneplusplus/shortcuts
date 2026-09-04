@@ -18,16 +18,17 @@
  * validation message surfaces inline.
  *
  * Each checked member also carries an optional free-form description saying what
- * that repo is for inside this group. It is edited here as pending state and
- * sent with the rest of the form on Save — unlike the group page's list, which
- * PATCHes a single member as soon as its field is committed.
+ * that repo is for inside this group, and a read-only flag marking it as one the
+ * agent should not modify. Both are edited here as pending state and sent with
+ * the rest of the form on Save — unlike the group page's list, which PATCHes a
+ * single member as soon as its field changes.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { isRemoteRepo, type RepoData } from './repoGrouping';
-import { REPO_GROUP_DESCRIPTION_PLACEHOLDER } from './RepoGroupMemberList';
+import { REPO_GROUP_DESCRIPTION_PLACEHOLDER, REPO_GROUP_READ_ONLY_LABEL } from './RepoGroupMemberList';
 import {
     createRepoGroup,
     getRepoGroup,
@@ -91,6 +92,8 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
     // are sent on save, so leftovers from a member the user unchecked are ignored
     // rather than resurrected.
     const [descriptions, setDescriptions] = useState<Record<string, string>>({});
+    // Pending read-only flags, same keying and same checked-only submission rule.
+    const [readOnly, setReadOnly] = useState<Record<string, boolean>>({});
     const [staleMembers, setStaleMembers] = useState<RepoGroupMember[]>([]);
     const [servers, setServers] = useState<RepoGroupServerOption[]>([LOCAL_REPO_GROUP_SERVER]);
     const [serverId, setServerId] = useState<string>(LOCAL_REPO_GROUP_SERVER_ID);
@@ -128,6 +131,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
         setName('');
         setChecked(new Set());
         setDescriptions({});
+        setReadOnly({});
         setStaleMembers([]);
         setError(null);
         setSaving(false);
@@ -144,6 +148,11 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                     group.members
                         .filter(m => typeof m.description === 'string' && m.description.length > 0)
                         .map(m => [m.workspaceId, m.description as string]),
+                ));
+                setReadOnly(Object.fromEntries(
+                    group.members
+                        .filter(m => m.readOnly === true)
+                        .map(m => [m.workspaceId, true]),
                 ));
                 setStaleMembers(group.members.filter(m => m.stale));
             })
@@ -204,6 +213,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
         setServerId(nextServerId);
         setChecked(new Set());
         setDescriptions({});
+        setReadOnly({});
         setError(null);
     }, []);
 
@@ -214,18 +224,23 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
         const memberDescriptions = Object.fromEntries(
             members.map(id => [id, (descriptions[id] ?? '').trim()]),
         );
+        // Same rule for the flag: an explicit `false` is what makes unticking the
+        // box clear a previously saved entry server-side.
+        const memberReadOnly = Object.fromEntries(
+            members.map(id => [id, readOnly[id] === true]),
+        );
         setSaving(true);
         setError(null);
         try {
             if (groupId) {
                 await updateRepoGroup(
                     groupId,
-                    { name: name.trim(), members, descriptions: memberDescriptions },
+                    { name: name.trim(), members, descriptions: memberDescriptions, readOnly: memberReadOnly },
                     selectedBaseUrl,
                 );
             } else {
                 await createRepoGroup(
-                    { name: name.trim(), members, descriptions: memberDescriptions },
+                    { name: name.trim(), members, descriptions: memberDescriptions, readOnly: memberReadOnly },
                     selectedBaseUrl,
                 );
             }
@@ -236,7 +251,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                 : getRepositoryApiErrorMessage(err, 'Failed to save repo group'));
             setSaving(false);
         }
-    }, [groupId, name, options, checked, descriptions, selectedBaseUrl, onSaved]);
+    }, [groupId, name, options, checked, descriptions, readOnly, selectedBaseUrl, onSaved]);
 
     // Editing a group on a server that is no longer in the list (offline since) —
     // still show which server it belongs to rather than a blank select.
@@ -344,6 +359,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                                 {/* Only a member can carry a description, so the field
                                     appears once the repo is checked. */}
                                 {checked.has(option.workspaceId) && (
+                                    <>
                                     <input
                                         type="text"
                                         value={descriptions[option.workspaceId] ?? ''}
@@ -357,6 +373,24 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                                         }}
                                         className="ml-5 px-1.5 py-0.5 rounded border border-transparent bg-transparent text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#a0a0a0] dark:placeholder:text-[#6a6a6a] outline-none hover:border-[#e0e0e0] dark:hover:border-[#3c3c3c] focus:border-[#0078d4] focus:bg-white dark:focus:bg-[#1e1e1e]"
                                     />
+                                    <label
+                                        className="ml-5 flex items-center gap-1.5 w-fit text-[11px] text-[#616161] dark:text-[#999] cursor-pointer"
+                                        htmlFor={`repo-group-member-read-only-${option.workspaceId}`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            id={`repo-group-member-read-only-${option.workspaceId}`}
+                                            checked={readOnly[option.workspaceId] === true}
+                                            aria-label={`Read-only for ${option.name}`}
+                                            data-testid={`repo-group-member-read-only-${option.workspaceId}`}
+                                            onChange={e => {
+                                                const value = e.target.checked;
+                                                setReadOnly(prev => ({ ...prev, [option.workspaceId]: value }));
+                                            }}
+                                        />
+                                        {REPO_GROUP_READ_ONLY_LABEL}
+                                    </label>
+                                    </>
                                 )}
                             </div>
                         ))}
