@@ -72,8 +72,8 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU revalidation |
 | POST | `/api/repo-groups` | Create a repo-group virtual workspace. Body `{ name, members: [workspaceId...], descriptions?: { [workspaceId]: string }, readOnly?: { [workspaceId]: boolean } }`; members must be registered non-virtual repo workspaces and map keys must be members (`400` otherwise). Registers `group-<slug>` rooted at `~/.coc/repos/<groupId>/`, wires queue bridge + schedule manager, broadcasts `workspace-topology-changed` `added`. Returns `201 { workspace, members }` |
-| GET | `/api/repo-groups/:id` | Membership file + registry-resolved members, each carrying its optional `description` and `readOnly: true`; unregistered or missing-path members come back `stale` with `staleReason` |
-| PATCH | `/api/repo-groups/:id` | Rename, replace membership, and/or patch `descriptions` / `readOnly` (same validation as create; rename syncs the workspace name). The two maps are partial patches: keys present are set, an empty string or `false` clears the entry, and entries for removed members are pruned. Only non-empty maps are written to `group.json`. Broadcasts `updated` |
+| GET | `/api/repo-groups/:id` | Membership file + registry-resolved members; every member includes `readOnly`, and unregistered or missing-path members come back `stale` with `staleReason` |
+| PATCH | `/api/repo-groups/:id` | Rename/replace membership, patch descriptions, or patch per-member policy with `{ readOnly: { [workspaceId]: boolean } }`. Description and policy maps are partial patches; unknown members, overlong descriptions, and invalid values return `400`. Rename syncs the workspace name; broadcasts `updated` |
 | DELETE | `/api/repo-groups/:id` | Deregister the group workspace (broadcasts `removed`); its data directory stays on disk |
 
 ## Canvases

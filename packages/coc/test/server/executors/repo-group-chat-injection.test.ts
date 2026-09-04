@@ -107,8 +107,8 @@ describe('repo-group chat context injection (AC-03)', () => {
         return (
             `<${REPO_GROUP_CONTEXT_TAG}>\n` +
             'Repo group "My Team" members:\n' +
-            `- Repo A: ${repoA}\n` +
-            `- Repo B: ${repoB}\n` +
+            `- Repo A [read-write]: ${repoA}\n` +
+            `- Repo B [read-write]: ${repoB}\n` +
             `</${REPO_GROUP_CONTEXT_TAG}>`
         );
     }
@@ -169,6 +169,20 @@ describe('repo-group chat context injection (AC-03)', () => {
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             expect(call.prompt.endsWith(`\n\n${expectedBlock()}`)).toBe(true);
             expect(call.additionalDirectories).toEqual([repoA, repoB]);
+            expect(call.readOnlyDirectories).toBeUndefined();
+        });
+
+        it('passes protected member roots separately from writable members', async () => {
+            await updateRepoGroup(tmpDir, store, groupId, {
+                readOnly: { 'ws-v2-bbb': true },
+            });
+            const executor = new ChatExecutor(store, makeOptions(), tmpDir);
+
+            await executor.execute(makeChatTask(groupId), 'Hello');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.additionalDirectories).toEqual([repoA]);
+            expect(call.readOnlyDirectories).toEqual([repoB]);
         });
 
         it('skips stale members from both the block and additionalDirectories', async () => {
@@ -178,7 +192,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.execute(makeChatTask(groupId), 'Hello');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toContain(`- Repo A: ${repoA}`);
+            expect(call.prompt).toContain(`- Repo A [read-write]: ${repoA}`);
             expect(call.prompt).not.toContain('Repo B');
             expect(call.additionalDirectories).toEqual([repoA]);
         });
@@ -213,7 +227,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.execute(makeChatTask(groupId, 'task-persist-stale'), 'Hello');
 
             const turns = store.processes.get(toQueueProcessId('task-persist-stale'))!.conversationTurns!;
-            expect(turns[0].repoGroupContext).toContain(`- Repo A: ${repoA}`);
+            expect(turns[0].repoGroupContext).toContain(`- Repo A [read-write]: ${repoA}`);
             expect(turns[0].repoGroupContext).not.toContain('Repo B');
         });
 
@@ -281,6 +295,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             expect(call.prompt.endsWith(`next question\n\n${expectedBlock()}`)).toBe(true);
             expect(call.additionalDirectories).toEqual([repoA, repoB]);
+            expect(call.readOnlyDirectories).toBeUndefined();
         });
 
         it('does not re-append the block when the live session already carries it', async () => {
@@ -294,6 +309,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             // additionalDirectories is a permission option, not conversation
             // state — it must still ride every turn.
             expect(call.additionalDirectories).toEqual([repoA, repoB]);
+            expect(call.readOnlyDirectories).toBeUndefined();
         });
 
         it('re-appends the block when there is no resumable SDK session (history rebuild)', async () => {
@@ -315,7 +331,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-group-drift', 'next question', undefined, 'ask');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toContain(`- Repo A: ${repoA}`);
+            expect(call.prompt).toContain(`- Repo A [read-write]: ${repoA}`);
             expect(call.prompt).not.toContain('Repo B');
             expect(call.additionalDirectories).toEqual([repoA]);
         });
@@ -328,10 +344,10 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-group-readonly', 'next question', undefined, 'ask');
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            expect(call.prompt).toContain(`- Repo A: ${repoA} [read-only]`);
-            expect(call.prompt).toContain('Repos marked [read-only] must not be modified');
-            // Read-only is a prompt hint — the path stays granted.
-            expect(call.additionalDirectories).toEqual([repoA, repoB]);
+            expect(call.prompt).toContain(`- Repo A [read-only]: ${repoA}`);
+            expect(call.prompt).toContain(`- Repo B [read-write]: ${repoB}`);
+            expect(call.additionalDirectories).toEqual([repoB]);
+            expect(call.readOnlyDirectories).toEqual([repoA]);
         });
 
         it('re-appends the block after a compaction result turn', async () => {
@@ -419,7 +435,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-persist-drift', 'next question', undefined, 'ask');
 
             const turns = store.processes.get('proc-persist-drift')!.conversationTurns!;
-            expect(turns[2].repoGroupContext).toContain(`- Repo A: ${repoA}`);
+            expect(turns[2].repoGroupContext).toContain(`- Repo A [read-write]: ${repoA}`);
             expect(turns[2].repoGroupContext).not.toContain('Repo B');
         });
 
@@ -432,7 +448,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             await executor.executeFollowUp('proc-persist-stale', 'next question', undefined, 'ask');
 
             const turns = store.processes.get('proc-persist-stale')!.conversationTurns!;
-            expect(turns[2].repoGroupContext).toContain(`- Repo B: ${repoB}`);
+            expect(turns[2].repoGroupContext).toContain(`- Repo B [read-write]: ${repoB}`);
             expect(turns[2].repoGroupContext).not.toContain('Repo A');
         });
 

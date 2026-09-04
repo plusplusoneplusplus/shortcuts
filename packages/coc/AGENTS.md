@@ -305,6 +305,13 @@ all have their own `references/*.md`.
   members removed from the registry or missing on disk; non-group workspaces get
   no extra roots. This allowance is for
   `GET /workspaces/:id/files/preview` only and must not be reused by write routes.
+- **Repo-group member access policy** persists optional `readOnlyMembers` in
+  `group.json`; omitted means read-write. `repo-group-access-policy.ts`
+  canonicalizes live roots and rejects read-only/read-write overlap. Every turn
+  passes writable roots as `additionalDirectories` and protected roots as
+  `readOnlyDirectories`. Copilot and Claude enforce that contract through
+  provider sandboxes; Codex and OpenCode fail before session creation because
+  their adapters cannot express mixed access safely.
 - **WSL file links.** On a Windows host a WSL workspace has a
   `\\wsl$\<distro>\...` `rootPath`. `react/utils/path-resolution.ts` keeps that
   UNC prefix intact (`isAbsolutePath`, `resolveRelativePath`, `deriveHomeDir`),

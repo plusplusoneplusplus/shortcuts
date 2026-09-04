@@ -6,13 +6,12 @@
  * autopilot can read/edit member repos without permission friction, and tells
  * the model which repos are in the group by appending a member listing to the
  * outgoing prompt: each member's name, absolute local path, a `[read-only]`
- * marker when the membership is flagged read-only, and — when the membership
+ * access marker, and - when the membership
  * carries one — its description. Stale members (workspace removed or path
  * missing on disk) are silently skipped.
  *
- * Read-only is a prompt hint, not enforcement: a flagged member still gets its
- * root path in `additionalDirectories` so the agent can read and search it, and
- * an instruction line after the listing asks the model not to write there.
+ * Writable roots travel through `additionalDirectories`; protected roots travel
+ * through `readOnlyDirectories`, which each supported provider must enforce.
  *
  * The two halves have different cadences:
  *
@@ -39,22 +38,18 @@ import * as path from 'path';
 import type { ConversationTurn, ProcessCompactionState, ProcessStore } from '@plusplusoneplusplus/forge';
 import { tagBlock } from '../executors/prompt-tags';
 import { isRepoGroupWorkspaceId, readRepoGroup, resolveRepoGroupMembers } from './repo-group-workspace';
+import { buildRepoGroupAccessPolicy } from './repo-group-access-policy';
 
 /** Tag wrapping the appended member listing in the outgoing prompt. */
 export const REPO_GROUP_CONTEXT_TAG = 'repo_group_context';
-
-/** Marker appended after the path of a member flagged read-only. */
-const READ_ONLY_MARKER = '[read-only]';
-
-/** Instruction line emitted once, after the listing, when any member is read-only. */
-const READ_ONLY_INSTRUCTION =
-    'Repos marked [read-only] must not be modified: do not edit, create, delete, or commit files under those paths. Read and search them freely.';
 
 export interface RepoGroupChatContext {
     /** Tagged prompt section listing each live member's name, absolute path, and description. */
     promptBlock: string;
     /** Live member root paths, in membership order. */
     additionalDirectories: string[];
+    /** Live member roots whose writes must be blocked by the provider sandbox. */
+    readOnlyDirectories: string[];
 }
 
 /**
@@ -71,27 +66,23 @@ export async function resolveRepoGroupChatContext(
     const effectiveDataDir = dataDir ?? path.join(os.homedir(), '.coc');
     const group = readRepoGroup(effectiveDataDir, workspaceId);
     if (!group) return undefined;
-    const live = (await resolveRepoGroupMembers(effectiveDataDir, store, workspaceId))
-        .filter(m => !m.stale && typeof m.name === 'string' && typeof m.rootPath === 'string');
+    const policy = buildRepoGroupAccessPolicy(
+        await resolveRepoGroupMembers(effectiveDataDir, store, workspaceId),
+    );
+    const live = policy.liveMembers
+        .filter(m => typeof m.name === 'string');
     if (live.length === 0) return undefined;
     const listing = live
         .map(m => {
-            const line = m.readOnly === true
-                ? `- ${m.name}: ${m.rootPath} ${READ_ONLY_MARKER}`
-                : `- ${m.name}: ${m.rootPath}`;
+            const line = `- ${m.name} [${m.readOnly ? 'read-only' : 'read-write'}]: ${m.rootPath}`;
             const description = typeof m.description === 'string' ? m.description.trim() : '';
             return description ? `${line} — ${description}` : line;
         })
         .join('\n');
-    // Only groups that actually use the flag pay for the instruction line — a
-    // group with none renders byte-identically to the pre-flag form, so live
-    // sessions do not see drift and re-inject.
-    const body = live.some(m => m.readOnly === true)
-        ? `Repo group "${group.name}" members:\n${listing}\n${READ_ONLY_INSTRUCTION}`
-        : `Repo group "${group.name}" members:\n${listing}`;
     return {
-        promptBlock: tagBlock(REPO_GROUP_CONTEXT_TAG, body),
-        additionalDirectories: live.map(m => m.rootPath as string),
+        promptBlock: tagBlock(REPO_GROUP_CONTEXT_TAG, `Repo group "${group.name}" members:\n${listing}`),
+        additionalDirectories: policy.writableDirectories,
+        readOnlyDirectories: policy.readOnlyDirectories,
     };
 }
 

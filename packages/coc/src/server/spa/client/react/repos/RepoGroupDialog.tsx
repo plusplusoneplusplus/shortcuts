@@ -18,8 +18,8 @@
  * validation message surfaces inline.
  *
  * Each checked member also carries an optional free-form description saying what
- * that repo is for inside this group, and a read-only flag marking it as one the
- * agent should not modify. Both are edited here as pending state and sent with
+ * that repo is for inside this group, and a read-only policy provider tools
+ * enforce on every group-chat turn. Both are edited here as pending state and sent with
  * the rest of the form on Save — unlike the group page's list, which PATCHes a
  * single member as soon as its field changes.
  */

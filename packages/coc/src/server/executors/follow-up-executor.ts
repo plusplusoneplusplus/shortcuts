@@ -588,7 +588,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     agentMode,
                     policy,
                     workingDirectory,
-                    ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
+                    ...(repoGroupContext ? {
+                        additionalDirectories: repoGroupContext.additionalDirectories,
+                        readOnlyDirectories: repoGroupContext.readOnlyDirectories,
+                    } : {}),
                     signal: turnAbort.signal,
                     timeoutMs: this.defaultTimeoutMs,
                     idleTimeoutMs: this.defaultIdleTimeoutMs,

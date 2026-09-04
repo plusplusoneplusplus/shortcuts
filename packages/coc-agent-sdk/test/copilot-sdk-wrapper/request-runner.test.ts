@@ -10,6 +10,8 @@ import { SessionManager } from '../../src/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 import { loadEffectiveMcpConfig } from '../../src/mcp-config-loader';
+import * as os from 'os';
+import * as path from 'path';
 
 
 
@@ -78,6 +80,85 @@ describe('RequestRunner.send() — availability', () => {
 // ============================================================================
 
 describe('RequestRunner.send() — non-streaming path', () => {
+    it('maps protected roots to Copilot read-only sandbox policy', async () => {
+        const { runner, mockClient } = makeRunner();
+
+        await runner.send({
+            prompt: 'compare',
+            workingDirectory: '/group',
+            additionalDirectories: ['/writable'],
+            readOnlyDirectories: ['/reference'],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
+            additionalDirectories: ['/writable', '/reference'],
+            sandboxConfig: {
+                enabled: true,
+                addCurrentWorkingDirectory: true,
+                userPolicy: {
+                    filesystem: {
+                        readwritePaths: [
+                            '/writable',
+                            path.join(os.homedir(), '.coc'),
+                            os.tmpdir(),
+                        ],
+                        readonlyPaths: ['/reference'],
+                    },
+                },
+            },
+        }));
+    });
+
+    it('applies protected sandbox policy when resuming a session', async () => {
+        const { runner, mockClient } = makeRunner();
+
+        await runner.send({
+            prompt: 'follow up',
+            sessionId: 'existing-session',
+            additionalDirectories: ['/writable'],
+            readOnlyDirectories: ['/reference'],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(mockClient.resumeSession).toHaveBeenCalledWith(
+            'existing-session',
+            expect.objectContaining({
+                sandboxConfig: expect.objectContaining({
+                    enabled: true,
+                    userPolicy: {
+                        filesystem: {
+                            readwritePaths: [
+                                '/writable',
+                                path.join(os.homedir(), '.coc'),
+                                os.tmpdir(),
+                            ],
+                            readonlyPaths: ['/reference'],
+                        },
+                    },
+                }),
+            }),
+        );
+    });
+
+    it('rejects sandbox bypass requests before the caller permission handler', async () => {
+        const approve = vi.fn().mockReturnValue({ kind: 'approve-once' });
+        const { runner, mockClient } = makeRunner();
+        await runner.send({
+            prompt: 'compare',
+            readOnlyDirectories: ['/reference'],
+            onPermissionRequest: approve,
+            loadDefaultMcpConfig: false,
+        });
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+
+        expect(sessionConfig.onPermissionRequest(
+            { kind: 'shell', requestSandboxBypass: true },
+            { sessionId: 'session-1' },
+        )).toEqual({ kind: 'reject' });
+        expect(approve).not.toHaveBeenCalled();
+    });
+
     it('returns successful result with response text', async () => {
         const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
         const mockClient = {

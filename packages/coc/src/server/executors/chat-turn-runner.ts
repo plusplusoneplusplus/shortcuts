@@ -142,8 +142,10 @@ export interface ChatTurnSendOptionsInput {
         contextTier?: 'default' | 'long_context';
     };
     workingDirectory: string | undefined;
-    /** Repo-group member roots, when the workspace is a group. */
+    /** Writable repo-group member roots, when the workspace is a group. */
     additionalDirectories?: string[];
+    /** Protected repo-group member roots, when the workspace is a group. */
+    readOnlyDirectories?: string[];
     signal: AbortSignal;
     /**
      * Wall-clock budget. A first turn prefers its task's own `timeoutMs`; a
@@ -214,6 +216,7 @@ export function buildChatTurnSendOptions(input: ChatTurnSendOptionsInput): SendM
         ...(input.keepWarm ? { keepWarm: true as const, warmKey: input.warmKey } : {}),
         workingDirectory: input.workingDirectory,
         ...(input.additionalDirectories ? { additionalDirectories: input.additionalDirectories } : {}),
+        ...(input.readOnlyDirectories?.length ? { readOnlyDirectories: input.readOnlyDirectories } : {}),
         signal: input.signal,
         timeoutMs: input.timeoutMs,
         idleTimeoutMs: input.idleTimeoutMs,

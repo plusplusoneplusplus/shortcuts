@@ -416,6 +416,12 @@ export class OpenCodeSDKService implements ISDKService {
 
     public async sendMessage(options: SendMessageOptions): Promise<IInvocationResult> {
         if (this.disposed) return { success: false, error: 'OpenCodeSDKService has been disposed' };
+        if (options.readOnlyDirectories?.length) {
+            return {
+                success: false,
+                error: 'OpenCode cannot enforce read-only Repo Group members. Switch to Copilot or Claude.',
+            };
+        }
 
         if (options.signal?.aborted) {
             return { success: false, error: 'Request aborted', sessionId: options.sessionId };

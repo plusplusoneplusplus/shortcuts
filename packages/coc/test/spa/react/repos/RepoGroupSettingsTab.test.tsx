@@ -29,9 +29,9 @@ import { RepoGroupSettingsTab } from '../../../../src/server/spa/client/react/re
 const GROUP_ID = 'group-ai-repos';
 
 const MEMBERS = [
-    { workspaceId: 'r1', stale: false, name: 'shortcuts', rootPath: '/r/r1', description: 'The monorepo' },
-    { workspaceId: 'r2', stale: false, name: 'docs', rootPath: '/r/r2' },
-    { workspaceId: 'r3', stale: true, staleReason: 'path-missing', name: 'gone', rootPath: '/r/r3' },
+    { workspaceId: 'r1', stale: false, name: 'shortcuts', rootPath: '/r/r1', description: 'The monorepo', readOnly: false },
+    { workspaceId: 'r2', stale: false, name: 'docs', rootPath: '/r/r2', readOnly: true },
+    { workspaceId: 'r3', stale: true, staleReason: 'path-missing', name: 'gone', rootPath: '/r/r3', readOnly: false },
 ];
 
 beforeEach(() => {
@@ -41,21 +41,21 @@ beforeEach(() => {
 });
 
 describe('RepoGroupSettingsTab', () => {
-    it('renders the shared settings shell landing on Member repos, with a Group and an Agent nav group', async () => {
+    it('renders the shared settings shell landing on Repos, with a Group and an Agent nav group', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
 
         const tab = screen.getByTestId('repo-group-settings-tab');
         expect(tab.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect(screen.getByTestId('settings-sidebar')).toBeTruthy();
         expect(screen.getByTestId('settings-content-panel')).toBeTruthy();
-        expect(screen.getByTestId('nav-item-members').textContent).toContain('Member repos');
-        expect(screen.getByTestId('nav-item-members').getAttribute('aria-current')).toBe('page');
-        expect(screen.getByTestId('settings-section-title').textContent).toBe('Member repos');
-        expect(screen.getByTestId('settings-section-description').textContent).toContain('what each one is for');
-        // The Agent group pushes the nav past one item, so the shared filter shows.
+        expect(screen.getByTestId('nav-item-repos').textContent).toBe('Repos');
+        expect(screen.getByTestId('nav-item-repos').getAttribute('aria-current')).toBe('page');
+        expect(screen.getByTestId('settings-section-title').textContent).toBe('Repos');
+        expect(screen.getByTestId('settings-section-description').textContent).toContain('what each repo is for');
+        expect(screen.getByTestId('settings-section-description').textContent).toContain('Codex and OpenCode');
         expect(screen.getByTestId('settings-filter-input')).toBeTruthy();
+        expect(screen.queryByTestId('repo-group-settings-members-card')).toBeNull();
 
-        // A group has no git checkout, so only the Group + Agent nav groups show.
         expect(screen.getByTestId('nav-group-group')).toBeTruthy();
         expect(screen.getByTestId('nav-group-agent')).toBeTruthy();
         for (const id of ['mcp', 'skills', 'llm-tools']) {
@@ -74,7 +74,7 @@ describe('RepoGroupSettingsTab', () => {
         expect(screen.queryByTestId('repo-group-member-list')).toBeNull();
     });
 
-    it('lists every member in the Member repos card with its name, path, stale badge and description', async () => {
+    it('lists every member in the Repos section with its name, path, stale badge and description', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));
 
@@ -86,9 +86,10 @@ describe('RepoGroupSettingsTab', () => {
         expect(staleRow.textContent).toContain('gone');
         expect(staleRow.textContent).toContain('/r/r3');
         expect(screen.getAllByTestId('repo-group-stale-badge')).toHaveLength(1);
-        const membersCard = screen.getByTestId('repo-group-settings-members-card');
-        expect(membersCard.contains(screen.getByTestId('repo-group-member-list'))).toBe(true);
-        expect(screen.getByTestId('settings-content-panel').contains(membersCard)).toBe(true);
+        expect(screen.queryByTestId('repo-group-settings-members-card')).toBeNull();
+        expect(screen.getByTestId('settings-content-panel').contains(
+            screen.getByTestId('repo-group-member-list'),
+        )).toBe(true);
     });
 
     it('saves an edited description on Enter', async () => {
@@ -147,6 +148,19 @@ describe('RepoGroupSettingsTab', () => {
         fireEvent.blur(screen.getByTestId('repo-group-member-description-r2'));
         await waitFor(() => expect(mockUpdateRepoGroup)
             .toHaveBeenCalledWith(GROUP_ID, { descriptions: { r2: 'Docs site' } }, 'http://remote:3000'));
+    });
+
+    it('saves a read-only toggle to the server owning a remote group', async () => {
+        render(<RepoGroupSettingsTab workspaceId={GROUP_ID} baseUrl="http://remote:3000" active />);
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-r1')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-r1'));
+
+        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith(
+            GROUP_ID,
+            { readOnly: { r1: true } },
+            'http://remote:3000',
+        ));
     });
 
     it('points an empty group at the group edit dialog', async () => {

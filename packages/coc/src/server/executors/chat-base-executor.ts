@@ -1167,7 +1167,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     agentMode,
                     policy,
                     workingDirectory,
-                    ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
+                    ...(repoGroupContext ? {
+                        additionalDirectories: repoGroupContext.additionalDirectories,
+                        readOnlyDirectories: repoGroupContext.readOnlyDirectories,
+                    } : {}),
                     signal: turnAbort.signal,
                     timeoutMs,
                     idleTimeoutMs,
