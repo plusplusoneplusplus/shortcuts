@@ -51,6 +51,30 @@ export function deriveScriptTitle(script: string): string {
     return 'Script';
 }
 
+/**
+ * Server-injected blocks that are stored on the user turn for disclosure but
+ * are not what the user asked about: the mode directive, the chat-style block
+ * and the selected-skills directive.
+ */
+const INJECTED_USER_BLOCK_TAGS = ['coc-chat-mode', 'chat-style', 'selected_skills'] as const;
+
+/**
+ * Strip the server-injected blocks from a stored user turn.
+ *
+ * The title is a summary of what the user asked. Those blocks are prepended to
+ * the stored content, and the title prompt only reads the first 400 characters
+ * — the read-only directive alone is longer than that, so leaving them in would
+ * push the actual message out of the window and title every ask chat after the
+ * directive.
+ */
+export function stripInjectedUserBlocks(content: string): string {
+    let result = content;
+    for (const tag of INJECTED_USER_BLOCK_TAGS) {
+        result = result.replace(new RegExp(`<${tag}>[\\s\\S]*?</${tag}>\\s*`, 'g'), '');
+    }
+    return result.trim();
+}
+
 export class TitleGenerationService {
     private readonly logger = getLogger();
     private readonly timeoutMs: number;
@@ -93,7 +117,7 @@ export class TitleGenerationService {
 
     generateIfNeeded(processId: string, turns: ConversationTurn[]): void {
         const firstUserContent = (turns ?? []).find(t => t?.role === 'user')?.content ?? '';
-        if (!firstUserContent) return;
+        if (!stripInjectedUserBlocks(firstUserContent)) return;
 
         const firstAssistantContent = (turns ?? []).find(t => t?.role === 'assistant')?.content ?? '';
         if (!firstAssistantContent) return;
@@ -119,7 +143,7 @@ export class TitleGenerationService {
             return;
         }
 
-        const truncatedUser = firstUserContent.substring(0, 400);
+        const truncatedUser = stripInjectedUserBlocks(firstUserContent).substring(0, 400);
         const truncatedAssistant = firstAssistantContent.substring(0, 400);
 
         const prompt = [

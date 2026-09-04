@@ -346,8 +346,9 @@ type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'p
  * Tools auto-approved in ask/read-only mode. Under `acceptEdits` the SDK only
  * auto-accepts file edits, so Bash, WebFetch and WebSearch would otherwise be
  * denied (no canUseTool callback, headless — no human to answer the prompt).
- * Full Bash is allowed because the <coc-read-only-mode> system prompt already
- * prevents editing git-tracked files; shell execution (tests, grep, etc.) is
+ * Full Bash is allowed because the <coc-read-only-mode> directive CoC prepends
+ * to each ask-mode user turn already prevents editing git-tracked files; shell
+ * execution (tests, grep, etc.) is
  * safe. WebFetch and WebSearch are read-only network access — they cannot touch
  * the filesystem or mutate the repo, so read-only mode has no reason to block
  * them. Entries are bare tool names: a rule without scope content matches every

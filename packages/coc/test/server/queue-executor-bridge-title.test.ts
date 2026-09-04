@@ -311,6 +311,29 @@ describe('CLITaskExecutor — Title Generation', () => {
         expect(promptArg).toContain(userMessage);
     });
 
+    it('should title from the user message, not the injected mode directive', async () => {
+        // The stored ask-mode turn opens with the ~700-char <coc-chat-mode>
+        // block. The title prompt reads only the first 400 characters, so
+        // without stripping the directive the user's question never reaches the
+        // model and every ask chat gets titled after the read-only rules.
+        mockChatAndTitleResponses('AI response text', 'Fix Auth Bug');
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });
+
+        const userMessage = 'How do I fix the authentication bug?';
+        const task = makeReadonlyChatTask('title-directive-stripped', userMessage);
+        await executor.execute(task);
+
+        await delay(50);
+
+        const storedTurn = (await store.getProcess(task.processId!))?.conversationTurns?.[0];
+        expect(storedTurn?.content).toContain('<coc-read-only-mode>');
+
+        const promptArg = getTitlePrompt();
+        expect(promptArg).toContain(userMessage);
+        expect(promptArg).not.toContain('<coc-chat-mode>');
+        expect(promptArg).not.toContain('read-only mode');
+    });
+
     it('should propagate generated title to queue task displayName', async () => {
         mockChatAndTitleResponses('AI response text', 'AI Generated Title');
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service as any });

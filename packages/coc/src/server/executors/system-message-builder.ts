@@ -5,15 +5,15 @@
  * deeply-nested free-function pattern with a readable left-to-right chain:
  *
  *   const systemMessage = await systemMessageBuilder()
- *       .append(buildModeSystemMessage('ask')?.content)
- *       .withRepoInstructions(workingDirectory, 'ask')
+ *       .appendGlobalSystemPrompt(globalSystemPrompt)
+ *       .withBaseRepoInstructions(workingDirectory)
  *       .appendAutoFolder(autoFolderContext)
  *       .build();
  *
  * `build()` is always async and resolves deferred steps in insertion order.
  */
 
-import type { AutoFolderContext, SystemMessageConfig } from '@plusplusoneplusplus/forge';
+import type { AutoFolderContext, InstructionMode, InstructionScope, SystemMessageConfig } from '@plusplusoneplusplus/forge';
 import {
     buildAutoFolderLocationBlock,
     loadInstructions,
@@ -137,11 +137,32 @@ class SystemMessageBuilder {
      */
     withRepoInstructions(workingDir: string | undefined, mode: ChatMode | undefined): this {
         if (!workingDir || !mode) return this;
+        return this.pushRepoInstructions(workingDir, resolveInstructionMode(mode), 'both');
+    }
+
+    /**
+     * Defer loading the shared `.github/coc/instructions.md` only.
+     *
+     * The mode-specific half rides the user turn (see `chat-mode-directive.ts`)
+     * so the system prompt stays byte-identical across a mid-chat mode switch.
+     *
+     * No-op when `workingDir` is `undefined`.
+     */
+    withBaseRepoInstructions(workingDir: string | undefined): this {
+        if (!workingDir) return this;
+        return this.pushRepoInstructions(workingDir, 'base', 'base');
+    }
+
+    private pushRepoInstructions(
+        workingDir: string,
+        mode: InstructionMode,
+        scope: InstructionScope,
+    ): this {
         this.steps.push({
             kind: 'async',
             resolve: async () => {
                 try {
-                    return (await loadInstructions(workingDir, resolveInstructionMode(mode))) ?? undefined;
+                    return (await loadInstructions(workingDir, mode, { scope })) ?? undefined;
                 } catch {
                     return undefined;
                 }

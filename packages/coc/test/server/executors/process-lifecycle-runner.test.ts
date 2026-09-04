@@ -123,7 +123,9 @@ describe('ProcessLifecycleRunner — selected_skills directive in stored turns',
         const proc = await store.getProcess(processId);
         const userTurn = proc?.conversationTurns?.find(t => t.role === 'user');
 
-        expect(userTurn?.content).toBe('Hello world');
+        // The ask-mode directive is still disclosed (that block is separate);
+        // this pins that no skills directive is added.
+        expect(userTurn?.content?.endsWith('Hello world')).toBe(true);
         expect(userTurn?.content).not.toContain('<selected_skills>');
     });
 

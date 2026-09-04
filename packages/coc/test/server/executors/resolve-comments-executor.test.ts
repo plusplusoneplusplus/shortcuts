@@ -184,20 +184,22 @@ describe('ResolveCommentsExecutor', () => {
         expect(capturedMode).toBe('interactive');
     });
 
-    it('injects read-only system message for single-file task comments', async () => {
+    it('prepends the read-only directive to the prompt for single-file task comments', async () => {
         const executor = new ResolveCommentsExecutor(store, makeOptions(store));
         const task = makeResolveCommentsTask();
 
-        let capturedSystemMessage: unknown;
+        let captured: any;
         sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
-            capturedSystemMessage = opts.systemMessage;
+            captured = opts;
             return { success: true, response: 'Done.', sessionId: 's1', toolCalls: [] };
         });
 
         await executor.executeTask(task);
-        expect(capturedSystemMessage).toBeDefined();
-        expect((capturedSystemMessage as any).mode).toBe('append');
-        expect((capturedSystemMessage as any).content).toBeTruthy();
+        // Resolve-comments chats accept follow-ups, which route through
+        // FollowUpExecutor — so the constraint must sit on the channel the
+        // follow-up will use, not in the system message.
+        expect(captured.prompt).toContain('<coc-read-only-mode>');
+        expect(captured.systemMessage?.content ?? '').not.toContain('<coc-read-only-mode>');
     });
 });
 

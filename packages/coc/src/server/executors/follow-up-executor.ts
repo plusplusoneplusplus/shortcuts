@@ -53,6 +53,7 @@ import { readNoteContent } from './note-chat-executor';
 import { suppressesAutoFolder } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
+import { buildChatModeDirective, buildChatModeDisplayBlock, loadChatModeInstructions, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import {
     buildCumulativeTokenUsage,
@@ -378,7 +379,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     processId,
                     (idx) => ({
                         role: 'user' as const,
-                        content: message,
+                        // Same disclosure the POST /message route applies to an
+                        // interactive follow-up: the stored turn shows the mode
+                        // directive this turn was sent with.
+                        content: prependChatModeDirective(
+                            message,
+                            buildChatModeDisplayBlock({ mode: currentMode, previousMode }),
+                        ),
                         timestamp: new Date(),
                         turnIndex: idx,
                         timeline: [],
@@ -425,7 +432,6 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // session creation) rather than being stapled to every user
             // turn.
             const systemMessage = await buildChatTurnSystemMessage({
-                mode: currentMode,
                 workingDirectory,
                 provider: sessionProvider,
                 globalSystemPrompt: this.resolveGlobalSystemPrompt(),
@@ -433,9 +439,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 mapReduceGeneration,
                 memoryV2: chatCtx.memoryV2,
                 toolGuidance: chatCtx.toolGuidance,
-                autoFolderContext: currentMode === 'ask' && !autoFolderSuppressed
-                    ? autoFolderContextForFollowUp
-                    : undefined,
+                // Unconditional on mode: the block is a save-location
+                // directive (inert in autopilot), and gating it on the mode
+                // would put a mode-dependent byte back into the prefix.
+                autoFolderContext: autoFolderSuppressed ? undefined : autoFolderContextForFollowUp,
                 notePath,
             });
 
@@ -456,11 +463,22 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             })
                 ? repoGroupContext
                 : undefined;
+            // The mode directive rides the user turn on every follow-up, so a
+            // mode toggle never rewrites the (cached) system prefix. A switch
+            // out of ask also carries an explicit transition note.
+            const modeDirective = buildChatModeDirective({
+                mode: currentMode,
+                previousMode,
+                modeInstructions: await loadChatModeInstructions(workingDirectory, currentMode),
+            });
             const followUpMessage = appendRepoGroupContext(
-                prependSelectedSkillsDirective(
-                    message,
-                    selectedSkillNames,
-                    resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
+                prependChatModeDirective(
+                    prependSelectedSkillsDirective(
+                        message,
+                        selectedSkillNames,
+                        resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
+                    ),
+                    modeDirective,
                 ),
                 injectedRepoGroupContext,
             );

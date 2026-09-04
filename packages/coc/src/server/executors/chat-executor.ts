@@ -5,7 +5,8 @@
  *
  * Extends ChatBaseExecutor to supply ask-mode specific AI options:
  * - agentMode: 'interactive'
- * - systemMessage: READ_ONLY_SYSTEM_MESSAGE + optional auto-folder location block
+ * - systemMessage: the shared, mode-invariant chat-turn message (the read-only
+ *   directive rides the user turn — see `chat-mode-directive.ts`)
  * - tools: follow-up suggestion tool (when configured)
  */
 

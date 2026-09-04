@@ -26,6 +26,10 @@ vi.mock('fs', async (importOriginal) => {
 
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
+import { MODE_SWITCHED_TO_AUTOPILOT_NOTE } from '../../src/server/executors/chat-mode-directive';
+
+/** The read-only prose as it appears inside the user-turn directive. */
+const READ_ONLY_DIRECTIVE = READ_ONLY_SYSTEM_MESSAGE.trim();
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore, createCompletedProcessWithSession, createProcessFixture } from '../helpers/mock-process-store';
@@ -147,8 +151,42 @@ describe('ask mode system message — initial chat', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage?.mode).toBe('append');
-        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        // The directive rides the user turn; the system message stays
+        // mode-invariant so a mode toggle keeps the cached prefix.
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
+        expect(callArgs.systemMessage?.content ?? '').not.toContain(READ_ONLY_DIRECTIVE);
+    });
+
+    it('discloses the directive on the user turn the chat UI renders', async () => {
+        // The directive is part of the message the model got, so the transcript
+        // shows it — but the user's own text must survive intact after it.
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask('ask', 'Hello');
+
+        await executor.execute(task);
+
+        const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
+
+        const stored = await store.getProcess(task.processId!);
+        const userTurn = stored?.conversationTurns?.[0];
+        expect(userTurn?.role).toBe('user');
+        expect(userTurn?.content).toContain(READ_ONLY_DIRECTIVE);
+        expect(userTurn?.content?.endsWith('Hello')).toBe(true);
+        // The preview and the stored full prompt record what the user asked,
+        // not what the server added — they drive the chat list and the title.
+        expect(stored?.promptPreview).toBe('Hello');
+        expect(stored?.fullPrompt).toBe('Hello');
+    });
+
+    it('leaves an autopilot first turn undisclosed — nothing was injected', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const task = chatTask('autopilot', 'Do it');
+
+        await executor.execute(task);
+
+        const stored = await store.getProcess(task.processId!);
+        expect(stored?.conversationTurns?.[0]?.content).toBe('Do it');
     });
 
     it('should include For Each generation guidance without changing the visible user prompt', async () => {
@@ -170,7 +208,7 @@ describe('ask mode system message — initial chat', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.prompt).toBe('Split this work into three tasks');
+        expect(callArgs.prompt).toContain('Split this work into three tasks');
         expect(callArgs.systemMessage?.content).toContain('visible CoC For Each item-plan generation chat');
         expect(callArgs.systemMessage?.content).toContain('Advanced JSON');
     });
@@ -225,12 +263,10 @@ describe('ask mode system message — initial chat', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        // systemMessage may still carry tool-guidance prose (now routed into
-        // systemMessage rather than the user prompt), but it must not contain
-        // the read-only directive in autopilot mode.
-        if (callArgs.systemMessage) {
-            expect(callArgs.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
-        }
+        // The read-only directive is nowhere: not in the (mode-invariant)
+        // system message, and not on the user turn either.
+        expect(callArgs.systemMessage?.content ?? '').not.toContain(READ_ONLY_DIRECTIVE);
+        expect(callArgs.prompt).not.toContain(READ_ONLY_DIRECTIVE);
     });
 
     it('should normalize legacy plan mode to ask for initial chat', async () => {
@@ -242,8 +278,7 @@ describe('ask mode system message — initial chat', () => {
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(callArgs.mode).toBe('interactive');
-        expect(callArgs.systemMessage?.mode).toBe('append');
-        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
     });
 });
 
@@ -278,10 +313,11 @@ describe('ask mode system message — follow-up transitions', () => {
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(callArgs.mode).toBe('autopilot');
-        // Should NOT include read-only system message for autopilot mode
-        if (callArgs.systemMessage) {
-            expect(callArgs.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
-        }
+        // The read-only constraint is dropped, and the turn says so explicitly
+        // — the block is still sitting in the conversation history.
+        expect(callArgs.systemMessage?.content ?? '').not.toContain(READ_ONLY_DIRECTIVE);
+        expect(callArgs.prompt).not.toContain(READ_ONLY_DIRECTIVE);
+        expect(callArgs.prompt).toContain(MODE_SWITCHED_TO_AUTOPILOT_NOTE);
     });
 
     it('should keep the tool block identical across an ask → autopilot follow-up', async () => {
@@ -321,9 +357,9 @@ describe('ask mode system message — follow-up transitions', () => {
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(callArgs.mode).toBe('interactive');
-        // Should include read-only system message for ask mode
-        expect(callArgs.systemMessage).toBeDefined();
-        expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        // Read-only is restated on the user turn, not in the system message
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
+        expect(callArgs.systemMessage?.content ?? '').not.toContain(READ_ONLY_DIRECTIVE);
     });
 
     it('should keep For Each generation guidance on refinement follow-ups', async () => {
@@ -348,7 +384,7 @@ describe('ask mode system message — follow-up transitions', () => {
 
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.prompt).toBe('split item 2 into two items');
+        expect(callArgs.prompt).toContain('split item 2 into two items');
         expect(callArgs.systemMessage?.content).toContain('visible CoC For Each item-plan generation chat');
         expect(callArgs.systemMessage?.content).toContain('return the complete latest proposed plan');
     });
@@ -477,7 +513,7 @@ describe('ask mode system message — follow-up transitions', () => {
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(callArgs.mode).toBe('interactive');
-        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
         const updated = await store.getProcess('proc-1');
         expect(updated?.metadata?.mode).toBe('ask');
         expect(updated?.metadata?.previousMode).toBe('autopilot');
@@ -537,8 +573,7 @@ describe('ask mode system message — follow-up transitions', () => {
         expect(sdkMocks.mockSendMessage).toHaveBeenCalledTimes(1);
         callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(callArgs.mode).toBe('interactive');
-        expect(callArgs.systemMessage).toBeDefined();
-        expect(callArgs.systemMessage.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
 
         // No session destroy needed — each follow-up creates a fresh session
 
@@ -597,8 +632,8 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
-        expect(callArgs.systemMessage?.content).not.toContain('<chosen-folder>');
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
+        expect(callArgs.systemMessage?.content ?? '').not.toContain('<chosen-folder>');
     });
 
     it('should include auto-folder location block when task has workingDirectory in ask mode', async () => {
@@ -617,7 +652,7 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
         expect(callArgs.systemMessage?.content).toContain('<chosen-folder>');
         expect(callArgs.systemMessage?.content).toContain('<descriptive-name>.plan.md');
     });
@@ -638,11 +673,11 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.systemMessage?.content).toContain(READ_ONLY_SYSTEM_MESSAGE);
+        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
         expect(callArgs.systemMessage?.content).toContain('<chosen-folder>');
     });
 
-    it('should NOT include auto-folder block in autopilot mode even with workingDirectory', async () => {
+    it('should include the auto-folder block in autopilot mode too — the block is mode-invariant', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task: QueuedTask = {
             id: 'task-auto-wd',
@@ -658,11 +693,10 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        // systemMessage may still carry tool-guidance prose, but autopilot mode
-        // must not include the read-only directive nor the auto-folder block.
-        if (callArgs.systemMessage) {
-            expect(callArgs.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
-            expect(callArgs.systemMessage.content).not.toContain('<chosen-folder>');
-        }
+        // The save-location block is inert in autopilot, but gating it on the
+        // mode would put a mode-dependent byte back into the cached prefix.
+        expect(callArgs.systemMessage?.content).toContain('<chosen-folder>');
+        expect(callArgs.systemMessage?.content ?? '').not.toContain(READ_ONLY_DIRECTIVE);
+        expect(callArgs.prompt).not.toContain(READ_ONLY_DIRECTIVE);
     });
 });

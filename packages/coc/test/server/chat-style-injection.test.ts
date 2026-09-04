@@ -22,6 +22,7 @@ import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { ProcessLifecycleRunner } from '../../src/server/executors/process-lifecycle-runner';
 import { buildChatStyleBlock } from '../../src/server/executors/chat-style-prompt';
+import { buildChatModeDisplayBlock } from '../../src/server/executors/chat-mode-directive';
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 import type { Route } from '@plusplusoneplusplus/coc-server';
@@ -30,6 +31,14 @@ import { createMockProcessStore } from './helpers/mock-process-store';
 
 const HUMAN_BLOCK = buildChatStyleBlock('human')!;
 const DIRECT_BLOCK = buildChatStyleBlock('direct')!;
+/** Ask-mode turns also carry the mode directive, stored inside the style block. */
+const ASK_BLOCK = buildChatModeDisplayBlock({ mode: 'ask' })!;
+
+/** The stored content of an ask-mode turn: style outermost, then the directive. */
+function asked(message: string, styleBlock?: string): string {
+    const withMode = `${ASK_BLOCK}\n\n${message}`;
+    return styleBlock ? `${styleBlock}\n\n${withMode}` : withMode;
+}
 
 // ============================================================================
 // Turn 1 — ProcessLifecycleRunner
@@ -87,7 +96,7 @@ describe('chat style on the first turn of a conversation', () => {
         const { process, executedPrompt } = await runTask(chatTask('t-human', 'human'));
 
         // AC-05 — the persisted user message opens with the block.
-        expect(process?.conversationTurns?.[0]?.content).toBe(`${HUMAN_BLOCK}\n\nWhat broke the build?`);
+        expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?', HUMAN_BLOCK));
         expect(executedPrompt).toBe(`${HUMAN_BLOCK}\n\nWhat broke the build?`);
         expect(process?.metadata?.chatStyle).toBe('human');
     });
@@ -95,7 +104,7 @@ describe('chat style on the first turn of a conversation', () => {
     it('injects nothing on Default and stores the message byte-for-byte', async () => {
         const { process, executedPrompt } = await runTask(chatTask('t-default', 'default'));
 
-        expect(process?.conversationTurns?.[0]?.content).toBe('What broke the build?');
+        expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?'));
         expect(executedPrompt).toBe('What broke the build?');
         expect(process?.conversationTurns?.[0]?.content).not.toContain('<chat-style>');
         // Default is a real recorded state, not a gap.
@@ -105,7 +114,7 @@ describe('chat style on the first turn of a conversation', () => {
     it('treats an omitted style as Default when no server default is configured', async () => {
         const { process } = await runTask(chatTask('t-omitted', undefined));
 
-        expect(process?.conversationTurns?.[0]?.content).toBe('What broke the build?');
+        expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?'));
         expect(process?.metadata?.chatStyle).toBe('default');
     });
 
@@ -115,7 +124,7 @@ describe('chat style on the first turn of a conversation', () => {
     it('applies the configured server default when the request carries no style', async () => {
         const { process, executedPrompt } = await runTask(chatTask('t-cfg-direct', undefined), true, 'direct');
 
-        expect(process?.conversationTurns?.[0]?.content).toBe(`${DIRECT_BLOCK}\n\nWhat broke the build?`);
+        expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?', DIRECT_BLOCK));
         expect(executedPrompt).toBe(`${DIRECT_BLOCK}\n\nWhat broke the build?`);
         expect(process?.metadata?.chatStyle).toBe('direct');
     });
@@ -123,7 +132,7 @@ describe('chat style on the first turn of a conversation', () => {
     it("lets an explicit 'default' beat a configured server default", async () => {
         const { process, executedPrompt } = await runTask(chatTask('t-cfg-explicit', 'default'), true, 'direct');
 
-        expect(process?.conversationTurns?.[0]?.content).toBe('What broke the build?');
+        expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?'));
         expect(executedPrompt).not.toContain('<chat-style>');
         expect(process?.metadata?.chatStyle).toBe('default');
     });
@@ -131,7 +140,7 @@ describe('chat style on the first turn of a conversation', () => {
     it('lets an explicit style beat a configured server default', async () => {
         const { process } = await runTask(chatTask('t-cfg-human', 'human'), true, 'direct');
 
-        expect(process?.conversationTurns?.[0]?.content).toBe(`${HUMAN_BLOCK}\n\nWhat broke the build?`);
+        expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?', HUMAN_BLOCK));
         expect(process?.metadata?.chatStyle).toBe('human');
     });
 
@@ -156,7 +165,7 @@ describe('chat style on the first turn of a conversation', () => {
     it('injects nothing and records nothing when the admin flag is off', async () => {
         const { process, executedPrompt } = await runTask(chatTask('t-flag-off', 'human'), false);
 
-        expect(process?.conversationTurns?.[0]?.content).toBe('What broke the build?');
+        expect(process?.conversationTurns?.[0]?.content).toBe(asked('What broke the build?'));
         expect(executedPrompt).toBe('What broke the build?');
         expect(process?.metadata?.chatStyle).toBeUndefined();
     });
@@ -309,12 +318,12 @@ describe('chat style on follow-up turns', () => {
         await sendTurn('p-seq', 'six', 'human');
 
         expect(await userTurns('p-seq')).toEqual([
-            'one',
-            `${HUMAN_BLOCK}\n\ntwo`,
-            'three',
-            `${DIRECT_BLOCK}\n\nfour`,
-            'five',
-            `${HUMAN_BLOCK}\n\nsix`,
+            asked('one'),
+            asked('two', HUMAN_BLOCK),
+            asked('three'),
+            asked('four', DIRECT_BLOCK),
+            asked('five'),
+            asked('six', HUMAN_BLOCK),
         ]);
         // Switching back to Default still records it — Default is a state.
         expect((await store.getProcess('p-seq'))?.metadata?.chatStyle).toBe('human');
@@ -327,7 +336,7 @@ describe('chat style on follow-up turns', () => {
         await sendTurn('p-record', 'switch off', 'default');
 
         expect((await store.getProcess('p-record'))?.metadata?.chatStyle).toBe('default');
-        expect(await userTurns('p-record')).toEqual(['switch off']);
+        expect(await userTurns('p-record')).toEqual([asked('switch off')]);
     });
 
     it('leaves a conversation that stays on Default byte-identical', async () => {
@@ -339,7 +348,7 @@ describe('chat style on follow-up turns', () => {
         await sendTurn('p-default', 'third');
 
         const turns = await userTurns('p-default');
-        expect(turns).toEqual(['first', 'second', 'third']);
+        expect(turns).toEqual([asked('first'), asked('second'), asked('third')]);
         expect(turns.join('\n')).not.toContain('<chat-style>');
     });
 
@@ -350,7 +359,7 @@ describe('chat style on follow-up turns', () => {
 
         await sendTurn('p-off', 'hello', 'human');
 
-        expect(await userTurns('p-off')).toEqual(['hello']);
+        expect(await userTurns('p-off')).toEqual([asked('hello')]);
         expect((await store.getProcess('p-off'))?.metadata?.chatStyle).toBeUndefined();
     });
 
@@ -374,7 +383,7 @@ describe('chat style on follow-up turns', () => {
 
         await sendTurn('p-cfg', 'hello');
 
-        expect(await userTurns('p-cfg')).toEqual([`${DIRECT_BLOCK}\n\nhello`]);
+        expect(await userTurns('p-cfg')).toEqual([asked('hello', DIRECT_BLOCK)]);
         expect((await store.getProcess('p-cfg'))?.metadata?.chatStyle).toBe('direct');
     });
 
@@ -385,7 +394,7 @@ describe('chat style on follow-up turns', () => {
 
         await sendTurn('p-cfg-explicit', 'hello', 'default');
 
-        expect(await userTurns('p-cfg-explicit')).toEqual(['hello']);
+        expect(await userTurns('p-cfg-explicit')).toEqual([asked('hello')]);
         // Unchanged from the conversation's implicit 'default' baseline, so the
         // existing "only an actual change needs a write" rule skips the write.
         expect((await store.getProcess('p-cfg-explicit'))?.metadata?.chatStyle).toBeUndefined();

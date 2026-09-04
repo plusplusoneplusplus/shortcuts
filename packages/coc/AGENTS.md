@@ -772,6 +772,37 @@ all have their own `references/*.md`.
   cron/wakeup/trigger tick resolves questions as `reason: 'unavailable'` rather
   than blocking. `test/server/executors/mode-invariant-tool-block.test.ts` is
   the fence; the Ralph grill terminal round is the one documented exception.
+- **Mode-invariant system prompt:** `buildChatTurnSystemMessage` takes no
+  `mode` and must never grow one. The system prompt is re-sent on every turn
+  (including resumed ones) and sits at the front of the prefix, so a byte that
+  varies with the mode pill invalidates the whole conversation's cache. The
+  read-only directive, the mode-specific `.github/coc/instructions-<mode>.md`,
+  and the ask→autopilot transition note ride the outgoing user turn instead
+  (`src/server/executors/chat-mode-directive.ts`, prepended on every turn); the
+  shared `instructions.md` stays in the system prompt via
+  `withBaseRepoInstructions`. The auto-folder save-location block is passed
+  unconditionally — it is inert in autopilot, and gating it on the mode would
+  reintroduce the same churn. `ChatBaseExecutor.buildFirstTurnSystemMessage` is
+  the single first-turn builder for both the ask and autopilot executors so
+  whichever one opens a chat produces the same prefix the follow-up path
+  reproduces. `test/server/executors/chat-turn-system-message.test.ts` is the
+  fence. Known remaining divergence: autopilot first turns still opt out of
+  Memory V2, which costs nothing while the Memory V2 recall block is rebuilt
+  per turn anyway.
+- **The mode directive is disclosed in the transcript.** Because it rides the
+  user message, the *stored* turn carries it too — the same rule the
+  `<chat-style>` block follows (AC-05), so the bubble shows what the model was
+  told. Injected by `ProcessLifecycleRunner` (turn 1), `POST /message` and the
+  `send_to_conversation` binding (later turns), and `FollowUpExecutor` (the
+  cron/wakeup turns it creates itself), always *inside* the style block and
+  always via `buildChatModeDisplayBlock`, which omits the repo's mode
+  instructions. Turn 1 predicts executor routing with
+  `resolveFirstTurnDirectiveMode` (mirrors `resolveChatExecutor`, and requires
+  `task.type === 'chat' | 'pr-classification'` so Dreams' internal chat-shaped
+  steps disclose nothing) — never disclose a directive an executor does not
+  send. `promptPreview` / `fullPrompt` stay directive-free, and
+  `stripInjectedUserBlocks` removes the injected blocks before title
+  generation, whose prompt only reads the first 400 characters.
 - **Copilot long-context tier** is automatic at the provider boundary: chat
   and follow-up executors derive `contextTier` only via
   `getCopilotContextTierForModel` (tiered billing metadata —

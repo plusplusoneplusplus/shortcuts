@@ -18,7 +18,7 @@ import type { ChatPayload } from '../tasks/task-types';
 import { createResolveCommentTool } from '../llm-tools/resolve-comment-tool';
 import type { ChatModeAIOptions, ChatModeExecutionResult, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
-import { buildModeSystemMessage } from './prompt-builder';
+import { buildChatModeDirective, prependChatModeDirective } from './chat-mode-directive';
 import { systemMessageBuilder } from './system-message-builder';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 
@@ -163,19 +163,20 @@ export class ResolveCommentsExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const isMultiFile = !!payload.context?.resolveDiffCommentsMulti;
         // Resolve-comments is a user-facing agent session (AC-03): append the
-        // admin global system prompt via the shared builder. Single-file keeps
-        // its 'ask' mode block; multi-file (autopilot) previously had no system
-        // message and now carries only the global block when one is configured.
-        // No-op when unset, preserving the prior `undefined` default.
+        // admin global system prompt via the shared builder. No-op when unset,
+        // preserving the prior `undefined` default. The single-file read-only
+        // constraint rides the user turn instead of this message, so a follow-up
+        // (which routes through FollowUpExecutor) keeps the same prefix.
         const systemMessage = await systemMessageBuilder()
-            .append(isMultiFile ? undefined : buildModeSystemMessage('ask')?.content)
             .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .build();
         return {
             agentMode: isMultiFile ? 'autopilot' : 'interactive',
             systemMessage,
             tools: [tool as Tool<unknown>],
-            effectivePrompt: prompt,
+            effectivePrompt: isMultiFile
+                ? prompt
+                : prependChatModeDirective(prompt, buildChatModeDirective({ mode: 'ask' })),
         };
     }
 }

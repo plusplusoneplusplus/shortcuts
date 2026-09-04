@@ -198,7 +198,7 @@ describe('Global system prompt — multi-repo invariants (AC-06)', () => {
             expect(globalIdx).toBeGreaterThanOrEqual(0);
             expect(globalIdx).toBeLessThan(repoIdx);
 
-            expect(mockLoadInstructions).toHaveBeenCalledWith('/repo/a', expect.anything());
+            expect(mockLoadInstructions).toHaveBeenCalledWith('/repo/a', 'ask', { scope: 'both' });
         });
 
         it('emits a byte-identical global block across repos with different .github/coc instructions', async () => {

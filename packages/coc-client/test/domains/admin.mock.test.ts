@@ -92,8 +92,8 @@ describe('AdminClient mock server contract', () => {
         id: 'read-only-mode',
         title: 'Read-only Mode',
         group: 'Pipeline',
-        source: 'forge/copilot-sdk-wrapper/types.ts',
-        description: 'System message injected in ask/plan modes blocking file edits',
+        source: 'coc-agent-sdk/src/types.ts',
+        description: 'Directive prepended to Ask-mode user turns blocking file edits',
         text: 'You are in read-only mode.',
       },
     };

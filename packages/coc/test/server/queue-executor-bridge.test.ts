@@ -2970,7 +2970,7 @@ describe('CLITaskExecutor', () => {
             await executor.execute(task);
 
             expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
-                prompt: 'Custom resolve prompt for testing',
+                prompt: expect.stringContaining('Custom resolve prompt for testing'),
             }));
         });
 

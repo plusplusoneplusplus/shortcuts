@@ -42,7 +42,6 @@ vi.mock('fs', async (importOriginal) => {
     };
 });
 
-const mockBuildModeSystemMessage = vi.fn().mockReturnValue({ mode: 'replace', content: 'system' });
 const mockWithRepoInstructions = vi.fn().mockImplementation(async (sm: any) => sm);
 const mockBuildConversationHistoryContext = vi.fn().mockReturnValue(undefined);
 const mockBuildFollowUpSuggestionsAddon = vi.fn().mockReturnValue({ tools: [], suffix: '' });
@@ -82,7 +81,6 @@ function makeMockToolBundle(overrides?: Partial<ReturnType<typeof makeMockToolBu
 const mockBuildChatToolBundle = vi.fn().mockReturnValue(makeMockToolBundle());
 
 vi.mock('../../../src/server/executors/prompt-builder', () => ({
-    buildModeSystemMessage: (...args: any[]) => mockBuildModeSystemMessage(...args),
     buildForEachGenerationSystemMessage: () => undefined,
     buildMapReduceGenerationSystemMessage: () => undefined,
     appendAutoFolderBlock: (msg: any, _ctx: any) => msg,
@@ -217,7 +215,6 @@ describe('FollowUpExecutor', () => {
         mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
         mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
-        mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });
         mockReadNoteContent.mockReset().mockResolvedValue(undefined);
         // Default: return the empty addon so most tests are unaffected by Memory V2.
         mockBuildMemoryV2Addon.mockReset().mockResolvedValue({
@@ -423,10 +420,6 @@ describe('FollowUpExecutor', () => {
     });
 
     it('passes the composed system message while resuming Claude follow-up sessions', async () => {
-        mockBuildModeSystemMessage.mockReturnValueOnce({
-            mode: 'append',
-            content: 'Claude follow-up system instructions',
-        });
         const proc = makeProcess({
             id: 'proc-claude-system-follow',
             sdkSessionId: 'claude-sdk-session',
@@ -440,10 +433,13 @@ describe('FollowUpExecutor', () => {
 
         expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
-        expect(callArg.prompt).toBe('msg');
+        // The mode directive rides the prompt; the system message carries the
+        // session-invariant blocks only.
+        expect(callArg.prompt).toContain('msg');
+        expect(callArg.prompt).toContain('<coc-read-only-mode>');
         expect(callArg.sessionId).toBe('claude-sdk-session');
         expect(callArg.systemMessage.mode).toBe('append');
-        expect(callArg.systemMessage.content).toContain('Claude follow-up system instructions');
+        expect(callArg.systemMessage.content).not.toContain('<coc-read-only-mode>');
         expect(callArg.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
     });
 
@@ -592,7 +588,7 @@ describe('FollowUpExecutor', () => {
         await executor.executeFollowUp('proc-continue-after-timeout', 'Continue after timeout');
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
-        expect(callArg.prompt).toBe('Continue after timeout');
+        expect(callArg.prompt).toContain('Continue after timeout');
         expect(callArg.sessionId).toBeUndefined();
         expect(callArg.systemMessage.content).toContain('[User]: Original question');
         expect(callArg.systemMessage.content).toContain('[User]: Continue after timeout');
@@ -890,7 +886,7 @@ describe('FollowUpExecutor', () => {
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.sessionId).toBeUndefined();
         expect(callArg.systemMessage.content).toContain('HISTORY: prior turns');
-        expect(callArg.systemMessage.content).toContain('system');
+        expect(callArg.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
     });
 
     it('keeps resumable sessions on the SDK session without prepending history', async () => {
@@ -1334,8 +1330,7 @@ describe('FollowUpExecutor', () => {
         expect(final?.metadata?.systemPrompt).toBeDefined();
     });
 
-    it('does not append the ask auto-folder block for Copilot autopilot follow-ups', async () => {
-        mockBuildModeSystemMessage.mockReturnValueOnce(undefined);
+    it('appends the auto-folder block for Copilot autopilot follow-ups too — the block is mode-invariant', async () => {
         const proc = makeProcess({
             id: 'proc-autopilot-source-prompt',
             workingDirectory: '/fake/ws',
@@ -1348,7 +1343,10 @@ describe('FollowUpExecutor', () => {
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
-        expect(callArg.systemMessage.content).not.toContain('<chosen-folder>');
+        // Gating the save-location block on the mode would put a mode-dependent
+        // byte back into the conversation's cached prefix.
+        expect(callArg.systemMessage.content).toContain('<chosen-folder>');
+        expect(callArg.systemMessage.content).not.toContain('<coc-read-only-mode>');
     });
 
     // -------------------------------------------------------------------------
@@ -1380,8 +1378,13 @@ describe('FollowUpExecutor', () => {
         expect(turns.length).toBeGreaterThanOrEqual(4);
         const cronUserTurn = turns.find(t => t.role === 'user' && t.turnSource?.source === 'cron');
         expect(cronUserTurn).toBeDefined();
-        expect(cronUserTurn!.content).toBe('Check status');
         expect(cronUserTurn!.turnSource).toEqual({ source: 'cron', cronId: 'cron_abc' });
+        // The turn discloses the directive the turn was sent with, and the
+        // cron message itself still ends the content.
+        const sent = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(sent.prompt).toContain('<coc-chat-mode>');
+        expect(cronUserTurn!.content).toContain('<coc-read-only-mode>');
+        expect(cronUserTurn!.content.endsWith('Check status')).toBe(true);
     });
 
     it('tags assistant turn with turnSource for cron follow-ups', async () => {
@@ -1484,7 +1487,9 @@ describe('FollowUpExecutor', () => {
 
         expect(resolveAiServiceForProvider).toHaveBeenCalledWith('codex');
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
-        expect(callArg.systemMessage.content).not.toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
+        // Codex contributes no source-location block, and with the mode block
+        // gone from this channel there may be no system message at all.
+        expect(callArg.systemMessage?.content ?? '').not.toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
     });
 
     it('defaults to copilot when process has no provider metadata (legacy processes)', async () => {
@@ -1956,7 +1961,6 @@ describe('FollowUpExecutor plan save-location block', () => {
         sdkMocks.resetAll();
         mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
-        mockBuildModeSystemMessage.mockReset().mockReturnValue({ mode: 'replace', content: 'system' });
     });
 
     async function runFollowUp(id: string, metadata: Record<string, unknown>) {

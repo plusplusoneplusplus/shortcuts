@@ -144,7 +144,7 @@ Codex thread options expose no `skillDirectories`/`disabledSkills`. CoC maps res
 
 ### Permissions
 
-Every SDK agent mode maps to `approvalPolicy: 'never'` and `sandboxMode: 'danger-full-access'` with network enabled, so Codex can read skill files and other allowed roots on hosts where the restricted workspace-write sandbox cannot initialize. Ask-mode write constraints are enforced by CoC's read-only system prompt (plan file, attached note, `.goal.md` specs). The server normalizes chat `mode='plan'` to Ask before calling the SDK.
+Every SDK agent mode maps to `approvalPolicy: 'never'` and `sandboxMode: 'danger-full-access'` with network enabled, so Codex can read skill files and other allowed roots on hosts where the restricted workspace-write sandbox cannot initialize. Ask-mode write constraints are enforced by the `<coc-read-only-mode>` directive CoC prepends to each ask-mode user turn (plan file, attached note, `.goal.md` specs are the exceptions). The server normalizes chat `mode='plan'` to Ask before calling the SDK.
 
 ### Attachments
 
@@ -178,7 +178,7 @@ A wall-clock drain cap (`CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS`, 60 min, `COC_CLAUD
 
 ### System prompt
 
-`SendMessageOptions.systemMessage` is delivered through the SDK's unified `systemPrompt` query option (the >= 0.1 surface; the option names `appendSystemPrompt`/`customSystemPrompt` are silently ignored by `query()` and must not be used). `mode: "append"` → `systemPrompt: { type: 'preset', preset: 'claude_code', append: content }`; `mode: "replace"` → `systemPrompt: content`; blank/absent content omits the field entirely. Executor content (ask-mode read-only instructions, repo `.github/coc` instructions, Memory/tool guidance, note permissions, save-location directives) stays in this channel, not the user prompt. Resumed follow-ups pass the persisted transcript ID via `options.resume` while still sending the current turn's system prompt.
+`SendMessageOptions.systemMessage` is delivered through the SDK's unified `systemPrompt` query option (the >= 0.1 surface; the option names `appendSystemPrompt`/`customSystemPrompt` are silently ignored by `query()` and must not be used). `mode: "append"` → `systemPrompt: { type: 'preset', preset: 'claude_code', append: content }`; `mode: "replace"` → `systemPrompt: content`; blank/absent content omits the field entirely. The system prompt is **session-invariant**: it is re-sent on every turn and sits at the front of the prefix, so any byte that varies by mode or by turn invalidates the whole conversation's cached prefix. Session-invariant executor content (admin global prompt, the shared `.github/coc/instructions.md`, Memory snapshot/tool guidance, note permissions, save-location directives) stays in this channel. Anything that varies with the mode pill rides the outgoing user turn instead: the `<coc-chat-mode>` directive carries the ask-mode read-only instructions, the mode-specific `.github/coc/instructions-<mode>.md`, and an explicit transition note on the first turn after a switch out of ask (`packages/coc/src/server/executors/chat-mode-directive.ts`). Because it rides the user message, the directive is also prepended to the *stored* user turn, so the transcript renders what the model was told (the mode prose only — the repo's mode instructions are left out, and `promptPreview`/`fullPrompt`/title generation strip or skip the injected blocks). Resumed follow-ups pass the persisted transcript ID via `options.resume` while still sending the current turn's system prompt.
 
 ### Provider option contracts
 
