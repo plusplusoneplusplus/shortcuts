@@ -42,6 +42,11 @@ import {
 } from './update-check';
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput, DebugMenuHandlers } from './app-menu';
 import { attachFindBar, registerFindBarIpc } from './find-bar-host';
+import {
+    createMenuCopyDelegate,
+    MENU_COPY_HANDLED_CHANNEL,
+    type MenuCopyDelegate,
+} from './terminal-copy';
 import { registerScreenshotShortcut, unregisterScreenshotShortcut } from './screenshot-capture';
 import { startScreenshotCapture, setScreenshotMainWindowProvider } from './screenshot-capture-host';
 import { buildWindowOptions, buildMacInsetCss } from './window-config';
@@ -581,6 +586,33 @@ function getElevation(): ElevationState {
     return cachedElevation;
 }
 
+/**
+ * Edit ▸ Copy delegate: asks the focused renderer to take the copy (a focused
+ * xterm terminal will), falling back to `webContents.copy()` for ordinary text
+ * fields. Created lazily so it survives menu rebuilds. See `terminal-copy.ts`.
+ */
+let menuCopyDelegate: MenuCopyDelegate | null = null;
+function getMenuCopyDelegate(): MenuCopyDelegate {
+    if (!menuCopyDelegate) {
+        menuCopyDelegate = createMenuCopyDelegate({
+            getTarget: () => {
+                const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+                if (!win || win.isDestroyed()) return null;
+                const contents = win.webContents;
+                return {
+                    id: contents.id,
+                    send: (channel: string) => contents.send(channel),
+                    copy: () => contents.copy(),
+                };
+            },
+        });
+        ipcMain.on(MENU_COPY_HANDLED_CHANNEL, (event) => {
+            menuCopyDelegate?.markHandled(event.sender.id);
+        });
+    }
+    return menuCopyDelegate;
+}
+
 function setupApplicationMenu(currentChannel?: UpdateChannel): void {
     if (process.platform !== 'darwin' && process.platform !== 'win32') {
         return;
@@ -603,6 +635,9 @@ function setupApplicationMenu(currentChannel?: UpdateChannel): void {
         elevation: getElevation(),
         // AC-01: "Report an Issue…" at the top of the Help submenu, every platform.
         onReportIssue: () => openReportIssueModal(),
+        // Edit ▸ Copy delegates to a focused terminal before falling back to
+        // the native DOM copy, so Cmd+C copies xterm's painted selection.
+        onCopy: () => getMenuCopyDelegate().requestCopy(),
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

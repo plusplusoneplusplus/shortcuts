@@ -58,6 +58,14 @@ export interface AppMenuHandlers {
      * is still rendered (so the menu shape is stable) but clicking does nothing.
      */
     onReportIssue?: () => void;
+    /**
+     * Invoked by Edit ▸ Copy instead of the stock `role: 'copy'`. Provided so a
+     * focused xterm.js terminal — whose selection is painted, not a DOM
+     * selection — can claim the copy before the main process falls back to
+     * `webContents.copy()`. See `terminal-copy.ts`. Omit it and Copy keeps its
+     * standard role.
+     */
+    onCopy?: () => void;
 }
 
 /** The "Check for Updates…" label — shared so tests and both platforms agree. */
@@ -254,6 +262,55 @@ export function buildDevTunnelMenu(
     return { label: DEV_TUNNEL_MENU_LABEL, submenu: items };
 }
 
+/** The Edit submenu label — shared so tests and both platforms agree. */
+export const EDIT_MENU_LABEL = 'Edit';
+/** The Edit ▸ Copy row label, used when Copy is delegated to the renderer. */
+export const EDIT_COPY_LABEL = 'Copy';
+
+/**
+ * Build the Edit submenu.
+ *
+ * This is the `role: 'editMenu'` shape expanded into explicit items so exactly
+ * one row can be customized: Copy. When `onCopy` is supplied, Copy drops its
+ * role (a role's accelerator is handled by the menu and never reaches the
+ * renderer's key handler, which is what stopped Cmd+C from copying terminal
+ * output on macOS) and becomes a plain item with the same accelerator, wired to
+ * the delegate in `terminal-copy.ts`. Every other row — Undo, Redo, Cut, Paste,
+ * Delete, Select All, and the macOS-only Paste and Match Style / Speech rows —
+ * keeps its standard role and behaviour.
+ */
+export function buildEditMenu(
+    platform: NodeJS.Platform,
+    onCopy?: () => void,
+): MenuItemConstructorOptions {
+    const copyItem: MenuItemConstructorOptions = onCopy
+        ? { label: EDIT_COPY_LABEL, accelerator: 'CmdOrCtrl+C', click: onCopy }
+        : { role: 'copy' };
+
+    const submenu: MenuItemConstructorOptions[] = [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        copyItem,
+        { role: 'paste' },
+    ];
+
+    if (platform === 'darwin') {
+        submenu.push(
+            { role: 'pasteAndMatchStyle' },
+            { role: 'delete' },
+            { role: 'selectAll' },
+            { type: 'separator' },
+            { label: 'Speech', submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }] },
+        );
+    } else {
+        submenu.push({ role: 'delete' }, { type: 'separator' }, { role: 'selectAll' });
+    }
+
+    return { label: EDIT_MENU_LABEL, submenu };
+}
+
 /**
  * Build the full application-menu template for the given platform.
  *
@@ -336,7 +393,7 @@ export function buildAppMenuTemplate(
                     { role: 'quit' },
                 ],
             },
-            { role: 'editMenu' },
+            buildEditMenu(platform, handlers.onCopy),
             { role: 'viewMenu' },
             { role: 'windowMenu' },
         ];
@@ -366,7 +423,7 @@ export function buildAppMenuTemplate(
     // directly (across a separator) by "Check for Updates…" and "Update Channel".
     const template: MenuItemConstructorOptions[] = [
         { role: 'fileMenu' },
-        { role: 'editMenu' },
+        buildEditMenu(platform, handlers.onCopy),
         { role: 'viewMenu' },
         { role: 'windowMenu' },
     ];

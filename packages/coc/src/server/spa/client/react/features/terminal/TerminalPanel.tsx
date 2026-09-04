@@ -16,6 +16,7 @@ import {
     useTerminalClipboard,
     type TerminalKeyEventLike,
 } from './hooks/useTerminalClipboard';
+import { useDesktopTerminalCopy } from './hooks/useDesktopTerminalCopy';
 import { ContextMenu } from '../../tasks/comments/ContextMenu';
 import { detectDarkMode } from '../../utils/theme';
 import type { ITheme } from '@xterm/xterm';
@@ -127,6 +128,18 @@ export function TerminalPanel({
     // always reach the current closure over `sendInput`.
     const keyHandlerRef = useRef(clipboard.handleKeyEvent);
     keyHandlerRef.current = clipboard.handleKeyEvent;
+
+    // Desktop Edit ▸ Copy (macOS Cmd+C): claim the copy only while this
+    // terminal holds focus — xterm's hidden textarea lives inside the
+    // container — and only when something is actually selected, so an ordinary
+    // text field elsewhere still falls back to the native copy.
+    useDesktopTerminalCopy(useCallback(() => {
+        const container = termRef.current;
+        if (!container || !container.contains(document.activeElement)) return false;
+        if (!clipboard.hasSelection()) return false;
+        void clipboard.copySelection();
+        return true;
+    }, [clipboard]));
 
     const [menu, setMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
 

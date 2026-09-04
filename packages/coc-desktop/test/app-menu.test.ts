@@ -33,6 +33,9 @@ import {
     REVEAL_LOG_FILES_LABEL,
     TOGGLE_DEVTOOLS_LABEL,
     buildDebugMenu,
+    buildEditMenu,
+    EDIT_MENU_LABEL,
+    EDIT_COPY_LABEL,
     type DebugMenuHandlers,
     type DevTunnelMenuHandlers,
     type DevTunnelMenuInput,
@@ -96,7 +99,8 @@ describe('buildAppMenuTemplate — macOS', () => {
 
     it('preserves the standard Edit/View/Window menus', () => {
         const roles = template.map((i) => i.role);
-        expect(roles).toContain('editMenu');
+        // Edit is no longer a role — it is expanded so Copy can be customized.
+        expect(template.map((i) => i.label)).toContain(EDIT_MENU_LABEL);
         expect(roles).toContain('viewMenu');
         expect(roles).toContain('windowMenu');
     });
@@ -189,7 +193,7 @@ describe('buildAppMenuTemplate — Windows', () => {
     it('preserves the standard File/Edit/View/Window menus', () => {
         const roles = template.map((i) => i.role);
         expect(roles).toContain('fileMenu');
-        expect(roles).toContain('editMenu');
+        expect(template.map((i) => i.label)).toContain(EDIT_MENU_LABEL);
         expect(roles).toContain('viewMenu');
         expect(roles).toContain('windowMenu');
     });
@@ -721,5 +725,66 @@ describe('buildAppMenuTemplate — elevation status row', () => {
             expect(isSeparator(items[aboutIdx + 1])).toBe(true);
             expect(items[aboutIdx + 2].label).toBe(CHECK_FOR_UPDATES_LABEL);
         }
+    });
+});
+
+describe('buildEditMenu — Copy delegation (AC-06)', () => {
+    /**
+     * REGRESSION: the Edit menu was `{ role: "editMenu" }`, whose Copy row is
+     * `role: "copy"` → `webContents.copy()`. That copies the DOM selection,
+     * which xterm.js never makes (it paints its own), and on macOS the role's
+     * Cmd+C accelerator is consumed by the menu, so the terminal's key handler
+     * never ran either. Copy must therefore be a delegating item, while every
+     * other editing command keeps its standard role.
+     */
+    for (const platform of ['darwin', 'win32'] as NodeJS.Platform[]) {
+        describe(platform, () => {
+            it('keeps Cut/Paste/Undo/Redo/Select All on their standard roles', () => {
+                const items = submenuOf(buildEditMenu(platform, vi.fn()));
+                for (const role of ['undo', 'redo', 'cut', 'paste', 'selectAll']) {
+                    expect(roleIdx(items, role)).toBeGreaterThanOrEqual(0);
+                }
+            });
+
+            it('replaces only Copy, and wires it to the delegate', () => {
+                const onCopy = vi.fn();
+                const items = submenuOf(buildEditMenu(platform, onCopy));
+                expect(roleIdx(items, 'copy')).toBe(-1);
+                const copy = items[labelIdx(items, EDIT_COPY_LABEL)];
+                expect(copy.accelerator).toBe('CmdOrCtrl+C');
+                (copy.click as () => void)();
+                expect(onCopy).toHaveBeenCalledTimes(1);
+            });
+
+            it('keeps Copy between Cut and Paste', () => {
+                const items = submenuOf(buildEditMenu(platform, vi.fn()));
+                expect(labelIdx(items, EDIT_COPY_LABEL)).toBe(roleIdx(items, 'cut') + 1);
+                expect(roleIdx(items, 'paste')).toBe(labelIdx(items, EDIT_COPY_LABEL) + 1);
+            });
+
+            it('falls back to the standard copy role with no delegate', () => {
+                const items = submenuOf(buildEditMenu(platform));
+                expect(roleIdx(items, 'copy')).toBeGreaterThanOrEqual(0);
+                expect(labelIdx(items, EDIT_COPY_LABEL)).toBe(-1);
+            });
+
+            it('is the Edit menu the app template uses', () => {
+                const onCopy = vi.fn();
+                const template = buildAppMenuTemplate(platform, 'CoC', {
+                    onCheckForUpdates: vi.fn(),
+                    onCopy,
+                });
+                const edit = template.find((i) => i.label === EDIT_MENU_LABEL);
+                expect(edit).toBeDefined();
+                const items = submenuOf(edit!);
+                (items[labelIdx(items, EDIT_COPY_LABEL)].click as () => void)();
+                expect(onCopy).toHaveBeenCalledTimes(1);
+            });
+        });
+    }
+
+    it('adds the macOS-only Paste and Match Style row', () => {
+        expect(roleIdx(submenuOf(buildEditMenu('darwin')), 'pasteAndMatchStyle')).toBeGreaterThanOrEqual(0);
+        expect(roleIdx(submenuOf(buildEditMenu('win32')), 'pasteAndMatchStyle')).toBe(-1);
     });
 });

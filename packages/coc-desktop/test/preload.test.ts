@@ -47,6 +47,7 @@ import {
     POPOUT_COPY_URL_CHANNEL,
     POPOUT_STATE_CHANNEL,
 } from '../src/popout-chrome';
+import { MENU_COPY_CHANNEL, MENU_COPY_HANDLED_CHANNEL } from '../src/terminal-copy';
 
 const exposeInMainWorld = vi.fn();
 const send = vi.fn();
@@ -230,6 +231,22 @@ describe('preload bridge', () => {
         expect(send).toHaveBeenCalledWith(POPOUT_OPEN_EXTERNAL_CHANNEL);
         api.popout.copyUrl();
         expect(send).toHaveBeenCalledWith(POPOUT_COPY_URL_CHANNEL);
+    });
+
+    it('menu.onCopy subscribes on the real menu-copy channel and unsubscribes', () => {
+        const cb = vi.fn();
+        const unsubscribe = exposedApi().menu.onCopy(cb);
+        expect(on).toHaveBeenCalledWith(MENU_COPY_CHANNEL, expect.any(Function));
+        const listener = on.mock.calls.find((c) => c[0] === MENU_COPY_CHANNEL)![1];
+        listener({ sender: 'ignored' });
+        expect(cb).toHaveBeenCalledTimes(1);
+        unsubscribe();
+        expect(removeListener).toHaveBeenCalledWith(MENU_COPY_CHANNEL, expect.any(Function));
+    });
+
+    it('menu.copyHandled replies on the real handled channel', () => {
+        exposedApi().menu.copyHandled();
+        expect(send).toHaveBeenCalledWith(MENU_COPY_HANDLED_CHANNEL);
     });
 
     it('popout.onState subscribes on the real state channel, relays the payload, and unsubscribes', () => {
