@@ -164,6 +164,7 @@ function RepoGroupSettingsPane({ workspaceId, baseUrl, active }: RepoGroupSettin
                             controller={skillsController}
                             resolveClient={getCocClientForWorkspace}
                             allRepos={allRepos}
+                            groupMode
                         />
                     )}
                     {activeSection === 'llm-tools' && (

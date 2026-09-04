@@ -34,6 +34,13 @@ export interface AgentSkillsPanelProps {
     controller: WorkspaceSkillsController;
     resolveClient: WorkspaceSkillsClientResolver;
     allRepos?: RepoData[];
+    /**
+     * Repo-group mode. A group is a virtual workspace with no git checkout, so there is
+     * no `.github/skills/` folder to install into, edit, or delete from. The panel keeps
+     * exactly what a group can change — the per-skill enable/disable toggle — and drops
+     * every write affordance behind a short inline hint.
+     */
+    groupMode?: boolean;
 }
 
 export function AgentSkillsPanel({
@@ -42,6 +49,7 @@ export function AgentSkillsPanel({
     controller,
     resolveClient,
     allRepos = [],
+    groupMode = false,
 }: AgentSkillsPanelProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterStatus, setFilterStatus] = useState<SkillStatusFilter>('all');
@@ -125,12 +133,22 @@ export function AgentSkillsPanel({
                         <button type="button" className="ask-btn" onClick={() => void controller.refresh()} title="Refresh skills" data-testid="skills-refresh-btn">
                             <I.refresh className="ask-icon" /> Refresh
                         </button>
-                        <button type="button" className="ask-btn ask-primary" onClick={() => setShowInstallDialog(true)} data-testid="skills-install-btn">
-                            <I.plus className="ask-icon" /> Install skills
-                        </button>
+                        {!groupMode && (
+                            <button type="button" className="ask-btn ask-primary" onClick={() => setShowInstallDialog(true)} data-testid="skills-install-btn">
+                                <I.plus className="ask-icon" /> Install skills
+                            </button>
+                        )}
                     </div>
                 </div>
             </header>
+
+            {groupMode && (
+                <div className="ask-group-note" data-testid="skills-group-readonly-hint">
+                    A repo group has no repository checkout, so skills cannot be installed, edited or
+                    deleted here. Enable or disable the global skills and the ones inherited from member
+                    repos — the change applies to this group&apos;s chats only.
+                </div>
+            )}
 
             <div className="ask-toolbar">
                 <label className="ask-search">
@@ -164,7 +182,7 @@ export function AgentSkillsPanel({
                     ))}
                 </div>
                 <div className="ask-spacer" />
-                {otherRepos.length > 0 && (
+                {otherRepos.length > 0 && !groupMode && (
                     <div className="ask-popover-anchor">
                         <button type="button" className="ask-btn ask-sm ask-ghost" onClick={() => setShowRepoPicker(open => !open)} data-testid="link-from-repo-btn">
                             <I.link className="ask-icon" /> Link a repo
@@ -191,6 +209,7 @@ export function AgentSkillsPanel({
                     onSelect={source => setActiveSource(current => current === source.id ? 'all' : source.id)}
                     onRemove={removeSource}
                     onAddFolder={folderPath => void controller.addExtraSkillFolder(folderPath)}
+                    readOnly={groupMode}
                 />
 
                 <section className="ask-list">
@@ -206,18 +225,22 @@ export function AgentSkillsPanel({
                         <div className="ask-empty-source" data-testid="skills-empty-state">
                             <div style={{ fontSize: 14, color: 'var(--ask-text-2)', marginBottom: 4 }}>No skills installed</div>
                             <div style={{ fontSize: 12.5 }}>
-                                Skills are AI prompt modules stored in <code>.github/skills/</code>. They extend the agent&apos;s capabilities for specific tasks.
+                                {groupMode
+                                    ? 'Skills come from ~/.coc/skills/ and from the group\u2019s member repos. Add one globally or to a member repo and it shows up here.'
+                                    : <>Skills are AI prompt modules stored in <code>.github/skills/</code>. They extend the agent&apos;s capabilities for specific tasks.</>}
                             </div>
-                            <div style={{ marginTop: 12, display: 'flex', gap: 6, justifyContent: 'center' }}>
-                                <button type="button" className="ask-btn ask-sm" onClick={() => setShowInstallDialog(true)}>
-                                    <I.plus className="ask-icon" /> Install skills
-                                </button>
-                                {otherRepos.length > 0 && (
-                                    <button type="button" className="ask-btn ask-sm ask-ghost" onClick={() => setShowRepoPicker(true)} data-testid="empty-state-link-repo-btn">
-                                        <I.link className="ask-icon" /> Link a repo
+                            {!groupMode && (
+                                <div style={{ marginTop: 12, display: 'flex', gap: 6, justifyContent: 'center' }}>
+                                    <button type="button" className="ask-btn ask-sm" onClick={() => setShowInstallDialog(true)}>
+                                        <I.plus className="ask-icon" /> Install skills
                                     </button>
-                                )}
-                            </div>
+                                    {otherRepos.length > 0 && (
+                                        <button type="button" className="ask-btn ask-sm ask-ghost" onClick={() => setShowRepoPicker(true)} data-testid="empty-state-link-repo-btn">
+                                            <I.link className="ask-icon" /> Link a repo
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     ) : controller.skills.length > 0 ? (
                         <>
@@ -253,7 +276,7 @@ export function AgentSkillsPanel({
                                                 sourceLabel={source.sourceLabel}
                                                 sourceKind={source.kind}
                                                 sourcePillLabel={source.sourcePillLabel}
-                                                hideDelete={source.hideDelete}
+                                                hideDelete={groupMode || source.hideDelete}
                                                 toggleDisabled={controller.skillToggleSaving || controller.skillsLoading}
                                                 onToggleOpen={() => void controller.expandSkill(skill.name)}
                                                 onToggleEnabled={enabled => void controller.toggleSkill(skill.name, enabled)}
@@ -266,7 +289,10 @@ export function AgentSkillsPanel({
                                 </div>
                             )}
 
-                            <SkillsResolutionOrder items={resolutionItems} onMove={(folder, delta) => void controller.moveExtraSkillFolder(folder, delta)} />
+                            <SkillsResolutionOrder
+                                items={resolutionItems}
+                                onMove={groupMode ? undefined : (folder, delta) => void controller.moveExtraSkillFolder(folder, delta)}
+                            />
                             <div className="ask-footer-note">Changes are saved automatically · PATCH /api/workspaces/{workspaceId}/skills-config</div>
                         </>
                     ) : null}

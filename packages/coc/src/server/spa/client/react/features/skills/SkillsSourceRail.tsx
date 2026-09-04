@@ -9,6 +9,12 @@ export interface SkillsSourceRailProps {
     onSelect: (source: SkillsSourceItem) => void;
     onRemove: (source: SkillsSourceItem) => void;
     onAddFolder: (folderPath: string) => void;
+    /**
+     * Read-only rail: the source list still filters, but nothing that mutates the
+     * source set is offered. A repo group has no skills folder of its own, so
+     * adding folders / linking repos / removing sources have nowhere to land.
+     */
+    readOnly?: boolean;
 }
 
 function SourceRow({
@@ -71,6 +77,7 @@ export function SkillsSourceRail({
     onSelect,
     onRemove,
     onAddFolder,
+    readOnly = false,
 }: SkillsSourceRailProps) {
     const [showAddFolder, setShowAddFolder] = useState(false);
     const [folderInput, setFolderInput] = useState('');
@@ -98,12 +105,12 @@ export function SkillsSourceRail({
                         source={source}
                         active={activeSource === source.id}
                         onSelect={() => onSelect(source)}
-                        onRemove={source.removable ? () => onRemove(source) : undefined}
+                        onRemove={source.removable && !readOnly ? () => onRemove(source) : undefined}
                     />
                 ))}
             </div>
 
-            {showAddFolder ? (
+            {readOnly ? null : showAddFolder ? (
                 <div className="ask-source-input-row" data-testid="extra-folder-input-row">
                     <input
                         type="text"

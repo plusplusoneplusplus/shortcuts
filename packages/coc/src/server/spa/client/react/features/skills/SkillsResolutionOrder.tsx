@@ -6,13 +6,17 @@ export function SkillsResolutionOrder({
     onMove,
 }: {
     items: SkillsResolutionItem[];
-    onMove: (folderPath: string, delta: -1 | 1) => void;
+    /** Omitted when the caller has nowhere to write a new order — a repo group has no skills folder of its own. */
+    onMove?: (folderPath: string, delta: -1 | 1) => void;
 }) {
     if (items.length === 0) {return null;}
     return (
         <div className="ask-resolution" data-testid="skills-resolution-order">
             <h3>Resolution order</h3>
-            <p>When two skills share a name, the first matching folder wins. Use the arrow buttons to reorder extra folders.</p>
+            <p>
+                When two skills share a name, the first matching folder wins.
+                {onMove ? ' Use the arrow buttons to reorder extra folders.' : ''}
+            </p>
             <div className="ask-order-list">
                 {items.map((item, index) => (
                     <div key={item.id} className="ask-order-row" data-kind={item.kind} data-testid={`resolution-item-${item.id}`}>
@@ -27,8 +31,8 @@ export function SkillsResolutionOrder({
                                 type="button"
                                 className="ask-icon-btn"
                                 title="Move up"
-                                onClick={() => item.folderPath && onMove(item.folderPath, -1)}
-                                disabled={!item.reorderable || item.upDisabled}
+                                onClick={() => item.folderPath && onMove?.(item.folderPath, -1)}
+                                disabled={!onMove || !item.reorderable || item.upDisabled}
                             >
                                 ↑
                             </button>
@@ -36,8 +40,8 @@ export function SkillsResolutionOrder({
                                 type="button"
                                 className="ask-icon-btn"
                                 title="Move down"
-                                onClick={() => item.folderPath && onMove(item.folderPath, 1)}
-                                disabled={!item.reorderable || item.downDisabled}
+                                onClick={() => item.folderPath && onMove?.(item.folderPath, 1)}
+                                disabled={!onMove || !item.reorderable || item.downDisabled}
                             >
                                 ↓
                             </button>
@@ -45,8 +49,8 @@ export function SkillsResolutionOrder({
                                 type="button"
                                 className="ask-icon-btn"
                                 title="Drag"
-                                style={{ cursor: item.reorderable ? 'grab' : 'default' }}
-                                disabled={!item.reorderable}
+                                style={{ cursor: onMove && item.reorderable ? 'grab' : 'default' }}
+                                disabled={!onMove || !item.reorderable}
                             >
                                 <I.grip className="ask-icon" />
                             </button>
