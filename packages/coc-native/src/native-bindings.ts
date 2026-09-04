@@ -12,6 +12,689 @@
  * binary the loader resolves.
  */
 
+/** An in-memory, gitignore-aware index of one repository's file paths. */
+export declare class FileIndex {
+  /** Number of indexed paths. */
+  len(): number
+  /** True when the walk hit the configured `maxEntries` cap. */
+  truncated(): boolean
+  /** A window of the raw path list, in index order. */
+  files(offset: number, limit: number): Array<string>
+  /** Score every indexed path and resolve with the best `limit` matches. */
+  search(query: string, limit: number): Promise<FileMatch[]>
+  /** Re-walk the root and atomically swap in the new path list. */
+  refresh(): Promise<void>
+}
+
+/** An in-memory content index for one already-authorized Notes root. */
+export declare class NotesIndex {
+  /**
+   * Search the current complete snapshot and return at most 50 matching
+   * files and 100 total filename/content matches.
+   */
+  search(query: string): Promise<NotesSearchResponse>
+  /**
+   * Rebuild the complete root and atomically replace the searchable
+   * snapshot. A failed rebuild retains the last complete snapshot.
+   */
+  refresh(): Promise<void>
+  /**
+   * Apply at most 1,024 normalized, root-relative changed file paths and
+   * atomically replace the searchable snapshot. Missing files are removed;
+   * existing lowercase-Markdown files are upserted from disk.
+   */
+  refreshChanged(changedPaths: Array<string>): Promise<void>
+}
+
+/** Walk `root` in parallel and resolve with a ready-to-search index. */
+export declare function buildFileIndex(root: string, options?: BuildOptions | undefined | null): Promise<FileIndex>
+
+/** Recursively build a complete immutable snapshot for one resolved Notes root. */
+export declare function buildNotesIndex(root: string, options?: NotesIndexBuildOptions | undefined | null): Promise<NotesIndex>
+
+/** How to build (and later refresh) an index. */
+export interface BuildOptions {
+  /** Include gitignored files — the `showIgnored` flag from the explorer. */
+  includeIgnored?: boolean
+  /** Safety cap on indexed paths. Omit for no cap. */
+  maxEntries?: number
+}
+
+/** One matching line, with its position inside the line and its neighbours. */
+export interface ContentMatch {
+  /** Repo-relative path with `/` separators on every platform. */
+  path: string
+  /** One-based line number. */
+  line: number
+  /** The matching line without its trailing newline, possibly truncated. */
+  text: string
+  /**
+   * UTF-16 offset of the match within `text` — the same offset a JavaScript
+   * string index would use, so highlight and match cannot disagree.
+   */
+  startColumn: number
+  /** UTF-16 offset one past the end of the match within `text`. */
+  endColumn: number
+  /**
+   * Present when this line is one piece of a match that crossed a line
+   * break; every piece of that match shares the id, and it is unique within
+   * a path. Absent for an ordinary single-line match.
+   */
+  group?: number
+  /** Lines preceding `line`, in file order. */
+  before: Array<string>
+  /** Lines following `line`, in file order. */
+  after: Array<string>
+}
+
+/** The bounded response from one content search. */
+export interface ContentSearchResult {
+  /** Matches sorted by path, then by line. */
+  matches: Array<ContentMatch>
+  /**
+   * True when any cap bit: the total cap, a per-file cap, or a file skipped
+   * for exceeding `maxFileSizeBytes`.
+   */
+  truncated: boolean
+}
+
+/**
+ * Run `git -C <repoRoot> <args>` and resolve with its trimmed stdout.
+ *
+ * No shell is involved, so arguments containing spaces need no quoting. A
+ * non-zero exit, a timeout, or output past the buffer cap all reject with
+ * `git <args> failed: <stderr>`.
+ */
+export declare function execGit(args: Array<string>, repoRoot: string, options?: GitExecOptions | undefined | null): Promise<string>
+
+/** A scored path plus the positions the client highlights. */
+export interface FileMatch {
+  path: string
+  score: number
+  /**
+   * Matched UTF-16 offsets within `path`, ascending — the same offsets a
+   * JavaScript string index would use.
+   */
+  indices: Array<number>
+}
+
+/** One branch as the branch list renders it. */
+export interface GitBranchEntry {
+  /** Short name — `main` locally, `origin/main` for a remote branch. */
+  name: string
+  isCurrent: boolean
+  isRemote: boolean
+  /** The part before the first `/` of a remote branch's name. */
+  remoteName?: string
+  lastCommitSubject: string
+  /** `%(committerdate:relative)`, e.g. `3 days ago`. */
+  lastCommitDate: string
+}
+
+/** Which slice of the branch list to read. */
+export interface GitBranchListOptions {
+  /** Remote branches instead of local ones. */
+  remote: boolean
+  /**
+   * Branches to return. Zero returns the total with no rows, which is how
+   * the count-only callers ask their question.
+   */
+  limit: number
+  offset: number
+  /** Case-insensitive substring the branch *name* must contain. */
+  search?: string
+}
+
+/** One page of the branch list. */
+export interface GitBranchPage {
+  branches: Array<GitBranchEntry>
+  /** Matching branches in the whole repository, not just on this page. */
+  totalCount: number
+  hasMore: boolean
+}
+
+/**
+ * Read the checked-out branch, its upstream, and the drift between them.
+ *
+ * One opened repository in place of the four `rev-parse` / `symbolic-ref` /
+ * `rev-list` children the Git tab used to spawn for this. Resolves with `null`
+ * when HEAD names nothing — an unborn branch — which the caller has always
+ * treated as an absent status rather than a failure.
+ */
+export declare function gitBranchStatus(repoRoot: string): Promise<GitBranchStatus | null>
+
+/**
+ * The checked-out branch and its drift from upstream.
+ *
+ * `hasUncommittedChanges` is missing on purpose: the caller already has that
+ * answer and merges it in, rather than paying for a second status read here.
+ */
+export interface GitBranchStatus {
+  /** Empty when HEAD is detached. */
+  name: string
+  isDetached: boolean
+  /** The commit HEAD points at; only present when detached. */
+  detachedHash?: string
+  ahead: number
+  behind: number
+  /** Remote tracking branch, e.g. `origin/main`; absent when unconfigured. */
+  trackingBranch?: string
+}
+
+/**
+ * Read a commit's diff against its parent.
+ *
+ * The parent resolution is `gix`, so the two children this used to cost are
+ * down to the one `git diff` that still does the real work.
+ */
+export declare function gitCommitDiff(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<string>
+
+/**
+ * One file a commit touched.
+ *
+ * `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
+ * they are absent on a status entry and a range file: they are the caller's
+ * own values, and the caller attaches them.
+ */
+export interface GitCommitFile {
+  path: string
+  /** Source path of a rename or copy; absent otherwise. */
+  originalPath?: string
+  /** A `GitChangeStatus` string union member. */
+  status: string
+  /**
+   * Absent rather than zero when `--numstat` had nothing to say — a binary
+   * file, above all. The UI renders a blank column there rather than a
+   * misleading `0`.
+   */
+  additions?: number
+  deletions?: number
+}
+
+/**
+ * Read the files a commit touched, with their line counts and its parent.
+ *
+ * Three children become one crossing: the parent comes from `gix`, and the
+ * two `diff-tree` runs are joined in Rust rather than crossing as text. A root
+ * commit has no file list at all — `diff-tree` compares against parents — but
+ * still reports the empty tree as its parent.
+ */
+export declare function gitCommitFiles(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<GitCommitFiles>
+
+/** A commit's file list, and the parent the list was computed against. */
+export interface GitCommitFiles {
+  /** The commit's first parent, or git's empty tree for a root commit. */
+  parentHash: string
+  files: Array<GitCommitFile>
+}
+
+/**
+ * The repository's primary remote URL: `origin`, or the first remote by name
+ * when `origin` is not configured.
+ *
+ * One call over one opened repository, where the TypeScript spawned between
+ * one and three children to ask the same question. Resolves with `null` for a
+ * repository with no remotes; rejects only when the path is not a repository,
+ * which the caller reads as `undefined` too.
+ */
+export declare function gitDetectRemoteUrl(repoRoot: string): Promise<string | null>
+
+/**
+ * Render a unified diff of two contents that are already in memory.
+ *
+ * No repository is involved: the contents are written to a private temp
+ * directory, compared with `git diff --no-index`, and the directory is removed
+ * before this resolves — one crossing where the TypeScript spent an
+ * `fs.mkdtemp`, two writes, a `spawn` and an `fs.rm`.
+ *
+ * Resolves with an empty string when the two contents are identical. Exit code
+ * 1 means "they differ", which is the answer rather than a failure, so only a
+ * genuine error rejects — with the usual `git <args> failed: <stderr>` text.
+ */
+export declare function gitDiffNoIndex(input: GitNoIndexDiffInput, options?: GitExecOptions | undefined | null): Promise<string>
+
+/**
+ * The working-tree root containing `path` — `git rev-parse --show-toplevel`
+ * without the child process.
+ *
+ * Resolves with `null` for every case the caller reads as "not a repository":
+ * a path that does not exist, a path outside any repository, and a bare
+ * repository, where `--show-toplevel` fails because there is no work tree.
+ * `path` is expected absolute; the caller resolves relative paths with Node's
+ * `path.resolve` so the process's own working directory keeps deciding what a
+ * relative path means.
+ */
+export declare function gitDiscoverRepoRoot(path: string): Promise<string | null>
+
+/**
+ * Per-call overrides for one git invocation. Every field is optional;
+ * omitting all of them uses a 30 s timeout and a 50 MiB output cap.
+ */
+export interface GitExecOptions {
+  /**
+   * Bytes of stdout (and of stderr) kept before the call fails.
+   * Defaults to 50 MiB.
+   */
+  maxBuffer?: number
+  /** Milliseconds before the child is killed. Defaults to 30 000. */
+  timeout?: number
+  /**
+   * Working directory for the child. `-C` already points git at the repo, so
+   * this is rarely needed.
+   */
+  cwd?: string
+  /**
+   * Environment overrides layered on top of the environment Node already
+   * has. `GIT_TERMINAL_PROMPT`, `GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` are
+   * what callers set; `PATH`, `HOME` and `SSH_AUTH_SOCK` are inherited, so
+   * `push` and `pull` still reach the user's credential helper and agent.
+   */
+  env?: Record<string, string>
+}
+
+/**
+ * Read a file's stored bytes as they stood at a commit.
+ *
+ * The byte-exact twin of {@link git_file_content_at_commit}, for a caller that
+ * writes the result back to disk instead of showing it. Decoding to a string
+ * first would rewrite every byte sequence that is not valid UTF-8 into U+FFFD,
+ * so an image in the notes sync mirror would come back corrupted.
+ *
+ * Resolves with `null` for a missing path, a revision that names nothing, and
+ * a path that names a directory. Only a path that is not a repository rejects.
+ */
+export declare function gitFileBytesAtCommit(repoRoot: string, rev: string, path: string): Promise<Buffer | null>
+
+/**
+ * Read a file's content as it stood at a commit.
+ *
+ * The blob comes out of the object database rather than off `git show`'s
+ * stdout, which is what keeps the trailing newline: every command that crosses
+ * this boundary loses one, and a file's bytes cannot afford to.
+ *
+ * Resolves with `null` for a missing path, a revision that names nothing, and
+ * a path that names a directory. Only a path that is not a repository rejects.
+ */
+export declare function gitFileContentAtCommit(repoRoot: string, rev: string, path: string): Promise<string | null>
+
+/**
+ * Whether `<rev>:<path>` names anything at a commit.
+ *
+ * True for a directory as well as a file, because the `git cat-file -e` this
+ * replaces asks whether the object exists and a tree is an object.
+ */
+export declare function gitFileExistsAtCommit(repoRoot: string, rev: string, path: string): Promise<boolean>
+
+/**
+ * Append a value to a multi-valued key in the global config file.
+ *
+ * `--add`, not a set: `safe.directory` is a list of every repository the user
+ * has approved, and replacing it would revoke the rest.
+ */
+export declare function gitGlobalConfigAdd(key: string, value: string, options?: GitExecOptions | undefined | null): Promise<void>
+
+/**
+ * Every value `git config --global --get-all <key>` prints, one per element.
+ *
+ * No repository is involved, so there is no `repoRoot` parameter: this reads
+ * the user's own config file, which is exactly what the `safe.directory` check
+ * needs — a repository-local entry is not what Git for Windows consults before
+ * agreeing to open a repo on the WSL share.
+ *
+ * Rejects with `git config --global --get-all <key> failed:` when the key is
+ * unset or the global config file does not exist; the caller reads both as
+ * "not configured".
+ */
+export declare function gitGlobalConfigGetAll(key: string, options?: GitExecOptions | undefined | null): Promise<string[]>
+
+/**
+ * Read a page of the branch list, in git's own `refname` order.
+ *
+ * Backed by `gix`, so a page costs no child processes — and no shell either:
+ * the TypeScript built a `git branch | grep | tail | head` pipeline whose
+ * Windows half had to be spelled with `findstr` instead.
+ */
+export declare function gitListBranches(repoRoot: string, options: GitBranchListOptions): Promise<GitBranchPage>
+
+/**
+ * Read every local branch's short name, in git's `refname` order.
+ *
+ * `git branch --format="%(refname:short)"` without the per-branch commit
+ * lookup {@link git_list_branches} pays for its subject and date columns. The
+ * caller's own filtering and its ten-name cap stay in TypeScript: they are
+ * what one list chose to show, not what the repository holds.
+ */
+export declare function gitLocalBranchNames(repoRoot: string): Promise<string[]>
+
+/**
+ * Read one commit by any revision spec git would accept.
+ *
+ * Resolves with `null` for a spec that names nothing, because the caller has
+ * always treated "no such commit" as an absent value rather than a failure.
+ */
+export declare function gitLogCommit(repoRoot: string, rev: string): Promise<GitLogCommit | null>
+
+/**
+ * One commit, field-for-field the `GitCommit` the Git tab renders — minus
+ * `repositoryRoot` and `repositoryName`, which the TypeScript caller fills in
+ * because building paths is `path.join`'s job and stays in Node.
+ */
+export interface GitLogCommit {
+  hash: string
+  shortHash: string
+  subject: string
+  /** The message after the title (`%b`), trimmed; empty when there is none. */
+  body: string
+  authorName: string
+  authorEmail: string
+  /** ISO 8601 strict, in the author's own timezone offset (`%aI`). */
+  date: string
+  /** "3 days ago" (`%ar`). */
+  relativeDate: string
+  /** Space-separated parent hashes (`%P`); empty for a root commit. */
+  parentHashes: string
+  /** Decoration names (`%D`), already split and trimmed. */
+  refs: Array<string>
+  /**
+   * Whether the commit is on `HEAD` but not on its upstream. Absent when
+   * nobody asked — reading a single commit never computed it.
+   */
+  isAheadOfRemote?: boolean
+}
+
+/**
+ * Read a page of commit history, newest first.
+ *
+ * Backed by `gix`, so a page costs no child processes: the walk, the ref
+ * decoration and the unpushed-commit set all come out of one open repository.
+ * An unborn branch resolves to an empty page rather than rejecting, matching
+ * what the Git tab showed for a repository with no commits.
+ */
+export declare function gitLogCommits(repoRoot: string, options: GitLogOptions): Promise<GitLogPage>
+
+/** Which slice of history to read — the `CommitLoadOptions` the service takes. */
+export interface GitLogOptions {
+  /** Commits per page. */
+  maxCount: number
+  /** Commits to skip before the page starts. */
+  skip: number
+  /** Case-insensitive substring the commit message must contain. */
+  search?: string
+}
+
+/** One page of history, plus whether asking for the next one is worthwhile. */
+export interface GitLogPage {
+  commits: Array<GitLogCommit>
+  hasMore: boolean
+}
+
+/**
+ * The two contents to compare, and what the rendered headers should call them.
+ *
+ * An object rather than four positional strings, because the two contents and
+ * the two labels are the same type and swapping a pair silently inverts the
+ * diff.
+ */
+export interface GitNoIndexDiffInput {
+  /** The content on the left of the diff. */
+  before: string
+  /** The content on the right of the diff. */
+  after: string
+  /**
+   * What the `diff --git` and `---` headers should name — `a/<path>` for a
+   * file that existed, `/dev/null` for one that did not. Built by the
+   * caller, like every other path this capability handles.
+   */
+  beforeLabel: string
+  /** What the `diff --git` and `+++` headers should name. */
+  afterLabel: string
+}
+
+/** Which ref a range is measured against, and whether that was the ref asked for. */
+export interface GitRangeBaseRef {
+  /** Absent when the repository has no default branch to fall back to. */
+  baseRef?: string
+  /** The `GitRangeBaseMode` actually used — not always the one requested. */
+  baseMode: string
+  /** True when `upstream` was asked for but the branch has no upstream. */
+  baseModeFallback: boolean
+}
+
+/**
+ * Read the files changed between two refs, in git's own order.
+ *
+ * Runs `diff --numstat` and `diff --name-status -M -C` over the three-dot
+ * range and joins them, so neither output crosses the boundary as text. The
+ * list is not sorted: the caller orders it with `localeCompare`, which is not
+ * a byte comparison and is what the range view already shows.
+ */
+export declare function gitRangeChangedFiles(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeFile[]>
+
+/**
+ * How many commits `headRef` has that `baseRef` does not.
+ *
+ * `git rev-list --count <base>..<head>` as a `gix` walk. A revision that names
+ * nothing counts zero, which is what the TypeScript's `parseInt(...) || 0`
+ * produced from the failed command.
+ */
+export declare function gitRangeCountAhead(repoRoot: string, baseRef: string, headRef: string): Promise<number>
+
+/**
+ * Find the repository's default branch: `origin/main`, `origin/master`,
+ * whatever `origin/HEAD` points at, then local `main` or `master`.
+ *
+ * Five ref lookups through `gix` where the TypeScript spawned up to five
+ * `rev-parse --verify` children. Resolves with `null` when none of them exist.
+ */
+export declare function gitRangeDefaultBranch(repoRoot: string): Promise<GitRangeDefaultBranch | null>
+
+/**
+ * The repository's default branch, and whether it came from a remote ref.
+ *
+ * `fromRemote` is what lets the caller keep memoising exactly the answers it
+ * always memoised: the TypeScript cached `origin/main`, `origin/master` and
+ * `origin/HEAD` for a minute and deliberately left the local `main`/`master`
+ * fallbacks uncached.
+ */
+export interface GitRangeDefaultBranch {
+  name: string
+  fromRemote: boolean
+}
+
+/** Read the added and removed line totals between two refs. */
+export declare function gitRangeDiffStats(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeDiffStats>
+
+/** Added and removed line totals across a range. */
+export interface GitRangeDiffStats {
+  additions: number
+  deletions: number
+}
+
+/** One file in a commit range, minus the `repositoryRoot` the caller owns. */
+export interface GitRangeFile {
+  path: string
+  /** A `GitChangeStatus` string union member. */
+  status: string
+  additions: number
+  deletions: number
+  /** Source path of a rename or copy; absent otherwise. */
+  oldPath?: string
+}
+
+/**
+ * The best merge base between two revisions.
+ *
+ * Resolves with `null` for unrelated histories and for a revision that names
+ * nothing — both of which `git merge-base` reported by exiting non-zero, and
+ * the caller turned into a null.
+ */
+export declare function gitRangeMergeBase(repoRoot: string, one: string, two: string): Promise<string | null>
+
+/**
+ * Resolve the ref a range should be measured against.
+ *
+ * `baseMode` is a `GitRangeBaseMode` member; anything else reads as
+ * `default-branch`, matching what the route does with a misspelled `?base=`.
+ * Asking for `upstream` on a branch with no upstream resolves to the default
+ * branch with `baseModeFallback` set, rather than to nothing.
+ */
+export declare function gitRangeResolveBaseRef(repoRoot: string, baseMode: string): Promise<GitRangeBaseRef>
+
+/**
+ * The current branch's upstream, e.g. `origin/my-feature`.
+ *
+ * Resolves with `null` for a branch with no upstream and for a detached HEAD,
+ * both of which the caller already read as "no tracking branch".
+ */
+export declare function gitRangeUpstreamBranch(repoRoot: string): Promise<string | null>
+
+/**
+ * Read `git remote get-url <remote>` from configuration, with no child
+ * process at all.
+ *
+ * Resolves with `null` when the remote is not configured or carries no URL —
+ * the two cases `get-url` reported as one non-zero exit, and the caller as one
+ * absent value. Only a path that is not a repository rejects.
+ *
+ * The bytes come back as configured: `gix` lowercases a host when it renders a
+ * parsed URL, and this string is what the sidebar's grouping key is built
+ * from, so the raw value wins wherever it and the resolved URL agree.
+ */
+export declare function gitRemoteUrl(repoRoot: string, remote: string): Promise<string | null>
+
+/**
+ * Read branch, tracking and working-tree metadata with one git command.
+ *
+ * Still the CLI rather than `gix`: the answer includes whether the tree is
+ * dirty, and deciding that means the index refresh and `.gitignore` walk git
+ * already does.
+ */
+export declare function gitRepositoryStatus(repoRoot: string): Promise<GitRepositoryStatus>
+
+/** Repository metadata from one `git status --porcelain=v2 --branch` call. */
+export interface GitRepositoryStatus {
+  /** Current branch name, or `HEAD` when detached. */
+  branch: string
+  isDetached: boolean
+  /** Whether the index or working tree holds any change at all. */
+  dirty: boolean
+  ahead: number
+  behind: number
+  /** Configured upstream branch; absent when there is none. */
+  trackingBranch?: string
+  /** Whether the repository has no commits yet. */
+  unborn: boolean
+}
+
+/**
+ * Read the full working-tree change list for a repository.
+ *
+ * Runs `git status --porcelain --untracked-files=all` and parses it, so the
+ * output never crosses the boundary as text. Defaults to the 15 s timeout the
+ * working-tree read path has always used, rather than the 30 s command default.
+ */
+export declare function gitStatusEntries(repoRoot: string, options?: GitExecOptions | undefined | null): Promise<GitStatusEntry[]>
+
+/**
+ * One working-tree change, with the path spelled exactly as git printed it.
+ *
+ * `status` and `stage` are the `GitChangeStatus` and `GitChangeStage` string
+ * unions verbatim, so the TypeScript side casts rather than translates. The
+ * path stays repository-relative: `path.join` and `path.basename` decide what
+ * the UI shows, and their separator handling belongs in Node.
+ */
+export interface GitStatusEntry {
+  path: string
+  /** Source path of a rename or copy; absent otherwise. */
+  originalPath?: string
+  status: string
+  stage: string
+}
+
+/**
+ * Resolve a ref and report its hash when it names a commit.
+ *
+ * `rev-parse --verify` followed by `cat-file -t` in one crossing and no
+ * children. Resolves with `null` for a ref that names nothing *and* for one
+ * that names a non-commit — an annotated tag among them, because neither
+ * command peeled and neither does this.
+ */
+export declare function gitValidateRef(repoRoot: string, rev: string): Promise<string | null>
+
+/** Filesystem policy for one resolved Notes root. */
+export interface NotesIndexBuildOptions {
+  /**
+   * Skip every symbolic-link entry. External and task-derived Notes roots
+   * enable this to prevent reads outside the resolved root.
+   */
+  skipSymlinks?: boolean
+}
+
+/** One filename or content-line match. */
+export interface NotesMatch {
+  /** Zero for a filename match, otherwise the one-based content line. */
+  line: number
+  /** The original basename or line text, without lowercase normalization. */
+  text: string
+}
+
+/** The bounded response from one Notes index search. */
+export interface NotesSearchResponse {
+  results: Array<NotesSearchResult>
+  truncated: boolean
+}
+
+/** All matches for one root-relative Markdown path. */
+export interface NotesSearchResult {
+  /** Root-relative path with `/` separators on every platform. */
+  path: string
+  /** Filename match first, followed by content matches in line order. */
+  matches: Array<NotesMatch>
+}
+
+/**
+ * Parse `--porcelain=v2 --branch` text produced somewhere else.
+ *
+ * The WSL twin of {@link git_repository_status}: those repositories run git
+ * through `wsl.exe` in TypeScript, and this keeps the parser a single
+ * implementation rather than two that drift.
+ */
+export declare function parseGitBranchStatus(output: string): Promise<GitRepositoryStatus>
+
+/**
+ * Parse `git diff --shortstat` text that was produced somewhere else.
+ *
+ * The WSL twin of {@link git_range_diff_stats}.
+ */
+export declare function parseGitDiffShortstat(text: string): Promise<GitRangeDiffStats>
+
+/**
+ * Join `--numstat` and `--name-status` text that was produced somewhere else.
+ *
+ * The WSL twin of {@link git_range_changed_files}, for the same reason
+ * {@link parse_git_status_porcelain} exists: a repository inside a WSL distro
+ * runs git through `wsl.exe` in TypeScript, and the parser must still be the
+ * single one in the codebase.
+ */
+export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: string): Promise<GitRangeFile[]>
+
+/**
+ * Parse porcelain text that was produced somewhere else.
+ *
+ * This exists for repositories inside a WSL distro: those run git through
+ * `wsl.exe` in TypeScript and never reach {@link git_status_entries}, but the
+ * parser must still be the single one in the codebase. The work stays on a
+ * worker thread because a large repository's status output runs to megabytes.
+ */
+export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
+
+/**
+ * Walk `root` in parallel and resolve with every line matching `query`.
+ *
+ * An empty query resolves with an empty result rather than every line.
+ */
+export declare function searchContent(root: string, query: string, options?: SearchContentOptions | undefined | null): Promise<ContentSearchResult>
+
 /**
  * Query modes, scoping and caps for one content search.
  *
@@ -41,626 +724,4 @@ export interface SearchContentOptions {
   maxFileSizeBytes?: number
   /** Lines of context on each side of a match. Defaults to 1. */
   contextLines?: number
-}
-/** One matching line, with its position inside the line and its neighbours. */
-export interface ContentMatch {
-  /** Repo-relative path with `/` separators on every platform. */
-  path: string
-  /** One-based line number. */
-  line: number
-  /** The matching line without its trailing newline, possibly truncated. */
-  text: string
-  /**
-   * UTF-16 offset of the match within `text` — the same offset a JavaScript
-   * string index would use, so highlight and match cannot disagree.
-   */
-  startColumn: number
-  /** UTF-16 offset one past the end of the match within `text`. */
-  endColumn: number
-  /**
-   * Present when this line is one piece of a match that crossed a line
-   * break; every piece of that match shares the id, and it is unique within
-   * a path. Absent for an ordinary single-line match.
-   */
-  group?: number
-  /** Lines preceding `line`, in file order. */
-  before: Array<string>
-  /** Lines following `line`, in file order. */
-  after: Array<string>
-}
-/** The bounded response from one content search. */
-export interface ContentSearchResult {
-  /** Matches sorted by path, then by line. */
-  matches: Array<ContentMatch>
-  /**
-   * True when any cap bit: the total cap, a per-file cap, or a file skipped
-   * for exceeding `maxFileSizeBytes`.
-   */
-  truncated: boolean
-}
-/**
- * Walk `root` in parallel and resolve with every line matching `query`.
- *
- * An empty query resolves with an empty result rather than every line.
- */
-export declare function searchContent(root: string, query: string, options?: SearchContentOptions | undefined | null): Promise<ContentSearchResult>
-/** How to build (and later refresh) an index. */
-export interface BuildOptions {
-  /** Include gitignored files — the `showIgnored` flag from the explorer. */
-  includeIgnored?: boolean
-  /** Safety cap on indexed paths. Omit for no cap. */
-  maxEntries?: number
-}
-/** A scored path plus the positions the client highlights. */
-export interface FileMatch {
-  path: string
-  score: number
-  /**
-   * Matched UTF-16 offsets within `path`, ascending — the same offsets a
-   * JavaScript string index would use.
-   */
-  indices: Array<number>
-}
-/** Walk `root` in parallel and resolve with a ready-to-search index. */
-export declare function buildFileIndex(root: string, options?: BuildOptions | undefined | null): Promise<FileIndex>
-/**
- * Per-call overrides for one git invocation. Every field is optional;
- * omitting all of them uses a 30 s timeout and a 50 MiB output cap.
- */
-export interface GitExecOptions {
-  /**
-   * Bytes of stdout (and of stderr) kept before the call fails.
-   * Defaults to 50 MiB.
-   */
-  maxBuffer?: number
-  /** Milliseconds before the child is killed. Defaults to 30 000. */
-  timeout?: number
-  /**
-   * Working directory for the child. `-C` already points git at the repo, so
-   * this is rarely needed.
-   */
-  cwd?: string
-  /**
-   * Environment overrides layered on top of the environment Node already
-   * has. `GIT_TERMINAL_PROMPT`, `GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` are
-   * what callers set; `PATH`, `HOME` and `SSH_AUTH_SOCK` are inherited, so
-   * `push` and `pull` still reach the user's credential helper and agent.
-   */
-  env?: Record<string, string>
-}
-/**
- * Run `git -C <repoRoot> <args>` and resolve with its trimmed stdout.
- *
- * No shell is involved, so arguments containing spaces need no quoting. A
- * non-zero exit, a timeout, or output past the buffer cap all reject with
- * `git <args> failed: <stderr>`.
- */
-export declare function execGit(args: Array<string>, repoRoot: string, options?: GitExecOptions | undefined | null): Promise<string>
-/**
- * One working-tree change, with the path spelled exactly as git printed it.
- *
- * `status` and `stage` are the `GitChangeStatus` and `GitChangeStage` string
- * unions verbatim, so the TypeScript side casts rather than translates. The
- * path stays repository-relative: `path.join` and `path.basename` decide what
- * the UI shows, and their separator handling belongs in Node.
- */
-export interface GitStatusEntry {
-  path: string
-  /** Source path of a rename or copy; absent otherwise. */
-  originalPath?: string
-  status: string
-  stage: string
-}
-/**
- * Read the full working-tree change list for a repository.
- *
- * Runs `git status --porcelain --untracked-files=all` and parses it, so the
- * output never crosses the boundary as text. Defaults to the 15 s timeout the
- * working-tree read path has always used, rather than the 30 s command default.
- */
-export declare function gitStatusEntries(repoRoot: string, options?: GitExecOptions | undefined | null): Promise<GitStatusEntry[]>
-/**
- * Parse porcelain text that was produced somewhere else.
- *
- * This exists for repositories inside a WSL distro: those run git through
- * `wsl.exe` in TypeScript and never reach {@link git_status_entries}, but the
- * parser must still be the single one in the codebase. The work stays on a
- * worker thread because a large repository's status output runs to megabytes.
- */
-export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
-/**
- * One commit, field-for-field the `GitCommit` the Git tab renders — minus
- * `repositoryRoot` and `repositoryName`, which the TypeScript caller fills in
- * because building paths is `path.join`'s job and stays in Node.
- */
-export interface GitLogCommit {
-  hash: string
-  shortHash: string
-  subject: string
-  /** The message after the title (`%b`), trimmed; empty when there is none. */
-  body: string
-  authorName: string
-  authorEmail: string
-  /** ISO 8601 strict, in the author's own timezone offset (`%aI`). */
-  date: string
-  /** "3 days ago" (`%ar`). */
-  relativeDate: string
-  /** Space-separated parent hashes (`%P`); empty for a root commit. */
-  parentHashes: string
-  /** Decoration names (`%D`), already split and trimmed. */
-  refs: Array<string>
-  /**
-   * Whether the commit is on `HEAD` but not on its upstream. Absent when
-   * nobody asked — reading a single commit never computed it.
-   */
-  isAheadOfRemote?: boolean
-}
-/** One page of history, plus whether asking for the next one is worthwhile. */
-export interface GitLogPage {
-  commits: Array<GitLogCommit>
-  hasMore: boolean
-}
-/** Which slice of history to read — the `CommitLoadOptions` the service takes. */
-export interface GitLogOptions {
-  /** Commits per page. */
-  maxCount: number
-  /** Commits to skip before the page starts. */
-  skip: number
-  /** Case-insensitive substring the commit message must contain. */
-  search?: string
-}
-/**
- * Read a page of commit history, newest first.
- *
- * Backed by `gix`, so a page costs no child processes: the walk, the ref
- * decoration and the unpushed-commit set all come out of one open repository.
- * An unborn branch resolves to an empty page rather than rejecting, matching
- * what the Git tab showed for a repository with no commits.
- */
-export declare function gitLogCommits(repoRoot: string, options: GitLogOptions): Promise<GitLogPage>
-/**
- * Read one commit by any revision spec git would accept.
- *
- * Resolves with `null` for a spec that names nothing, because the caller has
- * always treated "no such commit" as an absent value rather than a failure.
- */
-export declare function gitLogCommit(repoRoot: string, rev: string): Promise<GitLogCommit | null>
-/**
- * One file a commit touched.
- *
- * `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
- * they are absent on a status entry and a range file: they are the caller's
- * own values, and the caller attaches them.
- */
-export interface GitCommitFile {
-  path: string
-  /** Source path of a rename or copy; absent otherwise. */
-  originalPath?: string
-  /** A `GitChangeStatus` string union member. */
-  status: string
-  /**
-   * Absent rather than zero when `--numstat` had nothing to say — a binary
-   * file, above all. The UI renders a blank column there rather than a
-   * misleading `0`.
-   */
-  additions?: number
-  deletions?: number
-}
-/** A commit's file list, and the parent the list was computed against. */
-export interface GitCommitFiles {
-  /** The commit's first parent, or git's empty tree for a root commit. */
-  parentHash: string
-  files: Array<GitCommitFile>
-}
-/**
- * Read the files a commit touched, with their line counts and its parent.
- *
- * Three children become one crossing: the parent comes from `gix`, and the
- * two `diff-tree` runs are joined in Rust rather than crossing as text. A root
- * commit has no file list at all — `diff-tree` compares against parents — but
- * still reports the empty tree as its parent.
- */
-export declare function gitCommitFiles(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<GitCommitFiles>
-/**
- * Read a commit's diff against its parent.
- *
- * The parent resolution is `gix`, so the two children this used to cost are
- * down to the one `git diff` that still does the real work.
- */
-export declare function gitCommitDiff(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<string>
-/**
- * Read a file's content as it stood at a commit.
- *
- * The blob comes out of the object database rather than off `git show`'s
- * stdout, which is what keeps the trailing newline: every command that crosses
- * this boundary loses one, and a file's bytes cannot afford to.
- *
- * Resolves with `null` for a missing path, a revision that names nothing, and
- * a path that names a directory. Only a path that is not a repository rejects.
- */
-export declare function gitFileContentAtCommit(repoRoot: string, rev: string, path: string): Promise<string | null>
-/**
- * Read a file's stored bytes as they stood at a commit.
- *
- * The byte-exact twin of {@link git_file_content_at_commit}, for a caller that
- * writes the result back to disk instead of showing it. Decoding to a string
- * first would rewrite every byte sequence that is not valid UTF-8 into U+FFFD,
- * so an image in the notes sync mirror would come back corrupted.
- *
- * Resolves with `null` for a missing path, a revision that names nothing, and
- * a path that names a directory. Only a path that is not a repository rejects.
- */
-export declare function gitFileBytesAtCommit(repoRoot: string, rev: string, path: string): Promise<Buffer | null>
-/**
- * Whether `<rev>:<path>` names anything at a commit.
- *
- * True for a directory as well as a file, because the `git cat-file -e` this
- * replaces asks whether the object exists and a tree is an object.
- */
-export declare function gitFileExistsAtCommit(repoRoot: string, rev: string, path: string): Promise<boolean>
-/**
- * Resolve a ref and report its hash when it names a commit.
- *
- * `rev-parse --verify` followed by `cat-file -t` in one crossing and no
- * children. Resolves with `null` for a ref that names nothing *and* for one
- * that names a non-commit — an annotated tag among them, because neither
- * command peeled and neither does this.
- */
-export declare function gitValidateRef(repoRoot: string, rev: string): Promise<string | null>
-/**
- * The repository's default branch, and whether it came from a remote ref.
- *
- * `fromRemote` is what lets the caller keep memoising exactly the answers it
- * always memoised: the TypeScript cached `origin/main`, `origin/master` and
- * `origin/HEAD` for a minute and deliberately left the local `main`/`master`
- * fallbacks uncached.
- */
-export interface GitRangeDefaultBranch {
-  name: string
-  fromRemote: boolean
-}
-/** Which ref a range is measured against, and whether that was the ref asked for. */
-export interface GitRangeBaseRef {
-  /** Absent when the repository has no default branch to fall back to. */
-  baseRef?: string
-  /** The `GitRangeBaseMode` actually used — not always the one requested. */
-  baseMode: string
-  /** True when `upstream` was asked for but the branch has no upstream. */
-  baseModeFallback: boolean
-}
-/** One file in a commit range, minus the `repositoryRoot` the caller owns. */
-export interface GitRangeFile {
-  path: string
-  /** A `GitChangeStatus` string union member. */
-  status: string
-  additions: number
-  deletions: number
-  /** Source path of a rename or copy; absent otherwise. */
-  oldPath?: string
-}
-/** Added and removed line totals across a range. */
-export interface GitRangeDiffStats {
-  additions: number
-  deletions: number
-}
-/**
- * Find the repository's default branch: `origin/main`, `origin/master`,
- * whatever `origin/HEAD` points at, then local `main` or `master`.
- *
- * Five ref lookups through `gix` where the TypeScript spawned up to five
- * `rev-parse --verify` children. Resolves with `null` when none of them exist.
- */
-export declare function gitRangeDefaultBranch(repoRoot: string): Promise<GitRangeDefaultBranch | null>
-/**
- * The current branch's upstream, e.g. `origin/my-feature`.
- *
- * Resolves with `null` for a branch with no upstream and for a detached HEAD,
- * both of which the caller already read as "no tracking branch".
- */
-export declare function gitRangeUpstreamBranch(repoRoot: string): Promise<string | null>
-/**
- * Resolve the ref a range should be measured against.
- *
- * `baseMode` is a `GitRangeBaseMode` member; anything else reads as
- * `default-branch`, matching what the route does with a misspelled `?base=`.
- * Asking for `upstream` on a branch with no upstream resolves to the default
- * branch with `baseModeFallback` set, rather than to nothing.
- */
-export declare function gitRangeResolveBaseRef(repoRoot: string, baseMode: string): Promise<GitRangeBaseRef>
-/**
- * The best merge base between two revisions.
- *
- * Resolves with `null` for unrelated histories and for a revision that names
- * nothing — both of which `git merge-base` reported by exiting non-zero, and
- * the caller turned into a null.
- */
-export declare function gitRangeMergeBase(repoRoot: string, one: string, two: string): Promise<string | null>
-/**
- * How many commits `headRef` has that `baseRef` does not.
- *
- * `git rev-list --count <base>..<head>` as a `gix` walk. A revision that names
- * nothing counts zero, which is what the TypeScript's `parseInt(...) || 0`
- * produced from the failed command.
- */
-export declare function gitRangeCountAhead(repoRoot: string, baseRef: string, headRef: string): Promise<number>
-/**
- * Read the files changed between two refs, in git's own order.
- *
- * Runs `diff --numstat` and `diff --name-status -M -C` over the three-dot
- * range and joins them, so neither output crosses the boundary as text. The
- * list is not sorted: the caller orders it with `localeCompare`, which is not
- * a byte comparison and is what the range view already shows.
- */
-export declare function gitRangeChangedFiles(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeFile[]>
-/**
- * Join `--numstat` and `--name-status` text that was produced somewhere else.
- *
- * The WSL twin of {@link git_range_changed_files}, for the same reason
- * {@link parse_git_status_porcelain} exists: a repository inside a WSL distro
- * runs git through `wsl.exe` in TypeScript, and the parser must still be the
- * single one in the codebase.
- */
-export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: string): Promise<GitRangeFile[]>
-/** Read the added and removed line totals between two refs. */
-export declare function gitRangeDiffStats(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeDiffStats>
-/**
- * Parse `git diff --shortstat` text that was produced somewhere else.
- *
- * The WSL twin of {@link git_range_diff_stats}.
- */
-export declare function parseGitDiffShortstat(text: string): Promise<GitRangeDiffStats>
-/** Repository metadata from one `git status --porcelain=v2 --branch` call. */
-export interface GitRepositoryStatus {
-  /** Current branch name, or `HEAD` when detached. */
-  branch: string
-  isDetached: boolean
-  /** Whether the index or working tree holds any change at all. */
-  dirty: boolean
-  ahead: number
-  behind: number
-  /** Configured upstream branch; absent when there is none. */
-  trackingBranch?: string
-  /** Whether the repository has no commits yet. */
-  unborn: boolean
-}
-/**
- * The checked-out branch and its drift from upstream.
- *
- * `hasUncommittedChanges` is missing on purpose: the caller already has that
- * answer and merges it in, rather than paying for a second status read here.
- */
-export interface GitBranchStatus {
-  /** Empty when HEAD is detached. */
-  name: string
-  isDetached: boolean
-  /** The commit HEAD points at; only present when detached. */
-  detachedHash?: string
-  ahead: number
-  behind: number
-  /** Remote tracking branch, e.g. `origin/main`; absent when unconfigured. */
-  trackingBranch?: string
-}
-/** One branch as the branch list renders it. */
-export interface GitBranchEntry {
-  /** Short name — `main` locally, `origin/main` for a remote branch. */
-  name: string
-  isCurrent: boolean
-  isRemote: boolean
-  /** The part before the first `/` of a remote branch's name. */
-  remoteName?: string
-  lastCommitSubject: string
-  /** `%(committerdate:relative)`, e.g. `3 days ago`. */
-  lastCommitDate: string
-}
-/** One page of the branch list. */
-export interface GitBranchPage {
-  branches: Array<GitBranchEntry>
-  /** Matching branches in the whole repository, not just on this page. */
-  totalCount: number
-  hasMore: boolean
-}
-/** Which slice of the branch list to read. */
-export interface GitBranchListOptions {
-  /** Remote branches instead of local ones. */
-  remote: boolean
-  /**
-   * Branches to return. Zero returns the total with no rows, which is how
-   * the count-only callers ask their question.
-   */
-  limit: number
-  offset: number
-  /** Case-insensitive substring the branch *name* must contain. */
-  search?: string
-}
-/**
- * Read branch, tracking and working-tree metadata with one git command.
- *
- * Still the CLI rather than `gix`: the answer includes whether the tree is
- * dirty, and deciding that means the index refresh and `.gitignore` walk git
- * already does.
- */
-export declare function gitRepositoryStatus(repoRoot: string): Promise<GitRepositoryStatus>
-/**
- * Parse `--porcelain=v2 --branch` text produced somewhere else.
- *
- * The WSL twin of {@link git_repository_status}: those repositories run git
- * through `wsl.exe` in TypeScript, and this keeps the parser a single
- * implementation rather than two that drift.
- */
-export declare function parseGitBranchStatus(output: string): Promise<GitRepositoryStatus>
-/**
- * Read the checked-out branch, its upstream, and the drift between them.
- *
- * One opened repository in place of the four `rev-parse` / `symbolic-ref` /
- * `rev-list` children the Git tab used to spawn for this. Resolves with `null`
- * when HEAD names nothing — an unborn branch — which the caller has always
- * treated as an absent status rather than a failure.
- */
-export declare function gitBranchStatus(repoRoot: string): Promise<GitBranchStatus | null>
-/**
- * Read a page of the branch list, in git's own `refname` order.
- *
- * Backed by `gix`, so a page costs no child processes — and no shell either:
- * the TypeScript built a `git branch | grep | tail | head` pipeline whose
- * Windows half had to be spelled with `findstr` instead.
- */
-export declare function gitListBranches(repoRoot: string, options: GitBranchListOptions): Promise<GitBranchPage>
-/**
- * Read every local branch's short name, in git's `refname` order.
- *
- * `git branch --format="%(refname:short)"` without the per-branch commit
- * lookup {@link git_list_branches} pays for its subject and date columns. The
- * caller's own filtering and its ten-name cap stay in TypeScript: they are
- * what one list chose to show, not what the repository holds.
- */
-export declare function gitLocalBranchNames(repoRoot: string): Promise<string[]>
-/**
- * Read `git remote get-url <remote>` from configuration, with no child
- * process at all.
- *
- * Resolves with `null` when the remote is not configured or carries no URL —
- * the two cases `get-url` reported as one non-zero exit, and the caller as one
- * absent value. Only a path that is not a repository rejects.
- *
- * The bytes come back as configured: `gix` lowercases a host when it renders a
- * parsed URL, and this string is what the sidebar's grouping key is built
- * from, so the raw value wins wherever it and the resolved URL agree.
- */
-export declare function gitRemoteUrl(repoRoot: string, remote: string): Promise<string | null>
-/**
- * The repository's primary remote URL: `origin`, or the first remote by name
- * when `origin` is not configured.
- *
- * One call over one opened repository, where the TypeScript spawned between
- * one and three children to ask the same question. Resolves with `null` for a
- * repository with no remotes; rejects only when the path is not a repository,
- * which the caller reads as `undefined` too.
- */
-export declare function gitDetectRemoteUrl(repoRoot: string): Promise<string | null>
-/**
- * Every value `git config --global --get-all <key>` prints, one per element.
- *
- * No repository is involved, so there is no `repoRoot` parameter: this reads
- * the user's own config file, which is exactly what the `safe.directory` check
- * needs — a repository-local entry is not what Git for Windows consults before
- * agreeing to open a repo on the WSL share.
- *
- * Rejects with `git config --global --get-all <key> failed:` when the key is
- * unset or the global config file does not exist; the caller reads both as
- * "not configured".
- */
-export declare function gitGlobalConfigGetAll(key: string, options?: GitExecOptions | undefined | null): Promise<string[]>
-/**
- * Append a value to a multi-valued key in the global config file.
- *
- * `--add`, not a set: `safe.directory` is a list of every repository the user
- * has approved, and replacing it would revoke the rest.
- */
-export declare function gitGlobalConfigAdd(key: string, value: string, options?: GitExecOptions | undefined | null): Promise<void>
-/**
- * The working-tree root containing `path` — `git rev-parse --show-toplevel`
- * without the child process.
- *
- * Resolves with `null` for every case the caller reads as "not a repository":
- * a path that does not exist, a path outside any repository, and a bare
- * repository, where `--show-toplevel` fails because there is no work tree.
- * `path` is expected absolute; the caller resolves relative paths with Node's
- * `path.resolve` so the process's own working directory keeps deciding what a
- * relative path means.
- */
-export declare function gitDiscoverRepoRoot(path: string): Promise<string | null>
-/**
- * The two contents to compare, and what the rendered headers should call them.
- *
- * An object rather than four positional strings, because the two contents and
- * the two labels are the same type and swapping a pair silently inverts the
- * diff.
- */
-export interface GitNoIndexDiffInput {
-  /** The content on the left of the diff. */
-  before: string
-  /** The content on the right of the diff. */
-  after: string
-  /**
-   * What the `diff --git` and `---` headers should name — `a/<path>` for a
-   * file that existed, `/dev/null` for one that did not. Built by the
-   * caller, like every other path this capability handles.
-   */
-  beforeLabel: string
-  /** What the `diff --git` and `+++` headers should name. */
-  afterLabel: string
-}
-/**
- * Render a unified diff of two contents that are already in memory.
- *
- * No repository is involved: the contents are written to a private temp
- * directory, compared with `git diff --no-index`, and the directory is removed
- * before this resolves — one crossing where the TypeScript spent an
- * `fs.mkdtemp`, two writes, a `spawn` and an `fs.rm`.
- *
- * Resolves with an empty string when the two contents are identical. Exit code
- * 1 means "they differ", which is the answer rather than a failure, so only a
- * genuine error rejects — with the usual `git <args> failed: <stderr>` text.
- */
-export declare function gitDiffNoIndex(input: GitNoIndexDiffInput, options?: GitExecOptions | undefined | null): Promise<string>
-/** Filesystem policy for one resolved Notes root. */
-export interface NotesIndexBuildOptions {
-  /**
-   * Skip every symbolic-link entry. External and task-derived Notes roots
-   * enable this to prevent reads outside the resolved root.
-   */
-  skipSymlinks?: boolean
-}
-/** One filename or content-line match. */
-export interface NotesMatch {
-  /** Zero for a filename match, otherwise the one-based content line. */
-  line: number
-  /** The original basename or line text, without lowercase normalization. */
-  text: string
-}
-/** All matches for one root-relative Markdown path. */
-export interface NotesSearchResult {
-  /** Root-relative path with `/` separators on every platform. */
-  path: string
-  /** Filename match first, followed by content matches in line order. */
-  matches: Array<NotesMatch>
-}
-/** The bounded response from one Notes index search. */
-export interface NotesSearchResponse {
-  results: Array<NotesSearchResult>
-  truncated: boolean
-}
-/** Recursively build a complete immutable snapshot for one resolved Notes root. */
-export declare function buildNotesIndex(root: string, options?: NotesIndexBuildOptions | undefined | null): Promise<NotesIndex>
-/** An in-memory, gitignore-aware index of one repository's file paths. */
-export declare class FileIndex {
-  /** Number of indexed paths. */
-  len(): number
-  /** True when the walk hit the configured `maxEntries` cap. */
-  truncated(): boolean
-  /** A window of the raw path list, in index order. */
-  files(offset: number, limit: number): Array<string>
-  /** Score every indexed path and resolve with the best `limit` matches. */
-  search(query: string, limit: number): Promise<FileMatch[]>
-  /** Re-walk the root and atomically swap in the new path list. */
-  refresh(): Promise<void>
-}
-/** An in-memory content index for one already-authorized Notes root. */
-export declare class NotesIndex {
-  /**
-   * Search the current complete snapshot and return at most 50 matching
-   * files and 100 total filename/content matches.
-   */
-  search(query: string): Promise<NotesSearchResponse>
-  /**
-   * Rebuild the complete root and atomically replace the searchable
-   * snapshot. A failed rebuild retains the last complete snapshot.
-   */
-  refresh(): Promise<void>
-  /**
-   * Apply at most 1,024 normalized, root-relative changed file paths and
-   * atomically replace the searchable snapshot. Missing files are removed;
-   * existing lowercase-Markdown files are upserted from disk.
-   */
-  refreshChanged(changedPaths: Array<string>): Promise<void>
 }
