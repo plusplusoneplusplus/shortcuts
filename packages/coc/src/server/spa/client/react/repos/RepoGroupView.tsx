@@ -3,9 +3,13 @@
  *
  * A repo group is a virtual workspace (own root under `~/.coc/repos/<groupId>/`,
  * no git) that knows about a set of registered repo workspaces; chats started
- * here get the member repos injected server-side. The view therefore shows only
- * the Workspace (chat), Notes and Settings tabs — every git-dependent tab (PRs,
- * Work Items, branches, …) is hidden, same treatment as My Work / My Life.
+ * here get the member repos injected server-side. The view shows the Workspace
+ * (chat), Git, Notes and Settings tabs — the other git-dependent tabs (PRs,
+ * Work Items, branches, …) stay hidden, same treatment as My Work / My Life.
+ *
+ * The Git tab is a host, not a group-wide git view: it picks ONE member repo and
+ * renders the ordinary single-repo panel against it (`RepoGroupGitTab`). The
+ * group's own root is never treated as a git repo.
  *
  * In the remote-first desktop shell the header (identity + sub-tabs) lives in
  * the global TopBar (`VirtualWorkspaceShellHeader`); in the classic shell and on
@@ -21,7 +25,7 @@
  * not here — the Workspace tab is the chat and nothing else.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
@@ -31,6 +35,7 @@ import { useApp } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { resolveRepoGroupName } from './repoGroupName';
 import type { RepoGroupMember } from './repoGroupService';
+import { RepoGroupGitTab } from './RepoGroupGitTab';
 import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
 import { useRepoGroupMembers } from './useRepoGroupMembers';
 import { WorkspaceRightDock, useWorkspaceDock, type DockTarget } from '../features/repo-detail/WorkspaceRightDock';
@@ -44,6 +49,7 @@ import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virt
  */
 const REPO_GROUP_TABS: VirtualWorkspaceHeaderConfig['tabs'] = [
     { key: 'chats', label: 'Workspace', shortcut: 'Alt+W' },
+    { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },
     { key: 'settings', label: 'Settings', shortcut: 'Alt+C' },
 ];
@@ -117,6 +123,18 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     );
     const headerConfig = useMemo(() => getRepoGroupHeaderConfig(workspaceId, groupName), [workspaceId, groupName]);
 
+    // Landing tab when the current sub-tab is not one of the group's tabs (e.g.
+    // arriving from a repo's Git tab). Mirrors useVirtualWorkspaceHeader so the
+    // highlighted header tab and the content pane always agree.
+    const activeTab = REPO_GROUP_TABS.some(t => t.key === state.activeRepoSubTab)
+        ? state.activeRepoSubTab
+        : 'chats';
+
+    // Keep the git panel mounted once visited (same trick as RepoDetail's
+    // `wasVisited`), so switching tabs does not throw away its loaded history.
+    const [gitVisited, setGitVisited] = useState(false);
+    useEffect(() => { if (activeTab === 'git') setGitVisited(true); }, [activeTab]);
+
     // Right dock (Terminal / Explorer / Notes) — same gate as RepoDetail. Its
     // state scopes to the GROUP, so switching member repos never closes or
     // resizes it; only the terminal/explorer content follows the picker. The
@@ -128,21 +146,16 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         const url = (match as { baseUrl?: unknown } | undefined)?.baseUrl;
         return typeof url === 'string' && url.length > 0 ? url : undefined;
     }, [remoteGroups, workspaceId]);
-    // Member repos, for the dock's target picker. The Settings tab does its own
-    // read — it needs the descriptions too, and only while it is the visible tab.
-    const members = useRepoGroupMembers(workspaceId, groupBaseUrl, dockAvailable);
+    // Member repos, for the dock's target picker and the Git tab's host. The
+    // Settings tab does its own read — it needs the descriptions too, and only
+    // while it is the visible tab.
+    const membersNeeded = dockAvailable || gitVisited;
+    const members = useRepoGroupMembers(workspaceId, groupBaseUrl, membersNeeded);
     const dockTargets = useMemo(
         () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
         [dockAvailable, members, workspaceId]
     );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
-
-    // Landing tab when the current sub-tab is not one of the group's tabs (e.g.
-    // arriving from a repo's Git tab). Mirrors useVirtualWorkspaceHeader so the
-    // highlighted header tab and the content pane always agree.
-    const activeTab = REPO_GROUP_TABS.some(t => t.key === state.activeRepoSubTab)
-        ? state.activeRepoSubTab
-        : 'chats';
 
     return (
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
@@ -154,6 +167,9 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                 <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                     <div style={{ display: activeTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                         <RepoChatTab workspaceId={workspaceId} dockStatusFooter />
+                    </div>
+                    <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        {gitVisited && <RepoGroupGitTab workspaceId={workspaceId} members={members} />}
                     </div>
                     <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                         <NotesView
