@@ -841,7 +841,8 @@ describe('GET /api/origins/:originId/pull-requests', () => {
         expect(res2.status).toBe(200);
         const body2 = await res2.json() as { pullRequests: any[] };
         expect(body2.pullRequests).toHaveLength(25);
-        expect(body2.pullRequests[0].title).toBe('PR 25');
+        // Fixture PRs share a createdAt, so the tie-break (number desc) drives order.
+        expect(body2.pullRequests[0].title).toBe('PR 24');
 
         // Only one upstream call total
         expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
@@ -904,7 +905,7 @@ describe('GET /api/origins/:originId/pull-requests', () => {
         expect(res.status).toBe(200);
         const body = await res.json() as { pullRequests: Array<{ title: string }>; total: number };
         expect(body.pullRequests).toHaveLength(2);
-        expect(body.pullRequests.map(pr => pr.title)).toEqual(['PR by Alice', 'PR by Charlie']);
+        expect(body.pullRequests.map(pr => pr.title)).toEqual(['PR by Charlie', 'PR by Alice']);
         expect(body.total).toBe(2);
         // Internally fetches with scope=all first, then per-member
         expect(mockSvc.listPullRequests).toHaveBeenCalledWith(REPO_ID, { status: 'open', top: 100, scope: 'all' });
@@ -982,14 +983,33 @@ describe('GET /api/origins/:originId/pull-requests', () => {
         const body = await res.json() as { pullRequests: Array<{ title: string }>; total: number };
         expect(body.pullRequests).toHaveLength(3);
         expect(body.total).toBe(5); // total team PRs
-        expect(body.pullRequests.map(pr => pr.title)).toEqual(['Team PR 1', 'Team PR 2', 'Team PR 3']);
+        expect(body.pullRequests.map(pr => pr.title)).toEqual(['Team PR 5', 'Team PR 4', 'Team PR 3']);
 
         // Second page
         const res2 = await fetch(originPullRequestsUrl(`?scope=team&top=3&skip=3`, REPO_ID));
         const body2 = await res2.json() as { pullRequests: Array<{ title: string }>; total: number };
         expect(body2.pullRequests).toHaveLength(2);
         expect(body2.total).toBe(5);
-        expect(body2.pullRequests.map(pr => pr.title)).toEqual(['Team PR 4', 'Team PR 5']);
+        expect(body2.pullRequests.map(pr => pr.title)).toEqual(['Team PR 2', 'Team PR 1']);
+    });
+
+    it('orders the list by createdAt descending across pages', async () => {
+        // Deliberately unsorted upstream data with distinct creation times.
+        const prs = [
+            { ...mockPr, id: 1, number: 1, title: 'oldest', createdAt: new Date('2024-01-01') },
+            { ...mockPr, id: 2, number: 2, title: 'newest', createdAt: new Date('2024-06-01') },
+            { ...mockPr, id: 3, number: 3, title: 'middle', createdAt: new Date('2024-03-01') },
+            { ...mockPr, id: 4, number: 4, title: 'undated', createdAt: undefined },
+        ];
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue(prs);
+
+        const res1 = await fetch(originPullRequestsUrl(`?top=2&skip=0`, REPO_ID));
+        const body1 = await res1.json() as { pullRequests: Array<{ title: string }> };
+        expect(body1.pullRequests.map(pr => pr.title)).toEqual(['newest', 'middle']);
+
+        const res2 = await fetch(originPullRequestsUrl(`?top=2&skip=2`, REPO_ID));
+        const body2 = await res2.json() as { pullRequests: Array<{ title: string }> };
+        expect(body2.pullRequests.map(pr => pr.title)).toEqual(['oldest', 'undated']);
     });
 });
 

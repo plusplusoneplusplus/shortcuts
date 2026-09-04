@@ -114,7 +114,8 @@ describe('pull request batch selection', () => {
 
         fireEvent.click(screen.getAllByTestId('pr-row')[0]);
 
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 1 });
+        // Fixtures share a createdAt, so the newest-first order falls back to number desc.
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_PR', prId: 6 });
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_PR_DETAIL_TAB', tab: 'overview' });
     });
 

@@ -49,6 +49,7 @@ import {
     validatePullRequestCoworkerRosterInput,
 } from './pr-coworker-roster-store';
 import { authorMatchesPrTeamRosterEntry, filterPullRequestsByPrTeamRoster, getPrTeamIdentityKey } from '../shared/pr-team-matching';
+import { sortPullRequestsByCreatedDesc } from '../spa/client/react/features/pull-requests/pr-utils';
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
@@ -498,16 +499,9 @@ async function fetchTeamScopePullRequests(
         }
     }
 
-    // Merge: cached matches first (usually more enriched with diff stats),
-    // then supplementary per-member results sorted by updatedAt descending
-    const merged = [
-        ...rosterFiltered,
-        ...perMemberResults.sort((a, b) => {
-            const aDate = a.updatedAt instanceof Date ? a.updatedAt.getTime() : 0;
-            const bDate = b.updatedAt instanceof Date ? b.updatedAt.getTime() : 0;
-            return bDate - aDate;
-        }),
-    ];
+    // Merge: cached matches first (usually more enriched with diff stats), then the
+    // supplementary per-member results. Final ordering is applied by the list route.
+    const merged = [...rosterFiltered, ...perMemberResults];
 
     // Cache the merged team results with a shorter TTL
     const fetchedAt = Date.now();
@@ -1355,6 +1349,10 @@ export function registerPrRoutes(
             const roster = listPullRequestCoworkerRoster(dataDir, options.workspaceId, options.repoId, options.storageScope);
             pool = await fetchTeamScopePullRequests(dataDir, svc, options.repoId, options.workspaceId, status, roster, entry.data);
         }
+
+        // Fixed order: newest-created first, applied before paging so infinite-scroll
+        // page boundaries stay stable.
+        pool = sortPullRequestsByCreatedDesc(pool);
 
         let page = pool.slice(skip, skip + top);
 

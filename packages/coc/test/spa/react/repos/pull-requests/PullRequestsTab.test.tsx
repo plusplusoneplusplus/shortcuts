@@ -671,13 +671,14 @@ describe('queue filter pills', () => {
         expect(screen.getByTestId('team-auto-classification-button')).toHaveAccessibleName('Classify Team pull requests now');
 
         const rows = screen.getAllByTestId('pr-row');
+        // Fixtures share a createdAt, so the newest-first order falls back to number desc.
         expect(rows.map(row => within(row).getByText(/Ready PR|Running PR|Missing PR/).textContent)).toEqual([
-            'Ready PR',
-            'Running PR',
             'Missing PR',
+            'Running PR',
+            'Ready PR',
         ]);
         const badges = screen.getAllByTestId('pr-classification-badge');
-        expect(badges.map(badge => badge.getAttribute('data-classification-status'))).toEqual(['ready', 'running', 'missing']);
+        expect(badges.map(badge => badge.getAttribute('data-classification-status'))).toEqual(['missing', 'running', 'ready']);
         expect(screen.getByTestId('pr-queue-filter-team')).toHaveTextContent('3');
     });
 

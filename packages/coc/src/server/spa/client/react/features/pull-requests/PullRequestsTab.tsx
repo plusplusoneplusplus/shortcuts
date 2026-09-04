@@ -54,6 +54,7 @@ import type { QueueFilter, QueueFilterCounts } from './pr-derived-data';
 import {
     getCoworkerRosterIdentityKey,
     pullRequestMatchesCoworkerRoster,
+    sortPullRequestsByCreatedDesc,
     type PullRequest,
     type PrStatus,
 } from './pr-utils';
@@ -325,12 +326,15 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
                 const nextHasMore = newPrs.length === PAGE_SIZE;
                 const ts = data.fetchedAt ?? null;
 
+                // Safety net: the server already orders by createdAt desc, but a provider
+                // or cache path could hand back unsorted data.
                 if (reset) {
-                    setPrs(newPrs);
-                    prListCache.set(cacheKey, { prs: newPrs, skip: nextSkip, hasMore: nextHasMore, fetchedAt: ts });
+                    const sorted = sortPullRequestsByCreatedDesc(newPrs);
+                    setPrs(sorted);
+                    prListCache.set(cacheKey, { prs: sorted, skip: nextSkip, hasMore: nextHasMore, fetchedAt: ts });
                 } else {
                     setPrs(prev => {
-                        const accumulated = [...prev, ...newPrs];
+                        const accumulated = sortPullRequestsByCreatedDesc([...prev, ...newPrs]);
                         prListCache.set(cacheKey, { prs: accumulated, skip: nextSkip, hasMore: nextHasMore, fetchedAt: ts });
                         return accumulated;
                     });
