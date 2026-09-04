@@ -17,11 +17,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 // value — so the tests below can prove the host remounts it per member instead
 // of leaking one repo's panel state into the next.
 const panelMounts: string[] = [];
+const panelProps: Record<string, unknown>[] = [];
 vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', async () => {
     const { useEffect, useState } = await import('react');
     return {
-        RepoGitTab: ({ workspaceId }: { workspaceId: string }) => {
+        RepoGitTab: (props: { workspaceId: string }) => {
+            const { workspaceId } = props;
             const [scratch, setScratch] = useState('clean');
+            panelProps.push(props);
             useEffect(() => {
                 panelMounts.push(workspaceId);
             }, [workspaceId]);
@@ -72,6 +75,7 @@ function member(id: string, overrides: Partial<RepoGroupMember> = {}): RepoGroup
 beforeEach(() => {
     wsListener = undefined;
     panelMounts.length = 0;
+    panelProps.length = 0;
     batchSpy.mockReset();
     singleSpy.mockReset();
     batchSpy.mockResolvedValue({ results: {} });
@@ -307,5 +311,36 @@ describe('RepoGroupGitTab panel isolation across members (AC-03)', () => {
         // Selection is unchanged, so the user's in-progress panel survives.
         expect(panelMounts).toEqual(['repo-a']);
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-scratch')).toBe('dirty');
+    });
+});
+
+/**
+ * Feature-flag degradation.
+ *
+ * `splitWorkspacePanel` is on by default: for a single repo it hides the
+ * standalone Git sub-tab and folds git into the split "Workspace" view, where
+ * `RepoGitTab` renders only its list and portals the detail pane into a
+ * container `SplitWorkspacePanel` provides. A group has no such host — its
+ * Workspace tab is the group chat — which is the whole reason this Git tab
+ * exists, so the group must keep mounting the FULL standalone panel whatever
+ * the flag says. These pin that: a later "harmonize the group with the flag"
+ * change that passes `layout="split-workspace"` here would leave the group tab
+ * with a list and no detail pane (nothing portals it), and hiding the tab on
+ * the flag would take git away from groups entirely.
+ */
+describe('RepoGroupGitTab — split-workspace flag independence', () => {
+    it('mounts the panel in the standalone layout, with no split-workspace props', () => {
+        render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a')]} />);
+
+        expect(panelProps.length).toBeGreaterThan(0);
+        for (const props of panelProps) {
+            expect(props.workspaceId).toBe('repo-a');
+            // No `layout`, so RepoGitTab takes its self-contained list+detail
+            // branch; the split props only make sense with a parent shell.
+            expect(props.layout).toBeUndefined();
+            expect(props.detailContainer).toBeUndefined();
+            expect(props.headerToolbarContainer).toBeUndefined();
+            expect(props.onActivateDetail).toBeUndefined();
+        }
     });
 });
