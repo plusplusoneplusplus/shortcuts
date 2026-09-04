@@ -40,7 +40,9 @@ import {
     type SettingsSubTab,
 } from './adminNavigation';
 import { useAdminFeatureSettings } from './useAdminFeatureSettings';
+import { useAdminChatStyleSettings } from './useAdminChatStyleSettings';
 import { FeatureSettingsCard } from './FeatureSettingsCard';
+import { ChatStyleSettingsCard } from './ChatStyleSettingsCard';
 import { useAdminConfigForm } from './useAdminConfigForm';
 import { useAdminPreferencesForm } from './useAdminPreferencesForm';
 import { AiExecutionCard, AppearanceCard, ChatExperienceCard } from './configSettingsCards';
@@ -154,6 +156,31 @@ export function AdminPanel() {
         searchActive: settingsSubTab === 'features',
         shortcutActive: activeTab === 'settings' && settingsSubTab === 'features' && !isToolEmbedded,
     });
+    // The Chat Style section is gated on the composer style selector: with the
+    // flag off there is no style to configure, so the sub-tab is hidden and a
+    // deep link to `#admin/settings/chat-style` falls back to the default one.
+    // `features.chatStyleSelector` reads as off until the config lands (its
+    // absent-fallback is `false`), so the gate waits for the load rather than
+    // bouncing a valid deep link on the first render.
+    const chatStyleConfigLoaded = !configLoading && !configError;
+    const chatStyleSelectorEnabled = chatStyleConfigLoaded
+        && features.featureValues['features.chatStyleSelector'] === true;
+    const visibleSettingsSubTabs = chatStyleSelectorEnabled || !chatStyleConfigLoaded
+        ? SETTINGS_SUBTABS
+        : SETTINGS_SUBTABS.filter(t => t.id !== 'chat-style');
+    // Landing on `#admin/settings/chat-style` with the selector flag off (deep
+    // link, or the flag turned off while the section is open) falls back to the
+    // default section instead of showing an empty page.
+    useEffect(() => {
+        if (settingsSubTab === 'chat-style' && chatStyleConfigLoaded && !chatStyleSelectorEnabled) {
+            handleSettingsSubTabChange(DEFAULT_SETTINGS_SUBTAB);
+        }
+    }, [settingsSubTab, chatStyleConfigLoaded, chatStyleSelectorEnabled, handleSettingsSubTabChange]);
+
+    // Chat Style section — the default style plus (later) per-style prompt
+    // text. Kept out of the registry-driven Features card because the prompt
+    // editors are multiline free text.
+    const chatStyle = useAdminChatStyleSettings({ addToast });
     // AI Provider page (non-container Agents tab) — default provider, enable
     // flags, Auto routing, availability, SDK install polling, and quotas.
     const providers = useAdminProviderSettings({
@@ -214,6 +241,7 @@ export function AdminPanel() {
             configFormCtl.hydrate(resolved);
             prefsCtl.hydrateFromConfig(resolved);
             features.hydrate(resolved);
+            chatStyle.hydrate(resolved);
             dreams.hydrate(resolved);
             providers.hydrate(resolved);
             const sgr = resolved.sync?.gitRemote ?? '';
@@ -227,7 +255,7 @@ export function AdminPanel() {
         } finally {
             setConfigLoading(false);
         }
-    }, [configFormCtl.hydrate, prefsCtl.hydrateFromConfig, features.hydrate, dreams.hydrate, providers.hydrate]);
+    }, [configFormCtl.hydrate, prefsCtl.hydrateFromConfig, features.hydrate, chatStyle.hydrate, dreams.hydrate, providers.hydrate]);
 
     const loadPreferences = useCallback(async () => {
         try {
@@ -480,7 +508,7 @@ export function AdminPanel() {
                                     {/* Sub-tab bar — shown for the main settings sections (not advanced) */}
                                     {settingsSubTab !== 'advanced' && (
                                         <nav className="ar-subtab-row" role="tablist" aria-label="Settings sections">
-                                            {SETTINGS_SUBTABS.filter(t => t.id !== 'advanced').map(tab => (
+                                            {visibleSettingsSubTabs.filter(t => t.id !== 'advanced').map(tab => (
                                                 <button
                                                     key={tab.id}
                                                     type="button"
@@ -537,6 +565,21 @@ export function AdminPanel() {
                                                     saving={configFormCtl.chatSaving}
                                                     onSave={configFormCtl.handleSaveChat}
                                                     onCancel={configFormCtl.handleCancelChat}
+                                                    sources={sources}
+                                                    isDefaultValue={isDefaultValue}
+                                                />
+                                            )}
+
+                                            {/* ── Chat Style ── */}
+                                            {settingsSubTab === 'chat-style' && chatStyleSelectorEnabled && (
+                                                <ChatStyleSettingsCard
+                                                    defaultChatStyle={chatStyle.defaultChatStyle}
+                                                    setDefaultChatStyle={chatStyle.setDefaultChatStyle}
+                                                    selectorEnabled={chatStyleSelectorEnabled}
+                                                    dirty={chatStyle.dirty}
+                                                    saving={chatStyle.saving}
+                                                    onSave={chatStyle.handleSave}
+                                                    onCancel={chatStyle.handleCancel}
                                                     sources={sources}
                                                     isDefaultValue={isDefaultValue}
                                                 />

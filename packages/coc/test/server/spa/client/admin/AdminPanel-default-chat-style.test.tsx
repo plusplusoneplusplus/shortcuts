@@ -1,13 +1,15 @@
 /**
  * @vitest-environment jsdom
  *
- * Integration tests for the Default chat style select in the AdminPanel
- * Features card.
+ * Integration tests for the Default chat style select, which lives on the
+ * dedicated Chat Style settings section (`#admin/settings/chat-style`) rather
+ * than the registry-driven Features card.
  *
- * The select is registry-driven (`features.defaultChatStyle`, a `select`
- * control with `dependsOn: 'features.chatStyleSelector'`), so this covers the
- * three things a definition entry alone cannot: it renders, it hides when the
- * selector feature is off, and the picked value reaches PUT /api/admin/config.
+ * `features.defaultChatStyle` deliberately has no `ui` block any more, so
+ * these cover what the definition entry cannot: the sub-tab exists and is
+ * deep-linkable, the select renders there and nowhere else, the whole section
+ * disappears when `features.chatStyleSelector` is off, and the picked value
+ * reaches PUT /api/admin/config.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
@@ -23,6 +25,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => false,
     isServersEnabled: () => false,
     isRemoteShellEnabled: () => false,
+    applyRuntimeConfigPatch: () => { },
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
@@ -147,9 +150,9 @@ describe('AdminPanel — Default chat style select', () => {
         cleanup();
     });
 
-    async function gotoFeaturesSubTab(): Promise<void> {
-        await waitFor(() => expect(screen.getByTestId('settings-subtab-features')).toBeDefined());
-        fireEvent.click(screen.getByTestId('settings-subtab-features'));
+    async function gotoChatStyleSubTab(): Promise<void> {
+        await waitFor(() => expect(screen.getByTestId('settings-subtab-chat-style')).toBeDefined());
+        fireEvent.click(screen.getByTestId('settings-subtab-chat-style'));
     }
 
     function withFeatures(features: Record<string, unknown>) {
@@ -168,7 +171,7 @@ describe('AdminPanel — Default chat style select', () => {
         withFeatures({ chatStyleSelector: true, defaultChatStyle: 'default' });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        await gotoChatStyleSubTab();
 
         await waitFor(() => expect(screen.getByTestId('select-default-chat-style')).toBeTruthy());
         const select = screen.getByTestId('select-default-chat-style') as HTMLSelectElement;
@@ -181,36 +184,62 @@ describe('AdminPanel — Default chat style select', () => {
         withFeatures({ chatStyleSelector: true, defaultChatStyle: 'direct' });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        await gotoChatStyleSubTab();
 
         await waitFor(() => {
             expect((screen.getByTestId('select-default-chat-style') as HTMLSelectElement).value).toBe('direct');
         });
     });
 
-    // dependsOn — a default style is meaningless with no selector to seed.
-    it('hides the select when the chat style selector feature is off', async () => {
-        withFeatures({ chatStyleSelector: false, defaultChatStyle: 'direct' });
+    // The control moved out of the Features card; leaving a copy behind would
+    // give two rendered selects writing the same key.
+    it('no longer renders the select on the Features sub-tab', async () => {
+        withFeatures({ chatStyleSelector: true, defaultChatStyle: 'direct' });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        await waitFor(() => expect(screen.getByTestId('settings-subtab-features')).toBeDefined());
+        fireEvent.click(screen.getByTestId('settings-subtab-features'));
 
         await waitFor(() => expect(screen.getByTestId('toggle-chat-style-selector-enabled')).toBeTruthy());
         expect(screen.queryByTestId('select-default-chat-style')).toBeNull();
+    });
+
+    it('opens the section directly from #admin/settings/chat-style', async () => {
+        withFeatures({ chatStyleSelector: true, defaultChatStyle: 'human' });
+        window.location.hash = 'admin/settings/chat-style';
+
+        render(<AdminPanel />);
+
+        await waitFor(() => expect(screen.getByTestId('settings-chat-style')).toBeTruthy());
+        expect((screen.getByTestId('select-default-chat-style') as HTMLSelectElement).value).toBe('human');
+    });
+
+    // A default style is meaningless with no selector to seed.
+    it('hides the sub-tab and falls back when the chat style selector feature is off', async () => {
+        withFeatures({ chatStyleSelector: false, defaultChatStyle: 'direct' });
+        window.location.hash = 'admin/settings/chat-style';
+
+        render(<AdminPanel />);
+
+        await waitFor(() => expect(screen.getByTestId('settings-subtab-features')).toBeTruthy());
+        expect(screen.queryByTestId('settings-subtab-chat-style')).toBeNull();
+        expect(screen.queryByTestId('settings-chat-style')).toBeNull();
+        expect(screen.queryByTestId('select-default-chat-style')).toBeNull();
+        await waitFor(() => expect(window.location.hash).toBe('#admin/settings'));
     });
 
     it('sends features.defaultChatStyle in the PUT payload when changed and saved', async () => {
         withFeatures({ chatStyleSelector: true, defaultChatStyle: 'default' });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        await gotoChatStyleSubTab();
         await waitFor(() => expect(screen.getByTestId('select-default-chat-style')).toBeTruthy());
 
         fireEvent.change(screen.getByTestId('select-default-chat-style'), { target: { value: 'direct' } });
 
-        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
-        expect(featuresSave).toBeTruthy();
-        fireEvent.click(featuresSave!);
+        const save = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-chat-style"]'));
+        expect(save).toBeTruthy();
+        fireEvent.click(save!);
 
         await waitFor(() => {
             const putCalls = mockFetch.mock.calls.filter(([url, opts]: any[]) => opts?.method === 'PUT' && String(url).includes('/admin/config'));
