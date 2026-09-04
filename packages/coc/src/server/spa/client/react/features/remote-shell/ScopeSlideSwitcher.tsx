@@ -334,46 +334,12 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
         );
     };
 
-    /**
-     * A hover-revealed control inside a pin segment. `span role="button"` rather
-     * than a `<button>` because the segment itself is a button and buttons may
-     * not nest — the same trick `renderPopOutIcon` already uses.
-     *
-     * Revealed by `display`, not `opacity`: an `opacity-0` control still occupies
-     * its `w-4` box and still triggers the segment's `gap-1`, which left every
-     * idle pin with dead space to the right of its badge.
-     */
-    const pinControl = (
-        testId: string,
-        pin: ResolvedPinnedScope,
-        label: string,
-        glyph: string,
-        onActivate: () => void,
-    ) => (
-        <span
-            role="button"
-            tabIndex={0}
-            data-testid={testId}
-            data-pin-id={pin.id}
-            aria-label={`${label} ${pin.label}`}
-            title={label}
-            className="hidden group-hover:inline-flex group-focus-within:inline-flex items-center justify-center w-4 h-4 rounded text-current text-[11px] leading-none opacity-70 hover:opacity-100 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-opacity"
-            onClick={e => {
-                e.stopPropagation();
-                e.preventDefault();
-                onActivate();
-            }}
-            onKeyDown={e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onActivate();
-                }
-            }}
-        >
-            <span aria-hidden>{glyph}</span>
-        </span>
-    );
+    /** Reorder availability for a pin's context menu — shared by mouse and keyboard. */
+    const pinMenuContext = (pin: ResolvedPinnedScope, index: number) => ({
+        pin,
+        canMoveLeft: index > 0,
+        canMoveRight: index < pinSegments.length - 1,
+    });
 
     const renderPinSegment = (pin: ResolvedPinnedScope, index: number) => {
         const active = activeScope === pin.id;
@@ -394,13 +360,23 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 data-pin-id={pin.id}
                 data-pin-kind={pin.ref.kind}
                 aria-label={pin.label}
-                title={pin.label}
+                // Pop-out and unpin moved off the pill into its context menu, so
+                // the tooltip is the only hint left that the pill has actions.
+                title={`${pin.label} — right-click for options`}
                 onClick={() => selectClone(pin.targetId)}
-                onContextMenu={e => openScopeMenu(e, pin.workspaceId, pin.label, {
-                    pin,
-                    canMoveLeft: index > 0,
-                    canMoveRight: index < pinSegments.length - 1,
-                })}
+                onContextMenu={e => openScopeMenu(e, pin.workspaceId, pin.label, pinMenuContext(pin, index))}
+                // Keyboard parity for the menu: without this a focused pin has no
+                // route to pop-out or unpin at all now that both icons are gone.
+                onKeyDown={e => {
+                    if (e.key !== 'ContextMenu' && !(e.key === 'F10' && e.shiftKey)) return;
+                    const r = e.currentTarget.getBoundingClientRect();
+                    openScopeMenu(
+                        { preventDefault: () => e.preventDefault(), clientX: r.left, clientY: r.bottom },
+                        pin.workspaceId,
+                        pin.label,
+                        pinMenuContext(pin, index),
+                    );
+                }}
                 className={segmentClass(active) + ' group max-w-[170px]'}
                 style={active ? { color: accent } : undefined}
             >
@@ -423,8 +399,6 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                         {pin.unseen > 99 ? '99+' : pin.unseen}
                     </span>
                 )}
-                {renderPopOutIcon(pin.workspaceId, pin.label)}
-                {pinControl('scope-pin-unpin', pin, 'Unpin', '✕', () => togglePin(pin.ref))}
             </button>
         );
     };
@@ -542,6 +516,28 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                         >
                             › Move right
                         </button>
+                    )}
+                    {/* Last, behind its own separator: unpin used to be an `✕` on
+                        the pill itself, which crowded a segment that already
+                        carries a dot, a label and an unseen badge. Plain styling
+                        and no confirm — re-pinning from the picker is one click. */}
+                    {menu.pin && (
+                        <>
+                            <div aria-hidden className="my-1 h-px bg-[#e0e0e0] dark:bg-[#3c3c3c]" />
+                            <button
+                                data-testid="scope-pin-context-unpin"
+                                data-pin-id={menu.pin.id}
+                                className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                                role="menuitem"
+                                onClick={() => {
+                                    const ref = menu.pin!.ref;
+                                    setMenu(null);
+                                    togglePin(ref);
+                                }}
+                            >
+                                ✕ Unpin
+                            </button>
+                        </>
                     )}
                 </div>
             )}
