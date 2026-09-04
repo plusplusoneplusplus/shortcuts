@@ -278,7 +278,7 @@ test.describe('Pull Requests tab — list', () => {
         }
     });
 
-    test('queue grouping renders Needs review and Ready after checks sections', async ({ page, serverUrl }) => {
+    test('list renders flat with no attention section headers', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-5', 'My Repo');
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
             pullRequests: [
@@ -295,8 +295,7 @@ test.describe('Pull Requests tab — list', () => {
         try {
             await openPrTab(page, serverUrl, repoId);
             await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(2, { timeout: 10000 });
-            await expect(page.locator('[data-queue-section="needs-review"]')).toBeVisible({ timeout: 10000 });
-            await expect(page.locator('[data-queue-section="ready"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-queue-group"]')).toHaveCount(0);
         } finally {
             await routeCleanup();
             cleanup();

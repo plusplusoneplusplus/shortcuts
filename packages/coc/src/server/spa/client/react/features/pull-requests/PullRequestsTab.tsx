@@ -38,16 +38,12 @@ import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { PullRequestDetail } from './PullRequestDetail';
 import { PullRequestRow, type PrClassificationBadgeStatus } from './PullRequestRow';
 import { PrQueueFilters } from './PrQueueFilters';
-import { PrQueueGroupSection } from './PrQueueGroupSection';
 import { createPullRequestContextDragPayload } from '../chat/sessionContextDrag';
 
 import { ProviderConfigPanel } from './ProviderConfigPanel';
 import { BatchCommandPanel } from './BatchCommandPanel';
 import {
-    QUEUE_SECTION_CONFIGS,
     classifyPr,
-    classifyQueueSection,
-    type QueueSection,
 } from './pr-attention-groups';
 import { buildQueueFilterCounts, matchesFilter, scopeForFilter } from './pr-derived-data';
 import type { QueueFilter, QueueFilterCounts } from './pr-derived-data';
@@ -793,18 +789,6 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         () => filteredBySearch.filter(pr => matchesFilter(pr, activeFilter, { suggestedPrNumbers, coworkerRoster: coworkerFilterRoster })),
         [filteredBySearch, activeFilter, suggestedPrNumbers, coworkerFilterRoster],
     );
-
-    const groupedPrs = useMemo(() => {
-        const buckets = new Map<QueueSection, PullRequest[]>();
-        for (const config of QUEUE_SECTION_CONFIGS) buckets.set(config.section, []);
-        for (const pr of filteredByPill) {
-            buckets.get(classifyQueueSection(pr))?.push(pr);
-        }
-        return QUEUE_SECTION_CONFIGS.map(config => ({
-            config,
-            prs: buckets.get(config.section) ?? [],
-        }));
-    }, [filteredByPill]);
 
     const filterCounts: QueueFilterCounts = useMemo(() => {
         return buildQueueFilterCounts(filteredBySearch, { effectiveScope, suggestedPrNumbers, coworkerRoster: coworkerFilterRoster });
@@ -1616,39 +1600,28 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
 
                 <div className="flex-1 overflow-y-auto" data-testid="pr-list">
                     {!error && !unconfigured && !(loading && prs.length === 0) && filteredByPill.length > 0 && (
-                        groupedPrs
-                            .filter(({ prs: sectionPrs }) => sectionPrs.length > 0)
-                            .map(({ config, prs: sectionPrs }) => (
-                                <PrQueueGroupSection
-                                    key={config.section}
-                                    section={config.section}
-                                    label={config.label}
+                        filteredByPill.map(pr => {
+                            const sessionContextPayload = sessionContextDragEnabled
+                                ? createPullRequestContextDragPayload(pr, { activeWorkspaceId: workspaceId })
+                                : null;
+                            return (
+                                <PullRequestRow
+                                    key={pr.id}
+                                    pr={pr}
+                                    onClick={() => handleRowClick(pr)}
+                                    isSelected={state.selectedPrId != null && String(pr.number ?? pr.id) === String(state.selectedPrId)}
+                                    isChecked={selectedPrIds.has(getPrSelectionId(pr))}
+                                    onSelect={(id, checked, shiftKey) =>
+                                        handlePrSelect(id, checked, shiftKey, filteredByPill)
+                                    }
+                                    batchMode={batchMode && !queueCollapsed}
                                     compact={queueCollapsed}
-                                >
-                                    {sectionPrs.map(pr => {
-                                        const sessionContextPayload = sessionContextDragEnabled
-                                            ? createPullRequestContextDragPayload(pr, { activeWorkspaceId: workspaceId })
-                                            : null;
-                                        return (
-                                            <PullRequestRow
-                                                key={pr.id}
-                                                pr={pr}
-                                                onClick={() => handleRowClick(pr)}
-                                                isSelected={state.selectedPrId != null && String(pr.number ?? pr.id) === String(state.selectedPrId)}
-                                                isChecked={selectedPrIds.has(getPrSelectionId(pr))}
-                                                onSelect={(id, checked, shiftKey) =>
-                                                    handlePrSelect(id, checked, shiftKey, sectionPrs)
-                                                }
-                                                batchMode={batchMode && !queueCollapsed}
-                                                 compact={queueCollapsed}
-                                                 isSuggested={suggestionsEnabled && suggestedPrNumbers.has(pr.number ?? 0)}
-                                                 sessionContextPayload={sessionContextPayload}
-                                                 classificationStatus={teamClassificationBadgeByPrId.get(getPrSelectionId(pr))}
-                                             />
-                                         );
-                                     })}
-                                </PrQueueGroupSection>
-                            ))
+                                    isSuggested={suggestionsEnabled && suggestedPrNumbers.has(pr.number ?? 0)}
+                                    sessionContextPayload={sessionContextPayload}
+                                    classificationStatus={teamClassificationBadgeByPrId.get(getPrSelectionId(pr))}
+                                />
+                            );
+                        })
                     )}
                     {!queueCollapsed && !loading && !error && !unconfigured && suggestionsEnabled && activeFilter === 'foryou' && prs.length > 0 && filteredByPill.length === 0 && suggestions.length === 0 && (
                         <div className="m-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-100" data-testid="suggestions-empty-state">

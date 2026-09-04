@@ -5,7 +5,7 @@
  * It does not call an LLM and does not expose fixture-backed PR judgments.
  */
 
-import { AttentionGroup, classifyPr, mapAttentionToQueueSection } from './pr-attention-groups';
+import { AttentionGroup, classifyPr } from './pr-attention-groups';
 import { pullRequestMatchesCoworkerRoster } from './pr-utils';
 import type { PullRequestCommit, CommentThread, QueueRiskBadge } from './pr-utils';
 import type { PullRequest, PullRequestCheck, PullRequestCheckStatus, PrCoworkerRosterEntry, Reviewer } from './pr-utils';
@@ -426,7 +426,7 @@ export function matchesFilter(
     if (filter === 'blocked') {
         return group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded;
     }
-    return mapAttentionToQueueSection(group) === 'ready';
+    return group === AttentionGroup.MergeValidation;
 }
 
 export function buildQueueFilterCounts(
@@ -446,7 +446,7 @@ export function buildQueueFilterCounts(
         if (group === AttentionGroup.RerunNeeded || group === AttentionGroup.ManualUpdateNeeded) {
             counts.blocked += 1;
         }
-        if (mapAttentionToQueueSection(group) === 'ready') {
+        if (group === AttentionGroup.MergeValidation) {
             counts.ready += 1;
         }
         if (options.suggestedPrNumbers?.has(pr.number ?? 0)) {

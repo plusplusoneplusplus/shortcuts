@@ -910,10 +910,10 @@ describe('PR review suggestions', () => {
     });
 });
 
-// ── Queue grouping ─────────────────────────────────────────────────────────────
+// ── Flat list ──────────────────────────────────────────────────────
 
-describe('queue grouping', () => {
-    it('groups PRs into Needs review and Ready after checks sections', async () => {
+describe('flat list', () => {
+    it('renders one flat list with no attention section headers', async () => {
         mockFetchOk([
             makePr({ id: 1, title: 'A', reviewers: [{ identity: { displayName: 'R' }, vote: 'waitingForAuthor' }] }),
             makePr({ id: 2, title: 'B', reviewers: [{ identity: { displayName: 'R' }, vote: 'approved' }] }),
@@ -921,11 +921,9 @@ describe('queue grouping', () => {
         await act(async () => { await renderTab(); });
         await waitFor(() => expect(screen.getAllByTestId('pr-row')).toHaveLength(2));
 
-        const sections = screen.getAllByTestId('pr-queue-group');
-        expect(sections.map(s => s.getAttribute('data-queue-section'))).toEqual([
-            'needs-review',
-            'ready',
-        ]);
+        expect(screen.queryAllByTestId('pr-queue-group')).toHaveLength(0);
+        expect(screen.queryByText('Needs review')).toBeNull();
+        expect(screen.queryByText('Ready after checks')).toBeNull();
     });
 });
 
