@@ -250,28 +250,14 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
         return { id, name: resolveRepoGroupName(id, state.workspaces, remoteGroupWorkspaces) };
     }, [groupScopeActive, activePin, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces]);
 
-    // The same clash in its other form: an active `repo:` pin shows the very
-    // cluster the chip would show, so the chip drops to a bare picker trigger
-    // (chevron only) instead of echoing the pin's label a second time.
-    const chipEchoesActivePin = !!activePin && activePin.ref.kind === 'repo';
-
-    // When My Work / My Life / a pin is active, the workspace segment shows the
-    // remembered workspace but is *inactive*.
-    // Clicking its body switches back to that workspace, re-selecting it as the
-    // active scope (restoring the last-viewed note path exactly like selecting a
-    // workspace normally does via `selectClone`). The chevron keeps opening the
-    // picker. (AC-02)
-    const switchBackToWorkspace = useCallback(() => {
-        if (repo) selectClone(getRepoSelectionId(repo));
-    }, [repo, selectClone]);
-    // Deliberately NOT offered while an *unpinned* group is active: the pill then
-    // reads the group's name, so a body click silently navigating to the
-    // remembered repo would contradict its own label. Group scope switches
-    // through the chevron's picker instead. With the group pinned the pill is
-    // back to the repo's own name, so switch-back is meaningful again.
-    const onSwitchBack = !workspaceSegmentActive && !groupIdentity && !chipEchoesActivePin && repo
-        ? switchBackToWorkspace
-        : undefined;
+    // Whenever some *other* segment owns the active scope — a pinned repo, a
+    // pinned group, My Work or My Life — the chip must stop echoing a repo
+    // identity, or the bar reads two names for one scope. It collapses to the
+    // bare chevron picker trigger; the segment that is actually active carries
+    // the identity. The chip keeps its full identity only when the workspace
+    // segment itself is active: a plain workspace, or an unpinned repo group
+    // (which the segment borrows, showing 🗂️ + group name).
+    const identitySuppressed = !workspaceSegmentActive;
 
     // Pop-out / right-click follow whatever identity the segment is showing, so a
     // group-labelled pill never opens a window on the repo remembered under it.
@@ -490,16 +476,15 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 data-testid="scope-segment"
                 data-scope="workspace"
                 className="group relative flex items-center min-w-0"
-                onContextMenu={segmentTarget ? e => openScopeMenu(e, segmentTarget.id, segmentTarget.label) : undefined}
+                onContextMenu={segmentTarget && !identitySuppressed ? e => openScopeMenu(e, segmentTarget.id, segmentTarget.label) : undefined}
             >
                 <WorkspaceIdentityChip
                     repo={repo}
                     repos={repos}
-                    onSwitchBack={onSwitchBack}
                     groupIdentity={groupIdentity}
-                    identitySuppressed={chipEchoesActivePin}
+                    identitySuppressed={identitySuppressed}
                 />
-                {segmentTarget && !chipEchoesActivePin && renderPopOutIcon(segmentTarget.id, segmentTarget.label)}
+                {segmentTarget && !identitySuppressed && renderPopOutIcon(segmentTarget.id, segmentTarget.label)}
             </div>
             {menu && (
                 <div

@@ -275,30 +275,42 @@ describe('pinned segments — active scope and the chip identity clash', () => {
         expect(mockSelectClone).not.toHaveBeenCalled();
     });
 
-    it('gives the thumb to a pinned group and stops the chip claiming the group identity', async () => {
+    it('gives the thumb to a pinned group and stops the chip claiming ANY identity', async () => {
         mockAppState = { ...mockAppState, selectedRepoId: 'group-ai-repos' };
         await renderWithPins({ repo: mockRepos[0], repos: mockRepos });
 
         expect(pinSegment(AI_GROUP_PIN)!.getAttribute('aria-selected')).toBe('true');
         expect(segment('workspace')!.getAttribute('aria-selected')).toBe('false');
-        // The group name appears once, on the pin — the chip falls back to the
-        // remembered repo instead of rendering "ai-repos" a second time.
+        // The group name appears once, on the pin. The chip does not fall back to
+        // the remembered repo either — a second name in the bar was the bug.
         const chip = screen.getByTestId('remote-chip');
-        expect(chip.textContent).toContain('shortcuts');
+        expect(chip.getAttribute('data-identity-suppressed')).toBe('true');
+        expect(chip.textContent).not.toContain('shortcuts');
         expect(chip.textContent).not.toContain('ai-repos');
         expect(screen.queryByTestId('remote-chip-group-icon')).toBeNull();
     });
 
-    it('offers switch-back from the chip while a pinned group is active', async () => {
+    it('keeps the picker reachable from the bare chevron while a pinned group is active', async () => {
         mockAppState = { ...mockAppState, selectedRepoId: 'group-ai-repos' };
         await renderWithPins({ repo: mockRepos[0], repos: mockRepos });
 
-        // Split button: body switches back, chevron opens the picker — the same
-        // shape My Work / My Life already uses.
-        expect(screen.getByTestId('remote-chip-chevron')).toBeTruthy();
+        // No split button any more — the single trigger opens the picker.
+        expect(screen.queryByTestId('remote-chip-chevron')).toBeNull();
         fireEvent.click(screen.getByTestId('remote-chip'));
 
-        expect(mockSelectClone).toHaveBeenCalledWith('a');
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+        expect(mockSelectClone).not.toHaveBeenCalled();
+    });
+
+    it('drops the workspace segment pop-out and context menu while a pinned group is active', async () => {
+        mockAppState = { ...mockAppState, selectedRepoId: 'group-ai-repos' };
+        await renderWithPins({ repo: mockRepos[0], repos: mockRepos });
+
+        // Scoped to the workspace segment: the `shortcuts` repo pin carries its
+        // own pop-out for the same workspace id, and that one stays.
+        expect(segment('workspace')!.querySelector('[data-testid="scope-segment-popout"]')).toBeNull();
+        fireEvent.contextMenu(segment('workspace')!);
+        expect(screen.queryByTestId('scope-switcher-context-menu')).toBeNull();
     });
 
     it('keeps the chip owning an UNPINNED group exactly as before', async () => {
@@ -314,7 +326,10 @@ describe('pinned segments — active scope and the chip identity clash', () => {
         expect(screen.getByTestId('scope-switcher').getAttribute('data-active-scope')).toBe('group');
         expect(screen.getByTestId('scope-switcher').getAttribute('data-active-pin')).toBeNull();
         expect(segment('workspace')!.getAttribute('aria-selected')).toBe('true');
-        expect(screen.getByTestId('remote-chip').textContent).toContain('other-group');
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.getAttribute('data-identity-suppressed')).toBeNull();
+        expect(chip.textContent).toContain('other-group');
+        expect(screen.getByTestId('remote-chip-group-icon').textContent).toBe('🗂️');
     });
 
     it('leaves a pin unselected while a virtual scope owns the thumb', async () => {
@@ -323,8 +338,10 @@ describe('pinned segments — active scope and the chip identity clash', () => {
 
         expect(segment('work')!.getAttribute('aria-selected')).toBe('true');
         expect(pinSegments().every(el => el.getAttribute('aria-selected') === 'false')).toBe(true);
-        // The chip keeps the remembered workspace and its switch-back.
-        expect(screen.getByTestId('remote-chip').textContent).toContain('shortcuts');
+        // The chip is suppressed here too — My Work owns the scope.
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.getAttribute('data-identity-suppressed')).toBe('true');
+        expect(chip.textContent).not.toContain('shortcuts');
     });
 
     it('leaves pins unselected off the repos tab', async () => {
