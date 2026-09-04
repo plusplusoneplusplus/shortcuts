@@ -508,10 +508,20 @@ export interface SendMessageOptions {
     /** Abort signal for cooperative request cancellation. */
     signal?: AbortSignal;
     /**
-     * Idle timeout in milliseconds. Resets every time a streaming chunk or
-     * message event is received. If no activity arrives within this window,
-     * the session is force-destroyed. Independent of `timeoutMs` — whichever
-     * fires first kills the session. Only applies to the streaming path.
+     * Idle timeout in milliseconds. Resets on every provider event — chunks,
+     * tool starts/updates, usage frames and turn boundaries all count as
+     * activity. If nothing arrives within the window the turn is aborted and
+     * settles with `Request idle-timed out after <ms>ms with no activity`.
+     * Independent of `timeoutMs` — whichever fires first kills the session.
+     * `0`/undefined disables it.
+     *
+     * Suppressed while the agent is provably blocked rather than idle: a tool
+     * call in flight (e.g. `ask_user` waiting on a user widget) or, for Claude,
+     * pending background tasks. The wall-clock `timeoutMs` still applies.
+     *
+     * Honoured by Copilot, Claude and Codex; for OpenCode only on the streaming
+     * path (a non-streaming request emits no events at all, so wall-clock
+     * covers it there).
      * @default DEFAULT_AI_IDLE_TIMEOUT_MS (1 hour)
      */
     idleTimeoutMs?: number;
