@@ -30,7 +30,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
 
     it('contains all expected keys', () => {
         const expected = [
-            'model', 'parallel', 'timeout', 'output',
+            'model', 'parallel', 'timeout', 'idleTimeout', 'output',
             'showReportIntent', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
             'serve.serverName',
             'chat.followUpSuggestions.enabled', 'chat.followUpSuggestions.count',
@@ -105,6 +105,21 @@ describe('validate()', () => {
         });
         it('rejects string', () => {
             expect(fieldFor('timeout').validate('30')).toMatch(/greater than 0/);
+        });
+    });
+
+    describe('idleTimeout', () => {
+        it('accepts positive number', () => {
+            expect(fieldFor('idleTimeout').validate(900)).toBeUndefined();
+        });
+        it('accepts null (to clear the override)', () => {
+            expect(fieldFor('idleTimeout').validate(null)).toBeUndefined();
+        });
+        it('rejects zero — blank means default, not "disabled"', () => {
+            expect(fieldFor('idleTimeout').validate(0)).toMatch(/greater than 0/);
+        });
+        it('rejects string', () => {
+            expect(fieldFor('idleTimeout').validate('900')).toMatch(/greater than 0/);
         });
     });
 

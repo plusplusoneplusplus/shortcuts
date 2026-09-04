@@ -15,7 +15,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { AIProcess, ModelInfo, WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, setHomeDirectoryOverride, clearMcpConfigCache } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
+import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import {
@@ -455,6 +456,37 @@ describe('FollowUpExecutor', () => {
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.infiniteSessions).toEqual({ enabled: true });
+    });
+
+    it('sends the configured timeout and idle timeout on a follow-up turn', async () => {
+        // Regression: follow-ups used to pass no timeout at all, so every
+        // follow-up turn silently ran on the SDK's built-in budgets and the
+        // admin `timeout` / `idleTimeout` settings had no effect after turn 1.
+        const proc = makeProcess({ id: 'proc-timeouts', sdkSessionId: 'sdk-timeouts' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            queueConfig: createFixedQueueRuntimeConfig({
+                defaultTimeoutMs: 123_000,
+                defaultIdleTimeoutMs: 45_000,
+            }),
+        });
+        await executor.executeFollowUp('proc-timeouts', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.timeoutMs).toBe(123_000);
+        expect(callArg.idleTimeoutMs).toBe(45_000);
+    });
+
+    it('falls back to the 1-hour idle default when idleTimeout is unset', async () => {
+        const proc = makeProcess({ id: 'proc-idle-default', sdkSessionId: 'sdk-idle-default' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-idle-default', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.idleTimeoutMs).toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
     });
 
     it('opts the follow-up turn into warm-client keep-alive (keepWarm: true)', async () => {

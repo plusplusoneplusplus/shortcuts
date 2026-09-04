@@ -399,6 +399,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         runtime: 'live',
     },
     {
+        // Idle (no streaming activity) budget, seconds. Blank means the
+        // 1-hour SDK default; there is no "disabled" value.
+        key: 'idleTimeout',
+        value: { kind: 'number', gt: 0, nullable: true },
+        default: undefined,
+        runtime: 'live',
+    },
+    {
         key: 'output',
         value: { kind: 'enum', values: ['table', 'json', 'csv', 'markdown'] },
         default: 'table',

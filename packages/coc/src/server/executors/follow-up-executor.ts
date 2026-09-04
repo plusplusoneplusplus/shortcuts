@@ -540,6 +540,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
                 ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
+                // Follow-up turns previously ran on the SDK's built-in
+                // defaults; both budgets now come from the admin config.
+                timeoutMs: this.defaultTimeoutMs,
+                idleTimeoutMs: this.defaultIdleTimeoutMs,
                 systemMessage: historySystemMessage,
                 onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,

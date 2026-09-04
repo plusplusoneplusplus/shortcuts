@@ -155,6 +155,8 @@ export interface ChatModeExecutorOptions {
     queueConfig?: QueueRuntimeConfig;
     /** Default timeout in ms for tasks that do not specify their own timeoutMs. Ignored when `queueConfig` is supplied. */
     defaultTimeoutMs?: number;
+    /** Default idle timeout in ms for AI turns. Ignored when `queueConfig` is supplied. */
+    defaultIdleTimeoutMs?: number;
     /** Follow-up suggestions configuration. Ignored when `queueConfig` is supplied. */
     followUpSuggestions?: { enabled: boolean; count: number };
     /** Ask-user interactive tool configuration. Ignored when `queueConfig` is supplied. */
@@ -238,6 +240,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * `admin-setting-definitions.ts`.
      */
     protected get defaultTimeoutMs(): number { return this.queueConfig.getDefaultTimeoutMs(); }
+    protected get defaultIdleTimeoutMs(): number { return this.queueConfig.getDefaultIdleTimeoutMs(); }
     protected get followUpSuggestions(): { enabled: boolean; count: number } { return this.queueConfig.getFollowUpSuggestions(); }
     protected get askUser(): { enabled: boolean } { return this.queueConfig.getAskUser(); }
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
@@ -269,6 +272,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // because a caller with no config service has not enabled the feature.
         this.queueConfig = options.queueConfig ?? createFixedQueueRuntimeConfig({
             defaultTimeoutMs: options.defaultTimeoutMs,
+            defaultIdleTimeoutMs: options.defaultIdleTimeoutMs,
             followUpSuggestions: options.followUpSuggestions,
             askUser: options.askUser ?? { enabled: false },
         });
@@ -757,6 +761,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             }
 
             const timeoutMs = task.config.timeoutMs || this.defaultTimeoutMs;
+            const idleTimeoutMs = this.defaultIdleTimeoutMs;
             const taskWorkspaceId = payload.workspaceId;
             const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(taskWorkspaceId, workingDirectory);
             const selectedSkillNames = resolvePayloadSkillNames(payload as unknown as ChatPayload | PrClassificationPayload);
@@ -883,6 +888,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
                 signal: turnAbort.signal,
                 timeoutMs,
+                idleTimeoutMs,
                 attachments,
                 tools: sendTools,
                 systemMessage,

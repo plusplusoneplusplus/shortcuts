@@ -18,6 +18,7 @@ const MOCK_CONFIG_RESPONSE = {
         model: 'gpt-4',
         parallel: 2,
         timeout: 3600,
+        idleTimeout: 900,
         output: 'json',
         showReportIntent: false,
         toolCompactness: 1,
@@ -31,6 +32,7 @@ const MOCK_CONFIG_RESPONSE = {
         model: 'file',
         parallel: 'default',
         timeout: 'default',
+        idleTimeout: 'file',
         output: 'file',
         showReportIntent: 'default',
         toolCompactness: 'default',
@@ -81,6 +83,7 @@ test.describe('Admin: Configuration section', () => {
         await expect(page.locator('#admin-config-model')).toHaveValue('gpt-4', { timeout: 5000 });
         await expect(page.locator('#admin-config-parallel')).toHaveValue('2');
         await expect(page.locator('#admin-config-timeout')).toHaveValue('3600');
+        await expect(page.locator('#admin-config-idle-timeout')).toHaveValue('900');
         await expect(page.locator('#admin-config-output')).toHaveValue('json');
 
         // configFilePath is on the Server tab
