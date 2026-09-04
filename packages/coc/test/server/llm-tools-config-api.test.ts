@@ -74,18 +74,27 @@ describe('LLM Tools Config API endpoints', () => {
     let tmpDir: string;
 
     const WORKSPACE_ID = 'ws-llm-tools-1';
+    // AC-04: a repo group is an ordinary registry workspace with a `group-` id and
+    // no git checkout, so it must ride the same per-workspace routes as a repo.
+    const GROUP_ID = 'group-llm-tools-demo';
 
     beforeAll(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llm-tools-api-'));
         // Create the repos directory structure for preferences
         fs.mkdirSync(path.join(tmpDir, 'repos', WORKSPACE_ID), { recursive: true });
+        fs.mkdirSync(path.join(tmpDir, 'repos', GROUP_ID), { recursive: true });
 
+        const groupWorkspace = { id: GROUP_ID, name: 'LLM Tools Group', rootPath: path.join(tmpDir, 'repos', GROUP_ID) };
         mockStore = createMockProcessStore({
-            initialWorkspaces: [{ id: WORKSPACE_ID, name: 'LLM Tools Project', rootPath: '/projects/llm-tools' }],
+            initialWorkspaces: [
+                { id: WORKSPACE_ID, name: 'LLM Tools Project', rootPath: '/projects/llm-tools' },
+                groupWorkspace,
+            ],
         });
         (mockStore as any).searchConversations = vi.fn();
         (mockStore.getWorkspaces as any).mockResolvedValue([
             { id: WORKSPACE_ID, name: 'LLM Tools Project', rootPath: '/projects/llm-tools' },
+            groupWorkspace,
         ]);
 
         mockLoadDefaultMcpConfig.mockReturnValue({ mcpServers: {} });
@@ -108,6 +117,8 @@ describe('LLM Tools Config API endpoints', () => {
         // Clean preferences files between tests
         const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
         if (fs.existsSync(prefsPath)) fs.unlinkSync(prefsPath);
+        const groupPrefsPath = path.join(tmpDir, 'repos', GROUP_ID, 'preferences.json');
+        if (fs.existsSync(groupPrefsPath)) fs.unlinkSync(groupPrefsPath);
         const globalPrefsPath = path.join(tmpDir, 'preferences.json');
         if (fs.existsSync(globalPrefsPath)) fs.unlinkSync(globalPrefsPath);
     });
@@ -387,6 +398,55 @@ describe('LLM Tools Config API endpoints', () => {
             const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
             const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
             expect(prefs.disabledLlmTools).toEqual(['suggest_follow_ups']);
+        });
+    });
+
+    // ========================================================================
+    // AC-04: repo-group workspaces
+    // ========================================================================
+
+    describe('repo-group workspaces', () => {
+        const groupPrefsPath = () => path.join(tmpDir, 'repos', GROUP_ID, 'preferences.json');
+
+        it('GET returns the tool registry for a group id', async () => {
+            const res = await request(`${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`);
+            expect(res.status).toBe(200);
+            expect(res.json().tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false }).length);
+        });
+
+        it('PUT round-trips disabledLlmTools through the group preferences file', async () => {
+            const put = await request(`${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ disabledLlmTools: ['ask_user', 'memory'] }),
+            });
+            expect(put.status).toBe(200);
+            expect(put.json().disabledLlmTools).toEqual(['ask_user', 'memory']);
+
+            // Written under ~/.coc/repos/<groupId>/preferences.json, not the group root.
+            const prefs = JSON.parse(fs.readFileSync(groupPrefsPath(), 'utf-8'));
+            expect(prefs.disabledLlmTools).toEqual(['ask_user', 'memory']);
+
+            const get = await request(`${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`);
+            expect(get.status).toBe(200);
+            expect(get.json().disabledLlmTools).toEqual(['ask_user', 'memory']);
+        });
+
+        // Group settings must affect only the group's own chats — a member repo
+        // that happens to share the server keeps whatever it had.
+        it('does not touch a repo workspace preferences file', async () => {
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ disabledLlmTools: ['tavily_web_search'] }),
+            });
+            await request(`${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`, {
+                method: 'PUT',
+                body: JSON.stringify({ disabledLlmTools: ['memory'] }),
+            });
+
+            const repoPrefs = JSON.parse(fs.readFileSync(path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json'), 'utf-8'));
+            expect(repoPrefs.disabledLlmTools).toEqual(['tavily_web_search']);
+            const repoGet = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
+            expect(repoGet.json().disabledLlmTools).toEqual(['tavily_web_search']);
         });
     });
 });
