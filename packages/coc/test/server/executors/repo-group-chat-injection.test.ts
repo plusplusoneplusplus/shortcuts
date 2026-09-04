@@ -26,7 +26,7 @@ import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { FollowUpExecutor } from '../../../src/server/executors/follow-up-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
-import { createRepoGroup } from '../../../src/server/workspaces/repo-group-workspace';
+import { createRepoGroup, updateRepoGroup } from '../../../src/server/workspaces/repo-group-workspace';
 import { REPO_GROUP_CONTEXT_TAG } from '../../../src/server/workspaces/repo-group-chat-context';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
@@ -318,6 +318,20 @@ describe('repo-group chat context injection (AC-03)', () => {
             expect(call.prompt).toContain(`- Repo A: ${repoA}`);
             expect(call.prompt).not.toContain('Repo B');
             expect(call.additionalDirectories).toEqual([repoA]);
+        });
+
+        it('re-appends a refreshed block when only a member read-only flag changed', async () => {
+            seedInjectedProcess(groupId, 'proc-group-readonly');
+            await updateRepoGroup(tmpDir, store, groupId, { readOnly: { 'ws-v2-aaa': true } });
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp('proc-group-readonly', 'next question', undefined, 'ask');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toContain(`- Repo A: ${repoA} [read-only]`);
+            expect(call.prompt).toContain('Repos marked [read-only] must not be modified');
+            // Read-only is a prompt hint — the path stays granted.
+            expect(call.additionalDirectories).toEqual([repoA, repoB]);
         });
 
         it('re-appends the block after a compaction result turn', async () => {
