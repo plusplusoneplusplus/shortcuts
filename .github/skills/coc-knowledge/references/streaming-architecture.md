@@ -44,6 +44,24 @@ reconnects, unsupported providers, TTL expiry, or restart). A transition racing 
 can duplicate a frame — harmless, since the SPA assigns status idempotently.
 `getCurrentStatus` returns `cold` for providers without `getWarmStatus` (e.g. Claude).
 
+### Background-task replay on connect
+
+`BackgroundTasksRegistry` (`streaming/background-tasks-registry.ts`, module singleton) holds
+the latest `BackgroundTasksInfo` per processId. `BaseExecutor.buildBackgroundTaskHandler`
+records each snapshot there before emitting the live `background-tasks` process event; a
+snapshot with `backgroundTotalActive === 0` deletes the entry, so "no entry" and "nothing
+active" are the same state. `ChatBaseExecutor` and `FollowUpExecutor` clear the entry in their
+turn `finally`, covering the drain-cap abort that never emits a settle.
+
+`handleProcessStream` replays that snapshot as a `background-tasks` frame on connect, so a
+reload or a late-opened chat sees the "waiting for background tasks" indicator instead of
+nothing. The replay runs after the terminal-status early return (a finished process never gets
+a stale indicator), and after the output subscribe, skipped when a live `background-tasks`
+event already went out on this stream — the client is last-write-wins, so the older snapshot
+must not overwrite it. Nothing is sent when there is no snapshot. The `?warm=1` stream returns
+before all replay. State is in-memory on purpose: a background task cannot outlive the server
+process, so a persisted snapshot could only ever be wrong after a restart.
+
 ## WebSocket (global events)
 
 A single persistent connection opened when the dashboard loads, broadcasting lightweight

@@ -27,6 +27,7 @@ import {
     type StreamingTurnState,
     type TurnWriteState,
 } from './process-session-registry';
+import { backgroundTasksRegistry as sharedBackgroundTasksRegistry, type BackgroundTasksRegistry } from '../streaming/background-tasks-registry';
 
 // ============================================================================
 // Types
@@ -79,9 +80,21 @@ export abstract class BaseExecutor {
     /** Count-based throttle: flush every N chunks. */
     protected static readonly THROTTLE_CHUNK_COUNT = 50;
 
-    constructor(store: ProcessStore, dataDir?: string) {
+    /**
+     * Latest background-task snapshot per process, replayed by the SSE handler
+     * when a stream connects mid-turn. Injectable so tests never touch the
+     * process-wide singleton.
+     */
+    protected readonly backgroundTasks: BackgroundTasksRegistry;
+
+    constructor(
+        store: ProcessStore,
+        dataDir?: string,
+        backgroundTasks: BackgroundTasksRegistry = sharedBackgroundTasksRegistry,
+    ) {
         this.store = store;
         this.dataDir = dataDir;
+        this.backgroundTasks = backgroundTasks;
     }
 
     // ========================================================================
@@ -432,13 +445,15 @@ export abstract class BaseExecutor {
 
     /**
      * Builds the onBackgroundTasksChanged handler for a given process.
-     * Emits a 'background-tasks' ProcessOutputEvent so SSE can relay it to the frontend.
+     * Records the snapshot so a stream that connects later can replay it, then
+     * emits a 'background-tasks' ProcessOutputEvent so SSE can relay it live.
      */
     protected buildBackgroundTaskHandler(
         processId: string,
     ): (tasks: BackgroundTasksInfo) => void {
         return (tasks: BackgroundTasksInfo) => {
             try {
+                this.backgroundTasks.record(processId, tasks);
                 this.store.emitProcessEvent(processId, {
                     type: 'background-tasks',
                     backgroundAgents: tasks.backgroundAgents,
