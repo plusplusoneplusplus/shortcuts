@@ -1,17 +1,16 @@
 /**
- * PreviewPane — renders file content using a full-bleed Monaco Editor.
+ * PreviewPane — the Explorer's file preview: a full-bleed viewer plus a
+ * floating close/save toolbar.
  *
- * The right panel is entirely the Monaco editor for text files, with
- * minimal floating controls for close/save. Non-text content (images, binary)
- * falls back to simple centered displays.
- *
- * Fetches blob content from the API and supports loading/error/retry states.
- * Cancels in-flight requests when the file path changes.
+ * A thin adapter over the shared file viewer: it injects the `explorerApi`
+ * transport, keeps trusted-path read-only forcing, and owns the
+ * dirty/status/save callback contract with `ExplorerPanel`. Fetching, retry,
+ * truncation and the edit buffer all live in `useFileContent`.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Spinner, Button } from '../../../ui';
-import { FileViewer, type FileBlob } from '../../../shared/file-viewer';
+import { FileViewer, useFileContent } from '../../../shared/file-viewer';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
@@ -60,65 +59,34 @@ export interface PreviewPaneProps {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-type BlobResponse = FileBlob;
-
-const MAX_PREVIEW_SIZE = 512 * 1024; // 512 KB
-
 export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
 
-    const [blob, setBlob] = useState<BlobResponse | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [editedContent, setEditedContent] = useState<string>('');
-    const [isDirty, setIsDirty] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const abortRef = useRef<AbortController | null>(null);
-    // Ref so a changing callback identity never re-triggers the fetch effect.
-    const onNotFoundRef = useRef(onNotFound);
-    onNotFoundRef.current = onNotFound;
-
-    const fetchBlob = useCallback((signal: AbortSignal) => (
+    const read = useCallback((signal: AbortSignal) => (
         isTrusted
             ? explorerApi.readTrustedBlob(actualPath, { signal })
             : explorerApi.readBlob(repoId, actualPath, { signal })
     ), [actualPath, isTrusted, repoId]);
 
-    // Fetch blob on mount or path change; cancel in-flight on change
-    useEffect(() => {
-        abortRef.current?.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
+    const write = useMemo(() => (
+        effectiveReadOnly ? undefined : (content: string) => explorerApi.writeBlob(repoId, actualPath, content).then(() => undefined)
+    ), [effectiveReadOnly, repoId, actualPath]);
 
-        setLoading(true);
-        setError(null);
-        setBlob(null);
-        setIsDirty(false);
-        setEditedContent('');
+    const handleNotFound = useCallback((err: Error) => {
+        if ((err as { status?: number }).status === 404) onNotFound?.();
+    }, [onNotFound]);
 
-        fetchBlob(controller.signal)
-            .then((data: BlobResponse) => {
-                if (!controller.signal.aborted) {
-                    setBlob(data);
-                    if (data.encoding === 'utf-8') {
-                        setEditedContent(data.content);
-                    }
-                }
-            })
-            .catch((err: Error) => {
-                if (!controller.signal.aborted) {
-                    setError(err.message || 'Failed to load file');
-                    if ((err as { status?: number }).status === 404) onNotFoundRef.current?.();
-                }
-            })
-            .finally(() => {
-                if (!controller.signal.aborted) setLoading(false);
-            });
-
-        return () => controller.abort();
-    }, [fetchBlob]);
+    const {
+        displayBlob, loading, error, status, retry,
+        isDirty, isSaving, onChange: handleEditorChange, save: handleSave,
+    } = useFileContent({
+        key: `${isTrusted ? 'trusted' : repoId}:${actualPath}`,
+        read,
+        write,
+        onError: handleNotFound,
+    });
 
     // Surface unsaved-edits state to the owner so a workspace switch can prompt
     // before discarding the buffer (AC-03). Report the current value whenever it
@@ -132,59 +100,9 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
     // warning for a buffer the user is not currently looking at (AC-05). A
     // closed buffer is neither loading nor errored, hence 'ready' on unmount.
     useEffect(() => {
-        onStatusChange?.(loading ? 'loading' : error ? 'error' : 'ready');
-    }, [loading, error, onStatusChange]);
+        onStatusChange?.(status);
+    }, [status, onStatusChange]);
     useEffect(() => () => { onStatusChange?.('ready'); }, [onStatusChange]);
-
-    const doRetry = () => {
-        abortRef.current?.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setLoading(true);
-        setError(null);
-        setBlob(null);
-        setIsDirty(false);
-        setEditedContent('');
-        fetchBlob(controller.signal)
-            .then((data: BlobResponse) => {
-                if (!controller.signal.aborted) {
-                    setBlob(data);
-                    if (data.encoding === 'utf-8') {
-                        setEditedContent(data.content);
-                    }
-                }
-            })
-            .catch((err: Error) => {
-                if (!controller.signal.aborted) {
-                    setError(err.message || 'Failed to load file');
-                    if ((err as { status?: number }).status === 404) onNotFoundRef.current?.();
-                }
-            })
-            .finally(() => {
-                if (!controller.signal.aborted) setLoading(false);
-            });
-    };
-
-    const handleEditorChange = useCallback((value: string) => {
-        if (effectiveReadOnly) return;
-        setEditedContent(value);
-        setIsDirty(true);
-    }, [effectiveReadOnly]);
-
-    const handleSave = useCallback(async (): Promise<boolean> => {
-        if (isTrusted) return false; // never save trusted files
-        setIsSaving(true);
-        try {
-            await explorerApi.writeBlob(repoId, actualPath, editedContent);
-            setIsDirty(false);
-            return true;
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Save failed');
-            return false;
-        } finally {
-            setIsSaving(false);
-        }
-    }, [repoId, actualPath, editedContent, isTrusted]);
 
     // Publish the save entry point to the owner. The registered function is a
     // stable wrapper around a ref, so re-registering on every keystroke (the
@@ -201,15 +119,6 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
         onRegisterSave(() => saveRef.current());
         return () => onRegisterSave(null);
     }, [onRegisterSave, effectiveReadOnly]);
-
-    // What the viewer shows: the edited buffer for text, truncated at 512 KB
-    // (an oversized file is view-only, so the edit buffer never applies).
-    const isOversized = blob?.encoding === 'utf-8' && blob.content.length > MAX_PREVIEW_SIZE;
-    const displayBlob = useMemo<FileBlob | null>(() => {
-        if (!blob) return null;
-        if (blob.encoding !== 'utf-8') return blob;
-        return { ...blob, content: isOversized ? blob.content.slice(0, MAX_PREVIEW_SIZE) : editedContent };
-    }, [blob, isOversized, editedContent]);
 
     return (
         <div className="relative w-full h-full overflow-hidden" data-testid="preview-pane">
@@ -252,7 +161,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
             ) : error ? (
                 <div className="flex items-center gap-2 px-4 py-4" data-testid="preview-error">
                     <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{error}</span>
-                    <Button variant="secondary" size="sm" onClick={doRetry} data-testid="preview-retry-btn">Retry</Button>
+                    <Button variant="secondary" size="sm" onClick={retry} data-testid="preview-retry-btn">Retry</Button>
                 </div>
             ) : displayBlob ? (
                 <FileViewer

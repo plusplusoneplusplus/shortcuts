@@ -8,3 +8,5 @@ export { MarkdownFileView, isMarkdownFile } from './MarkdownFileView';
 export type { MarkdownFileViewProps } from './MarkdownFileView';
 export { FileViewer, formatFileSize } from './FileViewer';
 export type { FileViewerProps } from './FileViewer';
+export { useFileContent, MAX_FILE_VIEW_SIZE } from './useFileContent';
+export type { UseFileContent, UseFileContentOptions } from './useFileContent';
