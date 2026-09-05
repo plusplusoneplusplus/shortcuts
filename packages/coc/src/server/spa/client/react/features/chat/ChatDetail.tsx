@@ -38,6 +38,7 @@ import type { ClientConversationTurn } from '../../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from './hooks/useDraftStore';
 import { clearAskUserDraftsForProcess } from './hooks/useAskUserDraftStore';
 import { buildMetadataProcess } from '../../utils/chatUtils';
+import { resolveChatWorkspaceId } from '../../utils/resolveChatWorkspaceId';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
 import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
@@ -364,6 +365,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
         : null);
     const metadataProcess = useMemo(() => buildMetadataProcess(task, processDetails, processId), [task, processId, processDetails]);
+    // A chat mounted without a workspaceId (pop-out opened with no `?workspace=`,
+    // floated from a notification with none) still knows which repo it ran in:
+    // the process carries it in metadata. Without this the chat has no canonical
+    // origin, and every origin-scoped piece of chrome silently renders nothing.
+    // While `processDetails` is loading the id stays `undefined` — the documented
+    // "not known yet" state — and the origin-scoped effects re-run once it lands.
+    const effectiveWorkspaceId = resolveChatWorkspaceId(workspaceId, processDetails, task);
     const forEachGeneration = metadataProcess?.metadata?.forEach?.kind === 'generation'
         ? metadataProcess.metadata.forEach as ForEachGenerationMetadata
         : null;
@@ -429,16 +437,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const quickAsk = useQuickAskSidenotes(canvasPid ?? undefined, workspaceId);
     const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout, bareTaskId);
     const workspaceRootPath = useMemo(() => {
-        const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
+        const workspace = appState.workspaces.find((ws: any) => ws.id === effectiveWorkspaceId);
         return typeof workspace?.rootPath === 'string' ? workspace.rootPath : '';
-    }, [appState.workspaces, workspaceId]);
+    }, [appState.workspaces, effectiveWorkspaceId]);
     // `undefined` while the workspace list has not loaded (remote identity
     // UNKNOWN), `null` once it has loaded and this workspace has no remote.
     // Origin-scoped consumers must not treat the pre-load window as "no remote":
     // that resolves to `local_<workspaceId>`, an origin no PR data lives under.
     const workspaceRemoteUrl = useMemo(
-        () => resolveWorkspaceRemoteUrl(appState.workspaces, workspaceId),
-        [appState.workspaces, workspaceId],
+        () => resolveWorkspaceRemoteUrl(appState.workspaces, effectiveWorkspaceId),
+        [appState.workspaces, effectiveWorkspaceId],
     );
 
     // ── Implement-plan target repos (AC-02/AC-06) ──────────────────────────
@@ -449,9 +457,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // UI by receiving no extra targets.
     const reposCtx = useReposOptional();
     const workspaceName = useMemo(() => {
-        const workspace = appState.workspaces.find((ws: any) => ws.id === workspaceId);
+        const workspace = appState.workspaces.find((ws: any) => ws.id === effectiveWorkspaceId);
         return typeof workspace?.name === 'string' ? workspace.name : undefined;
-    }, [appState.workspaces, workspaceId]);
+    }, [appState.workspaces, effectiveWorkspaceId]);
     // Remote identity of the SOURCE workspace (where the plan file lives). The
     // implement card must never treat a remote-sourced plan as local: its plan
     // path only exists on the source machine. Resolution order: aggregated repo
@@ -2742,7 +2750,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             prComposerChips={
                                 <ChatComposerPrChips
                                     turns={turns}
-                                    workspaceId={workspaceId}
+                                    workspaceId={effectiveWorkspaceId}
                                     remoteUrl={workspaceRemoteUrl}
                                     taskId={bareTaskId}
                                     processId={processId ?? taskId}
@@ -2885,7 +2893,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     prComposerChips={
                         <ChatComposerPrChips
                             turns={turns}
-                            workspaceId={workspaceId}
+                            workspaceId={effectiveWorkspaceId}
                             remoteUrl={workspaceRemoteUrl}
                             taskId={bareTaskId}
                             processId={processId ?? taskId}

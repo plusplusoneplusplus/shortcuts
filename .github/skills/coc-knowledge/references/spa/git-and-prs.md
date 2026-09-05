@@ -204,15 +204,16 @@ while it is `undefined`. Collapsing the two cases resolves the origin to
 the wrong scope, `unionAssociations` drops the chat's own detected PRs as foreign, and
 `detectedPrsNeedingBinding` writes nothing.
 
-`remoteUrl` is three-valued, and the distinction is load-bearing: `undefined` means the
-chat's remote identity is **not known yet** (the dashboard workspace list is still
-loading), `null` means the workspace is known to have **no** remote. `ChatDetail` derives
-it with `resolveWorkspaceRemoteUrl(appState.workspaces, workspaceId)`, and
-`usePrChatStatusItems` holds `chatOriginId` empty (fetching nothing, rendering nothing)
-while it is `undefined`. Collapsing the two cases resolves the origin to
-`local_<workspaceId>` — an origin no PR data lives under — so the bindings lookup queries
-the wrong scope, `unionAssociations` drops the chat's own detected PRs as foreign, and
-`detectedPrsNeedingBinding` writes nothing.
+The workspace id itself is not guaranteed to arrive as a prop: `buildChatPopOutUrl`
+omits `?workspace=` when the caller has none, and the notification bell floats chats with
+an optional id. `ChatDetail` resolves it once through
+`resolveChatWorkspaceId(prop, processDetails, task)` (`react/utils/resolveChatWorkspaceId.ts`),
+falling back to the process's own `metadata.workspaceId`, and feeds that
+`effectiveWorkspaceId` to the workspace-list lookups (root path, name, `remoteUrl`) and to
+both `ChatComposerPrChips` mounts. Without it a pop-out has no canonical origin at all and
+every origin-scoped piece of chat chrome renders nothing, with zero requests to show for
+it. Other `getCocClientForWorkspace(workspaceId)` call sites in `ChatDetail` deliberately
+keep using the prop — they route requests to a specific CoC server.
 
 ### Chip contents
 
