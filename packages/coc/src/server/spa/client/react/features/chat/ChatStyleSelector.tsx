@@ -13,6 +13,11 @@
  *
  * Style changes presentation only; it never affects the model, reasoning effort,
  * tools, or permission mode.
+ *
+ * The last row of the dropdown is not a style: "Configure styles…" jumps to the
+ * admin Chat Style section, where the prompt text behind each style is edited.
+ * It sits below a divider, is excluded from the listbox's option roles, and
+ * never fires `onChange`.
  */
 
 import { useState, useRef, useEffect } from 'react';
@@ -26,6 +31,9 @@ export const CHAT_STYLE_DESCRIPTIONS: Record<ChatStyle, string> = {
     direct: 'Answer first, fewest words that keep the important facts.',
     structured: 'Easy to scan: key points, decisions, risks, next steps.',
 };
+
+/** In-app hash of the admin section where style prompts are edited. */
+export const CHAT_STYLE_SETTINGS_HASH = '#admin/settings/chat-style';
 
 export interface ChatStyleSelectorProps {
     /** Currently selected style. */
@@ -167,6 +175,36 @@ export function ChatStyleSelector({
                             </button>
                         );
                     })}
+
+                    <div
+                        role="presentation"
+                        className="my-0.5 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setOpen(false);
+                            window.location.hash = CHAT_STYLE_SETTINGS_HASH;
+                        }}
+                        title="Edit the prompt text behind each style."
+                        className={cn(
+                            'w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-[12px] transition-colors cursor-pointer',
+                            'text-[#5a5a5a] dark:text-[#999] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e]',
+                            'hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                        )}
+                        data-testid="chat-style-configure"
+                    >
+                        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
+                            <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.4" />
+                            <path
+                                d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.53 3.47l-1.13 1.13M4.6 11.4l-1.13 1.13M12.53 12.53l-1.13-1.13M4.6 4.6L3.47 3.47"
+                                stroke="currentColor"
+                                strokeWidth="1.4"
+                                strokeLinecap="round"
+                            />
+                        </svg>
+                        <span className="leading-tight">Configure styles…</span>
+                    </button>
                 </div>
             )}
         </div>
