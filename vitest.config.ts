@@ -20,6 +20,7 @@
  */
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import { resolveMaxWorkers } from './packages/coc/vitest.workers';
 
 export default defineConfig({
     esbuild: {
@@ -64,7 +65,9 @@ export default defineConfig({
         ],
         pool: 'forks',
         minForks: 1,
-        maxForks: 2,
+        // Same excalidraw + jsdom memory ceiling as packages/coc, so the two
+        // configs share one source of truth for the per-OS fork count.
+        maxForks: resolveMaxWorkers(),
         dangerouslyIgnoreUnhandledErrors: true,
     },
 });
