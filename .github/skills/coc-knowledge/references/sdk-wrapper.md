@@ -35,7 +35,7 @@ Forge imports directly from this package.
 | `model-reasoning.ts` | Metadata-aware model/reasoning resolver |
 | `model-context-tier.ts` | `getCopilotContextTierForModel` / `getCopilotLongContextPromptLimit` |
 | `claude-model-catalog.ts` | `findClaudeCatalogModel` — maps configured Claude ids (CLI aliases, dotted, dashed, provider-default sentinels) to CLI catalog entries via exact, dashed-normalized, and family (id/name/description) matching |
-| `effort-tier-defaults.ts` | Per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) + stored-config merge. Copilot: Luna/Terra/Opus/Sol all pinned to `xhigh`. Claude: CLI aliases `haiku`/`sonnet`/`opus`/`fable` (`high` → `fable`), no pinned effort for Haiku. |
+| `effort-tier-defaults.ts` | Per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) + stored-config merge. Codex High uses `gpt-6-astra` with `medium` reasoning. Claude uses CLI aliases `haiku`/`sonnet`/`opus`/`fable` (`high` → `fable`), with no pinned effort for Haiku. |
 | `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, request options |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` |
 | `image-converter.ts` | Image detection + data-URL/base64 conversion |
