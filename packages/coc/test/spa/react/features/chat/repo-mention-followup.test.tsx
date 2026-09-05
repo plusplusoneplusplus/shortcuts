@@ -516,6 +516,32 @@ describe('FollowUpInputArea #repo mentions', () => {
         expect(mockAutocomplete.accept).toHaveBeenCalled();
     });
 
+    it('sends the mention as raw text, with a payload identical to an un-mentioned send', () => {
+        // AC-03 DoD 2: the composer text is the only artifact. A message with a
+        // mention must reach `onSend` through exactly the same call as one typed
+        // by hand — no extra argument, no structured field.
+        const withMention = vi.fn().mockResolvedValue(undefined);
+        const { unmount } = renderFollowUp({ workspaceId: 'group-demo', onSend: withMention });
+        type('look at #al');
+        fireEvent.keyDown(editor(), { key: 'Tab' });
+
+        // The insert pushed plain text into the controlled composer value.
+        expect(richTextProps['activity-chat-input'].value).toBe('look at #alpha ');
+        expect(screen.queryByTestId('repo-mention-menu')).toBeNull();
+
+        fireEvent.keyDown(editor(), { key: 'Enter' });
+        expect(withMention).toHaveBeenCalledTimes(1);
+        unmount();
+
+        // Same keystroke without a mention: identical onSend arguments.
+        const plain = vi.fn().mockResolvedValue(undefined);
+        renderFollowUp({ workspaceId: 'group-demo', onSend: plain });
+        type('look at alpha');
+        fireEvent.keyDown(editor(), { key: 'Enter' });
+
+        expect(plain.mock.calls).toEqual(withMention.mock.calls);
+    });
+
     it('marks a stale member in the list', () => {
         mockGroupMembers.value = [member('alpha', { stale: true })];
         renderFollowUp({ workspaceId: 'group-demo' });
