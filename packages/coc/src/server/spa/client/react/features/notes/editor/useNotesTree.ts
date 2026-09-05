@@ -72,11 +72,12 @@ export function useNotesTree(workspaceId: string, root?: string): UseNotesTreeRe
             if (requestGeneration !== requestGenerationRef.current || activeScopeRef.current !== scopeKey) {
                 return;
             }
-            setState({
-                ...emptyTreeState(scopeKey),
-                loading: false,
-                error: err.message ?? 'Failed to load notes tree',
-            });
+            // A failed refresh keeps the previously loaded tree so the sidebar
+            // never blanks; only a first-load failure has nothing to fall back to.
+            const message = err.message ?? 'Failed to load notes tree';
+            setState(prev => prev.scopeKey === scopeKey
+                ? { ...prev, loading: false, error: message }
+                : { ...emptyTreeState(scopeKey), loading: false, error: message });
         }
     }, [scopeKey, workspaceId, root]);
 

@@ -104,10 +104,17 @@ export function useNotesTrees(workspaceId: string, activeRootIds: string[]): Use
             });
         } catch (err: any) {
             if (isStale()) return;
-            merge({
-                ...IDLE_STATE,
-                loading: false,
-                error: err?.message ?? 'Failed to load notes tree',
+            // Keep the last good tree on a failed refresh — the section surfaces
+            // the error as a banner rather than blanking the list. A first-load
+            // failure has no previous tree, so it still renders the error state.
+            const message = err?.message ?? 'Failed to load notes tree';
+            setCache(prev => {
+                const prevEntries = prev.scopeKey === scopeKey ? prev.entries : {};
+                const current = prevEntries[rootId] ?? IDLE_STATE;
+                return {
+                    scopeKey,
+                    entries: { ...prevEntries, [rootId]: { ...current, loading: false, error: message } },
+                };
             });
         }
     }, [workspaceId]);

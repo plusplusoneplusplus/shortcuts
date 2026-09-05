@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Spinner } from '../../../ui/Spinner';
 
 /** One entry in a section header's overflow (⋯) menu. */
 export interface NotesSectionHeaderAction {
@@ -32,6 +33,8 @@ export interface NotesSectionHeaderProps {
     testId?: string;
     /** Optional leading glyph override. Falls back to the root icons. */
     icon?: ReactNode;
+    /** A refresh is in flight — shows a small inline spinner beside the label. */
+    busy?: boolean;
 }
 
 /**
@@ -51,6 +54,7 @@ export function NotesSectionHeader({
     actions,
     testId = 'notes-section-header',
     icon,
+    busy,
 }: NotesSectionHeaderProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -111,6 +115,15 @@ export function NotesSectionHeader({
                     </span>
                 )}
             </button>
+            {busy && (
+                <span
+                    className="flex-shrink-0 text-[#8c959f] dark:text-[#777]"
+                    data-testid={`${testId}-busy`}
+                    title="Refreshing…"
+                >
+                    <Spinner size="sm" />
+                </span>
+            )}
             {isProtected && (
                 <span
                     className="flex-shrink-0 text-[11px]"

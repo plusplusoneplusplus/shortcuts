@@ -171,3 +171,152 @@ describe('useNotesTrees', () => {
         expect(result.current.getTree('default').notesRoot).toBe('/fresh');
     });
 });
+
+/**
+ * Regression guard for the sidebar blanking on every refresh: the tree layer
+ * must hand the section a non-null tree for the whole in-flight window of a
+ * refetch, and must not wipe it when the refetch fails.
+ *
+ * Each case injects a deferred `getTree` so the in-flight window is held open
+ * deterministically instead of raced against a real fetch.
+ */
+describe('useNotesTrees — a refresh keeps the previous tree', () => {
+    /** A `getTree` mock whose every call is settled by the test on demand. */
+    function deferredGetTree() {
+        const calls: Array<{ resolve: (v: any) => void; reject: (e: any) => void }> = [];
+        getTreeMock.mockImplementation(() => new Promise((resolve, reject) => {
+            calls.push({ resolve, reject });
+        }));
+        return calls;
+    }
+
+    it('holds the old tree for the entire in-flight window, then swaps in the new one', async () => {
+        const calls = deferredGetTree();
+        const { result } = renderHook(() => useNotesTrees('ws1', ['default']));
+
+        await waitFor(() => expect(calls.length).toBe(1));
+        await act(async () => { calls[0].resolve(treeResponse('default')); });
+        expect(result.current.getTree('default').tree).toEqual(treeResponse('default').tree);
+
+        await act(async () => { void result.current.refresh('default'); });
+        await waitFor(() => expect(calls.length).toBe(2));
+
+        // Mid-refresh: loading, but the previous tree is still there to render.
+        expect(result.current.getTree('default').loading).toBe(true);
+        expect(result.current.getTree('default').tree).toEqual(treeResponse('default').tree);
+        expect(result.current.getTree('default').notesRoot).toBe('/notes/default');
+
+        await act(async () => {
+            calls[1].resolve({
+                tree: [{ name: 'fresh', path: 'fresh', type: 'page' }],
+                notesRoot: '/notes/fresh',
+                systemFolders: [],
+            });
+        });
+        expect(result.current.getTree('default').tree).toEqual([{ name: 'fresh', path: 'fresh', type: 'page' }]);
+        expect(result.current.getTree('default').loading).toBe(false);
+    });
+
+    it('keeps the previous tree when a refresh rejects and only records the error', async () => {
+        const calls = deferredGetTree();
+        const { result } = renderHook(() => useNotesTrees('ws1', ['default']));
+
+        await waitFor(() => expect(calls.length).toBe(1));
+        await act(async () => { calls[0].resolve(treeResponse('default')); });
+
+        await act(async () => { void result.current.refresh('default'); });
+        await waitFor(() => expect(calls.length).toBe(2));
+        await act(async () => { calls[1].reject(new Error('offline')); });
+
+        const state = result.current.getTree('default');
+        expect(state.error).toBe('offline');
+        expect(state.loading).toBe(false);
+        expect(state.tree).toEqual(treeResponse('default').tree);
+        expect(state.notesRoot).toBe('/notes/default');
+        expect(state.systemFolders).toEqual(['.system']);
+    });
+
+    it('leaves a first-load failure with no tree so the error state still shows', async () => {
+        const calls = deferredGetTree();
+        const { result } = renderHook(() => useNotesTrees('ws1', ['default']));
+
+        await waitFor(() => expect(calls.length).toBe(1));
+        await act(async () => { calls[0].reject(new Error('boom')); });
+
+        expect(result.current.getTree('default')).toMatchObject({
+            tree: null,
+            loading: false,
+            error: 'boom',
+        });
+    });
+
+    it('keeps every expanded root visible through a notes-changed refreshAll', async () => {
+        const calls = deferredGetTree();
+        const { result } = renderHook(() => useNotesTrees('ws1', ['default', 'docs']));
+
+        await waitFor(() => expect(calls.length).toBe(2));
+        await act(async () => {
+            calls[0].resolve(treeResponse('default'));
+            calls[1].resolve(treeResponse('docs'));
+        });
+
+        await act(async () => {
+            window.dispatchEvent(new CustomEvent('notes-changed', { detail: { wsId: 'ws1' } }));
+        });
+        await waitFor(() => expect(calls.length).toBe(4));
+
+        for (const rootId of ['default', 'docs']) {
+            const state = result.current.getTree(rootId);
+            expect(state.loading).toBe(true);
+            expect(state.tree).toEqual(treeResponse(rootId).tree);
+        }
+
+        await act(async () => {
+            calls[2].resolve(treeResponse('default'));
+            calls[3].resolve(treeResponse('docs'));
+        });
+        expect(result.current.getTree('docs').loading).toBe(false);
+    });
+
+    it('still discards a superseded slow response even though the tree is kept', async () => {
+        const calls = deferredGetTree();
+        const { result } = renderHook(() => useNotesTrees('ws1', ['default']));
+
+        await waitFor(() => expect(calls.length).toBe(1));
+        await act(async () => { calls[0].resolve(treeResponse('default')); });
+
+        await act(async () => { void result.current.refresh('default'); });
+        await waitFor(() => expect(calls.length).toBe(2));
+        await act(async () => { void result.current.refresh('default'); });
+        await waitFor(() => expect(calls.length).toBe(3));
+
+        await act(async () => {
+            calls[2].resolve({ tree: [{ name: 'fresh', path: 'fresh', type: 'page' }], notesRoot: '/fresh', systemFolders: [] });
+            // The superseded request rejects late — it must not clobber the winner.
+            calls[1].reject(new Error('stale failure'));
+        });
+
+        expect(result.current.getTree('default').notesRoot).toBe('/fresh');
+        expect(result.current.getTree('default').error).toBeNull();
+    });
+
+    it('drops the cache on a workspace switch so no foreign tree lingers mid-fetch', async () => {
+        const calls = deferredGetTree();
+        const { result, rerender } = renderHook(
+            ({ ws }: { ws: string }) => useNotesTrees(ws, ['default']),
+            { initialProps: { ws: 'ws1' } },
+        );
+
+        await waitFor(() => expect(calls.length).toBe(1));
+        await act(async () => { calls[0].resolve(treeResponse('default')); });
+        expect(result.current.getTree('default').tree).not.toBeNull();
+
+        rerender({ ws: 'ws2' });
+        expect(result.current.getTree('default').tree).toBeNull();
+        expect(result.current.getTree('default').loading).toBe(true);
+
+        await waitFor(() => expect(calls.length).toBe(2));
+        await act(async () => { calls[1].resolve(treeResponse('ws2root')); });
+        expect(result.current.getTree('default').notesRoot).toBe('/notes/ws2root');
+    });
+});

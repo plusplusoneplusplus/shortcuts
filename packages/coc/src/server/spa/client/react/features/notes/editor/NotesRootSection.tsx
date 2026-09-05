@@ -61,47 +61,76 @@ export function NotesRootSection({
     const tid = (base: string) => (testIdSuffix ? `${base}-${testIdSuffix}` : base);
     const collapsed = Boolean(header) && !header!.expanded;
 
+    /**
+     * The tree is only ever replaced by a spinner on the very first load. Once a
+     * tree exists it stays mounted through every refresh — success or failure —
+     * so an event-driven refetch never blanks the sidebar. A refresh in flight
+     * shows a quiet dim plus a header spinner instead.
+     */
+    const hasTree = tree !== null;
+    const showSpinner = loading && !hasTree;
+    const showBlockingError = Boolean(error) && !hasTree && !loading;
+    const refreshing = loading && hasTree;
+
     const body = (
         <>
-            {loading && (
+            {showSpinner && (
                 <div className="flex items-center justify-center py-6" data-testid={tid('notes-loading')}>
                     <Spinner size="md" />
                 </div>
             )}
 
-            {error && !loading && (
+            {showBlockingError && (
                 <div
                     className="py-6 px-4 text-center text-xs text-red-500 dark:text-red-400"
                     data-testid={tid('notes-error')}
+                    data-variant="blocking"
                 >
                     {error}
                 </div>
             )}
 
-            {!loading && !error && tree && tree.length === 0 && (
+            {/* A failed refresh is a banner over the last good tree, never a wipe. */}
+            {hasTree && error && (
                 <div
-                    className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#666] italic"
-                    data-testid={tid('notes-empty')}
+                    className="px-3 py-1 text-[11px] text-red-600 dark:text-red-400 bg-[#fff5f5] dark:bg-[#3c1f1f] border-b border-[#ffd7d5] dark:border-[#5a2b2b]"
+                    data-testid={tid('notes-error')}
+                    data-variant="banner"
+                    role="status"
                 >
-                    No notebooks yet
+                    {error}
                 </div>
             )}
 
-            {!loading && !error && tree && tree.length > 0 && (
-                <NotesTree
-                    {...treeProps}
-                    nodes={tree}
-                    visiblePaths={filter?.visible ?? null}
-                    rootTestId={tid('notes-tree')}
-                />
-            )}
-
-            {!loading && !error && tree && tree.length > 0 && filter && filter.visible.size === 0 && (
+            {hasTree && (
                 <div
-                    className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#9d9d9d] italic"
-                    data-testid={tid('notes-search-empty')}
+                    className={`transition-opacity duration-150 ${refreshing ? 'opacity-60' : ''}`}
+                    data-testid={refreshing ? tid('notes-refreshing') : undefined}
                 >
-                    No notes match “{searchQuery.trim()}”
+                    {tree!.length === 0 ? (
+                        <div
+                            className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#666] italic"
+                            data-testid={tid('notes-empty')}
+                        >
+                            No notebooks yet
+                        </div>
+                    ) : (
+                        <NotesTree
+                            {...treeProps}
+                            nodes={tree!}
+                            visiblePaths={filter?.visible ?? null}
+                            rootTestId={tid('notes-tree')}
+                        />
+                    )}
+
+                    {tree!.length > 0 && filter && filter.visible.size === 0 && (
+                        <div
+                            className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#9d9d9d] italic"
+                            data-testid={tid('notes-search-empty')}
+                        >
+                            No notes match “{searchQuery.trim()}”
+                        </div>
+                    )}
                 </div>
             )}
         </>
@@ -120,6 +149,7 @@ export function NotesRootSection({
                 isProtected={header.isProtected}
                 protectedReason={header.protectedReason}
                 actions={header.actions}
+                busy={refreshing}
                 testId={tid('notes-section-header')}
             />
             {!collapsed && body}

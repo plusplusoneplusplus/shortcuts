@@ -256,6 +256,52 @@ test.describe('Notes page — states (loading / empty / error / conflict)', () =
         }
     });
 
+    test('keeps the tree visible while a notes-changed refresh is in flight', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-notes-mock-'));
+        try {
+            const repoDir = createRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
+
+            const store = createNotesStore({ tree: seedTree() });
+            await mockNotesApi(page, store);
+
+            const pageErrors = trackPageErrors(page);
+            await openNotesPage(page, serverUrl, WS_ID);
+
+            // First load lands fast, so the tree is on screen before the refresh.
+            await expect(page.locator('[data-testid="notes-tree-item-Journal"]')).toBeVisible({
+                timeout: 10_000,
+            });
+
+            // Now make the refetch slow and trigger the event-driven refresh that
+            // a NotesWatcher broadcast produces. The tree must stay on screen for
+            // the whole in-flight window rather than being swapped for a spinner.
+            store.delayRoute('tree', 2500);
+            await page.evaluate((id) => {
+                window.dispatchEvent(new CustomEvent('notes-changed', { detail: { wsId: id } }));
+            }, WS_ID);
+
+            await expect(page.locator('[data-testid="notes-refreshing"]')).toBeVisible({
+                timeout: 5_000,
+            });
+            await expect(page.locator('[data-testid="notes-tree-item-Journal"]')).toBeVisible();
+            await expect(page.locator('[data-testid="notes-loading"]')).toHaveCount(0);
+
+            // Once the refresh lands the dim clears and the tree is still there.
+            await expect(page.locator('[data-testid="notes-refreshing"]')).toHaveCount(0, {
+                timeout: 10_000,
+            });
+            await expect(page.locator('[data-testid="notes-tree-item-Journal"]')).toBeVisible();
+
+            expect(pageErrors.map((e) => e.message)).toEqual([]);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
     test('shows the empty state when GET notes/tree returns no notebooks', async ({
         page,
         serverUrl,
