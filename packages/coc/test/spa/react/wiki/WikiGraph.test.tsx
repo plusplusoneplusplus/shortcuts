@@ -176,12 +176,14 @@ describe('WikiGraph — D3 available', () => {
         const onSelect = vi.fn();
         render(<WikiGraph wikiId="w1" graph={graph} onSelectComponent={onSelect} />);
 
+        // The container mounts in the commit that clears `loading`, but the
+        // click handler is registered by the render effect that runs after it —
+        // so wait on the handler itself, not on the container.
         await waitFor(() => {
-            expect(document.getElementById('wiki-graph-container')).toBeTruthy();
+            expect(capturedClickHandler).not.toBeNull();
         });
 
         // Simulate D3 click on a node datum
-        expect(capturedClickHandler).not.toBeNull();
         capturedClickHandler!(null, { id: 'c1' });
 
         expect(onSelect).toHaveBeenCalledWith('c1');
