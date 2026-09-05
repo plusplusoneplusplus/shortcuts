@@ -12,6 +12,7 @@ import {
     isApprovedReviewerVote,
     isBlockedReviewerVote,
     pullRequestMatchesCoworkerRoster,
+    sortPullRequestsByCreatedDesc,
     prStatusBadge,
     prStatusColor,
     reviewerDisplayName,
@@ -341,5 +342,49 @@ describe('coworker roster author matching', () => {
                 prCount: 2,
             },
         ]);
+    });
+});
+
+describe('sortPullRequestsByCreatedDesc', () => {
+    const pr = (number: number, createdAt?: string | null) =>
+        ({ id: number, number, createdAt } as unknown as PullRequest);
+
+    it('orders newest created first', () => {
+        const sorted = sortPullRequestsByCreatedDesc([
+            pr(1, '2026-01-01T00:00:00Z'),
+            pr(2, '2026-03-01T00:00:00Z'),
+            pr(3, '2026-02-01T00:00:00Z'),
+        ]);
+        expect(sorted.map(p => p.number)).toEqual([2, 3, 1]);
+    });
+
+    it('places missing or unparseable createdAt last', () => {
+        const sorted = sortPullRequestsByCreatedDesc([
+            pr(1, undefined),
+            pr(2, '2026-01-01T00:00:00Z'),
+            pr(3, 'not-a-date'),
+            pr(4, '2026-02-01T00:00:00Z'),
+        ]);
+        expect(sorted.map(p => p.number).slice(0, 2)).toEqual([4, 2]);
+        expect(sorted.map(p => p.number).slice(2).sort()).toEqual([1, 3]);
+    });
+
+    it('breaks ties by descending PR number', () => {
+        const sorted = sortPullRequestsByCreatedDesc([
+            pr(7, '2026-01-01T00:00:00Z'),
+            pr(9, '2026-01-01T00:00:00Z'),
+            pr(8, '2026-01-01T00:00:00Z'),
+        ]);
+        expect(sorted.map(p => p.number)).toEqual([9, 8, 7]);
+    });
+
+    it('accepts Date values and does not mutate the input', () => {
+        const input = [
+            { id: 1, number: 1, createdAt: new Date('2026-01-01T00:00:00Z') },
+            { id: 2, number: 2, createdAt: new Date('2026-05-01T00:00:00Z') },
+        ];
+        const sorted = sortPullRequestsByCreatedDesc(input);
+        expect(sorted.map(p => p.number)).toEqual([2, 1]);
+        expect(input.map(p => p.number)).toEqual([1, 2]);
     });
 });

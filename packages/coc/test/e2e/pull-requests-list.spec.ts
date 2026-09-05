@@ -80,6 +80,16 @@ async function openPrTab(page: any, serverUrl: string, wsId: string) {
     await page.click('button[data-subtab="pull-requests"]');
 }
 
+/**
+ * Returns the fixture PRs in the order the list renders them: newest created
+ * first. Every `createMockPullRequest` shares the same `createdAt`, so for the
+ * fixture lists the tie-break (PR number descending) decides — the
+ * highest-numbered PR lands in row 0.
+ */
+function inDisplayOrder<T extends { id: number; number?: number }>(prs: readonly T[]): T[] {
+    return [...prs].sort((a, b) => (b.number ?? b.id) - (a.number ?? a.id));
+}
+
 async function expectRosterEntryPersisted(
     serverUrl: string,
     repoId: string,
@@ -218,9 +228,10 @@ test.describe('Pull Requests tab — list', () => {
             // Three rows rendered
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
 
+            const expected = inDisplayOrder(MOCK_PR_LIST);
             const firstRow = page.locator('.pr-row').first();
-            await expect(firstRow.locator('.pr-title')).toHaveText(MOCK_PR_LIST[0].title, { timeout: 10000 });
-            await expect(firstRow.locator('.pr-number')).toContainText(`#${MOCK_PR_LIST[0].id}`, { timeout: 10000 });
+            await expect(firstRow.locator('.pr-title')).toHaveText(expected[0].title, { timeout: 10000 });
+            await expect(firstRow.locator('.pr-number')).toContainText(`#${expected[0].id}`, { timeout: 10000 });
             await expect(firstRow.locator('[data-testid="pr-state-dot"]')).toBeVisible({ timeout: 10000 });
             await expect(firstRow.locator('[data-testid="pr-risk-pill"]')).toBeVisible({ timeout: 10000 });
         } finally {
@@ -265,11 +276,14 @@ test.describe('Pull Requests tab — list', () => {
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
 
             const rows = page.locator('.pr-row');
-            const count = await rows.count();
-            for (let i = 0; i < count; i++) {
-                await expect(rows.nth(i).locator('.pr-meta')).toContainText(/\d+ files?/, { timeout: 10000 });
+            const expected = inDisplayOrder(MOCK_PR_LIST_WITH_DIFF_STATS);
+            for (let i = 0; i < expected.length; i++) {
+                const changed = expected[i].diffStats!.changedFiles;
+                await expect(rows.nth(i).locator('.pr-meta')).toContainText(
+                    `${changed} file${changed === 1 ? '' : 's'}`,
+                    { timeout: 10000 },
+                );
             }
-            await expect(rows.nth(0).locator('.pr-meta')).toContainText('2 files', { timeout: 10000 });
             // Review-minutes estimate was removed from the row meta line.
             await expect(rows.nth(0).locator('.pr-meta')).not.toContainText(/\d+ min/, { timeout: 10000 });
         } finally {
@@ -278,7 +292,30 @@ test.describe('Pull Requests tab — list', () => {
         }
     });
 
-    test('queue grouping renders Needs review and Ready after checks sections', async ({ page, serverUrl }) => {
+    test('orders rows by created time, newest first', async ({ page, serverUrl }) => {
+        const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-created-order', 'My Repo');
+        // Deliberately unsorted, with creation times that disagree with the PR numbers.
+        const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
+            pullRequests: [
+                createMockPullRequest({ id: 1, number: 1, title: 'oldest pull request', createdAt: '2024-01-01T00:00:00.000Z' }),
+                createMockPullRequest({ id: 2, number: 2, title: 'newest pull request', createdAt: '2024-06-01T00:00:00.000Z' }),
+                createMockPullRequest({ id: 3, number: 3, title: 'middle pull request', createdAt: '2024-03-01T00:00:00.000Z' }),
+            ],
+        });
+        try {
+            await openPrTab(page, serverUrl, repoId);
+            await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(3, { timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-row"] .pr-title')).toHaveText(
+                ['newest pull request', 'middle pull request', 'oldest pull request'],
+                { timeout: 10000 },
+            );
+        } finally {
+            await routeCleanup();
+            cleanup();
+        }
+    });
+
+    test('list renders flat with no attention section headers', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-5', 'My Repo');
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
             pullRequests: [
@@ -295,8 +332,7 @@ test.describe('Pull Requests tab — list', () => {
         try {
             await openPrTab(page, serverUrl, repoId);
             await expect(page.locator('[data-testid="pr-row"]')).toHaveCount(2, { timeout: 10000 });
-            await expect(page.locator('[data-queue-section="needs-review"]')).toBeVisible({ timeout: 10000 });
-            await expect(page.locator('[data-queue-section="ready"]')).toBeVisible({ timeout: 10000 });
+            await expect(page.locator('[data-testid="pr-queue-group"]')).toHaveCount(0);
         } finally {
             await routeCleanup();
             cleanup();

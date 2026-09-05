@@ -60,21 +60,30 @@ describe('PullRequestRow — title and meta', () => {
         expect(document.querySelector('.pr-meta')?.textContent).not.toContain('min');
     });
 
-    it('renders the last update time when updatedAt is present', () => {
-        render(<PullRequestRow pr={makePr({ updatedAt: '2026-05-17T10:00:00Z' })} onClick={vi.fn()} />);
-        const el = screen.getByTestId('pr-updated-at');
+    it('renders the creation time when createdAt is present', () => {
+        render(<PullRequestRow pr={makePr({ createdAt: '2026-05-17T10:00:00Z' })} onClick={vi.fn()} />);
+        const el = screen.getByTestId('pr-created-at');
         expect(el).toBeTruthy();
-        expect(el.textContent).toBeTruthy();
+        expect(el.textContent).toContain('opened');
     });
 
-    it('shows exact timestamp as tooltip on the updated-at element', () => {
-        render(<PullRequestRow pr={makePr({ updatedAt: '2026-05-17T10:00:00Z' })} onClick={vi.fn()} />);
-        const el = screen.getByTestId('pr-updated-at');
+    it('shows exact timestamp as tooltip on the created-at element', () => {
+        render(<PullRequestRow pr={makePr({ createdAt: '2026-05-17T10:00:00Z' })} onClick={vi.fn()} />);
+        const el = screen.getByTestId('pr-created-at');
         expect(el.getAttribute('title')).toContain('2026');
     });
 
-    it('omits the updated-at element when updatedAt is an empty string', () => {
-        render(<PullRequestRow pr={makePr({ updatedAt: '' })} onClick={vi.fn()} />);
+    it('omits the created-at element when createdAt is an empty string', () => {
+        render(<PullRequestRow pr={makePr({ createdAt: '' })} onClick={vi.fn()} />);
+        expect(screen.queryByTestId('pr-created-at')).toBeNull();
+    });
+
+    it('renders the created time, not the updated time', () => {
+        const created = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+        const updated = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        render(<PullRequestRow pr={makePr({ createdAt: created, updatedAt: updated })} onClick={vi.fn()} />);
+        const el = screen.getByTestId('pr-created-at');
+        expect(el.textContent).toBe('opened 3d ago');
         expect(screen.queryByTestId('pr-updated-at')).toBeNull();
     });
 

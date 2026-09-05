@@ -166,6 +166,43 @@ export interface PullRequest {
     autoMerge?: PullRequestAutoMerge;
 }
 
+/** Minimal shape the created-time ordering needs; matches both wire and server-side PR objects. */
+interface PullRequestSortable {
+    createdAt?: string | Date | null;
+    number?: number;
+    id?: number | string;
+}
+
+function createdAtMillis(pr: PullRequestSortable): number {
+    const raw = pr.createdAt;
+    if (!raw) return Number.NaN;
+    return raw instanceof Date ? raw.getTime() : Date.parse(String(raw));
+}
+
+function prNumberForTieBreak(pr: PullRequestSortable): number {
+    const n = pr.number ?? Number(pr.id);
+    return Number.isFinite(n) ? (n as number) : 0;
+}
+
+/**
+ * Orders pull requests by creation time, newest first.
+ * Ties fall back to PR number descending; missing/unparseable `createdAt` sorts last.
+ */
+export function comparePullRequestsByCreatedDesc(a: PullRequestSortable, b: PullRequestSortable): number {
+    const aMs = createdAtMillis(a);
+    const bMs = createdAtMillis(b);
+    const aValid = Number.isFinite(aMs);
+    const bValid = Number.isFinite(bMs);
+    if (aValid !== bValid) return aValid ? -1 : 1;
+    if (aValid && aMs !== bMs) return bMs - aMs;
+    return prNumberForTieBreak(b) - prNumberForTieBreak(a);
+}
+
+/** Returns a new array ordered newest-created first. */
+export function sortPullRequestsByCreatedDesc<T extends PullRequestSortable>(prs: readonly T[]): T[] {
+    return [...prs].sort(comparePullRequestsByCreatedDesc);
+}
+
 function stringifyIdentityId(id: string | number | undefined): string {
     if (id === undefined || id === null) return '';
     return String(id).trim();

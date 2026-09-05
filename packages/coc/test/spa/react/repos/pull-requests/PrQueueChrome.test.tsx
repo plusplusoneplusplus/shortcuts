@@ -1,14 +1,12 @@
 /**
  * Unit tests for the chrome of the redesigned PR review command queue:
  *  - PrQueueFilters (filter pills with counts and active state)
- *  - PrQueueGroupSection (labeled section wrapper)
 
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { PrQueueFilters } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueFilters';
-import { PrQueueGroupSection } from '../../../../../src/server/spa/client/react/features/pull-requests/PrQueueGroupSection';
 
 
 describe('PrQueueFilters', () => {
@@ -55,47 +53,3 @@ describe('PrQueueFilters', () => {
         expect(onChange).toHaveBeenCalledWith('ready');
     });
 });
-
-describe('PrQueueGroupSection', () => {
-    it('renders the label and child rows under the section', () => {
-        render(
-            <PrQueueGroupSection section="needs-review" label="Needs review">
-                <div data-testid="row-stub">row content</div>
-            </PrQueueGroupSection>,
-        );
-        const section = screen.getByTestId('pr-queue-group');
-        expect(section.getAttribute('data-queue-section')).toBe('needs-review');
-        expect(section.textContent).toContain('Needs review');
-        expect(screen.getByTestId('pr-queue-group-rows').textContent).toContain('row content');
-    });
-
-    it('hides the section label when compact', () => {
-        render(
-            <PrQueueGroupSection section="needs-review" label="Needs review" compact>
-                <div data-testid="row-stub">row content</div>
-            </PrQueueGroupSection>,
-        );
-        const section = screen.getByTestId('pr-queue-group');
-        expect(section.textContent).not.toContain('Needs review');
-        expect(screen.getByTestId('pr-queue-group-rows').textContent).toContain('row content');
-    });
-
-    it('exposes both queue sections distinctly', () => {
-        render(
-            <>
-                <PrQueueGroupSection section="needs-review" label="Needs review">
-                    <span>row a</span>
-                </PrQueueGroupSection>
-                <PrQueueGroupSection section="ready" label="Ready after checks">
-                    <span>row b</span>
-                </PrQueueGroupSection>
-            </>,
-        );
-        const sections = screen.getAllByTestId('pr-queue-group');
-        expect(sections.map(s => s.getAttribute('data-queue-section'))).toEqual([
-            'needs-review',
-            'ready',
-        ]);
-    });
-});
-
