@@ -1,20 +1,12 @@
 /**
- * MarkdownFileView — formatted markdown with a Rendered ⇄ Raw toggle.
- *
- * Rendered mode uses the shared markdown pipeline (code highlighting, mermaid,
- * copy buttons); raw mode shows the unrendered source in the same read-only
- * Monaco viewer as any other file, with language `markdown`.
- *
- * When a line range is referenced, rendered mode highlights the matching
- * `.md-line` rows the markdown renderer emits and scrolls the first into view;
- * raw mode delegates highlight + centring to Monaco.
- *
- * The `source-canvas-*` test ids are historical — this view was lifted out of
- * the chat source canvas, which is still the only host that enables it.
+ * MarkdownFileView — formatted markdown with a Rendered ⇄ Raw toggle. A line
+ * range highlights the renderer's `.md-line` rows in rendered mode, and is
+ * delegated to Monaco in raw mode. The `source-canvas-*` test ids are
+ * historical: the chat canvas is still the only host that enables this view.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
-import { CodeFileView } from './CodeFileView';
+import { MonacoFileEditor } from './MonacoFileEditor';
 import type { LineRange } from './types';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
@@ -95,13 +87,14 @@ export function MarkdownFileView({ content, range, codeTestId }: MarkdownFileVie
                 scroll. Rendered mode keeps its own overflow-auto. */}
             <div className={`flex-1 min-h-0 ${raw ? 'overflow-hidden' : 'overflow-auto'}`}>
                 {raw ? (
-                    <CodeFileView
-                        content={content}
-                        language="markdown"
-                        readOnly
-                        highlightRange={range}
-                        testId={codeTestId}
-                    />
+                    <div className="h-full w-full min-h-0" data-testid={codeTestId}>
+                        <MonacoFileEditor
+                            value={content}
+                            language="markdown"
+                            readOnly
+                            highlightRange={range ?? null}
+                        />
+                    </div>
                 ) : (
                     <div
                         ref={containerRef}

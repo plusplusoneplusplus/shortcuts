@@ -1,10 +1,4 @@
-/**
- * Shared file-viewer types.
- *
- * Neutral ground between the Explorer preview pane and the chat source canvas:
- * both view the same thing (one file's bytes) but fetch it over different
- * transports, so the shape they agree on is the blob, not the request.
- */
+/** Shared file-viewer vocabulary: the hosts agree on the blob, not the request. */
 
 /** One file's bytes as returned by whichever transport the host injected. */
 export interface FileBlob {

@@ -1,17 +1,11 @@
 /**
- * FileViewer — presentational core shared by every file-viewing panel.
- *
- * Picks one of four renderings for a loaded blob: rendered markdown (only when
- * the host opts in with `markdown="toggle"`), an image, a binary placeholder,
- * or Monaco. Loading and error chrome stay with the host, because the two
- * panels frame them differently.
- *
- * Every capability is opt-in by prop, so a host renders exactly what it
- * rendered before it moved onto this component.
+ * FileViewer — picks one rendering for a loaded blob: rendered markdown (only
+ * when the host opts in with `markdown="toggle"`), image, binary placeholder,
+ * or Monaco. Every capability is opt-in by prop, so a host renders exactly what
+ * it rendered before moving here. Loading/error chrome stays with the host.
  */
-import { CodeFileView } from './CodeFileView';
 import { MarkdownFileView, isMarkdownFile } from './MarkdownFileView';
-import { getMonacoLanguage } from './MonacoFileEditor';
+import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
 import type { FileBlob, LineRange } from './types';
 
 export interface FileViewerProps {
@@ -78,15 +72,16 @@ export function FileViewer({
     }
 
     return (
-        <CodeFileView
-            content={blob.content}
-            language={getMonacoLanguage(fileName)}
-            readOnly={readOnly}
-            onChange={onChange}
-            onSave={onSave}
-            highlightRange={highlightRange}
-            revealLine={revealLine}
-            testId={codeTestId}
-        />
+        <div className="h-full w-full min-h-0" data-testid={codeTestId}>
+            <MonacoFileEditor
+                value={blob.content}
+                language={getMonacoLanguage(fileName)}
+                readOnly={readOnly}
+                onChange={onChange}
+                onSave={onSave}
+                highlightRange={highlightRange ?? null}
+                revealLine={revealLine}
+            />
+        </div>
     );
 }

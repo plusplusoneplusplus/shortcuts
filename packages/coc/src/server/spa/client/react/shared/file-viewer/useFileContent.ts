@@ -1,14 +1,9 @@
 /**
- * useFileContent — the fetch/edit state machine both file viewers need.
- *
- * Owns: abort-and-refetch when `key` changes, loading/error/retry, the 512 KB
- * oversize cut, and the edit buffer (dirty / saving / save). Transport is
- * injected, so the Explorer can read over `explorerApi` and the chat canvas
- * over the task client without either endpoint leaking in here.
- *
- * It deliberately does NOT own any host callback plumbing (`onDirtyChange`,
- * `onStatusChange`, `onRegisterSave`): those are one host's contract with its
- * owner and stay there as thin effects over the values returned here.
+ * useFileContent — the fetch/edit state machine a file viewer needs: abort and
+ * refetch on `key` change, loading/error/retry, the 512 KB oversize cut, and
+ * the edit buffer. Transport is injected, so no endpoint leaks in here. Host
+ * callback plumbing (`onDirtyChange`/`onStatusChange`/`onRegisterSave`) stays
+ * with the host as thin effects over the values returned here.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
