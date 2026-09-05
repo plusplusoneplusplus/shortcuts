@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner, Button } from '../../../ui';
-import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
+import { FileViewer, type FileBlob } from '../../../shared/file-viewer';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
@@ -60,19 +60,9 @@ export interface PreviewPaneProps {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-interface BlobResponse {
-    content: string;
-    encoding: 'utf-8' | 'base64';
-    mimeType: string;
-}
+type BlobResponse = FileBlob;
 
 const MAX_PREVIEW_SIZE = 512 * 1024; // 512 KB
-
-function formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} bytes`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
@@ -212,21 +202,14 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
         return () => onRegisterSave(null);
     }, [onRegisterSave, effectiveReadOnly]);
 
-    const isImage = blob?.encoding === 'base64' && blob.mimeType.startsWith('image/');
-    const isBinary = blob?.encoding === 'base64' && !isImage;
+    // What the viewer shows: the edited buffer for text, truncated at 512 KB
+    // (an oversized file is view-only, so the edit buffer never applies).
     const isOversized = blob?.encoding === 'utf-8' && blob.content.length > MAX_PREVIEW_SIZE;
-    const isText = blob?.encoding === 'utf-8';
-
-    const displayContent = useMemo(() => {
-        if (!blob || blob.encoding !== 'utf-8') return '';
-        if (isOversized) return blob.content.slice(0, MAX_PREVIEW_SIZE);
-        return blob.content;
-    }, [blob, isOversized]);
-
-    const monacoLanguage = useMemo(
-        () => getMonacoLanguage(fileName),
-        [fileName],
-    );
+    const displayBlob = useMemo<FileBlob | null>(() => {
+        if (!blob) return null;
+        if (blob.encoding !== 'utf-8') return blob;
+        return { ...blob, content: isOversized ? blob.content.slice(0, MAX_PREVIEW_SIZE) : editedContent };
+    }, [blob, isOversized, editedContent]);
 
     return (
         <div className="relative w-full h-full overflow-hidden" data-testid="preview-pane">
@@ -271,30 +254,16 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
                     <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{error}</span>
                     <Button variant="secondary" size="sm" onClick={doRetry} data-testid="preview-retry-btn">Retry</Button>
                 </div>
-            ) : isImage ? (
-                <div className="flex items-center justify-center p-4 h-full" data-testid="preview-image">
-                    <img
-                        src={`data:${blob!.mimeType};base64,${blob!.content}`}
-                        alt={fileName}
-                        className="max-w-full max-h-[80vh] object-contain"
-                    />
-                </div>
-            ) : isBinary ? (
-                <div className="flex flex-col items-center justify-center gap-2 h-full text-sm text-[#848484]" data-testid="preview-binary">
-                    <span className="text-2xl">📄</span>
-                    <span>Binary file — {formatFileSize(blob!.content.length)} bytes</span>
-                </div>
-            ) : isText ? (
-                <div className="h-full w-full" data-testid="monaco-container">
-                    <MonacoFileEditor
-                        value={isOversized ? displayContent : editedContent}
-                        language={monacoLanguage}
-                        onChange={handleEditorChange}
-                        onSave={effectiveReadOnly ? undefined : handleSave}
-                        readOnly={effectiveReadOnly}
-                        revealLine={revealLine}
-                    />
-                </div>
+            ) : displayBlob ? (
+                <FileViewer
+                    blob={displayBlob}
+                    fileName={fileName}
+                    readOnly={effectiveReadOnly}
+                    onChange={handleEditorChange}
+                    onSave={effectiveReadOnly ? undefined : handleSave}
+                    revealLine={revealLine}
+                    codeTestId="monaco-container"
+                />
             ) : null}
         </div>
     );
