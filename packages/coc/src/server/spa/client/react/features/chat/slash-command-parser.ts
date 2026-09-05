@@ -158,3 +158,58 @@ export function getSlashCommandContext(text: string, cursorPosition: number): Sl
         startIndex: lastSlashIdx,
     };
 }
+
+export interface RepoMentionContext {
+    /** Whether the cursor is inside a `#` token */
+    active: boolean;
+    /** Partial text after `#` for filtering (e.g., cursor after `#co` → "co") */
+    prefix: string;
+    /** Start index of the `#` in the text */
+    startIndex: number;
+}
+
+/** Characters that may appear in the partial `#repo-name` token being typed. */
+const REPO_MENTION_CHAR = /[a-zA-Z0-9_.-]/;
+
+/**
+ * Determine whether the cursor is inside a `#repo-name` token, for the
+ * repo-group mention picker. Deliberately mirrors {@link getSlashCommandContext}
+ * so both composer triggers behave identically.
+ *
+ * Returns context only when:
+ * - The `#` is at the start of the input or preceded by whitespace, so
+ *   `issue#12` and `abc#` never open the menu
+ * - Everything between the `#` and the cursor is a legal name character
+ * - The cursor is not in the middle of a longer token
+ */
+export function getRepoMentionContext(text: string, cursorPosition: number): RepoMentionContext | null {
+    const textBeforeCursor = text.slice(0, cursorPosition);
+
+    const lastHashIdx = textBeforeCursor.lastIndexOf('#');
+    if (lastHashIdx === -1) {
+        return null;
+    }
+
+    // The `#` must be at start of string or preceded by whitespace.
+    if (lastHashIdx > 0 && !/\s/.test(text[lastHashIdx - 1])) {
+        return null;
+    }
+
+    const afterHash = textBeforeCursor.slice(lastHashIdx + 1);
+
+    // Must be a valid partial token (name characters only, no spaces).
+    for (const ch of afterHash) {
+        if (!REPO_MENTION_CHAR.test(ch)) return null;
+    }
+
+    // The cursor must sit at the end of the token, not inside a longer one.
+    if (cursorPosition < text.length && REPO_MENTION_CHAR.test(text[cursorPosition])) {
+        return null;
+    }
+
+    return {
+        active: true,
+        prefix: afterHash,
+        startIndex: lastHashIdx,
+    };
+}
