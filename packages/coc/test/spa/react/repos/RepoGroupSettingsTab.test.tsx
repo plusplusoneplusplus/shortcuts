@@ -41,19 +41,29 @@ beforeEach(() => {
 });
 
 describe('RepoGroupSettingsTab', () => {
-    it('renders the shared settings shell with one selected Repos item and no filter or inner card', async () => {
+    it('renders the shared settings shell landing on Member repos, with a Group and an Agent nav group', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
 
         const tab = screen.getByTestId('repo-group-settings-tab');
         expect(tab.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect(screen.getByTestId('settings-sidebar')).toBeTruthy();
         expect(screen.getByTestId('settings-content-panel')).toBeTruthy();
-        expect(screen.getByTestId('nav-item-repos').textContent).toBe('Repos');
-        expect(screen.getByTestId('nav-item-repos').getAttribute('aria-current')).toBe('page');
-        expect(screen.getByTestId('settings-section-title').textContent).toBe('Repos');
-        expect(screen.getByTestId('settings-section-description').textContent).toContain('what each repo is for');
-        expect(screen.queryByTestId('settings-filter-input')).toBeNull();
-        expect(screen.queryByTestId('repo-group-settings-members-card')).toBeNull();
+        expect(screen.getByTestId('nav-item-members').textContent).toContain('Member repos');
+        expect(screen.getByTestId('nav-item-members').getAttribute('aria-current')).toBe('page');
+        expect(screen.getByTestId('settings-section-title').textContent).toBe('Member repos');
+        expect(screen.getByTestId('settings-section-description').textContent).toContain('what each one is for');
+        // The Agent group pushes the nav past one item, so the shared filter shows.
+        expect(screen.getByTestId('settings-filter-input')).toBeTruthy();
+
+        // A group has no git checkout, so only the Group + Agent nav groups show.
+        expect(screen.getByTestId('nav-group-group')).toBeTruthy();
+        expect(screen.getByTestId('nav-group-agent')).toBeTruthy();
+        for (const id of ['mcp', 'skills', 'llm-tools']) {
+            expect(screen.getByTestId(`nav-item-${id}`)).toBeTruthy();
+        }
+        for (const id of ['info', 'notes', 'instructions', 'memory']) {
+            expect(screen.queryByTestId(`nav-item-${id}`)).toBeNull();
+        }
 
         await waitFor(() => expect(screen.getByTestId('repo-group-member-list')).toBeTruthy());
     });
@@ -64,7 +74,7 @@ describe('RepoGroupSettingsTab', () => {
         expect(screen.queryByTestId('repo-group-member-list')).toBeNull();
     });
 
-    it('lists every member directly in the section body with its name, path, stale badge and description', async () => {
+    it('lists every member in the Member repos card with its name, path, stale badge and description', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));
 
@@ -76,8 +86,9 @@ describe('RepoGroupSettingsTab', () => {
         expect(staleRow.textContent).toContain('gone');
         expect(staleRow.textContent).toContain('/r/r3');
         expect(screen.getAllByTestId('repo-group-stale-badge')).toHaveLength(1);
-        expect(screen.getByTestId('repo-group-member-list').parentElement?.parentElement)
-            .toBe(screen.getByTestId('settings-content-panel'));
+        const membersCard = screen.getByTestId('repo-group-settings-members-card');
+        expect(membersCard.contains(screen.getByTestId('repo-group-member-list'))).toBe(true);
+        expect(screen.getByTestId('settings-content-panel').contains(membersCard)).toBe(true);
     });
 
     it('saves an edited description on Enter', async () => {
