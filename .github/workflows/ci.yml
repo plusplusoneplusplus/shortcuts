@@ -496,6 +496,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      # The Playwright image ships no zstd, so actions/cache silently falls back
+      # to gzip. That is a different cache *version* than the zstd archives every
+      # other Linux job writes, so this job could never restore their entries and
+      # paid a cold `npm ci` (plus an apt-get for build-essential) on every run --
+      # which left almost no room under timeout-minutes and turned any slow
+      # archive.ubuntu.com mirror into four failed shards. Installing zstd before
+      # the first cache step puts this job on the same archive format as the host
+      # runners. It also primes the apt lists, so the build-essential step below
+      # needs no second `apt-get update`.
+      - name: Install zstd for cache archive compatibility
+        run: apt-get -o Acquire::Retries=3 update && apt-get install -y --no-install-recommends zstd
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -513,7 +525,7 @@ jobs:
 
       - name: Install native build dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
-        run: apt-get update && apt-get install -y --no-install-recommends build-essential
+        run: apt-get install -y --no-install-recommends build-essential
 
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
@@ -741,7 +753,7 @@ jobs:
           node-version: 24.x
 
       - name: Run workflow policy tests
-        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs scripts/workflow-actions.test.mjs scripts/docker-workflow.test.mjs scripts/native-addon-workflow.test.mjs
+        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs scripts/workflow-actions.test.mjs scripts/docker-workflow.test.mjs scripts/native-addon-workflow.test.mjs scripts/e2e-cache-workflow.test.mjs
 
   # Guards the server image (Dockerfile + docker/entrypoint.sh) against rotting
   # between releases: real linux/amd64 build (no push), then health, the
