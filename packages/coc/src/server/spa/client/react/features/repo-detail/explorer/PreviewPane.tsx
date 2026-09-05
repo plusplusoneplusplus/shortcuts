@@ -10,7 +10,8 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Spinner, Button } from '../../../ui';
-import { FileViewer, useFileContent } from '../../../shared/file-viewer';
+import { FileViewer } from '../../../shared/file-viewer/FileViewer';
+import { useFileContent } from '../../../shared/file-viewer/useFileContent';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 

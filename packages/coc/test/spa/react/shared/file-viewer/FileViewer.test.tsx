@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import { FileViewer, formatFileSize } from '../../../../../src/server/spa/client/react/shared/file-viewer';
+import { FileViewer, formatFileSize } from '../../../../../src/server/spa/client/react/shared/file-viewer/FileViewer';
 
 // jsdom cannot run Monaco; stand in an element that records the props.
 vi.mock(

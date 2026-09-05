@@ -4,9 +4,11 @@
  * The editable-note-canvas feature only diverts the *in-chat markdown* branch to
  * the docked canvas. Every other surface keeps the floating `MarkdownReviewDialog`,
  * and code references keep the read-only syntax-highlighted source viewer. The
- * spec explicitly notes the read-only `MarkdownCanvasView` "may be cleaned up in a
- * later pass" — this static guard fails loudly if a future change silently removes
- * any of the fallback artifacts, so the divert can never become a one-way door.
+ * spec explicitly notes the read-only markdown view "may be cleaned up in a later
+ * pass" — this static guard fails loudly if a future change silently removes any
+ * of the fallback artifacts, so the divert can never become a one-way door.
+ * (That view was `MarkdownCanvasView` inside SourceCanvasBody; it now lives in
+ * `shared/file-viewer/MarkdownFileView.tsx` — see block 5.)
  *
  * Behavioural routing (flag on/off × markdown/code × chat/non-chat) is exercised in
  * FilePathPreview.test.ts. This file is purely structural — it reads source and
@@ -104,26 +106,43 @@ describe('AC-06 — code references stay read-only and assistant-only', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. The read-only MarkdownCanvasView still exists inside SourceCanvasBody and
-//    is still the renderer for markdown refs — it must NOT have become editable.
+// 5. The read-only markdown view still exists and is still the renderer for
+//    markdown refs — it must NOT have become editable.
+//
+//    It used to be `MarkdownCanvasView`, defined inline in SourceCanvasBody.
+//    It now lives in `shared/file-viewer/MarkdownFileView.tsx`, is routed to by
+//    `shared/file-viewer/FileViewer.tsx`, and SourceCanvasBody is the adapter
+//    that opts into it. The same four claims, checked against their new owners.
 // ---------------------------------------------------------------------------
-describe('AC-06 — read-only MarkdownCanvasView preserved', () => {
+describe('AC-06 — read-only MarkdownFileView preserved', () => {
+    const view = read('shared/file-viewer/MarkdownFileView.tsx');
+    const viewer = read('shared/file-viewer/FileViewer.tsx');
     const body = read('features/chat/source-canvas/SourceCanvasBody.tsx');
 
-    it('MarkdownCanvasView is still defined', () => {
-        expect(body).toContain('function MarkdownCanvasView(');
+    it('MarkdownFileView is still defined', () => {
+        expect(view).toContain('export function MarkdownFileView(');
     });
 
-    it('markdown files in the read-only body still render MarkdownCanvasView', () => {
-        expect(body).toContain('isMarkdownFile(fileName, language)');
-        expect(body).toContain('<MarkdownCanvasView content={content} range={range} />');
+    it('markdown files in the read-only body still route to MarkdownFileView', () => {
+        expect(viewer).toContain('isMarkdownFile(fileName, language)');
+        expect(viewer).toContain('<MarkdownFileView');
+        // ...and only when the host opted in, so non-chat hosts keep Monaco.
+        expect(viewer).toContain("markdown === 'toggle' && isMarkdownFile(fileName, language)");
+        expect(body).toContain('markdown="toggle"');
     });
 
     it('it keeps its read-only Rendered ⇄ Raw toggle (no inline editing)', () => {
-        expect(body).toContain("{raw ? 'Rendered' : 'Raw'}");
+        expect(view).toContain("{raw ? 'Rendered' : 'Raw'}");
+        // Raw mode is a read-only Monaco, not an editor: no onChange/onSave.
+        const monaco = view.slice(view.indexOf('<MonacoFileEditor'), view.indexOf('/>', view.indexOf('<MonacoFileEditor')));
+        expect(monaco).toBeTruthy();
+        expect(monaco).toContain('readOnly');
+        expect(monaco).not.toContain('onChange');
     });
 
     it('the read-only body never mounts the editable NoteEditor', () => {
+        expect(body).toContain('readOnly');
         expect(body).not.toContain('NoteEditor');
+        expect(view).not.toContain('NoteEditor');
     });
 });

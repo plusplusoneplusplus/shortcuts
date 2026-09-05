@@ -10,12 +10,12 @@
  * renderer's own `.md-line[data-line]` rows. No line ref → the file opens at the
  * top with no highlight.
  */
-import { FileViewer, toLines, resolveLineRange } from '../../../shared/file-viewer';
+import { FileViewer } from '../../../shared/file-viewer/FileViewer';
+import { toLines, resolveLineRange } from '../../../shared/file-viewer/lineRange';
 
 export interface SourceCanvasBodyProps {
     /** File name (used to detect markdown + derive the editor language). */
     fileName: string;
-    /** Full file text. */
     content: string;
     /** Optional server-reported language hint (helps detect markdown). */
     language?: string;

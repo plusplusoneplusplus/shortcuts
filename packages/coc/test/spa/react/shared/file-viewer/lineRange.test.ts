@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { toLines, resolveLineRange } from '../../../../../src/server/spa/client/react/shared/file-viewer';
+import { toLines, resolveLineRange } from '../../../../../src/server/spa/client/react/shared/file-viewer/lineRange';
 
 describe('toLines', () => {
     it('splits on newlines', () => {

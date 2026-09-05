@@ -10,8 +10,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useFileContent, MAX_FILE_VIEW_SIZE } from '../../../../../src/server/spa/client/react/shared/file-viewer';
-import type { FileBlob } from '../../../../../src/server/spa/client/react/shared/file-viewer';
+import { useFileContent, MAX_FILE_VIEW_SIZE } from '../../../../../src/server/spa/client/react/shared/file-viewer/useFileContent';
+import type { FileBlob } from '../../../../../src/server/spa/client/react/shared/file-viewer/types';
 
 const text = (content: string): FileBlob => ({ content, encoding: 'utf-8', mimeType: 'text/plain' });
 

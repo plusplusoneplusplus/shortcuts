@@ -23,15 +23,13 @@ export function isMarkdownFile(fileName: string, language?: string): boolean {
     return MARKDOWN_EXTENSIONS.has(ext);
 }
 
-export interface MarkdownFileViewProps {
+export function MarkdownFileView({ content, range, codeTestId }: {
     content: string;
     /** Referenced line range to highlight + scroll to, if any. */
     range?: LineRange | null;
     /** Test id for the raw-mode Monaco container. */
     codeTestId?: string;
-}
-
-export function MarkdownFileView({ content, range, codeTestId }: MarkdownFileViewProps) {
+}) {
     const [raw, setRaw] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const { html } = useMarkdownPreview({
