@@ -304,21 +304,26 @@ describe('WorkspacesClient mock server contract', () => {
     expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/terminals');
   });
 
-  it('pins and unpins a terminal session', async () => {
+  it('deletes a terminal session', async () => {
     mock = await startMockServer();
-    const pinResponse = { sessionId: 'sess-1', pinned: true };
-    const unpinResponse = { sessionId: 'sess-1', pinned: false };
-    mock.on('PATCH', '/api/workspaces/repo%2Fone/terminals/sess-1/pin', [
-      { body: pinResponse },
-      { body: unpinResponse },
-    ]);
+    mock.on('DELETE', '/api/workspaces/repo%2Fone/terminals/sess-1', { noContent: true });
     const client = createClient(mock);
 
-    await expect(client.workspaces.pinTerminal('repo/one', 'sess-1', true)).resolves.toEqual(pinResponse);
-    expectJsonRequest(mock.requests[0], 'PATCH', '/api/workspaces/repo%2Fone/terminals/sess-1/pin', { pinned: true });
+    await expect(client.workspaces.deleteTerminal('repo/one', 'sess-1')).resolves.toBeUndefined();
+    expectEmptyRequest(mock.requests[0], 'DELETE', '/api/workspaces/repo%2Fone/terminals/sess-1');
+  });
 
-    await expect(client.workspaces.pinTerminal('repo/one', 'sess-1', false)).resolves.toEqual(unpinResponse);
-    expectJsonRequest(mock.requests[1], 'PATCH', '/api/workspaces/repo%2Fone/terminals/sess-1/pin', { pinned: false });
+  it('restarts an exited terminal session', async () => {
+    mock = await startMockServer();
+    const response = {
+      session: { id: 'sess-2', workspaceId: 'repo/one', pinned: false, status: 'running' },
+      cwdFallback: false,
+    };
+    mock.on('POST', '/api/workspaces/repo%2Fone/terminals/sess-1/restart', { body: response });
+    const client = createClient(mock);
+
+    await expect(client.workspaces.restartTerminal('repo/one', 'sess-1')).resolves.toEqual(response);
+    expectEmptyRequest(mock.requests[0], 'POST', '/api/workspaces/repo%2Fone/terminals/sess-1/restart');
   });
 
   it('reads Ralph session files through the workspace client', async () => {

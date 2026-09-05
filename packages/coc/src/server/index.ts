@@ -855,7 +855,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const server = http.createServer(handler);
 
     // Terminal infrastructure (optional — gated by config + node-pty availability)
-    terminalInfra = createTerminalInfrastructure(store, resolvedConfig);
+    terminalInfra = createTerminalInfrastructure(store, resolvedConfig, dataDir);
 
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalInfra?.terminalWsServer);
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =

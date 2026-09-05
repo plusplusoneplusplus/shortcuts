@@ -222,6 +222,18 @@ export class TerminalWebSocketServer {
                     type: 'terminal-created',
                     session: toSessionInfo(session),
                 });
+                // Replay the server-side scrollback so the attaching client sees
+                // the terminal as it was. Sent synchronously right after the
+                // attach so no live `terminal-output` can slip in ahead of it.
+                const scrollback = this.sessionManager.getScrollback(session.id);
+                if (scrollback) {
+                    this.sendMessage(client.socket, {
+                        type: 'terminal-replay',
+                        sessionId: session.id,
+                        data: scrollback.data,
+                        truncated: scrollback.truncated,
+                    });
+                }
                 break;
             }
             case 'terminal-input': {
@@ -243,40 +255,6 @@ export class TerminalWebSocketServer {
             case 'terminal-close': {
                 this.sessionManager.destroySession(msg.sessionId);
                 client.sessions.delete(msg.sessionId);
-                break;
-            }
-            case 'terminal-pin': {
-                const pinned = this.sessionManager.pinSession(msg.sessionId);
-                if (pinned) {
-                    this.sendMessage(client.socket, {
-                        type: 'terminal-pin-changed',
-                        sessionId: msg.sessionId,
-                        pinned: true,
-                    });
-                } else {
-                    this.sendMessage(client.socket, {
-                        type: 'terminal-error',
-                        sessionId: msg.sessionId,
-                        message: 'Terminal session not found',
-                    });
-                }
-                break;
-            }
-            case 'terminal-unpin': {
-                const unpinned = this.sessionManager.unpinSession(msg.sessionId);
-                if (unpinned) {
-                    this.sendMessage(client.socket, {
-                        type: 'terminal-pin-changed',
-                        sessionId: msg.sessionId,
-                        pinned: false,
-                    });
-                } else {
-                    this.sendMessage(client.socket, {
-                        type: 'terminal-error',
-                        sessionId: msg.sessionId,
-                        message: 'Terminal session not found',
-                    });
-                }
                 break;
             }
         }
@@ -328,13 +306,15 @@ export class TerminalWebSocketServer {
         return clients;
     }
 
+    /**
+     * Detach a client from the server (AC-02): drop its socket and its
+     * attachment to every session it was watching. The PTYs keep running —
+     * a dropped socket, a closed tab, or a heartbeat-pruned dead connection
+     * must never end a terminal session. Sessions only end on an explicit
+     * `terminal-close` message or `DELETE /api/workspaces/:id/terminals/:sessionId`.
+     */
     private cleanupClient(client: TerminalWSClient): void {
-        for (const sessionId of [...client.sessions]) {
-            if (!this.sessionManager.isSessionPinned(sessionId)) {
-                this.sessionManager.destroySession(sessionId);
-            }
-            client.sessions.delete(sessionId);
-        }
+        client.sessions.clear();
         this.clients.delete(client.id);
     }
 

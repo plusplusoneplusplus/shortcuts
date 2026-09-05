@@ -427,16 +427,16 @@ describe('TerminalSessionManager', () => {
             }
         });
 
-        it('should clear the cleanup timer', () => {
+        it('should leave the process free to exit (no timers held)', () => {
             vi.useFakeTimers();
-            const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+            try {
+                manager = createManager();
+                manager.destroyAll();
 
-            manager = createManager();
-            manager.destroyAll();
-
-            expect(clearSpy).toHaveBeenCalled();
-            clearSpy.mockRestore();
-            vi.useRealTimers();
+                expect(vi.getTimerCount()).toBe(0);
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 
@@ -480,82 +480,94 @@ describe('TerminalSessionManager', () => {
             expect(onExit).toHaveBeenCalledWith(session.id, 0, 15);
         });
 
-        it('should auto-remove session on PTY exit', () => {
+        it('AC-05: should keep the session as an exited tombstone on PTY exit', () => {
             manager = createManager();
             const session = manager.createSession('ws-abc', '/tmp');
             const id = session.id;
 
             const mock = session.pty as unknown as MockPty;
-            mock._emitExit(0);
+            mock._emitExit(7);
 
-            expect(manager.getSession(id)).toBeUndefined();
-            expect(manager.size).toBe(0);
+            const tombstone = manager.getSession(id);
+            expect(tombstone).toBeDefined();
+            expect(tombstone!.status).toBe('exited');
+            expect(tombstone!.exitCode).toBe(7);
+            expect(tombstone!.pty).toBeNull();
+            expect(manager.liveSize).toBe(0);
+            expect(manager.getSessionsByWorkspace('ws-abc')).toHaveLength(1);
         });
     });
 
     // ----------------------------------------------------------------
-    // Idle session cleanup
+    // No auto-expiry (AC-01)
     // ----------------------------------------------------------------
+    //
+    // Regression gate: terminals used to be reaped after 30 minutes idle by a
+    // cleanup interval. Nothing may kill a PTY on a timer any more.
 
-    describe('idle session cleanup', () => {
-        it('should destroy sessions idle beyond timeout', () => {
+    describe('no auto-expiry', () => {
+        it('should keep an untouched session alive across long idle periods', () => {
             vi.useFakeTimers();
             const onExit = vi.fn();
+            try {
+                manager = createManager({ onExit });
+                const session = manager.createSession('ws-abc', '/tmp');
 
-            manager = createManager({
-                idleTimeoutMs: 50,
-                cleanupIntervalMs: 25,
-                onExit,
-            });
+                // Far beyond the old 30-minute idle timeout.
+                vi.advanceTimersByTime(24 * 60 * 60 * 1000);
 
-            const session = manager.createSession('ws-abc', '/tmp');
-            const id = session.id;
-
-            // Advance past the idle timeout
-            vi.advanceTimersByTime(100);
-
-            expect(manager.getSession(id)).toBeUndefined();
-            expect(manager.size).toBe(0);
-            expect(onExit).toHaveBeenCalledWith(id, -1);
-            expect(session.pty.kill).toHaveBeenCalled();
-
-            vi.useRealTimers();
+                expect(manager.getSession(session.id)).toBeDefined();
+                expect(manager.size).toBe(1);
+                expect(session.pty.kill).not.toHaveBeenCalled();
+                expect(onExit).not.toHaveBeenCalled();
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
-        it('should not destroy recently active sessions', () => {
+        it('should not schedule any recurring timer on construction', () => {
             vi.useFakeTimers();
-            manager = createManager({
-                idleTimeoutMs: 200,
-                cleanupIntervalMs: 50,
-            });
-
-            const session = manager.createSession('ws-abc', '/tmp');
-
-            // Advance part way — not past timeout
-            vi.advanceTimersByTime(75);
-
-            expect(manager.getSession(session.id)).toBeDefined();
-            expect(manager.size).toBe(1);
-
-            vi.useRealTimers();
+            const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+            try {
+                manager = createManager();
+                expect(setIntervalSpy).not.toHaveBeenCalled();
+            } finally {
+                setIntervalSpy.mockRestore();
+                vi.useRealTimers();
+            }
         });
 
-        it('should call onExit with exitCode -1 for idle-killed sessions', () => {
+        it('should never emit the legacy idle-kill exitCode -1', () => {
             vi.useFakeTimers();
             const onExit = vi.fn();
+            try {
+                manager = createManager({ onExit, maxSessions: 10 });
+                manager.createSession('ws-abc', '/tmp');
+                manager.createSession('ws-abc', '/tmp');
 
-            manager = createManager({
-                idleTimeoutMs: 30,
-                cleanupIntervalMs: 20,
-                onExit,
-            });
+                vi.advanceTimersByTime(7 * 24 * 60 * 60 * 1000);
 
-            const session = manager.createSession('ws-abc', '/tmp');
-            vi.advanceTimersByTime(60);
+                expect(onExit).not.toHaveBeenCalled();
+                expect(manager.size).toBe(2);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
 
-            expect(onExit).toHaveBeenCalledWith(session.id, -1);
+        it('should refresh lastActivity on resize as well as input and output', () => {
+            vi.useFakeTimers();
+            try {
+                manager = createManager();
+                const session = manager.createSession('ws-abc', '/tmp');
 
-            vi.useRealTimers();
+                vi.advanceTimersByTime(5000);
+                manager.resizeSession(session.id, 120, 40);
+
+                expect(session.lastActivity).toBe(Date.now());
+                expect(session.lastActivity).toBeGreaterThan(session.createdAt);
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 
@@ -575,7 +587,7 @@ describe('TerminalSessionManager', () => {
             expect(info.rows).toBe(session.rows);
             expect(info.createdAt).toBe(session.createdAt);
             expect(info.lastActivity).toBe(session.lastActivity);
-            expect(info.pid).toBe(session.pty.pid);
+            expect(info.pid).toBe(session.pty!.pid);
             expect((info as any).pty).toBeUndefined();
         });
     });

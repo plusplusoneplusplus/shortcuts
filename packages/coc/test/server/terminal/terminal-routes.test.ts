@@ -3,6 +3,7 @@
  * - GET /api/terminal/status (disabled & enabled)
  * - GET /api/workspaces/:id/terminals (list sessions, unknown workspace)
  * - DELETE /api/workspaces/:id/terminals/:sessionId (kill, not found, unknown workspace)
+ * - POST /api/workspaces/:id/terminals/:sessionId/restart (respawn, 409, not found)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -15,6 +16,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ResolvedCLIConfig } from '../../../src/config';
 import type { TerminalSessionManager } from '../../../src/server/terminal/terminal-session-manager';
 import { createMockProcessStore } from '../../helpers/mock-process-store';
+import { TerminalSessionRunningError } from '../../../src/server/terminal/terminal-session-manager';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,23 +28,39 @@ function makeConfig(terminalEnabled: boolean): ResolvedCLIConfig {
     } as unknown as ResolvedCLIConfig;
 }
 
+type MockSession = ReturnType<typeof makeSession>;
+
 function makeMockSessionManager(options?: {
-    sessions?: Array<{ id: string; workspaceId: string; cols: number; rows: number; createdAt: number; lastActivity: number; pty: { pid: number } }>;
+    sessions?: MockSession[];
     destroyResult?: boolean;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    restartSession?: (...args: any[]) => any;
 }): TerminalSessionManager {
     const sessions = options?.sessions ?? [];
     return {
         getSessionsByWorkspace: vi.fn((wsId: string) =>
             sessions.filter(s => s.workspaceId === wsId),
         ),
+        getSession: vi.fn((id: string) => sessions.find(s => s.id === id)),
+        hydrateWorkspace: vi.fn(),
+        restartSession: vi.fn(options?.restartSession ?? (() => ({
+            session: makeSession({ id: 'sess-restarted' }),
+            cwdFallback: false,
+        }))),
         destroySession: vi.fn(() => options?.destroyResult ?? true),
         destroyAll: vi.fn(),
         size: sessions.length,
+        liveSize: sessions.filter(s => s.status === 'running').length,
         isAvailable: vi.fn().mockReturnValue(true),
     } as unknown as TerminalSessionManager;
 }
 
-function makeSession(overrides?: Partial<{ id: string; workspaceId: string; cols: number; rows: number; createdAt: number; lastActivity: number }>) {
+function makeSession(overrides?: Partial<{
+    id: string; workspaceId: string; cols: number; rows: number;
+    createdAt: number; lastActivity: number; status: 'running' | 'exited';
+    cwd: string; title: string; exitedAt: number; exitCode: number;
+}>) {
+    const status = overrides?.status ?? 'running';
     return {
         id: overrides?.id ?? 'sess-1',
         workspaceId: overrides?.workspaceId ?? WORKSPACE.id,
@@ -50,7 +68,12 @@ function makeSession(overrides?: Partial<{ id: string; workspaceId: string; cols
         rows: overrides?.rows ?? 24,
         createdAt: overrides?.createdAt ?? 1000,
         lastActivity: overrides?.lastActivity ?? 2000,
-        pty: { pid: 12345 },
+        status,
+        cwd: overrides?.cwd ?? '/tmp/test-ws',
+        title: overrides?.title ?? 'bash',
+        exitedAt: overrides?.exitedAt,
+        exitCode: overrides?.exitCode,
+        pty: status === 'running' ? { pid: 12345 } : null,
     };
 }
 
@@ -87,6 +110,12 @@ async function stopServer(srv: http.Server): Promise<void> {
 
 async function apiGet(path: string): Promise<{ status: number; body: any }> {
     const res = await fetch(`${baseUrl}${path}`);
+    const text = await res.text();
+    return { status: res.status, body: text ? JSON.parse(text) : null };
+}
+
+async function apiPost(path: string): Promise<{ status: number; body: any }> {
+    const res = await fetch(`${baseUrl}${path}`, { method: 'POST' });
     const text = await res.text();
     return { status: res.status, body: text ? JSON.parse(text) : null };
 }
@@ -241,6 +270,86 @@ describe('Terminal REST Routes', () => {
             await startServer(server);
 
             const { status, body } = await apiDelete(`/api/workspaces/${WORKSPACE.id}/terminals/sess-1`);
+            expect(status).toBe(404);
+            expect(body.error).toContain('Terminal session');
+        });
+    });
+
+    // ── POST /api/workspaces/:id/terminals/:sessionId/restart ─────────────
+
+    describe('POST /api/workspaces/:id/terminals/:sessionId/restart', () => {
+        it('respawns an exited session and returns the new session info', async () => {
+            const exited = makeSession({ id: 'sess-dead', status: 'exited', exitedAt: 5000, exitCode: 0 });
+            const mgr = makeMockSessionManager({ sessions: [exited] });
+            server = createTestServer(store, () => mgr, makeConfig(true));
+            await startServer(server);
+
+            const { status, body } = await apiPost(`/api/workspaces/${WORKSPACE.id}/terminals/sess-dead/restart`);
+            expect(status).toBe(200);
+            expect(body.session.id).toBe('sess-restarted');
+            expect(body.session.status).toBe('running');
+            expect(body.cwdFallback).toBe(false);
+            expect(mgr.restartSession).toHaveBeenCalledWith('sess-dead', WORKSPACE.rootPath);
+        });
+
+        it('reports the workspace-root fallback when the recorded cwd is gone', async () => {
+            const exited = makeSession({ id: 'sess-dead', status: 'exited' });
+            const mgr = makeMockSessionManager({
+                sessions: [exited],
+                restartSession: () => ({ session: makeSession({ id: 'sess-new' }), cwdFallback: true }),
+            });
+            server = createTestServer(store, () => mgr, makeConfig(true));
+            await startServer(server);
+
+            const { status, body } = await apiPost(`/api/workspaces/${WORKSPACE.id}/terminals/sess-dead/restart`);
+            expect(status).toBe(200);
+            expect(body.cwdFallback).toBe(true);
+            expect(body.notice).toContain(WORKSPACE.rootPath);
+        });
+
+        it('returns 409 when the session is still running', async () => {
+            const live = makeSession({ id: 'sess-live' });
+            const mgr = makeMockSessionManager({
+                sessions: [live],
+                restartSession: () => { throw new TerminalSessionRunningError('sess-live'); },
+            });
+            server = createTestServer(store, () => mgr, makeConfig(true));
+            await startServer(server);
+
+            const { status, body } = await apiPost(`/api/workspaces/${WORKSPACE.id}/terminals/sess-live/restart`);
+            expect(status).toBe(409);
+            expect(body.error).toContain('still running');
+        });
+
+        it('returns 500 with the create-path error when node-pty is unavailable', async () => {
+            const exited = makeSession({ id: 'sess-dead', status: 'exited' });
+            const mgr = makeMockSessionManager({
+                sessions: [exited],
+                restartSession: () => { throw new Error('Terminal is not available: node-pty not installed'); },
+            });
+            server = createTestServer(store, () => mgr, makeConfig(true));
+            await startServer(server);
+
+            const { status, body } = await apiPost(`/api/workspaces/${WORKSPACE.id}/terminals/sess-dead/restart`);
+            expect(status).toBe(500);
+            expect(body.error).toContain('node-pty');
+        });
+
+        it('returns 404 for an unknown session', async () => {
+            const mgr = makeMockSessionManager({ sessions: [] });
+            server = createTestServer(store, () => mgr, makeConfig(true));
+            await startServer(server);
+
+            const { status, body } = await apiPost(`/api/workspaces/${WORKSPACE.id}/terminals/nope/restart`);
+            expect(status).toBe(404);
+            expect(body.error).toContain('Terminal session');
+        });
+
+        it('returns 404 when manager is undefined', async () => {
+            server = createTestServer(store, () => undefined, makeConfig(false));
+            await startServer(server);
+
+            const { status, body } = await apiPost(`/api/workspaces/${WORKSPACE.id}/terminals/sess-1/restart`);
             expect(status).toBe(404);
             expect(body.error).toContain('Terminal session');
         });

@@ -4,6 +4,7 @@
  * - GET  /api/terminal/status                        — always registered
  * - GET  /api/workspaces/:id/terminals               — list sessions
  * - DELETE /api/workspaces/:id/terminals/:sessionId  — kill session
+ * - POST /api/workspaces/:id/terminals/:sessionId/restart — respawn an exited session
  *
  * The `getTerminalSessionManager` getter is used (instead of a direct reference)
  * because terminal infrastructure is created after route registration, following
@@ -14,7 +15,7 @@ import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { TerminalSessionManager } from './terminal-session-manager';
 import type { ResolvedCLIConfig } from '../../config';
-import { toSessionInfo } from './terminal-session-manager';
+import { toSessionInfo, TerminalSessionRunningError } from './terminal-session-manager';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound } from '../errors';
@@ -42,7 +43,7 @@ export function registerTerminalRoutes(
             sendJSON(res, 200, {
                 enabled: liveEnabled,
                 nodePtyAvailable: mgr != null,
-                activeSessions: mgr?.size ?? 0,
+                activeSessions: mgr?.liveSize ?? 0,
             });
         },
     });
@@ -91,11 +92,12 @@ export function registerTerminalRoutes(
         },
     });
 
-    // PATCH /api/workspaces/:id/terminals/:sessionId/pin — toggle pin state
+    // POST /api/workspaces/:id/terminals/:sessionId/restart — respawn an exited
+    // session in its recorded cwd, carrying its scrollback into a new session.
     routes.push({
-        method: 'PATCH',
-        pattern: /^\/api\/workspaces\/([^/]+)\/terminals\/([^/]+)\/pin$/,
-        handler: async (req, res, match) => {
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/terminals\/([^/]+)\/restart$/,
+        handler: async (_req, res, match) => {
             const mgr = getTerminalSessionManager();
             if (!mgr) {
                 return handleAPIError(res, notFound('Terminal session'));
@@ -105,39 +107,31 @@ export function registerTerminalRoutes(
             if (!ws) return;
 
             const sessionId = decodeURIComponent(match![2]);
+            mgr.hydrateWorkspace(ws.id);
+            const existing = mgr.getSession(sessionId);
+            if (!existing || existing.workspaceId !== ws.id) {
+                return handleAPIError(res, notFound('Terminal session'));
+            }
 
-            let body: unknown;
             try {
-                const chunks: Buffer[] = [];
-                for await (const chunk of req) chunks.push(chunk as Buffer);
-                body = JSON.parse(Buffer.concat(chunks).toString());
-            } catch {
-                sendJSON(res, 400, { error: 'Invalid JSON body' });
-                return;
-            }
-
-            if (!body || typeof body !== 'object' || typeof (body as { pinned?: unknown }).pinned !== 'boolean') {
-                sendJSON(res, 400, { error: 'Missing or invalid "pinned" field (boolean required)' });
-                return;
-            }
-
-            const sessionBeforeUpdate = mgr.getSession(sessionId);
-            if (!sessionBeforeUpdate || sessionBeforeUpdate.workspaceId !== ws.id) {
-                return handleAPIError(res, notFound('Terminal session'));
-            }
-
-            const { pinned } = body as { pinned: boolean };
-            const success = pinned ? mgr.pinSession(sessionId) : mgr.unpinSession(sessionId);
-            if (!success) {
-                return handleAPIError(res, notFound('Terminal session'));
-            }
-
-            const session = mgr.getSession(sessionId);
-            if (session && session.workspaceId === ws.id) {
-                sendJSON(res, 200, { sessionId, pinned: session.pinned });
-            } else {
-                return handleAPIError(res, notFound('Terminal session'));
+                const { session, cwdFallback } = mgr.restartSession(sessionId, ws.rootPath);
+                sendJSON(res, 200, {
+                    session: toSessionInfo(session),
+                    cwdFallback,
+                    ...(cwdFallback
+                        ? { notice: `Previous directory is gone; started in ${ws.rootPath} instead.` }
+                        : {}),
+                });
+            } catch (err) {
+                if (err instanceof TerminalSessionRunningError) {
+                    sendJSON(res, 409, { error: err.message });
+                    return;
+                }
+                sendJSON(res, 500, {
+                    error: err instanceof Error ? err.message : 'Failed to restart terminal session',
+                });
             }
         },
     });
+
 }

@@ -170,7 +170,7 @@ describe('useTerminalWebSocket', () => {
         act(() => {
             MockWebSocket.last._message({
                 type: 'terminal-created',
-                session: { id: 'sess-existing', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234, pinned: true },
+                session: { id: 'sess-existing', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
             });
         });
         act(() => { result.current.sendInput('attached input'); });
@@ -266,11 +266,13 @@ describe('useTerminalWebSocket', () => {
         );
     });
 
-    it('disconnect() sends terminal-close then closes WebSocket', () => {
-        const { result } = renderHook(() =>
+    // ── AC-02: detach vs kill ─────────────────────────────────────────
+
+    function connectAndCreate() {
+        const rendered = renderHook(() =>
             useTerminalWebSocket({ onMessage: vi.fn() }),
         );
-        act(() => { result.current.connect('ws-123', 80, 24); });
+        act(() => { rendered.result.current.connect('ws-123', 80, 24); });
         act(() => { MockWebSocket.last._open(); });
         act(() => {
             MockWebSocket.last._message({
@@ -278,8 +280,28 @@ describe('useTerminalWebSocket', () => {
                 session: { id: 'sess-abc', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
             });
         });
+        return rendered;
+    }
+
+    it('AC-02: disconnect() closes the WebSocket without sending terminal-close', () => {
+        const { result } = connectAndCreate();
 
         act(() => { result.current.disconnect(); });
+
+        const sent = MockWebSocket.last.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw).type);
+        expect(sent).not.toContain('terminal-close');
+        expect(MockWebSocket.last.close).toHaveBeenCalled();
+        expect(result.current.status).toBe('closed');
+
+        // Manual close — no reconnect.
+        act(() => { vi.advanceTimersByTime(5000); });
+        expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    it('AC-02: killSession() sends terminal-close then closes WebSocket', () => {
+        const { result } = connectAndCreate();
+
+        act(() => { result.current.killSession(); });
         expect(MockWebSocket.last.send).toHaveBeenCalledWith(
             JSON.stringify({ type: 'terminal-close', sessionId: 'sess-abc' })
         );
@@ -287,6 +309,17 @@ describe('useTerminalWebSocket', () => {
 
         act(() => { vi.advanceTimersByTime(5000); });
         expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    it('AC-02: unmount detaches without sending terminal-close', () => {
+        const { unmount } = connectAndCreate();
+        const socket = MockWebSocket.last;
+
+        act(() => { unmount(); });
+
+        const sent = socket.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw).type);
+        expect(sent).not.toContain('terminal-close');
+        expect(socket.close).toHaveBeenCalled();
     });
 
     it('reconnects with exponential backoff on unexpected close', () => {
@@ -311,6 +344,98 @@ describe('useTerminalWebSocket', () => {
 
         act(() => { vi.advanceTimersByTime(1000); });
         expect(MockWebSocket.instances).toHaveLength(3);
+    });
+
+    // ── AC-07: create-mode reconnect reattaches ───────────────────────
+
+    it('AC-07: reconnect after a create reattaches to the same session', () => {
+        connectAndCreate();
+
+        // Unexpected drop → reconnect.
+        act(() => { MockWebSocket.last.onclose?.(); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        expect(MockWebSocket.instances).toHaveLength(2);
+
+        act(() => { MockWebSocket.last._open(); });
+        const sent = MockWebSocket.last.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw));
+        expect(sent[0]).toEqual({ type: 'terminal-attach', sessionId: 'sess-abc' });
+        expect(sent.map((m) => m.type)).not.toContain('terminal-create');
+    });
+
+    it('AC-07: the adopted sessionId survives the reconnect for input', () => {
+        const { result } = connectAndCreate();
+
+        act(() => { MockWebSocket.last.onclose?.(); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        act(() => { MockWebSocket.last._open(); });
+
+        // No terminal-created replay needed — the id was kept across sockets.
+        act(() => { result.current.sendInput('after reconnect'); });
+        expect(MockWebSocket.last.send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'terminal-input', sessionId: 'sess-abc', data: 'after reconnect' })
+        );
+    });
+
+    it('AC-07: reattach failure falls back to create with a notice', () => {
+        const onMessage = vi.fn();
+        const rendered = renderHook(() => useTerminalWebSocket({ onMessage }));
+        act(() => { rendered.result.current.connect('ws-123', 80, 24); });
+        act(() => { MockWebSocket.last._open(); });
+        act(() => {
+            MockWebSocket.last._message({
+                type: 'terminal-created',
+                session: { id: 'sess-abc', workspaceId: 'ws-123', cols: 80, rows: 24, createdAt: 0, lastActivity: 0, pid: 1234 },
+            });
+        });
+
+        act(() => { MockWebSocket.last.onclose?.(); });
+        act(() => { vi.advanceTimersByTime(1000); });
+        act(() => { MockWebSocket.last._open(); });
+        MockWebSocket.last.send.mockClear();
+        onMessage.mockClear();
+
+        // Server no longer has the PTY.
+        act(() => {
+            MockWebSocket.last._message({
+                type: 'terminal-error',
+                sessionId: 'sess-abc',
+                message: 'Terminal session not found',
+            });
+        });
+
+        // The bare error is swallowed in favour of a readable notice…
+        expect(onMessage).toHaveBeenCalledTimes(1);
+        expect(onMessage.mock.calls[0][0]).toEqual({
+            type: 'terminal-notice',
+            sessionId: null,
+            message: 'Previous terminal session is gone — started a new shell.',
+        });
+        // …and a fresh shell is requested on the same socket.
+        expect(MockWebSocket.last.send).toHaveBeenCalledWith(
+            JSON.stringify({ type: 'terminal-create', workspaceId: 'ws-123', cols: 80, rows: 24 })
+        );
+    });
+
+    it('AC-07: an explicitly attached tab surfaces the error instead of creating', () => {
+        const onMessage = vi.fn();
+        const rendered = renderHook(() => useTerminalWebSocket({ onMessage }));
+        act(() => {
+            rendered.result.current.connect('ws-123', 80, 24, { mode: 'attach', sessionId: 'sess-gone' });
+        });
+        act(() => { MockWebSocket.last._open(); });
+        MockWebSocket.last.send.mockClear();
+
+        act(() => {
+            MockWebSocket.last._message({
+                type: 'terminal-error',
+                sessionId: 'sess-gone',
+                message: 'Terminal session not found',
+            });
+        });
+
+        expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'terminal-error' }));
+        const sent = MockWebSocket.last.send.mock.calls.map(([raw]: [string]) => JSON.parse(raw).type);
+        expect(sent).not.toContain('terminal-create');
     });
 
     it('onMessage callback receives parsed server messages', () => {

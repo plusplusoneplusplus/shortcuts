@@ -26,8 +26,8 @@ import type {
   RalphSessionResponse,
   RalphSubmitPrResponse,
   RegisterWorkspaceRequest,
-  TerminalPinResponse,
   TerminalSessionsResponse,
+  TerminalRestartResponse,
   UpdateWorkspaceInstructionRequest,
   UpdateWorkspaceMcpConfigRequest,
   UpdateWorkspaceMcpConfigResponse,
@@ -407,10 +407,25 @@ export class WorkspacesClient {
     return this.transport.request<TerminalSessionsResponse>(`/workspaces/${encodePathSegment(workspaceId)}/terminals`);
   }
 
-  pinTerminal(workspaceId: string, sessionId: string, pinned: boolean): Promise<TerminalPinResponse> {
-    return this.transport.request<TerminalPinResponse>(
-      `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}/pin`,
-      { method: 'PATCH', body: { pinned } },
+  /**
+   * End a terminal session. This is the explicit kill path — closing a socket
+   * or unmounting the panel only detaches, so the tab's close control calls this.
+   */
+  deleteTerminal(workspaceId: string, sessionId: string): Promise<void> {
+    return this.transport.request<void>(
+      `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  /**
+   * Respawn an exited terminal in its recorded working directory. The
+   * replacement gets a new session id and inherits the old scrollback.
+   */
+  restartTerminal(workspaceId: string, sessionId: string): Promise<TerminalRestartResponse> {
+    return this.transport.request<TerminalRestartResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/terminals/${encodePathSegment(sessionId)}/restart`,
+      { method: 'POST' },
     );
   }
 }

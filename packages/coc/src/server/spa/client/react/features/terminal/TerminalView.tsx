@@ -31,20 +31,25 @@ interface TerminalTab {
     connectionMode: 'create' | 'attach';
     workspaceId: string;
     title: string;
-    pinned: boolean;
+    /**
+     * Lifecycle state mirrored from the server (AC-05). An `exited` tab is a
+     * tombstone: its scrollback still replays, input is refused, and the only
+     * action left is "Restart shell here".
+     */
+    status: 'running' | 'exited';
 }
 
 
 export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewProps) {
-    // Route terminal REST (list/pin) to the workspace's clone (AC-07). The PTY
+    // Route terminal REST (list/restart/delete) to the workspace's clone. The PTY
     // socket itself is routed inside useTerminalWebSocket via the same registry.
     const client = useCocClient(workspaceId);
     const [terminals, setTerminals] = useState<TerminalTab[]>([]);
     const [activeId, setActiveId] = useState<string>('');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState('');
-    const [pinningIds, setPinningIds] = useState<Set<string>>(() => new Set());
-    const [pinError, setPinError] = useState<string | null>(null);
+    const [restartingIds, setRestartingIds] = useState<Set<string>>(() => new Set());
+    const [terminalNotice, setTerminalNotice] = useState<string | null>(null);
     // Compact picker: the terminal list collapses into a "Terminal N ▾" dropdown
     // so a narrow dock never overflows with a horizontal tab strip.
     const [menuOpen, setMenuOpen] = useState(false);
@@ -56,32 +61,34 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
         counterRef.current += 1;
         const id = crypto.randomUUID();
         const title = `Terminal ${counterRef.current}`;
-        setTerminals(prev => [...prev, { id, connectionMode: 'create', workspaceId, title, pinned: false }]);
+        setTerminals(prev => [...prev, { id, connectionMode: 'create', workspaceId, title, status: 'running' }]);
         setActiveId(id);
     }, [workspaceId]);
 
     useEffect(() => {
         let cancelled = false;
 
-        async function hydratePinnedTerminals() {
+        // AC-05/AC-06: list *every* session for the workspace, live and exited.
+        // Pin no longer exists, so there is nothing to filter on — an exited
+        // session is a restartable tombstone, not something to hide.
+        async function hydrateTerminals() {
             const body = await client.workspaces.listTerminals(workspaceId);
-            const pinnedSessions = (Array.isArray(body.sessions) ? body.sessions : [])
-                .filter(session => session.pinned);
+            const sessions = Array.isArray(body.sessions) ? body.sessions : [];
             if (cancelled) return;
 
             setTerminals(prev => {
-                const pinnedSessionIds = new Set(pinnedSessions.map(session => session.id));
+                const sessionIds = new Set(sessions.map(session => session.id));
                 const retainedTabs = prev.filter(tab =>
                     tab.workspaceId === workspaceId &&
                     (tab.connectionMode !== 'attach' ||
-                        (tab.serverSessionId != null && pinnedSessionIds.has(tab.serverSessionId)))
+                        (tab.serverSessionId != null && sessionIds.has(tab.serverSessionId)))
                 );
                 const retainedServerSessionIds = new Set(
                     retainedTabs
                         .map(tab => tab.serverSessionId)
                         .filter((id): id is string => id != null),
                 );
-                const hydratedTabs: TerminalTab[] = pinnedSessions
+                const hydratedTabs: TerminalTab[] = sessions
                     .filter(session => !retainedServerSessionIds.has(session.id))
                     .map(session => ({
                         id: `server-${session.id}`,
@@ -89,7 +96,7 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
                         connectionMode: 'attach',
                         workspaceId,
                         title: `Terminal ${session.id.slice(0, 6)}`,
-                        pinned: true,
+                        status: session.status === 'exited' ? 'exited' : 'running',
                     }));
                 const next = [...retainedTabs, ...hydratedTabs];
                 setActiveId(currentActiveId =>
@@ -101,8 +108,8 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
             });
         }
 
-        hydratePinnedTerminals().catch(err => {
-            console.error('Failed to hydrate pinned terminal sessions:', err);
+        hydrateTerminals().catch(err => {
+            console.error('Failed to hydrate terminal sessions:', err);
         });
 
         return () => {
@@ -110,7 +117,10 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
         };
     }, [workspaceId, client]);
 
+    // The tab's ✕ is the explicit kill (AC-02): panel unmount only detaches now,
+    // so the server session has to be ended here or the PTY would outlive its tab.
     const closeTerminal = useCallback((id: string) => {
+        const serverSessionId = terminals.find(t => t.id === id)?.serverSessionId;
         setTerminals(prev => {
             const next = prev.filter(t => t.id !== id);
             if (next.length === 0) {
@@ -120,18 +130,27 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
             }
             return next;
         });
-    }, [activeId]);
+        if (serverSessionId) {
+            client.workspaces.deleteTerminal(workspaceId, serverSessionId).catch(err => {
+                // A 404 just means the session is already gone — nothing to kill.
+                if (err instanceof CocApiError && err.status === 404) return;
+                console.error('Failed to close terminal session:', err);
+            });
+        }
+    }, [activeId, client, terminals, workspaceId]);
 
-    const handleExit = useCallback((id: string, code: number) => {
+    // A PTY that ends leaves a server-side tombstone (AC-05), so the tab stays
+    // in the list — badged, read-only, and restartable — instead of dying.
+    const handleExit = useCallback((id: string, _code: number) => {
         setTerminals(prev =>
-            prev.map(t => t.id === id ? { ...t, title: `${t.title} (exited)`, pinned: false } : t)
+            prev.map(t => t.id === id ? { ...t, status: 'exited' } : t)
         );
     }, []);
 
-    const markPinning = useCallback((id: string, pinning: boolean) => {
-        setPinningIds(prev => {
+    const markRestarting = useCallback((id: string, restarting: boolean) => {
+        setRestartingIds(prev => {
             const next = new Set(prev);
-            if (pinning) {
+            if (restarting) {
                 next.add(id);
             } else {
                 next.delete(id);
@@ -145,51 +164,55 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
             prev.map(t => {
                 if (t.id !== id) return t;
                 const title = t.title.includes('(missing)') ? t.title : `${t.title} (missing)`;
-                return { ...t, title, pinned: false, serverSessionId: undefined };
+                return { ...t, title, status: 'exited', serverSessionId: undefined };
             })
         );
     }, []);
 
-    const togglePin = useCallback(async (id: string) => {
+    /**
+     * "Restart shell here" (AC-05): respawn the exited session in its recorded
+     * cwd. The replacement carries a new server id and the old scrollback, so
+     * the tab is re-keyed to force a fresh attach rather than replaying on top
+     * of what is already on screen.
+     */
+    const restartTerminal = useCallback(async (id: string) => {
         const tab = terminals.find(t => t.id === id);
-        if (!tab || !tab.serverSessionId || pinningIds.has(id)) return;
+        if (!tab || !tab.serverSessionId || tab.status !== 'exited' || restartingIds.has(id)) return;
 
-        const requestedPinned = !tab.pinned;
-        setPinError(null);
-        markPinning(id, true);
+        setTerminalNotice(null);
+        markRestarting(id, true);
         try {
-            let body: { sessionId: string; pinned: boolean };
-            try {
-                body = await client.workspaces.pinTerminal(workspaceId, tab.serverSessionId, requestedPinned);
-            } catch (err) {
-                if (err instanceof CocApiError && err.status === 404) {
-                    markSessionMissing(id);
-                    setPinError('Terminal session no longer exists.');
-                    return;
-                }
-                throw err;
+            const body = await client.workspaces.restartTerminal(workspaceId, tab.serverSessionId);
+            const session = body?.session;
+            if (!session || typeof session.id !== 'string') {
+                throw new Error('Terminal restart response did not include a session.');
             }
-
-            if (body.sessionId !== tab.serverSessionId || typeof body.pinned !== 'boolean') {
-                throw new Error('Terminal pin response did not match the requested session.');
-            }
-
+            const nextTabId = `server-${session.id}`;
             setTerminals(prev =>
-                prev.map(t => t.id === id ? { ...t, pinned: body.pinned } : t)
+                prev.map(t => t.id === id
+                    ? { ...t, id: nextTabId, serverSessionId: session.id, connectionMode: 'attach', status: 'running' }
+                    : t)
             );
+            setActiveId(current => (current === id ? nextTabId : current));
+            if (body.notice) setTerminalNotice(body.notice);
         } catch (err) {
-            console.error('Failed to update terminal pin state:', err);
-            setPinError(`Failed to ${requestedPinned ? 'pin' : 'unpin'} terminal.`);
+            if (err instanceof CocApiError && err.status === 404) {
+                markSessionMissing(id);
+                setTerminalNotice('Terminal session no longer exists.');
+                return;
+            }
+            console.error('Failed to restart terminal session:', err);
+            setTerminalNotice('Failed to restart terminal.');
         } finally {
-            markPinning(id, false);
+            markRestarting(id, false);
         }
-    }, [markPinning, markSessionMissing, pinningIds, terminals, workspaceId, client]);
+    }, [client, markRestarting, markSessionMissing, restartingIds, terminals, workspaceId]);
 
     const handleServerSessionCreated = useCallback((id: string, session: TerminalSessionInfo) => {
         setTerminals(prev =>
             prev.map(t =>
                 t.id === id
-                    ? { ...t, serverSessionId: session.id, pinned: session.pinned }
+                    ? { ...t, serverSessionId: session.id, status: session.status === 'exited' ? 'exited' : 'running' }
                     : t
             )
         );
@@ -287,7 +310,13 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
                                 data-menu-open={menuOpen ? 'true' : 'false'}
                                 data-testid="terminal-picker-btn"
                             >
-                                <span className="h-1.5 w-1.5 rounded-full bg-green-500 shrink-0" aria-hidden="true" />
+                                <span
+                                    className={cn(
+                                        "h-1.5 w-1.5 rounded-full shrink-0",
+                                        activeTab?.status === 'exited' ? "bg-gray-400 dark:bg-gray-500" : "bg-green-500",
+                                    )}
+                                    aria-hidden="true"
+                                />
                                 <span
                                     className="truncate"
                                     onDoubleClick={(e) => { e.stopPropagation(); if (activeTab) startRename(activeTab); }}
@@ -330,28 +359,37 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
                                         <span
                                             className={cn(
                                                 "h-1.5 w-1.5 rounded-full shrink-0",
-                                                tab.id === activeId ? "bg-green-500" : "bg-gray-400 dark:bg-gray-500"
+                                                tab.status === 'exited'
+                                                    ? "bg-gray-400 dark:bg-gray-500"
+                                                    : tab.id === activeId ? "bg-green-500" : "bg-gray-400 dark:bg-gray-500"
                                             )}
                                             aria-hidden="true"
                                         />
                                         <span className="flex-1 truncate" data-testid={`terminal-menu-title-${tab.id}`}>
                                             {tab.title}
                                         </span>
-                                        <span
-                                            className={cn(
-                                                "cursor-pointer",
-                                                (!tab.serverSessionId || pinningIds.has(tab.id)) && "cursor-not-allowed opacity-40",
-                                                tab.pinned
-                                                    ? "opacity-80 hover:opacity-100 text-blue-500 dark:text-blue-400"
-                                                    : "opacity-0 group-hover:opacity-50 hover:!opacity-100"
-                                            )}
-                                            onClick={(e) => { e.stopPropagation(); void togglePin(tab.id); }}
-                                            title={!tab.serverSessionId ? 'Waiting for terminal session' : tab.pinned ? 'Unpin terminal' : 'Pin terminal'}
-                                            aria-disabled={!tab.serverSessionId || pinningIds.has(tab.id)}
-                                            data-testid={`terminal-tab-pin-${tab.id}`}
-                                        >
-                                            📌
-                                        </span>
+                                        {tab.status === 'exited' ? (
+                                            <span
+                                                className="shrink-0 rounded bg-gray-200 px-1 py-0.5 text-[10px] leading-none text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+                                                data-testid={`terminal-tab-exited-badge-${tab.id}`}
+                                            >
+                                                exited
+                                            </span>
+                                        ) : null}
+                                        {tab.status === 'exited' ? (
+                                            <span
+                                                className={cn(
+                                                    "shrink-0 cursor-pointer text-blue-600 opacity-80 hover:opacity-100 dark:text-blue-400",
+                                                    (!tab.serverSessionId || restartingIds.has(tab.id)) && "cursor-not-allowed opacity-40",
+                                                )}
+                                                onClick={(e) => { e.stopPropagation(); void restartTerminal(tab.id); }}
+                                                title={tab.serverSessionId ? 'Restart shell here' : 'Terminal session no longer exists'}
+                                                aria-disabled={!tab.serverSessionId || restartingIds.has(tab.id)}
+                                                data-testid={`terminal-tab-restart-${tab.id}`}
+                                            >
+                                                ⟳
+                                            </span>
+                                        ) : null}
                                         <span
                                             className="opacity-50 hover:opacity-100"
                                             onClick={(e) => { e.stopPropagation(); closeTerminal(tab.id); }}
@@ -392,9 +430,9 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
                 >
                     <span>+</span>
                 </button>
-                {pinError ? (
-                    <span className="text-xs text-red-600 dark:text-red-400 truncate" data-testid="terminal-pin-error">
-                        {pinError}
+                {terminalNotice ? (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 truncate" data-testid="terminal-notice">
+                        {terminalNotice}
                     </span>
                 ) : null}
         </div>
@@ -424,6 +462,7 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
                             connectionMode={tab.connectionMode}
                             workspaceId={workspaceId}
                             isActive={tab.id === activeId}
+                            readOnly={tab.status === 'exited'}
                             onExit={(code) => handleExit(tab.id, code)}
                             onTitleChange={(title) =>
                                 setTerminals(prev =>
