@@ -28,6 +28,10 @@ import { useSlashCommands } from './hooks/useSlashCommands';
 import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
+import { RepoMentionMenu } from './RepoMentionMenu';
+import { useRepoMentions } from './hooks/useRepoMentions';
+import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
+import { useRepoGroupMembers } from '../../repos/useRepoGroupMembers';
 import { ModePillSelector, getVisibleModePillOptions } from './ModePillSelector';
 import { EffortPillSelector, buildEffortOptionsForModel } from './EffortPillSelector';
 import type { EffortLevel } from './EffortPillSelector';
@@ -407,6 +411,11 @@ export function InitialChatComposer({
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isCronEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(pickableModels);
+    // `#repo_name` mentions: only in a repo-group chat, and only once the
+    // group's membership has resolved. Elsewhere `#` is ordinary text.
+    const repoMentionsEnabled = isRepoGroupWorkspaceId(workspaceId);
+    const repoGroupMembers = useRepoGroupMembers(workspaceId ?? '', cloneBaseUrl, repoMentionsEnabled);
+    const repoMentions = useRepoMentions(repoGroupMembers, repoMentionsEnabled);
     const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProviderForClientHooks, cloneBaseUrl);
     const validModelOverride = useMemo(() => {
         const override = modelCommand.modelOverride;
@@ -1632,6 +1641,7 @@ export function InitialChatComposer({
                                 modelCommand.setModelFilter(val);
                             } else {
                                 slashCommands.handleInputChange(val, pos);
+                                repoMentions.handleInputChange(val, pos);
                             }
                         }}
                         onKeyDown={(e) => {
@@ -1656,6 +1666,19 @@ export function InitialChatComposer({
                                         modelCommand.showModelMenu();
                                     } else if (skill) {
                                         slashCommands.selectSkill(skill.name, input, setInput, richTextRef);
+                                        richTextRef.current?.focus();
+                                    }
+                                }
+                                return;
+                            }
+                            // Priority 2b: repo-mention menu. Slots in after the
+                            // slash menu so the existing handlers keep their
+                            // relative order; it only consumes keys while open.
+                            if (repoMentions.handleKeyDown(e)) {
+                                if (e.key === 'Enter' || e.key === 'Tab') {
+                                    const member = repoMentions.filteredMembers[repoMentions.highlightIndex];
+                                    if (member?.name) {
+                                        repoMentions.selectMember(member.name, input, setInput, richTextRef);
                                         richTextRef.current?.focus();
                                     }
                                 }
@@ -1901,6 +1924,16 @@ export function InitialChatComposer({
                         onDismiss={slashCommands.dismissMenu}
                         visible={slashCommands.menuVisible}
                         highlightIndex={slashCommands.highlightIndex}
+                    />
+                    <RepoMentionMenu
+                        members={repoMentions.filteredMembers}
+                        onSelect={(name) => {
+                            repoMentions.selectMember(name, input, setInput, richTextRef);
+                            richTextRef.current?.focus();
+                        }}
+                        onDismiss={repoMentions.dismissMenu}
+                        visible={repoMentions.menuVisible}
+                        highlightIndex={repoMentions.highlightIndex}
                     />
                 </div>
                 </div>

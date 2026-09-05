@@ -29,13 +29,20 @@ export function useRepoGroupMembers(
         }
         let cancelled = false;
         setMembers(undefined);
-        getRepoGroup(workspaceId, baseUrl)
-            .then(group => {
-                if (!cancelled) setMembers(group.members ?? []);
-            })
-            .catch(() => {
-                if (!cancelled) setMembers(undefined);
-            });
+        // `getRepoGroup` can also throw synchronously (e.g. the clone router has
+        // no client for this base URL yet), which would otherwise escape the
+        // effect and tear down whichever view mounted us.
+        try {
+            getRepoGroup(workspaceId, baseUrl)
+                .then(group => {
+                    if (!cancelled) setMembers(group.members ?? []);
+                })
+                .catch(() => {
+                    if (!cancelled) setMembers(undefined);
+                });
+        } catch {
+            setMembers(undefined);
+        }
         return () => { cancelled = true; };
     }, [workspaceId, baseUrl, enabled]);
     return members;
