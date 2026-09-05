@@ -49,6 +49,8 @@ export type RepoSubTab = typeof REPO_SUB_TAB_VALUES[number];
 export const SETTINGS_SECTION_VALUES = [
     'info', 'preferences', 'mcp', 'skills', 'llm-tools',
     'instructions', 'memory', 'run-script-template', 'tasks', 'notes',
+    // Repo groups only: the member-repo list that a group opens on.
+    'members',
 ] as const;
 export type SettingsSection = typeof SETTINGS_SECTION_VALUES[number];
 /** @deprecated Use SettingsSection */

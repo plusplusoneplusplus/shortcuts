@@ -28,6 +28,7 @@ export function getInitialSidebarCollapsed(): boolean {
 
 export const REPO_TAB_STATE_KEY = 'coc-repo-tab-state';
 export const REPO_ROUTE_STATE_KEY = 'coc-repo-route-state';
+export const REPO_GROUP_GIT_MEMBER_STATE_KEY = 'coc-repo-group-git-member-state';
 
 /** Set of valid sub-tab ids, used to drop unknown/stale values on hydrate. */
 const VALID_REPO_SUB_TAB_SET: ReadonlySet<string> = new Set(REPO_SUB_TAB_VALUES);
@@ -97,6 +98,35 @@ export function getInitialRepoRouteState(): Record<string, string> {
 function persistRepoRouteState(repoRouteState: Record<string, string>): void {
     try {
         localStorage.setItem(REPO_ROUTE_STATE_KEY, JSON.stringify(repoRouteState));
+    } catch { /* SSR / test / quota */ }
+}
+
+/**
+ * Read the "which member repo was I last looking at in this group's Git tab"
+ * map. Keys are `group-<slug>` workspace ids, values are member workspace ids.
+ * The member is only a *preference*: the Git tab re-validates it against the
+ * current membership on restore, so an id that has since left the group or gone
+ * stale simply falls back to the first healthy member.
+ */
+export function getInitialRepoGroupGitMemberState(): Record<string, string> {
+    try {
+        const raw = localStorage.getItem(REPO_GROUP_GIT_MEMBER_STATE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        const result: Record<string, string> = {};
+        for (const [groupId, memberId] of Object.entries(parsed as Record<string, unknown>)) {
+            if (typeof memberId === 'string' && memberId) result[groupId] = memberId;
+        }
+        return result;
+    } catch {
+        return {};
+    }
+}
+
+function persistRepoGroupGitMemberState(memberState: Record<string, string>): void {
+    try {
+        localStorage.setItem(REPO_GROUP_GIT_MEMBER_STATE_KEY, JSON.stringify(memberState));
     } catch { /* SSR / test / quota */ }
 }
 
@@ -217,6 +247,12 @@ export interface AppContextState {
     /** Per-repo remembered inner route suffix, persisted locally and restored on workspace switch. */
     repoRouteState: Record<string, string>;
     /**
+     * Per repo-group remembered Git-tab member repo, keyed by the `group-<slug>`
+     * workspace id. Persisted locally so the same member comes back across tab
+     * switches and reloads; validated against current membership on restore.
+     */
+    repoGroupGitMemberState: Record<string, string>;
+    /**
      * Which clone (machine) of each git-remote cluster the user was last on,
      * keyed by `groupKey(group)`, valued with a repo selection id. Persisted
      * locally so the remotes picker and the pinned scope segments both return
@@ -295,6 +331,7 @@ const initialState: AppContextState = {
     adminDbOrder: null,
     repoTabState: getInitialRepoTabState(),
     repoRouteState: getInitialRepoRouteState(),
+    repoGroupGitMemberState: getInitialRepoGroupGitMemberState(),
     lastCloneByRemote: getInitialLastCloneByRemote(),
     notePathState: {},
     wikiTabState: {},
@@ -333,6 +370,7 @@ export type AppAction =
     | { type: 'SET_CURRENT_AGENT'; agentId: string | null }
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
     | { type: 'RECORD_REPO_ROUTE_SUFFIX'; repoId: string; suffix: string }
+    | { type: 'SET_REPO_GROUP_GIT_MEMBER'; groupId: string; memberId: string }
     | { type: 'RECORD_REMOTE_CLONE'; groupKey: string; cloneId: string }
     | { type: 'TOGGLE_REPOS_SIDEBAR' }
     | { type: 'SET_REPOS_SIDEBAR_COLLAPSED'; value: boolean }
@@ -523,6 +561,14 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             if (updatedTabState !== currentTabState) persistRepoTabState(updatedTabState);
             if (updatedRouteState === state.repoRouteState && updatedTabState === state.repoTabState) return state;
             return { ...state, repoRouteState: updatedRouteState, repoTabState: updatedTabState };
+        }
+        case 'SET_REPO_GROUP_GIT_MEMBER': {
+            if (!action.groupId || !action.memberId) return state;
+            const current = state.repoGroupGitMemberState ?? {};
+            if (current[action.groupId] === action.memberId) return state;
+            const updated = { ...current, [action.groupId]: action.memberId };
+            persistRepoGroupGitMemberState(updated);
+            return { ...state, repoGroupGitMemberState: updated };
         }
         case 'RECORD_REMOTE_CLONE': {
             if (!action.groupKey || !action.cloneId) return state;

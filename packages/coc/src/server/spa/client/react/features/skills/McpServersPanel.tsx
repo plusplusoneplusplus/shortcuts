@@ -52,6 +52,15 @@ interface McpServersPanelProps {
     onRefresh?: () => void;
     /** Called after a server is added or deleted so the parent can refresh the list. */
     onMutate?: () => void;
+    /**
+     * Repo-group mode. A group is a virtual workspace with no git checkout, so
+     * there is nowhere to write a workspace-scoped server definition
+     * (`<root>/.vscode/mcp.json`). Enablement and the per-tool allow-list still
+     * work — they live on the group workspace record and its preferences file —
+     * but every affordance that edits a server *definition* (add, edit env/args,
+     * change scope, delete) is dropped and replaced with a short hint.
+     */
+    groupMode?: boolean;
 }
 
 function ChevronIcon() {
@@ -106,10 +115,11 @@ function ToggleSwitch({ checked, disabled, onChange, testId }: {
     );
 }
 
-function SourcePathsCard({ sources }: { sources?: McpServerSources }) {
+function SourcePathsCard({ sources, groupMode }: { sources?: McpServerSources; groupMode?: boolean }) {
     const paths = useMemo(() => {
         const items: { label: string; file: string; meta: string }[] = [];
-        if (sources?.workspace) {
+        // A group has no checkout, so the repo-local config file never exists for it.
+        if (sources?.workspace && !groupMode) {
             const ws = sources.workspace;
             items.push({
                 label: 'Repo config',
@@ -126,7 +136,7 @@ function SourcePathsCard({ sources }: { sources?: McpServerSources }) {
             });
         }
         return items;
-    }, [sources]);
+    }, [sources, groupMode]);
 
     if (paths.length === 0) return null;
 
@@ -694,7 +704,7 @@ function InspectorActivityPane() {
     );
 }
 
-function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, updateServer, migrateServer, deleteServer, tools }: {
+function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, updateServer, migrateServer, deleteServer, tools, groupMode }: {
     server: McpServerEntry;
     activeTab: InspectorTab;
     onTabChange: (tab: InspectorTab) => void;
@@ -715,14 +725,20 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
         onDisableAll: () => void;
         onRefresh: () => void;
     };
+    groupMode?: boolean;
 }) {
     const tabs: { id: InspectorTab; label: string }[] = [
         { id: 'overview', label: 'Overview' },
         { id: 'tools', label: 'Tools' },
-        { id: 'configuration', label: 'Configuration' },
+        // The Configuration tab is nothing but writes into the server definition
+        // (env, args, tool scope, scope migration, delete), so a group never gets it.
+        ...(groupMode ? [] : [{ id: 'configuration' as InspectorTab, label: 'Configuration' }]),
         { id: 'source', label: 'Source' },
         { id: 'activity', label: 'Activity' },
     ];
+    // The inspector tab is remembered across rows, so a group could land on a tab
+    // it no longer offers; fall back to Overview rather than rendering nothing.
+    const effectiveTab: InspectorTab = groupMode && activeTab === 'configuration' ? 'overview' : activeTab;
 
     return (
         <div className="mcp-inspector">
@@ -730,7 +746,7 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
-                        className={`mcp-inspector-tab${activeTab === tab.id ? ' active' : ''}`}
+                        className={`mcp-inspector-tab${effectiveTab === tab.id ? ' active' : ''}`}
                         onClick={() => onTabChange(tab.id)}
                         type="button"
                     >
@@ -739,8 +755,8 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
                 ))}
             </div>
             <div className="mcp-inspector-body">
-                {activeTab === 'overview' && <InspectorOverviewPane server={server} detail={detail} />}
-                {activeTab === 'tools' && (
+                {effectiveTab === 'overview' && <InspectorOverviewPane server={server} detail={detail} />}
+                {effectiveTab === 'tools' && (
                     <InspectorToolsPane
                         enabled={tools.enabled}
                         result={tools.result}
@@ -754,7 +770,7 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
                         onRefresh={tools.onRefresh}
                     />
                 )}
-                {activeTab === 'configuration' && (
+                {effectiveTab === 'configuration' && (
                     <InspectorConfigPane
                         server={server}
                         detail={detail}
@@ -764,8 +780,8 @@ function ServerInspector({ server, activeTab, onTabChange, detail, workspaceId, 
                         deleteServer={deleteServer}
                     />
                 )}
-                {activeTab === 'source' && <InspectorSourcePane server={server} detail={detail} />}
-                {activeTab === 'activity' && <InspectorActivityPane />}
+                {effectiveTab === 'source' && <InspectorSourcePane server={server} detail={detail} />}
+                {effectiveTab === 'activity' && <InspectorActivityPane />}
             </div>
         </div>
     );
@@ -1112,6 +1128,7 @@ export function McpServersPanel({
     onToggle,
     onRefresh,
     onMutate,
+    groupMode,
 }: McpServersPanelProps) {
     const [filterTab, setFilterTab] = useState<FilterTab>('all');
     const [searchQuery, setSearchQuery] = useState('');
@@ -1184,7 +1201,7 @@ export function McpServersPanel({
             </div>
 
             {/* Configuration sources */}
-            <SourcePathsCard sources={legacySources} />
+            <SourcePathsCard sources={legacySources} groupMode={groupMode} />
 
             {/* Toolbar */}
             <div className="mcp-toolbar">
@@ -1227,9 +1244,11 @@ export function McpServersPanel({
                         <RefreshIcon14 /> Refresh status
                     </button>
                 )}
-                <a className="mcp-btn primary" href="#add">
-                    <PlusIcon /> New server
-                </a>
+                {!groupMode && (
+                    <a className="mcp-btn primary" href="#add">
+                        <PlusIcon /> New server
+                    </a>
+                )}
             </div>
 
             {/* Server list */}
@@ -1304,6 +1323,7 @@ export function McpServersPanel({
                                             onDisableAll: () => controller.disableAllTools(server.name),
                                             onRefresh: () => controller.refetchTools(true),
                                         }}
+                                        groupMode={groupMode}
                                     />
                                 )}
                             </React.Fragment>
@@ -1312,11 +1332,18 @@ export function McpServersPanel({
                 )}
             </div>
 
-            {/* Add server card */}
-            <AddServerCard
-                workspaceId={workspaceId}
-                addServer={controller.addServer}
-            />
+            {/* Add server card — a group has no repo to hold a server definition. */}
+            {groupMode ? (
+                <div className="mcp-empty-state" data-testid="mcp-group-readonly-hint" style={{ padding: '16px 0' }}>
+                    A repo group has no repository checkout, so servers can&apos;t be added or edited here.
+                    Define them in global MCP settings; this page controls which ones the group&apos;s chats use.
+                </div>
+            ) : (
+                <AddServerCard
+                    workspaceId={workspaceId}
+                    addServer={controller.addServer}
+                />
+            )}
 
             {/* Footer */}
             <div className="mcp-footer">

@@ -17,7 +17,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ preferences: mocks.preferences }),
 }));
 
-import { appReducer, SIDEBAR_KEY, REPO_TAB_STATE_KEY, REPO_ROUTE_STATE_KEY, LAST_CLONE_BY_REMOTE_KEY, getInitialSidebarCollapsed, getInitialRepoTabState, getInitialRepoRouteState, getInitialLastCloneByRemote, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { appReducer, SIDEBAR_KEY, REPO_TAB_STATE_KEY, REPO_ROUTE_STATE_KEY, LAST_CLONE_BY_REMOTE_KEY, REPO_GROUP_GIT_MEMBER_STATE_KEY, getInitialSidebarCollapsed, getInitialRepoTabState, getInitialRepoRouteState, getInitialLastCloneByRemote, getInitialRepoGroupGitMemberState, type AppContextState, type AppAction } from '../../../src/server/spa/client/react/contexts/AppContext';
 
 function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
     return {
@@ -59,6 +59,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         repoTabState: {},
         repoRouteState: {},
         lastCloneByRemote: {},
+        repoGroupGitMemberState: {},
         notePathState: {},
         repoSubTabNavState: {},
         settingsSection: 'info',
@@ -631,6 +632,94 @@ describe('AppContext reducer', () => {
         it('returns an empty map for corrupt JSON', () => {
             localStorage.setItem(REPO_ROUTE_STATE_KEY, '{not valid json');
             expect(getInitialRepoRouteState()).toEqual({});
+        });
+    });
+
+    // ── Remembered Git-tab member repo per repo group ──────────────
+    // A repo group is not a git repo; its Git tab hosts one member's panel, and
+    // this is what brings you back to the same member after a tab switch or a
+    // reload.
+    describe('SET_REPO_GROUP_GIT_MEMBER', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
+        it('records the member and persists the map', () => {
+            const state = makeState();
+            const result = appReducer(state, {
+                type: 'SET_REPO_GROUP_GIT_MEMBER',
+                groupId: 'group-frontend',
+                memberId: 'repo-b',
+            });
+            expect(result.repoGroupGitMemberState).toEqual({ 'group-frontend': 'repo-b' });
+            expect(JSON.parse(localStorage.getItem(REPO_GROUP_GIT_MEMBER_STATE_KEY)!))
+                .toEqual({ 'group-frontend': 'repo-b' });
+        });
+
+        it('keeps the pick made in other groups', () => {
+            const state = makeState({ repoGroupGitMemberState: { 'group-backend': 'repo-x' } });
+            const result = appReducer(state, {
+                type: 'SET_REPO_GROUP_GIT_MEMBER',
+                groupId: 'group-frontend',
+                memberId: 'repo-b',
+            });
+            expect(result.repoGroupGitMemberState).toEqual({
+                'group-backend': 'repo-x',
+                'group-frontend': 'repo-b',
+            });
+        });
+
+        it('is a no-op returning the same state when unchanged', () => {
+            const state = makeState({ repoGroupGitMemberState: { 'group-frontend': 'repo-b' } });
+            const result = appReducer(state, {
+                type: 'SET_REPO_GROUP_GIT_MEMBER',
+                groupId: 'group-frontend',
+                memberId: 'repo-b',
+            });
+            expect(result).toBe(state);
+            expect(localStorage.getItem(REPO_GROUP_GIT_MEMBER_STATE_KEY)).toBeNull();
+        });
+
+        it('ignores an empty group or member id', () => {
+            const state = makeState();
+            expect(appReducer(state, { type: 'SET_REPO_GROUP_GIT_MEMBER', groupId: '', memberId: 'repo-b' })).toBe(state);
+            expect(appReducer(state, { type: 'SET_REPO_GROUP_GIT_MEMBER', groupId: 'group-frontend', memberId: '' })).toBe(state);
+        });
+
+        it('does not throw when localStorage.setItem fails', () => {
+            vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+            const state = makeState();
+            expect(() => appReducer(state, {
+                type: 'SET_REPO_GROUP_GIT_MEMBER',
+                groupId: 'group-frontend',
+                memberId: 'repo-b',
+            })).not.toThrow();
+        });
+    });
+
+    describe('getInitialRepoGroupGitMemberState', () => {
+        beforeEach(() => {
+            localStorage.clear();
+        });
+
+        it('hydrates the persisted map', () => {
+            localStorage.setItem(REPO_GROUP_GIT_MEMBER_STATE_KEY, JSON.stringify({ 'group-frontend': 'repo-b' }));
+            expect(getInitialRepoGroupGitMemberState()).toEqual({ 'group-frontend': 'repo-b' });
+        });
+
+        it('drops non-string and empty entries', () => {
+            localStorage.setItem(REPO_GROUP_GIT_MEMBER_STATE_KEY, JSON.stringify({ a: 7, b: '', c: 'repo-c', d: null }));
+            expect(getInitialRepoGroupGitMemberState()).toEqual({ c: 'repo-c' });
+        });
+
+        it('returns an empty map for corrupt JSON or a non-object payload', () => {
+            localStorage.setItem(REPO_GROUP_GIT_MEMBER_STATE_KEY, '{not valid json');
+            expect(getInitialRepoGroupGitMemberState()).toEqual({});
+            localStorage.setItem(REPO_GROUP_GIT_MEMBER_STATE_KEY, '["repo-b"]');
+            expect(getInitialRepoGroupGitMemberState()).toEqual({});
         });
     });
 

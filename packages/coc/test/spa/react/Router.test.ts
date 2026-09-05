@@ -297,9 +297,15 @@ describe('buildWorkspaceSubTabSuffix', () => {
         } as AppContextState;
     }
 
-    it('drops the settings section for a repo group — its Settings tab has none', () => {
+    it('narrows the settings section to one a repo group actually renders', () => {
+        // A group keeps sections it has (the Agent ones + members)…
         expect(buildWorkspaceSubTabSuffix('group-frontend', 'settings', stateWith({ settingsSection: 'llm-tools' })))
-            .toBe('/settings');
+            .toBe('/settings/llm-tools');
+        expect(buildWorkspaceSubTabSuffix('group-frontend', 'settings', stateWith({ settingsSection: 'members' })))
+            .toBe('/settings/members');
+        // …and falls back to Member repos for a repo-only section like Info.
+        expect(buildWorkspaceSubTabSuffix('group-frontend', 'settings', stateWith({ settingsSection: 'info' })))
+            .toBe('/settings/members');
     });
 
     it('keeps the settings section for a real repo and for My Work / My Life', () => {

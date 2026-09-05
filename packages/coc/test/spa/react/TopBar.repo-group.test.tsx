@@ -4,7 +4,7 @@
  * When a `group-<slug>` workspace is selected on the repos tab, the TopBar picks
  * the virtual-workspace shell header by ID PREFIX (unlike My Work / My Life,
  * which match by id equality), labels it with the registered group name, and
- * shows only the group's Workspace + Notes + Settings sub-tabs.
+ * shows only the group's Workspace + Git + Notes + Settings sub-tabs.
  *
  * @vitest-environment jsdom
  */
@@ -115,14 +115,27 @@ afterEach(() => {
 });
 
 describe('TopBar — repo-group virtual header', () => {
-    it('renders the virtual-workspace shell header for a group selection with only Workspace + Notes + Settings tabs', () => {
+    it('renders the virtual-workspace shell header for a group selection with only Workspace + Git + Notes + Settings tabs', () => {
         renderTopBarWithGroup();
         const header = screen.getByTestId('virtual-workspace-shell-header');
         expect(header.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect(screen.getByTestId('repo-group-shell-tab-chats').textContent).toBe('Workspace');
+        expect(screen.getByTestId('repo-group-shell-tab-git').textContent).toBe('Git');
         expect(screen.getByTestId('repo-group-shell-tab-notes').textContent).toBe('Notes');
         expect(screen.getByTestId('repo-group-shell-tab-settings').textContent).toBe('Settings');
-        expect(header.querySelectorAll('button[data-subtab]')).toHaveLength(3);
+        expect(header.querySelectorAll('button[data-subtab]')).toHaveLength(4);
+    });
+
+    // AC-01: Git is exposed for groups, but the OTHER git-dependent tabs stay
+    // hidden — a group is not a git repo, only its members are.
+    it('exposes Git but no other git-dependent tab for a group', () => {
+        renderTopBarWithGroup();
+        const header = screen.getByTestId('virtual-workspace-shell-header');
+        const keys = [...header.querySelectorAll('button[data-subtab]')].map(b => b.getAttribute('data-subtab'));
+        expect(keys).toContain('git');
+        expect(keys).not.toContain('pull-requests');
+        expect(keys).not.toContain('work-items');
+        expect(keys).not.toContain('branches');
     });
 
     it('labels the header with the registered group name', () => {
