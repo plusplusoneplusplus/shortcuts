@@ -38,6 +38,16 @@ export interface RepoGroupFile {
      * membership, so the same repo can read differently in two groups.
      */
     descriptions?: Record<string, string>;
+    /**
+     * Optional per-member read-only marker, keyed by member workspace ID.
+     *
+     * A sibling map to {@link descriptions} and stored under the same rules:
+     * only `true` entries are kept, keys must be current members, and the key
+     * is omitted entirely when empty so a group with no read-only members
+     * serializes byte-identically to what earlier versions wrote. The flag is
+     * a prompt hint rendered into the group chat context — nothing enforces it.
+     */
+    readOnly?: Record<string, boolean>;
 }
 
 /** A group member resolved against the live workspace registry. */
@@ -53,6 +63,8 @@ export interface RepoGroupMember {
     rootPath?: string;
     /** This group's note about the member; absent when unset. */
     description?: string;
+    /** True when this group marks the member as read-only; absent otherwise. */
+    readOnly?: boolean;
 }
 
 /** Raised when create/update input fails shape or registry validation. */
@@ -156,6 +168,42 @@ function pruneDescriptions(
     return kept;
 }
 
+/**
+ * Validate a caller-supplied read-only map the same way descriptions are
+ * validated: unknown keys are a caller mistake and rejected, values must be
+ * booleans, and only `true` survives — `false` means "no entry", which is how
+ * a clear is expressed.
+ */
+function normalizeReadOnly(
+    readOnly: Record<string, boolean>,
+    members: readonly string[],
+): Record<string, boolean> {
+    const memberSet = new Set(members);
+    const normalized: Record<string, boolean> = {};
+    for (const [workspaceId, value] of Object.entries(readOnly)) {
+        if (typeof value !== 'boolean') {
+            throw new RepoGroupValidationError(`Read-only flag for "${workspaceId}" must be a boolean`);
+        }
+        if (!memberSet.has(workspaceId)) {
+            throw new RepoGroupValidationError(`Read-only key "${workspaceId}" is not a member of this repo group`);
+        }
+        if (value) normalized[workspaceId] = true;
+    }
+    return normalized;
+}
+
+/** Keep only the read-only flags whose member is still in the group. */
+function pruneReadOnly(
+    readOnly: Record<string, boolean> | undefined,
+    members: readonly string[],
+): Record<string, boolean> {
+    const kept: Record<string, boolean> = {};
+    for (const workspaceId of members) {
+        if (readOnly?.[workspaceId]) kept[workspaceId] = true;
+    }
+    return kept;
+}
+
 function normalizeName(name: string): string {
     const trimmed = name.trim();
     if (!trimmed) {
@@ -168,11 +216,13 @@ function writeGroupFile(dataDir: string, groupId: string, file: RepoGroupFile): 
     const root = groupRootPath(dataDir, groupId);
     fs.mkdirSync(root, { recursive: true });
     const descriptions = pruneDescriptions(file.descriptions, file.members);
-    // Omitted when empty so a group without descriptions writes exactly the
-    // bytes earlier versions wrote.
-    const payload: RepoGroupFile = Object.keys(descriptions).length > 0
-        ? { name: file.name, members: file.members, descriptions }
-        : { name: file.name, members: file.members };
+    const readOnly = pruneReadOnly(file.readOnly, file.members);
+    // Each optional map is omitted when empty so a group without descriptions
+    // and without read-only members writes exactly the bytes earlier versions
+    // wrote.
+    const payload: RepoGroupFile = { name: file.name, members: file.members };
+    if (Object.keys(descriptions).length > 0) payload.descriptions = descriptions;
+    if (Object.keys(readOnly).length > 0) payload.readOnly = readOnly;
     fs.writeFileSync(groupFilePath(dataDir, groupId), JSON.stringify(payload, null, 2) + '\n', 'utf-8');
 }
 
@@ -182,6 +232,16 @@ function parseDescriptions(value: unknown): Record<string, string> | undefined {
     const parsed: Record<string, string> = {};
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
         if (typeof entry === 'string' && entry) parsed[key] = entry;
+    }
+    return Object.keys(parsed).length > 0 ? parsed : undefined;
+}
+
+/** Read-side tolerance: anything that is not a plain map of booleans is empty. */
+function parseReadOnly(value: unknown): Record<string, boolean> | undefined {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+    const parsed: Record<string, boolean> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        if (entry === true) parsed[key] = true;
     }
     return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
@@ -204,7 +264,11 @@ export function readRepoGroup(dataDir: string, groupId: string): RepoGroupFile |
         if (typeof parsed?.name !== 'string' || !Array.isArray(parsed.members)) return undefined;
         const members = parsed.members.filter((m): m is string => typeof m === 'string');
         const descriptions = parseDescriptions((parsed as { descriptions?: unknown }).descriptions);
-        return descriptions ? { name: parsed.name, members, descriptions } : { name: parsed.name, members };
+        const readOnly = parseReadOnly((parsed as { readOnly?: unknown }).readOnly);
+        const file: RepoGroupFile = { name: parsed.name, members };
+        if (descriptions) file.descriptions = descriptions;
+        if (readOnly) file.readOnly = readOnly;
+        return file;
     } catch {
         return undefined;
     }
@@ -232,13 +296,19 @@ async function mintGroupId(dataDir: string, store: ProcessStore, name: string): 
 export async function createRepoGroup(
     dataDir: string,
     store: ProcessStore,
-    input: { name: string; members: string[]; descriptions?: Record<string, string> },
+    input: {
+        name: string;
+        members: string[];
+        descriptions?: Record<string, string>;
+        readOnly?: Record<string, boolean>;
+    },
 ): Promise<WorkspaceInfo> {
     const name = normalizeName(input.name);
     const members = await normalizeMembers(store, input.members);
     const descriptions = input.descriptions ? normalizeDescriptions(input.descriptions, members) : undefined;
+    const readOnly = input.readOnly ? normalizeReadOnly(input.readOnly, members) : undefined;
     const groupId = await mintGroupId(dataDir, store, name);
-    writeGroupFile(dataDir, groupId, { name, members, descriptions });
+    writeGroupFile(dataDir, groupId, { name, members, descriptions, readOnly });
     const ws: WorkspaceInfo = {
         id: groupId,
         name,
@@ -259,7 +329,12 @@ export async function updateRepoGroup(
     dataDir: string,
     store: ProcessStore,
     groupId: string,
-    updates: { name?: string; members?: string[]; descriptions?: Record<string, string> },
+    updates: {
+        name?: string;
+        members?: string[];
+        descriptions?: Record<string, string>;
+        readOnly?: Record<string, boolean>;
+    },
 ): Promise<RepoGroupFile | undefined> {
     const current = readRepoGroup(dataDir, groupId);
     if (!current) return undefined;
@@ -272,10 +347,19 @@ export async function updateRepoGroup(
         for (const key of Object.keys(updates.descriptions)) delete descriptions[key];
         descriptions = { ...descriptions, ...patch };
     }
+    // Same partial-patch semantics for read-only: keys present are set, and a
+    // `false` value clears the entry rather than persisting it.
+    let readOnly = pruneReadOnly(current.readOnly, members);
+    if (updates.readOnly !== undefined) {
+        const patch = normalizeReadOnly(updates.readOnly, members);
+        for (const key of Object.keys(updates.readOnly)) delete readOnly[key];
+        readOnly = { ...readOnly, ...patch };
+    }
     const next: RepoGroupFile = {
         name: updates.name !== undefined ? normalizeName(updates.name) : current.name,
         members,
         descriptions: Object.keys(descriptions).length > 0 ? descriptions : undefined,
+        readOnly: Object.keys(readOnly).length > 0 ? readOnly : undefined,
     };
     writeGroupFile(dataDir, groupId, next);
     if (next.name !== current.name) {
@@ -300,7 +384,8 @@ export async function resolveRepoGroupMembers(
     const registered = new Map((await store.getWorkspaces()).map(w => [w.id, w]));
     return file.members.map((workspaceId): RepoGroupMember => {
         const description = file.descriptions?.[workspaceId];
-        const withDescription = description ? { description } : {};
+        const withDescription: { description?: string; readOnly?: boolean } = description ? { description } : {};
+        if (file.readOnly?.[workspaceId]) withDescription.readOnly = true;
         const ws = registered.get(workspaceId);
         if (!ws) {
             return { workspaceId, stale: true, staleReason: 'workspace-removed', ...withDescription };

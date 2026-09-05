@@ -145,6 +145,110 @@ describe('repo-group-chat-context', () => {
         ).toBe(true);
     });
 
+    it('marks a read-only member and appends the instruction line', async () => {
+        const ws = await createRepoGroup(tmpDir, store, {
+            name: 'My Team',
+            members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            descriptions: { 'ws-v2-aaa': 'the API server' },
+            readOnly: { 'ws-v2-aaa': true },
+        });
+
+        const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        expect(ctx!.promptBlock).toBe(
+            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
+            'Repo group "My Team" members:\n' +
+            `- Repo A: ${repoA} [read-only] — the API server\n` +
+            `- Repo B: ${repoB}\n` +
+            'Repos marked [read-only] must not be modified: do not edit, create, delete, or commit files under those paths. Read and search them freely.\n' +
+            `</${REPO_GROUP_CONTEXT_TAG}>`,
+        );
+        // The flag is a prompt hint only — a read-only repo stays readable.
+        expect(ctx!.additionalDirectories).toEqual([repoA, repoB]);
+    });
+
+    it('marks a read-only member that has no description', async () => {
+        const ws = await createRepoGroup(tmpDir, store, {
+            name: 'My Team',
+            members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            readOnly: { 'ws-v2-bbb': true },
+        });
+
+        const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        expect(ctx!.promptBlock).toBe(
+            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
+            'Repo group "My Team" members:\n' +
+            `- Repo A: ${repoA}\n` +
+            `- Repo B: ${repoB} [read-only]\n` +
+            'Repos marked [read-only] must not be modified: do not edit, create, delete, or commit files under those paths. Read and search them freely.\n' +
+            `</${REPO_GROUP_CONTEXT_TAG}>`,
+        );
+        expect(ctx!.additionalDirectories).toEqual([repoA, repoB]);
+    });
+
+    it('marks every member when the whole group is read-only', async () => {
+        const ws = await createRepoGroup(tmpDir, store, {
+            name: 'Vendored',
+            members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            readOnly: { 'ws-v2-aaa': true, 'ws-v2-bbb': true },
+        });
+
+        const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        expect(ctx!.promptBlock).toBe(
+            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
+            'Repo group "Vendored" members:\n' +
+            `- Repo A: ${repoA} [read-only]\n` +
+            `- Repo B: ${repoB} [read-only]\n` +
+            'Repos marked [read-only] must not be modified: do not edit, create, delete, or commit files under those paths. Read and search them freely.\n' +
+            `</${REPO_GROUP_CONTEXT_TAG}>`,
+        );
+        expect(ctx!.additionalDirectories).toEqual([repoA, repoB]);
+    });
+
+    it('renders no marker and no instruction line when no member is read-only', async () => {
+        const plain = await createRepoGroup(tmpDir, store, { name: 'Same', members: ['ws-v2-aaa', 'ws-v2-bbb'] });
+        const cleared = await createRepoGroup(tmpDir, store, {
+            name: 'Same',
+            members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            readOnly: { 'ws-v2-aaa': false, 'ws-v2-bbb': false },
+        });
+
+        const plainCtx = await resolveRepoGroupChatContext(store, tmpDir, plain.id);
+        const clearedCtx = await resolveRepoGroupChatContext(store, tmpDir, cleared.id);
+
+        // Byte-identical to the pre-flag rendering, so existing live sessions
+        // never see drift and never spuriously re-inject.
+        expect(plainCtx!.promptBlock).toBe(
+            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
+            'Repo group "Same" members:\n' +
+            `- Repo A: ${repoA}\n` +
+            `- Repo B: ${repoB}\n` +
+            `</${REPO_GROUP_CONTEXT_TAG}>`,
+        );
+        expect(clearedCtx!.promptBlock).toBe(plainCtx!.promptBlock);
+        expect(plainCtx!.promptBlock).not.toContain('read-only');
+    });
+
+    it('a read-only flag change drifts the block so it is re-injected', async () => {
+        const ws = await createRepoGroup(tmpDir, store, { name: 'G', members: ['ws-v2-aaa'] });
+        const before = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        await updateRepoGroup(tmpDir, store, ws.id, { readOnly: { 'ws-v2-aaa': true } });
+        const after = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        expect(after!.promptBlock).not.toBe(before!.promptBlock);
+        expect(
+            shouldInjectRepoGroupContext({
+                context: after,
+                turns: [{ role: 'user', content: 'hi', timestamp: new Date(), repoGroupContext: before!.promptBlock }] as unknown as ConversationTurn[],
+                compaction: undefined,
+                canResumeSession: true,
+            }),
+        ).toBe(true);
+    });
+
     it('skips a member whose workspace was removed', async () => {
         const ws = await createRepoGroup(tmpDir, store, { name: 'G', members: ['ws-v2-aaa', 'ws-v2-bbb'] });
         await store.removeWorkspace('ws-v2-bbb');

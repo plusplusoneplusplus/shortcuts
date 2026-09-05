@@ -5,6 +5,10 @@
  * cancelling, the no-op when the text did not change, and the optimistic
  * update rolling back with an error when the PATCH fails.
  *
+ * Also covers the per-member read-only checkbox: ticking and unticking each
+ * issue their own PATCH, and a failed PATCH flips the box back and shows the
+ * row's error line.
+ *
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,6 +32,10 @@ const MEMBERS = [
 
 function field(memberId: string): HTMLInputElement {
     return screen.getByTestId(`repo-group-member-description-${memberId}`) as HTMLInputElement;
+}
+
+function readOnlyBox(memberId: string): HTMLInputElement {
+    return screen.getByTestId(`repo-group-member-read-only-${memberId}`) as HTMLInputElement;
 }
 
 function renderList(members: any[] = MEMBERS, baseUrl?: string) {
@@ -135,5 +143,50 @@ describe('RepoGroupMemberList', () => {
         renderList();
 
         expect(field('r1').maxLength).toBe(280);
+    });
+
+    it('ticks read-only, PATCHing the flag for that member only and badging the row', async () => {
+        renderList();
+
+        expect(readOnlyBox('r1').checked).toBe(false);
+        expect(screen.queryByTestId('repo-group-read-only-badge-r1')).toBeNull();
+
+        fireEvent.click(readOnlyBox('r1'));
+
+        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledTimes(1));
+        expect(mockUpdateRepoGroup).toHaveBeenCalledWith(GROUP_ID, { readOnly: { r1: true } }, undefined);
+        expect(readOnlyBox('r1').checked).toBe(true);
+        expect(readOnlyBox('r2').checked).toBe(false);
+        expect(screen.getByTestId('repo-group-read-only-badge-r1')).toBeTruthy();
+    });
+
+    it('unticks read-only by sending an explicit false, routed to the group\'s server', async () => {
+        renderList([
+            { workspaceId: 'r1', stale: false, name: 'api', rootPath: '/r/api', readOnly: true },
+        ], 'http://remote:3000');
+
+        expect(readOnlyBox('r1').checked).toBe(true);
+        fireEvent.click(readOnlyBox('r1'));
+
+        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith(
+            GROUP_ID,
+            { readOnly: { r1: false } },
+            'http://remote:3000',
+        ));
+        expect(readOnlyBox('r1').checked).toBe(false);
+        expect(screen.queryByTestId('repo-group-read-only-badge-r1')).toBeNull();
+    });
+
+    it('reverts the checkbox and surfaces the error when the read-only PATCH fails', async () => {
+        mockUpdateRepoGroup.mockRejectedValue(new Error('group is not writable'));
+        renderList();
+
+        fireEvent.click(readOnlyBox('r1'));
+
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-description-error-r1')).toBeTruthy());
+        expect(screen.getByTestId('repo-group-member-description-error-r1').textContent)
+            .toContain('group is not writable');
+        expect(readOnlyBox('r1').checked).toBe(false);
+        expect(screen.queryByTestId('repo-group-read-only-badge-r1')).toBeNull();
     });
 });

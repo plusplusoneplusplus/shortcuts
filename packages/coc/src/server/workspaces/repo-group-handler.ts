@@ -5,8 +5,8 @@
  * validate membership against the workspace registry (only registered,
  * non-virtual repo workspaces may be members); reads resolve members
  * against the live registry so stale entries surface in the edit dialog.
- * Per-member descriptions ride along on create/update as an optional map and
- * come back on every resolved member.
+ * Per-member descriptions and read-only flags ride along on create/update as
+ * optional maps and come back on every resolved member.
  * Deleting a group only deregisters the workspace — its data directory
  * stays on disk.
  */
@@ -65,6 +65,20 @@ function isStringMap(value: unknown): value is Record<string, string> {
     );
 }
 
+/**
+ * Read-only flags must arrive as a plain object of workspace ID -> boolean.
+ * Membership of each key is checked further in, by the store, so that failure
+ * shares the one `RepoGroupValidationError -> 400` path.
+ */
+function isBooleanMap(value: unknown): value is Record<string, boolean> {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value) &&
+        Object.values(value as Record<string, unknown>).every((v) => typeof v === 'boolean')
+    );
+}
+
 export function registerRepoGroupRoutes(
     routes: Route[],
     store: ProcessStore,
@@ -99,11 +113,15 @@ export function registerRepoGroupRoutes(
             if (body.descriptions !== undefined && !isStringMap(body.descriptions)) {
                 return handleAPIError(res, badRequest('descriptions must be an object of workspace ID to string'));
             }
+            if (body.readOnly !== undefined && !isBooleanMap(body.readOnly)) {
+                return handleAPIError(res, badRequest('readOnly must be an object of workspace ID to boolean'));
+            }
             try {
                 const ws = await createRepoGroup(dataDir, store, {
                     name: body.name,
                     members: body.members,
                     descriptions: body.descriptions,
+                    readOnly: body.readOnly,
                 });
                 await deps.onGroupRegistered?.(ws);
                 broadcast(ws.id, 'added');
@@ -137,7 +155,7 @@ export function registerRepoGroupRoutes(
     });
 
     // ------------------------------------------------------------------
-    // PATCH /api/repo-groups/:id — Rename, replace membership, patch descriptions
+    // PATCH /api/repo-groups/:id — Rename, membership, descriptions, read-only
     // ------------------------------------------------------------------
     routes.push({
         method: 'PATCH',
@@ -154,12 +172,16 @@ export function registerRepoGroupRoutes(
             if (body.descriptions !== undefined && !isStringMap(body.descriptions)) {
                 return handleAPIError(res, badRequest('descriptions must be an object of workspace ID to string'));
             }
+            if (body.readOnly !== undefined && !isBooleanMap(body.readOnly)) {
+                return handleAPIError(res, badRequest('readOnly must be an object of workspace ID to boolean'));
+            }
             try {
                 const id = decodeURIComponent(match![1]);
                 const updated = await updateRepoGroup(dataDir, store, id, {
                     name: body.name,
                     members: body.members,
                     descriptions: body.descriptions,
+                    readOnly: body.readOnly,
                 });
                 if (!updated) {
                     return handleAPIError(res, notFound('Repo group'));

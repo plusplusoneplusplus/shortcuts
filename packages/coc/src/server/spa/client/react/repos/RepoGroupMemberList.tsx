@@ -1,6 +1,6 @@
 /**
  * RepoGroupMemberList — the group's member repos with an inline-editable
- * description per row.
+ * description and a read-only toggle per row.
  *
  * A description says what the repo is for inside THIS group; the server appends
  * it to the member listing it injects into new chats, so it is the one place a
@@ -11,9 +11,15 @@
  * stays on screen while the PATCH is in flight and is rolled back to the last
  * known value, with the server's message shown under the row, if it fails.
  *
+ * The read-only checkbox saves the same way, minus the editing step: ticking it
+ * PATCHes immediately, the box flips before the request resolves, and a failure
+ * flips it back with the server's message under the row. It is a prompt hint —
+ * the server marks the repo `[read-only]` in the context block it injects into
+ * group chats — not an enforced permission.
+ *
  * The component never refetches: `members` is the loaded snapshot, and locally
- * saved descriptions are held as overrides on top of it, so a save does not cost
- * a round-trip through the parent.
+ * saved descriptions and flags are held as overrides on top of it, so a save
+ * does not cost a round-trip through the parent.
  */
 
 import { useCallback, useRef, useState } from 'react';
@@ -26,6 +32,9 @@ import { getRepositoryApiErrorMessage } from './repositoryService';
 
 /** Muted prompt shown in an empty description field. */
 export const REPO_GROUP_DESCRIPTION_PLACEHOLDER = 'Add description';
+
+/** Checkbox label, reused by the create/edit dialog's per-member row. */
+export const REPO_GROUP_READ_ONLY_LABEL = 'Read-only';
 
 /** Label suffix explaining why a member is unusable; mirrors RepoGroupView. */
 function staleBadgeLabel(reason: RepoGroupMember['staleReason']): string {
@@ -47,6 +56,8 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
     // snapshot in `members` was loaded.
     const [drafts, setDrafts] = useState<Record<string, string>>({});
     const [saved, setSaved] = useState<Record<string, string>>({});
+    // Read-only flags written since the snapshot, same override role as `saved`.
+    const [savedReadOnly, setSavedReadOnly] = useState<Record<string, boolean>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
     // Escape reverts and blurs the field; the blur handler must not then treat
     // the (already dropped) draft as a save.
@@ -55,6 +66,39 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
     const committed = useCallback((member: RepoGroupMember): string => {
         return saved[member.workspaceId] ?? member.description ?? '';
     }, [saved]);
+
+    const isReadOnly = useCallback((member: RepoGroupMember): boolean => {
+        return savedReadOnly[member.workspaceId] ?? member.readOnly === true;
+    }, [savedReadOnly]);
+
+    const clearError = useCallback((memberId: string) => {
+        setErrors(prev => {
+            if (!(memberId in prev)) return prev;
+            const rest = { ...prev };
+            delete rest[memberId];
+            return rest;
+        });
+    }, []);
+
+    // Optimistic: flip the box now, PATCH, and flip back on failure. `false` is
+    // sent rather than omitted — that is how the server clears the entry.
+    const toggleReadOnly = useCallback(async (member: RepoGroupMember) => {
+        const memberId = member.workspaceId;
+        const previous = isReadOnly(member);
+        const next = !previous;
+
+        setSavedReadOnly(prev => ({ ...prev, [memberId]: next }));
+        clearError(memberId);
+        try {
+            await updateRepoGroup(workspaceId, { readOnly: { [memberId]: next } }, baseUrl);
+        } catch (err: unknown) {
+            setSavedReadOnly(prev => ({ ...prev, [memberId]: previous }));
+            setErrors(prev => ({
+                ...prev,
+                [memberId]: getRepositoryApiErrorMessage(err, 'Failed to save read-only flag'),
+            }));
+        }
+    }, [isReadOnly, clearError, workspaceId, baseUrl]);
 
     const dropDraft = useCallback((memberId: string) => {
         setDrafts(prev => {
@@ -75,12 +119,7 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
         if (next === previous) return;
 
         setSaved(prev => ({ ...prev, [memberId]: next }));
-        setErrors(prev => {
-            if (!(memberId in prev)) return prev;
-            const rest = { ...prev };
-            delete rest[memberId];
-            return rest;
-        });
+        clearError(memberId);
         try {
             await updateRepoGroup(workspaceId, { descriptions: { [memberId]: next } }, baseUrl);
         } catch (err: unknown) {
@@ -90,7 +129,7 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                 [memberId]: getRepositoryApiErrorMessage(err, 'Failed to save description'),
             }));
         }
-    }, [drafts, dropDraft, committed, workspaceId, baseUrl]);
+    }, [drafts, dropDraft, committed, clearError, workspaceId, baseUrl]);
 
     if (members.length === 0) {
         return (
@@ -105,6 +144,7 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
             {members.map(member => {
                 const memberId = member.workspaceId;
                 const value = drafts[memberId] ?? committed(member);
+                const readOnly = isReadOnly(member);
                 const error = errors[memberId];
                 return (
                     <div
@@ -125,6 +165,15 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                                     className="px-1 rounded text-[10px] font-semibold bg-[#fff1e5] text-[#bc4c00] dark:bg-[#bc4c00]/20 dark:text-[#f0883e]"
                                 >
                                     {staleBadgeLabel(member.staleReason)}
+                                </span>
+                            )}
+                            {readOnly && (
+                                <span
+                                    data-testid={`repo-group-read-only-badge-${memberId}`}
+                                    title="Marked read-only: the agent is told not to modify this repo"
+                                    className="px-1 rounded text-[10px] font-semibold bg-[#eef2ff] text-[#3538cd] dark:bg-[#3538cd]/20 dark:text-[#a5b4fc]"
+                                >
+                                    read-only
                                 </span>
                             )}
                             {member.rootPath && (
@@ -161,6 +210,20 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                             }}
                             className="px-1.5 py-0.5 rounded border border-transparent bg-transparent text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#a0a0a0] dark:placeholder:text-[#6a6a6a] outline-none hover:border-[#e0e0e0] dark:hover:border-[#3c3c3c] focus:border-[#0078d4] focus:bg-white dark:focus:bg-[#1e1e1e]"
                         />
+                        <label
+                            className="flex items-center gap-1.5 px-1.5 text-[11px] text-[#616161] dark:text-[#999] cursor-pointer w-fit"
+                            htmlFor={`repo-group-member-read-only-${memberId}`}
+                        >
+                            <input
+                                type="checkbox"
+                                id={`repo-group-member-read-only-${memberId}`}
+                                checked={readOnly}
+                                aria-label={`Read-only for ${member.name || memberId}`}
+                                data-testid={`repo-group-member-read-only-${memberId}`}
+                                onChange={() => { void toggleReadOnly(member); }}
+                            />
+                            {REPO_GROUP_READ_ONLY_LABEL}
+                        </label>
                         {error && (
                             <div
                                 className="text-[11px] text-red-700 dark:text-red-400 px-1.5"

@@ -32,6 +32,13 @@ export interface RepoGroupMember {
      * group. The server appends it to the member listing it injects into chats.
      */
     description?: string;
+    /**
+     * True when this repo is marked read-only inside THIS group. It is a prompt
+     * hint only: the server marks the member `[read-only]` in the context block
+     * it injects into group chats, but nothing stops a write. Absent means
+     * writable.
+     */
+    readOnly?: boolean;
 }
 
 /** Max length of a member description, mirrored from the server. */
@@ -87,7 +94,7 @@ export async function listRepoGroupServerOptions(): Promise<RepoGroupServerOptio
     ];
 }
 
-export function createRepoGroup(request: { name: string; members: string[]; descriptions?: Record<string, string> }, baseUrl?: string): Promise<{ workspace: WorkspaceInfo; members: RepoGroupMember[] }> {
+export function createRepoGroup(request: { name: string; members: string[]; descriptions?: Record<string, string>; readOnly?: Record<string, boolean> }, baseUrl?: string): Promise<{ workspace: WorkspaceInfo; members: RepoGroupMember[] }> {
     return getCocClientFor(baseUrl).request('/repo-groups', { method: 'POST', body: request });
 }
 
@@ -99,8 +106,12 @@ export function getRepoGroup(groupId: string, baseUrl?: string): Promise<RepoGro
  * `descriptions` is a PARTIAL patch server-side: only the supplied workspace ids
  * change, an empty string clears one, and members left out keep their text — so
  * a single edited row can be sent on its own.
+ *
+ * `readOnly` patches the same way: only the supplied ids change, `false` clears
+ * one (the server never persists a `false`), and members left out keep their
+ * flag.
  */
-export function updateRepoGroup(groupId: string, updates: { name?: string; members?: string[]; descriptions?: Record<string, string> }, baseUrl?: string): Promise<RepoGroupDetails> {
+export function updateRepoGroup(groupId: string, updates: { name?: string; members?: string[]; descriptions?: Record<string, string>; readOnly?: Record<string, boolean> }, baseUrl?: string): Promise<RepoGroupDetails> {
     return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}`, { method: 'PATCH', body: updates });
 }
 

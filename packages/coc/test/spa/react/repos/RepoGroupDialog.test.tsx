@@ -92,7 +92,7 @@ describe('RepoGroupDialog create (repo-group AC-01)', () => {
         fireEvent.click(screen.getByTestId('repo-group-member-check-f'));
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
 
-        await waitFor(() => expect(mockCreateRepoGroup).toHaveBeenCalledWith({ name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: '' } }, undefined));
+        await waitFor(() => expect(mockCreateRepoGroup).toHaveBeenCalledWith({ name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: '' }, readOnly: { a: false, f: false } }, undefined));
         await waitFor(() => expect(onSaved).toHaveBeenCalled());
         expect(mockUpdateRepoGroup).not.toHaveBeenCalled();
     });
@@ -177,7 +177,7 @@ describe('RepoGroupDialog edit (repo-group AC-01/AC-03)', () => {
         fireEvent.click(screen.getByTestId('repo-group-member-check-gone'));
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
 
-        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith('group-platform', { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: '' } }, undefined));
+        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith('group-platform', { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: '' }, readOnly: { a: false, f: false } }, undefined));
         await waitFor(() => expect(onSaved).toHaveBeenCalled());
         expect(mockCreateRepoGroup).not.toHaveBeenCalled();
     });
@@ -227,7 +227,7 @@ describe('RepoGroupDialog server scope (remote-server repo groups AC-01/AC-04)',
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
 
         await waitFor(() => expect(mockCreateRepoGroup)
-            .toHaveBeenCalledWith({ name: 'Remote platform', members: ['r1'], descriptions: { r1: '' } }, REMOTE_URL));
+            .toHaveBeenCalledWith({ name: 'Remote platform', members: ['r1'], descriptions: { r1: '' }, readOnly: { r1: false } }, REMOTE_URL));
         await waitFor(() => expect(onSaved).toHaveBeenCalled());
     });
 
@@ -245,7 +245,7 @@ describe('RepoGroupDialog server scope (remote-server repo groups AC-01/AC-04)',
 
         // The local pick is gone — the group can only ever hold one server's ids.
         await waitFor(() => expect(mockCreateRepoGroup)
-            .toHaveBeenCalledWith({ name: 'Mixed', members: [], descriptions: {} }, REMOTE_URL));
+            .toHaveBeenCalledWith({ name: 'Mixed', members: [], descriptions: {}, readOnly: {} }, REMOTE_URL));
     });
 
     it('pins an existing remote group to its server and routes load + save there', async () => {
@@ -269,7 +269,7 @@ describe('RepoGroupDialog server scope (remote-server repo groups AC-01/AC-04)',
 
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
         await waitFor(() => expect(mockUpdateRepoGroup)
-            .toHaveBeenCalledWith('group-remote', { name: 'Remote platform', members: ['r1'], descriptions: { r1: '' } }, REMOTE_URL));
+            .toHaveBeenCalledWith('group-remote', { name: 'Remote platform', members: ['r1'], descriptions: { r1: '' }, readOnly: { r1: false } }, REMOTE_URL));
     });
 
     it('explains when the chosen server has no repo-group support (404)', async () => {
@@ -314,7 +314,7 @@ describe('RepoGroupDialog member descriptions (repo-group AC-03)', () => {
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
 
         await waitFor(() => expect(mockCreateRepoGroup)
-            .toHaveBeenCalledWith({ name: 'Platform', members: ['a'], descriptions: { a: 'the CLI' } }, undefined));
+            .toHaveBeenCalledWith({ name: 'Platform', members: ['a'], descriptions: { a: 'the CLI' }, readOnly: { a: false } }, undefined));
     });
 
     it('typing a description does not toggle the row checkbox', () => {
@@ -341,7 +341,7 @@ describe('RepoGroupDialog member descriptions (repo-group AC-03)', () => {
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
 
         await waitFor(() => expect(mockCreateRepoGroup)
-            .toHaveBeenCalledWith({ name: 'Platform', members: [], descriptions: {} }, undefined));
+            .toHaveBeenCalledWith({ name: 'Platform', members: [], descriptions: {}, readOnly: {} }, undefined));
     });
 
     it('prefills loaded descriptions and PATCHes the edited ones, clearing an emptied field', async () => {
@@ -367,7 +367,66 @@ describe('RepoGroupDialog member descriptions (repo-group AC-03)', () => {
         // An emptied field sends '' so the server clears that member's old text.
         await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith(
             'group-platform',
-            { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: 'the build tool' } },
+            { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: 'the build tool' }, readOnly: { a: false, f: false } },
+            undefined,
+        ));
+    });
+});
+
+describe('RepoGroupDialog member read-only flag (repo-group AC-03)', () => {
+    it('reveals the checkbox only for a checked member and submits the flag on create', async () => {
+        renderDialog();
+
+        expect(screen.queryByTestId('repo-group-member-read-only-a')).toBeNull();
+        fireEvent.click(screen.getByTestId('repo-group-member-check-a'));
+        fireEvent.click(screen.getByTestId('repo-group-member-check-f'));
+
+        const box = screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement;
+        expect(box.checked).toBe(false);
+        fireEvent.click(box);
+        expect((screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement).checked).toBe(true);
+
+        fireEvent.change(screen.getByTestId('repo-group-name-input'), { target: { value: 'Platform' } });
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+
+        await waitFor(() => expect(mockCreateRepoGroup).toHaveBeenCalledWith(
+            { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: '' }, readOnly: { a: true, f: false } },
+            undefined,
+        ));
+    });
+
+    it('ticking the box does not toggle the row membership checkbox', () => {
+        renderDialog();
+
+        fireEvent.click(screen.getByTestId('repo-group-member-check-a'));
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-a'));
+
+        expect((screen.getByTestId('repo-group-member-check-a') as HTMLInputElement).checked).toBe(true);
+        expect((screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement).checked).toBe(true);
+    });
+
+    it('prefills the loaded flag and sends an explicit false when it is unticked', async () => {
+        mockGetRepoGroup.mockResolvedValue({
+            id: 'group-platform',
+            name: 'Platform',
+            members: [
+                { workspaceId: 'a', stale: false, name: 'shortcuts', rootPath: '/r/a', readOnly: true },
+                { workspaceId: 'f', stale: false, name: 'forge', rootPath: '/r/f' },
+            ],
+        });
+        renderDialog({ groupId: 'group-platform' });
+
+        await waitFor(() => expect((screen.getByTestId('repo-group-member-read-only-a') as HTMLInputElement).checked)
+            .toBe(true));
+        expect((screen.getByTestId('repo-group-member-read-only-f') as HTMLInputElement).checked).toBe(false);
+
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-a'));
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-f'));
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+
+        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith(
+            'group-platform',
+            { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: '' }, readOnly: { a: false, f: true } },
             undefined,
         ));
     });
