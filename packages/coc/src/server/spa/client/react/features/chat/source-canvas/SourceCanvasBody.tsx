@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMarkdownPreview } from '../../../hooks/ui/useMarkdownPreview';
 import { MonacoFileEditor, getMonacoLanguage } from '../../repo-detail/explorer';
+import { toLines, resolveLineRange, type LineRange } from '../../../shared/file-viewer';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
 
@@ -29,39 +30,6 @@ function isMarkdownFile(fileName: string, language?: string): boolean {
     }
     const ext = fileName.split('.').pop()?.toLowerCase() || '';
     return MARKDOWN_EXTENSIONS.has(ext);
-}
-
-/** Split file text into display lines, dropping a single trailing newline. */
-function toLines(content: string): string[] {
-    const lines = content.replace(/\r\n/g, '\n').split('\n');
-    if (lines.length > 1 && lines[lines.length - 1] === '') {
-        lines.pop();
-    }
-    return lines;
-}
-
-interface LineRange {
-    /** 1-based inclusive start. */
-    start: number;
-    /** 1-based inclusive end (== start for a single line). */
-    end: number;
-}
-
-/**
- * Resolve a `:line` / `:start-end` reference into a clamped 1-based inclusive
- * range, or `null` when no line was referenced (open at top, no highlight).
- */
-function resolveLineRange(
-    line: number | undefined,
-    endLine: number | undefined,
-    total: number,
-): LineRange | null {
-    if (!line || line < 1 || total < 1) {
-        return null;
-    }
-    const start = Math.min(line, total);
-    const end = endLine && endLine >= start ? Math.min(endLine, total) : start;
-    return { start, end };
 }
 
 interface SourceCanvasCodeViewProps {
