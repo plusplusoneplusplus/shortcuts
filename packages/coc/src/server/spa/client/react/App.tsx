@@ -40,6 +40,7 @@ import {
 import { withRemoteWorkspaces } from './repos/workspacesWithRemote';
 import { buildNotificationEntry } from './utils/build-notification-entry';
 import { WelcomeTour } from './welcome/WelcomeTour';
+import { WhatsNewModal } from './whats-new/WhatsNewModal';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { resolveWorkItemOriginId } from './features/work-items/workItemOriginScope';
@@ -465,6 +466,7 @@ function AppInner() {
                 />
                 <MinimizedDialogsTray />
                 {SHOW_WELCOME_TUTORIAL && <WelcomeTour />}
+                <WhatsNewModal />
             </ReposProvider>
         </ToastProvider>
     );
