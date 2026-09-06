@@ -32,6 +32,7 @@ import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnab
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useUnifiedRightPanelEnabled } from '../hooks/feature-flags/useUnifiedRightPanelEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
+import { UnifiedPanelHostProvider } from '../features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
 import { useQueueOptional } from '../contexts/QueueContext';
@@ -168,8 +169,15 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // `useQueueOptional` because this read is cosmetic to the group view: with
     // no provider (a focused test host) the panel simply has no chat scope.
     const panelChatId = useQueueOptional()?.state.selectedTaskIdByRepo[workspaceId] ?? null;
+    // See RepoDetail: publishes the panel to chat entry points below, scoped to
+    // the group id (the panel's store key) and the chat it is showing.
+    const unifiedPanelHost = useMemo(
+        () => (dockAvailable && unifiedRightPanelEnabled ? { workspaceId, chatId: panelChatId } : null),
+        [dockAvailable, unifiedRightPanelEnabled, workspaceId, panelChatId],
+    );
 
     return (
+        <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
             {!headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
 
@@ -205,5 +213,6 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                     : <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={dockTargets} />)}
             </div>
         </div>
+        </UnifiedPanelHostProvider>
     );
 }

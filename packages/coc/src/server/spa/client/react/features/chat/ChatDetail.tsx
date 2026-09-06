@@ -48,6 +48,9 @@ import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
 import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
+import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
+import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { WhisperSkillDetailDialogProvider } from './conversation/tool-calls/WhisperSkillDetailDialog';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
@@ -556,9 +559,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         direction: 'right',
     });
 
+    // The unified right panel, when one is on screen for THIS chat (AC-04).
+    // Null with the flag off, outside a dock host (pop-outs, note/PR/work-item
+    // chat panels), or while the panel is showing another chat's tabs — in all
+    // of those the entry points below keep their existing sibling columns.
+    const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
+
     // A clicked changed-file row dispatches its diff context on `window` rather
     // than prop-drilling through the conversation tree (mirrors the
     // `coc-open-source-canvas` bridge); open the docked panel from it.
+    //
+    // With a unified panel hosting this chat, the same context becomes a `diff`
+    // tab instead: `whisperDiffTabInput` registers the group in the transient
+    // source registry and returns the descriptor, so the panel rebuilds exactly
+    // this diff. The chat's own `whisperDiff` state then never opens, which is
+    // what keeps `whisperDiffColumn` null — one right-side surface, not two.
     const openWhisperDiff = whisperDiff.open;
     useEffect(() => {
         const handler = (event: Event) => {
@@ -566,11 +581,27 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             // Every converged context carries the group's ordered `files[]`; reject
             // anything malformed. `focusPath` (a file-row entry) is optional.
             if (!detail || !Array.isArray(detail.files)) return;
+            if (unifiedPanelHost) {
+                openUnifiedPanelTab(
+                    unifiedPanelHost.workspaceId,
+                    whisperDiffTabInput({
+                        ctx: detail,
+                        // The clone the edited files belong to; the host's id is
+                        // only the panel's scope (a group id inside a repo group).
+                        ownerWorkspaceId: workspaceId ?? unifiedPanelHost.workspaceId,
+                        // The originating chat, never whichever chat is selected
+                        // by the time this lands.
+                        chatId: taskId,
+                        workspaceRootPath,
+                    }),
+                );
+                return;
+            }
             openWhisperDiff(detail);
         };
         window.addEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
         return () => window.removeEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
-    }, [openWhisperDiff]);
+    }, [openWhisperDiff, unifiedPanelHost, workspaceId, taskId, workspaceRootPath]);
 
     // Chat AI-response file-path links (feature flag default ON) dispatch
     // `coc-open-source-canvas` to open the docked source-file canvas. The bare
