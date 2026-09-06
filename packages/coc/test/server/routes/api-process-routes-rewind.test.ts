@@ -21,15 +21,24 @@ import type { MockProcessStore } from '../helpers/mock-process-store';
 
 const mockRewindSession = vi.fn();
 const mockEvictWarm = vi.fn();
+/** Providers the stub registry knows about; records which key the route asked for. */
+const registeredProviders = new Set(['copilot', 'claude', 'opencode', 'codex']);
+const requestedProviders: string[] = [];
 
-// Provide a stubbed sdkServiceRegistry while keeping the REAL SDK_PROVIDER_COPILOT
-// constant and isRewindUnsupportedError guard (the endpoint imports all three).
+// Provide a stubbed sdkServiceRegistry while keeping the REAL
+// isRewindUnsupportedError guard (the endpoint imports both). The registry is
+// provider-aware so the tests can assert the route resolves the service from
+// `metadata.provider` rather than a hardcoded copilot key.
 vi.mock('@plusplusoneplusplus/forge', async () => {
     const actual = await vi.importActual('@plusplusoneplusplus/forge');
     return {
         ...actual as object,
         sdkServiceRegistry: {
-            getOrThrow: () => ({ rewindSession: mockRewindSession, evictWarm: mockEvictWarm }),
+            get: (name: string) => {
+                requestedProviders.push(name);
+                if (!registeredProviders.has(name)) return undefined;
+                return { rewindSession: mockRewindSession, evictWarm: mockEvictWarm };
+            },
         },
     };
 });
@@ -160,6 +169,8 @@ describe('POST /api/processes/:id/turns/:turnIndex/rewind', () => {
         mockRewindSession.mockReset();
         mockEvictWarm.mockReset();
         broadcastSpy.mockClear();
+        requestedProviders.length = 0;
+        registeredProviders.add('codex');
         (store.truncateConversationTurns as ReturnType<typeof vi.fn>).mockClear();
     });
 
@@ -219,21 +230,83 @@ describe('POST /api/processes/:id/turns/:turnIndex/rewind', () => {
         expect(after?.conversationTurns).toEqual([]);
     });
 
-    it('rejects a non-copilot conversation with a typed REWIND_UNSUPPORTED error and does not touch either store', async () => {
-        await store.addProcess({
-            id: 'proc-claude',
-            type: 'chat',
-            status: 'completed',
-            startTime: new Date(),
-            promptPreview: 'hi',
-            sdkSessionId: 'sdk-c',
-            metadata: { type: 'chat', workspaceId: 'ws-test', provider: 'claude' },
-            conversationTurns: [
-                { role: 'user', content: 'q', timestamp: new Date(), turnIndex: 0, timeline: [], sdkEventId: 'evt-0' },
-            ],
-        } as any);
+    it('rewinds a claude conversation: swaps the forked session id in place and records rewindHistory', async () => {
+        await seedConversation(store, 'proc-claude');
+        store.processes.set('proc-claude', {
+            ...store.processes.get('proc-claude')!,
+            metadata: { type: 'chat', workspaceId: 'ws-test', provider: 'claude' } as any,
+        });
+        mockRewindSession.mockResolvedValue({ eventsRemoved: 2, upToEventId: 'evt-2', newSessionId: 'sdk-forked' });
 
-        const res = await request(baseUrl, '/api/processes/proc-claude/turns/0/rewind', { method: 'POST', body: '{}' });
+        const res = await request(baseUrl, '/api/processes/proc-claude/turns/2/rewind', { method: 'POST', body: '{}' });
+
+        expect(res.status).toBe(200);
+        // Service resolved from metadata.provider, not a hardcoded copilot key.
+        expect(requestedProviders).toContain('claude');
+        expect(requestedProviders).not.toContain('copilot');
+
+        const after = await store.getProcess('proc-claude');
+        // Same process, forked session id swapped in place — no new CoC chat.
+        expect(after?.sdkSessionId).toBe('sdk-forked');
+        expect(after?.conversationTurns?.map(t => t.turnIndex)).toEqual([0, 1]);
+        // Pre-rewind session id kept for recovery/debugging.
+        expect((after?.metadata as any).rewindHistory).toEqual([
+            expect.objectContaining({ previousSessionId: 'sdk-session-1', newSessionId: 'sdk-forked', turnIndex: 2 }),
+        ]);
+        expect(mockEvictWarm).toHaveBeenCalledWith({ warmKey: 'proc-claude' });
+    });
+
+    it('rewinds an opencode conversation in place and leaves sdkSessionId unchanged', async () => {
+        await seedConversation(store, 'proc-oc');
+        store.processes.set('proc-oc', {
+            ...store.processes.get('proc-oc')!,
+            metadata: { type: 'chat', workspaceId: 'ws-test', provider: 'opencode' } as any,
+        });
+        mockRewindSession.mockResolvedValue({ eventsRemoved: 0, upToEventId: 'evt-2' });
+
+        const res = await request(baseUrl, '/api/processes/proc-oc/turns/2/rewind', { method: 'POST', body: '{}' });
+
+        expect(res.status).toBe(200);
+        expect(requestedProviders).toContain('opencode');
+        expect(mockRewindSession).toHaveBeenCalledWith('sdk-session-1', 'evt-2');
+
+        const after = await store.getProcess('proc-oc');
+        expect(after?.sdkSessionId).toBe('sdk-session-1');
+        expect((after?.metadata as any).rewindHistory).toBeUndefined();
+        expect(after?.conversationTurns?.map(t => t.turnIndex)).toEqual([0, 1]);
+    });
+
+    it('returns 409 REWIND_UNSUPPORTED for codex, sourced from the thrown error, and touches neither store', async () => {
+        await seedConversation(store, 'proc-codex');
+        store.processes.set('proc-codex', {
+            ...store.processes.get('proc-codex')!,
+            metadata: { type: 'chat', workspaceId: 'ws-test', provider: 'codex' } as any,
+        });
+        const err: any = new Error("Rewind is not supported for provider 'codex'.");
+        err.code = 'REWIND_UNSUPPORTED';
+        mockRewindSession.mockRejectedValue(err);
+
+        const res = await request(baseUrl, '/api/processes/proc-codex/turns/2/rewind', { method: 'POST', body: '{}' });
+
+        expect(res.status).toBe(409);
+        expect(res.json().code).toBe('REWIND_UNSUPPORTED');
+        // The route asked the codex service (no hardcoded provider allow-list)...
+        expect(requestedProviders).toContain('codex');
+        // ...and the thrown error stopped everything before any CoC deletion.
+        expect(store.truncateConversationTurns).not.toHaveBeenCalled();
+        const after = await store.getProcess('proc-codex');
+        expect(after?.conversationTurns?.length).toBe(4);
+    });
+
+    it('returns 409 REWIND_UNSUPPORTED when no SDK service is registered for the provider', async () => {
+        await seedConversation(store, 'proc-unreg');
+        store.processes.set('proc-unreg', {
+            ...store.processes.get('proc-unreg')!,
+            metadata: { type: 'chat', workspaceId: 'ws-test', provider: 'codex' } as any,
+        });
+        registeredProviders.delete('codex');
+
+        const res = await request(baseUrl, '/api/processes/proc-unreg/turns/2/rewind', { method: 'POST', body: '{}' });
 
         expect(res.status).toBe(409);
         expect(res.json().code).toBe('REWIND_UNSUPPORTED');
