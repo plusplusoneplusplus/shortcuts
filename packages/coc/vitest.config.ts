@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import { resolveMaxWorkers } from './vitest.workers';
 
 const resolveAlias = {
     // Redirect open-color to its CJS .js file to avoid the Node ≥ 24
@@ -31,10 +32,11 @@ const commonTestOptions = {
     // Use child_process forks instead of worker_threads so native-addon
     // teardown happens on process exit instead of shared worker teardown.
     pool: 'forks' as const,
-    // Limit concurrent workers to 2 to avoid OOM on macOS runners
-    // (excalidraw + jsdom forks accumulate ~14 GB peak usage at 3 concurrent).
+    // The worker ceiling is a memory limit, not a CPU one: see
+    // resolveMaxWorkers() in ./vitest.workers.ts for the per-OS numbers and
+    // why macOS is the only platform that has to stay at 2.
     minWorkers: 1,
-    maxWorkers: 2,
+    maxWorkers: resolveMaxWorkers(),
 };
 
 export default defineConfig({

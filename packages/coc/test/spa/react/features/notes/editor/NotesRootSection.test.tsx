@@ -56,9 +56,11 @@ describe('NotesRootSection — bare mode (single root, AC-07)', () => {
         expect(screen.queryByText('Alpha')).toBeNull();
     });
 
-    it('shows the error state instead of the tree', () => {
-        renderSection({ error: 'boom', tree: TREE });
-        expect(screen.getByTestId('notes-error')).toHaveTextContent('boom');
+    it('shows the blocking error state when there is no tree to fall back to', () => {
+        renderSection({ error: 'boom', tree: null });
+        const err = screen.getByTestId('notes-error');
+        expect(err).toHaveTextContent('boom');
+        expect(err).toHaveAttribute('data-variant', 'blocking');
         expect(screen.queryByText('Alpha')).toBeNull();
     });
 
@@ -152,5 +154,55 @@ describe('NotesRootSection — headed mode (stacked sections, AC-01/AC-02)', () 
         fireEvent.click(screen.getByTestId('notes-section-header-menu-btn'));
         fireEvent.click(screen.getByTestId('notes-section-header-action-remove-root'));
         expect(onSelect).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('NotesRootSection — a refresh never blanks the tree', () => {
+    it('keeps the tree mounted while a refresh is in flight (no spinner swap)', () => {
+        renderSection({ loading: true, tree: TREE });
+        expect(screen.getByText('Alpha')).toBeInTheDocument();
+        expect(screen.queryByTestId('notes-loading')).toBeNull();
+        expect(screen.getByTestId('notes-tree')).toBeInTheDocument();
+    });
+
+    it('marks the tree container as refreshing only while loading', () => {
+        const { rerender, props } = renderSection({ loading: true, tree: TREE });
+        expect(screen.getByTestId('notes-refreshing')).toBeInTheDocument();
+
+        rerender(<NotesRootSection {...props} loading={false} />);
+        expect(screen.queryByTestId('notes-refreshing')).toBeNull();
+        expect(screen.getByText('Alpha')).toBeInTheDocument();
+    });
+
+    it('surfaces a failed refresh as a banner above the still-rendered tree', () => {
+        renderSection({ error: 'boom', tree: TREE });
+        const err = screen.getByTestId('notes-error');
+        expect(err).toHaveTextContent('boom');
+        expect(err).toHaveAttribute('data-variant', 'banner');
+        expect(screen.getByText('Alpha')).toBeInTheDocument();
+    });
+
+    it('shows the empty state through a refresh rather than a spinner', () => {
+        renderSection({ loading: true, tree: [] });
+        expect(screen.getByTestId('notes-empty')).toBeInTheDocument();
+        expect(screen.queryByTestId('notes-loading')).toBeNull();
+    });
+
+    it('still shows the first-load spinner when there is no tree yet', () => {
+        renderSection({ loading: true, tree: null });
+        expect(screen.getByTestId('notes-loading')).toBeInTheDocument();
+        expect(screen.queryByTestId('notes-refreshing')).toBeNull();
+    });
+
+    it('shows a busy affordance in the section header while refreshing', () => {
+        renderSection({
+            loading: true,
+            tree: TREE,
+            testIdSuffix: 'root-b',
+            header: { label: 'Design Docs', expanded: true, onToggle: vi.fn() },
+        });
+        expect(screen.getByTestId('notes-section-header-root-b-busy')).toBeInTheDocument();
+        expect(screen.getByTestId('notes-refreshing-root-b')).toBeInTheDocument();
+        expect(screen.queryByTestId('notes-loading-root-b')).toBeNull();
     });
 });
