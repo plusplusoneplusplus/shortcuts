@@ -920,7 +920,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         arxivPaperIngest: false,
         remoteShell: true,
         scopeSwitcher: true,
-        pinnedScopes: false,
+        pinnedScopes: true,
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
         chatFolders: false,
