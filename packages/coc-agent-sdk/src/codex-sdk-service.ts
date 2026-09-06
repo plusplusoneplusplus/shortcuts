@@ -359,6 +359,8 @@ class CodexFileChangeDiffTracker {
         // `--porcelain` without `-z` renders a non-ASCII path as its quoted
         // C-string (`"caf\303\251.txt"`), which no longer names a file on
         // disk, so those paths would silently lose their dirty-start baseline.
+        // Measured and rejected as a migration target for that reason — the
+        // capability would have to grow `-z` before this call site can take it.
         const stdout = await git.execGit(['status', '--porcelain=v1', '-z', '--untracked-files=all'], this.root, {
             timeout: CODEX_DIFF_TIMEOUT_MS,
         });

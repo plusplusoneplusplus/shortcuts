@@ -1,5 +1,5 @@
 import { loadNativeGit, type NativeGitAddon } from '@plusplusoneplusplus/coc-native';
-import { getDefaultWslDistro } from '../utils/workspace-execution';
+import { getDefaultWslDistroAsync } from '../utils/workspace-execution';
 import { isLinuxAbsolutePath, parseWslUncPath, toForwardSlashes, trimTrailingPathSeparators } from '../utils/path-utils';
 
 /** The multi-valued global key Git for Windows checks before opening a repo. */
@@ -21,7 +21,7 @@ function buildGitSafeDirectory(host: string, distro: string, linuxPath: string):
  * Convert a Windows-hosted WSL repository path into the safe.directory entry
  * Git for Windows expects when the repo is accessed via the UNC WSL share.
  */
-export function resolveGitSafeDirectory(repoRoot: string): string | undefined {
+export async function resolveGitSafeDirectory(repoRoot: string): Promise<string | undefined> {
     if (process.platform !== 'win32') {
         return undefined;
     }
@@ -35,7 +35,7 @@ export function resolveGitSafeDirectory(repoRoot: string): string | undefined {
     }
 
     if (isLinuxAbsolutePath(repoRoot)) {
-        const distro = getDefaultWslDistro();
+        const distro = await getDefaultWslDistroAsync();
         if (!distro) {
             return undefined;
         }
@@ -74,7 +74,7 @@ export function clearGitSafeDirectoryCache(): void {
 }
 
 export async function ensureGitSafeDirectoryAsync(repoRoot: string): Promise<void> {
-    const safeDirectory = resolveGitSafeDirectory(repoRoot);
+    const safeDirectory = await resolveGitSafeDirectory(repoRoot);
     if (!safeDirectory || ensuredSafeDirectories.has(safeDirectory)) {
         return;
     }

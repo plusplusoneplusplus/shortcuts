@@ -29,10 +29,26 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     return { ...actual, execGitAsync: vi.fn(), getRemoteUrl: vi.fn() };
 });
 
+// The fetch guard asks the addon whether the clone is a repository at all,
+// rather than spawning `rev-parse --git-dir`, so it needs its own stub — and
+// its load failure has to keep reaching `rethrowIfAddonUnavailable`.
+const mockGitResolvedGitDir = vi.fn();
+vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-native')>();
+    return {
+        ...actual,
+        loadNativeGit: () => ({ gitResolvedGitDir: (...args: unknown[]) => mockGitResolvedGitDir(...args) }),
+    };
+});
+
 import { execGitAsync, getRemoteUrl } from '@plusplusoneplusplus/forge';
 import { readGitOriginRemote } from '../../src/server/work-items/work-item-sync-github-repo';
 import { cloneRepository } from '../../src/server/routes/api-git-clone-routes';
 import { getFullContextFileDiff } from '../../src/server/repos/pr-routes';
+import { hostRepoPath } from '../helpers/host-repo-path';
+
+// A host checkout: on win32 a POSIX absolute path would take the WSL branch.
+const REPO = hostRepoPath('repo');
 
 const REBUILD = 'npm run build:native -w packages/coc-native';
 const mockExecGitAsync = execGitAsync as unknown as ReturnType<typeof vi.fn>;
@@ -52,20 +68,30 @@ describe('route-level git callers without a usable addon', () => {
         mockGetRemoteUrl.mockReset();
         mockExecGitAsync.mockRejectedValue(loadError());
         mockGetRemoteUrl.mockRejectedValue(loadError());
+        mockGitResolvedGitDir.mockReset();
+        mockGitResolvedGitDir.mockRejectedValue(loadError());
     });
 
     it('readGitOriginRemote rejects rather than reporting no origin', async () => {
-        await expect(readGitOriginRemote('/repo')).rejects.toThrow(REBUILD);
+        await expect(readGitOriginRemote(REPO)).rejects.toThrow(REBUILD);
     });
 
     it('getFullContextFileDiff rejects rather than blaming the diff', async () => {
         // Without the guard this is `{ diff: null, unavailableReason: 'git-diff-failed' }`
         // — a reason code the UI renders as "full context unavailable", which
         // says nothing about a binary that needs rebuilding.
-        await expect(getFullContextFileDiff('/repo', 'origin', '42', PR_DATA, 'a.ts'))
+        await expect(getFullContextFileDiff(REPO, 'origin', '42', PR_DATA, 'a.ts'))
             .rejects.toThrow(REBUILD);
         // It stops at the first crossing instead of walking the fetch candidates.
         expect(mockExecGitAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it('the fetch guard rejects rather than reading a broken addon as "not a repository"', async () => {
+        mockExecGitAsync.mockRejectedValue(
+            new Error('git diff failed: fatal: bad object aaaa1111'),
+        );
+        await expect(getFullContextFileDiff(REPO, 'origin', '42', PR_DATA, 'a.ts'))
+            .rejects.toThrow(REBUILD);
     });
 
     it('cloneRepository carries the words to the caller, which shows them at 500', async () => {
@@ -82,24 +108,26 @@ describe('route-level git callers against a directory git cannot read', () => {
             new Error('git diff -U99999 aaaa1111 bbbb2222 -- a.ts failed: fatal: not a git repository'),
         );
         mockGetRemoteUrl.mockResolvedValue(null);
+        mockGitResolvedGitDir.mockReset();
+        mockGitResolvedGitDir.mockResolvedValue(null);
     });
 
     it('readGitOriginRemote answers undefined', async () => {
-        await expect(readGitOriginRemote('/repo')).resolves.toBeUndefined();
+        await expect(readGitOriginRemote(REPO)).resolves.toBeUndefined();
     });
 
     it('readGitOriginRemote answers undefined for a remote configured as blank', async () => {
         mockGetRemoteUrl.mockResolvedValue('   ');
-        await expect(readGitOriginRemote('/repo')).resolves.toBeUndefined();
+        await expect(readGitOriginRemote(REPO)).resolves.toBeUndefined();
     });
 
     it('readGitOriginRemote trims the configured URL', async () => {
         mockGetRemoteUrl.mockResolvedValue('https://github.com/octo-org/octo-repo.git\n');
-        await expect(readGitOriginRemote('/repo')).resolves.toBe('https://github.com/octo-org/octo-repo.git');
+        await expect(readGitOriginRemote(REPO)).resolves.toBe('https://github.com/octo-org/octo-repo.git');
     });
 
     it('getFullContextFileDiff reports the diff unavailable', async () => {
-        await expect(getFullContextFileDiff('/repo', 'origin', '42', PR_DATA, 'a.ts'))
+        await expect(getFullContextFileDiff(REPO, 'origin', '42', PR_DATA, 'a.ts'))
             .resolves.toEqual({ diff: null, unavailableReason: 'git-diff-failed' });
     });
 
@@ -110,15 +138,17 @@ describe('route-level git callers against a directory git cannot read', () => {
         mockExecGitAsync.mockRejectedValue(
             new Error('git diff -U99999 aaaa1111 bbbb2222 -- a.ts failed: fatal: bad object aaaa1111'),
         );
-        await expect(getFullContextFileDiff('/repo', 'origin', '42', PR_DATA, 'a.ts'))
+        await expect(getFullContextFileDiff(REPO, 'origin', '42', PR_DATA, 'a.ts'))
             .resolves.toEqual({ diff: null, unavailableReason: 'git-fetch-failed' });
-        // diff, then the two `cat-file -e` probes, then the `rev-parse --git-dir`
-        // guard that stops a network fetch against a non-repository.
-        expect(mockExecGitAsync).toHaveBeenCalledTimes(4);
+        // diff, then the two `cat-file -e` probes. The guard that stops a
+        // network fetch against a non-repository is the fourth crossing and no
+        // longer a git command: it reads the git directory off the addon.
+        expect(mockExecGitAsync).toHaveBeenCalledTimes(3);
+        expect(mockGitResolvedGitDir).toHaveBeenCalledWith(REPO);
     });
 
     it('getFullContextFileDiff needs both SHAs before it runs git at all', async () => {
-        await expect(getFullContextFileDiff('/repo', 'origin', '42', { headSha: 'b' } as any, 'a.ts'))
+        await expect(getFullContextFileDiff(REPO, 'origin', '42', { headSha: 'b' } as any, 'a.ts'))
             .resolves.toEqual({ diff: null, unavailableReason: 'missing-pr-shas' });
         expect(mockExecGitAsync).not.toHaveBeenCalled();
     });

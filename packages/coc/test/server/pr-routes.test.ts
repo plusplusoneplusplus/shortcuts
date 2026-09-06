@@ -1765,6 +1765,39 @@ describe('dedupePrFetch', () => {
         await expect(pa).resolves.toBe(true);
         await expect(pb).resolves.toBe(false);
     });
+
+    it('lets a failing run reject the caller and still frees the key', async () => {
+        let calls = 0;
+        const boom = () => { calls++; return Promise.reject(new Error('fetch failed')); };
+
+        await expect(dedupePrFetch('/tmp/local:bad', boom)).rejects.toThrow('fetch failed');
+        // Cleanup runs on the failure path too, so the next caller is not stuck
+        // sharing a promise that already settled.
+        await expect(dedupePrFetch('/tmp/local:bad', boom)).rejects.toThrow('fetch failed');
+        expect(calls).toBe(2);
+    });
+
+    // The cleanup used to be a bare `promise.finally(...)`, whose return value
+    // -- a *new* promise settling the same way -- nobody held. A rejecting fetch
+    // therefore surfaced as an unhandled rejection even though the caller
+    // handled the promise it got back, and vitest failed the whole shard with
+    // "Unhandled Rejection" while every test in the file passed.
+    it('does not leak an unhandled rejection when the run fails', async () => {
+        const seen: unknown[] = [];
+        const onUnhandled = (reason: unknown) => seen.push(reason);
+        process.on('unhandledRejection', onUnhandled);
+        try {
+            await expect(
+                dedupePrFetch('/tmp/local:unhandled', () => Promise.reject(new Error('fetch failed'))),
+            ).rejects.toThrow('fetch failed');
+            // Node reports an unhandled rejection after the microtask queue
+            // drains, so give it a macrotask turn to arrive.
+            await new Promise(resolve => setTimeout(resolve, 0));
+        } finally {
+            process.off('unhandledRejection', onUnhandled);
+        }
+        expect(seen).toEqual([]);
+    });
 });
 
 // ── View-open warm-up of PR commits ──────────────────────────────────────────

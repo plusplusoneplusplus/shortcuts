@@ -53,8 +53,8 @@ import { sortPullRequestsByCreatedDesc } from '../spa/client/react/features/pull
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
-import { computeSummary, execGitAsync, parseFullDiff } from '@plusplusoneplusplus/forge';
-import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { computeSummary, execGitAsync, parseFullDiff, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
 import {
@@ -1022,10 +1022,24 @@ async function hasGitCommit(localPath: string, sha: string): Promise<boolean> {
     }
 }
 
+/**
+ * Whether `localPath` sits inside a repository.
+ *
+ * `gitResolvedGitDir` is the exact twin of the `rev-parse --git-dir` this
+ * asked before, down to answering for a bare repository, where
+ * `--show-toplevel` would not. It resolves with `null` rather than exiting
+ * non-zero for a path that is not a repository or does not exist.
+ *
+ * A clone inside a WSL distro keeps the command, because every other git call
+ * on this path goes through {@link runGit} and reaches git through `wsl.exe`.
+ */
 async function isGitRepo(localPath: string): Promise<boolean> {
     try {
-        await runGit(localPath, ['rev-parse', '--git-dir']);
-        return true;
+        if (resolveWorkspaceExecutionContext(localPath).kind === 'wsl') {
+            await runGit(localPath, ['rev-parse', '--git-dir']);
+            return true;
+        }
+        return (await loadNativeGit().gitResolvedGitDir(localPath)) !== null;
     } catch (err) {
         rethrowIfAddonUnavailable(err);
         return false;
@@ -1073,11 +1087,17 @@ export function dedupePrFetch(key: string, run: () => Promise<boolean>): Promise
     if (existing) return existing;
     const promise = run();
     inFlightPrFetches.set(key, promise);
-    promise.finally(() => {
-        if (inFlightPrFetches.get(key) === promise) {
-            inFlightPrFetches.delete(key);
-        }
-    });
+    // `.finally()` returns a *new* promise that settles the same way, and
+    // nothing awaits this one -- so a rejecting fetch lands as an unhandled
+    // rejection even though every caller handles the promise this returns.
+    // The rejection belongs to them; the cleanup branch only needs the tick.
+    void promise
+        .finally(() => {
+            if (inFlightPrFetches.get(key) === promise) {
+                inFlightPrFetches.delete(key);
+            }
+        })
+        .catch(() => {});
     return promise;
 }
 

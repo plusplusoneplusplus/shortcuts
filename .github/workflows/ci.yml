@@ -252,9 +252,99 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # The build prelude every coc-test shard used to repeat, run once.
+  #
+  # The payload is plain `tsc` output plus esbuild bundles: no absolute paths,
+  # no sourcemap roots that escape the tree, no platform-conditional emit in
+  # packages/coc/scripts/build-client.mjs, and LF endings throughout. So one
+  # ubuntu build serves the macOS and Windows shards too, and this is one job
+  # rather than three.
+  #
+  # Tarred before upload because upload-artifact is dominated by per-file
+  # overhead and the SPA bundle pulls in monaco, excalidraw, pdf.js and mermaid
+  # — ~1600 files, 43MB raw, 11MB as a single .tar.gz.
+  #
+  # Deliberately NOT gated on coc-native. The addon's `.node` binary is a
+  # separate artifact that coc-test downloads on its own; the coc-native *package*
+  # this job builds is plain tsc over src/ against the committed bindings, so no
+  # Rust toolchain is involved. Running beside coc-native rather than behind it
+  # keeps coc-test's start time unchanged.
+  build-shared:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v5
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+
+      # One step, five dist/ directories: npm runs forge's `prebuild` first, and
+      # packages/forge/scripts/prebuild.mjs builds coc-native, coc-agent-sdk,
+      # coc-workflow and coc-memory in dependency order before tsc runs over
+      # forge itself. The four explicit steps this replaces rebuilt exactly what
+      # the forge step rebuilt a moment later.
+      - name: Build forge and its workspace dependencies
+        run: npm run build
+        working-directory: packages/forge
+
+      # The SPA bundle imports @plusplusoneplusplus/coc-client, and esbuild
+      # resolves that through the package's `main` -- dist/index.js. Nothing
+      # *reads* this dist at test time (vitest aliases the specifier to src/),
+      # but the bundle cannot be built without it.
+      - name: Build coc-client package
+        run: npm run build
+        working-directory: packages/coc-client
+
+      - name: Build coc SPA client bundle
+        run: npm run build:client
+        working-directory: packages/coc
+
+      # coc-client and coc-connector are absent from the tarball on purpose:
+      # packages/coc's vitest.config.ts aliases both (and coc-connector/teams)
+      # straight to their src/, and nothing in the coc suite reaches their
+      # dist/. coc-client is built above only so the SPA bundle can compile.
+      # coc-workflow, by contrast, is imported for real (the Ralph prompt
+      # builders) and aliased nowhere, so it has to ride along. See
+      # scripts/shared-build-workflow.test.mjs, which derives this list from
+      # vitest.config.ts rather than trusting it.
+      - name: Pack the shared build output
+        run: |
+          tar -czf shared-build.tar.gz \
+            packages/coc-native/dist \
+            packages/coc-agent-sdk/dist \
+            packages/coc-workflow/dist \
+            packages/coc-memory/dist \
+            packages/forge/dist \
+            packages/coc/src/server/spa/client/dist
+
+      - name: Upload the shared build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-build
+          path: shared-build.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   coc-test:
     runs-on: ${{ matrix.os }}
-    needs: [coc-native]
+    needs: [coc-native, build-shared]
 
     strategy:
       fail-fast: false
@@ -288,33 +378,20 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Build coc-native package
-        run: npm run build
-        working-directory: packages/coc-native
+      # Fifteen shards used to run the same seven build steps. They now come
+      # from build-shared as one tarball -- see that job for why one ubuntu
+      # build is safe to unpack on macOS and Windows.
+      - name: Download the shared build output
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-build
 
-      - name: Build coc-agent-sdk package
-        run: npm run build
-        working-directory: packages/coc-agent-sdk
-
-      - name: Build forge package
-        run: npm run build
-        working-directory: packages/forge
-
-      - name: Build coc-client package
-        run: npm run build
-        working-directory: packages/coc-client
-
-      - name: Build coc-memory package
-        run: npm run build
-        working-directory: packages/coc-memory
-
-      - name: Build coc-connector package
-        run: npm run build
-        working-directory: packages/coc-connector
-
-      - name: Build coc SPA client bundle
-        run: npm run build:client
-        working-directory: packages/coc
+      # Unpacked with bash on every OS: the tar on windows-latest is bsdtar,
+      # which reads gzip, but only the bash shell resolves the relative path the
+      # same way the linux and macOS runners do.
+      - name: Unpack the shared build output
+        shell: bash
+        run: tar -xzf shared-build.tar.gz && rm shared-build.tar.gz
 
       # The addon is mandatory: the server refuses to compose without the Notes
       # capability, and RepoTreeService has no JavaScript lane to fall back to.
@@ -531,34 +608,12 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Build coc-native package
-        run: npm run build
-        working-directory: packages/coc-native
-
-      - name: Build coc-agent-sdk package
-        run: npm run build
-        working-directory: packages/coc-agent-sdk
-
-      - name: Build forge package
-        run: npm run build
-        working-directory: packages/forge
-
-      - name: Build coc-client package
-        run: npm run build
-        working-directory: packages/coc-client
-
-      - name: Build coc-memory package
-        run: npm run build
-        working-directory: packages/coc-memory
-
-      - name: Build coc-connector package
-        run: npm run build
-        working-directory: packages/coc-connector
-
-      - name: Build coc SPA client bundle
-        run: npm run build:client
-        working-directory: packages/coc
-
+      # e2e boots the real server, so unlike coc-test it needs every workspace
+      # dist/ and packages/coc's own. It gets them from this one step: npm runs
+      # `prebuild` first, and scripts/prebuild.mjs builds the whole
+      # REQUIRED_BUILD_WORKSPACES list, then `build` itself runs build:client.
+      # The seven steps that used to precede this one all rebuilt something this
+      # step rebuilds a moment later, and nothing read the first copy.
       - name: Build coc package
         run: npm run build
         working-directory: packages/coc
@@ -753,7 +808,7 @@ jobs:
           node-version: 24.x
 
       - name: Run workflow policy tests
-        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs scripts/workflow-actions.test.mjs scripts/docker-workflow.test.mjs scripts/native-addon-workflow.test.mjs scripts/e2e-cache-workflow.test.mjs
+        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs scripts/workflow-actions.test.mjs scripts/docker-workflow.test.mjs scripts/native-addon-workflow.test.mjs scripts/e2e-cache-workflow.test.mjs scripts/shared-build-workflow.test.mjs
 
   # Guards the server image (Dockerfile + docker/entrypoint.sh) against rotting
   # between releases: real linux/amd64 build (no push), then health, the
@@ -863,7 +918,7 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
-    needs: [dependency-security, lint, forge-test, coc-native, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test, workflow-policy-test, docker-build-smoke]
+    needs: [dependency-security, lint, forge-test, coc-native, build-shared, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test, workflow-policy-test, docker-build-smoke]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
@@ -873,6 +928,7 @@ jobs:
             [lint]="${{ needs.lint.result }}"
             [forge-test]="${{ needs.forge-test.result }}"
             [coc-native]="${{ needs.coc-native.result }}"
+            [build-shared]="${{ needs.build-shared.result }}"
             [coc-test]="${{ needs.coc-test.result }}"
             [coc-coverage]="${{ needs.coc-coverage.result }}"
             [deep-wiki-test]="${{ needs.deep-wiki-test.result }}"

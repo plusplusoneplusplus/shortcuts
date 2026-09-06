@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import * as path from 'path';
 import { isWithinDirectory } from '../../src/utils/path-security';
+import { clearWorkspaceExecutionCaches } from '../../src/utils/workspace-execution';
 
 describe('isWithinDirectory', () => {
     it('returns true for a direct child path', () => {
@@ -63,5 +64,41 @@ describe('isWithinDirectory', () => {
         const base = String.raw`\\wsl$\Ubuntu\home\user\repo`;
         const other = String.raw`\\wsl$\Debian\home\user\repo\src\index.ts`;
         expect(isWithinDirectory(other, base)).toBe(false);
+    });
+
+    // The distro lookup is asynchronous, so this synchronous predicate can be
+    // asked about a bare Linux path before the cache is warm. It has to keep
+    // denying then: an unresolved distro must never read as "same distro" as a
+    // named one.
+    describe('with an unresolved default distro on win32', () => {
+        const originalPlatform = process.platform;
+
+        afterEach(() => {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+            clearWorkspaceExecutionCaches();
+        });
+
+        function forceWin32ColdCache(): void {
+            Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+            clearWorkspaceExecutionCaches();
+        }
+
+        it('denies a bare Linux path against a named-distro UNC base', () => {
+            forceWin32ColdCache();
+            const base = String.raw`\\wsl$\Ubuntu\home\user\repo`;
+            expect(isWithinDirectory('/home/user/repo/src/index.ts', base)).toBe(false);
+        });
+
+        it('denies a named-distro UNC path against a bare Linux base', () => {
+            forceWin32ColdCache();
+            const target = String.raw`\\wsl$\Ubuntu\home\user\repo\src\index.ts`;
+            expect(isWithinDirectory(target, '/home/user/repo')).toBe(false);
+        });
+
+        it('still allows containment when both sides are bare Linux paths', () => {
+            forceWin32ColdCache();
+            expect(isWithinDirectory('/home/user/repo/src/index.ts', '/home/user/repo')).toBe(true);
+            expect(isWithinDirectory('/home/user/repo-evil', '/home/user/repo')).toBe(false);
+        });
     });
 });

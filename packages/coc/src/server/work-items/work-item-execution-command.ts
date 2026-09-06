@@ -8,7 +8,7 @@
  * command only takes a typed input. Failures throw {@link APIError}.
  */
 
-import { execGitAsync } from '@plusplusoneplusplus/forge';
+import { gitHeadSha as readHeadSha } from '../ralph/capture-baseline-sha';
 import { badRequest } from '../errors';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import { GitWorktreeService } from '../worktree/worktree-service';
@@ -61,7 +61,12 @@ export async function executeWorkItemCommand(
         const workspace = workspaces.find(w => w.id === input.commandRepoId);
         if (workspace?.rootPath) {
             sourceRepoRoot = workspace.rootPath;
-            headBefore = await execGitAsync(['rev-parse', 'HEAD'], workspace.rootPath);
+            // Resolved out of the object database rather than spawned;
+            // `undefined` for an unborn repository, which is what the
+            // non-zero exit from `rev-parse HEAD` already meant here. A
+            // checkout inside a WSL distro keeps the command — the addon runs
+            // git on the host and cannot open the UNC spelling.
+            headBefore = await readHeadSha(workspace.rootPath);
         }
     } catch { /* non-fatal — commit tracking will be skipped */ }
 

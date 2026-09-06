@@ -19,10 +19,10 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
     return {
         ...actual,
-        resolveWorkspaceExecutionContext: vi.fn((cwd?: string) => cwd && (cwd.startsWith('/home/') || cwd.startsWith(String.raw`\\wsl$`))
+        resolveWorkspaceExecutionContextAsync: vi.fn(async (cwd?: string) => cwd && (cwd.startsWith('/home/') || cwd.startsWith(String.raw`\\wsl$`))
             ? { kind: 'wsl', distro: 'Ubuntu', linuxWorkingDirectory: '/home/tester/repo', originalWorkingDirectory: cwd }
             : actual.resolveWorkspaceExecutionContext(cwd)),
-        translatePathForHostFilesystem: vi.fn((targetPath: string) => {
+        translatePathForHostFilesystemAsync: vi.fn(async (targetPath: string) => {
             if (targetPath === '/home/tester/repo') {
                 return String.raw`\\wsl$\Ubuntu\home\tester\repo`;
             }

@@ -7,7 +7,7 @@ import * as url from 'url';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import { getDefaultWslDistro, getWslExecutablePath, isWithinDirectory, execFileAsync } from '@plusplusoneplusplus/forge';
+import { getDefaultWslDistroAsync, getWslExecutablePath, isWithinDirectory, execFileAsync } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound } from '../errors';
@@ -54,7 +54,7 @@ async function getDefaultWslRoots(): Promise<BrowseRoot[]> {
         return [];
     }
 
-    const distro = getDefaultWslDistro();
+    const distro = await getDefaultWslDistroAsync();
     if (!distro) {
         return [];
     }

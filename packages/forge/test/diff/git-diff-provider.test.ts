@@ -19,12 +19,24 @@ vi.mock('../../src/git/exec', () => ({
     execGitAsync: vi.fn(),
 }));
 
+// The commit provider resolves `<hash>^` through the addon rather than
+// spawning `rev-parse --verify`, so the parent seam is the capability.
+const mockGitValidateRef = vi.fn();
+vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        loadNativeGit: () => ({ gitValidateRef: (...args: unknown[]) => mockGitValidateRef(...args) }),
+    };
+});
+
 import { execGitAsync } from '../../src/git/exec';
+import { hostRepoPath } from '../helpers/host-repo-path';
 const mockExecGit = vi.mocked(execGitAsync);
 
 // ── Test data ────────────────────────────────────────────────
 
-const REPO = '/test/repo';
+const REPO = hostRepoPath('test', 'repo');
 const COMMIT_HASH = 'abc1234567890';
 const PARENT_HASH = 'def0987654321';
 
@@ -69,13 +81,10 @@ const FULL_DIFF = `${FILE_DIFF_FOO}\n${FILE_DIFF_BAR}`;
 // ── Helper to set up mock responses ──────────────────────────
 
 function setupCommitMocks(): void {
+    mockGitValidateRef.mockImplementation(async (_repo: string, rev: string) =>
+        rev === `${COMMIT_HASH}^` ? PARENT_HASH : null);
     mockExecGit.mockImplementation(async (args: string[]) => {
         const joined = args.join(' ');
-
-        // rev-parse for parent hash
-        if (joined.includes('rev-parse') && joined.includes(`${COMMIT_HASH}^`)) {
-            return PARENT_HASH;
-        }
 
         if (joined.includes('--name-status')) {
             return NAME_STATUS_OUTPUT;
@@ -225,10 +234,10 @@ describe('createCommitDiffProvider', () => {
     });
 
     it('handles initial commit (no parent)', async () => {
+        // A root commit has no `^`, which the capability reports as `null`
+        // rather than the non-zero exit `rev-parse --verify` gave.
+        mockGitValidateRef.mockResolvedValue(null);
         mockExecGit.mockImplementation(async (args: string[]) => {
-            if (args.join(' ').includes('rev-parse')) {
-                throw new Error('no parent');
-            }
             if (args.join(' ').includes('--name-status')) {
                 return 'A\tsrc/init.ts';
             }
@@ -248,6 +257,39 @@ describe('createCommitDiffProvider', () => {
         expect(diffCalls.length).toBeGreaterThan(0);
         const diffArgs = diffCalls[0][0];
         expect(diffArgs.some((a: string) => a.includes('4b825dc642cb6eb9a060e54bf8d69288fbee4904'))).toBe(true);
+    });
+
+    it('resolves the parent through wsl.exe for a repository inside a distro', async () => {
+        // Every other call in the provider reaches git through `execGitAsync`,
+        // which sends a UNC repository to `wsl.exe`; the addon runs git on the
+        // host, so the parent lookup has to stay on the same side.
+        mockGitValidateRef.mockRejectedValue(new Error('should not be called'));
+        mockExecGit.mockImplementation(async (args: string[]) => {
+            if (args.join(' ').includes('rev-parse')) return `${PARENT_HASH}\n`;
+            return args.join(' ').includes('--name-status') ? 'A\tsrc/init.ts' : '';
+        });
+
+        const p = createCommitDiffProvider('\\\\wsl$\\Ubuntu\\home\\user\\repo', COMMIT_HASH);
+        await p.listFiles();
+
+        expect(mockExecGit).toHaveBeenCalledWith(
+            ['rev-parse', '--verify', `${COMMIT_HASH}^`],
+            '\\\\wsl$\\Ubuntu\\home\\user\\repo',
+        );
+        const diffArgs = mockExecGit.mock.calls.find(c => c[0].includes('--name-status'))![0];
+        expect(diffArgs).toContain(PARENT_HASH);
+    });
+
+    it('falls back to the empty tree when the parent lookup fails outright', async () => {
+        mockGitValidateRef.mockRejectedValue(new Error('not a git repository'));
+        mockExecGit.mockImplementation(async (args: string[]) =>
+            args.join(' ').includes('--name-status') ? 'A\tsrc/init.ts' : '');
+
+        const p = createCommitDiffProvider(REPO, 'broken');
+        await p.listFiles();
+
+        const diffArgs = mockExecGit.mock.calls.find(c => c[0].includes('--name-status'))![0];
+        expect(diffArgs).toContain('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
     });
 });
 

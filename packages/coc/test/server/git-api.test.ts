@@ -21,6 +21,7 @@ import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git/git-cache';
 import { gitInfoCache } from '../../src/server/git/git-info-cache';
+import { hostRepoPath } from '../helpers/host-repo-path';
 
 // ============================================================================
 // Mock forge git exec and child_process
@@ -33,6 +34,22 @@ vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
     execFileSync: (...args: any[]) => mockExecFileSync(...args),
 }); });
+
+// The commit-files route reads the addon capability rather than building
+// `diff-tree` argv, so the seam the test drives is the capability's return
+// shape — not a command line and not the text it would have printed.
+const mockGitCommitFiles = vi.fn();
+const mockGitFileContentAtCommit = vi.fn();
+vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        loadNativeGit: () => ({
+            gitCommitFiles: (...args: any[]) => mockGitCommitFiles(...args),
+            gitFileContentAtCommit: (...args: any[]) => mockGitFileContentAtCommit(...args),
+        }),
+    };
+});
 
 // ============================================================================
 // Mock BranchService and GitRangeService
@@ -120,7 +137,7 @@ describe('Git API endpoints', () => {
     let tmpDir: string;
 
     const WORKSPACE_ID = 'ws-git-test';
-    const WORKSPACE_ROOT = '/test/repo';
+    const WORKSPACE_ROOT = hostRepoPath('test', 'repo');
 
     beforeAll(async () => {
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-api-test-'));
@@ -164,6 +181,10 @@ describe('Git API endpoints', () => {
         gitInfoCache.clear();
         mockForgeExecGit.mockReset();
         mockForgeExecGit.mockReturnValue('');
+        mockGitCommitFiles.mockReset();
+        mockGitCommitFiles.mockResolvedValue({ parentHash: '', files: [] });
+        mockGitFileContentAtCommit.mockReset();
+        mockGitFileContentAtCommit.mockResolvedValue(null);
     });
 
     const base = () => `http://127.0.0.1:${port}`;
@@ -832,53 +853,80 @@ describe('Git API endpoints', () => {
     // ========================================================================
 
     describe('GET /api/workspaces/:id/git/commits/:hash/files', () => {
-        it('returns changed files for a commit with additions/deletions and oldPath', async () => {
-            // First call: name-status (with -M -C for rename detection)
-            const nameStatusOutput = 'M\tsrc/index.ts\nA\tsrc/new-file.ts\nD\told-file.ts';
-            // Second call: numstat
-            const numstatOutput = '10\t3\tsrc/index.ts\n25\t0\tsrc/new-file.ts\n0\t15\told-file.ts';
-            mockForgeExecGit
-                .mockReturnValueOnce(nameStatusOutput)
-                .mockReturnValueOnce(numstatOutput);
+        it('renders the addon file list with additions, deletions and oldPath', async () => {
+            mockGitCommitFiles.mockResolvedValue({
+                parentHash: 'parent123',
+                files: [
+                    { path: 'src/index.ts', status: 'modified', additions: 10, deletions: 3 },
+                    { path: 'src/new-file.ts', status: 'added', additions: 25, deletions: 0 },
+                    { path: 'old-file.ts', status: 'deleted', additions: 0, deletions: 15 },
+                ],
+            });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.files).toHaveLength(3);
-            expect(data.files[0]).toEqual({ status: 'M', path: 'src/index.ts', additions: 10, deletions: 3 });
-            expect(data.files[1]).toEqual({ status: 'A', path: 'src/new-file.ts', additions: 25, deletions: 0 });
-            expect(data.files[2]).toEqual({ status: 'D', path: 'old-file.ts', additions: 0, deletions: 15 });
+            expect(data.files).toEqual([
+                { status: 'M', path: 'src/index.ts', additions: 10, deletions: 3 },
+                { status: 'A', path: 'src/new-file.ts', additions: 25, deletions: 0 },
+                { status: 'D', path: 'old-file.ts', additions: 0, deletions: 15 },
+            ]);
         });
 
         it('returns rename info with oldPath', async () => {
-            const nameStatusOutput = 'R100\told/path.ts\tnew/path.ts';
-            const numstatOutput = '5\t2\tnew/path.ts';
-            mockForgeExecGit
-                .mockReturnValueOnce(nameStatusOutput)
-                .mockReturnValueOnce(numstatOutput);
+            mockGitCommitFiles.mockResolvedValue({
+                parentHash: 'parent123',
+                files: [
+                    { path: 'new/path.ts', originalPath: 'old/path.ts', status: 'renamed', additions: 5, deletions: 2 },
+                ],
+            });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
             expect(res.status).toBe(200);
-            const data = res.json();
-            expect(data.files).toHaveLength(1);
-            expect(data.files[0]).toEqual({
-                status: 'R',
-                path: 'new/path.ts',
-                oldPath: 'old/path.ts',
-                additions: 5,
-                deletions: 2,
-            });
+            expect(res.json().files).toEqual([
+                { status: 'R', path: 'new/path.ts', oldPath: 'old/path.ts', additions: 5, deletions: 2 },
+            ]);
         });
 
-        it('returns error on git failure', async () => {
-            mockForgeExecGit.mockImplementation(() => {
-                throw new Error('bad object abc123');
+        it('leaves the line counts off a binary file rather than reporting zero', async () => {
+            mockGitCommitFiles.mockResolvedValue({
+                parentHash: 'parent123',
+                files: [{ path: 'assets/logo.png', status: 'modified' }],
             });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
+            expect(res.status).toBe(200);
+            expect(res.json().files).toEqual([{ status: 'M', path: 'assets/logo.png' }]);
+        });
+
+        it('reports a typechange as a modification, the way the shared parser reads it', async () => {
+            mockGitCommitFiles.mockResolvedValue({
+                parentHash: 'parent123',
+                files: [{ path: 'link', status: 'modified', additions: 1, deletions: 1 }],
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
+            expect(res.json().files[0].status).toBe('M');
+        });
+
+        it('asks the addon for the commit, and does not build git argv itself', async () => {
+            mockGitCommitFiles.mockResolvedValue({ parentHash: '', files: [] });
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
+            expect(mockGitCommitFiles).toHaveBeenCalledWith(
+                WORKSPACE_ROOT,
+                'abc123def456',
+                expect.objectContaining({ timeout: expect.any(Number) }),
+            );
+            expect(mockForgeExecGit).not.toHaveBeenCalled();
+        });
+
+        it('returns error on git failure', async () => {
+            mockGitCommitFiles.mockRejectedValue(new Error('bad object abc123'));
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
             expect(res.status).toBe(400);
-            const data = res.json();
-            expect(data.error).toContain('Failed to get commit files');
+            expect(res.json().error).toContain('Failed to get commit files');
         });
 
         it('returns 404 for unknown workspace', async () => {
@@ -886,8 +934,8 @@ describe('Git API endpoints', () => {
             expect(res.status).toBe(404);
         });
 
-        it('handles empty diff-tree output', async () => {
-            mockForgeExecGit.mockReturnValue('');
+        it('handles a commit that touched nothing', async () => {
+            mockGitCommitFiles.mockResolvedValue({ parentHash: '', files: [] });
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
             expect(res.status).toBe(200);
             expect(res.json().files).toEqual([]);
@@ -997,7 +1045,7 @@ describe('Git API endpoints', () => {
 
     describe('GET /api/workspaces/:id/git/commits/:hash/files/*/content', () => {
         it('returns full file content for a commit file', async () => {
-            mockForgeExecGit.mockReturnValue('first line\nsecond line\n');
+            mockGitFileContentAtCommit.mockResolvedValue('first line\nsecond line\n');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('docs/readme.md')}/content`
@@ -1012,19 +1060,19 @@ describe('Git API endpoints', () => {
             expect(data.truncated).toBe(false);
             expect(data.language).toBe('md');
             expect(data.resolvedRef).toBe('abc123:docs/readme.md');
-            expect(mockForgeExecGit).toHaveBeenCalledWith(
-                ['show', 'abc123:docs/readme.md'],
+            expect(mockGitFileContentAtCommit).toHaveBeenCalledWith(
                 WORKSPACE_ROOT,
-                expect.anything(),
+                'abc123',
+                'docs/readme.md',
             );
+            expect(mockForgeExecGit).not.toHaveBeenCalled();
         });
 
         it('falls back to the parent ref when the file was deleted in the commit', async () => {
-            mockForgeExecGit
-                .mockImplementationOnce(() => {
-                    throw new Error('fatal: path does not exist in commit');
-                })
-                .mockImplementationOnce(() => 'deleted content\n');
+            // A path that names nothing at the commit answers `null` rather
+            // than exiting non-zero, and that is what drives the fallback.
+            mockGitFileContentAtCommit.mockImplementation(async (_root: string, rev: string) =>
+                rev === 'abc123' ? null : 'deleted content\n');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('docs/removed.md')}/content`
@@ -1034,21 +1082,39 @@ describe('Git API endpoints', () => {
             const data = res.json();
             expect(data.lines).toEqual(['deleted content']);
             expect(data.resolvedRef).toBe('abc123^:docs/removed.md');
-            expect(mockForgeExecGit).toHaveBeenCalledTimes(2);
+            expect(mockGitFileContentAtCommit).toHaveBeenCalledTimes(2);
         });
 
-        it('returns 400 when commit file content cannot be read', async () => {
-            mockForgeExecGit.mockImplementation(() => {
-                throw new Error('fatal: bad object');
-            });
+        it('returns 400 when the file is at neither the commit nor its parent', async () => {
+            mockGitFileContentAtCommit.mockResolvedValue(null);
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('docs/missing.md')}/content`
             );
 
             expect(res.status).toBe(400);
-            const data = res.json();
-            expect(data.error).toContain('Failed to get commit file content');
+            expect(res.json().error).toContain('Failed to get commit file content');
+        });
+
+        it('returns 400 when the repository itself cannot be read', async () => {
+            mockGitFileContentAtCommit.mockRejectedValue(new Error('fatal: bad object'));
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('docs/missing.md')}/content`
+            );
+
+            expect(res.status).toBe(400);
+            expect(res.json().error).toContain('Failed to get commit file content');
+        });
+
+        it('keeps a file that ends without a newline distinct from one that does', async () => {
+            mockGitFileContentAtCommit.mockResolvedValue('only line');
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123/files/${encodeURIComponent('a.txt')}/content`
+            );
+
+            expect(res.json().lines).toEqual(['only line']);
         });
     });
 

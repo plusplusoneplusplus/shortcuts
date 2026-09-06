@@ -28,7 +28,7 @@ const BOOTS_THE_SERVER = ["coc-test", "e2e", "coc-serve-smoke", "docker-build-sm
 test("every job that boots the coc server supplies the addon", () => {
     for (const name of BOOTS_THE_SERVER) {
         const job = jobBlock(ci, name);
-        assert.match(job, /^    needs: \[coc-native\]$/m, `${name} must wait for the coc-native build`);
+        assert.match(job, /^    needs: \[coc-native[,\]]/m, `${name} must wait for the coc-native build`);
         assert.match(job, /name: coc-native-/, `${name} must download the coc-native artifact`);
         assert.doesNotMatch(job, /COC_NATIVE[=:] ?'?0'?/, `${name} cannot disable the addon — the COC_NATIVE=0 opt-out is gone`);
     }
@@ -43,7 +43,14 @@ test("the cross-platform coc suite uses its matching addon", () => {
 // its dist/ is generated, not committed — so a job that runs `tsc` over either
 // before building the addon package fails with TS2307 rather than a test
 // failure. Ordering, not just presence, is what the build depends on.
-const BUILDS_THE_SDK = ["forge-test", "coc-test", "deep-wiki-test", "e2e"];
+//
+// Only the jobs that still name both steps are in this list. coc-test unpacks
+// the tarball build-shared produced; build-shared and e2e both delegate the
+// ordering to a prebuild.mjs (forge's and packages/coc's), whose
+// REQUIRED_BUILD_WORKSPACES order prebuild.test.ts checks against the real
+// package.json dependency edges. scripts/shared-build-workflow.test.mjs pins
+// that those jobs really do go through prebuild.
+const BUILDS_THE_SDK = ["forge-test", "deep-wiki-test"];
 
 test("every job that builds coc-agent-sdk builds the addon package first", () => {
     for (const name of BUILDS_THE_SDK) {

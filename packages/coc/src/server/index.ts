@@ -25,6 +25,8 @@ import {
 } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
+import { warmWslDistroCache } from '@plusplusoneplusplus/forge';
+import { warmSdkWslDistroCache } from '@plusplusoneplusplus/coc-agent-sdk';
 import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
@@ -205,6 +207,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
     fs.mkdirSync(dataDir, { recursive: true });
+
+    // Resolve the default WSL distro before anything normalizes a path into a
+    // workspace identity. The lookup spawns `wsl.exe`, so it has to happen once,
+    // up front and awaited: a bare Linux path normalized before the cache is warm
+    // would key as `wsl://default/...` and the same path key as
+    // `wsl://<distro>/...` afterwards, splitting one repo across two identities.
+    // Both copies of the helper have their own cache, hence both warms.
+    await Promise.all([warmWslDistroCache(), warmSdkWslDistroCache()]);
 
     // Notes content search is native-only. Validate the complete capability at
     // composition time, while each root's filesystem build remains lazy until

@@ -20,6 +20,7 @@ import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git/git-cache';
+import { hostRepoPath } from '../helpers/host-repo-path';
 
 // ============================================================================
 // Mock child_process (used by detectRemoteUrl via execSync)
@@ -31,6 +32,19 @@ vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
     execFileSync: (...args: any[]) => mockExecFileSync(...args),
 }); });
+
+// A host repository reads the blob through the addon; the WSL cases below
+// still go through forge, which is the point of those assertions.
+const mockGitFileContentAtCommit = vi.fn();
+vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        loadNativeGit: () => ({
+            gitFileContentAtCommit: (...args: any[]) => mockGitFileContentAtCommit(...args),
+        }),
+    };
+});
 
 // ============================================================================
 // Mock forge: execGit (used by execGitArgsSync and readGitFileAtCommit),
@@ -141,7 +155,7 @@ describe('Git Commit Edge Cases', () => {
     let store: MockProcessStore;
 
     const WORKSPACE_ID = 'ws-commit-edge-test';
-    const WORKSPACE_ROOT = '/test/commit-edge-repo';
+    const WORKSPACE_ROOT = hostRepoPath('test', 'commit-edge-repo');
 
     const base = () => `http://127.0.0.1:${port}`;
 
@@ -167,6 +181,8 @@ describe('Git Commit Edge Cases', () => {
         mockExecSync.mockReset();
         mockExecFileSync.mockReset();
         mockExecGit.mockReset();
+        mockGitFileContentAtCommit.mockReset();
+        mockGitFileContentAtCommit.mockResolvedValue(null);
         mockGetBranchStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
         mockGetCurrentBranch.mockReset();
@@ -248,9 +264,7 @@ describe('Git Commit Edge Cases', () => {
 
     describe('GET /api/workspaces/:id/git/commits/:hash/files/:file/content — special cases', () => {
         it('returns 400 for file at nonexistent commit hash', async () => {
-            mockExecGit.mockImplementation(() => {
-                throw new Error('fatal: bad object');
-            });
+            mockGitFileContentAtCommit.mockResolvedValue(null);
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/deadbeef/files/${encodeURIComponent('src/missing.ts')}/content`,
@@ -262,12 +276,8 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('falls back to parent ref for file deleted in commit', async () => {
-            // First call (at hash) throws; second call (at hash^) succeeds
-            mockExecGit
-                .mockImplementationOnce(() => {
-                    throw new Error('fatal: path does not exist in commit');
-                })
-                .mockImplementationOnce(() => 'deleted content\n');
+            mockGitFileContentAtCommit.mockImplementation(async (_root: string, rev: string) =>
+                rev === 'abc1234ef' ? null : 'deleted content\n');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('deleted.ts')}/content`,
@@ -280,7 +290,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('returns 200 with content for file added in commit', async () => {
-            mockExecGit.mockReturnValue('export const added = true;\n');
+            mockGitFileContentAtCommit.mockResolvedValue('export const added = true;\n');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('added.ts')}/content`,
@@ -293,8 +303,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('returns 400 when file content exceeds 10MB', async () => {
-            const largeContent = 'x'.repeat(10 * 1024 * 1024 + 1);
-            mockExecGit.mockReturnValue(largeContent);
+            mockGitFileContentAtCommit.mockResolvedValue('x'.repeat(10 * 1024 * 1024 + 1));
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('huge.bin')}/content`,
@@ -306,8 +315,7 @@ describe('Git Commit Edge Cases', () => {
         });
 
         it('returns 200 when file content is just under 10MB', async () => {
-            const justUnderContent = 'x'.repeat(10 * 1024 * 1024 - 1);
-            mockExecGit.mockReturnValue(justUnderContent);
+            mockGitFileContentAtCommit.mockResolvedValue('x'.repeat(10 * 1024 * 1024 - 1));
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files/${encodeURIComponent('big.txt')}/content`,
@@ -447,6 +455,38 @@ describe('Git Commit Edge Cases', () => {
             gitCache.clear();
         });
 
+        it('joins the two diff-tree runs itself for a WSL commit file list', async () => {
+            const WSL_ROOT = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'WSL Repo', rootPath: WSL_ROOT },
+            ]);
+            gitCache.clear();
+
+            mockExecGit.mockImplementation((args: string[]) =>
+                args.includes('--name-status')
+                    ? 'R100\told/path.ts\tnew/path.ts'
+                    : '5\t2\tsrc/{old => new}/path.ts');
+
+            const res = await request(
+                `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files`,
+            );
+
+            expect(res.status).toBe(200);
+            expect(res.json().files).toEqual([
+                { status: 'R', path: 'new/path.ts', oldPath: 'old/path.ts' },
+            ]);
+            expect(mockExecGit).toHaveBeenCalledWith(
+                expect.arrayContaining(['diff-tree', '--name-status']),
+                WSL_ROOT,
+                expect.anything(),
+            );
+
+            (store.getWorkspaces as any).mockResolvedValue([
+                { id: WORKSPACE_ID, name: 'Commit Edge Repo', rootPath: WORKSPACE_ROOT },
+            ]);
+            gitCache.clear();
+        });
+
         it('passes WSL UNC rootPath to forge execGit for file content', async () => {
             const WSL_ROOT = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
             (store.getWorkspaces as any).mockResolvedValue([
@@ -454,6 +494,10 @@ describe('Git Commit Edge Cases', () => {
             ]);
             gitCache.clear();
 
+            // The addon runs git on the host and cannot open a UNC repository,
+            // so this path keeps its `git show` pair. Rejecting from the
+            // capability proves the route never reaches for it.
+            mockGitFileContentAtCommit.mockRejectedValue(new Error('should not be called'));
             mockExecGit.mockReturnValue('const x = 1;\n');
 
             const res = await request(

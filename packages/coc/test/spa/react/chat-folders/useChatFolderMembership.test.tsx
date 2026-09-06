@@ -75,9 +75,14 @@ describe('useChatFolderMembership', () => {
             { id: 'p2', folderId: 'f2' },
         ] });
         act(() => { result.current.refresh(); });
-        await waitFor(() => expect(summaries).toHaveBeenCalledTimes(2));
-        expect(result.current.folderIdByProcess.get('p1')).toBe('f2');
-        expect(result.current.folderIdByProcess.get('p2')).toBe('f2');
+        // Wait for the refresh to *land*, not merely to be issued: the call
+        // count ticks when the request goes out, and the map is not rewritten
+        // until it resolves and React re-renders.
+        await waitFor(() => {
+            expect(result.current.folderIdByProcess.get('p1')).toBe('f2');
+            expect(result.current.folderIdByProcess.get('p2')).toBe('f2');
+        });
+        expect(summaries).toHaveBeenCalledTimes(2);
     });
 
     it('rolls an override back when the refresh disagrees (failed write)', async () => {
@@ -89,8 +94,37 @@ describe('useChatFolderMembership', () => {
         expect(result.current.folderIdByProcess.get('p1')).toBe('f2');
 
         act(() => { result.current.refresh(); });
-        await waitFor(() => expect(summaries).toHaveBeenCalledTimes(2));
-        // Server still says f1 — the optimistic move is rolled back.
+        // Server still says f1 — the optimistic move is rolled back. Waiting on
+        // the call count would only prove the request went out; the rollback
+        // happens when it resolves, which is a render later.
+        await waitFor(() => expect(result.current.folderIdByProcess.get('p1')).toBe('f1'));
+        expect(summaries).toHaveBeenCalledTimes(2);
+    });
+
+    // The rollback has an in-flight window, and that window is exactly what the
+    // assertions above used to read through: `refresh()` issues the request, so
+    // the call count ticks immediately, but the override survives until the
+    // response lands. Waiting on the count and then reading the map was a race
+    // that only ever lost on a slow runner. Pin the window explicitly, with a
+    // promise this test controls, so the ordering is asserted rather than
+    // assumed.
+    it('keeps the override visible until the refresh actually resolves', async () => {
+        summaries.mockResolvedValue({ summaries: [{ id: 'p1', folderId: 'f1' }] });
+        const { result } = renderHook(() => useChatFolderMembership(WS, true));
+        await waitFor(() => expect(result.current.folderIdByProcess.get('p1')).toBe('f1'));
+
+        act(() => { result.current.applyOverride(['p1'], 'f2'); });
+        expect(result.current.folderIdByProcess.get('p1')).toBe('f2');
+
+        let resolveRefresh!: (value: { summaries: any[] }) => void;
+        summaries.mockReturnValue(new Promise(resolve => { resolveRefresh = resolve; }));
+        act(() => { result.current.refresh(); });
+
+        // The request is out — and the map still shows the optimistic value.
+        expect(summaries).toHaveBeenCalledTimes(2);
+        expect(result.current.folderIdByProcess.get('p1')).toBe('f2');
+
+        await act(async () => { resolveRefresh({ summaries: [{ id: 'p1', folderId: 'f1' }] }); });
         expect(result.current.folderIdByProcess.get('p1')).toBe('f1');
     });
 
@@ -110,7 +144,11 @@ describe('useChatFolderMembership', () => {
 
         summaries.mockRejectedValue(new Error('boom'));
         act(() => { result.current.refresh(); });
+        // A failure leaves the map alone, so there is no state change to wait
+        // on — wait for the rejection to have been *handled* instead, which is
+        // what could still have blanked the map.
         await waitFor(() => expect(summaries).toHaveBeenCalledTimes(2));
+        await act(async () => {});
         expect(result.current.folderIdByProcess.get('p1')).toBe('f1');
     });
 

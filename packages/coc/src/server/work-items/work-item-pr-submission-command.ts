@@ -138,6 +138,10 @@ export async function submitWorkItemPullRequest(options: {
     runCommand: WorkItemCommandRunner;
 }): Promise<{ branchName: string; prUrl: string; prNumber?: number }> {
     const { item, change, repoRoot, runCommand } = options;
+    // Every step of this sequence — `git`, `gh`, the cherry-pick, the branch
+    // restore on failure — runs through the one injected `runCommand`, so the
+    // two read-only probes below stay argv rather than splitting the flow
+    // across two runners.
     const clean = await runCommand('git', ['status', '--porcelain'], { cwd: repoRoot });
     if (clean.stdout.trim()) {
         throw new Error('Cannot submit PR because the workspace has uncommitted changes');

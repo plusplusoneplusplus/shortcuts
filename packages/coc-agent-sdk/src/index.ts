@@ -320,3 +320,9 @@ export type {
     BridgeTransport,
     BridgeHandlerOptions,
 } from './llm-tools';
+
+// The SDK carries its own copy of the workspace-execution helpers, so it also
+// carries its own default-distro cache. Warm it alongside the host's during
+// startup, otherwise the synchronous readers here answer "no distro" for the
+// whole process lifetime.
+export { warmWslDistroCache as warmSdkWslDistroCache } from './internal/workspace-execution';

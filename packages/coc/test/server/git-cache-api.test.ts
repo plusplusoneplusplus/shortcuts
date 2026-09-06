@@ -15,6 +15,7 @@ import { gitCache } from '../../src/server/git/git-cache';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
+import { hostRepoPath } from '../helpers/host-repo-path';
 
 // ============================================================================
 // Mock forge git exec and child_process
@@ -24,6 +25,17 @@ const mockExecSync = vi.fn();
 vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
 }); });
+
+// The commit-files route reads the addon capability, so the call the cache
+// tests count is the capability's, not a git spawn's.
+const mockGitCommitFiles = vi.fn();
+vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        loadNativeGit: () => ({ gitCommitFiles: (...args: any[]) => mockGitCommitFiles(...args) }),
+    };
+});
 
 // ============================================================================
 // Mock GitRangeService (used by branch-range endpoint) and BranchService
@@ -100,7 +112,7 @@ describe('Git API caching', () => {
     let store: MockProcessStore;
 
     const WORKSPACE_ID = 'ws-cache-test';
-    const WORKSPACE_ROOT = '/test/cache-repo';
+    const WORKSPACE_ROOT = hostRepoPath('test', 'cache-repo');
 
     beforeAll(async () => {
         store = createMockProcessStore();
@@ -122,6 +134,8 @@ describe('Git API caching', () => {
 
     beforeEach(() => {
         mockExecSync.mockReset();
+        mockGitCommitFiles.mockReset();
+        mockGitCommitFiles.mockResolvedValue({ parentHash: '', files: [] });
         mockForgeExecGit.mockReset();
         mockForgeExecGit.mockReturnValue('');
         mockDetectCommitRange.mockReset();
@@ -193,31 +207,37 @@ describe('Git API caching', () => {
 
     describe('GET /api/workspaces/:id/git/commits/:hash/files (cache)', () => {
         it('second call for same hash returns cached data', async () => {
-            mockForgeExecGit.mockReturnValue('M\tsrc/index.ts');
+            mockGitCommitFiles.mockResolvedValue({
+                parentHash: 'p1',
+                files: [{ path: 'src/index.ts', status: 'modified' }],
+            });
 
             const res1 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234/files`);
             expect(res1.status).toBe(200);
             expect(res1.json().files).toHaveLength(1);
 
-            const callsAfterFirst = mockForgeExecGit.mock.calls.length;
+            const callsAfterFirst = mockGitCommitFiles.mock.calls.length;
 
             const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234/files`);
             expect(res2.status).toBe(200);
             expect(res2.json().files).toHaveLength(1);
-            expect(mockForgeExecGit.mock.calls.length).toBe(callsAfterFirst);
+            expect(mockGitCommitFiles.mock.calls.length).toBe(callsAfterFirst);
         });
 
         it('immutable cache survives mutable invalidation', async () => {
-            mockForgeExecGit.mockReturnValue('A\tnew.ts');
+            mockGitCommitFiles.mockResolvedValue({
+                parentHash: 'p1',
+                files: [{ path: 'new.ts', status: 'added' }],
+            });
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/beef5678/files`);
-            const callsAfterFirst = mockForgeExecGit.mock.calls.length;
+            const callsAfterFirst = mockGitCommitFiles.mock.calls.length;
 
             gitCache.invalidateMutable(WORKSPACE_ID);
 
             // Immutable entry still cached
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/beef5678/files`);
-            expect(mockForgeExecGit.mock.calls.length).toBe(callsAfterFirst);
+            expect(mockGitCommitFiles.mock.calls.length).toBe(callsAfterFirst);
         });
     });
 
@@ -320,7 +340,7 @@ describe('Git API caching', () => {
             // Register a second workspace
             (store.getWorkspaces as any).mockResolvedValue([
                 { id: WORKSPACE_ID, name: 'Repo A', rootPath: WORKSPACE_ROOT },
-                { id: 'ws-other', name: 'Repo B', rootPath: '/test/other' },
+                { id: 'ws-other', name: 'Repo B', rootPath: hostRepoPath('test', 'other') },
             ]);
 
             mockForgeExecGit.mockImplementation((args: string[]) => {
