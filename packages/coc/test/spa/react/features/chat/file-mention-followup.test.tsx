@@ -299,6 +299,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 import { FollowUpInputArea } from '../../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { FollowUpInputAreaProps } from '../../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../../src/server/spa/client/react/shared/RichTextInput';
+import { splitFilePathPills } from '../../../../../src/server/spa/client/react/shared/richTextPills';
 
 function member(name: string, extra: Record<string, any> = {}) {
     return { workspaceId: `ws-${name}`, stale: false, name, ...extra };
@@ -444,6 +445,21 @@ describe('FollowUpInputArea file mentions', () => {
         // The controlled value the parent holds tracks the insert, and the
         // value-sync effect did not echo it back through a second setValue.
         expect(richTextProps['activity-chat-input'].value).toBe('`src/foobar.ts` ');
+    });
+
+    it('renders the accepted path as a pill in the composer overlay', async () => {
+        renderFollowUp();
+        await typeAndOpen('src/fo');
+        fireEvent.keyDown(editor(), { key: 'ArrowDown' });
+        fireEvent.keyDown(editor(), { key: 'Tab' });
+
+        // The overlay draws the pill; the composer only has to opt in and hand
+        // it text the splitter recognises as a path.
+        expect(richTextProps['activity-chat-input'].pillPaths).toBe(true);
+        expect(splitFilePathPills(richTextProps['activity-chat-input'].value)).toEqual([
+            { text: '`src/foobar.ts`', pill: true },
+            { text: ' ', pill: false },
+        ]);
     });
 
     it('drops the @ sigil when the token was @-prefixed', async () => {

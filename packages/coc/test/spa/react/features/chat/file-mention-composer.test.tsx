@@ -298,6 +298,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 
 
 import { InitialChatComposer } from '../../../../../src/server/spa/client/react/features/chat/NewChatArea';
+import { splitFilePathPills } from '../../../../../src/server/spa/client/react/shared/richTextPills';
 
 function member(name: string, extra: Record<string, any> = {}) {
     return { workspaceId: `ws-${name}`, stale: false, name, ...extra };
@@ -382,6 +383,21 @@ describe('NewChatArea file mentions', () => {
 
         expect(screen.queryByTestId('file-mention-menu')).toBeNull();
         expect(mockSearchFiles).not.toHaveBeenCalled();
+    });
+
+    it('renders the accepted path as a pill in the composer overlay', async () => {
+        renderComposer();
+        await typeAndOpen('src/fo');
+        fireEvent.keyDown(input(), { key: 'ArrowDown' });
+        fireEvent.keyDown(input(), { key: 'Tab' });
+
+        // The overlay draws the pill; the composer only has to opt in and hand
+        // it text the splitter recognises as a path.
+        expect(richTextProps['new-chat-input'].pillPaths).toBe(true);
+        expect(splitFilePathPills(tracker.domValue)).toEqual([
+            { text: '`src/foobar.ts`', pill: true },
+            { text: ' ', pill: false },
+        ]);
     });
 
     it('replaces the token with a backticked path on Tab after ArrowDown', async () => {

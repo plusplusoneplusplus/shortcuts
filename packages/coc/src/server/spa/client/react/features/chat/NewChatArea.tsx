@@ -1631,6 +1631,10 @@ export function InitialChatComposer({
                         ref={richTextRef}
                         disabled={sending}
                         value={input}
+                        // Backticked file paths (from a mention or a file drop) are
+                        // painted as pills by the overlay; the text itself stays plain
+                        // (AC-04).
+                        pillPaths
                         // Ghost text is suppressed while the file popup is open so
                         // Tab means exactly one thing (AC-05).
                         ghostText={fileMentions.menuVisible ? undefined : (slashCommands.activeCommandHint ?? autocomplete.completion)}
