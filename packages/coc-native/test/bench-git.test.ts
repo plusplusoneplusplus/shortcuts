@@ -258,6 +258,34 @@ describe('against a real repository', () => {
         expect(native.ahead).toBeGreaterThan(0);
     });
 
+    it('current-branch-name: the same name, and it is the one git checked out', async () => {
+        const testCase = caseById('current-branch-name');
+        const legacy = await testCase.legacy(repo);
+        const native = await testCase.native(repo, git);
+        expect(native).toBe(legacy);
+        // Both sides answering null would satisfy the line above.
+        expect(native).toBe(run(repo.root, ['rev-parse', '--abbrev-ref', 'HEAD']));
+    });
+
+    it('upstream-config: the same branch and the same raw config values', async () => {
+        const testCase = caseById('upstream-config');
+        const legacy = await testCase.legacy(repo);
+        const native = await testCase.native(repo, git);
+        expect(native).toEqual(legacy);
+        // And neither side is quietly answering "nothing configured".
+        expect(native.branchName).toBe(run(repo.root, ['symbolic-ref', '--short', 'HEAD']));
+        expect(native.remotes).toEqual(['origin']);
+        expect(native.remoteRefs).toEqual([`refs/heads/${native.branchName}`]);
+    });
+
+    it('git-dir: the same directory, and it is the one holding HEAD', async () => {
+        const testCase = caseById('git-dir');
+        const legacy: string = await testCase.legacy(repo);
+        const native: string = await testCase.native(repo, git);
+        expect(fs.realpathSync(native)).toBe(fs.realpathSync(legacy));
+        expect(fs.existsSync(path.join(native, 'HEAD'))).toBe(true);
+    });
+
     it('branch-list-100: the same page and the same total', async () => {
         const testCase = caseById('branch-list-100');
         const legacy = await testCase.legacy(repo);

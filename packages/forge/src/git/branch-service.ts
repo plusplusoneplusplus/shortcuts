@@ -28,6 +28,7 @@ import type {
     NativeGitAddon,
     NativeGitBranchEntry,
     NativeGitRepositoryStatus,
+    NativeGitUpstreamConfig,
 } from '@plusplusoneplusplus/coc-native';
 import { execFileAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
@@ -254,7 +255,31 @@ export class BranchService {
         return executionContext;
     }
 
+    /**
+     * The repository's git directory, absolute.
+     *
+     * On the native host this is a `gix` read rather than `rev-parse
+     * --git-dir`, and it arrives already absolute — Rust resolves what the
+     * `path.isAbsolute`/`path.join` on the WSL branch below still has to.
+     *
+     * In a linked worktree both paths answer `.git/worktrees/<name>` rather
+     * than the main repository's `.git`, which is the only correct answer here:
+     * the sole caller probes this directory for `rebase-merge`, `MERGE_HEAD`
+     * and friends, and those sentinels live in the worktree-specific directory.
+     */
     private async getResolvedGitDir(repoRoot: string): Promise<string> {
+        const { addon, wsl } = this.native(repoRoot);
+        if (!wsl) {
+            // The `runGit` on the WSL branch does this itself; the addon call
+            // does not, and dropping it would skip the `safe.directory` entry a
+            // UNC-reached repository needs.
+            await ensureGitSafeDirectoryAsync(repoRoot);
+            const resolved = await addon.gitResolvedGitDir(repoRoot);
+            if (resolved === null) {
+                throw new Error(`${repoRoot} is not a git repository`);
+            }
+            return resolved;
+        }
         const gitDir = (await this.runGit(repoRoot, ['rev-parse', '--git-dir'])).trim();
         return path.isAbsolute(gitDir) ? gitDir : path.join(repoRoot, gitDir);
     }
@@ -386,15 +411,90 @@ export class BranchService {
 
     /**
      * Get the current branch name.
+     *
+     * `null` for a detached HEAD, for a repository with no commits yet, and for
+     * a branch literally named `HEAD` — the three cases `rev-parse --abbrev-ref
+     * HEAD` reported as the bare string `HEAD` or as a non-zero exit, and the
+     * Rust read reproduces exactly.
      */
     private async getCurrentBranchName(repoRoot: string): Promise<string | null> {
+        // Outside the try, like every other read here: `null` is a real answer
+        // for a detached HEAD, so a stale binary must not disappear behind it.
+        const { addon, wsl } = this.native(repoRoot);
         try {
+            if (!wsl) {
+                await ensureGitSafeDirectoryAsync(repoRoot);
+                return await addon.gitCurrentBranchName(repoRoot);
+            }
             const output = await this.runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']);
             const name = output.trim();
             return name === 'HEAD' ? null : name;
         } catch {
             return null;
         }
+    }
+
+    /**
+     * HEAD's raw `branch.<name>.remote` and `branch.<name>.merge` values.
+     *
+     * On the native host this is one `gix` read replacing `symbolic-ref` plus
+     * two `config --get-all` children, all three of which used to run before
+     * the network operation had even started.
+     *
+     * It reads config and never the ref database, which is the point: this runs
+     * immediately before a `fetch` or a `pull`, so a branch tracking a ref
+     * nobody has downloaded yet is exactly the case that has to work. The
+     * tracking branch on {@link getBranchStatus} deliberately answers `null`
+     * there, and reusing it here would break `fetch` for the branch that needs
+     * it most.
+     *
+     * Throws the detached-HEAD message its caller shows the user; deciding what
+     * the values mean stays below.
+     */
+    private async readUpstreamConfig(repoRoot: string): Promise<{
+        branchName: string;
+        remotes: string[];
+        remoteRefs: string[];
+    }> {
+        const { addon, wsl } = this.native(repoRoot);
+        const detached = new Error('Cannot fetch or pull while HEAD is detached');
+
+        if (!wsl) {
+            let config: NativeGitUpstreamConfig | null;
+            try {
+                await ensureGitSafeDirectoryAsync(repoRoot);
+                config = await addon.gitUpstreamConfig(repoRoot);
+            } catch {
+                throw detached;
+            }
+            if (!config || !config.branchName) throw detached;
+            return config;
+        }
+
+        let branchName = '';
+        try {
+            branchName = (await this.runGit(
+                repoRoot,
+                ['symbolic-ref', '--quiet', '--short', 'HEAD'],
+            )).trim();
+        } catch {
+            throw detached;
+        }
+        if (!branchName) throw detached;
+
+        const configValues = async (key: string): Promise<string[]> => {
+            try {
+                const output = await this.runGit(repoRoot, ['config', '--get-all', key]);
+                return output.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+            } catch {
+                return [];
+            }
+        };
+        return {
+            branchName,
+            remotes: await configValues(`branch.${branchName}.remote`),
+            remoteRefs: await configValues(`branch.${branchName}.merge`),
+        };
     }
 
     /**
@@ -405,30 +505,7 @@ export class BranchService {
         remote: string;
         remoteRef: string;
     }> {
-        let branchName = '';
-        try {
-            branchName = (await this.runGit(
-                repoRoot,
-                ['symbolic-ref', '--quiet', '--short', 'HEAD'],
-            )).trim();
-        } catch {
-            throw new Error('Cannot fetch or pull while HEAD is detached');
-        }
-
-        if (!branchName) {
-            throw new Error('Cannot fetch or pull while HEAD is detached');
-        }
-
-        const configValues = async (key: string): Promise<string[]> => {
-            try {
-                const output = await this.runGit(repoRoot, ['config', '--get-all', key]);
-                return output.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-            } catch {
-                return [];
-            }
-        };
-        const remotes = await configValues(`branch.${branchName}.remote`);
-        const remoteRefs = await configValues(`branch.${branchName}.merge`);
+        const { branchName, remotes, remoteRefs } = await this.readUpstreamConfig(repoRoot);
         if (remotes.length === 0 || remoteRefs.length === 0) {
             throw new Error(`Current branch "${branchName}" has no upstream configured`);
         }

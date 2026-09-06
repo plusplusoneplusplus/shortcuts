@@ -70,6 +70,8 @@ const COMPLETE_ADDON =
     `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
     `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
     'gitBranchStatus: async () => null, ' +
+    'gitCurrentBranchName: async () => null, ' +
+    'gitUpstreamConfig: async () => null, ' +
     'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
     'gitLocalBranchNames: async () => [], ' +
     'gitRemoteUrl: async () => null, ' +
@@ -77,6 +79,7 @@ const COMPLETE_ADDON =
     'gitGlobalConfigGetAll: async () => [], ' +
     'gitGlobalConfigAdd: async () => undefined, ' +
     'gitDiscoverRepoRoot: async () => null, ' +
+    'gitResolvedGitDir: async () => null, ' +
     "gitDiffNoIndex: async () => '' };";
 
 /** Point the loader at a JavaScript stand-in for the addon. */
@@ -123,6 +126,8 @@ it('exposes the capability when the addon provides it', async () => {
     expect(await api.gitRepositoryStatus('/repo')).toEqual(REPOSITORY_STATUS);
     expect(await api.parseGitBranchStatus('')).toEqual(REPOSITORY_STATUS);
     expect(await api.gitBranchStatus('/repo')).toBeNull();
+    expect(await api.gitCurrentBranchName('/repo')).toBeNull();
+    expect(await api.gitUpstreamConfig('/repo')).toBeNull();
     expect(await api.gitListBranches('/repo', { remote: false, limit: 1, offset: 0 })).toEqual({
         branches: [],
         totalCount: 0,
@@ -131,6 +136,7 @@ it('exposes the capability when the addon provides it', async () => {
     expect(await api.gitLocalBranchNames('/repo')).toEqual([]);
     expect(await api.gitRemoteUrl('/repo', 'origin')).toBeNull();
     expect(await api.gitDetectRemoteUrl('/repo')).toBeNull();
+    expect(await api.gitResolvedGitDir('/repo')).toBeNull();
     expect(
         await api.gitDiffNoIndex({
             before: 'a',
@@ -239,6 +245,22 @@ describe('when the capability is missing', () => {
                 'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
                 'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }) };',
         );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice this change adds: everything the previous binary had, minus
+    // the cheap HEAD read, the raw upstream config and the git-dir read. Without
+    // this, an older binary would load and fail at the first `fetch` with
+    // `undefined is not a function`.
+    it('rejects a binary built before the read-spawn sweep exports', () => {
+        const complete = COMPLETE_ADDON.replace(/gitCurrentBranchName: async \(\) => null, /, '')
+            .replace(/gitUpstreamConfig: async \(\) => null, /, '')
+            .replace(/gitResolvedGitDir: async \(\) => null, /, '');
+        expect(complete).not.toContain('gitCurrentBranchName');
+        expect(complete).not.toContain('gitUpstreamConfig');
+        expect(complete).not.toContain('gitResolvedGitDir');
+        useAddon(complete);
         expect(() => loadNativeGit()).toThrow('does not export the git capability');
         expect(nativeGitStatus().loaded).toBe(false);
     });

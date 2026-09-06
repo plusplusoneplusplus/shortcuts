@@ -61,6 +61,7 @@ export type {
     NativeGitRangeFile,
     NativeGitRepositoryStatus,
     NativeGitStatusEntry,
+    NativeGitUpstreamConfig,
 } from './git';
 
 export { loadNativeNotesIndex, nativeNotesIndexStatus } from './notes-index';

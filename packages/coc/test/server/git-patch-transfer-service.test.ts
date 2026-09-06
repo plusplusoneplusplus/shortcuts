@@ -58,7 +58,9 @@ function createHarness() {
         exportCommitPatches: vi.fn(),
         applyCommitPatch: vi.fn(),
         getRepoState: vi.fn(() => CLEAN_STATE),
-        hasUncommittedChanges: vi.fn(async () => false),
+        getRepositoryStatus: vi.fn(async () => ({
+            branch: 'main', isDetached: false, dirty: false, ahead: 0, behind: 0, unborn: false,
+        })),
         getBranchStatus: vi.fn(async () => MAIN_BRANCH),
     };
     const processStore = { updateWorkspace: vi.fn(async () => undefined) };
@@ -281,6 +283,31 @@ describe('GitPatchTransferService.applyPatch', () => {
             targetBranch: null,
             detachedHash: 'ffff',
         });
+    });
+
+    it('reads the target working tree once and passes the flag on', async () => {
+        // Regression guard for the de-duplication: preflight used to call
+        // `hasUncommittedChanges` and then `getBranchStatus`, two `git status`
+        // spawns answering one question. The flag is a `getBranchStatus`
+        // parameter precisely so the caller can supply it from the status it
+        // already read.
+        h.branchService.applyCommitPatch.mockResolvedValue({ success: true, headHash: 'dddd', stashed: false });
+        h.branchService.getRepositoryStatus.mockResolvedValue({
+            branch: 'main', isDetached: false, dirty: true, ahead: 0, behind: 0, unborn: false,
+        } as never);
+
+        await h.service.applyPatch(TARGET_WS, PATCH_BODY);
+
+        expect(h.branchService.getRepositoryStatus).toHaveBeenCalledTimes(1);
+        expect(h.branchService).not.toHaveProperty('hasUncommittedChanges');
+        expect(h.branchService.getBranchStatus).toHaveBeenCalledWith(expect.any(String), true);
+    });
+
+    it('treats an unreadable target status as a clean tree', async () => {
+        h.branchService.applyCommitPatch.mockResolvedValue({ success: true, headHash: 'dddd', stashed: false });
+        h.branchService.getRepositoryStatus.mockResolvedValue(null as never);
+        await h.service.applyPatch(TARGET_WS, PATCH_BODY);
+        expect(h.branchService.getBranchStatus).toHaveBeenCalledWith(expect.any(String), false);
     });
 
     it('400s when the target is not a usable git repository', async () => {

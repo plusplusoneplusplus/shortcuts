@@ -31,6 +31,8 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 
 const mockGetBranchStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
+/** The single status read the branch-status route is supposed to make. */
+const mockGetRepositoryStatus = vi.fn();
 const mockGetLocalBranchesPaginated = vi.fn();
 const mockGetRemoteBranchesPaginated = vi.fn();
 const mockCreateBranch = vi.fn();
@@ -57,6 +59,10 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
+            // The branch-status route reads one status and derives the dirty
+            // flag from it, so `dirty` has to track whatever a case set on
+            // `mockHasUncommittedChanges` or every dirty assertion goes vacuous.
+            getRepositoryStatus: vi.fn(async (...args: any[]) => mockGetRepositoryStatus(...args)),
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
             createBranch: mockCreateBranch,
@@ -162,6 +168,7 @@ describe('Git Branch Edge Cases', () => {
     beforeEach(() => {
         mockGetBranchStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
+        mockGetRepositoryStatus.mockReset();
         mockCreateBranch.mockReset();
         mockSwitchBranch.mockReset();
         mockDeleteBranch.mockReset();
@@ -177,6 +184,9 @@ describe('Git Branch Edge Cases', () => {
         mockForgeExecGit.mockReturnValue('');
         // Sensible defaults
         mockHasUncommittedChanges.mockReturnValue(false);
+        mockGetRepositoryStatus.mockResolvedValue({
+            branch: 'main', isDetached: false, dirty: false, ahead: 0, behind: 0, unborn: false,
+        });
         mockGetBranchStatus.mockReturnValue({
             name: 'main',
             isDetached: false,
@@ -396,6 +406,35 @@ describe('Git Branch Edge Cases', () => {
             expect(data.isDetached).toBe(true);
             expect(data.detachedHash).toBe('abc1234def567890');
             expect(data.name).toBeNull();
+        });
+
+        it('reads the working tree once and feeds the dirty flag to the branch read', async () => {
+            // Regression guard for the de-duplication: the route used to run
+            // `hasUncommittedChanges` and then `getBranchStatus`, which is two
+            // `git status` spawns for one screen. `getRepositoryStatus` already
+            // answers the first question, and `getBranchStatus` takes the flag
+            // as a parameter for exactly this reason.
+            mockGetRepositoryStatus.mockResolvedValue({
+                branch: 'main', isDetached: false, dirty: true, ahead: 0, behind: 0, unborn: false,
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-status`);
+
+            expect(res.status).toBe(200);
+            expect(mockGetRepositoryStatus).toHaveBeenCalledTimes(1);
+            expect(mockHasUncommittedChanges).not.toHaveBeenCalled();
+            expect(mockGetBranchStatus).toHaveBeenCalledWith(expect.any(String), true);
+        });
+
+        it('reports a clean tree when the status read fails outright', async () => {
+            // `getRepositoryStatus` answers null for a path git cannot read, and
+            // `hasUncommittedChanges` answered false there. Same flag either way.
+            mockGetRepositoryStatus.mockResolvedValue(null);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-status`);
+
+            expect(res.status).toBe(200);
+            expect(mockGetBranchStatus).toHaveBeenCalledWith(expect.any(String), false);
         });
     });
 

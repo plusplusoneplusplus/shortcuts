@@ -80,10 +80,19 @@ export class GitRangeService {
 
     /**
      * Get the current branch name.
+     *
+     * `'HEAD'` stands in for a detached HEAD and for a repository with no
+     * commits yet — the two cases `rev-parse --abbrev-ref HEAD` answered with
+     * that literal string or with a non-zero exit.
+     *
      * @returns Current branch name or 'HEAD' if detached
      */
     async getCurrentBranch(repoRoot: string): Promise<string> {
+        const { addon, wsl } = this.native(repoRoot);
         try {
+            if (!wsl) {
+                return (await addon.gitCurrentBranchName(repoRoot)) || 'HEAD';
+            }
             const branch = await execGitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], repoRoot);
             return branch || 'HEAD';
         } catch (error) {

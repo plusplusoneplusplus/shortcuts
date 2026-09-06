@@ -30,13 +30,21 @@ use super::{GitError, GitErrorKind};
 /// sees a failure should see the command whose job this is doing.
 const ARGS: [&str; 2] = ["rev-parse", "--show-toplevel"];
 
+/// The same, for the git directory read below.
+const GIT_DIR_ARGS: [&str; 2] = ["rev-parse", "--git-dir"];
+
 /// Turn a `gix` failure into the shared `git <args> failed: <stderr>` shape.
-fn repo_error(error: impl std::fmt::Display) -> GitError {
+fn repo_error_for(args: &[&str], error: impl std::fmt::Display) -> GitError {
     GitError::from_parts(
         GitErrorKind::Repository,
-        &ARGS.iter().map(|arg| (*arg).to_string()).collect::<Vec<_>>(),
+        &args.iter().map(|arg| (*arg).to_string()).collect::<Vec<_>>(),
         error.to_string(),
     )
+}
+
+/// Turn a `gix` failure into the shared `git <args> failed: <stderr>` shape.
+fn repo_error(error: impl std::fmt::Display) -> GitError {
+    repo_error_for(&ARGS, error)
 }
 
 /// The working-tree root containing `path`, or `None` when there is not one.
@@ -81,4 +89,52 @@ pub fn discover_workdir(path: &Path) -> Result<Option<String>, GitError> {
     let root = if trimmed.is_empty() { text.as_ref() } else { trimmed };
 
     Ok(Some(root.to_string()))
+}
+
+/// The repository's git directory for `path`, absolute, or `None` when `path`
+/// is not in a repository.
+///
+/// Replaces `rev-parse --git-dir` *and* the `path.isAbsolute`/`path.join` the
+/// caller wrapped it in: git prints a relative `.git` when run from the work
+/// tree root, `gix` reports the resolved directory, so the absolute answer
+/// crosses the boundary already built.
+///
+/// **`git_dir()`, never `common_dir()`.** In a linked worktree the two differ:
+/// the common dir is the main repository's `.git`, while `git_dir()` is
+/// `.git/worktrees/<name>` — and that is where `rebase-merge`, `rebase-apply`,
+/// `MERGE_HEAD` and `CHERRY_PICK_HEAD` live, which is the only thing the caller
+/// looks in here for. Reading the common dir would compile, pass in a plain
+/// clone, and silently report "no operation in progress" for every rebase or
+/// cherry-pick run in a worktree.
+pub fn resolved_git_dir(path: &Path) -> Result<Option<String>, GitError> {
+    // Discovery walks upward, so a missing path would otherwise be answered by
+    // whatever repository happens to sit above it — the same guard
+    // `discover_workdir` needs, for the same reason.
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return Ok(None);
+    };
+
+    let start = if metadata.is_dir() {
+        path
+    } else {
+        match path.parent() {
+            Some(parent) => parent,
+            None => return Ok(None),
+        }
+    };
+
+    let repo = match gix::discover(start) {
+        Ok(repo) => repo,
+        Err(gix::discover::Error::Discover(_)) => return Ok(None),
+        Err(error) => return Err(repo_error_for(&GIT_DIR_ARGS, error)),
+    };
+
+    let git_dir = repo.git_dir();
+    let absolute = if git_dir.is_absolute() {
+        git_dir.to_path_buf()
+    } else {
+        std::env::current_dir().map_err(|error| repo_error_for(&GIT_DIR_ARGS, error))?.join(git_dir)
+    };
+
+    Ok(Some(absolute.to_string_lossy().into_owned()))
 }

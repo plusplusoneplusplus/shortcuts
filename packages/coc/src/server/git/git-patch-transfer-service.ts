@@ -15,6 +15,7 @@ import type {
     GitPatchApplyResult,
     GitPatchExportResult,
     GitPatchMultiExportResult,
+    GitRepositoryStatus,
     ProcessStore,
     RepoState,
     WorkspaceInfo,
@@ -34,7 +35,13 @@ export interface PatchTransferBranchService {
         options?: { stashAndContinue?: boolean; stashMessage?: string },
     ): Promise<GitPatchApplyResult>;
     getRepoState(repoRoot: string): Promise<RepoState>;
-    hasUncommittedChanges(repoRoot: string): Promise<boolean>;
+    /**
+     * The one status read behind both the dirty flag and the branch drift.
+     * `hasUncommittedChanges` is deliberately absent: it answers the same
+     * question with a second `git status`, and `getBranchStatus` already takes
+     * the flag as a parameter so the caller can supply it from here.
+     */
+    getRepositoryStatus(repoRoot: string): Promise<GitRepositoryStatus | null>;
     getBranchStatus(repoRoot: string, hasUncommittedChanges: boolean): Promise<BranchStatus | null>;
 }
 
@@ -205,7 +212,14 @@ export class GitPatchTransferService {
             };
         }
 
-        const hasUncommittedChanges = await this.deps.branchService.hasUncommittedChanges(ws.rootPath);
+        // One status read, not two. `getRepositoryStatus` already runs `git
+        // status` and `getBranchStatus` takes the dirty flag as a parameter for
+        // exactly this reason, so asking `hasUncommittedChanges` as well would
+        // spawn a second `git status` for the same screen. A repository that
+        // cannot be read answers `null` here and `null` from `getBranchStatus`
+        // below, which is the error the caller already handles.
+        const repositoryStatus = await this.deps.branchService.getRepositoryStatus(ws.rootPath);
+        const hasUncommittedChanges = repositoryStatus?.dirty ?? false;
         const branchStatus = await this.deps.branchService.getBranchStatus(ws.rootPath, hasUncommittedChanges);
         if (!branchStatus) throw badRequest('Target workspace is not a usable git repository');
         if (branchStatus.isDetached) {
