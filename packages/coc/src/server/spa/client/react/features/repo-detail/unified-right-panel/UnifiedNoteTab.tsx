@@ -38,10 +38,14 @@ export interface UnifiedNoteTabProps {
     onClose: () => void;
     /** Report an undecodable descriptor to the strip. */
     onErrorChange?: (hasError: boolean) => void;
+    /** Report unsaved edits to the strip (AC-05's close guard reads this). */
+    onDirtyChange?: (dirty: boolean) => void;
+    /** Publish the editor's save entry point so a close can write first. */
+    onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
 }
 
 export function UnifiedNoteTab({
-    workspaceId, resourceId, label, line, onClose, onErrorChange,
+    workspaceId, resourceId, label, line, onClose, onErrorChange, onDirtyChange, onRegisterSave,
 }: UnifiedNoteTabProps) {
     const resource = useMemo(() => parseNoteResourceId(resourceId), [resourceId]);
 
@@ -88,6 +92,8 @@ export function UnifiedNoteTab({
                 commentBackend={noopCommentBackend}
                 notesRoot={resource.notesRoot}
                 scrollToLine={line}
+                onDirtyChange={onDirtyChange}
+                onRegisterSave={onRegisterSave}
             />
         </div>
     );

@@ -27,13 +27,19 @@ import type { UnifiedPanelTab, UnifiedTabKind } from './unifiedPanelTabsModel';
 /**
  * Kinds whose close can discard unsaved work.
  *
- * Only `file` today: it is the one kind that both reports dirtiness
- * (`PreviewPane`'s `onDirtyChange`) and hands the panel a way to write it back
- * (`onRegisterSave`). Notes and canvases autosave through their own sessions
- * and report neither, so listing them here would offer a Save button with
- * nothing behind it. They join this set when they gain those two seams.
+ * The bar for membership is the same for all three: the view reports dirtiness
+ * (`onDirtyChange`) AND hands the panel a way to write the draft back
+ * (`onRegisterSave`), so the prompt's Save button always has something behind
+ * it. `file` writes through `PreviewPane`'s buffer; `note` and `canvas`
+ * autosave, so their unsaved window is a pending debounce and their save
+ * flushes it (`flushSave` / `saveNow`) and reports whether the write landed.
+ *
+ * The remaining kinds hold nothing to save: a diff is reconstructed, a terminal
+ * is guarded by `unifiedTerminalClose` instead, and Explorer and Notes are
+ * navigators.
  */
-export const DIRTY_CLOSE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['file']);
+export const DIRTY_CLOSE_KINDS: ReadonlySet<UnifiedTabKind> =
+    new Set<UnifiedTabKind>(['file', 'note', 'canvas']);
 
 /**
  * Whether closing `tab` right now would discard unsaved edits, and therefore
@@ -64,4 +70,4 @@ export function dirtyCloseLabel(tab: Pick<UnifiedPanelTab, 'resourceId' | 'label
 
 /** The error the prompt shows when the write fails and the tab stays open. */
 export const DIRTY_CLOSE_SAVE_FAILED =
-    'Failed to save the file. It is still open with unsaved changes.';
+    'Failed to save. It is still open with unsaved changes.';

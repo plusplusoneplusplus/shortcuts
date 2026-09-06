@@ -163,6 +163,8 @@ export function UnifiedTabView({
                     canvasId={tab.resourceId}
                     liveEvent={null}
                     onClose={close}
+                    onDirtyChange={handleDirty}
+                    onRegisterSave={handleRegisterSave}
                 />
             );
         case 'note':
@@ -174,6 +176,8 @@ export function UnifiedTabView({
                     line={tab.line}
                     onClose={close}
                     onErrorChange={handleError}
+                    onDirtyChange={handleDirty}
+                    onRegisterSave={handleRegisterSave}
                 />
             );
         case 'diff':

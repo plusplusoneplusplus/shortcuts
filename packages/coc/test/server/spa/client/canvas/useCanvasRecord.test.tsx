@@ -116,6 +116,75 @@ describe('useCanvasRecord', () => {
         expect(result.current.draft).toBe('first + second');
     });
 
+    it('saveNow writes the draft immediately and reports that it landed', async () => {
+        save.mockResolvedValue(makeCanvas({ revision: 2 }));
+        const { result } = mount();
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => result.current.editDraft('# Edited'));
+        let saved: boolean | undefined;
+        await act(async () => { saved = await result.current.saveNow(); });
+
+        expect(saved).toBe(true);
+        expect(save).toHaveBeenCalledWith('ws-1', 'doc-abc123', { content: '# Edited', expectedRevision: 1 });
+        expect(result.current.dirty).toBe(false);
+
+        // The pending debounce was cancelled by the explicit save, so letting
+        // the timer run does not write the same edit a second time.
+        await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+        expect(save).toHaveBeenCalledTimes(1);
+    });
+
+    it('saveNow on a clean canvas succeeds without writing', async () => {
+        const { result } = mount();
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        let saved: boolean | undefined;
+        await act(async () => { saved = await result.current.saveNow(); });
+
+        expect(saved).toBe(true);
+        expect(save).not.toHaveBeenCalled();
+    });
+
+    it('saveNow reports failure — and leaves the draft dirty — when the write is refused', async () => {
+        save.mockRejectedValueOnce(new Error('offline'));
+        const { result } = mount();
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => result.current.editDraft('# Edited'));
+        let saved: boolean | undefined;
+        await act(async () => { saved = await result.current.saveNow(); });
+
+        expect(saved).toBe(false);
+        expect(result.current.saveState).toBe('error');
+        expect(result.current.dirty).toBe(true);
+        expect(result.current.draft).toBe('# Edited');
+
+        // A 409 is a failure too: the canvas moved under the draft.
+        save.mockRejectedValueOnce(conflictError());
+        await act(async () => { saved = await result.current.saveNow(); });
+        expect(saved).toBe(false);
+        expect(result.current.saveState).toBe('conflict');
+    });
+
+    it('saveNow reports failure when the user typed while the write was in flight', async () => {
+        // The write landed, but not the text on screen — a caller closing the
+        // canvas must not be told the edits are safe.
+        let release: (v: unknown) => void = () => {};
+        save.mockImplementation(() => new Promise(resolve => { release = resolve; }));
+        const { result } = mount();
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => result.current.editDraft('first'));
+        let saved: Promise<boolean> | undefined;
+        act(() => { saved = result.current.saveNow(); });
+        act(() => result.current.editDraft('first + second'));
+        await act(async () => { release(makeCanvas({ revision: 2 })); });
+
+        expect(await saved!).toBe(false);
+        expect(result.current.dirty).toBe(true);
+    });
+
     it('flags a 409 as a conflict and any other failure as an error', async () => {
         save.mockRejectedValueOnce(conflictError());
         const { result } = mount();

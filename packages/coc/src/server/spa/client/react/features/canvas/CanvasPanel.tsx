@@ -27,7 +27,7 @@
  * clone workspaces keep hitting the workspace-owning server (AC-07).
  */
 
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Canvas, CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
@@ -69,11 +69,24 @@ export interface CanvasPanelProps {
     onCanvasCreated?: (canvasId: string) => void;
     /** Bumping this value forces a reload from the server (used by the pop-out window on focus). */
     reloadNonce?: number;
+    /**
+     * Reports unsaved-edit state to the host, so a panel that hides this canvas
+     * behind another tab can still show that it holds unwritten work. Reports
+     * clean on unmount.
+     */
+    onDirtyChange?: (dirty: boolean) => void;
+    /**
+     * Publishes a way to flush the autosave debounce and write the draft now,
+     * so a host closing this canvas can save without the user coming back to it.
+     * Registers `null` on unmount.
+     */
+    onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
 }
 
 export function CanvasPanel({
     workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange,
     onPopOut, availableCanvases = [], onSelectCanvas, onCanvasCreated, reloadNonce,
+    onDirtyChange, onRegisterSave,
 }: CanvasPanelProps) {
     // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
     const client = useCocClient(workspaceId);
@@ -102,6 +115,23 @@ export function CanvasPanel({
     const kusto = useCreateKustoCanvas({
         client, workspaceId, canvasRef, availableCanvases, onCanvasCreated, onSelectCanvas, notify,
     });
+
+    // Host seams (unified right panel): the same contract `PreviewPane` offers —
+    // report dirtiness whenever it flips plus clean on unmount, and publish one
+    // stable save entry point for the life of the mount.
+    const dirty = record.dirty;
+    useEffect(() => {
+        onDirtyChange?.(dirty);
+    }, [dirty, onDirtyChange]);
+    useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
+
+    const saveNowRef = useRef(record.saveNow);
+    saveNowRef.current = record.saveNow;
+    useEffect(() => {
+        if (!onRegisterSave) return;
+        onRegisterSave(() => saveNowRef.current());
+        return () => onRegisterSave(null);
+    }, [onRegisterSave]);
 
     const toggleFullscreen = useCallback(() => {
         setIsFullscreen(prev => {

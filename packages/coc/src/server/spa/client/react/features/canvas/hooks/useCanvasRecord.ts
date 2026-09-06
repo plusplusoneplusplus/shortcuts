@@ -7,7 +7,9 @@
  *  - live `canvas-updated` reconciliation — refresh in place when clean, flag a
  *    pending remote update when the user has unsaved edits,
  *  - debounced revision-checked autosave with 409 conflict detection, keeping
- *    the dirty mark when the user typed while a save was in flight.
+ *    the dirty mark when the user typed while a save was in flight,
+ *  - an explicit `saveNow` that flushes that debounce and reports whether the
+ *    draft actually landed, for hosts that must save before closing.
  *
  * The routed client is passed in (never resolved here) so remote/clone
  * workspaces keep hitting the workspace-owning server.
@@ -52,6 +54,14 @@ export interface CanvasRecord {
     editDraft: (next: string) => void;
     /** Adopt a canvas saved elsewhere (interactive views, version restore) as the clean state. */
     adoptSaved: (saved: Canvas) => void;
+    /**
+     * Write the current draft immediately, skipping the autosave debounce, and
+     * report whether the canvas ended up clean. A clean canvas saves nothing and
+     * succeeds; a rejected save, a 409, and a draft the user kept typing into
+     * while the write was in flight all report `false`, so a caller closing the
+     * canvas knows the edits are still unwritten.
+     */
+    saveNow: () => Promise<boolean>;
 }
 
 export function useCanvasRecord({ client, workspaceId, canvasId, liveEvent, reloadNonce }: UseCanvasRecordOptions): CanvasRecord {
@@ -121,37 +131,56 @@ export function useCanvasRecord({ client, workspaceId, canvasId, liveEvent, relo
         }
     }, [liveEvent, canvasId, reload]);
 
+    // The one write path: revision-checked save of whatever the draft holds
+    // right now. Both the autosave timer and an explicit `saveNow` go through
+    // it, so a save triggered by a close behaves exactly like the debounced one.
+    const writeDraft = useCallback(async (): Promise<boolean> => {
+        const current = canvasRef.current;
+        if (!current) return false;
+        const savedDraft = draftRef.current;
+        setSaveState('saving');
+        try {
+            const saved = await client.canvases.save(
+                workspaceId, canvasId, { content: savedDraft, expectedRevision: current.revision },
+            );
+            setCanvas({ ...saved, content: savedDraft });
+            // Keep the dirty mark if the user typed while the save was in flight
+            if (draftRef.current !== savedDraft) return false;
+            setDirty(false);
+            setSaveState('saved');
+            return true;
+        } catch (err) {
+            if (err instanceof CocApiError && err.status === 409) {
+                setSaveState('conflict');
+            } else {
+                setSaveState('error');
+            }
+            return false;
+        }
+        // `client` is left out of the deps for the same reason `reload` leaves
+        // it out: it is memoized per workspaceId.
+    }, [workspaceId, canvasId]);
+
     // Debounced revision-checked autosave of user edits
     useEffect(() => {
         if (!dirty) return;
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = setTimeout(() => {
-            const current = canvasRef.current;
-            if (!current) return;
-            const savedDraft = draft;
-            setSaveState('saving');
-            client.canvases
-                .save(workspaceId, canvasId, { content: savedDraft, expectedRevision: current.revision })
-                .then(saved => {
-                    setCanvas({ ...saved, content: savedDraft });
-                    // Keep the dirty mark if the user typed while the save was in flight
-                    if (draftRef.current === savedDraft) {
-                        setDirty(false);
-                        setSaveState('saved');
-                    }
-                })
-                .catch(err => {
-                    if (err instanceof CocApiError && err.status === 409) {
-                        setSaveState('conflict');
-                    } else {
-                        setSaveState('error');
-                    }
-                });
-        }, AUTOSAVE_DELAY_MS);
+        saveTimerRef.current = setTimeout(() => { void writeDraft(); }, AUTOSAVE_DELAY_MS);
         return () => {
             if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
         };
-    }, [draft, dirty, workspaceId, canvasId]);
+    }, [draft, dirty, writeDraft]);
+
+    // Explicit save (the unified panel's unsaved-changes prompt). Cancels the
+    // pending debounce first so one edit is never written twice.
+    const saveNow = useCallback(async (): Promise<boolean> => {
+        if (saveTimerRef.current) {
+            clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = null;
+        }
+        if (!dirtyRef.current) return true;
+        return writeDraft();
+    }, [writeDraft]);
 
     const editDraft = useCallback((next: string) => {
         setDraft(next);
@@ -180,5 +209,6 @@ export function useCanvasRecord({ client, workspaceId, canvasId, liveEvent, relo
         reload,
         editDraft,
         adoptSaved,
+        saveNow,
     };
 }

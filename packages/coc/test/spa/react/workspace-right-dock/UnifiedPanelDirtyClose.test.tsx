@@ -10,10 +10,18 @@
  * close that silently ate an edit, a Save that reported success after a failed
  * write, and a draft that vanished because its tab was hidden.
  *
+ * Notes and canvases autosave, so their unsaved window is a pending debounce
+ * rather than a buffer. Their views are stubbed here: the stub stashes the two
+ * seams the real `NoteEditor` and `CanvasPanel` publish (`onDirtyChange` and
+ * `onRegisterSave`), so a test drives the dirty state and the save outcome from
+ * outside while the panel's guard runs for real. The seams themselves are
+ * covered where they live — `test/server/spa/notes/NoteEditorHostSeams.test.tsx`
+ * and `test/server/spa/client/canvas/CanvasPanel.test.tsx`.
+ *
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
@@ -45,6 +53,26 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
 vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
     DockNotesPanel: () => <div data-testid="mock-notes" />,
 }));
+// The two autosaving views, reduced to their host seams (see the header).
+type HostSeams = {
+    dirty?: (dirty: boolean) => void;
+    register?: (save: (() => Promise<boolean>) | null) => void;
+};
+let noteSeams: HostSeams = {};
+let canvasSeams: HostSeams = {};
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NoteEditor', () => ({
+    NoteEditor: ({ onDirtyChange, onRegisterSave, notePath }: any) => {
+        noteSeams = { dirty: onDirtyChange, register: onRegisterSave };
+        return <div data-testid="mock-note-editor">{notePath}</div>;
+    },
+}));
+vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', () => ({
+    CanvasPanel: ({ onDirtyChange, onRegisterSave, canvasId }: any) => {
+        canvasSeams = { dirty: onDirtyChange, register: onRegisterSave };
+        return <div data-testid="mock-canvas-panel">{canvasId}</div>;
+    },
+}));
+
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
@@ -88,6 +116,16 @@ function openFile(opts: { path: string; readOnly?: boolean; chatId?: string | nu
     });
 }
 
+function openCanvas(canvasId = 'canvas-1') {
+    return openUnifiedPanelTab(WS, {
+        kind: 'canvas',
+        ownerWorkspaceId: WS,
+        chatId: CHAT,
+        resourceId: canvasId,
+        label: 'Plan canvas',
+    });
+}
+
 /** Open a dirty file tab and hand back its id and its ✕. */
 async function dirtyFileTab(path = 'src/a.ts') {
     const tabId = openFile({ path });
@@ -109,6 +147,8 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     clearUnifiedPanelState();
+    noteSeams = {};
+    canvasSeams = {};
 });
 
 describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
@@ -222,6 +262,79 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         // And its ✕ still asks, from the other side of the switch.
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${fileTab}`));
         expect(screen.getByTestId('explorer-close-tabs-prompt')).toBeTruthy();
+    });
+
+    it('asks before closing a note whose autosave has not landed, and saves on request', async () => {
+        const tabId = openUnifiedPanelTab(WS, {
+            kind: 'note',
+            ownerWorkspaceId: WS,
+            chatId: null,
+            resourceId: 'auto||docs/plan.md',
+            label: 'plan.md',
+        });
+        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+        await screen.findByTestId('mock-note-editor');
+
+        const save = vi.fn(async () => true);
+        act(() => { noteSeams.register?.(save); noteSeams.dirty?.(true); });
+        expect(screen.getByTestId(`unified-panel-tab-dirty-${tabId}`)).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+        expect(screen.getByTestId('explorer-close-tabs-prompt')).toBeTruthy();
+        // The prompt names the note, not its opaque descriptor identity.
+        expect(screen.getByTestId('explorer-close-tabs-file').textContent).toContain('docs/plan.md');
+
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull());
+        expect(save).toHaveBeenCalledTimes(1);
+    });
+
+    it("Don't Save closes a dirty canvas without flushing its draft", async () => {
+        const tabId = openCanvas();
+        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+        await screen.findByTestId('mock-canvas-panel');
+
+        const save = vi.fn(async () => true);
+        act(() => { canvasSeams.register?.(save); canvasSeams.dirty?.(true); });
+
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+        fireEvent.click(screen.getByTestId('explorer-close-dont-save-btn'));
+
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull());
+        expect(save).not.toHaveBeenCalled();
+    });
+
+    it('a canvas whose save is refused keeps its tab, its dirty mark, and a retry', async () => {
+        const tabId = openCanvas();
+        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+        await screen.findByTestId('mock-canvas-panel');
+
+        const save = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+        act(() => { canvasSeams.register?.(save); canvasSeams.dirty?.(true); });
+
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+
+        await screen.findByTestId('explorer-close-tabs-error');
+        expect(screen.getByTestId(`unified-panel-tab-${tabId}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-dirty-${tabId}`)).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull());
+        expect(save).toHaveBeenCalledTimes(2);
+    });
+
+    it('closes a clean canvas tab with no prompt', async () => {
+        const tabId = openCanvas();
+        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+        await screen.findByTestId('mock-canvas-panel');
+        act(() => { canvasSeams.register?.(vi.fn(async () => true)); });
+
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+
+        expect(screen.queryByTestId('explorer-close-tabs-prompt')).toBeNull();
+        expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
     });
 
     it('drops a pending prompt whose tab went away with a chat switch', async () => {

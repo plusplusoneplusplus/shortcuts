@@ -37,10 +37,27 @@ describe('needsDirtyCloseConfirm', () => {
         expect(needsDirtyCloseConfirm(null, true)).toBe(false);
     });
 
+    it('asks before closing a note or a canvas with a pending autosave', () => {
+        // Both autosave, so their unsaved window is a debounce rather than a
+        // buffer — but a close that beats the timer loses the text just the same.
+        expect(needsDirtyCloseConfirm({ kind: 'note' }, true)).toBe(true);
+        expect(needsDirtyCloseConfirm({ kind: 'canvas' }, true)).toBe(true);
+        expect(needsDirtyCloseConfirm({ kind: 'note' }, false)).toBe(false);
+        expect(needsDirtyCloseConfirm({ kind: 'canvas' }, false)).toBe(false);
+    });
+
     it('only prompts for kinds that can both report and write back edits', () => {
         const prompting = ALL_UNIFIED_TAB_KINDS.filter(kind => needsDirtyCloseConfirm({ kind }, true));
-        expect(prompting).toEqual(['file']);
-        expect([...DIRTY_CLOSE_KINDS]).toEqual(['file']);
+        expect(prompting).toEqual(['file', 'note', 'canvas']);
+        expect([...DIRTY_CLOSE_KINDS].sort()).toEqual(['canvas', 'file', 'note']);
+    });
+
+    it('never prompts for a kind that holds nothing to save', () => {
+        // A diff is reconstructed, a terminal is guarded by the terminate
+        // prompt instead, and Explorer/Notes are navigators.
+        for (const kind of ['diff', 'terminal', 'explorer', 'notes'] as const) {
+            expect(needsDirtyCloseConfirm({ kind }, true)).toBe(false);
+        }
     });
 });
 
