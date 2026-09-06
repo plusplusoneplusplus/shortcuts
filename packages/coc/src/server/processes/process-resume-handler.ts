@@ -7,7 +7,7 @@ import { spawn, type SpawnOptions } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { resolveWorkspaceExecutionContext, translatePathForHostFilesystem } from '@plusplusoneplusplus/forge';
+import { resolveWorkspaceExecutionContextAsync, translatePathForHostFilesystemAsync } from '@plusplusoneplusplus/forge';
 import { sendError, sendJSON, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 
@@ -168,9 +168,9 @@ async function resolveWorkingDirectory(store: ProcessStore, processRecord: any):
 
     for (const candidate of candidates) {
         try {
-            const executionContext = resolveWorkspaceExecutionContext(candidate);
+            const executionContext = await resolveWorkspaceExecutionContextAsync(candidate);
             const resolved = executionContext.kind === 'wsl'
-                ? translatePathForHostFilesystem(candidate, executionContext)
+                ? await translatePathForHostFilesystemAsync(candidate, executionContext)
                 : path.resolve(candidate);
             if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
                 return resolved;
@@ -233,7 +233,7 @@ export async function launchResumeCommandInTerminal(input: LaunchResumeInput): P
     const platform = process.platform;
     const provider = normalizeResumeProvider(input.provider);
     const terminalWorkingDirectory = platform === 'win32'
-        ? translatePathForHostFilesystem(input.workingDirectory)
+        ? await translatePathForHostFilesystemAsync(input.workingDirectory)
         : input.workingDirectory;
     const command = buildResumeCommand(input.sessionId, terminalWorkingDirectory, platform, provider);
 
@@ -304,7 +304,7 @@ export async function launchFreshChatInTerminal(input: LaunchFreshChatInput): Pr
     const platform = process.platform;
     const provider = normalizeResumeProvider(input.provider);
     const terminalWorkingDirectory = platform === 'win32'
-        ? translatePathForHostFilesystem(input.workingDirectory)
+        ? await translatePathForHostFilesystemAsync(input.workingDirectory)
         : input.workingDirectory;
     const command = buildFreshChatCommand(terminalWorkingDirectory, platform, provider);
 

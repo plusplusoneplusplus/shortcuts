@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/forge';
-import { normalizeExecutionPath, resolvePathForHostFilesystem } from '@plusplusoneplusplus/forge';
+import { normalizeExecutionPath, resolvePathForHostFilesystemAsync } from '@plusplusoneplusplus/forge';
 import { getRepoDataPath } from '../paths';
 
 export const ENDEV_XDPU_SKILL_NAME = 'EnDev-xDpu';
@@ -242,7 +242,7 @@ export async function detectEnDevEligibility(
     }
 
     const checkedAt = new Date().toISOString();
-    const hostRootPath = resolvePathForHostFilesystem(workspace.rootPath);
+    const hostRootPath = await resolvePathForHostFilesystemAsync(workspace.rootPath);
     const nativeWsl = options.isNativeWsl ?? isNativeWslEnvironment();
     const setupFiles = findExistingRelativePaths(hostRootPath, ENDEV_SETUP_MARKERS);
     const xDpuWorkspace = isXdpUWorkspace(workspace, hostRootPath);

@@ -14,29 +14,29 @@ import {
     clearGitSafeDirectoryCache,
     resolveGitSafeDirectory,
 } from '../../src/git/safe-directory';
-import { getDefaultWslDistro } from '../../src/utils/workspace-execution';
+import { getDefaultWslDistroAsync } from '../../src/utils/workspace-execution';
 
 vi.mock('../../src/utils/workspace-execution', () => ({
-    getDefaultWslDistro: vi.fn(),
+    getDefaultWslDistroAsync: vi.fn(),
 }));
 
-const mockedGetDefaultWslDistro = vi.mocked(getDefaultWslDistro);
+const mockedGetDefaultWslDistro = vi.mocked(getDefaultWslDistroAsync);
 
 describe('safe-directory', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         clearGitSafeDirectoryCache();
-        mockedGetDefaultWslDistro.mockReturnValue(undefined);
+        mockedGetDefaultWslDistro.mockResolvedValue(undefined);
     });
 
-    it('resolves Git for Windows safe.directory entries for WSL UNC paths', () => {
+    it('resolves Git for Windows safe.directory entries for WSL UNC paths', async () => {
         const originalPlatform = process.platform;
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
         try {
-            expect(resolveGitSafeDirectory('\\\\wsl$\\Ubuntu-24.04\\home\\georgeqiao\\repo')).toBe(
+            expect(await resolveGitSafeDirectory('\\\\wsl$\\Ubuntu-24.04\\home\\georgeqiao\\repo')).toBe(
                 '%(prefix)///wsl$/Ubuntu-24.04/home/georgeqiao/repo',
             );
-            expect(resolveGitSafeDirectory('\\\\wsl.localhost\\Ubuntu\\home\\me\\repo\\')).toBe(
+            expect(await resolveGitSafeDirectory('\\\\wsl.localhost\\Ubuntu\\home\\me\\repo\\')).toBe(
                 '%(prefix)///wsl.localhost/Ubuntu/home/me/repo',
             );
         } finally {
@@ -44,12 +44,12 @@ describe('safe-directory', () => {
         }
     });
 
-    it('resolves Linux-style WSL paths using the default distro on Windows', () => {
+    it('resolves Linux-style WSL paths using the default distro on Windows', async () => {
         const originalPlatform = process.platform;
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-        mockedGetDefaultWslDistro.mockReturnValue('Ubuntu-24.04');
+        mockedGetDefaultWslDistro.mockResolvedValue('Ubuntu-24.04');
         try {
-            expect(resolveGitSafeDirectory('/home/georgeqiao/repo')).toBe(
+            expect(await resolveGitSafeDirectory('/home/georgeqiao/repo')).toBe(
                 '%(prefix)///wsl$/Ubuntu-24.04/home/georgeqiao/repo',
             );
         } finally {
@@ -57,13 +57,13 @@ describe('safe-directory', () => {
         }
     });
 
-    it('skips non-WSL paths and non-Windows hosts', () => {
-        expect(resolveGitSafeDirectory('C:\\src\\repo')).toBeUndefined();
+    it('skips non-WSL paths and non-Windows hosts', async () => {
+        expect(await resolveGitSafeDirectory('C:\\src\\repo')).toBeUndefined();
 
         const originalPlatform = process.platform;
         Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
         try {
-            expect(resolveGitSafeDirectory('\\\\wsl$\\Ubuntu\\home\\me\\repo')).toBeUndefined();
+            expect(await resolveGitSafeDirectory('\\\\wsl$\\Ubuntu\\home\\me\\repo')).toBeUndefined();
         } finally {
             Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
         }
