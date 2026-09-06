@@ -13,6 +13,7 @@ import { CHAT_STYLES, CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE } from '@plusplusone
 import {
     ChatStyleSelector,
     CHAT_STYLE_DESCRIPTIONS,
+    CHAT_STYLE_SETTINGS_HASH,
 } from '../../../../src/server/spa/client/react/features/chat/ChatStyleSelector';
 
 describe('ChatStyleSelector', () => {
@@ -123,5 +124,66 @@ describe('ChatStyleSelector', () => {
     it('publishes the selected value on the container for downstream assertions', () => {
         render(<ChatStyleSelector selectedStyle="direct" onChange={() => {}} />);
         expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('direct');
+    });
+
+    describe('Configure styles… row', () => {
+        it('renders last in the menu, after the four style options', () => {
+            render(<ChatStyleSelector selectedStyle="human" onChange={() => {}} />);
+            fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+
+            const menu = screen.getByTestId('chat-style-menu');
+            const rows = Array.from(menu.querySelectorAll('button'));
+            expect(rows[rows.length - 1].getAttribute('data-testid')).toBe('chat-style-configure');
+            expect(screen.getByTestId('chat-style-configure').textContent).toContain('Configure styles…');
+            // A divider separates it from the last style option.
+            expect(menu.querySelector('[role="presentation"]')).toBeTruthy();
+        });
+
+        it('navigates to the admin chat-style section and closes the menu without calling onChange', () => {
+            const onChange = vi.fn();
+            window.location.hash = '#repos';
+            render(<ChatStyleSelector selectedStyle="direct" onChange={onChange} />);
+
+            fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+            fireEvent.click(screen.getByTestId('chat-style-configure'));
+
+            expect(window.location.hash).toBe(CHAT_STYLE_SETTINGS_HASH);
+            expect(CHAT_STYLE_SETTINGS_HASH).toBe('#admin/settings/chat-style');
+            expect(onChange).not.toHaveBeenCalled();
+            expect(screen.queryByTestId('chat-style-menu')).toBeNull();
+            // The chip label is untouched by the jump.
+            expect(screen.getByTestId('chat-style-label').textContent).toBe('Style: Direct');
+        });
+
+        it('is not exposed as a selectable option', () => {
+            render(<ChatStyleSelector selectedStyle="human" onChange={() => {}} />);
+            fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+
+            const row = screen.getByTestId('chat-style-configure');
+            expect(row.getAttribute('role')).toBeNull();
+            expect(row.getAttribute('aria-selected')).toBeNull();
+            expect(row.getAttribute('data-selected')).toBeNull();
+
+            const options = screen.getByTestId('chat-style-menu').querySelectorAll('[role="option"]');
+            expect(options).toHaveLength(CHAT_STYLES.length);
+            expect(Array.from(options)).not.toContain(row);
+        });
+
+        it('is keyboard reachable and activates on Enter', () => {
+            const onChange = vi.fn();
+            window.location.hash = '#repos';
+            render(<ChatStyleSelector selectedStyle="human" onChange={onChange} />);
+            fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+
+            const row = screen.getByTestId('chat-style-configure') as HTMLButtonElement;
+            row.focus();
+            expect(document.activeElement).toBe(row);
+            // A native <button> maps Enter/Space onto click, which is what jsdom's
+            // click here stands in for.
+            fireEvent.click(row);
+
+            expect(window.location.hash).toBe(CHAT_STYLE_SETTINGS_HASH);
+            expect(onChange).not.toHaveBeenCalled();
+        });
     });
 });

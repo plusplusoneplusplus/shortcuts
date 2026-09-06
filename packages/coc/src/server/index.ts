@@ -49,7 +49,7 @@ import { createWebSocketInfrastructure } from './infrastructure/websocket-infras
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 import { HeapMonitor } from './admin/heap-monitor';
-import { coerceChatStyle } from './executors/chat-style-prompt';
+import { coerceChatStyle, setChatStylePromptOverridesProvider } from './executors/chat-style-prompt';
 import { buildRuntimeFeatures } from './config/runtime-config-handler';
 import { RuntimeConfigService } from '../config/runtime-config-service';
 import { createQueueRuntimeConfig } from './queue/queue-runtime-config';
@@ -218,6 +218,12 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     });
 
     const runtimeConfigService = new RuntimeConfigService({ configPath: options.configPath, fileConfig: options.fileConfig });
+
+    // Live read of the admin-edited chat-style prompt text. `buildChatStyleBlock`
+    // is synchronous and called deep inside prompt assembly, so it pulls the
+    // overrides through this provider instead of taking a config argument.
+    // Edits therefore land on the next injection, with no restart.
+    setChatStylePromptOverridesProvider(() => runtimeConfigService.config.features.chatStylePrompts);
 
     // Startup-captured config snapshot. Consumers below that use this directly
     // are infrastructure that wires once at startup. Admin-editable fields among

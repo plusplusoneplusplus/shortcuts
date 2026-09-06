@@ -51,8 +51,15 @@ const autoProviderRoutingSchema = z.object({
  * File schemas for registry settings with `kind: 'custom'` validation.
  * Every custom setting must have an entry here (enforced at module load).
  */
+const chatStylePromptsSchema = z.object({
+    human: z.string().nullish(),
+    direct: z.string().nullish(),
+    structured: z.string().nullish(),
+}).passthrough();
+
 const CUSTOM_FILE_SCHEMAS: Record<string, z.ZodTypeAny> = {
     'agentProviderRouting.auto': autoProviderRoutingSchema,
+    'features.chatStylePrompts': chatStylePromptsSchema,
 };
 
 // ============================================================================

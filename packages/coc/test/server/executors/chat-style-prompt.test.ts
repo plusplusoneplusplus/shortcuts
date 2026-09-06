@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { CHAT_STYLES } from '@plusplusoneplusplus/coc-client';
 
 import {
   buildChatStyleBlock,
   prependChatStyleBlock,
   recordedChatStyle,
+  setChatStylePromptOverridesProvider,
 } from '../../../src/server/executors/chat-style-prompt';
+import { CHAT_STYLE_FOCUS_LINES } from '../../../src/config/chat-style-prompts';
 
 describe('buildChatStyleBlock', () => {
   it('builds the human block verbatim', () => {
@@ -109,5 +112,67 @@ describe('retired style values', () => {
 
   it('leaves a prompt untouched when the retired value is selected', () => {
     expect(prependChatStyleBlock('hello', 'analytical')).toBe('hello');
+  });
+});
+
+// ── AC-03: admin-edited prompt text ─────────────────────────────────────────
+//
+// `buildChatStyleBlock` stays synchronous and never reads the config file; it
+// pulls overrides through a provider registered at server start. These pin the
+// two directions that matter: an override reaches the block, and an absent
+// override reproduces today's byte-for-byte output.
+describe('buildChatStyleBlock with admin prompt overrides', () => {
+  afterEach(() => {
+    setChatStylePromptOverridesProvider(undefined);
+  });
+
+  it('uses the override text and keeps the Selected style line', () => {
+    setChatStylePromptOverridesProvider(() => ({ direct: 'SENTINEL-DIRECT-PROMPT' }));
+
+    expect(buildChatStyleBlock('direct')).toBe(
+      ['<chat-style>', 'Selected style: Direct.', 'SENTINEL-DIRECT-PROMPT', '</chat-style>'].join('\n')
+    );
+  });
+
+  it('leaves styles without an override on their built-in text', () => {
+    setChatStylePromptOverridesProvider(() => ({ direct: 'SENTINEL-DIRECT-PROMPT' }));
+
+    expect(buildChatStyleBlock('human')).toBe(
+      [
+        '<chat-style>',
+        'Selected style: Human.',
+        CHAT_STYLE_FOCUS_LINES.human,
+        '</chat-style>',
+      ].join('\n')
+    );
+  });
+
+  it('reproduces the pre-override block exactly when no override is configured', () => {
+    const builtIn = CHAT_STYLES.filter(style => style !== 'default').map(style => buildChatStyleBlock(style));
+
+    for (const empty of [undefined, {}, { direct: '   ' }]) {
+      setChatStylePromptOverridesProvider(() => empty);
+      expect(CHAT_STYLES.filter(style => style !== 'default').map(style => buildChatStyleBlock(style)))
+        .toEqual(builtIn);
+    }
+  });
+
+  it('still emits nothing for default even when the config names it', () => {
+    setChatStylePromptOverridesProvider(() => ({ default: 'should be ignored' }));
+
+    expect(buildChatStyleBlock('default')).toBeUndefined();
+  });
+
+  // A hand-edited config or a provider registered before config load must never
+  // fail a chat — injection degrades to the built-in wording.
+  it('falls back to built-in text when the provider throws or returns garbage', () => {
+    setChatStylePromptOverridesProvider(() => { throw new Error('config unavailable'); });
+    expect(buildChatStyleBlock('structured')).toContain(CHAT_STYLE_FOCUS_LINES.structured);
+
+    setChatStylePromptOverridesProvider(() => 'not-an-object');
+    expect(buildChatStyleBlock('structured')).toContain(CHAT_STYLE_FOCUS_LINES.structured);
+
+    setChatStylePromptOverridesProvider(() => ({ structured: 42 }));
+    expect(buildChatStyleBlock('structured')).toContain(CHAT_STYLE_FOCUS_LINES.structured);
   });
 });

@@ -14,11 +14,12 @@ import type { AdminSubTab, DashboardTab } from '../types/dashboard';
 // Settings sections promoted into the sidebar. Each entry maps 1:1 to a
 // `SettingsCard` in the admin page. Selection is kept in component state and
 // synced to the URL fragment so refreshes land on the same section.
-export type SettingsSubTab = 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'providers' | 'advanced';
+export type SettingsSubTab = 'ai' | 'chat' | 'chat-style' | 'appearance' | 'features' | 'integrations' | 'providers' | 'advanced';
 
 export const SETTINGS_SUBTABS: { id: SettingsSubTab; label: string; icon: string }[] = [
     { id: 'ai', label: 'AI & Execution', icon: '✦' },
     { id: 'chat', label: 'Chat', icon: '◌' },
+    { id: 'chat-style', label: 'Chat Style', icon: '✎' },
     { id: 'appearance', label: 'Appearance', icon: '◐' },
     { id: 'features', label: 'Features', icon: '◫' },
     { id: 'integrations', label: 'Integrations', icon: '⇄' },
@@ -30,6 +31,7 @@ export const VALID_SETTINGS_SUBTABS = new Set<SettingsSubTab>(SETTINGS_SUBTABS.m
 export const SETTINGS_SUBTAB_DESCRIPTIONS: Record<SettingsSubTab, string> = {
     ai: '',
     chat: 'Conversation behavior, follow-up suggestions, and transcript detail.',
+    'chat-style': 'Default chat style and the prompt text each style injects.',
     appearance: 'Theme, layout density, navigation, and prompt autocomplete preferences.',
     features: 'Enable or disable optional workspace and dashboard features.',
     integrations: 'Desktop link handlers and local integration preferences.',

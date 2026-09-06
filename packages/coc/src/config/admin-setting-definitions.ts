@@ -21,7 +21,11 @@
  * dashboard SPA client.
  */
 
-import { CHAT_STYLES, CHAT_STYLE_LABELS } from '@plusplusoneplusplus/coc-client';
+import { CHAT_STYLES } from '@plusplusoneplusplus/coc-client';
+import {
+    normalizeChatStylePromptOverrides,
+    validateChatStylePromptOverrides,
+} from './chat-style-prompts';
 import type { CLIConfig } from '../config';
 
 /** Runtime behavior classification for admin-editable config fields. */
@@ -130,6 +134,12 @@ export interface AdminSettingDefinition {
      * namespace descriptor in namespace-registry.ts owns its resolution.
      */
     customMerge?: boolean;
+    /**
+     * Rewrite an already-validated value before it is persisted. Lets a
+     * structured setting drop cleared/blank members so the config file only
+     * ever holds real values.
+     */
+    normalize?: (value: unknown) => unknown;
     /** Admin Features card exposure. Omit for settings rendered bespoke elsewhere. */
     ui?: AdminSettingUiSpec;
 }
@@ -256,7 +266,7 @@ export function applyAdminSettingValue(config: CLIConfig, def: AdminSettingDefin
     if (clearsStoredValue(def, value)) {
         deleteConfigValueAtPath(target, def.key);
     } else {
-        setConfigValueAtPath(target, def.key, value);
+        setConfigValueAtPath(target, def.key, def.normalize ? def.normalize(value) : value);
     }
 }
 
@@ -902,21 +912,28 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
 
+    // Deliberately has no `ui` block: the control lives on the dedicated Chat
+    // Style settings section (`#admin/settings/chat-style`), not on the
+    // Features card. Validation, the default, and the `defaultChatStyle`
+    // runtime flag are still driven from here.
     {
         key: 'features.defaultChatStyle',
         value: { kind: 'enum', values: CHAT_STYLES, message: `features.defaultChatStyle must be one of ${CHAT_STYLES.join(', ')}` },
         default: 'default',
         runtime: 'live',
         runtimeFlag: 'defaultChatStyle',
-        ui: {
-            group: 'aiModes', order: 46, label: 'Default chat style', dependsOn: 'features.chatStyleSelector',
-            hint: 'Style new conversations start on. "Default" adds no style instruction. Applies server-wide — chats submitted through the API with no style use this too. A user who explicitly picks Default in the composer still gets no instruction.',
-            control: {
-                type: 'select',
-                options: CHAT_STYLES.map(style => ({ value: style, label: CHAT_STYLE_LABELS[style] })),
-            },
-            testId: 'select-default-chat-style',
-        },
+    },
+
+    // Per-style prompt text, edited on the Chat Style settings section. No
+    // `ui` (multiline text has no registry control shape) and no `runtimeFlag`:
+    // the text is only ever read server-side when a style is injected, and the
+    // admin card hydrates from the resolved config it already fetches.
+    {
+        key: 'features.chatStylePrompts',
+        value: { kind: 'custom', validate: validateChatStylePromptOverrides },
+        default: {},
+        runtime: 'live',
+        normalize: normalizeChatStylePromptOverrides,
     },
 
     bool({

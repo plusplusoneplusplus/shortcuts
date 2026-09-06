@@ -11,7 +11,10 @@ import {
     deriveActiveNav,
     getAdminTabLabel,
     getAdminTabIcon,
+    getSettingsSubTabMeta,
     parseSettingsSubTabFromHash,
+    SETTINGS_SUBTABS,
+    SETTINGS_SUBTAB_DESCRIPTIONS,
 } from '../../../src/server/spa/client/react/admin/adminNavigation';
 
 describe('parseSettingsSubTabFromHash', () => {
@@ -31,6 +34,22 @@ describe('parseSettingsSubTabFromHash', () => {
 
     it('returns null for an unknown sub-tab', () => {
         expect(parseSettingsSubTabFromHash('#admin/settings/nope')).toBeNull();
+    });
+
+    // The hyphen in `chat-style` is the only sub-tab id that is not a single
+    // word, so it is the one most likely to break a naive hash split.
+    it('parses the chat-style sub-tab', () => {
+        expect(parseSettingsSubTabFromHash('#admin/settings/chat-style')).toBe('chat-style');
+    });
+});
+
+describe('chat-style sub-tab registration', () => {
+    it('is listed right after Chat with a label, icon, and description', () => {
+        const ids = SETTINGS_SUBTABS.map(t => t.id);
+        expect(ids.indexOf('chat-style')).toBe(ids.indexOf('chat') + 1);
+        expect(getSettingsSubTabMeta('chat-style').label).toBe('Chat Style');
+        expect(getSettingsSubTabMeta('chat-style').icon).toBeTruthy();
+        expect(SETTINGS_SUBTAB_DESCRIPTIONS['chat-style']).toBeTruthy();
     });
 });
 
