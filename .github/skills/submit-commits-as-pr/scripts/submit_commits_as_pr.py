@@ -2,21 +2,21 @@
 """Submit a commit or commit range as a GitHub PR.
 
 Workflow:
-    1. Snapshot the current branch.
+    1. Snapshot the current branch and repository root.
     2. Resolve the user-supplied commit(s) into an ordered list.
     3. Fetch the latest base ref (default: origin/main).
-    4. Create a new branch from the base ref.
+    4. Create a temporary linked worktree and branch from the base ref.
     5. Cherry-pick each commit onto the new branch.
     6. (Optional) Rebase onto the latest base ref to be safe.
     7. Push the branch.
     8. Create a PR via the `gh` CLI.
     9. Enable auto-merge on the PR (default; opt out with --no-auto-merge).
-   10. Switch back to the original branch.
+   10. Remove the temporary worktree without changing the caller's checkout.
 
 Conflict policy: if any cherry-pick or rebase produces a merge conflict,
 the script aborts the entire submit — it runs `git cherry-pick --abort`
-or `git rebase --abort`, switches back to the original branch, deletes
-the work branch, clears state, emits an `aborted` status, and exits
+or `git rebase --abort` in the temporary worktree, removes that worktree,
+deletes the work branch, clears state, emits an `aborted` status, and exits
 non-zero. AI agents must NOT attempt to resolve merge conflicts on the
 user's behalf; the human is expected to rebase / fix the source commits
 themselves and re-invoke this skill afresh.
@@ -34,6 +34,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -98,12 +99,33 @@ def git_out(*args: str) -> str:
     return git(*args).stdout.strip()
 
 
+def git_in(
+    cwd: str | Path,
+    *args: str,
+    check: bool = True,
+    capture: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    return run(
+        ["git", *args],
+        check=check,
+        capture=capture,
+        cwd=str(cwd),
+    )
+
+
+def git_out_in(cwd: str | Path, *args: str) -> str:
+    return git_in(cwd, *args).stdout.strip()
+
+
 def repo_root() -> Path:
     return Path(git_out("rev-parse", "--show-toplevel"))
 
 
 def state_path() -> Path:
-    return repo_root() / ".git" / STATE_FILENAME
+    common_dir = Path(git_out("rev-parse", "--git-common-dir"))
+    if not common_dir.is_absolute():
+        common_dir = Path.cwd() / common_dir
+    return common_dir.resolve() / STATE_FILENAME
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +136,13 @@ def state_path() -> Path:
 @dataclass
 class State:
     original_branch: str
+    original_repo: str
     new_branch: str
+    worktree_path: str
     base_ref: str
     remote: str
     commits: list[str]
+    submitted_commits: list[str]
     title: str | None = None
     body: str | None = None
     draft: bool = False
@@ -151,15 +176,6 @@ class State:
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
-
-
-def ensure_clean_worktree() -> None:
-    status = git_out("status", "--porcelain")
-    if status:
-        emit("error", reason="dirty-worktree", detail=status)
-        raise SystemExit(
-            "working tree is dirty; commit or stash changes before submitting"
-        )
 
 
 def current_branch() -> str:
@@ -265,6 +281,56 @@ def derive_branch_name(commits: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def cleanup_worktree(state: State, *, delete_branch: bool) -> None:
+    """Remove the isolated worktree without touching the caller's checkout."""
+    worktree = Path(state.worktree_path)
+    if worktree.exists():
+        result = git_in(
+            state.original_repo,
+            "worktree",
+            "remove",
+            state.worktree_path,
+            check=False,
+        )
+        if result.returncode != 0:
+            emit(
+                "error",
+                reason="worktree-cleanup-failed",
+                detail=(result.stderr or result.stdout or "").strip(),
+                worktree_path=state.worktree_path,
+            )
+            raise SystemExit(result.returncode)
+
+    parent = worktree.parent
+    try:
+        parent.rmdir()
+    except (FileNotFoundError, OSError):
+        pass
+
+    if delete_branch and branch_exists_in(state.original_repo, state.new_branch):
+        git_in(state.original_repo, "branch", "-D", state.new_branch)
+
+
+def abort_worktree_operations(state: State) -> None:
+    worktree = Path(state.worktree_path)
+    if not worktree.exists():
+        return
+    git_in(worktree, "cherry-pick", "--abort", check=False, capture=True)
+    git_in(worktree, "rebase", "--abort", check=False, capture=True)
+
+
+def branch_exists_in(cwd: str | Path, name: str) -> bool:
+    result = git_in(
+        cwd,
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        f"refs/heads/{name}",
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def auto_abort_on_conflict(
     state: State,
     *,
@@ -277,23 +343,14 @@ def auto_abort_on_conflict(
     Policy: AI agents must not perform merge-conflict resolution. The user
     should rebase / fix the source commits manually and re-invoke the
     skill afresh. So when a cherry-pick or rebase conflicts, we tear
-    everything down: abort the in-progress git operation, switch back to
-    the original branch, delete the work branch, clear state, emit an
+    everything down: abort the in-progress git operation, remove the
+    temporary worktree, delete the work branch, clear state, emit an
     `aborted` status, and exit non-zero.
     """
     log(f"merge conflict during {phase}; aborting the entire submit")
 
-    git("cherry-pick", "--abort", check=False, capture=True)
-    git("rebase", "--abort", check=False, capture=True)
-
-    try:
-        git("checkout", state.original_branch, check=False, capture=True)
-    except Exception:  # noqa: BLE001
-        pass
-
-    if branch_exists(state.new_branch):
-        git("branch", "-D", state.new_branch, check=False, capture=True)
-
+    abort_worktree_operations(state)
+    cleanup_worktree(state, delete_branch=True)
     state.clear()
 
     payload: dict[str, object] = {
@@ -313,20 +370,24 @@ def do_cherry_pick(state: State) -> None:
     while state.commits:
         sha = state.commits[0]
         log(f"cherry-picking {sha}")
-        result = git("cherry-pick", sha, check=False, capture=True)
+        result = git_in(state.worktree_path, "cherry-pick", sha, check=False, capture=True)
         if result.returncode != 0:
             # Distinguish an empty commit (changes already in tree) from a
             # real merge conflict.  When the cherry-pick is empty, the
             # worktree is clean but CHERRY_PICK_HEAD still exists — git is
             # just waiting for us to either --skip or --allow-empty.
-            cherry_pick_head = repo_root() / ".git" / "CHERRY_PICK_HEAD"
-            worktree_status = git_out("status", "--porcelain")
+            cherry_pick_head = Path(
+                git_out_in(state.worktree_path, "rev-parse", "--git-path", "CHERRY_PICK_HEAD")
+            )
+            if not cherry_pick_head.is_absolute():
+                cherry_pick_head = Path(state.worktree_path) / cherry_pick_head
+            worktree_status = git_out_in(state.worktree_path, "status", "--porcelain")
             if cherry_pick_head.exists() and not worktree_status:
                 log(
                     f"commit {sha[:8]} is empty after cherry-pick "
                     "(changes already present in base); skipping"
                 )
-                git("cherry-pick", "--skip")
+                git_in(state.worktree_path, "cherry-pick", "--skip")
             else:
                 auto_abort_on_conflict(
                     state,
@@ -349,8 +410,8 @@ def do_rebase(state: State) -> None:
     target = f"{state.remote}/{state.base_ref}"
     # Already cherry-picked onto target, so this is usually a no-op,
     # but it guards against the base ref moving while we were working.
-    git("fetch", state.remote, state.base_ref)
-    result = git("rebase", target, check=False, capture=True)
+    git_in(state.worktree_path, "fetch", state.remote, state.base_ref)
+    result = git_in(state.worktree_path, "rebase", target, check=False, capture=True)
     if result.returncode != 0:
         auto_abort_on_conflict(
             state,
@@ -367,7 +428,7 @@ def do_rebase(state: State) -> None:
 
 
 def do_push(state: State) -> None:
-    git("push", "-u", state.remote, state.new_branch)
+    git_in(state.worktree_path, "push", "-u", state.remote, state.new_branch)
     state.pushed = True
     state.phase = "pr"
     state.save()
@@ -399,7 +460,7 @@ def do_pr(state: State) -> None:
         cmd += ["--draft"]
     cmd += state.extra_gh_args
 
-    result = run(cmd, check=False, capture=True)
+    result = run(cmd, check=False, capture=True, cwd=state.worktree_path)
     if result.returncode != 0:
         emit("error", reason="gh-failed", detail=result.stderr.strip())
         raise SystemExit(result.returncode)
@@ -418,7 +479,7 @@ def do_auto_merge(state: State) -> None:
         return
 
     cmd = ["gh", "pr", "merge", state.pr_url, "--auto", f"--{state.merge_method}"]
-    result = run(cmd, check=False, capture=True)
+    result = run(cmd, check=False, capture=True, cwd=state.worktree_path)
     if result.returncode != 0:
         log(f"warning: auto-merge failed: {result.stderr.strip()}")
     state.phase = "done"
@@ -426,15 +487,15 @@ def do_auto_merge(state: State) -> None:
 
 
 def finalize(state: State) -> None:
-    log(f"switching back to {state.original_branch}")
-    git("checkout", state.original_branch)
+    log(f"removing temporary worktree {state.worktree_path}")
+    cleanup_worktree(state, delete_branch=False)
     emit(
         "done",
         pr_url=state.pr_url,
         new_branch=state.new_branch,
         original_branch=state.original_branch,
-        commits_submitted=state.commits,
-        commits_count=len(state.commits),
+        commits_submitted=state.submitted_commits,
+        commits_count=len(state.submitted_commits),
     )
     state.clear()
 
@@ -451,8 +512,8 @@ def cmd_start(args: argparse.Namespace) -> None:
             "run with --continue or --abort first"
         )
 
-    ensure_clean_worktree()
     original = current_branch()
+    original_repo = str(repo_root().resolve())
     if args.commits:
         # Count expected commits from input format
         expected_count = None
@@ -475,15 +536,34 @@ def cmd_start(args: argparse.Namespace) -> None:
     if branch_exists(branch):
         raise SystemExit(f"branch already exists: {branch}")
 
-    log(f"creating branch {branch} from {args.remote}/{args.base}")
-    git("checkout", "-b", branch, f"{args.remote}/{args.base}")
+    temp_parent = Path(tempfile.mkdtemp(prefix="submit pr "))
+    worktree = temp_parent / "worktree"
+    log(f"creating isolated worktree {worktree} on branch {branch}")
+    result = git(
+        "worktree",
+        "add",
+        "-b",
+        branch,
+        str(worktree),
+        f"{args.remote}/{args.base}",
+        check=False,
+    )
+    if result.returncode != 0:
+        try:
+            temp_parent.rmdir()
+        except OSError:
+            pass
+        raise SystemExit(result.returncode)
 
     state = State(
         original_branch=original,
+        original_repo=original_repo,
         new_branch=branch,
+        worktree_path=str(worktree),
         base_ref=args.base,
         remote=args.remote,
-        commits=commits,
+        commits=list(commits),
+        submitted_commits=list(commits),
         title=args.title,
         body=args.body,
         draft=args.draft,
@@ -516,18 +596,8 @@ def cmd_abort(_: argparse.Namespace) -> None:
     log("aborting in-progress submit")
 
     # Best-effort: abort any in-progress cherry-pick/rebase.
-    git("cherry-pick", "--abort", check=False, capture=True)
-    git("rebase", "--abort", check=False, capture=True)
-
-    # Switch back and delete the work branch if it exists.
-    try:
-        git("checkout", state.original_branch, check=False, capture=True)
-    except Exception:  # noqa: BLE001
-        pass
-
-    if branch_exists(state.new_branch):
-        git("branch", "-D", state.new_branch, check=False, capture=True)
-
+    abort_worktree_operations(state)
+    cleanup_worktree(state, delete_branch=True)
     state.clear()
     emit("aborted", original_branch=state.original_branch, new_branch=state.new_branch)
 
