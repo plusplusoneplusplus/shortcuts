@@ -269,6 +269,8 @@ export interface RuntimeDashboardConfig {
     remoteShellEnabled: boolean;
     singleRowShellEnabled: boolean;
     splitWorkspacePanelEnabled: boolean;
+    /** Unified Cursor-style resource-tabbed right panel (`features.unifiedRightPanel`). */
+    unifiedRightPanelEnabled: boolean;
     /** Whether user-created chat folders are enabled in the chat list (feature flag, default off). */
     chatFoldersEnabled: boolean;
     /**
