@@ -30,5 +30,8 @@
     "chat.tools.terminal.autoApprove": {
         ".specify/scripts/bash/": true,
         ".specify/scripts/powershell/": true
-    }
+    },
+    "rust-analyzer.linkedProjects": [
+        "packages/coc-native/rust/Cargo.toml"
+    ]
 }
