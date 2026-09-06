@@ -46,6 +46,8 @@ import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
+import { useUnifiedRightPanelEnabled } from '../../hooks/feature-flags/useUnifiedRightPanelEnabled';
+import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
@@ -168,6 +170,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // WorkspaceDockToggleButton — both drive the same cross-tree open store.
     const dock = useWorkspaceDock(ws.id);
     const dockAvailable = splitWorkspacePanelEnabled && !isMobile;
+    // With `unifiedRightPanel` on, the same dock slot renders the one
+    // resource-tabbed panel instead — same availability gate, same controller,
+    // so the header toggle and the persisted width carry over unchanged.
+    const unifiedRightPanelEnabled = useUnifiedRightPanelEnabled();
     const showHeaderDockToggle = dockAvailable && !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
@@ -890,7 +896,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     </div>
                 )}
             </div>
-            {dockAvailable && <WorkspaceRightDock workspaceId={ws.id} dock={dock} />}
+            {dockAvailable && (unifiedRightPanelEnabled
+                ? <UnifiedRightPanel workspaceId={ws.id} dock={dock} />
+                : <WorkspaceRightDock workspaceId={ws.id} dock={dock} />)}
             </div>
 
             {/* Generate Task with AI dialog */}

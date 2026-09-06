@@ -81,6 +81,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
 
 import { RepoGroupView, repoGroupDockTargets, REPO_GROUP_ROOT_TARGET_LABEL } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
 import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
+import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 
 const GROUP_ID = 'group-ai-repos';
 
@@ -98,6 +99,7 @@ beforeEach(() => {
     mockBreakpoint = 'desktop';
     mockSplitPanelEnabled = true;
     mockRemoteGroupWorkspaces = [];
+    applyRuntimeConfigPatch({ unifiedRightPanelEnabled: undefined });
     mockAppState = {
         activeRepoSubTab: 'chats',
         selectedNotePath: null,
@@ -131,6 +133,22 @@ describe('repoGroupDockTargets', () => {
 });
 
 describe('RepoGroupView right dock (AC-05)', () => {
+    // The unified panel takes over this same slot behind its own flag. Both
+    // directions are pinned here: off means today's dock, exactly, and on means
+    // one panel rather than two right-side columns.
+    it('keeps the classic dock while `unifiedRightPanel` is off', () => {
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.getByTestId('workspace-right-dock')).toBeTruthy();
+        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
+    });
+
+    it('swaps in the unified panel — and only it — when the flag is on', () => {
+        applyRuntimeConfigPatch({ unifiedRightPanelEnabled: true });
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.getByTestId('unified-right-panel')).toBeTruthy();
+        expect(screen.queryByTestId('workspace-right-dock')).toBeNull();
+    });
+
     it('renders the dock on desktop with the flag on', async () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('workspace-right-dock')).toBeTruthy();

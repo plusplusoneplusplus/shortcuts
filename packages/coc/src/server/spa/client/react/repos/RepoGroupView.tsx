@@ -30,6 +30,8 @@ import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
+import { useUnifiedRightPanelEnabled } from '../hooks/feature-flags/useUnifiedRightPanelEnabled';
+import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
@@ -156,6 +158,8 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         [dockAvailable, members, workspaceId]
     );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
+    // Same slot, one panel, when `unifiedRightPanel` is on (AC-01).
+    const unifiedRightPanelEnabled = useUnifiedRightPanelEnabled();
 
     return (
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
@@ -188,7 +192,9 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                         />
                     </div>
                 </div>
-                {dockAvailable && <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={dockTargets} />}
+                {dockAvailable && (unifiedRightPanelEnabled
+                    ? <UnifiedRightPanel workspaceId={workspaceId} dock={dock} targets={dockTargets} />
+                    : <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={dockTargets} />)}
             </div>
         </div>
     );
