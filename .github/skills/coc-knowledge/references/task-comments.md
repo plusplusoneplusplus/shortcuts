@@ -70,6 +70,5 @@ comment issues by category, generate the prompt, iterate until comments resolve.
 ## Related
 
 - `packages/coc/README.md` — main CoC documentation
-- `CLAUDE.md` §"YAML Pipeline Framework" — pipeline configuration
 - [spa/shell.md](spa/shell.md) — dashboard module layout
 - [spa/notes.md](spa/notes.md) — Notes editor comment marks and decorations

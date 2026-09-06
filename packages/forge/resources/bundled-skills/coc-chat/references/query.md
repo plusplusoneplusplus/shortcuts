@@ -1,6 +1,6 @@
 # CoC Chat — Query Reference
 
-Read, search, and analyze CoC conversation process records stored on disk.
+Read, search, and analyze CoC conversation process records via the CoC server REST API.
 
 ## Script: `scripts/coc_chat.py`
 
@@ -31,7 +31,7 @@ python <skill-dir>/scripts/coc_chat.py <command> [args...]
 
 ### Environment
 
-`COC_DATA_DIR` overrides the default `~/.coc/` data directory.
+`COC_SERVER_URL` overrides the default `http://localhost:4000` server address.
 
 ## Instructions
 
@@ -62,8 +62,7 @@ python <skill-dir>/scripts/coc_chat.py show <workspaceId> <processId>
 python <skill-dir>/scripts/coc_chat.py conversation <workspaceId> <processId>
 ```
 
-For very large conversations, read the raw JSON directly:
-`~/.coc/repos/<workspaceId>/processes/<sanitizedId>.json`
+For very large conversations, use the `conversation` command for full untruncated output.
 
 ### 4. Search Across Conversations
 
@@ -80,14 +79,6 @@ python <skill-dir>/scripts/coc_chat.py search-content "DAG executor" --status co
 ```bash
 python <skill-dir>/scripts/coc_chat.py tools <workspaceId> <processId>
 python <skill-dir>/scripts/coc_chat.py tokens <workspaceId> <processId>
-```
-
-### 6. Access Pruned (Archived) Processes
-
-Older processes beyond the 500-process cap are moved to `pruned/YYYY-MM/`:
-
-```bash
-ls ~/.coc/repos/<workspaceId>/processes/pruned/
 ```
 
 ## Common Tasks
@@ -114,63 +105,25 @@ Use `parentProcessId` from the index for parent/child relationships. Use `--type
 
 Separate multiple conversations with `---` dividers.
 
-## On-Disk Layout
+## Storage
 
-```
-~/.coc/
-├── workspaces.json                          # Array of WorkspaceInfo objects
-├── repos/
-│   ├── <workspaceId>/
-│   │   └── processes/
-│   │       ├── index.json                   # Array of ProcessIndexEntry (lightweight)
-│   │       ├── <sanitizedId>.json           # Full StoredProcessEntry per process
-│   │       └── pruned/YYYY-MM/              # Archived processes
-│   └── _default/processes/                  # Used when workspaceId is empty
-```
-
-- **workspaceId** — stable hash of workspace root path, prefixed `ws-` (e.g. `ws-1a2b3c`).
-- **sanitizedId** — process `id` with non-alphanumeric chars (except `-`/`_`) replaced by `_`.
+Process records are stored in SQLite (`~/.coc/processes.db`) and accessed via the REST API. The `workspaceId` is a stable hash of the workspace root path, prefixed `ws-`.
 
 ## Data Structures
 
-### workspaces.json
+### Process Summary Fields
 
-```json
-[{ "id": "ws-1a2b3c", "name": "my-project", "rootPath": "/path/to/repo", "remoteUrl": "https://..." }]
-```
-
-### index.json (per workspace)
-
-Lightweight entries (no conversation bodies):
-
-```json
-[{
-  "id": "clarification-1-1711234567890", "workspaceId": "ws-1a2b3c",
-  "status": "completed", "type": "clarification",
-  "startTime": "2026-03-23T10:15:00.000Z", "endTime": "2026-03-23T10:17:30.000Z",
-  "promptPreview": "Explain how...", "title": "Workflow Engine Architecture",
-  "duration": 150000, "parentProcessId": null
-}]
-```
-
-Fields: `id`, `workspaceId`, `status` (`queued|running|cancelling|completed|failed|cancelled`), `type` (`clarification|pipeline-execution|pipeline-item|code-review|discovery|...`), `startTime`, `endTime`, `promptPreview`, `title`, `parentProcessId`.
-
-### Individual Process File (`<sanitizedId>.json`)
-
-```json
-{
-  "workspaceId": "ws-1a2b3c",
-  "process": {
-    "id": "...", "type": "clarification", "status": "completed",
-    "title": "...", "fullPrompt": "...",
-    "startTime": "...", "endTime": "...", "result": "...",
-    "conversationTurns": [ { "role": "user|assistant", "content": "...", "timestamp": "...", "turnIndex": 0, "toolCalls": [...], "timeline": [...], "tokenUsage": {...} } ],
-    "metadata": { "type": "...", "workspaceId": "..." },
-    "backend": "copilot-sdk", "sdkSessionId": "...",
-    "workingDirectory": "...", "tokenLimit": 200000, "currentTokens": 45000
-  }
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Process identifier |
+| `workspaceId` | string | Workspace hash |
+| `status` | string | `queued\|running\|cancelling\|completed\|failed\|cancelled` |
+| `type` | string | `clarification\|pipeline-execution\|pipeline-item\|code-review\|...` |
+| `startTime` | ISO string | Start timestamp |
+| `endTime` | ISO string | End timestamp |
+| `promptPreview` | string | Truncated prompt |
+| `title` | string | Process title |
+| `parentProcessId` | string? | Parent process link |
 
 ### Conversation Turn Fields
 

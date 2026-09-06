@@ -20,7 +20,7 @@
   Follow-up TODOs: None
 -->
 
-# Workspace Shortcuts Constitution
+# CoC Monorepo Constitution
 
 ## Core Principles
 
@@ -101,7 +101,7 @@ TypeScript strict mode and comprehensive testing MUST be maintained.
 - All pull requests MUST be checked against applicable principles
 - Constitution violations MUST be resolved before merge
 - Complexity or exceptions MUST be justified in PR description
-- Use CLAUDE.md for runtime development guidance and implementation details
+- Use `AGENTS.md` for runtime development guidance and implementation details
 
 ### Versioning Policy
 

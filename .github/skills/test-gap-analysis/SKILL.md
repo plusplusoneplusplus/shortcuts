@@ -85,7 +85,7 @@ Report workflows with no orchestration-level test as **critical**.
 
 ### 5. Produce the gap report
 
-Write results as **individual files** inside a `test-gap-analysis/` subfolder under the task folder. The task folder is specified by the user; if not specified, use `.vscode/tasks/` as the default.
+Write results as **individual files** inside a `test-gap-analysis/` subfolder under the task folder. The task folder is specified by the user.
 
 #### Output structure
 

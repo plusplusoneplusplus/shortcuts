@@ -1,6 +1,6 @@
 # CoC (Copilot of Copilot)
 
-A standalone Node.js CLI and dashboard for executing YAML-based AI pipelines.
+A standalone Node.js CLI and dashboard for executing YAML-based AI workflows.
 
 ## Prerequisites
 
@@ -21,14 +21,14 @@ npm install -g @plusplusoneplusplus/coc
 ## Quick Start
 
 ```bash
-# Run a pipeline
-coc run ./my-pipeline/
+# Run a workflow
+coc run ./my-workflow/
 
-# Validate pipeline YAML
-coc validate ./my-pipeline/pipeline.yaml
+# Validate workflow YAML
+coc validate ./my-workflow/workflow.yaml
 
-# List available pipelines
-coc list ./pipelines/
+# List available workflows
+coc list ./workflows/
 
 # Start the AI Execution Dashboard
 coc serve
@@ -36,32 +36,18 @@ coc serve
 
 ## Run with Docker
 
-```bash
-docker run -d --name coc --network host -v coc-data:/data -v ~/projects:/work \
-  ghcr.io/plusplusoneplusplus/coc:latest
-# → http://127.0.0.1:4000
-```
-
-The image runs `coc serve --host 127.0.0.1 --port 4000 --data-dir /data/.coc`
-as uid 1000 with `HOME=/data`. It binds loopback inside the container by
-policy, so use `--network host` (bridge `-p` can't reach it) and register repos
-as in-container paths (`/work/<name>`). Agent auth: env tokens
-(`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) or a
-one-time login in the in-app terminal, persisted on `/data`. CLI:
-`docker exec coc coc queue …`. Full notes, the Compose recipe and the
-per-tenant managed pattern: [repo README → Run with Docker](../../README.md#run-with-docker)
-and [`deploy/tenant/`](../../deploy/tenant/README.md).
+See the [repo README → Run with Docker](../../README.md#run-with-docker) for full Docker instructions, Compose recipe, and the per-tenant managed pattern in [`deploy/tenant/`](../../deploy/tenant/README.md).
 
 ## Commands
 
 ### `coc run <path>`
-Execute a pipeline from a YAML file or package directory.
+Execute a workflow from a YAML file or package directory.
 
 ### `coc validate <path>`
-Validate pipeline YAML without executing.
+Validate workflow YAML without executing.
 
 ### `coc list [dir]`
-List pipeline packages in a directory.
+List workflow packages in a directory.
 
 ### `coc serve`
 Start the AI Execution Dashboard web server (default port 4000).
@@ -82,9 +68,9 @@ Start the AI Execution Dashboard web server (default port 4000).
 
 ## Features
 
-### YAML Pipeline Execution
+### YAML Workflow Execution
 
-Define AI-powered data processing pipelines in YAML with map-reduce style workflows. See the [Pipeline YAML Guide](../../CLAUDE.md#yaml-pipeline-framework) for full syntax.
+Define AI-powered data processing workflows in YAML with map-reduce style orchestration.
 
 ### Task Commenting
 
@@ -96,8 +82,6 @@ Add inline comments to task results for review, notes, and AI-assisted analysis:
 - **Filtering**: Filter comments by category and status (open/resolved)
 - **Anchor Tracking**: Comments stay anchored to text even after content changes via fuzzy matching
 - **AI Integration**: Generate AI prompts from comments for automated review
-
-See the [Task Comments Guide](../../docs/coc-task-comments.md) for full documentation.
 
 ### AI Execution Dashboard
 
@@ -119,21 +103,7 @@ import { CocClient } from '@plusplusoneplusplus/coc-client';
 
 const coc = new CocClient({ baseUrl: 'http://localhost:4000' });
 const health = await coc.health.get();
-const { items } = await coc.workItems.list(workspaceId);
-```
-
-The client covers core REST domains and realtime process events. Repo-scoped calls require an explicit workspace ID, and follow-up routing remains server-authoritative.
-
-### Client Library
-
-Use `@plusplusoneplusplus/coc-client` from Node tools or browser integrations to call a running CoC server without copying dashboard transport code:
-
-```ts
-import { CocClient } from '@plusplusoneplusplus/coc-client';
-
-const coc = new CocClient({ baseUrl: 'http://localhost:4000' });
-const health = await coc.health.get();
-const { items } = await coc.workItems.list(workspaceId);
+const { items } = await coc.workItems.listForOrigin(originId);
 ```
 
 The client covers core REST domains and realtime process events. Repo-scoped calls require an explicit workspace ID, and follow-up routing remains server-authoritative.
@@ -146,27 +116,23 @@ The client covers core REST domains and realtime process events. Repo-scoped cal
 
 ## Configuration
 
-CoC reads persistent defaults from `~/.coc.yaml`. CLI flags override config file values.
+CoC reads persistent defaults from `~/.coc/config.yaml`. CLI flags override config file values.
 
 ```yaml
-# ~/.coc.yaml
-model: gpt-4
-parallelism: 5
-outputFormat: table
-timeout: 300
+# ~/.coc/config.yaml
+defaultModel: gpt-4
 serve:
   port: 4000
-  open: true
 ```
 
 ## Data Storage
 
 CoC stores task data and comments locally:
 
-- **Task Results**: Managed by the pipeline execution engine
+- **Task Results**: Managed by the workflow execution engine
 - **Comments**: `{dataDir}/tasks-comments/{workspaceId}/{sha256(filePath)}.json`
-- **Processes**: `~/.coc/repos/<workspaceId>/processes/` (when using `coc serve`; one JSON file per process plus `index.json`)
-- **Configuration**: `~/.coc.yaml`
+- **Processes**: SQLite database at `~/.coc/processes.db` (when using `coc serve`)
+- **Configuration**: `~/.coc/config.yaml`
 
 ## Exit Codes
 

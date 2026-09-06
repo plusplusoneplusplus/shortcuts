@@ -27,8 +27,8 @@ commits — use `impl` for that.
    user explicitly asks to leave it open / merge manually. Use
    `--merge-method squash|rebase` if they request that strategy.
 
-The script refuses to run with a dirty worktree — ask the user to
-commit/stash first.
+The caller's worktree may be dirty because submission runs entirely in an
+isolated temporary linked worktree. Only committed objects are submitted.
 
 ## Invocation
 
@@ -60,16 +60,19 @@ Other subcommands:
 
 ## What it does
 
-1. Snapshot current branch; require a clean worktree.
-2. `git fetch <remote> <base>` and create a fresh branch off `<remote>/<base>`.
-3. Cherry-pick each commit in order. **Conflict → auto-abort.**
-4. Rebase onto `<remote>/<base>` (race guard). **Conflict → auto-abort.**
-5. `git push -u`, `gh pr create`, and (unless `--no-auto-merge`)
+1. Snapshot the caller's branch and repository root without changing its HEAD.
+2. `git fetch <remote> <base>` and create a temporary linked worktree on a
+   fresh branch off `<remote>/<base>`.
+3. Cherry-pick each commit in order inside the temporary worktree.
+   **Conflict → auto-abort.**
+4. Rebase there onto `<remote>/<base>` (race guard). **Conflict → auto-abort.**
+5. Run `git push -u`, `gh pr create`, and (unless `--no-auto-merge`)
    `gh pr merge --auto --<method>`.
-6. Switch back to the original branch and remove state.
+6. Remove the temporary worktree without changing the caller's branch or HEAD.
 
-State lives in `.git/submit_commits_as_pr.state.json` and is removed
-automatically on success or auto-abort.
+State lives in the repository's common Git directory as
+`submit_commits_as_pr.state.json`, so `continue` and `abort` work across linked
+worktrees. It is removed automatically on success or auto-abort.
 
 ## Output
 
@@ -101,7 +104,7 @@ conflict" exit code.
 
 **Only activate this mode when the user explicitly asks to monitor the PR.**
 
-After the PR is created, invoke the `loop` skill with a self-contained prompt that describes the PR and asks it to watch for problems, fix any that are fixable, and stop once the PR is merged or closed.
+After the PR is created, invoke the `cron` skill with a self-contained prompt that describes the PR and asks it to watch for problems, fix any that are fixable, and stop once the PR is merged or closed.
 
 ## Prereqs & notes
 

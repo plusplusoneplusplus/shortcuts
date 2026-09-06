@@ -190,7 +190,7 @@ Mounts all wiki routes onto the CoC server's `Route[]` table and returns the `Wi
 
 | Module | Usage |
 |--------|-------|
-| `@plusplusoneplusplus/pipeline-core` | `ProcessStore`, `WikiInfo` — persistence interface |
+| `@plusplusoneplusplus/forge` | `ProcessStore`, `WikiInfo` — persistence interface |
 | `@plusplusoneplusplus/coc-server` | `Route`, `WikiServerOptions`, `sendJson`, `send400`, `send404`, `send500`, `readJsonBody` |
 | `@plusplusoneplusplus/deep-wiki` | Dynamically imported for phase execution |
 | `fs`, `path`, `os` | Directory reads, `fs.watch`, `os.homedir()` defaults |

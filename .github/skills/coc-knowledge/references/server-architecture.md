@@ -169,7 +169,7 @@ First turns (`ChatBaseExecutor.execute`) and continuations (`FollowUpExecutor.ex
 
 ## Configuration
 
-Configuration file: `~/.coc/config.yaml` (fallback `~/.coc.yaml`). Precedence: CLI flags > config file > defaults. Admin-editable settings, the `features.*` flag table, `dreams.*`, `pullRequests.*`, `forEach`/`mapReduce`, and the `agentProviderRouting.auto` profile are documented in [admin-config.md](admin-config.md).
+Configuration file: `~/.coc/config.yaml`. Precedence: CLI flags > config file > defaults. Admin-editable settings, the `features.*` flag table, `dreams.*`, `pullRequests.*`, `forEach`/`mapReduce`, and the `agentProviderRouting.auto` profile are documented in [admin-config.md](admin-config.md).
 
 ```yaml
 model: gpt-4
