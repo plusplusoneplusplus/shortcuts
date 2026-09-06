@@ -1,17 +1,18 @@
 /**
- * AC-04: file and canvas tabs render real views inside the unified panel.
+ * AC-04: file, canvas, and diff tabs render real views inside the unified panel.
  *
  * These cases pin what the panel adds on top of the reused views rather than
  * the views themselves (which keep their own suites): that a file tab is the
  * Explorer's own buffer routed at the tab's owning clone, that the descriptor's
  * read-only bit really removes the write path, that a hidden tab's dirty and
- * failed state surface in the strip, and that a canvas tab is routed at the
- * workspace that owns the canvas.
+ * failed state surface in the strip, that a canvas tab is routed at the
+ * workspace that owns the canvas, and that a diff tab resolves its group
+ * through the transient source registry (including the expired state).
  *
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
@@ -58,10 +59,27 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
 }));
+// The diff chrome has its own suite; the real `useWhisperDiffState` stays in
+// play so what this stub receives is the reconstruction the chat would show.
+vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', async importOriginal => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    WhisperDiffPanel: ({ state, workspaceRootPath, onClose }: any) => (
+        <div data-testid="mock-whisper-diff">
+            diff:{state.view.fileCount}:{workspaceRootPath ?? 'none'}
+            <button data-testid="mock-whisper-diff-close" onClick={onClose}>close</button>
+        </div>
+    ),
+}));
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
-import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { openUnifiedPanelTab, unifiedTabIdFor } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import {
+    clearUnifiedDiffSources,
+    registerUnifiedDiffSource,
+    whisperDiffTabInput,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
+import type { WhisperDiffOpenContext } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
 
@@ -106,8 +124,23 @@ function openFile(opts: { owner?: string; path: string; readOnly?: boolean; line
     });
 }
 
+/** A whisper group, the way a chat's files popover would hand one over. */
+function diffCtx(overrides: Partial<WhisperDiffOpenContext> = {}): WhisperDiffOpenContext {
+    return {
+        files: [{
+            path: 'src/a.ts',
+            insertions: 1, deletions: 0, netInsertions: 1, netDeletions: 0,
+            isCreate: false, isDeleted: false,
+        }],
+        toolCalls: [{ toolName: 'edit', args: { path: 'src/a.ts', oldString: 'a', newString: 'b' } }],
+        commits: [],
+        ...overrides,
+    };
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
+    clearUnifiedDiffSources();
     mockExplorerApi.searchFiles.mockResolvedValue({ results: [] });
     mockExplorerApi.readBlob.mockResolvedValue({ content: 'hello', encoding: 'utf-8', mimeType: 'text/plain' });
     mockExplorerApi.writeBlob.mockResolvedValue({ success: true });
@@ -117,6 +150,7 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     clearUnifiedPanelState();
+    clearUnifiedDiffSources();
 });
 
 describe('UnifiedRightPanel — file tabs (AC-04)', () => {
@@ -217,12 +251,67 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
         expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
     });
 
-    it('still shows a diff tab as unsupported until its source registry lands', () => {
-        openUnifiedPanelTab(WS, {
-            kind: 'diff', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'group-1', label: 'Changes',
+    it('renders a registered group through the chat\'s own diff panel', () => {
+        const input = whisperDiffTabInput({
+            ctx: diffCtx(), ownerWorkspaceId: MEMBER, chatId: CHAT, workspaceRootPath: '/repo',
+        });
+        openUnifiedPanelTab(WS, input);
+        renderPanel();
+
+        expect(screen.getByTestId('mock-whisper-diff')).toHaveTextContent('diff:1:/repo');
+        expect(screen.getByTestId(`unified-panel-tab-${unifiedTabIdFor(input)}`)).toHaveTextContent('1 file changed');
+    });
+
+    it('opens one tab for the footer and a file row of the same group', () => {
+        const first = whisperDiffTabInput({ ctx: diffCtx(), ownerWorkspaceId: WS, chatId: CHAT });
+        const second = whisperDiffTabInput({
+            ctx: diffCtx({ focusPath: 'src/a.ts' }), ownerWorkspaceId: WS, chatId: CHAT,
+        });
+        openUnifiedPanelTab(WS, first);
+        openUnifiedPanelTab(WS, second);
+        renderPanel();
+
+        expect(unifiedTabIdFor(second)).toBe(unifiedTabIdFor(first));
+        expect(screen.getAllByTestId(/^unified-panel-tab-diff\|/).length).toBe(1);
+    });
+
+    it('shows the expired state, and marks it, when the group is gone', () => {
+        // A reload keeps the descriptor but not the in-memory transcript.
+        const tabId = openUnifiedPanelTab(WS, {
+            kind: 'diff', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'whisper-1-gone', label: '1 file changed',
         });
         renderPanel();
 
-        expect(screen.getByTestId('unified-panel-unsupported')).toBeTruthy();
+        expect(screen.getByTestId('unified-panel-diff-expired')).toHaveTextContent('no longer available');
+        expect(screen.getByTestId(`unified-panel-tab-error-${tabId}`)).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('unified-panel-diff-expired-close'));
+        expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
+    });
+
+    it('replaces the expired state when the chat registers the group afterwards', () => {
+        const input = whisperDiffTabInput({ ctx: diffCtx(), ownerWorkspaceId: WS, chatId: CHAT });
+        const tabId = openUnifiedPanelTab(WS, input);
+        clearUnifiedDiffSources();
+        renderPanel();
+
+        expect(screen.getByTestId('unified-panel-diff-expired')).toBeTruthy();
+
+        // The transcript mounts and re-registers the same group: the live tab
+        // has to pick it up rather than stay dead until it is reopened.
+        act(() => {
+            registerUnifiedDiffSource(diffCtx());
+        });
+        expect(screen.getByTestId('mock-whisper-diff')).toBeTruthy();
+        expect(screen.queryByTestId(`unified-panel-tab-error-${tabId}`)).toBeNull();
+    });
+
+    it('closes its own tab from the diff panel\'s close action', () => {
+        const input = whisperDiffTabInput({ ctx: diffCtx(), ownerWorkspaceId: WS, chatId: CHAT });
+        const tabId = openUnifiedPanelTab(WS, input);
+        renderPanel();
+
+        fireEvent.click(screen.getByTestId('mock-whisper-diff-close'));
+        expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
     });
 });

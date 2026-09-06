@@ -14,10 +14,13 @@
  *    reordering a tab cannot widen a read-only reference into a writable file.
  *  - `canvas` — `CanvasPanel`, routed at `tab.ownerWorkspaceId` so a canvas from
  *    a remote clone keeps hitting its own server for revisions and comments.
+ *  - `diff` — the chat's own read-only `WhisperDiffPanel`, resolved through the
+ *    `unifiedDiffSources` registry, because a diff is reconstructed from an
+ *    in-memory tool-call group rather than fetched. A tab whose group is gone
+ *    shows the expired state (`UnifiedDiffTab`).
  *
- * `diff` still renders the explicit unsupported state: a diff tab is a pointer
- * into a chat's in-memory tool-call group, and reconstructing an expired one
- * needs a source registry that lands with the diff entry point.
+ * `note` still renders the explicit unsupported state until the note entry
+ * point lands.
  *
  * Dirty and error state are reported upward rather than shown here, because the
  * strip is where a hidden tab's state has to be visible — a background buffer
@@ -31,6 +34,7 @@ import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
 import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
 import { CanvasPanel } from '../../canvas/CanvasPanel';
+import { UnifiedDiffTab } from './UnifiedDiffTab';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 export interface UnifiedTabViewProps {
@@ -66,6 +70,10 @@ export function UnifiedTabView({
         (status: PreviewStatus) => onErrorChange?.(tab.id, status === 'error'),
         [onErrorChange, tab.id],
     );
+    const handleError = useCallback(
+        (hasError: boolean) => onErrorChange?.(tab.id, hasError),
+        [onErrorChange, tab.id],
+    );
 
     switch (tab.kind) {
         case 'terminal':
@@ -97,6 +105,15 @@ export function UnifiedTabView({
                     canvasId={tab.resourceId}
                     liveEvent={null}
                     onClose={close}
+                />
+            );
+        case 'diff':
+            return (
+                <UnifiedDiffTab
+                    sourceId={tab.resourceId}
+                    label={tab.label}
+                    onClose={close}
+                    onErrorChange={handleError}
                 />
             );
         default:

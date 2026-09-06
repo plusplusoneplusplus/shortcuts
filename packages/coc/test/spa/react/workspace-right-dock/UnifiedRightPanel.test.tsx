@@ -296,7 +296,7 @@ describe('UnifiedRightPanel', () => {
 
     it('shows an explicit state for a kind it cannot render yet, instead of a blank panel', () => {
         writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'diff', ownerWorkspaceId: WS, chatId: null, resourceId: 'group-1', label: 'Changes',
+            kind: 'note', ownerWorkspaceId: WS, chatId: null, resourceId: 'Plans/plan.md', label: 'plan.md',
         }));
         renderPanel();
         expect(screen.getByTestId('unified-panel-unsupported')).toBeTruthy();
