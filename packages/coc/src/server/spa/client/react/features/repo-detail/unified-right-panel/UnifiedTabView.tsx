@@ -34,7 +34,7 @@
  */
 
 import { useCallback } from 'react';
-import { TerminalView } from '../../terminal/TerminalView';
+import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
 import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
 import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
@@ -58,6 +58,11 @@ export interface UnifiedTabViewProps {
     onDirtyChange?: (tabId: string, isDirty: boolean) => void;
     /** Load failure state for this tab, for the strip's error marker. */
     onErrorChange?: (tabId: string, hasError: boolean) => void;
+    /**
+     * Live-session state for a terminal tab (AC-05). The panel owns the close
+     * confirmation because the ✕ is in the strip, not in the terminal view.
+     */
+    onTerminalSessionsChange?: (tabId: string, sessions: readonly TerminalSessionSummary[]) => void;
 }
 
 /** The last path segment — what the editor uses to pick a language. */
@@ -68,6 +73,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 
 export function UnifiedTabView({
     tab, scopeWorkspaceId, chatId, onOpenResource, onClose, onDirtyChange, onErrorChange,
+    onTerminalSessionsChange,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
@@ -84,6 +90,10 @@ export function UnifiedTabView({
     const handleError = useCallback(
         (hasError: boolean) => onErrorChange?.(tab.id, hasError),
         [onErrorChange, tab.id],
+    );
+    const handleTerminalSessions = useCallback(
+        (sessions: readonly TerminalSessionSummary[]) => onTerminalSessionsChange?.(tab.id, sessions),
+        [onTerminalSessionsChange, tab.id],
     );
     // An Explorer tab is a navigator: its selections become file tabs beside it
     // instead of buffers inside it. The file is owned by the repo the Explorer
@@ -107,7 +117,7 @@ export function UnifiedTabView({
 
     switch (tab.kind) {
         case 'terminal':
-            return <TerminalView workspaceId={tab.ownerWorkspaceId} />;
+            return <TerminalView workspaceId={tab.ownerWorkspaceId} onSessionsChange={handleTerminalSessions} />;
         case 'explorer':
             // Deep-linking only when the tab targets the panel's own scope: the
             // hash a group member would write reads as "select that repo" and

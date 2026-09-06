@@ -27,6 +27,11 @@
  *    `useWorkspaceDock` controller, so the flag-on and flag-off panels share the
  *    same open/width persistence and the same header toggle.
  *
+ * Closing is guarded rather than immediate where a close would destroy something
+ * (AC-05): a terminal tab with live sessions asks first, cancel leaves both the
+ * tab and the processes alone, and a terminate that fails keeps the tab with a
+ * visible error instead of pretending it worked.
+ *
  * Resource views are reused as-is and live in `UnifiedTabView`; their own
  * toolbars render below the strip rather than portaling into it, so the strip
  * stays the panel's only tab row. The shell keeps the per-tab dirty and error
@@ -38,10 +43,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
 import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../WorkspaceRightDock';
+import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { UnifiedTabView } from './UnifiedTabView';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
+import {
+    liveTerminalSessionIds,
+    terminalCloseConfirmMessage,
+    terminateTerminalSessions,
+    type UnifiedTerminalSession,
+} from './unifiedTerminalClose';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 export interface UnifiedRightPanelProps {
@@ -131,6 +143,22 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         [setFlag],
     );
 
+    // ------------------------------------------------------------------
+    // Close guard (AC-05)
+    // ------------------------------------------------------------------
+
+    // What each terminal tab currently has running. The terminal view reports
+    // it because the tab's ✕ lives in the strip, outside that view — without
+    // this the panel would either kill PTYs silently or prompt about a tab that
+    // holds nothing but tombstones.
+    const [terminalSessions, setTerminalSessions] = useState<Record<string, readonly UnifiedTerminalSession[]>>({});
+    const handleTerminalSessions = useCallback(
+        (tabId: string, sessions: readonly UnifiedTerminalSession[]) => {
+            setTerminalSessions(prev => (prev[tabId] === sessions ? prev : { ...prev, [tabId]: sessions }));
+        },
+        [],
+    );
+
     const closeTab = useCallback((id: string) => {
         close(id);
         setMountedIds(prev => {
@@ -139,11 +167,74 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             next.delete(id);
             return next;
         });
+        setTerminalSessions(prev => {
+            if (!(id in prev)) return prev;
+            const next = { ...prev };
+            delete next[id];
+            return next;
+        });
         // No flag clearing here on purpose: closing unmounts the view, and the
         // views report clean/ready from their own unmount cleanup, so a second
         // reset would be dead code. Verified by removing the cleanup's effect in
         // the close/reopen case rather than assumed.
     }, [close]);
+
+    const [pendingClose, setPendingClose] = useState<
+        { tabId: string; workspaceId: string; sessionIds: readonly string[] } | null
+    >(null);
+    const [closeError, setCloseError] = useState<string | null>(null);
+    const [closeBusy, setCloseBusy] = useState(false);
+
+    // The strip's ✕ and the views' own close buttons both come through here. A
+    // terminal tab with nothing running still closes immediately: an exited
+    // session is a tombstone, and prompting to kill a process that already ended
+    // is noise.
+    const requestClose = useCallback((id: string) => {
+        const tab = tabs.find(candidate => candidate.id === id);
+        if (tab?.kind === 'terminal') {
+            const sessionIds = liveTerminalSessionIds(terminalSessions[id]);
+            if (sessionIds.length > 0) {
+                setPendingClose({ tabId: id, workspaceId: tab.ownerWorkspaceId, sessionIds });
+                setCloseError(null);
+                setCloseBusy(false);
+                return;
+            }
+        }
+        closeTab(id);
+    }, [tabs, terminalSessions, closeTab]);
+
+    const cancelClose = useCallback(() => {
+        setPendingClose(null);
+        setCloseError(null);
+        setCloseBusy(false);
+    }, []);
+
+    // Terminate, then close — never the other way round. If the server refuses,
+    // the tab and its sessions both stay and the dialog turns into a retry.
+    const confirmClose = useCallback(() => {
+        if (pendingClose === null || closeBusy) return;
+        const { tabId, workspaceId: owner, sessionIds } = pendingClose;
+        setCloseBusy(true);
+        setCloseError(null);
+        void terminateTerminalSessions(owner, sessionIds)
+            .then(() => {
+                setPendingClose(null);
+                setCloseBusy(false);
+                closeTab(tabId);
+            })
+            .catch(err => {
+                console.error('Failed to terminate terminal session:', err);
+                setCloseBusy(false);
+                setCloseError('Could not terminate the terminal session. The tab is still open.');
+            });
+    }, [pendingClose, closeBusy, closeTab]);
+
+    // A pending prompt whose tab went away (a chat switch, a close from
+    // elsewhere) has nothing left to confirm.
+    useEffect(() => {
+        if (pendingClose === null) return;
+        if (!tabs.some(tab => tab.id === pendingClose.tabId)) cancelClose();
+    }, [tabs, pendingClose, cancelClose]);
 
     // The "+" menu. Dismissal always hands focus back to whatever opened it —
     // the "+" button or the empty state's "Open…" — so a keyboard user is never
@@ -228,7 +319,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     dirtyIds={dirtyIds}
                     errorIds={errorIds}
                     onActivate={activate}
-                    onClose={closeTab}
+                    onClose={requestClose}
                     onMove={move}
                     onOpenMenu={toggleMenu}
                 />
@@ -284,12 +375,24 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                                 scopeWorkspaceId={workspaceId}
                                 chatId={chatId}
                                 onOpenResource={openResource}
-                                onClose={closeTab}
+                                onClose={requestClose}
                                 onDirtyChange={handleDirtyChange}
                                 onErrorChange={handleErrorChange}
+                                onTerminalSessionsChange={handleTerminalSessions}
                             />
                         </div>
                     ))
+                )}
+
+                {pendingClose !== null && (
+                    <UnifiedPanelCloseConfirm
+                        message={terminalCloseConfirmMessage(pendingClose.sessionIds.length)}
+                        confirmLabel="Terminate"
+                        error={closeError}
+                        busy={closeBusy}
+                        onCancel={cancelClose}
+                        onConfirm={confirmClose}
+                    />
                 )}
 
                 {/* A tab is selected but its view has not mounted yet (restored
