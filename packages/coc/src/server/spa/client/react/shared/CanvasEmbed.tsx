@@ -3,6 +3,11 @@ import type { Canvas } from '@plusplusoneplusplus/coc-client';
 import { ExtensionCanvasView } from '../features/canvas/ExtensionCanvasView';
 import { KustoView, parseKustoContent } from '../features/canvas/KustoView';
 import { useCocClient } from '../repos/cloneRouting';
+import { useChatRenderContext } from '../features/chat/conversation/ChatRenderContext';
+import { useUnifiedPanelHostForChat } from '../features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { canvasEmbedTabInput } from '../features/repo-detail/unified-right-panel/unifiedCanvasEmbeds';
+import { openUnifiedPanelTab } from '../features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { useWorkspacesWithRemoteOptional } from '../repos/workspacesWithRemote';
 import { ExcalidrawPreview } from './ExcalidrawPreview';
 import { useKustoEmbedGroup } from './KustoEmbedGroup';
 
@@ -115,6 +120,62 @@ function CanvasDocumentPreview({ canvas }: { canvas: Canvas }) {
     );
 }
 
+/**
+ * The embed's "open in panel" action (AC-04).
+ *
+ * Rendered only when a unified right panel is on screen for THIS embed's chat:
+ * elsewhere the inline preview is still the only surface, so there is nothing
+ * to open into and the embed keeps exactly its current shape. The canvas is
+ * filed against the chat it was embedded in and the clone it was fetched from,
+ * so a background transcript can never repoint the visible panel.
+ */
+function CanvasEmbedOpenAction({
+    workspaceId,
+    canvasId,
+    title,
+}: {
+    workspaceId: string;
+    canvasId: string;
+    title: string;
+}) {
+    const { chatId } = useChatRenderContext();
+    const host = useUnifiedPanelHostForChat(chatId);
+    const workspaces = useWorkspacesWithRemoteOptional();
+
+    const input = useMemo(
+        () =>
+            host === null
+                ? null
+                : canvasEmbedTabInput({
+                    canvasId,
+                    title,
+                    // The clone the embed itself reads from; the host's id is
+                    // only the panel's scope (a group id inside a repo group).
+                    ownerWorkspaceId: workspaceId,
+                    scopeWorkspaceId: host.workspaceId,
+                    chatId: host.chatId,
+                    workspaces,
+                }),
+        [host, workspaceId, canvasId, title, workspaces],
+    );
+
+    if (host === null || input === null) return null;
+
+    return (
+        <div className="mt-3 -mb-2 flex justify-end">
+            <button
+                type="button"
+                className="rounded px-1.5 py-0.5 text-[11px] text-[#657188] hover:bg-[#eef1f6] hover:text-[#172033] dark:text-[#a0a0a0] dark:hover:bg-[#2d2d2d] dark:hover:text-[#cccccc]"
+                onClick={() => openUnifiedPanelTab(host.workspaceId, input)}
+                data-testid="canvas-embed-open-in-panel"
+                title="Open this canvas as a tab in the right panel"
+            >
+                Open in panel ↗
+            </button>
+        </div>
+    );
+}
+
 export function CanvasEmbed({ workspaceId, canvasId }: CanvasEmbedProps) {
     const client = useCocClient(workspaceId);
     const [canvas, setCanvas] = useState<Canvas | null>(null);
@@ -144,28 +205,33 @@ export function CanvasEmbed({ workspaceId, canvasId }: CanvasEmbedProps) {
     if (!canvas) {
         return <div className="my-3 text-xs text-[#848484]" data-testid="canvas-embed-loading">Loading canvas…</div>;
     }
-    if (canvas.type === 'excalidraw') {
-        return <ExcalidrawPreview workspaceId={workspaceId} canvasId={canvasId} canvas={canvas} />;
-    }
-    if (canvas.type === 'kusto') {
-        return (
-            <KustoCanvasEmbed
+    return (
+        <>
+            {/* Every canvas type shares one open action, above its own chrome. */}
+            <CanvasEmbedOpenAction
                 workspaceId={workspaceId}
-                canvas={canvas}
-                onCanvasSaved={setCanvas}
+                canvasId={canvasId}
+                title={canvas.title}
             />
-        );
-    }
-    if (canvas.type === 'extension') {
-        return (
-            <div className="my-3 h-[400px] overflow-hidden rounded-md border border-[#dce3ee] dark:border-[#3c3c3c]" data-testid="canvas-embed-extension">
-                <ExtensionCanvasView
+            {canvas.type === 'excalidraw' ? (
+                <ExcalidrawPreview workspaceId={workspaceId} canvasId={canvasId} canvas={canvas} />
+            ) : canvas.type === 'kusto' ? (
+                <KustoCanvasEmbed
                     workspaceId={workspaceId}
                     canvas={canvas}
                     onCanvasSaved={setCanvas}
                 />
-            </div>
-        );
-    }
-    return <CanvasDocumentPreview canvas={canvas} />;
+            ) : canvas.type === 'extension' ? (
+                <div className="my-3 h-[400px] overflow-hidden rounded-md border border-[#dce3ee] dark:border-[#3c3c3c]" data-testid="canvas-embed-extension">
+                    <ExtensionCanvasView
+                        workspaceId={workspaceId}
+                        canvas={canvas}
+                        onCanvasSaved={setCanvas}
+                    />
+                </div>
+            ) : (
+                <CanvasDocumentPreview canvas={canvas} />
+            )}
+        </>
+    );
 }

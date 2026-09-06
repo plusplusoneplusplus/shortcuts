@@ -14,6 +14,13 @@ import React, { createContext, useContext } from 'react';
 export interface ChatRenderContextValue {
     /** Workspace id used to resolve local image paths and canvas embeds. */
     wsId?: string;
+    /**
+     * The conversation these bodies belong to. Entry points inside a rendered
+     * body (today an inline canvas embed's "open in panel" action) must name
+     * the ORIGINATING chat, not whichever chat is selected when the click
+     * lands, and markdown is rendered too deep to thread it through by prop.
+     */
+    chatId?: string;
     htmlEmbedEnabled?: boolean;
     excalidrawEmbedEnabled?: boolean;
     canvasEmbedEnabled?: boolean;
