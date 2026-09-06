@@ -15,7 +15,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
-import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGitAsync } from '@plusplusoneplusplus/forge';
+import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import Database from 'better-sqlite3';
 import type { Attachment, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
@@ -321,21 +322,53 @@ export async function execGitArgsAsync(args: string[], cwd: string): Promise<str
     return (await execGitAsync(args, cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER })).trim();
 }
 
-/** Read a file's content from a specific commit, falling back to the first parent for deleted files. */
+/**
+ * Read a file's content from a specific commit, falling back to the first
+ * parent for deleted files.
+ *
+ * On the native path the blob comes out of the object database rather than off
+ * `git show`'s stdout, so the content keeps the trailing newline every command
+ * that crosses the boundary drops. The one consumer splits on `\n` and pops
+ * the empty last element, so a restored newline changes nothing it renders —
+ * and a file that genuinely ends without one is no longer spelled the same as
+ * one that does. A revision or path that names nothing resolves with `null`
+ * instead of exiting non-zero, which is what drives the `<hash>^` fallback.
+ *
+ * A repository reached through WSL keeps its `git show` pair: the addon runs
+ * git on the host and never learns the distro exists, and the UNC spelling
+ * that reaches here is not a path it can open.
+ */
 export async function readGitFileAtCommit(hash: string, filePath: string, cwd: string): Promise<{ content: string; resolvedRef: string }> {
-    const refsToTry = [`${hash}:${filePath}`, `${hash}^:${filePath}`];
+    const revsToTry = [hash, `${hash}^`];
     let lastError: unknown;
 
-    for (const resolvedRef of refsToTry) {
+    if (resolveWorkspaceExecutionContext(cwd).kind === 'wsl') {
+        for (const rev of revsToTry) {
+            const resolvedRef = `${rev}:${filePath}`;
+            try {
+                const content = await execGitAsync(['show', resolvedRef], cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER });
+                return { content, resolvedRef };
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        throw lastError instanceof Error ? lastError : new Error('Failed to read git file content');
+    }
+
+    const git = loadNativeGit();
+    for (const rev of revsToTry) {
         try {
-            const content = await execGitAsync(['show', resolvedRef], cwd, { timeout: 5000, maxBuffer: GIT_MAX_BUFFER });
-            return { content, resolvedRef };
+            const content = await git.gitFileContentAtCommit(cwd, rev, filePath);
+            if (content !== null) {
+                return { content, resolvedRef: `${rev}:${filePath}` };
+            }
         } catch (error) {
             lastError = error;
         }
     }
 
-    throw lastError instanceof Error ? lastError : new Error('Failed to read git file content');
+    if (lastError instanceof Error) { throw lastError; }
+    throw new Error(`git show ${hash}:${filePath} failed: path does not exist at ${hash} or ${hash}^`);
 }
 
 /**

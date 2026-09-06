@@ -202,6 +202,16 @@ export class GitWorktreeService {
         return this.store.get(workspaceId, id);
     }
 
+    /**
+     * The three read-only probes below still build argv, deliberately.
+     *
+     * Every git call in this service goes through the injectable
+     * {@link GitRunner}, which is what the tests substitute and what a caller
+     * would replace to reach a repository this process cannot open directly.
+     * Swapping a probe for a native capability would bypass that seam, and
+     * `resolveBaseSha` additionally asks for `<ref>^{commit}`, which peels —
+     * `gitValidateRef` does not, so an annotated tag would stop resolving.
+     */
     private async assertGitRepo(sourceRepoRoot: string): Promise<void> {
         let inside: string;
         try {

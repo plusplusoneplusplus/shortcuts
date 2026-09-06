@@ -5,7 +5,9 @@
  * (via `execGitAsync` from `../git/exec`).
  */
 
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import { execGitAsync } from '../git/exec';
+import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import type { GitChangeStatus } from '../git/types';
 import type {
     CommitDiffSource,
@@ -143,13 +145,29 @@ export function createCommitDiffProvider(
 
     let cachedFiles: DiffFileEntry[] | undefined;
 
+    /**
+     * The commit's first parent, or the empty tree for a root commit.
+     *
+     * `gitValidateRef` resolves `<hash>^` out of the object database instead of
+     * spawning `rev-parse --verify`, and answers `null` for the same two cases
+     * that exited non-zero: a root commit, which has no `^`, and a hash that
+     * names nothing. Neither command peeled a tag and neither does this.
+     *
+     * A repository inside a WSL distro keeps the command, because every other
+     * call in this provider reaches git through `execGitAsync` — which sends
+     * it to `wsl.exe` — and the addon runs git on the host.
+     */
     async function getParentRef(): Promise<string> {
         try {
-            const parent = await execGitAsync(
-                ['rev-parse', '--verify', `${commitHash}^`],
-                repositoryRoot,
-            );
-            return parent.trim() || EMPTY_TREE_HASH;
+            if (resolveWorkspaceExecutionContext(repositoryRoot).kind === 'wsl') {
+                const parent = await execGitAsync(
+                    ['rev-parse', '--verify', `${commitHash}^`],
+                    repositoryRoot,
+                );
+                return parent.trim() || EMPTY_TREE_HASH;
+            }
+            const parent = await loadNativeGit().gitValidateRef(repositoryRoot, `${commitHash}^`);
+            return parent || EMPTY_TREE_HASH;
         } catch {
             return EMPTY_TREE_HASH;
         }

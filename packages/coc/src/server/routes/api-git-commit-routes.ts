@@ -4,8 +4,8 @@
  */
 
 import * as path from 'path';
-import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
-import { BranchService } from '@plusplusoneplusplus/forge';
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { BranchService, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { execGitArgsAsync, readGitFileAtCommit } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest, internalError } from '../errors';
 import type { APIError } from '../errors';
@@ -32,6 +32,96 @@ import { createRoute, asString, asInt, asBool } from './route-utils';
  */
 function asLoadFailure(err: unknown): APIError | undefined {
     return err instanceof NativeAddonLoadError ? internalError(err.message) : undefined;
+}
+
+/** The 5 s budget the two `diff-tree` spawns this route used to make carried. */
+const COMMIT_FILES_TIMEOUT_MS = 5_000;
+
+/**
+ * `GitChangeStatus` word back to the porcelain letter the wire carries.
+ *
+ * The addon reports a status as the word the rest of the codebase uses, and
+ * this route's JSON has always been the letter. Mapping here rather than
+ * widening the response keeps every consumer — the Git tab, the work-item
+ * commit pane — reading exactly what it read before.
+ *
+ * A `T` (typechange) arrives as `modified`, because that is what the shared
+ * parser makes of every letter it does not know; the UI has no `T` label, so
+ * a typechange now renders as a modification instead of a blank badge.
+ */
+const STATUS_WORD_TO_CHAR: Record<string, string> = {
+    modified: 'M',
+    added: 'A',
+    deleted: 'D',
+    renamed: 'R',
+    copied: 'C',
+    conflict: 'U',
+    untracked: '?',
+    ignored: '!',
+};
+
+/** One row of the `/commits/:hash/files` response. */
+interface CommitFileEntry {
+    status: string;
+    path: string;
+    additions?: number;
+    deletions?: number;
+    oldPath?: string;
+}
+
+/**
+ * The WSL twin of `gitCommitFiles`: the two `diff-tree` runs go through
+ * `wsl.exe` from here, and the join is done here too.
+ *
+ * The addon runs git on the host and never learns the distro exists, so a
+ * repository reached by its UNC spelling cannot take the native path. This is
+ * the only remaining copy of the `--numstat`/`--name-status` join in
+ * TypeScript; the native path reads Rust's.
+ */
+async function commitFilesViaCli(repoRoot: string, hash: string): Promise<CommitFileEntry[]> {
+    const nameStatusRaw = await execGitArgsAsync(['diff-tree', '--no-commit-id', '-r', '--name-status', '-M', '-C', hash], repoRoot);
+    const numstatRaw = await execGitArgsAsync(['diff-tree', '--no-commit-id', '-r', '--numstat', '-M', '-C', hash], repoRoot);
+
+    // Parse numstat: "additions\tdeletions\tpath" (renames: "old\tnew")
+    const numstatMap = new Map<string, { additions: number; deletions: number }>();
+    for (const line of numstatRaw.split('\n').filter(Boolean)) {
+        const parts = line.split('\t');
+        if (parts.length < 3) continue;
+        const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0;
+        const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0;
+        // For renames, numstat shows "old => new" or "{old => new}" — use the resolved path
+        let filePath = parts.slice(2).join('\t');
+        if (filePath.includes(' => ')) {
+            const m = filePath.match(/(?:{[^}]*? => ([^}]+)}|.* => (.+))/);
+            if (m) filePath = m[1] || m[2];
+        }
+        numstatMap.set(filePath, { additions, deletions });
+    }
+
+    const files: CommitFileEntry[] = [];
+    for (const line of nameStatusRaw.split('\n').filter(Boolean)) {
+        const [status, ...pathParts] = line.split('\t');
+        if (!status || pathParts.length === 0) continue;
+        const statusChar = status.charAt(0);
+        let filePath: string;
+        let oldPath: string | undefined;
+
+        if ((statusChar === 'R' || statusChar === 'C') && pathParts.length >= 2) {
+            oldPath = pathParts[0];
+            filePath = pathParts[1];
+        } else {
+            filePath = pathParts.join('\t');
+        }
+
+        const stats = numstatMap.get(filePath);
+        files.push({
+            status: statusChar,
+            path: filePath,
+            ...(stats && { additions: stats.additions, deletions: stats.deletions }),
+            ...(oldPath && { oldPath }),
+        });
+    }
+    return files;
 }
 
 export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
@@ -195,48 +285,28 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             }
 
             try {
-                // name-status with rename/copy detection
-                const nameStatusRaw = await execGitArgsAsync(['diff-tree', '--no-commit-id', '-r', '--name-status', '-M', '-C', hash], ws.rootPath);
-                const numstatRaw = await execGitArgsAsync(['diff-tree', '--no-commit-id', '-r', '--numstat', '-M', '-C', hash], ws.rootPath);
-
-                // Parse numstat: "additions\tdeletions\tpath" (renames: "old\tnew")
-                const numstatMap = new Map<string, { additions: number; deletions: number }>();
-                for (const line of numstatRaw.split('\n').filter(Boolean)) {
-                    const parts = line.split('\t');
-                    if (parts.length < 3) continue;
-                    const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0;
-                    const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0;
-                    // For renames, numstat shows "old => new" or "{old => new}" — use the resolved path
-                    let filePath = parts.slice(2).join('\t');
-                    if (filePath.includes(' => ')) {
-                        const m = filePath.match(/(?:{[^}]*? => ([^}]+)}|.* => (.+))/);
-                        if (m) filePath = m[1] || m[2];
-                    }
-                    numstatMap.set(filePath, { additions, deletions });
-                }
-
-                const files: Array<{ status: string; path: string; additions?: number; deletions?: number; oldPath?: string }> = [];
-                for (const line of nameStatusRaw.split('\n').filter(Boolean)) {
-                    const [status, ...pathParts] = line.split('\t');
-                    if (!status || pathParts.length === 0) continue;
-                    const statusChar = status.charAt(0);
-                    let filePath: string;
-                    let oldPath: string | undefined;
-
-                    if ((statusChar === 'R' || statusChar === 'C') && pathParts.length >= 2) {
-                        oldPath = pathParts[0];
-                        filePath = pathParts[1];
-                    } else {
-                        filePath = pathParts.join('\t');
-                    }
-
-                    const stats = numstatMap.get(filePath);
-                    files.push({
-                        status: statusChar,
-                        path: filePath,
-                        ...(stats && { additions: stats.additions, deletions: stats.deletions }),
-                        ...(oldPath && { oldPath }),
+                // One crossing where there were two spawns and a copy of the
+                // `--numstat`/`--name-status` join. The addon runs both
+                // `diff-tree` calls and pairs them with the same parser
+                // `GitLogService` reads, so the brace-form rename path and the
+                // binary-file blank column cannot drift from the Git tab's.
+                let files: CommitFileEntry[];
+                if (resolveWorkspaceExecutionContext(ws.rootPath).kind === 'wsl') {
+                    files = await commitFilesViaCli(ws.rootPath, hash);
+                } else {
+                    const { files: nativeFiles } = await loadNativeGit().gitCommitFiles(ws.rootPath, hash, {
+                        timeout: COMMIT_FILES_TIMEOUT_MS,
                     });
+                    // The wire contract is the single status letter this route
+                    // has always sent; the addon speaks the `GitChangeStatus`
+                    // word.
+                    files = nativeFiles.map(file => ({
+                        status: STATUS_WORD_TO_CHAR[file.status] ?? 'M',
+                        path: file.path,
+                        ...(file.additions !== undefined && { additions: file.additions }),
+                        ...(file.deletions !== undefined && { deletions: file.deletions }),
+                        ...(file.originalPath && { oldPath: file.originalPath }),
+                    }));
                 }
                 const result = { files };
                 gitCache.set(cacheKey, result);

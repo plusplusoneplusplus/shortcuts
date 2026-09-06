@@ -211,10 +211,14 @@ export class GitLogService {
     async hasPendingChanges(repoRoot: string): Promise<boolean> {
         const native = loadNativeGit();
         try {
-            const output = await native.execGit(['status', '--porcelain'], repoRoot, {
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-            return output.trim().length > 0;
+            // `dirty` is the same question `status --porcelain` was asked here:
+            // did any line come back at all. Reading it off the repository
+            // status keeps the porcelain text on Rust's side of the boundary,
+            // and the answer does not change — `--untracked-files=all` only
+            // splits an untracked directory into its files, which a boolean
+            // cannot tell apart from the single entry `normal` reports.
+            const { dirty } = await native.gitRepositoryStatus(repoRoot);
+            return dirty;
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to check for pending changes', error instanceof Error ? error : undefined);
             return false;
@@ -246,6 +250,10 @@ export class GitLogService {
     async hasMoreCommits(repoRoot: string, currentCount: number): Promise<boolean> {
         const native = loadNativeGit();
         try {
+            // Still argv: `gitRangeCountAhead` counts `<base>..<head>` and
+            // needs both refs to resolve, so it cannot answer "everything
+            // reachable from HEAD". A capability for the unbounded count has
+            // to exist before this call site can move.
             const output = await native.execGit(['rev-list', '--count', 'HEAD'], repoRoot, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });

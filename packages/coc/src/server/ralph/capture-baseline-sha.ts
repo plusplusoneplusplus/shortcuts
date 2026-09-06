@@ -10,8 +10,8 @@
  * repository that has nothing to say.
  */
 
-import { execGitAsync } from '@plusplusoneplusplus/forge/git';
-import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
@@ -45,10 +45,24 @@ export async function captureRalphBaselineSha(
     return gitHeadSha(cwd);
 }
 
-/** `git rev-parse HEAD` in `cwd`; `undefined` on any failure but a broken addon. */
+/**
+ * The current HEAD commit in `cwd`; `undefined` on any failure but a broken
+ * addon.
+ *
+ * `gitValidateRef` resolves the ref through the object database rather than
+ * spawning `rev-parse`, and answers `null` for exactly the cases that command
+ * exited non-zero on: a repository with no commits yet, and a path that is not
+ * a repository. The `FULL_SHA_RE` check stays because the caller's contract is
+ * a 40-character SHA and nothing else.
+ *
+ * A checkout inside a WSL distro keeps `rev-parse HEAD`: the addon runs git on
+ * the host and cannot open the UNC spelling that reaches here.
+ */
 export async function gitHeadSha(cwd: string): Promise<string | undefined> {
     try {
-        const sha = (await execGitAsync(['rev-parse', 'HEAD'], cwd, { timeout: 10_000 })).trim();
+        const sha = resolveWorkspaceExecutionContext(cwd).kind === 'wsl'
+            ? (await execGitAsync(['rev-parse', 'HEAD'], cwd, { timeout: 10_000 })).trim()
+            : (await loadNativeGit().gitValidateRef(cwd, 'HEAD')) ?? '';
         return FULL_SHA_RE.test(sha) ? sha : undefined;
     } catch (err: unknown) {
         if (err instanceof NativeAddonLoadError) {

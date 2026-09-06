@@ -25,6 +25,17 @@ vi.mock('child_process', function () { return ({
     execSync: (...args: any[]) => mockExecSync(...args),
 }); });
 
+// The commit-files route reads the addon capability, so the call the cache
+// tests count is the capability's, not a git spawn's.
+const mockGitCommitFiles = vi.fn();
+vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+        ...actual,
+        loadNativeGit: () => ({ gitCommitFiles: (...args: any[]) => mockGitCommitFiles(...args) }),
+    };
+});
+
 // ============================================================================
 // Mock GitRangeService (used by branch-range endpoint) and BranchService
 // ============================================================================
@@ -122,6 +133,8 @@ describe('Git API caching', () => {
 
     beforeEach(() => {
         mockExecSync.mockReset();
+        mockGitCommitFiles.mockReset();
+        mockGitCommitFiles.mockResolvedValue({ parentHash: '', files: [] });
         mockForgeExecGit.mockReset();
         mockForgeExecGit.mockReturnValue('');
         mockDetectCommitRange.mockReset();
@@ -193,31 +206,37 @@ describe('Git API caching', () => {
 
     describe('GET /api/workspaces/:id/git/commits/:hash/files (cache)', () => {
         it('second call for same hash returns cached data', async () => {
-            mockForgeExecGit.mockReturnValue('M\tsrc/index.ts');
+            mockGitCommitFiles.mockResolvedValue({
+                parentHash: 'p1',
+                files: [{ path: 'src/index.ts', status: 'modified' }],
+            });
 
             const res1 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234/files`);
             expect(res1.status).toBe(200);
             expect(res1.json().files).toHaveLength(1);
 
-            const callsAfterFirst = mockForgeExecGit.mock.calls.length;
+            const callsAfterFirst = mockGitCommitFiles.mock.calls.length;
 
             const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abcd1234/files`);
             expect(res2.status).toBe(200);
             expect(res2.json().files).toHaveLength(1);
-            expect(mockForgeExecGit.mock.calls.length).toBe(callsAfterFirst);
+            expect(mockGitCommitFiles.mock.calls.length).toBe(callsAfterFirst);
         });
 
         it('immutable cache survives mutable invalidation', async () => {
-            mockForgeExecGit.mockReturnValue('A\tnew.ts');
+            mockGitCommitFiles.mockResolvedValue({
+                parentHash: 'p1',
+                files: [{ path: 'new.ts', status: 'added' }],
+            });
 
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/beef5678/files`);
-            const callsAfterFirst = mockForgeExecGit.mock.calls.length;
+            const callsAfterFirst = mockGitCommitFiles.mock.calls.length;
 
             gitCache.invalidateMutable(WORKSPACE_ID);
 
             // Immutable entry still cached
             await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/beef5678/files`);
-            expect(mockForgeExecGit.mock.calls.length).toBe(callsAfterFirst);
+            expect(mockGitCommitFiles.mock.calls.length).toBe(callsAfterFirst);
         });
     });
 

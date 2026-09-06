@@ -438,10 +438,21 @@ export class GitRangeService {
 
     /**
      * Get file content at a specific ref.
+     *
+     * On the native path the blob is read out of the object database, so the
+     * content keeps the trailing newline `git show` loses on the way across —
+     * the review pane splits on `\n`, so the only visible difference is that a
+     * file which genuinely ends without one is no longer spelled the same as
+     * one that does. A ref or path that names nothing answers with the empty
+     * string, which is what the non-zero exit already meant here.
      */
     async getFileAtRef(repoRoot: string, ref: string, filePath: string): Promise<string> {
+        const { addon, wsl } = this.native(repoRoot);
         try {
             const gitPath = filePath.replace(/\\/g, '/');
+            if (!wsl) {
+                return (await addon.gitFileContentAtCommit(repoRoot, ref, gitPath)) ?? '';
+            }
             return await execGitAsync(['show', `${ref}:${gitPath}`], repoRoot);
         } catch {
             return '';

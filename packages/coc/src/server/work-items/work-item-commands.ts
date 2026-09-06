@@ -10,7 +10,7 @@
 
 import * as crypto from 'crypto';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { execGitAsync } from '@plusplusoneplusplus/forge';
+import { gitHeadSha as readHeadSha } from '../ralph/capture-baseline-sha';
 import { APIError, missingFields, notFound, badRequest, conflict } from '../errors';
 import { readRepoPreferences } from '../preferences-handler';
 import type {
@@ -1309,7 +1309,7 @@ export async function updateWorkItemCommand(
                 const workspaces = await ctx.processStore?.getWorkspaces() ?? [];
                 const workspace = workspaces.find(w => w.id === repoId);
                 if (workspace?.rootPath) {
-                    headBefore = await execGitAsync(['rev-parse', 'HEAD'], workspace.rootPath);
+                    headBefore = await readHeadSha(workspace.rootPath);
                 }
             } catch { /* non-fatal */ }
 

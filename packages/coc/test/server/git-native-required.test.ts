@@ -22,6 +22,18 @@ vi.mock('@plusplusoneplusplus/forge/git', async (importOriginal) => {
     return { ...actual, execGitAsync: vi.fn() };
 });
 
+// `gitHeadSha` reads the ref through the addon rather than spawning
+// `rev-parse`, so its broken-addon seam is `loadNativeGit` — which throws the
+// load error itself when the binary is missing the capability.
+const mockGitValidateRef = vi.fn();
+vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-native')>();
+    return {
+        ...actual,
+        loadNativeGit: () => ({ gitValidateRef: (...args: unknown[]) => mockGitValidateRef(...args) }),
+    };
+});
+
 import { execGitAsync } from '@plusplusoneplusplus/forge/git';
 import { resolveParentHash } from '../../src/server/executors/commit-chat-executor';
 import { getFileDiff } from '../../src/server/llm-tools/diff-line-mapper';
@@ -34,6 +46,12 @@ describe('git callers without a usable addon', () => {
     beforeEach(() => {
         mockExecGitAsync.mockReset();
         mockExecGitAsync.mockRejectedValue(
+            new NativeAddonLoadError(
+                `coc-native.node is missing the git capability — rebuild it with \`${REBUILD}\`.`,
+            ),
+        );
+        mockGitValidateRef.mockReset();
+        mockGitValidateRef.mockRejectedValue(
             new NativeAddonLoadError(
                 `coc-native.node is missing the git capability — rebuild it with \`${REBUILD}\`.`,
             ),
@@ -69,6 +87,10 @@ describe('git callers against a directory git cannot read', () => {
         mockExecGitAsync.mockReset();
         mockExecGitAsync.mockRejectedValue(
             new Error('git rev-parse HEAD failed: not a git repository'),
+        );
+        mockGitValidateRef.mockReset();
+        mockGitValidateRef.mockRejectedValue(
+            new Error('git rev-parse --verify HEAD failed: not a git repository'),
         );
     });
 

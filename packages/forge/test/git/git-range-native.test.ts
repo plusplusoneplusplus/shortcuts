@@ -373,8 +373,13 @@ describe('the raw diff readers', () => {
         const { repo } = makeRepo();
         const service = new GitRangeService();
 
-        expect(await service.getFileAtRef(repo, 'HEAD', 'docs.md')).toBe('docs');
+        // The blob's stored bytes, trailing newline included — the object
+        // database read keeps the byte `git show` dropped on its way across
+        // the boundary.
+        expect(await service.getFileAtRef(repo, 'HEAD', 'docs.md')).toBe('docs\n');
         expect(await service.getFileAtRef(repo, 'origin/main', 'docs.md')).toBe('');
+        expect(await service.getFileAtRef(repo, 'HEAD', 'no-such-file.md')).toBe('');
+        expect(await service.getFileAtRef(repo, 'origin/nope', 'docs.md')).toBe('');
         service.dispose();
     });
 
