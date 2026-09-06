@@ -73,6 +73,13 @@ export interface AttachOrStartOptions {
      * never touches the external process. Absent → previous inherit behavior.
      */
     onServerOutput?: (chunk: string | Buffer) => void;
+    /**
+     * Version of the running app (`app.getVersion()`), forwarded to the forked
+     * server as `COC_APP_VERSION`. The server needs it to look up the GitHub
+     * Release for the "What's New" modal: its own package version is not the one
+     * releases are tagged with.
+     */
+    appVersion?: string;
     deps?: AttachOrStartDeps;
 }
 
@@ -262,6 +269,7 @@ export async function attachOrStart(options: AttachOrStartOptions = {}): Promise
         COC_DESKTOP_HOST: host,
         COC_DESKTOP_PORT: String(requestedPort),
         COC_DESKTOP_DATA_DIR: dataDir,
+        ...(options.appVersion ? { COC_APP_VERSION: options.appVersion } : {}),
     });
 
     // Fix 2: tee the forked server's piped stdout/stderr into the caller's sink
