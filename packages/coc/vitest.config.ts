@@ -2,22 +2,34 @@ import { defineConfig } from 'vitest/config';
 import path from 'path';
 import { resolveMaxWorkers } from './vitest.workers';
 
-const resolveAlias = {
+// Array form (not an object) because one entry has to be a RegExp: the tests
+// module-mock MonacoFileEditor through its old home,
+// `features/repo-detail/explorer/MonacoFileEditor`, using relative specifiers.
+// The implementation now lives in `shared/file-viewer/MonacoFileEditor`, so
+// without this collapse the legacy specifier and the shared one would be two
+// module ids and `vi.mock` on the old path would not cover anything rendering
+// through the shared viewer. Order is preserved, which the coc-connector
+// subpath alias below depends on.
+const resolveAlias = [
+    {
+        find: /^.*\/features\/repo-detail\/explorer\/MonacoFileEditor$/,
+        replacement: path.resolve(__dirname, 'src/server/spa/client/react/shared/file-viewer/MonacoFileEditor'),
+    },
     // Redirect open-color to its CJS .js file to avoid the Node ≥ 24
     // ERR_IMPORT_ATTRIBUTE_MISSING error. The open-color package sets
     // "main": "open-color.json", but @excalidraw/excalidraw imports it
     // as `import OpenColor from "open-color"` with no `with { type: "json" }`
     // attribute. open-color.js (module.exports) is resolved by Vite via
     // CJS→ESM interop and works on all Node versions.
-    'open-color': path.resolve(__dirname, '../../node_modules/open-color/open-color.js'),
-    '@plusplusoneplusplus/coc-server': path.resolve(__dirname, 'src/server/index.ts'),
-    '@plusplusoneplusplus/coc-agent-sdk/testing': path.resolve(__dirname, '../coc-agent-sdk/src/testing/index.ts'),
-    '@plusplusoneplusplus/coc-client': path.resolve(__dirname, '../coc-client/src/index.ts'),
+    { find: 'open-color', replacement: path.resolve(__dirname, '../../node_modules/open-color/open-color.js') },
+    { find: '@plusplusoneplusplus/coc-server', replacement: path.resolve(__dirname, 'src/server/index.ts') },
+    { find: '@plusplusoneplusplus/coc-agent-sdk/testing', replacement: path.resolve(__dirname, '../coc-agent-sdk/src/testing/index.ts') },
+    { find: '@plusplusoneplusplus/coc-client', replacement: path.resolve(__dirname, '../coc-client/src/index.ts') },
     // Subpath alias must precede the core alias: Vite matches aliases in
     // order and treats a bare package name as a prefix of its subpaths.
-    '@plusplusoneplusplus/coc-connector/teams': path.resolve(__dirname, '../coc-connector/src/teams/index.ts'),
-    '@plusplusoneplusplus/coc-connector': path.resolve(__dirname, '../coc-connector/src/index.ts'),
-};
+    { find: '@plusplusoneplusplus/coc-connector/teams', replacement: path.resolve(__dirname, '../coc-connector/src/teams/index.ts') },
+    { find: '@plusplusoneplusplus/coc-connector', replacement: path.resolve(__dirname, '../coc-connector/src/index.ts') },
+];
 
 const commonTestOptions = {
     globals: true,
