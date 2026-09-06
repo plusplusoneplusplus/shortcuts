@@ -34,6 +34,7 @@ import { useUnifiedRightPanelEnabled } from '../hooks/feature-flags/useUnifiedRi
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
+import { useQueueOptional } from '../contexts/QueueContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { resolveRepoGroupName } from './repoGroupName';
 import type { RepoGroupMember } from './repoGroupService';
@@ -160,6 +161,13 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     const dock = useWorkspaceDock(workspaceId, dockTargets);
     // Same slot, one panel, when `unifiedRightPanel` is on (AC-01).
     const unifiedRightPanelEnabled = useUnifiedRightPanelEnabled();
+    // The group's selected chat owns the panel's chat-scoped tabs. `RepoChatTab`
+    // below runs against the group workspace id, so that is the key its
+    // selection is filed under; the per-repo entry only, never the global
+    // fallback, so another workspace's chat cannot claim these tabs.
+    // `useQueueOptional` because this read is cosmetic to the group view: with
+    // no provider (a focused test host) the panel simply has no chat scope.
+    const panelChatId = useQueueOptional()?.state.selectedTaskIdByRepo[workspaceId] ?? null;
 
     return (
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
@@ -193,7 +201,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                     </div>
                 </div>
                 {dockAvailable && (unifiedRightPanelEnabled
-                    ? <UnifiedRightPanel workspaceId={workspaceId} dock={dock} targets={dockTargets} />
+                    ? <UnifiedRightPanel workspaceId={workspaceId} chatId={panelChatId} dock={dock} targets={dockTargets} />
                     : <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={dockTargets} />)}
             </div>
         </div>

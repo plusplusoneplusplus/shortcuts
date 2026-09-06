@@ -134,6 +134,21 @@ function subscribeDockOpen(storageKey: string, listener: () => void): () => void
     };
 }
 
+/**
+ * Reveal a workspace's dock from outside React — a chat source link, a canvas
+ * event, or a diff action that opens a resource while the panel is collapsed
+ * (AC-04/AC-06: "reopen the panel if it was closed").
+ *
+ * Deliberately one-way. Nothing outside an explicit user toggle may *close* the
+ * dock, and an already-open dock is left alone rather than rewritten, so a
+ * stream of canvas updates does not notify every subscriber per event.
+ */
+export function openWorkspaceDock(workspaceId: string): void {
+    const storageKey = workspaceDockOpenStorageKey(workspaceId);
+    if (readDockOpen(storageKey)) return;
+    writeDockOpen(storageKey, true);
+}
+
 /** Persisted, cross-tree open/closed flag for a dock, scoped by `storageKey`. */
 export function useDockOpen(storageKey: string): [boolean, () => void] {
     const isOpen = useSyncExternalStore(

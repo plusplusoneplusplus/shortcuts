@@ -174,6 +174,13 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // resource-tabbed panel instead — same availability gate, same controller,
     // so the header toggle and the persisted width carry over unchanged.
     const unifiedRightPanelEnabled = useUnifiedRightPanelEnabled();
+    // Which chat owns the panel's chat-scoped tabs (files, canvases, diffs).
+    // The selection lives in the queue store rather than in `RepoChatTab`, so
+    // the panel can read it here without the chat list having to hand it up.
+    // Deliberately the per-repo entry only, never `queueState.selectedTaskId`:
+    // that global fallback can still name another workspace's chat, and filing
+    // this workspace's tabs under it would leak them across repos.
+    const panelChatId = queueState.selectedTaskIdByRepo?.[ws.id] ?? null;
     const showHeaderDockToggle = dockAvailable && !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
@@ -897,7 +904,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                 )}
             </div>
             {dockAvailable && (unifiedRightPanelEnabled
-                ? <UnifiedRightPanel workspaceId={ws.id} dock={dock} />
+                ? <UnifiedRightPanel workspaceId={ws.id} chatId={panelChatId} dock={dock} />
                 : <WorkspaceRightDock workspaceId={ws.id} dock={dock} />)}
             </div>
 
