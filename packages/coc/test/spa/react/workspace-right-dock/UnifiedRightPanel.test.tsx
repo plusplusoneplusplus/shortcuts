@@ -33,11 +33,23 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
 // The "+" menu searches on the server and lists the chat's canvases; both are
 // stubbed here so the shell cases exercise the seam, not the network.
 const searchFiles = vi.fn(async () => ({ results: [] as { path: string }[] }));
+// `readBlob` is here because a file tab now renders the Explorer's real buffer;
+// the file view's own behavior is pinned in UnifiedPanelResourceTabs.test.tsx.
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
-    explorerApi: { searchFiles: (...args: unknown[]) => searchFiles(...(args as [])) },
+    explorerApi: {
+        searchFiles: (...args: unknown[]) => searchFiles(...(args as [])),
+        readBlob: async () => ({ content: '', encoding: 'utf-8', mimeType: 'text/plain' }),
+        writeBlob: async () => ({ success: true }),
+        readTrustedBlob: async () => ({ content: '', encoding: 'utf-8', mimeType: 'text/plain' }),
+    },
+}));
+vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor', () => ({
+    MonacoFileEditor: () => <div data-testid="mock-monaco" />,
+    getMonacoLanguage: () => 'plaintext',
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
+    lookupCloneBaseUrl: () => null,
 }));
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
@@ -284,7 +296,7 @@ describe('UnifiedRightPanel', () => {
 
     it('shows an explicit state for a kind it cannot render yet, instead of a blank panel', () => {
         writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'canvas', ownerWorkspaceId: WS, chatId: null, resourceId: 'canvas-1', label: 'Plan',
+            kind: 'diff', ownerWorkspaceId: WS, chatId: null, resourceId: 'group-1', label: 'Changes',
         }));
         renderPanel();
         expect(screen.getByTestId('unified-panel-unsupported')).toBeTruthy();

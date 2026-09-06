@@ -27,25 +27,22 @@
  *    `useWorkspaceDock` controller, so the flag-on and flag-off panels share the
  *    same open/width persistence and the same header toggle.
  *
- * Resource views are reused as-is (`TerminalView`, `ExplorerPanel`,
- * `DockNotesPanel`); their own toolbars render below the strip rather than
- * portaling into it, so the strip stays the panel's only tab row. Chat-owned
- * kinds (file, canvas, diff) get their entry points in AC-04 — until then a
- * restored descriptor of those kinds renders the explicit unsupported state
- * instead of a blank panel.
+ * Resource views are reused as-is and live in `UnifiedTabView`; their own
+ * toolbars render below the strip rather than portaling into it, so the strip
+ * stays the panel's only tab row. The shell keeps the per-tab dirty and error
+ * state those views report, because a hidden tab's unsaved edits or failed read
+ * have to be visible in the strip rather than only in the view itself.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
-import { TerminalView } from '../../terminal/TerminalView';
-import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
-import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../WorkspaceRightDock';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
+import { UnifiedTabView } from './UnifiedTabView';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
-import type { OpenUnifiedTabInput, UnifiedPanelTab } from './unifiedPanelTabsModel';
+import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 export interface UnifiedRightPanelProps {
     /**
@@ -62,36 +59,6 @@ export interface UnifiedRightPanelProps {
     dock: WorkspaceDockController;
     /** Target options for repo groups; the "+" menu picks among them. */
     targets?: readonly DockTarget[];
-}
-
-/**
- * The body for one tab. Workspace kinds map straight onto the existing dock
- * views; the chat-owned kinds are wired in AC-04 and meanwhile render the same
- * explicit unsupported state a deleted resource would, so a persisted
- * descriptor can always be seen and closed rather than showing an empty panel.
- */
-function UnifiedTabView({ tab, scopeWorkspaceId }: { tab: UnifiedPanelTab; scopeWorkspaceId: string }) {
-    switch (tab.kind) {
-        case 'terminal':
-            return <TerminalView workspaceId={tab.ownerWorkspaceId} />;
-        case 'explorer':
-            // Deep-linking only when the tab targets the panel's own scope: the
-            // hash a group member would write reads as "select that repo" and
-            // would navigate the user out of the group on every file click.
-            return <ExplorerPanel workspaceId={tab.ownerWorkspaceId} deepLink={tab.ownerWorkspaceId === scopeWorkspaceId} />;
-        case 'notes':
-            return <DockNotesPanel workspaceId={scopeWorkspaceId} />;
-        default:
-            return (
-                <div
-                    className="flex h-full flex-col items-center justify-center gap-1 p-4 text-center text-xs text-[#616161] dark:text-[#9d9d9d]"
-                    data-testid="unified-panel-unsupported"
-                >
-                    <span>This resource cannot be shown here yet.</span>
-                    <span className="opacity-70">{tab.label}</span>
-                </div>
-            );
-    }
 }
 
 export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }: UnifiedRightPanelProps) {
@@ -138,6 +105,32 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         });
     }, [open, workspaceId, target, targetLabel, chatId]);
 
+    // Per-tab dirty / error state, reported by the views. It lives here rather
+    // than in each view because the strip has to show it for tabs that are not
+    // the visible one — an unsaved buffer or a failed read behind another tab is
+    // exactly the state a user cannot otherwise find.
+    const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(() => new Set());
+    const [errorIds, setErrorIds] = useState<ReadonlySet<string>>(() => new Set());
+    const setFlag = useCallback(
+        (update: (fn: (prev: ReadonlySet<string>) => ReadonlySet<string>) => void, id: string, on: boolean) => {
+            update(prev => {
+                if (prev.has(id) === on) return prev;
+                const next = new Set(prev);
+                if (on) next.add(id); else next.delete(id);
+                return next;
+            });
+        },
+        [],
+    );
+    const handleDirtyChange = useCallback(
+        (id: string, isDirty: boolean) => setFlag(setDirtyIds, id, isDirty),
+        [setFlag],
+    );
+    const handleErrorChange = useCallback(
+        (id: string, hasError: boolean) => setFlag(setErrorIds, id, hasError),
+        [setFlag],
+    );
+
     const closeTab = useCallback((id: string) => {
         close(id);
         setMountedIds(prev => {
@@ -146,6 +139,10 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             next.delete(id);
             return next;
         });
+        // No flag clearing here on purpose: closing unmounts the view, and the
+        // views report clean/ready from their own unmount cleanup, so a second
+        // reset would be dead code. Verified by removing the cleanup's effect in
+        // the close/reopen case rather than assumed.
     }, [close]);
 
     // The "+" menu. Dismissal always hands focus back to whatever opened it —
@@ -228,6 +225,8 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                 <UnifiedPanelTabStrip
                     tabs={tabs}
                     activeId={activeId}
+                    dirtyIds={dirtyIds}
+                    errorIds={errorIds}
                     onActivate={activate}
                     onClose={closeTab}
                     onMove={move}
@@ -280,7 +279,13 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                             data-testid={`unified-panel-view-${tab.id}`}
                             data-active={tab.id === activeId ? 'true' : 'false'}
                         >
-                            <UnifiedTabView tab={tab} scopeWorkspaceId={workspaceId} />
+                            <UnifiedTabView
+                                tab={tab}
+                                scopeWorkspaceId={workspaceId}
+                                onClose={closeTab}
+                                onDirtyChange={handleDirtyChange}
+                                onErrorChange={handleErrorChange}
+                            />
                         </div>
                     ))
                 )}
