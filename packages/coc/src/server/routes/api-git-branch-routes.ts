@@ -77,8 +77,12 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
         handler: async ({ match, res }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const uncommitted = await branchService.hasUncommittedChanges(ws.rootPath);
-            return branchService.getBranchStatus(ws.rootPath, uncommitted);
+            // One status read for the whole response: `getRepositoryStatus`
+            // already runs `git status`, and `getBranchStatus` takes the dirty
+            // flag as a parameter precisely so the caller does not spawn a
+            // second one.
+            const repositoryStatus = await branchService.getRepositoryStatus(ws.rootPath);
+            return branchService.getBranchStatus(ws.rootPath, repositoryStatus?.dirty ?? false);
         },
     }));
 

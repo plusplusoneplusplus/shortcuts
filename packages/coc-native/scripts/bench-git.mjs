@@ -400,6 +400,54 @@ export const CASES = [
         native: (repo, git) => git.gitBranchStatus(repo.root),
     },
     {
+        id: 'current-branch-name',
+        title: 'current branch name',
+        children: 1,
+        gated: true,
+        // getCurrentBranchName at this change^: one `rev-parse`, and `HEAD`
+        // — the detached answer — mapped to null.
+        legacy: async repo => {
+            try {
+                const name = (await legacyArgv(['rev-parse', '--abbrev-ref', 'HEAD'], repo.root)).trim();
+                return name === 'HEAD' ? null : name;
+            } catch {
+                return null;
+            }
+        },
+        native: (repo, git) => git.gitCurrentBranchName(repo.root),
+    },
+    {
+        id: 'upstream-config',
+        title: 'upstream config (symbolic-ref + two config reads)',
+        children: 3,
+        gated: true,
+        // getCurrentBranchUpstream at this change^, minus the
+        // `check-ref-format` that still shells out on both sides.
+        legacy: async repo => {
+            let branchName = '';
+            try {
+                branchName = (await legacyArgv(['symbolic-ref', '--quiet', '--short', 'HEAD'], repo.root)).trim();
+            } catch {
+                return null;
+            }
+            if (!branchName) return null;
+            const configValues = async key => {
+                try {
+                    const output = await legacyArgv(['config', '--get-all', key], repo.root);
+                    return output.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+                } catch {
+                    return [];
+                }
+            };
+            return {
+                branchName,
+                remotes: await configValues(`branch.${branchName}.remote`),
+                remoteRefs: await configValues(`branch.${branchName}.merge`),
+            };
+        },
+        native: (repo, git) => git.gitUpstreamConfig(repo.root),
+    },
+    {
         id: 'branch-list-100',
         title: 'branch list, one 100-branch page',
         children: 2,
@@ -565,6 +613,19 @@ export const CASES = [
         blocking: true,
         legacy: repo => legacyBlocking(['rev-parse', '--show-toplevel'], repo.root).trim(),
         native: (repo, git) => git.gitDiscoverRepoRoot(repo.root),
+    },
+    {
+        id: 'git-dir',
+        title: 'resolved git directory',
+        children: 1,
+        gated: true,
+        // getResolvedGitDir at this change^, including the absolutising the
+        // TypeScript wrapped the command in.
+        legacy: async repo => {
+            const gitDir = (await legacyArgv(['rev-parse', '--git-dir'], repo.root)).trim();
+            return path.isAbsolute(gitDir) ? gitDir : path.join(repo.root, gitDir);
+        },
+        native: (repo, git) => git.gitResolvedGitDir(repo.root),
     },
 ];
 

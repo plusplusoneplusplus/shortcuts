@@ -229,6 +229,21 @@ export interface GitCommitFiles {
 }
 
 /**
+ * The checked-out branch's short name — `rev-parse --abbrev-ref HEAD` without
+ * the child process.
+ *
+ * Not {@link git_branch_status} with the extra fields discarded: that resolves
+ * the upstream and walks the history twice to count the drift, and this
+ * question needs neither.
+ *
+ * Resolves with `null` for the three cases the caller has always read alike: a
+ * detached HEAD, a repository with no commits yet, and a branch literally
+ * named `HEAD`. The CLI reported all three as `HEAD` or as a non-zero exit,
+ * and both became `null`.
+ */
+export declare function gitCurrentBranchName(repoRoot: string): Promise<string | null>
+
+/**
  * The repository's primary remote URL: `origin`, or the first remote by name
  * when `origin` is not configured.
  *
@@ -587,6 +602,24 @@ export interface GitRepositoryStatus {
 }
 
 /**
+ * The repository's git directory for `path` — `git rev-parse --git-dir`
+ * without the child process, and already absolute.
+ *
+ * The caller used to wrap the CLI's answer in `path.isAbsolute`/`path.join`,
+ * because git prints a bare `.git` from the work tree root; that resolution
+ * happens here instead.
+ *
+ * In a linked worktree this is `.git/worktrees/<name>`, not the main
+ * repository's `.git` — the worktree-specific directory, which is where an
+ * in-progress rebase, merge or cherry-pick leaves the sentinel files the
+ * caller opens this directory to look for.
+ *
+ * Resolves with `null` when `path` does not exist or is outside any
+ * repository.
+ */
+export declare function gitResolvedGitDir(path: string): Promise<string | null>
+
+/**
  * Read the full working-tree change list for a repository.
  *
  * Runs `git status --porcelain --untracked-files=all` and parses it, so the
@@ -609,6 +642,33 @@ export interface GitStatusEntry {
   originalPath?: string
   status: string
   stage: string
+}
+
+/**
+ * HEAD's raw `branch.<name>.remote` and `branch.<name>.merge` entries.
+ *
+ * Three of the four child processes this replaces — `symbolic-ref` and two
+ * `config --get-all`s — ran immediately before every `fetch` and `pull`.
+ *
+ * Deliberately reads config and nothing else. The tracking branch reported by
+ * {@link git_branch_status} requires the upstream ref to *exist*, which is
+ * right for a status view and wrong here: a branch tracking a ref nobody has
+ * fetched yet is exactly what the caller is about to fetch.
+ *
+ * Resolves with `null` only for a detached HEAD. Whether the values add up to
+ * a usable upstream — and which of the caller's four messages the user sees
+ * when they do not — stays in TypeScript.
+ */
+export declare function gitUpstreamConfig(repoRoot: string): Promise<GitUpstreamConfig | null>
+
+/** HEAD's raw upstream configuration — facts, not a verdict. */
+export interface GitUpstreamConfig {
+  /** The short name of the branch HEAD points at, born or not. */
+  branchName: string
+  /** Every `branch.<name>.remote` value, in git's order. */
+  remotes: Array<string>
+  /** Every `branch.<name>.merge` value, in git's order. */
+  remoteRefs: Array<string>
 }
 
 /**

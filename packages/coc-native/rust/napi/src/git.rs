@@ -15,8 +15,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use coc_native_core::git::branch::{
-    branch_status, list_branches, local_branch_names, parse_porcelain_v2_branch_status,
-    repository_status, BranchEntry, BranchPage, BranchQuery, BranchStatus, RepositoryStatus,
+    branch_status, current_branch_name, list_branches, local_branch_names,
+    parse_porcelain_v2_branch_status, repository_status, upstream_config, BranchEntry, BranchPage,
+    BranchQuery, BranchStatus, RepositoryStatus, UpstreamConfig,
 };
 use coc_native_core::git::commit::{
     commit_diff, commit_files, file_bytes_at_commit, file_content_at_commit, file_exists_at_commit,
@@ -31,7 +32,7 @@ use coc_native_core::git::range::{
     BaseRefResolution, DefaultBranch, DiffStats, RangeFile,
 };
 use coc_native_core::git::remote::{detect_remote_url, remote_url};
-use coc_native_core::git::repo::discover_workdir;
+use coc_native_core::git::repo::{discover_workdir, resolved_git_dir};
 use coc_native_core::git::status::{
     parse_porcelain, status_entries, StatusEntry, STATUS_TIMEOUT_MS,
 };
@@ -1039,6 +1040,27 @@ impl From<BranchStatus> for GitBranchStatus {
     }
 }
 
+/// HEAD's raw upstream configuration — facts, not a verdict.
+#[napi(object)]
+pub struct GitUpstreamConfig {
+    /// The short name of the branch HEAD points at, born or not.
+    pub branch_name: String,
+    /// Every `branch.<name>.remote` value, in git's order.
+    pub remotes: Vec<String>,
+    /// Every `branch.<name>.merge` value, in git's order.
+    pub remote_refs: Vec<String>,
+}
+
+impl From<UpstreamConfig> for GitUpstreamConfig {
+    fn from(config: UpstreamConfig) -> Self {
+        Self {
+            branch_name: config.branch_name,
+            remotes: config.remotes,
+            remote_refs: config.remote_refs,
+        }
+    }
+}
+
 /// One branch as the branch list renders it.
 #[napi(object)]
 pub struct GitBranchEntry {
@@ -1168,6 +1190,74 @@ impl Task for GitBranchStatusTask {
 #[napi(ts_return_type = "Promise<GitBranchStatus | null>")]
 pub fn git_branch_status(repo_root: String) -> AsyncTask<GitBranchStatusTask> {
     AsyncTask::new(GitBranchStatusTask { repo_root: PathBuf::from(repo_root) })
+}
+
+pub struct GitCurrentBranchNameTask {
+    repo_root: PathBuf,
+}
+
+impl Task for GitCurrentBranchNameTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        current_branch_name(&self.repo_root).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// The checked-out branch's short name — `rev-parse --abbrev-ref HEAD` without
+/// the child process.
+///
+/// Not {@link git_branch_status} with the extra fields discarded: that resolves
+/// the upstream and walks the history twice to count the drift, and this
+/// question needs neither.
+///
+/// Resolves with `null` for the three cases the caller has always read alike: a
+/// detached HEAD, a repository with no commits yet, and a branch literally
+/// named `HEAD`. The CLI reported all three as `HEAD` or as a non-zero exit,
+/// and both became `null`.
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_current_branch_name(repo_root: String) -> AsyncTask<GitCurrentBranchNameTask> {
+    AsyncTask::new(GitCurrentBranchNameTask { repo_root: PathBuf::from(repo_root) })
+}
+
+pub struct GitUpstreamConfigTask {
+    repo_root: PathBuf,
+}
+
+impl Task for GitUpstreamConfigTask {
+    type Output = Option<UpstreamConfig>;
+    type JsValue = Option<GitUpstreamConfig>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        upstream_config(&self.repo_root).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.map(GitUpstreamConfig::from))
+    }
+}
+
+/// HEAD's raw `branch.<name>.remote` and `branch.<name>.merge` entries.
+///
+/// Three of the four child processes this replaces — `symbolic-ref` and two
+/// `config --get-all`s — ran immediately before every `fetch` and `pull`.
+///
+/// Deliberately reads config and nothing else. The tracking branch reported by
+/// {@link git_branch_status} requires the upstream ref to *exist*, which is
+/// right for a status view and wrong here: a branch tracking a ref nobody has
+/// fetched yet is exactly what the caller is about to fetch.
+///
+/// Resolves with `null` only for a detached HEAD. Whether the values add up to
+/// a usable upstream — and which of the caller's four messages the user sees
+/// when they do not — stays in TypeScript.
+#[napi(ts_return_type = "Promise<GitUpstreamConfig | null>")]
+pub fn git_upstream_config(repo_root: String) -> AsyncTask<GitUpstreamConfigTask> {
+    AsyncTask::new(GitUpstreamConfigTask { repo_root: PathBuf::from(repo_root) })
 }
 
 pub struct GitListBranchesTask {
@@ -1486,4 +1576,40 @@ pub fn git_diff_no_index(
         after_label: input.after_label,
         options,
     })
+}
+
+pub struct GitResolvedGitDirTask {
+    path: PathBuf,
+}
+
+impl Task for GitResolvedGitDirTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        resolved_git_dir(&self.path).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// The repository's git directory for `path` — `git rev-parse --git-dir`
+/// without the child process, and already absolute.
+///
+/// The caller used to wrap the CLI's answer in `path.isAbsolute`/`path.join`,
+/// because git prints a bare `.git` from the work tree root; that resolution
+/// happens here instead.
+///
+/// In a linked worktree this is `.git/worktrees/<name>`, not the main
+/// repository's `.git` — the worktree-specific directory, which is where an
+/// in-progress rebase, merge or cherry-pick leaves the sentinel files the
+/// caller opens this directory to look for.
+///
+/// Resolves with `null` when `path` does not exist or is outside any
+/// repository.
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_resolved_git_dir(path: String) -> AsyncTask<GitResolvedGitDirTask> {
+    AsyncTask::new(GitResolvedGitDirTask { path: PathBuf::from(path) })
 }

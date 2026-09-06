@@ -59,6 +59,13 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
+            // The branch-status route reads one status and derives the dirty
+            // flag from it, so `dirty` has to track whatever a case set on
+            // `mockHasUncommittedChanges` or every dirty assertion goes vacuous.
+            getRepositoryStatus: vi.fn(async (...args: any[]) => ({
+                branch: 'main', isDetached: false, dirty: Boolean(await mockHasUncommittedChanges(...args)),
+                ahead: 0, behind: 0, unborn: false,
+            })),
             getLocalBranches: mockGetLocalBranches,
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,

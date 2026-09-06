@@ -16,7 +16,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use coc_native_core::git::repo::discover_workdir;
+use coc_native_core::git::repo::{discover_workdir, resolved_git_dir};
 use tempfile::TempDir;
 
 fn git(repo: &Path, values: &[&str]) {
@@ -199,4 +199,120 @@ fn a_nested_repository_reports_the_inner_root() {
     git(&inner, &["init", "--initial-branch=main"]);
 
     assert_eq!(real(&found(&inner)), real(inner.to_str().unwrap()));
+}
+
+// ============================================================================
+// resolved_git_dir
+// ============================================================================
+// Differential against `git rev-parse --git-dir`, absolutised the way the
+// TypeScript caller used to do with `path.isAbsolute`/`path.join` — git prints
+// a bare `.git` from the work tree root, and the answer this returns is already
+// resolved.
+
+/// What the real `git rev-parse --git-dir` says, made absolute against `cwd`
+/// exactly as the caller this replaces did.
+fn cli_git_dir(cwd: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .expect("git should be on PATH for these tests");
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim_end_matches(['\n', '\r']).to_string();
+    let path = PathBuf::from(&text);
+    Some(if path.is_absolute() { text } else { cwd.join(path).to_string_lossy().into_owned() })
+}
+
+fn git_dir(path: &Path) -> String {
+    resolved_git_dir(path).expect("the read should not fail").expect("a git dir was expected")
+}
+
+#[test]
+fn git_dir_matches_the_cli_from_the_root() {
+    let dir = repo();
+    let cli = cli_git_dir(dir.path()).expect("git should report a git dir");
+    assert_eq!(real(&git_dir(dir.path())), real(&cli));
+}
+
+#[test]
+fn git_dir_matches_the_cli_from_a_nested_directory() {
+    let dir = repo();
+    let nested = dir.path().join("src/deep");
+    let cli = cli_git_dir(&nested).expect("git should report a git dir");
+    assert_eq!(real(&git_dir(&nested)), real(&cli));
+}
+
+#[test]
+fn git_dir_is_always_absolute() {
+    let dir = repo();
+    assert!(Path::new(&git_dir(dir.path())).is_absolute());
+}
+
+#[test]
+fn git_dir_answers_for_the_directory_holding_a_file() {
+    let dir = repo();
+    let file = dir.path().join("src/deep/a.txt");
+    let cli = cli_git_dir(&dir.path().join("src/deep")).expect("git should report a git dir");
+    assert_eq!(real(&git_dir(&file)), real(&cli));
+}
+
+#[test]
+fn git_dir_holds_the_sentinels_the_caller_probes_for() {
+    // The caller only opens this directory to look for these four names, so an
+    // answer that does not contain them is the wrong directory even when it is
+    // a real one.
+    let dir = repo();
+    let resolved = PathBuf::from(git_dir(dir.path()));
+    assert!(resolved.join("HEAD").exists());
+    std::fs::write(resolved.join("MERGE_HEAD"), "abc\n").expect("sentinel should be writable");
+    assert!(resolved.join("MERGE_HEAD").exists());
+}
+
+#[test]
+fn git_dir_answers_nothing_for_a_path_outside_any_repository() {
+    let dir = TempDir::new().expect("temp dir");
+    assert!(resolved_git_dir(dir.path()).expect("the read should not fail").is_none());
+}
+
+#[test]
+fn git_dir_answers_nothing_for_a_missing_path() {
+    let dir = repo();
+    let missing = dir.path().join("does/not/exist");
+    assert!(resolved_git_dir(&missing).expect("the read should not fail").is_none());
+}
+
+#[test]
+fn git_dir_answers_nothing_for_an_unborn_repository() {
+    // A fresh `git init` has a `.git` and no commits; `--git-dir` still answers.
+    let dir = TempDir::new().expect("temp dir");
+    git(dir.path(), &["init", "--initial-branch=main"]);
+    let cli = cli_git_dir(dir.path()).expect("git should report a git dir");
+    assert_eq!(real(&git_dir(dir.path())), real(&cli));
+}
+
+#[test]
+fn git_dir_is_the_worktree_specific_directory_not_the_common_one() {
+    // The trap this function exists to avoid: in a linked worktree
+    // `--git-dir` is `.git/worktrees/<name>`, and that is where an in-progress
+    // rebase or cherry-pick leaves its sentinels. `common_dir()` would answer
+    // the main repository's `.git` and pass every test above.
+    let dir = repo();
+    let linked = dir.path().join("linked");
+    git(dir.path(), &["worktree", "add", linked.to_str().unwrap(), "-b", "side"]);
+
+    let cli = cli_git_dir(&linked).expect("git should report a git dir");
+    let resolved = git_dir(&linked);
+    assert_eq!(real(&resolved), real(&cli));
+
+    // Not the main repository's `.git`, and named after the worktree.
+    assert_ne!(real(&resolved), real(dir.path().join(".git").to_str().unwrap()));
+    assert!(resolved.replace('\\', "/").contains("/worktrees/linked"));
+
+    // And a sentinel written there is one the caller would find.
+    std::fs::write(PathBuf::from(&resolved).join("CHERRY_PICK_HEAD"), "abc\n")
+        .expect("sentinel should be writable");
+    assert!(PathBuf::from(&resolved).join("CHERRY_PICK_HEAD").exists());
 }

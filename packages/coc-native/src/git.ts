@@ -113,6 +113,17 @@ export type NativeGitBranchPage = Bindings.GitBranchPage;
 export type NativeGitBranchListOptions = Bindings.GitBranchListOptions;
 
 /**
+ * HEAD's raw `branch.<name>.remote` and `branch.<name>.merge` entries.
+ *
+ * Facts, not a verdict: `BranchService` decides whether they add up to a usable
+ * upstream and which of its four messages the user sees when they do not. The
+ * ref database is never consulted, because this is read immediately before a
+ * fetch — a branch tracking a ref nobody has downloaded yet is the case that
+ * has to work.
+ */
+export type NativeGitUpstreamConfig = Bindings.GitUpstreamConfig;
+
+/**
  * Two contents to diff, and the labels their headers should carry.
  *
  * The labels are the caller's own strings — `a/<path>`, `b/<path>` or
@@ -146,6 +157,8 @@ export interface NativeGitAddon {
     gitRepositoryStatus: typeof Bindings.gitRepositoryStatus;
     parseGitBranchStatus: typeof Bindings.parseGitBranchStatus;
     gitBranchStatus: typeof Bindings.gitBranchStatus;
+    gitCurrentBranchName: typeof Bindings.gitCurrentBranchName;
+    gitUpstreamConfig: typeof Bindings.gitUpstreamConfig;
     gitListBranches: typeof Bindings.gitListBranches;
     gitLocalBranchNames: typeof Bindings.gitLocalBranchNames;
     gitRemoteUrl: typeof Bindings.gitRemoteUrl;
@@ -153,6 +166,7 @@ export interface NativeGitAddon {
     gitGlobalConfigGetAll: typeof Bindings.gitGlobalConfigGetAll;
     gitGlobalConfigAdd: typeof Bindings.gitGlobalConfigAdd;
     gitDiscoverRepoRoot: typeof Bindings.gitDiscoverRepoRoot;
+    gitResolvedGitDir: typeof Bindings.gitResolvedGitDir;
     gitDiffNoIndex: typeof Bindings.gitDiffNoIndex;
 }
 
@@ -187,6 +201,8 @@ const GIT_EXPORTS = [
     'gitRepositoryStatus',
     'parseGitBranchStatus',
     'gitBranchStatus',
+    'gitCurrentBranchName',
+    'gitUpstreamConfig',
     'gitListBranches',
     'gitLocalBranchNames',
     'gitRemoteUrl',
@@ -194,6 +210,7 @@ const GIT_EXPORTS = [
     'gitGlobalConfigGetAll',
     'gitGlobalConfigAdd',
     'gitDiscoverRepoRoot',
+    'gitResolvedGitDir',
     'gitDiffNoIndex',
 ] as const;
 

@@ -11,8 +11,8 @@ use std::path::Path;
 use std::process::Command;
 
 use coc_native_core::git::branch::{
-    branch_status, list_branches, local_branch_names, parse_porcelain_v2_branch_status,
-    repository_status, BranchQuery,
+    branch_status, current_branch_name, list_branches, local_branch_names,
+    parse_porcelain_v2_branch_status, repository_status, upstream_config, BranchQuery,
 };
 use tempfile::TempDir;
 
@@ -641,4 +641,322 @@ fn bare_names_fail_outside_a_repository() {
     let dir = TempDir::new().expect("temp dir");
     let error = local_branch_names(dir.path()).expect_err("a plain directory is not a repo");
     assert!(error.to_string().starts_with("git branch"), "unexpected: {error}");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// current_branch_name
+// ─────────────────────────────────────────────────────────────────────────────
+// Differential against `git rev-parse --abbrev-ref HEAD`, including the two
+// cases where the CLI's answer is not the obvious one: it exits non-zero on an
+// unborn branch, and it prints the literal `HEAD` when detached. Both of those
+// read as `None` here, because both read as `null` in the caller.
+
+/// `rev-parse --abbrev-ref HEAD` as the caller ran it: `None` on a non-zero
+/// exit, and `None` for the literal `HEAD`.
+fn cli_current_branch_name(repo: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .expect("git should be on PATH for these tests");
+    if !output.status.success() {
+        return None;
+    }
+    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (name != "HEAD").then_some(name)
+}
+
+fn current_name(repo: &Path) -> Option<String> {
+    current_branch_name(repo).expect("the read should not fail")
+}
+
+#[test]
+fn names_the_checked_out_branch_like_the_cli() {
+    let dir = repo_with_history();
+    assert_eq!(current_name(dir.path()), Some("main".to_string()));
+    assert_eq!(current_name(dir.path()), cli_current_branch_name(dir.path()));
+}
+
+#[test]
+fn names_a_branch_whose_name_holds_a_slash() {
+    let dir = repo_with_history();
+    git(dir.path(), &["checkout", "-b", "feature/nested/name"]);
+    assert_eq!(current_name(dir.path()), Some("feature/nested/name".to_string()));
+    assert_eq!(current_name(dir.path()), cli_current_branch_name(dir.path()));
+}
+
+#[test]
+fn names_nothing_when_head_is_detached() {
+    let dir = repo_with_history();
+    let head = git_stdout(dir.path(), &["rev-parse", "HEAD"]);
+    git(dir.path(), &["checkout", "--detach", &head]);
+    assert_eq!(current_name(dir.path()), None);
+    assert_eq!(cli_current_branch_name(dir.path()), None);
+}
+
+#[test]
+fn names_nothing_on_an_unborn_branch() {
+    // The documented divergence: `rev-parse --abbrev-ref HEAD` exits non-zero
+    // in a repository with no commits, so the caller read `null`, while a naive
+    // `gix` port would happily report `main`.
+    let dir = TempDir::new().expect("temp dir");
+    init(dir.path());
+    assert_eq!(cli_current_branch_name(dir.path()), None);
+    assert_eq!(current_name(dir.path()), None);
+}
+
+#[test]
+fn names_nothing_outside_a_repository() {
+    let dir = TempDir::new().expect("temp dir");
+    assert!(current_branch_name(dir.path()).is_err() || current_name(dir.path()).is_none());
+}
+
+#[test]
+fn agrees_with_branch_status_on_the_name() {
+    // The cheap read and the full one must not drift, since callers pick
+    // whichever answers their question.
+    let (_origin, clone) = repo_with_upstream();
+    let work = clone.path().join("work");
+    let status = branch_status(&work).expect("status should read").expect("a status was expected");
+    assert_eq!(current_name(&work), Some(status.name));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upstream_config
+// ─────────────────────────────────────────────────────────────────────────────
+// The raw `branch.<name>.remote` / `.merge` entries, differential against
+// `git config --get-all`. The ref database is deliberately never consulted:
+// this runs before a fetch, so a branch tracking a ref nobody has downloaded
+// yet is the case that has to work.
+
+fn cli_config_values(repo: &Path, key: &str) -> Vec<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["config", "--get-all", key])
+        .output()
+        .expect("git should be on PATH for these tests");
+    if !output.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn upstream(repo: &Path) -> Option<coc_native_core::git::branch::UpstreamConfig> {
+    upstream_config(repo).expect("the read should not fail")
+}
+
+#[test]
+fn reads_the_configured_upstream_like_the_cli() {
+    let (_origin, clone) = repo_with_upstream();
+    let work = clone.path().join("work");
+    let config = upstream(&work).expect("a branch was expected");
+    assert_eq!(config.branch_name, "main");
+    assert_eq!(config.remotes, cli_config_values(&work, "branch.main.remote"));
+    assert_eq!(config.remote_refs, cli_config_values(&work, "branch.main.merge"));
+    assert_eq!(config.remotes, vec!["origin".to_string()]);
+    assert_eq!(config.remote_refs, vec!["refs/heads/main".to_string()]);
+}
+
+#[test]
+fn reads_an_upstream_whose_ref_was_never_fetched() {
+    // The whole reason this does not reuse `find_upstream`: that one requires
+    // the ref to exist, and the pre-fetch caller is asking about exactly the
+    // branch whose upstream has not been downloaded yet.
+    let dir = repo_with_history();
+    git(dir.path(), &["remote", "add", "origin", "https://example.invalid/repo.git"]);
+    git(dir.path(), &["config", "branch.main.remote", "origin"]);
+    git(dir.path(), &["config", "branch.main.merge", "refs/heads/never-fetched"]);
+
+    // The ref genuinely is not there.
+    assert!(Command::new("git")
+        .arg("-C")
+        .arg(dir.path())
+        .args(["rev-parse", "--verify", "refs/remotes/origin/never-fetched"])
+        .output()
+        .expect("git should run")
+        .status
+        .code()
+        .is_some_and(|code| code != 0));
+
+    let config = upstream(dir.path()).expect("a branch was expected");
+    assert_eq!(config.remotes, vec!["origin".to_string()]);
+    assert_eq!(config.remote_refs, vec!["refs/heads/never-fetched".to_string()]);
+
+    // And the existence-checking read really does answer differently.
+    let status = branch_status(dir.path()).expect("status should read").expect("a status");
+    assert_eq!(status.tracking_branch, None);
+}
+
+#[test]
+fn reads_nothing_when_head_is_detached() {
+    let dir = repo_with_history();
+    let head = git_stdout(dir.path(), &["rev-parse", "HEAD"]);
+    git(dir.path(), &["checkout", "--detach", &head]);
+    assert!(upstream(dir.path()).is_none());
+}
+
+#[test]
+fn names_the_branch_on_an_unborn_head() {
+    // Unlike `current_branch_name`, this mirrors `symbolic-ref`, which succeeds
+    // on an unborn branch — the caller then reports "no upstream configured"
+    // rather than "detached HEAD", which is the accurate message.
+    let dir = TempDir::new().expect("temp dir");
+    init(dir.path());
+    let config = upstream(dir.path()).expect("a branch was expected");
+    assert_eq!(config.branch_name, "main");
+    assert!(config.remotes.is_empty());
+    assert!(config.remote_refs.is_empty());
+}
+
+#[test]
+fn drops_an_empty_configured_value() {
+    // `merge =` with nothing after it is a real thing to find in a config file,
+    // and reporting it would make the caller see one configured upstream named
+    // the empty string instead of none.
+    let dir = repo_with_history();
+    git(dir.path(), &["config", "branch.main.remote", "origin"]);
+    git(dir.path(), &["config", "branch.main.merge", ""]);
+    let config = upstream(dir.path()).expect("a branch was expected");
+    assert_eq!(config.remotes, vec!["origin".to_string()]);
+    assert!(config.remote_refs.is_empty());
+}
+
+#[test]
+fn reports_no_values_when_nothing_is_configured() {
+    let dir = repo_with_history();
+    let config = upstream(dir.path()).expect("a branch was expected");
+    assert!(config.remotes.is_empty());
+    assert!(config.remote_refs.is_empty());
+}
+
+#[test]
+fn reports_every_value_of_a_multi_valued_key() {
+    // The caller turns two remotes into its "multiple upstream branches" throw,
+    // so collapsing to the last one would silently make that message
+    // unreachable.
+    let dir = repo_with_history();
+    git(dir.path(), &["config", "--add", "branch.main.remote", "origin"]);
+    git(dir.path(), &["config", "--add", "branch.main.remote", "backup"]);
+    git(dir.path(), &["config", "--add", "branch.main.merge", "refs/heads/main"]);
+
+    let config = upstream(dir.path()).expect("a branch was expected");
+    assert_eq!(config.remotes, cli_config_values(dir.path(), "branch.main.remote"));
+    assert_eq!(config.remotes, vec!["origin".to_string(), "backup".to_string()]);
+}
+
+#[test]
+fn reports_an_upstream_ref_outside_refs_heads_verbatim() {
+    // Deciding that `refs/tags/v1` is not one exact branch ref is the caller's
+    // job; this must hand it over unchanged rather than filter it out.
+    let dir = repo_with_history();
+    git(dir.path(), &["config", "branch.main.remote", "origin"]);
+    git(dir.path(), &["config", "branch.main.merge", "refs/tags/v1"]);
+    let config = upstream(dir.path()).expect("a branch was expected");
+    assert_eq!(config.remote_refs, vec!["refs/tags/v1".to_string()]);
+}
+
+#[test]
+fn reads_a_branch_name_holding_a_dot() {
+    // `branch.release.1.0.remote` has no unambiguous dotted split, which is why
+    // the section and subsection are looked up separately.
+    let dir = repo_with_history();
+    git(dir.path(), &["checkout", "-b", "release.1.0"]);
+    git(dir.path(), &["config", "branch.release.1.0.remote", "origin"]);
+    git(dir.path(), &["config", "branch.release.1.0.merge", "refs/heads/release.1.0"]);
+
+    let config = upstream(dir.path()).expect("a branch was expected");
+    assert_eq!(config.branch_name, "release.1.0");
+    assert_eq!(config.remotes, vec!["origin".to_string()]);
+    assert_eq!(config.remote_refs, vec!["refs/heads/release.1.0".to_string()]);
+}
+
+#[test]
+fn reads_a_windows_written_config_the_same_as_a_unix_one() {
+    // The caller compares these by exact string equality, so a `\r` surviving
+    // into a value would make `refs/heads/main` never match itself. git's own
+    // parser strips it, and this pins that the `gix` read does too.
+    let dir = repo_with_history();
+    let config_path = dir.path().join(".git/config");
+    let existing = std::fs::read_to_string(&config_path).expect("config should be readable");
+    std::fs::write(
+        &config_path,
+        format!(
+            "{existing}[branch \"main\"]\r\n\tremote = origin \r\n\tmerge = refs/heads/main\r\n"
+        ),
+    )
+    .expect("config should be writable");
+
+    let config = upstream(dir.path()).expect("a branch was expected");
+    assert_eq!(config.remotes, vec!["origin".to_string()]);
+    assert_eq!(config.remote_refs, vec!["refs/heads/main".to_string()]);
+}
+
+#[test]
+fn reads_nothing_outside_a_repository() {
+    let dir = TempDir::new().expect("temp dir");
+    assert!(upstream_config(dir.path()).is_err() || upstream(dir.path()).is_none());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `dirty` against `status --porcelain`
+// ─────────────────────────────────────────────────────────────────────────────
+// The two call sites that used to run `status --porcelain` and then a second
+// status read now derive `hasUncommittedChanges` from `repository_status().dirty`.
+// That is only sound if the two untracked modes agree on the boolean: the old
+// read used git's default `normal`, this one uses `all`. `normal` collapses an
+// untracked directory to `dir/` and `all` lists its files — different output,
+// same "is anything there".
+
+/// `git status --porcelain` with git's default untracked mode, as the read this
+/// replaces ran it.
+fn cli_porcelain_dirty(repo: &Path) -> bool {
+    !git_stdout(repo, &["status", "--porcelain"]).trim().is_empty()
+}
+
+#[test]
+fn dirty_agrees_with_porcelain_on_a_clean_tree() {
+    let dir = repo_with_history();
+    assert!(!cli_porcelain_dirty(dir.path()));
+    assert!(!repository_status(dir.path()).expect("status should read").dirty);
+}
+
+#[test]
+fn dirty_agrees_with_porcelain_on_an_untracked_directory_of_files() {
+    // The one place the two modes print different text: `normal` shows `new/`,
+    // `all` shows `new/a.txt` and `new/b.txt`.
+    let dir = repo_with_history();
+    std::fs::create_dir(dir.path().join("new")).expect("dir should be creatable");
+    write(&dir.path().join("new"), "a.txt", "one\n");
+    write(&dir.path().join("new"), "b.txt", "two\n");
+    assert!(cli_porcelain_dirty(dir.path()));
+    assert!(repository_status(dir.path()).expect("status should read").dirty);
+}
+
+#[test]
+fn dirty_agrees_with_porcelain_on_an_empty_untracked_directory() {
+    // git tracks contents, not directories, so neither mode reports this one —
+    // and both therefore say clean.
+    let dir = repo_with_history();
+    std::fs::create_dir(dir.path().join("empty")).expect("dir should be creatable");
+    assert!(!cli_porcelain_dirty(dir.path()));
+    assert!(!repository_status(dir.path()).expect("status should read").dirty);
+}
+
+#[test]
+fn dirty_agrees_with_porcelain_on_a_staged_and_on_a_modified_file() {
+    let dir = repo_with_history();
+    write(dir.path(), "a.txt", "changed\n");
+    assert!(cli_porcelain_dirty(dir.path()));
+    assert!(repository_status(dir.path()).expect("status should read").dirty);
+
+    git(dir.path(), &["add", "a.txt"]);
+    assert!(cli_porcelain_dirty(dir.path()));
+    assert!(repository_status(dir.path()).expect("status should read").dirty);
 }

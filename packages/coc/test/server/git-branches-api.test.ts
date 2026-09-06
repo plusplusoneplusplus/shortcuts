@@ -37,7 +37,8 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 const mockGetLocalBranchesPaginated = vi.fn();
 const mockGetRemoteBranchesPaginated = vi.fn();
 const mockGetBranchStatus = vi.fn();
-const mockHasUncommittedChanges = vi.fn();
+/** The single status read the branch-status route makes. */
+const mockGetRepositoryStatus = vi.fn();
 const mockCreateBranch = vi.fn();
 const mockSwitchBranch = vi.fn();
 const mockDeleteBranch = vi.fn();
@@ -83,7 +84,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             getLocalBranchesPaginated: mockGetLocalBranchesPaginated,
             getRemoteBranchesPaginated: mockGetRemoteBranchesPaginated,
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
-            hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
+            getRepositoryStatus: vi.fn(async (...args: any[]) => mockGetRepositoryStatus(...args)),
             createBranch: mockCreateBranch,
             switchBranch: mockSwitchBranch,
             deleteBranch: mockDeleteBranch,
@@ -219,7 +220,7 @@ describe('Git Branches API endpoints', () => {
         mockGetLocalBranchesPaginated.mockReset();
         mockGetRemoteBranchesPaginated.mockReset();
         mockGetBranchStatus.mockReset();
-        mockHasUncommittedChanges.mockReset();
+        mockGetRepositoryStatus.mockReset();
         mockCreateBranch.mockReset();
         mockSwitchBranch.mockReset();
         mockDeleteBranch.mockReset();
@@ -582,7 +583,12 @@ describe('Git Branches API endpoints', () => {
 
     describe('GET /api/workspaces/:id/git/branch-status', () => {
         it('should return branch status', async () => {
-            mockHasUncommittedChanges.mockReturnValue(true);
+            // One status read for the whole response: the dirty flag is derived
+            // from it and handed to `getBranchStatus`, rather than costing a
+            // second `git status` of its own.
+            mockGetRepositoryStatus.mockResolvedValue({
+                branch: 'main', isDetached: false, dirty: true, ahead: 1, behind: 0, unborn: false,
+            });
             mockGetBranchStatus.mockReturnValue(MOCK_BRANCH_STATUS);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-status`);
@@ -590,7 +596,7 @@ describe('Git Branches API endpoints', () => {
 
             expect(res.status).toBe(200);
             expect(json).toEqual(MOCK_BRANCH_STATUS);
-            expect(mockHasUncommittedChanges).toHaveBeenCalledWith(WORKSPACE_ROOT);
+            expect(mockGetRepositoryStatus).toHaveBeenCalledWith(WORKSPACE_ROOT);
             expect(mockGetBranchStatus).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
         });
 
@@ -602,7 +608,7 @@ describe('Git Branches API endpoints', () => {
         });
 
         it('should return 500 on git error', async () => {
-            mockHasUncommittedChanges.mockImplementation(() => { throw new Error('git failed'); });
+            mockGetRepositoryStatus.mockImplementation(() => { throw new Error('git failed'); });
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-status`);
 

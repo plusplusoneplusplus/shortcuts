@@ -51,6 +51,21 @@ pub struct BranchStatus {
     pub tracking_branch: Option<String>,
 }
 
+/// The raw `branch.<name>.remote` / `branch.<name>.merge` entries for HEAD.
+///
+/// Facts, not a verdict. Whether one remote and one `refs/heads/` ref add up to
+/// a usable upstream — and which of the four messages the user sees when they
+/// do not — stays in TypeScript, the way it does for `safe.directory`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpstreamConfig {
+    /// The short name of the branch HEAD points at, born or not.
+    pub branch_name: String,
+    /// Every `branch.<name>.remote` value, in git's order.
+    pub remotes: Vec<String>,
+    /// Every `branch.<name>.merge` value, in git's order.
+    pub remote_refs: Vec<String>,
+}
+
 /// One branch as the branch list renders it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchEntry {
@@ -297,6 +312,84 @@ pub fn branch_status(repo_root: &Path) -> Result<Option<BranchStatus>, GitError>
         behind: count_ahead(&repo, head, upstream),
         tracking_branch: Some(tracking_branch),
     }))
+}
+
+/// The checked-out branch's short name, or `None` when there is not one.
+///
+/// Deliberately not `branch_status` with the fields thrown away: that resolves
+/// the upstream and runs two `rev_walk`s to count the drift, and the question
+/// here is only what HEAD is called. Same split as `local_branch_names` against
+/// `list_branches`.
+///
+/// `None` covers three cases the caller reads alike, all of them `null` from
+/// the `rev-parse --abbrev-ref HEAD` this replaces:
+///
+/// * **Detached HEAD** — `rev-parse` printed the literal `HEAD` and the caller
+///   mapped that to `null`.
+/// * **An unborn branch** — a fresh `git init` with no commits. The CLI exits
+///   non-zero there and the caller's `catch` answered `null`; `gix` would
+///   happily report the symbolic ref, so the `head_id` guard below is what
+///   keeps the two equal.
+/// * **A branch literally named `HEAD`** — indistinguishable from detached in
+///   the CLI's output, so it stays indistinguishable here.
+pub fn current_branch_name(repo_root: &Path) -> Result<Option<String>, GitError> {
+    let args = ["rev-parse", "--abbrev-ref", "HEAD"];
+    let repo = open(repo_root, &args)?;
+
+    // Unborn: `rev-parse --abbrev-ref HEAD` fails rather than naming the ref.
+    if repo.head_id().is_err() {
+        return Ok(None);
+    }
+
+    let Some(head_ref) = repo.head_ref().map_err(|error| repo_error(&args, error))? else {
+        return Ok(None);
+    };
+
+    let name = shorten_ref(&head_ref.name().as_bstr().to_string());
+    Ok((name != "HEAD").then_some(name))
+}
+
+/// Read every `branch.<name>.remote` and `branch.<name>.merge` value for HEAD.
+///
+/// **Not** [`find_upstream`], and the difference is the whole point. That one
+/// requires the upstream ref to *exist*, which is right for a status view and
+/// wrong here: this runs immediately before a `fetch` or a `pull`, so a branch
+/// configured to track a ref nobody has fetched yet is precisely the case that
+/// has to work. Nothing below touches the ref database.
+///
+/// `None` means HEAD is detached — the `symbolic-ref --quiet --short HEAD`
+/// failure the caller turns into "cannot fetch or pull while HEAD is detached".
+/// An unborn branch is *not* that case: `symbolic-ref` names the ref there, so
+/// this does too, and the caller goes on to report no upstream configured.
+///
+/// Values are trimmed and blank-dropped like [`super::config`]'s. git's own
+/// parser already strips trailing whitespace inside a value, so the trim is
+/// belt-and-braces rather than load-bearing; the blank drop is not, because an
+/// empty `merge =` would otherwise read as a configured upstream named ``.
+pub fn upstream_config(repo_root: &Path) -> Result<Option<UpstreamConfig>, GitError> {
+    let args = ["symbolic-ref", "--quiet", "--short", "HEAD"];
+    let repo = open(repo_root, &args)?;
+
+    // `head_name`, not `head_ref`: an unborn branch has a name and no ref.
+    let Some(full_name) = repo.head_name().map_err(|error| repo_error(&args, error))? else {
+        return Ok(None);
+    };
+    let branch_name = shorten_ref(&full_name.as_bstr().to_string());
+
+    let config = repo.config_snapshot();
+    let file = config.plumbing();
+    // `values_by` rather than a dotted key, because a branch name may itself
+    // hold a `.` and `branch.a.b.remote` has no unambiguous split.
+    let read = |value_name: &str| -> Vec<String> {
+        file.raw_values_by("branch", Some(branch_name.as_str().into()), value_name)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|value| value.to_string().trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect()
+    };
+
+    Ok(Some(UpstreamConfig { remotes: read("remote"), remote_refs: read("merge"), branch_name }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
