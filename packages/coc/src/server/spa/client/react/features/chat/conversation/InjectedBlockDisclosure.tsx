@@ -4,7 +4,7 @@ import { cn } from '../../../ui/cn';
 export interface InjectedBlockDisclosureProps {
     block: string;
     label: string;
-    testIdPrefix: 'chat-mode-block' | 'chat-style-block';
+    testIdPrefix: 'chat-mode-block' | 'chat-style-block' | 'selected-skills-block';
 }
 
 /** Displays one server-injected user-message prefix as a local disclosure. */

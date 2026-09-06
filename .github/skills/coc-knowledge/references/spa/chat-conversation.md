@@ -20,12 +20,20 @@ escaped and never injected); the raw toggle shows literal source. Turns with
 in-bubble card, with no extra persisted display state.
 
 For rendered user-message text, `extractInjectedBlocks` removes complete leading
-`<coc-chat-mode>` and `<chat-style>` prefixes in either order. Each extracted block hangs
-under the bubble as an independent collapsed `InjectedBlockDisclosure`, ordered Chat mode
-then Chat style. The `<pre>` body preserves the block verbatim. Parsing is client-only;
+`<coc-chat-mode>`, `<chat-style>` and `<selected_skills>` prefixes in any order and any
+subset, each tag consumed at most once. Each extracted block hangs under the bubble as an
+independent collapsed `InjectedBlockDisclosure`, ordered Chat mode, Chat style, then
+Selected skills. The `<pre>` body preserves the block verbatim. Parsing is client-only;
 raw view, copy, rewind/edit, search, export, persisted content, and model input use the
 original turn content. Assistant turns are not parsed; non-leading supported tags and
 every other tag name stay in the displayed message text.
+
+`parseSelectedSkillNames` recovers the skill names from the block's
+`The user explicitly selected these skills: ...` sentence (split on `,`, trimmed, deduped;
+`[]` on an absent or reworded sentence). `SkillPills` renders them as outline pills above
+the message body, hidden in raw view. The parser mirrors `prependSelectedSkillsDirective`
+in `server/executors/prompt-builder.ts`; there is no structured per-turn record of the
+selected skills yet.
 
 In a repo-group chat, a user turn carrying `repoGroupContext` hangs a collapsed "Repo
 group context" toggle (`RepoGroupContextDisclosure`) under its content, revealing the

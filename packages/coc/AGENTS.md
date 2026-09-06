@@ -576,9 +576,11 @@ all have their own `references/*.md`.
     follow-ups in the `POST /api/processes/:id/message` route (the last point
     before `ProcessMessageDeliveryService` writes `displayContent`). The block is
     stored verbatim. On the user-bubble display path,
-    `conversation/injectedBlocks.ts` extracts a complete leading block and
-    `InjectedBlockDisclosure` renders it under the message as a collapsed
-    **Chat style** disclosure. Raw view, copy, rewind/edit, search, export, and
+    `conversation/injectedBlocks.ts` extracts complete leading `<chat-style>`,
+    `<coc-chat-mode>` and `<selected_skills>` blocks (any order, each once) and
+    `InjectedBlockDisclosure` renders each under the message as a collapsed
+    disclosure. Selected skill names are additionally parsed out by
+    `parseSelectedSkillNames` and shown as `SkillPills` above the message body. Raw view, copy, rewind/edit, search, export, and
     model input continue to use the original turn content.
   - Scope is `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
     follow-ups only, enforced by `isChatStyleEligiblePayload`. Ralph,
