@@ -22,10 +22,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import { Spinner } from '../../../ui';
 import { SearchBar, type SearchBarToggle } from './SearchBar';
-import { SearchFilters } from './SearchFilters';
+import { SearchFilters, SearchFiltersToggle } from './SearchFilters';
 import { ReplaceRow } from './ReplaceRow';
 import { ContentSearchToolbar } from './ContentSearchToolbar';
 import {
@@ -108,6 +109,19 @@ export interface ContentSearchPanelProps {
      * stays disabled.
      */
     onOpenInEditor?: (text: string, query: string) => void;
+    /**
+     * Lay the panel out for a sidebar too narrow for the desktop shape: mode
+     * toggles move below the query box, the `…` joins them, and the action strip
+     * collapses. Derived from the sidebar width by the host, not measured here.
+     */
+    narrow?: boolean;
+    /**
+     * Where the action strip goes. A host that has a header for it (the
+     * Explorer's, beside the Files / Search tabs) passes the element and the
+     * strip is portalled in, which keeps its handlers here and saves the panel a
+     * row. Without one the strip stays at the top of the panel.
+     */
+    toolbarSlot?: HTMLElement | null;
 }
 
 /**
@@ -168,6 +182,8 @@ export function ContentSearchPanel({
     focusQueryToken = 0,
     onOpenMatch,
     onOpenInEditor,
+    narrow = false,
+    toolbarSlot = null,
 }: ContentSearchPanelProps) {
     const [query, setQuery] = useExplorerContentQuery(workspaceId);
     const [modes, setModes] = useExplorerContentModes(workspaceId);
@@ -453,21 +469,26 @@ export function ContentSearchPanel({
         setState(prev => ({ ...prev, collapsed: toggleCollapsedPath(prev.collapsed, path) }));
     }, [setState]);
 
+    const toolbar = (
+        <ContentSearchToolbar
+            enabled={trimmed.length > 0}
+            onRefresh={onRefresh}
+            onClear={onClearAll}
+            onCollapseAll={onCollapseAll}
+            resultView={resultView}
+            onToggleResultView={onToggleResultView}
+            onOpenInEditor={onOpenInEditorClick}
+            hasResults={onOpenInEditor !== undefined && visibleMatches.length > 0}
+            onReplaceAll={onReplaceAll}
+            canReplaceAll={replaceAvailable && visibleMatches.length > 0}
+            narrow={narrow}
+            testIdPrefix="content-search"
+        />
+    );
+
     return (
         <div className="flex flex-col flex-1 min-h-0" data-testid="content-search-panel">
-            <ContentSearchToolbar
-                enabled={trimmed.length > 0}
-                onRefresh={onRefresh}
-                onClear={onClearAll}
-                onCollapseAll={onCollapseAll}
-                resultView={resultView}
-                onToggleResultView={onToggleResultView}
-                onOpenInEditor={onOpenInEditorClick}
-                hasResults={onOpenInEditor !== undefined && visibleMatches.length > 0}
-                onReplaceAll={onReplaceAll}
-                canReplaceAll={replaceAvailable && visibleMatches.length > 0}
-                testIdPrefix="content-search"
-            />
+            {toolbarSlot ? createPortal(toolbar, toolbarSlot) : <div className="px-2 pt-1">{toolbar}</div>}
             <ReplaceRow
                 replace={replace}
                 onChange={setReplace}
@@ -482,15 +503,26 @@ export function ContentSearchPanel({
                     onClear={onClear}
                     placeholder="Search in files…"
                     toggles={toggles}
+                    togglePlacement={narrow ? 'below' : 'inside'}
+                    leftGutter
                     inputRef={queryInputRef}
                     multiline
                     onSubmit={onRefresh}
                     testIdPrefix="content-search"
-                />
+                >
+                    {narrow && (
+                        <SearchFiltersToggle
+                            expanded={filtersExpanded}
+                            onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
+                            active={contentSearchFiltersActive(filters)}
+                            testIdPrefix="content-search"
+                        />
+                    )}
+                </SearchBar>
             </ReplaceRow>
             {replaceNotice && (
                 <p
-                    className="px-3 py-1 text-[11px] text-[#848484]"
+                    className="px-2 py-1 text-[11px] text-[#848484]"
                     data-testid="content-search-replace-status"
                     role="status"
                 >
@@ -502,18 +534,19 @@ export function ContentSearchPanel({
                 onChange={setFilters}
                 expanded={filtersExpanded}
                 onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
+                showToggle={!narrow}
                 testIdPrefix="content-search"
             />
 
             {state.status === 'idle' && (
-                <p className="px-3 py-2 text-xs text-[#848484]" data-testid="content-search-idle">
+                <p className="px-2 py-2 text-xs text-[#848484]" data-testid="content-search-idle">
                     Search the text of every non-ignored file in this repository.
                 </p>
             )}
 
             {state.status === 'loading' && (
                 <div
-                    className="flex items-center gap-2 px-3 py-2 text-xs text-[#848484]"
+                    className="flex items-center gap-2 px-2 py-2 text-xs text-[#848484]"
                     data-testid="content-search-loading"
                 >
                     <Spinner size="sm" /> Searching…
@@ -522,7 +555,7 @@ export function ContentSearchPanel({
 
             {state.status === 'error' && (
                 <div
-                    className="px-3 py-2 text-xs text-[#d32f2f] dark:text-[#f48771]"
+                    className="px-2 py-2 text-xs text-[#d32f2f] dark:text-[#f48771]"
                     data-testid={SEARCH_ERROR_TESTIDS[state.errorKind ?? 'request']}
                 >
                     {state.error}
@@ -530,7 +563,7 @@ export function ContentSearchPanel({
             )}
 
             {state.status === 'empty' && (
-                <p className="px-3 py-2 text-xs text-[#848484]" data-testid="content-search-empty">
+                <p className="px-2 py-2 text-xs text-[#848484]" data-testid="content-search-empty">
                     No results for “{state.query}”.
                 </p>
             )}
@@ -538,7 +571,7 @@ export function ContentSearchPanel({
             {state.status === 'success' && (
                 <>
                     <div
-                        className="px-3 py-1 text-[11px] text-[#848484] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        className="px-2 py-1 text-[11px] text-[#848484] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="content-search-summary"
                     >
                         {state.matches.length} {state.matches.length === 1 ? 'result' : 'results'}
@@ -547,7 +580,7 @@ export function ContentSearchPanel({
                     </div>
                     {state.truncated && (
                         <div
-                            className="px-3 py-1 text-[11px] text-[#8a6d00] dark:text-[#d7ba7d] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            className="px-2 py-1 text-[11px] text-[#8a6d00] dark:text-[#d7ba7d] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="content-search-truncated"
                         >
                             Results truncated — showing the first 500 matches (max 20 per file, files

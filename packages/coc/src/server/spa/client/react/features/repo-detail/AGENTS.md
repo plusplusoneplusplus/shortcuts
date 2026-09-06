@@ -185,6 +185,34 @@ file has no mount to piggyback on.
 default reproduces the file-filter bar's long-standing ids — do not hardcode them
 again.
 
+### Narrow sidebar layout
+
+The sidebar is resizable down to 160px, so the Search view has two shapes.
+`ExplorerPanel` derives `isNarrowSidebar(sidebarWidth, isMobile)` — true under
+`NARROW_SIDEBAR_WIDTH` (320px), never on mobile, where the sidebar is the whole
+screen — and passes it down as `narrow`. It is a prop rather than a CSS container
+query so the layout stays assertable in jsdom.
+
+Narrow moves the `Aa` / `ab` / `.*` toggles out of the query field onto a row
+below it (`togglePlacement="below"`), which cuts the field's reserved
+`paddingRight` from 106px to 28px, and puts `SearchFiltersToggle` (the `…`) at the
+right of that same row instead of on a row of its own. `ContentSearchToolbar`
+keeps Refresh / Clear / View-as-Tree inline and folds Collapse All / Replace All /
+Open in Editor behind `⋯` (`content-search-more`); every action keeps its
+`data-testid` in either shape.
+
+The action strip lives in the panel header beside the Files / Search tabs, where
+the tree's own buttons sit in Files view. `ContentSearchPanel` still owns the
+handlers and portals the strip into the `explorer-search-toolbar-slot` element
+`ExplorerPanel` renders there; without a `toolbarSlot` it falls back to rendering
+the strip at the top of its own body.
+
+The replace chevron is drawn absolutely into the gutter both fields leave for it
+(`leftGutter` on `SearchBar`, `pl-6` on the replace input) rather than in a flex
+column, which would indent the whole surface. Horizontal padding across the view
+is `px-2` — the query bar, filter fields, status lines and results share one left
+edge.
+
 ## Tests
 
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour

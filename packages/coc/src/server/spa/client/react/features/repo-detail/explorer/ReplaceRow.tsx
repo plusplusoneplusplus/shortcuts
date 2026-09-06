@@ -1,12 +1,16 @@
 /**
  * ReplaceRow — the Search view's replace surface (goal §2.2), shaped like VS
- * Code's: a chevron column on the left spanning both rows, the query box on the
- * top row, and the replace field revealed underneath it.
+ * Code's: a chevron spanning both rows on the left, the query box on the top
+ * row, and the replace field revealed underneath it.
  *
  * It takes the query row as `children` rather than sitting beside it, because
  * the chevron is one control for *both* rows — pinning it next to the query box
  * and rendering the replace field somewhere else would need the two to agree on
  * an indent they cannot see.
+ *
+ * The chevron is drawn *into* the gutter both fields leave for it rather than
+ * in a flex column of its own: a column would indent the whole search surface
+ * by its own width, which a 250px sidebar cannot spare.
  *
  * Purely presentational: the panel owns the state and does the writing.
  */
@@ -33,7 +37,7 @@ export interface ReplaceRowProps {
 }
 
 const FIELD_CLASS = cn(
-    'w-full pl-2 pr-7 py-2.5 lg:py-1.5 text-base lg:text-sm rounded border border-[#e0e0e0] bg-white',
+    'w-full pl-6 pr-7 py-2.5 lg:py-1.5 text-base lg:text-sm rounded border border-[#e0e0e0] bg-white',
     'dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]',
     'focus:outline-none focus:border-[#0078d4]',
     'disabled:opacity-60 disabled:cursor-not-allowed',
@@ -51,7 +55,7 @@ export function ReplaceRow({
     const disabled = disabledReason !== undefined;
 
     return (
-        <div className="flex items-start" data-testid={`${testIdPrefix}-replace-row`}>
+        <div className="relative" data-testid={`${testIdPrefix}-replace-row`}>
             <button
                 type="button"
                 onClick={onToggleExpanded}
@@ -59,15 +63,15 @@ export function ReplaceRow({
                 aria-label="Toggle Replace"
                 aria-expanded={expanded}
                 className={cn(
-                    'shrink-0 pl-2 pr-0.5 py-2.5 lg:py-1.5 mt-1 leading-none text-[10px]',
-                    'bg-transparent border-none cursor-pointer text-[#848484]',
+                    'absolute left-2.5 top-[13px] lg:top-[9px] z-10 leading-none text-[10px]',
+                    'bg-transparent border-none p-0 cursor-pointer text-[#848484]',
                     'hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
                 )}
                 data-testid={`${testIdPrefix}-replace-toggle`}
             >
                 {expanded ? '▾' : '▸'}
             </button>
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0">
                 {children}
                 {expanded && (
                     <div className="px-2 pb-1" data-testid={`${testIdPrefix}-replace-fields`}>

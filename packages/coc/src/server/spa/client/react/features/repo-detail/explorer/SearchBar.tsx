@@ -1,21 +1,33 @@
 /**
- * SearchBar — controlled search input with leading search icon and trailing clear button.
+ * SearchBar — controlled search input with a trailing clear button.
  * Styling matches ProcessFilters / TasksPanel search input patterns.
  *
- * Optionally renders a row of sticky mode toggles inside the input's right edge
- * (used by the content-search view for case-sensitive / whole-word / regex), so
- * the two search surfaces share one input rather than duplicating it.
+ * Optionally renders a row of sticky mode toggles (used by the content-search
+ * view for case-sensitive / whole-word / regex), so the two search surfaces
+ * share one input rather than duplicating it. The toggles sit inside the
+ * input's right edge by default; `togglePlacement="below"` moves them to their
+ * own row underneath, which is what a narrow sidebar needs — three glyphs
+ * inside the field eat 78px of typing room the panel does not have.
  *
  * `multiline` swaps the `<input>` for an auto-growing `<textarea>` — VS Code's
  * search box shape, where a newline in the query means a multi-line match. It is
  * opt-in because the file-filter bar has no use for a second line.
  */
 
-import type { KeyboardEvent, RefObject } from 'react';
+import type { KeyboardEvent, ReactNode, RefObject } from 'react';
 import { cn } from '../../../ui/cn';
 
 /** Tallest the multi-line query box grows before it starts scrolling. */
 export const SEARCH_BAR_MAX_ROWS = 5;
+
+/** Room the clear button needs inside the right edge of the field, in px. */
+const CLEAR_BUTTON_WIDTH = 28;
+
+/** Room one mode toggle needs inside the right edge of the field, in px. */
+const TOGGLE_WIDTH = 26;
+
+/** Where the mode toggles live relative to the query field. */
+export type SearchBarTogglePlacement = 'inside' | 'below';
 
 /**
  * Rows the auto-growing query box needs for `value`: one per line, at least one,
@@ -26,6 +38,18 @@ export const SEARCH_BAR_MAX_ROWS = 5;
 export function autoGrowRows(value: string, maxRows: number = SEARCH_BAR_MAX_ROWS): number {
     const lines = value.split('\n').length;
     return Math.min(Math.max(lines, 1), maxRows);
+}
+
+/**
+ * Space to reserve inside the field's right edge: the clear button always, plus
+ * one slot per toggle only while the toggles are *in* the field. Moving them
+ * below is worth 78px of typing room at three toggles.
+ */
+export function searchBarPaddingRight(
+    toggleCount: number,
+    placement: SearchBarTogglePlacement = 'inside',
+): number {
+    return CLEAR_BUTTON_WIDTH + (placement === 'below' ? 0 : toggleCount * TOGGLE_WIDTH);
 }
 
 /** A sticky on/off button rendered inside the input, VS Code style. */
@@ -54,6 +78,23 @@ export interface SearchBarProps {
     /** Mode toggles pinned inside the right edge of the input. */
     toggles?: SearchBarToggle[];
     /**
+     * Where the toggles go. `below` puts them on their own left-aligned row
+     * under the field, freeing the width they were taking from the query.
+     */
+    togglePlacement?: SearchBarTogglePlacement;
+    /**
+     * Rendered at the right end of the toggle row, so a host with one more
+     * control (the Search view's `…`) can share that row instead of spending a
+     * second one on it. Ignored unless the toggles are below.
+     */
+    children?: ReactNode;
+    /**
+     * Leave a gutter on the left of the field for a control the *owner* draws
+     * there — the Search view's replace chevron, which spans this row and the
+     * replace field below it.
+     */
+    leftGutter?: boolean;
+    /**
      * Prefix for every `data-testid` this renders — `<prefix>-bar`, `-input`,
      * `-clear`, `-toggle-<id>`. The default reproduces the file-filter bar's
      * long-standing ids; the content-search view passes `content-search`.
@@ -71,6 +112,16 @@ export interface SearchBarProps {
     onSubmit?: () => void;
 }
 
+/** Shared look for a mode toggle, wherever it is rendered. */
+function toggleClassName(active: boolean): string {
+    return cn(
+        'px-1 py-0.5 rounded text-[11px] leading-none font-mono border cursor-pointer transition-colors',
+        active
+            ? 'bg-[#0078d4] text-white border-[#0078d4]'
+            : 'bg-transparent text-[#848484] border-transparent hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+    );
+}
+
 export function SearchBar({
     value,
     onChange,
@@ -78,14 +129,18 @@ export function SearchBar({
     inputRef,
     placeholder = 'Filter files…',
     toggles,
+    togglePlacement = 'inside',
+    children,
+    leftGutter = false,
     testIdPrefix = 'explorer-search',
     multiline = false,
     onSubmit,
 }: SearchBarProps) {
     const toggleCount = toggles?.length ?? 0;
-    // Reserve room inside the input for the clear button plus each toggle so the
-    // text never slides underneath them.
-    const paddingRight = 28 + toggleCount * 26;
+    const togglesBelow = togglePlacement === 'below' && toggleCount > 0;
+    // Reserve room inside the input for the clear button plus each toggle still
+    // sitting in there, so the text never slides underneath them.
+    const paddingRight = searchBarPaddingRight(toggleCount, togglePlacement);
 
     // Enter submits; Shift+Enter falls through to the textarea's own newline.
     // preventDefault matters on the textarea only, but costs nothing on the
@@ -97,83 +152,93 @@ export function SearchBar({
     };
 
     const fieldClassName = cn(
-        'w-full pl-7 pr-7 px-2 py-2.5 lg:py-1.5 text-base lg:text-sm rounded border border-[#e0e0e0] bg-white',
+        'w-full pr-7 py-2.5 lg:py-1.5 text-base lg:text-sm rounded border border-[#e0e0e0] bg-white',
+        leftGutter ? 'pl-6' : 'pl-2',
         'dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]',
         'focus:outline-none focus:border-[#0078d4]',
         multiline && 'resize-none overflow-y-auto leading-5 font-mono',
     );
 
+    const fieldProps = {
+        value,
+        onChange: (e: { target: { value: string } }) => onChange(e.target.value),
+        onKeyDown,
+        placeholder,
+        style: { paddingRight },
+        className: fieldClassName,
+        'data-testid': `${testIdPrefix}-input`,
+    };
+
     return (
-        <div className="relative flex items-center px-2 py-1" data-testid={`${testIdPrefix}-bar`}>
-            {/* Search icon */}
-            {/* The icon and the toggle strip centre themselves against a one-row
-                field; once the box can grow they have to be pinned to its first
-                row instead, as in VS Code. */}
-            <span
-                className={cn(
-                    'absolute left-4 text-[#999] dark:text-[#888] pointer-events-none text-sm',
-                    multiline && 'top-[15px] lg:top-[11px]',
+        <div className="px-2 py-1" data-testid={`${testIdPrefix}-bar`}>
+            <div className="relative flex items-center">
+                {multiline ? (
+                    <textarea
+                        {...fieldProps}
+                        ref={inputRef as React.Ref<HTMLTextAreaElement>}
+                        rows={autoGrowRows(value)}
+                    />
+                ) : (
+                    <input {...fieldProps} ref={inputRef as React.Ref<HTMLInputElement>} type="text" />
                 )}
-            >
-                🔍
-            </span>
-            {multiline ? (
-                <textarea
-                    ref={inputRef as React.Ref<HTMLTextAreaElement>}
-                    rows={autoGrowRows(value)}
-                    value={value}
-                    onChange={e => onChange(e.target.value)}
-                    onKeyDown={onKeyDown}
-                    placeholder={placeholder}
-                    style={toggleCount > 0 ? { paddingRight } : undefined}
-                    className={fieldClassName}
-                    data-testid={`${testIdPrefix}-input`}
-                />
-            ) : (
-                <input
-                    ref={inputRef as React.Ref<HTMLInputElement>}
-                    type="text"
-                    value={value}
-                    onChange={e => onChange(e.target.value)}
-                    onKeyDown={onKeyDown}
-                    placeholder={placeholder}
-                    style={toggleCount > 0 ? { paddingRight } : undefined}
-                    className={fieldClassName}
-                    data-testid={`${testIdPrefix}-input`}
-                />
-            )}
-            <div className={cn('absolute right-3.5 flex items-center gap-1', multiline && 'top-[13px] lg:top-[9px]')}>
-                {/* Clear button — visible only when value is non-empty */}
-                {value && (
-                    <button
-                        className="text-[#999] hover:text-[#333] dark:hover:text-[#eee] text-sm leading-none bg-transparent border-none p-0 cursor-pointer"
-                        onClick={onClear}
-                        title="Clear search"
-                        data-testid={`${testIdPrefix}-clear`}
-                    >
-                        ✕
-                    </button>
-                )}
-                {toggles?.map(toggle => (
-                    <button
-                        key={toggle.id}
-                        type="button"
-                        onClick={toggle.onToggle}
-                        title={toggle.title}
-                        aria-label={toggle.title}
-                        aria-pressed={toggle.active}
-                        className={cn(
-                            'px-1 py-0.5 rounded text-[11px] leading-none font-mono border cursor-pointer transition-colors',
-                            toggle.active
-                                ? 'bg-[#0078d4] text-white border-[#0078d4]'
-                                : 'bg-transparent text-[#848484] border-transparent hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
-                        )}
-                        data-testid={`${testIdPrefix}-toggle-${toggle.id}`}
-                    >
-                        {toggle.label}
-                    </button>
-                ))}
+                {/* The clear button and any in-field toggles centre themselves
+                    against a one-row field; once the box can grow they have to be
+                    pinned to its first row instead, as in VS Code. */}
+                <div
+                    className={cn(
+                        'absolute right-1.5 flex items-center gap-1',
+                        multiline && 'top-[9px] lg:top-[5px]',
+                    )}
+                >
+                    {/* Clear button — visible only when value is non-empty */}
+                    {value && (
+                        <button
+                            className="text-[#999] hover:text-[#333] dark:hover:text-[#eee] text-sm leading-none bg-transparent border-none p-0 cursor-pointer"
+                            onClick={onClear}
+                            title="Clear search"
+                            data-testid={`${testIdPrefix}-clear`}
+                        >
+                            ✕
+                        </button>
+                    )}
+                    {!togglesBelow && toggles?.map(toggle => (
+                        <button
+                            key={toggle.id}
+                            type="button"
+                            onClick={toggle.onToggle}
+                            title={toggle.title}
+                            aria-label={toggle.title}
+                            aria-pressed={toggle.active}
+                            className={toggleClassName(toggle.active)}
+                            data-testid={`${testIdPrefix}-toggle-${toggle.id}`}
+                        >
+                            {toggle.label}
+                        </button>
+                    ))}
+                </div>
             </div>
+            {togglesBelow && (
+                <div
+                    className="flex items-center gap-1 pt-1"
+                    data-testid={`${testIdPrefix}-toggle-row`}
+                >
+                    {toggles?.map(toggle => (
+                        <button
+                            key={toggle.id}
+                            type="button"
+                            onClick={toggle.onToggle}
+                            title={toggle.title}
+                            aria-label={toggle.title}
+                            aria-pressed={toggle.active}
+                            className={toggleClassName(toggle.active)}
+                            data-testid={`${testIdPrefix}-toggle-${toggle.id}`}
+                        >
+                            {toggle.label}
+                        </button>
+                    ))}
+                    {children && <div className="ml-auto flex items-center">{children}</div>}
+                </div>
+            )}
         </div>
     );
 }

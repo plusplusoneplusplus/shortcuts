@@ -2,10 +2,14 @@
  * SearchFilters — the Search view's `…` section: files to include, files to
  * exclude, and the "use ignore files" gear.
  *
- * The `…` button is always rendered; the two boxes appear only when it is
- * expanded. Because a collapsed section can still be filtering the results, the
- * button carries a dot whenever any filter is off its default — the one thing
- * that keeps a filtered search from looking like an unfiltered one.
+ * The two boxes appear only when the `…` button is expanded. Because a
+ * collapsed section can still be filtering the results, the button carries a dot
+ * whenever any filter is off its default — the one thing that keeps a filtered
+ * search from looking like an unfiltered one.
+ *
+ * The button is exported on its own as `SearchFiltersToggle` so a narrow panel
+ * can put it on the query box's toggle row (`showToggle={false}` here) rather
+ * than give one glyph a row of its own.
  *
  * Purely presentational: the panel owns the state and decides when to re-run.
  */
@@ -13,11 +17,59 @@
 import { cn } from '../../../ui/cn';
 import { contentSearchFiltersActive, type ContentSearchFilters } from './types';
 
+export interface SearchFiltersToggleProps {
+    expanded: boolean;
+    onToggleExpanded: () => void;
+    /** True when a filter is off its default, which the button marks with a dot. */
+    active: boolean;
+    /** Prefix for every `data-testid`, matching the SearchBar's convention. */
+    testIdPrefix?: string;
+}
+
+/**
+ * The `…` button on its own, so a narrow panel can put it on the query box's
+ * toggle row instead of spending a whole row on one glyph.
+ */
+export function SearchFiltersToggle({
+    expanded,
+    onToggleExpanded,
+    active,
+    testIdPrefix = 'content-search',
+}: SearchFiltersToggleProps) {
+    return (
+        <button
+            type="button"
+            onClick={onToggleExpanded}
+            title={expanded ? 'Hide search details' : 'Toggle search details'}
+            aria-label="Toggle search details"
+            aria-expanded={expanded}
+            className={cn(
+                'relative px-1.5 leading-none text-sm bg-transparent border-none cursor-pointer',
+                expanded ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484]',
+            )}
+            data-testid={`${testIdPrefix}-filters-toggle`}
+        >
+            …
+            {active && (
+                <span
+                    className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-[#0078d4]"
+                    data-testid={`${testIdPrefix}-filters-dot`}
+                />
+            )}
+        </button>
+    );
+}
+
 export interface SearchFiltersProps {
     filters: ContentSearchFilters;
     onChange: (next: ContentSearchFilters) => void;
     expanded: boolean;
     onToggleExpanded: () => void;
+    /**
+     * False when the host is rendering `SearchFiltersToggle` itself — the narrow
+     * layout, where the `…` shares the query box's toggle row.
+     */
+    showToggle?: boolean;
     /** Prefix for every `data-testid`, matching the SearchBar's convention. */
     testIdPrefix?: string;
 }
@@ -35,37 +87,26 @@ export function SearchFilters({
     onChange,
     expanded,
     onToggleExpanded,
+    showToggle = true,
     testIdPrefix = 'content-search',
 }: SearchFiltersProps) {
     const active = contentSearchFiltersActive(filters);
 
     return (
         <div data-testid={`${testIdPrefix}-filters`}>
-            <div className="flex justify-end px-2">
-                <button
-                    type="button"
-                    onClick={onToggleExpanded}
-                    title={expanded ? 'Hide search details' : 'Toggle search details'}
-                    aria-label="Toggle search details"
-                    aria-expanded={expanded}
-                    className={cn(
-                        'relative px-1.5 leading-none text-sm bg-transparent border-none cursor-pointer',
-                        expanded ? 'text-[#1e1e1e] dark:text-[#cccccc]' : 'text-[#848484]',
-                    )}
-                    data-testid={`${testIdPrefix}-filters-toggle`}
-                >
-                    …
-                    {active && (
-                        <span
-                            className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full bg-[#0078d4]"
-                            data-testid={`${testIdPrefix}-filters-dot`}
-                        />
-                    )}
-                </button>
-            </div>
+            {showToggle && (
+                <div className="flex justify-end px-2">
+                    <SearchFiltersToggle
+                        expanded={expanded}
+                        onToggleExpanded={onToggleExpanded}
+                        active={active}
+                        testIdPrefix={testIdPrefix}
+                    />
+                </div>
+            )}
 
             {expanded && (
-                <div className="px-3 pb-2 flex flex-col gap-1.5" data-testid={`${testIdPrefix}-filters-fields`}>
+                <div className="px-2 pb-2 flex flex-col gap-1.5" data-testid={`${testIdPrefix}-filters-fields`}>
                     <div>
                         <label className={LABEL_CLASS} htmlFor={`${testIdPrefix}-include`}>
                             files to include
