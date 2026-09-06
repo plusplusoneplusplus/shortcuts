@@ -8,6 +8,11 @@ import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
+import { RepoMentionMenu } from './RepoMentionMenu';
+import { useRepoMentions } from './hooks/useRepoMentions';
+import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
+import { useRepoGroupMembers } from '../../repos/useRepoGroupMembers';
+import { useResolveCloneBaseUrl } from '../../repos/cloneRouting';
 import { AgentSelectorChip } from './AgentSelectorChip';
 import { ModePillSelector, getVisibleModePillOptions } from './ModePillSelector';
 import type { ModePillOption } from './ModePillSelector';
@@ -332,6 +337,12 @@ export function FollowUpInputArea({
     const sessionContextDragDepthRef = useRef(0);
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
+    // `#repo_name` mentions: only in a repo-group chat, and only once the
+    // group's membership has resolved. Elsewhere `#` is ordinary text.
+    const repoMentionsEnabled = isRepoGroupWorkspaceId(activeWorkspaceId);
+    const repoMentionBaseUrl = useResolveCloneBaseUrl()(activeWorkspaceId);
+    const repoGroupMembers = useRepoGroupMembers(activeWorkspaceId ?? '', repoMentionBaseUrl, repoMentionsEnabled);
+    const repoMentions = useRepoMentions(repoGroupMembers, repoMentionsEnabled);
     const sessionContextAttachmentsEnabled = sessionContextAttachmentsEnabledProp ?? isSessionContextAttachmentsEnabled();
     const localCanRetrieveConversations = useConversationRetrievalCapability(
         activeWorkspaceId,
@@ -472,6 +483,19 @@ export function FollowUpInputArea({
             }
             return;
         }
+        // Priority 2b: repo-mention menu. Slots in after the slash menu so the
+        // existing handlers keep their relative order; it only consumes keys
+        // while open.
+        if (repoMentions.handleKeyDown(e)) {
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                const member = repoMentions.filteredMembers[repoMentions.highlightIndex];
+                if (member?.name) {
+                    skipNextSyncRef.current = true;
+                    repoMentions.selectMember(member.name, followUpInput, setFollowUpInput, richTextRef);
+                }
+            }
+            return;
+        }
         // Priority 3: inline ghost-text accept (Tab, no modifiers).
         if (
             e.key === 'Tab'
@@ -562,7 +586,14 @@ export function FollowUpInputArea({
             modelCommand.setModelFilter(val);
         } else {
             slashCommands.handleInputChange(val, cursorPos);
+            repoMentions.handleInputChange(val, cursorPos);
         }
+    }
+
+    function handleRepoMentionSelect(name: string) {
+        skipNextSyncRef.current = true;
+        repoMentions.selectMember(name, followUpInput, setFollowUpInput, richTextRef);
+        richTextRef.current?.focus();
     }
 
     function handleSlashSelect(name: string) {
@@ -1261,6 +1292,13 @@ export function FollowUpInputArea({
                             onDismiss={slashCommands.dismissMenu}
                             visible={slashCommands.menuVisible}
                             highlightIndex={slashCommands.highlightIndex}
+                        />
+                        <RepoMentionMenu
+                            members={repoMentions.filteredMembers}
+                            onSelect={handleRepoMentionSelect}
+                            onDismiss={repoMentions.dismissMenu}
+                            visible={repoMentions.menuVisible}
+                            highlightIndex={repoMentions.highlightIndex}
                         />
                     </div>
                 </div>
