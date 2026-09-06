@@ -304,13 +304,22 @@ jobs:
         run: npm run build
         working-directory: packages/forge
 
+      # The SPA bundle imports @plusplusoneplusplus/coc-client, and esbuild
+      # resolves that through the package's `main` -- dist/index.js. Nothing
+      # *reads* this dist at test time (vitest aliases the specifier to src/),
+      # but the bundle cannot be built without it.
+      - name: Build coc-client package
+        run: npm run build
+        working-directory: packages/coc-client
+
       - name: Build coc SPA client bundle
         run: npm run build:client
         working-directory: packages/coc
 
-      # coc-client and coc-connector are absent on purpose: packages/coc's
-      # vitest.config.ts aliases both (and coc-connector/teams) straight to
-      # their src/, and nothing in the coc suite reaches their dist/.
+      # coc-client and coc-connector are absent from the tarball on purpose:
+      # packages/coc's vitest.config.ts aliases both (and coc-connector/teams)
+      # straight to their src/, and nothing in the coc suite reaches their
+      # dist/. coc-client is built above only so the SPA bundle can compile.
       # coc-workflow, by contrast, is imported for real (the Ralph prompt
       # builders) and aliased nowhere, so it has to ride along. See
       # scripts/shared-build-workflow.test.mjs, which derives this list from

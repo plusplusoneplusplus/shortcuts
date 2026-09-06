@@ -282,3 +282,88 @@ test("prebuild still covers every workspace e2e stopped building explicitly", ()
         );
     }
 });
+
+// ---------------------------------------------------------------------------
+// The SPA bundle's own build-time dependencies
+// ---------------------------------------------------------------------------
+
+/**
+ * Every `@plusplusoneplusplus/*` package the SPA client sources import.
+ *
+ * These are a different question from `cocWorkspaceImports()`: vitest's aliases
+ * do not apply to `npm run build:client`, which is esbuild resolving each
+ * specifier through node_modules -- i.e. through the workspace symlink to the
+ * package's `main`. A package whose `main` points into dist/ has to be *built*
+ * before the bundle step runs, whether or not its dist/ is ever packed.
+ */
+function spaWorkspaceImports() {
+    const found = new Set();
+    const walk = (dir) => {
+        for (const entry of readdirSync(dir)) {
+            const full = path.join(dir, entry);
+            if (statSync(full).isDirectory()) {
+                if (entry !== "node_modules" && entry !== "dist") walk(full);
+                continue;
+            }
+            if (!/\.(ts|tsx|mts|js|jsx)$/.test(entry)) continue;
+            const source = readFileSync(full, "utf8");
+            const statik = /(?:\bfrom\s*|^\s*import\s*|\brequire\s*\(\s*)['"](@plusplusoneplusplus\/[\w./-]+)['"]/gm;
+            for (const m of source.matchAll(statik)) found.add(m[1].split("/").slice(0, 2).join("/"));
+        }
+    };
+    walk(path.join(repoRoot, "packages", "coc", "src", "server", "spa", "client"));
+    return [...found].sort();
+}
+
+// The regression that shipped: `Build coc-client package` was dropped from the
+// prelude on the grounds that nothing reads its dist/ -- true of the *tests*,
+// which resolve it through a vitest alias to src/, and false of the SPA build
+// one step earlier, which had been relying on that step all along. The bundle
+// step failed with `Could not resolve "@plusplusoneplusplus/coc-client"`.
+//
+// Runtime resolution and build-time resolution are separate questions here, so
+// they need separate tests. This is the build-time one.
+test("build-shared builds every workspace package the SPA bundle imports", () => {
+    const built = new Set(
+        [...buildShared.matchAll(/working-directory: packages\/([\w-]+)$/gm)].map((m) => m[1]),
+    );
+    for (const pkg of requiredBuildWorkspaces("forge")) built.add(pkg);
+
+    for (const specifier of spaWorkspaceImports()) {
+        const pkg = specifier.split("/")[1];
+        const manifest = JSON.parse(
+            readFileSync(path.join(repoRoot, "packages", pkg, "package.json"), "utf8"),
+        );
+        // A package served straight from src/ needs no build step.
+        const entry = manifest.main ?? "";
+        if (!entry.includes("dist")) continue;
+
+        assert.ok(
+            built.has(pkg),
+            `the SPA client imports "${specifier}" and packages/${pkg}'s main is "${entry}", ` +
+                `but no step in build-shared builds packages/${pkg} -- ` +
+                `\`npm run build:client\` will fail with "Could not resolve ${specifier}"`,
+        );
+    }
+});
+
+// Ordering matters as much as presence: a build step that lands *after* the
+// bundle step is the same failure with a step in the job to disprove it.
+test("the SPA bundle step runs after every package build step it depends on", () => {
+    const lines = buildShared.split("\n");
+    const bundleStep = lines.findIndex((l) => /- name: Build coc SPA client bundle/.test(l));
+    assert.notEqual(bundleStep, -1, "build-shared must have a step building the SPA bundle");
+
+    const after = lines.slice(bundleStep + 1).join("\n");
+    const builtAfter = [...after.matchAll(/working-directory: packages\/([\w-]+)$/gm)].map(
+        (m) => m[1],
+    );
+    for (const specifier of spaWorkspaceImports()) {
+        const pkg = specifier.split("/")[1];
+        assert.ok(
+            !builtAfter.includes(pkg),
+            `packages/${pkg} is built after the SPA bundle step, but the bundle imports ` +
+                `"${specifier}" -- move that build step above it`,
+        );
+    }
+});
