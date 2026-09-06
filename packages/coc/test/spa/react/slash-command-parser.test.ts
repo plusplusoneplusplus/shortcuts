@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSlashCommands, getSlashCommandContext, isMetaCommand, META_COMMANDS } from '../../../src/server/spa/client/react/features/chat/slash-command-parser';
+import { parseSlashCommands, getSlashCommandContext, isMetaCommand, META_COMMANDS, getFileMentionContext } from '../../../src/server/spa/client/react/features/chat/slash-command-parser';
 
 const AVAILABLE_SKILLS = ['impl', 'go-deep', 'draft', 'pipeline-generator', 'review'];
 
@@ -369,5 +369,66 @@ describe('parseSlashCommands with restricted meta-commands', () => {
         const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
         const result = parseSlashCommands('/cron every 5m', [], getActiveMetaCommands(true));
         expect(result.metaCommands).toContain('cron');
+    });
+});
+
+// ============================================================================
+// getFileMentionContext
+// ============================================================================
+
+describe('getFileMentionContext', () => {
+    /** Helper: `|` marks the caret position in the fixture string. */
+    function at(fixture: string) {
+        const cursor = fixture.indexOf('|');
+        return getFileMentionContext(fixture.replace('|', ''), cursor);
+    }
+
+    it('opens on an @-prefixed path token', () => {
+        expect(at('@src/fo|')).toEqual({ active: true, prefix: 'src/fo', startIndex: 0, hasSigil: true });
+    });
+
+    it('opens on a bare @ at the start of the input', () => {
+        expect(at('@|')).toEqual({ active: true, prefix: '', startIndex: 0, hasSigil: true });
+    });
+
+    it('opens on an @ preceded by whitespace', () => {
+        expect(at('look at @sr|')).toEqual({ active: true, prefix: 'sr', startIndex: 8, hasSigil: true });
+    });
+
+    it('does not open on an @ that follows a non-whitespace character', () => {
+        expect(at('abc@|')).toBeNull();
+    });
+
+    it('opens trigger-lessly on a token containing a slash', () => {
+        expect(at('packages/coc|')).toEqual({ active: true, prefix: 'packages/coc', startIndex: 0, hasSigil: false });
+    });
+
+    it('opens trigger-lessly on a token ending in an extension', () => {
+        expect(at('foo.ts|')).toEqual({ active: true, prefix: 'foo.ts', startIndex: 0, hasSigil: false });
+    });
+
+    it('does not open on a bare prose word', () => {
+        expect(at('index|')).toBeNull();
+    });
+
+    it('does not open on an email address', () => {
+        expect(at('email@example.com|')).toBeNull();
+    });
+
+    it('does not open when the caret is mid-token', () => {
+        expect(at('src/foo.t|s')).toBeNull();
+    });
+
+    it('opens when the caret is at the token end but text follows after a space', () => {
+        expect(at('src/foo| bar')).toEqual({ active: true, prefix: 'src/foo', startIndex: 0, hasSigil: false });
+    });
+
+    it('leaves slash-command and repo-mention tokens alone', () => {
+        expect(at('/impl/x|')).toBeNull();
+        expect(at('#my/repo|')).toBeNull();
+    });
+
+    it('returns null on an empty input', () => {
+        expect(at('|')).toBeNull();
     });
 });
