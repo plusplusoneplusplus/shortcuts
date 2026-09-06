@@ -49,6 +49,17 @@ const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 
 /** Terminal statuses that cannot be cancelled. */
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
 
+/** Every provider a chat can run on; the string doubles as the SDK registry key. */
+const CHAT_PROVIDERS: readonly ChatProvider[] = ['copilot', 'codex', 'claude', 'opencode'];
+
+/**
+ * Narrow `metadata.provider` to a known provider, defaulting to copilot for
+ * legacy records that never stored one.
+ */
+function resolveConversationProvider(value: unknown): ChatProvider {
+    return CHAT_PROVIDERS.includes(value as ChatProvider) ? value as ChatProvider : 'copilot';
+}
+
 type AskUserRouteAnswer = {
     questionId?: unknown;
     answer?: unknown;
@@ -842,18 +853,26 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         },
     }));
 
-    // POST /api/processes/:id/turns/:turnIndex/rewind — Rewind a copilot
-    // conversation to an earlier user turn.
+    // POST /api/processes/:id/turns/:turnIndex/rewind — Rewind a conversation to
+    // an earlier user turn.
     //
-    // Destructive, in-place truncation (chat history only): the target user turn
-    // and everything after it are permanently dropped from BOTH the copilot-sdk
-    // session history (via rewindSession) AND the CoC conversation_turns store
-    // (hard delete). The removed user message's text + images are returned so the
-    // client can repopulate the composer for edit/resend (AC-03 → AC-04). Files,
-    // git state, and code edits made during the removed turns are NOT reverted.
+    // Chat history only: the target user turn and everything after it are dropped
+    // from BOTH the provider session (via the provider's native rewind primitive)
+    // AND the CoC conversation_turns store (hard delete). The removed user
+    // message's text + images are returned so the client can repopulate the
+    // composer for edit/resend. Files, git state, and code edits made during the
+    // removed turns are NEVER reverted, on any provider.
+    //
+    // Per-provider mechanics (all native — nothing is emulated here):
+    //   - copilot  → `history.truncate`, in place, same session id
+    //   - opencode → staged revert (files:false), in place, same session id
+    //   - claude   → `forkSession`, which yields a NEW session id; it is swapped
+    //                onto this same process (no forked CoC chat) and the previous
+    //                id is appended to `metadata.rewindHistory` for recovery
+    //   - codex    → no primitive exists; its service throws and we return 409
     //
     // Guards (all surface typed errors the SPA shows as a toast):
-    //   - provider must be copilot                 → 409 REWIND_UNSUPPORTED
+    //   - provider must support rewind             → 409 REWIND_UNSUPPORTED
     //   - conversation must be idle (no queued work) → 409 CONVERSATION_NOT_IDLE
     //   - target must be a user turn carrying a
     //     captured sdkEventId anchor               → 400 TURN_NOT_REWINDABLE
@@ -871,14 +890,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, notFound('Process'));
             }
 
-            // Provider guard: rewind relies on the copilot-sdk history.truncate RPC,
-            // so it is copilot-only. The provider string defaults to copilot.
-            const provider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
-                ? proc.metadata.provider
-                : 'copilot';
-            if (provider !== 'copilot') {
-                return handleAPIError(res, new APIError(409, `Rewind is not supported for provider '${provider}'.`, 'REWIND_UNSUPPORTED'));
-            }
+            // Resolve the conversation's provider — it doubles as the SDK service
+            // registry key. There is no provider allow-list here: whether rewind is
+            // possible is decided by the service itself (a provider without a native
+            // primitive throws RewindUnsupportedError, which becomes the 409 below).
+            const provider = resolveConversationProvider(proc.metadata?.provider);
 
             // Idle guard: only a settled conversation with no buffered work can be
             // rewound. A running/queued/cancelling status — or any pending message
@@ -906,19 +922,54 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, badRequest('Rewind not supported by this store'));
             }
 
-            // Truncate the SDK session FIRST. Only on success do we hard-delete the
-            // CoC turns — so we never drop CoC history while the provider session
-            // still remembers it (the reverse would resurrect removed turns on the
-            // next resume).
-            const { sdkServiceRegistry, SDK_PROVIDER_COPILOT, isRewindUnsupportedError } = await import('@plusplusoneplusplus/forge');
+            // Rewind the provider session FIRST. Only on success do we hard-delete
+            // the CoC turns — so we never drop CoC history while the provider
+            // session still remembers it (the reverse would resurrect removed turns
+            // on the next resume).
+            const { sdkServiceRegistry, isRewindUnsupportedError } = await import('@plusplusoneplusplus/forge');
+            const sdkService = sdkServiceRegistry.get(provider);
+            // A provider with no registered service — or one whose service predates
+            // rewind — is unsupported, not a server fault: same typed 409 codex gets
+            // from its own thrown error.
+            if (!sdkService || typeof sdkService.rewindSession !== 'function') {
+                return handleAPIError(res, new APIError(409, `Rewind is not supported for provider '${provider}'.`, 'REWIND_UNSUPPORTED'));
+            }
+            let rewound: { newSessionId?: string } | undefined;
             try {
-                const sdkService = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-                await sdkService.rewindSession(proc.sdkSessionId, target.sdkEventId);
+                rewound = await sdkService.rewindSession(proc.sdkSessionId, target.sdkEventId);
             } catch (err: any) {
                 if (isRewindUnsupportedError(err)) {
                     return handleAPIError(res, new APIError(409, err?.message || 'Rewind is not supported for this conversation.', 'REWIND_UNSUPPORTED'));
                 }
                 return handleAPIError(res, internalError(`Failed to rewind SDK session: ${err?.message || err}`));
+            }
+
+            // Fork-style providers (claude) hand back a NEW session id. Swap it onto
+            // THIS process in place — same chat, same id — and keep the pre-rewind
+            // id in metadata so the orphaned original session (still on disk) can be
+            // found again for recovery or debugging. Best-effort: the provider
+            // history is already forked, so a metadata write failure must not fail
+            // the rewind.
+            const newSessionId = rewound?.newSessionId;
+            if (newSessionId && newSessionId !== proc.sdkSessionId) {
+                const priorSessionId = proc.sdkSessionId;
+                try {
+                    const prior = Array.isArray((proc.metadata as any)?.rewindHistory)
+                        ? (proc.metadata as any).rewindHistory
+                        : [];
+                    await store.updateProcess(proc.id, {
+                        sdkSessionId: newSessionId,
+                        metadata: {
+                            ...(proc.metadata ?? {}),
+                            rewindHistory: [
+                                ...prior,
+                                { previousSessionId: priorSessionId, newSessionId, turnIndex, rewoundAt: new Date().toISOString() },
+                            ],
+                        } as any,
+                    });
+                } catch (err: any) {
+                    console.warn(`[rewind] Failed to persist forked session id for ${proc.id}: ${err?.message || err}`);
+                }
             }
 
             // SDK history is already gone. Hard-delete the CoC turns at/after the
@@ -939,7 +990,6 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // session from a cold client rather than a warm one whose in-memory
             // session view is now stale. Best-effort — never fails the rewind.
             try {
-                const sdkService = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
                 await sdkService.evictWarm?.({ warmKey: proc.id });
             } catch {
                 /* best-effort cache invalidation */

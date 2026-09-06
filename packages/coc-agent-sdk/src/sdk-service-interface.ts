@@ -67,10 +67,17 @@ export interface IInvocationResult {
     /** Aggregated token usage / provider diagnostics, when the provider reports them. */
     tokenUsage?: TokenUsage;
     /**
-     * Copilot-SDK `user.message` event id that began this turn, captured from
-     * the live event stream. Durable anchor for history rewind/truncation
-     * (AC-01); persisted onto the user turn's `sdkEventId`. Only the copilot
-     * provider populates this; undefined elsewhere (turn is not rewindable).
+     * Provider-native id of the user message that began this turn — the durable
+     * anchor for history rewind, persisted onto the user turn's `sdkEventId` and
+     * handed back to {@link ISDKService.rewindSession}.
+     *
+     * Each provider supplies its own flavour of id:
+     * - copilot — the `user.message` event id from the live event stream
+     * - claude  — the user message's transcript uuid (`forkSession`'s `upToMessageId`)
+     * - opencode — the message id (`revert.stage`'s `messageID`)
+     * - codex   — never populated; codex has no rewind primitive
+     *
+     * Undefined means the turn is simply not rewindable.
      */
     userMessageEventId?: string;
 }
@@ -86,6 +93,15 @@ export interface RewindResult {
     eventsRemoved: number;
     /** The anchor event id truncated to — this event and all later ones are gone. */
     upToEventId: string;
+    /**
+     * Set only by providers whose rewind is a *fork* rather than an in-place
+     * truncate: Claude branches the transcript into a brand-new session and
+     * leaves the original untouched on disk, so the caller must swap this id
+     * onto the process's `sdkSessionId` for the conversation to continue on the
+     * rewound branch. Providers that truncate in place (copilot, opencode) leave
+     * this undefined — their session id is unchanged.
+     */
+    newSessionId?: string;
 }
 
 /**

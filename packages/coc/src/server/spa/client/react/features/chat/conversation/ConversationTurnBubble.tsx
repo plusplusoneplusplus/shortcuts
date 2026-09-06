@@ -41,6 +41,7 @@ import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
 import { extractInjectedBlocks } from './injectedBlocks';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
+import { REWIND_NO_ANCHOR_TOOLTIP, resolveRewindCapability } from '../hooks/rewindCapability';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
 import { CLIENT_PASTE_THRESHOLD, getPastePreviewLines } from '../hooks/useTextPaste';
 import {
@@ -94,8 +95,9 @@ interface ConversationTurnBubbleProps {
     onArchiveTurn?: (turnIndex: number, archived: boolean) => void;
     /**
      * Called when user rewinds the conversation to this user turn (destructive
-     * truncate-and-restore). Only offered on `role: 'user'` turns; the backend
-     * is the enforcement point for provider/idle/eligibility.
+     * truncate-and-restore). Only offered on `role: 'user'` turns of a
+     * rewind-capable provider; turns with no captured anchor render the action
+     * disabled. The backend is still the enforcement point for idle/eligibility.
      */
     onRewindTurn?: (turnIndex: number) => void;
     /** Note edit snapshots from process.metadata.noteEdits — used to render NoteEditCard. */
@@ -141,6 +143,15 @@ interface ConversationTurnBubbleProps {
      * Defaults to `copilot` (green) when omitted to preserve the legacy look.
      */
     provider?: ChatProvider;
+    /**
+     * Provider used *only* to shape the "Rewind to here" action. Kept separate
+     * from {@link ConversationTurnBubbleProps.provider} because that one is a
+     * display/model-picker value that callers may collapse onto the user's
+     * configured default when the conversation's own provider is not one they
+     * recognize — which would silently hide rewind on an opencode chat owned by
+     * a codex-default user. Falls back to `provider` when omitted.
+     */
+    rewindProvider?: ChatProvider;
 }
 
 interface RenderToolCall {
@@ -1089,7 +1100,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, rewindProvider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
@@ -1268,18 +1279,25 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     onClick: () => onArchiveTurn(turnIndex, !turn.archived),
                 });
             }
-            // Rewind is offered only on user turns; the backend gates provider /
-            // idle / eligibility and surfaces an error toast on rejection.
-            if (onRewindTurn && isUser) {
+            // Rewind is offered only on user turns. Providers without a native
+            // rewind primitive (codex) hide the item outright; a supported
+            // provider whose turn carries no anchor shows it disabled with an
+            // explanatory tooltip. The backend still gates idle/eligibility and
+            // surfaces an error toast on rejection.
+            const rewindCapability = resolveRewindCapability(rewindProvider ?? provider, turn.sdkEventId);
+            if (onRewindTurn && isUser && rewindCapability !== 'hidden') {
+                const rewindDisabled = rewindCapability === 'disabled';
                 items.push({
                     label: 'Rewind to here',
                     icon: '⏪',
-                    onClick: () => onRewindTurn(turnIndex),
+                    disabled: rewindDisabled,
+                    title: rewindDisabled ? REWIND_NO_ANCHOR_TOOLTIP : undefined,
+                    onClick: () => { if (!rewindDisabled) onRewindTurn(turnIndex); },
                 });
             }
         }
         return items;
-    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn]);
+    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn, provider, rewindProvider]);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {

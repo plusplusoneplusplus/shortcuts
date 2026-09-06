@@ -3530,12 +3530,18 @@ describe('ClaudeSDKService.getAccountQuota (macOS / Keychain)', () => {
 describe('ClaudeSDKService session operations', () => {
     let svc: ClaudeSDKService;
     const forkSessionFn = vi.fn();
+    const getSessionMessagesFn = vi.fn();
 
     beforeEach(() => {
         svc = new ClaudeSDKService();
         mockDynamicImport.mockReset();
         forkSessionFn.mockReset();
-        mockDynamicImport.mockResolvedValue({ query: vi.fn(), forkSession: forkSessionFn });
+        getSessionMessagesFn.mockReset();
+        mockDynamicImport.mockResolvedValue({
+            query: vi.fn(),
+            forkSession: forkSessionFn,
+            getSessionMessages: getSessionMessagesFn,
+        });
     });
 
     afterEach(() => {
@@ -3561,14 +3567,85 @@ describe('ClaudeSDKService session operations', () => {
         unsupportedSvc.dispose();
     });
 
-    it('rewindSession throws the typed RewindUnsupportedError (AC-02)', async () => {
-        await expect(svc.rewindSession('any-id', 'evt-1')).rejects.toBeInstanceOf(RewindUnsupportedError);
-        await expect(svc.rewindSession('any-id', 'evt-1')).rejects.toMatchObject({
-            code: 'REWIND_UNSUPPORTED',
-            provider: CLAUDE_PROVIDER,
+    // ── rewindSession — native fork at the anchor's predecessor (AC-01) ──────
+
+    /** A chronological chain: u1 → a1 → u2(anchor) → a2. */
+    const chain = [
+        { type: 'user', uuid: 'u1' },
+        { type: 'assistant', uuid: 'a1' },
+        { type: 'user', uuid: 'u2' },
+        { type: 'assistant', uuid: 'a2' },
+    ];
+
+    it('rewindSession forks at the entry BEFORE the anchor and returns the new session id', async () => {
+        getSessionMessagesFn.mockResolvedValueOnce(chain);
+        forkSessionFn.mockResolvedValueOnce({ sessionId: 'forked-branch-id' });
+
+        const result = await svc.rewindSession('sess-1', 'u2');
+
+        // `upToMessageId` is inclusive, so forking at the anchor itself would
+        // KEEP the user message we are meant to drop.
+        expect(forkSessionFn).toHaveBeenCalledWith('sess-1', { upToMessageId: 'a1' });
+        expect(result).toEqual({
+            eventsRemoved: 2,
+            upToEventId: 'u2',
+            newSessionId: 'forked-branch-id',
         });
-        const err = await svc.rewindSession('any-id', 'evt-1').catch((e) => e);
+    });
+
+    it('rewindSession throws RewindUnsupportedError when the SDK lacks fork/read support', async () => {
+        mockDynamicImport.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: vi.fn() });
+        const unsupportedSvc = new ClaudeSDKService();
+
+        const err = await unsupportedSvc.rewindSession('sess-1', 'u2').catch((e) => e);
+
+        expect(err).toBeInstanceOf(RewindUnsupportedError);
         expect(isRewindUnsupportedError(err)).toBe(true);
+        expect(err).toMatchObject({ code: 'REWIND_UNSUPPORTED', provider: CLAUDE_PROVIDER });
+
+        unsupportedSvc.dispose();
+    });
+
+    it('rewindSession throws RewindUnsupportedError when only forkSession is exported', async () => {
+        mockDynamicImport.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: vi.fn(), forkSession: forkSessionFn });
+        const partialSvc = new ClaudeSDKService();
+
+        await expect(partialSvc.rewindSession('sess-1', 'u2')).rejects.toBeInstanceOf(RewindUnsupportedError);
+        expect(forkSessionFn).not.toHaveBeenCalled();
+
+        partialSvc.dispose();
+    });
+
+    it('rewindSession rejects an anchor that is absent from the transcript', async () => {
+        getSessionMessagesFn.mockResolvedValueOnce(chain);
+
+        await expect(svc.rewindSession('sess-1', 'nope')).rejects.toThrow(/no transcript entry 'nope'/);
+        expect(forkSessionFn).not.toHaveBeenCalled();
+    });
+
+    it('rewindSession rejects an anchor that is the first transcript entry', async () => {
+        getSessionMessagesFn.mockResolvedValueOnce(chain);
+
+        await expect(svc.rewindSession('sess-1', 'u1')).rejects.toThrow(/first transcript entry/);
+        expect(forkSessionFn).not.toHaveBeenCalled();
+    });
+
+    it('rewindSession never restores files — no rewindFiles call is made (AC-05)', async () => {
+        getSessionMessagesFn.mockResolvedValueOnce(chain);
+        forkSessionFn.mockResolvedValueOnce({ sessionId: 'forked-branch-id' });
+        const rewindFiles = vi.fn();
+        mockDynamicImport.mockResolvedValue({
+            query: vi.fn(),
+            forkSession: forkSessionFn,
+            getSessionMessages: getSessionMessagesFn,
+            rewindFiles,
+        });
+
+        await svc.rewindSession('sess-1', 'u2');
+
+        expect(rewindFiles).not.toHaveBeenCalled();
     });
 
     // compactSession is now supported for Claude via the native `/compact`
@@ -4041,5 +4118,146 @@ describe('ClaudeSDKService.transform', () => {
         const result = await svc.transform('fail');
         expect(result.success).toBe(false);
         expect(result.error).toBeTruthy();
+    });
+});
+
+// AC-04: every rewind-capable provider stamps the user turn with a native anchor.
+// For claude that anchor is the transcript uuid of the user message the turn was
+// built from — the same id `forkSession({ upToMessageId })` and therefore
+// `rewindSession()` accept.
+describe('ClaudeSDKService.sendMessage rewind anchor (AC-04)', () => {
+    let svc: ClaudeSDKService;
+    const queryFn = vi.fn();
+
+    beforeEach(() => {
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset();
+        queryFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: queryFn });
+    });
+
+    afterEach(() => {
+        resetSDKLogger();
+        svc.dispose();
+    });
+
+    it('returns the user message uuid as userMessageEventId', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-user-1',
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'hello' },
+            },
+            { type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }] } },
+            { type: 'result', subtype: 'success', result: 'hi' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.success).toBe(true);
+        expect(result.userMessageEventId).toBe('uuid-user-1');
+    });
+
+    it('keeps the first anchor when the turn emits several user frames', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-first',
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'hello' },
+            },
+            {
+                type: 'user',
+                uuid: 'uuid-second',
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'steering follow-up' },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.userMessageEventId).toBe('uuid-first');
+    });
+
+    it('ignores tool-result user frames so the anchor is never a mid-turn message', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-tool-result',
+                parent_tool_use_id: 'toolu_1',
+                message: {
+                    role: 'user',
+                    content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'done' }],
+                },
+            },
+            {
+                type: 'user',
+                uuid: 'uuid-real-prompt',
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'hello' },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.userMessageEventId).toBe('uuid-real-prompt');
+    });
+
+    it('ignores a top-level tool_result frame that carries no parent_tool_use_id', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-tool-result',
+                parent_tool_use_id: null,
+                message: {
+                    role: 'user',
+                    content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'done' }],
+                },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.userMessageEventId).toBeUndefined();
+    });
+
+    it('ignores replayed and synthetic user frames', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-replay',
+                isReplay: true,
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'earlier turn' },
+            },
+            {
+                type: 'user',
+                uuid: 'uuid-synthetic',
+                isSynthetic: true,
+                parent_tool_use_id: null,
+                message: { role: 'user', content: '[Request interrupted]' },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.userMessageEventId).toBeUndefined();
+    });
+
+    it('leaves the turn without an anchor when no user frame carries a uuid', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'user', parent_tool_use_id: null, message: { role: 'user', content: 'hello' } },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.success).toBe(true);
+        expect(result.userMessageEventId).toBeUndefined();
     });
 });

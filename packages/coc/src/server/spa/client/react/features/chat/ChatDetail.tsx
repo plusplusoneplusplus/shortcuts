@@ -100,6 +100,7 @@ import { RenameDialog } from '../../ui/RenameDialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
 import { RewindConfirmDialog } from './conversation/RewindConfirmDialog';
 import { useRewindTurn } from './hooks/useRewindTurn';
+import type { ChatProvider } from './ProviderBadge';
 import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
@@ -398,9 +399,25 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         || metadataProcess?.metadata?.workingDirectory
         || undefined;
     const rawSessionProvider = metadataProcess?.metadata?.provider;
+    // Provider used for the model / reasoning-effort / effort-tier lookups below.
+    // It deliberately does NOT recognize 'opencode' and collapses it onto the
+    // user's configured default; leave it alone unless you also mean to change
+    // which catalog the model dropdown fetches.
     const sessionProvider = rawSessionProvider === 'codex' || rawSessionProvider === 'claude' || rawSessionProvider === 'copilot'
         ? rawSessionProvider
         : getDefaultProvider();
+    // The provider this conversation actually ran on, narrowed across all four
+    // ChatProvider values and defaulting to copilot exactly like the backend's
+    // `resolveConversationProvider`. Used for provider-capability decisions
+    // (rewind), never for catalog lookups — `sessionProvider` would report the
+    // user's default (possibly codex) for an opencode chat and wrongly hide the
+    // rewind action.
+    const conversationProvider: ChatProvider = rawSessionProvider === 'codex'
+        || rawSessionProvider === 'claude'
+        || rawSessionProvider === 'opencode'
+        || rawSessionProvider === 'copilot'
+        ? rawSessionProvider
+        : 'copilot';
     const { models: availableModels } = useModels(sessionProvider);
     // Per-provider, per-model reasoning-effort preferences for mid-conversation model-swap re-derive.
     const reasoningEfforts = useProviderReasoningEfforts(sessionProvider);
@@ -2207,9 +2224,17 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     });
     // Idle guard (AC-04 UX state): withhold the rewind action while the
     // conversation is sending / generating / has queued messages, which hides
-    // the menu item. Provider eligibility is NOT gated here — the backend is the
-    // definitive gate and surfaces an error toast for an ineligible rewind.
-    const rewindAction = planChatBusy ? undefined : rewind.requestRewind;
+    // the menu item.
+    //
+    // Codex is also withheld here (AC-07): it has no native rewind primitive, so
+    // the action is never offered. This uses `conversationProvider`, not
+    // `sessionProvider`, which collapses unrecognized providers onto the user's
+    // default and would mislabel an opencode chat. Per-turn anchor eligibility
+    // is decided in the bubble (which gets the same value via
+    // `rewindProvider`); the backend stays the definitive gate and surfaces an
+    // error toast for anything it still rejects.
+    const rewindUnsupportedProvider = conversationProvider === 'codex';
+    const rewindAction = planChatBusy || rewindUnsupportedProvider ? undefined : rewind.requestRewind;
 
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;
@@ -2592,6 +2617,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onMcpOAuthFailed={(requestId) => setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== requestId))}
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
+                        rewindProvider={conversationProvider}
                         sidenotes={quickAsk.items}
                         onCreateSidenote={quickAsk.createSidenote}
                         onRetrySidenote={quickAsk.retrySidenote}

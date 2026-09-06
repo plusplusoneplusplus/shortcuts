@@ -131,6 +131,13 @@ export interface ClientConversationTurn {
     model?: string;
     /** Chat mode used for this turn (set on user turns when mode override was active) */
     mode?: string;
+    /**
+     * Provider-native rewind anchor captured on user turns (copilot event id,
+     * claude transcript uuid, opencode message id). Absent on codex turns and
+     * on turns recorded before anchor capture existed — those are not
+     * rewindable. Drives the enabled/disabled state of "Rewind to here".
+     */
+    sdkEventId?: string;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: string;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */

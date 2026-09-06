@@ -7,7 +7,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useRewindTurn, type UseRewindTurnOptions } from '../../../src/server/spa/client/react/features/chat/hooks/useRewindTurn';
+import { useRewindTurn, resolveRewindCapability, REWIND_NO_ANCHOR_TOOLTIP, type UseRewindTurnOptions } from '../../../src/server/spa/client/react/features/chat/hooks/useRewindTurn';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
@@ -141,5 +141,34 @@ describe('useRewindTurn', () => {
         act(() => view.result.current.cancel());
         // Still showing the dialog because a request is mid-flight.
         expect(view.result.current.targetIndex).toBe(3);
+    });
+});
+
+/**
+ * AC-07: the rewind affordance is derived client-side from the process provider
+ * plus the turn's captured anchor, with no extra API round-trip.
+ */
+describe('resolveRewindCapability', () => {
+    it.each(['copilot', 'claude', 'opencode'] as const)('is enabled for %s when the turn has an anchor', (provider) => {
+        expect(resolveRewindCapability(provider, 'anchor-1')).toBe('enabled');
+    });
+
+    it.each(['copilot', 'claude', 'opencode'] as const)('is disabled for %s when the turn has no anchor', (provider) => {
+        expect(resolveRewindCapability(provider, undefined)).toBe('disabled');
+        expect(resolveRewindCapability(provider, '')).toBe('disabled');
+    });
+
+    it('is hidden for codex regardless of anchor', () => {
+        expect(resolveRewindCapability('codex', 'anchor-1')).toBe('hidden');
+        expect(resolveRewindCapability('codex', undefined)).toBe('hidden');
+    });
+
+    it('treats an unknown provider as capable so the backend stays the gate', () => {
+        expect(resolveRewindCapability(undefined, 'anchor-1')).toBe('enabled');
+        expect(resolveRewindCapability(undefined, undefined)).toBe('disabled');
+    });
+
+    it('exposes the disabled-state tooltip copy', () => {
+        expect(REWIND_NO_ANCHOR_TOOLTIP).toBe('This turn predates rewind support');
     });
 });

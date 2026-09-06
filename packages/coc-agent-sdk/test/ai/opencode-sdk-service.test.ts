@@ -8,6 +8,7 @@
  * - sendMessage abort
  * - transform delegates to sendMessage with safe defaults
  * - forkSession creates a new session
+ * - rewindSession via the native staged revert (chat-only, files never restored)
  * - abortSession / softAbortSession
  * - steerSession returns false
  * - Session tracking (hasActiveSession / getActiveSessionCount)
@@ -634,6 +635,169 @@ describe('OpenCodeSDKService', () => {
         it('throws when disposed', async () => {
             svc.dispose();
             await expect(svc.forkSession('any')).rejects.toThrow('disposed');
+        });
+    });
+
+    // ── Rewind (AC-02 / AC-05) ────────────────────────────────────────────
+
+    describe('rewindSession', () => {
+        /** Staged-revert API shim mirroring opencode's v2 `Revert` class. */
+        function createRevertApi() {
+            return {
+                stage: vi.fn().mockResolvedValue({ data: { messageID: 'msg-7' } }),
+                commit: vi.fn().mockResolvedValue({ data: undefined }),
+                clear: vi.fn().mockResolvedValue({ data: undefined }),
+            };
+        }
+
+        it('stages and commits a native revert, never restoring files', async () => {
+            const revert = createRevertApi();
+            const client = createMockClient();
+            (client.session as Record<string, unknown>).revert = revert;
+            stubSDKWithClient(client);
+
+            const result = await svc.rewindSession('session-1', 'msg-7');
+
+            expect(revert.stage).toHaveBeenCalledWith({
+                sessionID: 'session-1',
+                messageID: 'msg-7',
+                files: false,
+            });
+            expect(revert.commit).toHaveBeenCalledWith({ sessionID: 'session-1' });
+            // AC-05: file snapshots must not be restored.
+            expect(revert.stage.mock.calls[0][0].files).toBe(false);
+            // In-place truncate — the session id is unchanged.
+            expect(result).toEqual({ eventsRemoved: 0, upToEventId: 'msg-7' });
+        });
+
+        it('reports a removed count when the revert payload carries one', async () => {
+            const revert = createRevertApi();
+            revert.stage.mockResolvedValue({ data: { messageID: 'msg-7', eventsRemoved: 4 } });
+            const client = createMockClient();
+            (client.session as Record<string, unknown>).revert = revert;
+            stubSDKWithClient(client);
+
+            const result = await svc.rewindSession('session-1', 'msg-7');
+            expect(result.eventsRemoved).toBe(4);
+        });
+
+        it('falls back to the v2 client when the primary client has no staged revert', async () => {
+            const revert = createRevertApi();
+            const client = createMockClient();
+            // v1 shape: `session.revert` is a plain function that restores files.
+            (client.session as Record<string, unknown>).revert = vi.fn();
+            const v2Client = { session: { revert } };
+            const createV2Client = vi.fn().mockReturnValue(v2Client);
+            mockDynamicImport.mockImplementation(async (specifier: string) => {
+                if (specifier.includes('/v2/')) return { createOpencodeClient: createV2Client };
+                return {
+                    createOpencode: vi.fn().mockResolvedValue({
+                        client,
+                        server: { url: 'http://127.0.0.1:4096', close: vi.fn() },
+                    }),
+                    createOpencodeClient: vi.fn().mockReturnValue(client),
+                };
+            });
+
+            const result = await svc.rewindSession('session-1', 'msg-7');
+            expect(createV2Client).toHaveBeenCalledWith(
+                expect.objectContaining({ baseUrl: 'http://127.0.0.1:4096' }),
+            );
+            expect(revert.stage).toHaveBeenCalledWith({
+                sessionID: 'session-1',
+                messageID: 'msg-7',
+                files: false,
+            });
+            expect(result.upToEventId).toBe('msg-7');
+        });
+
+        it('throws REWIND_UNSUPPORTED when no staged revert API is reachable', async () => {
+            const client = createMockClient();
+            // Only the file-reverting v1 endpoint exists — must not be used.
+            const legacyRevert = vi.fn();
+            (client.session as Record<string, unknown>).revert = legacyRevert;
+            stubSDKWithClient(client);
+
+            await expect(svc.rewindSession('session-1', 'msg-7')).rejects.toMatchObject({
+                code: 'REWIND_UNSUPPORTED',
+                provider: OPENCODE_PROVIDER,
+            });
+            expect(legacyRevert).not.toHaveBeenCalled();
+        });
+
+        it('propagates a staged revert error and never commits', async () => {
+            const revert = createRevertApi();
+            revert.stage.mockResolvedValue({ error: { message: 'message not found' } });
+            const client = createMockClient();
+            (client.session as Record<string, unknown>).revert = revert;
+            stubSDKWithClient(client);
+
+            await expect(svc.rewindSession('session-1', 'msg-7')).rejects.toThrow('message not found');
+            expect(revert.commit).not.toHaveBeenCalled();
+        });
+
+        it('propagates a commit error', async () => {
+            const revert = createRevertApi();
+            revert.commit.mockResolvedValue({ error: 'session busy' });
+            const client = createMockClient();
+            (client.session as Record<string, unknown>).revert = revert;
+            stubSDKWithClient(client);
+
+            await expect(svc.rewindSession('session-1', 'msg-7')).rejects.toThrow('session busy');
+        });
+
+        it('throws when disposed', async () => {
+            svc.dispose();
+            await expect(svc.rewindSession('session-1', 'msg-7')).rejects.toThrow('disposed');
+        });
+    });
+
+    // AC-04: the user turn must carry a native anchor so it can be rewound later.
+    // For opencode that anchor is the message id `revert.stage({ messageID })`
+    // takes, read back from the session's message list after the prompt settles.
+    describe('sendMessage rewind anchor (AC-04)', () => {
+        it('returns the last user message id as userMessageEventId', async () => {
+            const client = createMockClient();
+            client.session.messages = vi.fn().mockResolvedValue({
+                data: [
+                    { info: { id: 'msg-old-user', sessionID: 's1', role: 'user' }, parts: [] },
+                    { info: { id: 'msg-old-assistant', sessionID: 's1', role: 'assistant' }, parts: [] },
+                    { info: { id: 'msg-new-user', sessionID: 's1', role: 'user' }, parts: [] },
+                    { info: { id: 'msg-new-assistant', sessionID: 's1', role: 'assistant' }, parts: [] },
+                ],
+            });
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({ prompt: 'Hello', sessionId: 's1' });
+
+            expect(result.success).toBe(true);
+            expect(result.userMessageEventId).toBe('msg-new-user');
+            expect(client.session.messages).toHaveBeenCalledWith({ path: { id: 's1' } });
+        });
+
+        it('leaves the anchor undefined when the session has no user message', async () => {
+            const client = createMockClient();
+            client.session.messages = vi.fn().mockResolvedValue({
+                data: [{ info: { id: 'msg-a', sessionID: 's1', role: 'assistant' }, parts: [] }],
+            });
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({ prompt: 'Hello', sessionId: 's1' });
+
+            expect(result.success).toBe(true);
+            expect(result.userMessageEventId).toBeUndefined();
+        });
+
+        it('still succeeds when the anchor lookup fails', async () => {
+            const client = createMockClient();
+            client.session.messages = vi.fn().mockRejectedValue(new Error('boom'));
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({ prompt: 'Hello', sessionId: 's1' });
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('Hello from OpenCode!');
+            expect(result.userMessageEventId).toBeUndefined();
         });
     });
 

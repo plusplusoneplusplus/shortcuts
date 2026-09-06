@@ -129,6 +129,14 @@ export interface ConversationAreaProps {
      */
     provider?: ChatProvider;
     /**
+     * Real provider of this conversation, forwarded to
+     * {@link ConversationTurnBubble} purely to shape the "Rewind to here"
+     * action. Separate from `provider` because that value is a display /
+     * model-picker provider the caller may have collapsed onto the user's
+     * default. Falls back to `provider` in the bubble when omitted.
+     */
+    rewindProvider?: ChatProvider;
+    /**
      * Quick Ask side-notes for this process (persisted + optimistic). Forwarded
      * to {@link ConversationTurnBubble}; only rendered on assistant turns when
      * the admin `features.quickAskSidenotes` flag is on.
@@ -208,6 +216,7 @@ export function ConversationArea({
     onMcpOAuthFailed,
     processError,
     provider,
+    rewindProvider,
     sidenotes,
     onCreateSidenote,
     onRetrySidenote,
@@ -320,6 +329,7 @@ export function ConversationArea({
                                                 openNotePath={openNotePath}
                                                 processType={processType}
                                                 provider={provider}
+                                                rewindProvider={rewindProvider}
                                             />
                                         ))}
                                     </div>
@@ -460,6 +470,7 @@ export function ConversationArea({
                                                     openNotePath={openNotePath}
                                                     processType={processType}
                                                     provider={provider}
+                                                    rewindProvider={rewindProvider}
                                                     sidenotes={sidenotes}
                                                     onCreateSidenote={onCreateSidenote}
                                                     onRetrySidenote={onRetrySidenote}

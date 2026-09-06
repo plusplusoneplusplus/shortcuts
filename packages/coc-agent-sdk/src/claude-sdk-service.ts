@@ -181,6 +181,12 @@ interface ClaudeUserMessage {
     session_id?: string;
     subagent_type?: string;
     task_description?: string;
+    /** Transcript uuid — the id `forkSession({ upToMessageId })` accepts (AC-04). */
+    uuid?: string;
+    /** True when the SDK is replaying an already-persisted message on resume. */
+    isReplay?: boolean;
+    /** True for SDK-generated user frames (e.g. interrupt notices). */
+    isSynthetic?: boolean;
 }
 
 interface ClaudeStreamingUserMessage {
@@ -460,12 +466,34 @@ interface ClaudeQueryHandle extends AsyncIterable<ClaudeSDKMessage> {
     return?(value?: unknown): Promise<{ done: true; value: unknown }>;
 }
 
+/**
+ * A single chain entry as returned by the SDK's `getSessionMessages()`. Only the
+ * fields the rewind path needs are modelled: the transcript is chronological, so
+ * the anchor's position is enough to derive the fork point.
+ */
+interface ClaudeSessionMessage {
+    type?: string;
+    uuid?: string;
+}
+
+type ClaudeForkSessionFn = (
+    sessionId: string,
+    options?: { dir?: string; upToMessageId?: string; title?: string },
+) => Promise<{ sessionId: string }>;
+
+type ClaudeGetSessionMessagesFn = (
+    sessionId: string,
+    options?: { dir?: string; includeSystemMessages?: boolean },
+) => Promise<ClaudeSessionMessage[]>;
+
 interface ClaudeSDKModule {
     query?: (options: ClaudeQueryOptions) => ClaudeQueryHandle;
-    forkSession?: (sessionId: string, options?: { dir?: string }) => Promise<{ sessionId: string }>;
+    forkSession?: ClaudeForkSessionFn;
+    getSessionMessages?: ClaudeGetSessionMessagesFn;
     default?: {
         query?: (options: ClaudeQueryOptions) => ClaudeQueryHandle;
-        forkSession?: (sessionId: string, options?: { dir?: string }) => Promise<{ sessionId: string }>;
+        forkSession?: ClaudeForkSessionFn;
+        getSessionMessages?: ClaudeGetSessionMessagesFn;
     } | ((options: ClaudeQueryOptions) => ClaudeQueryHandle);
 }
 
@@ -628,7 +656,8 @@ const runtimeRequire = createRequire(__filename);
 export class ClaudeSDKService implements ISDKService {
     private availabilityCache: IAvailabilityResult | null = null;
     private queryFn: ((options: ClaudeQueryOptions) => ClaudeQueryHandle) | null = null;
-    private forkSessionFn: ((sessionId: string, options?: { dir?: string }) => Promise<{ sessionId: string }>) | null = null;
+    private forkSessionFn: ClaudeForkSessionFn | null = null;
+    private getSessionMessagesFn: ClaudeGetSessionMessagesFn | null = null;
     private lastRateLimitInfo: ClaudeRateLimitInfo | null = null;
     private lastAccountInfo: ClaudeAccountInfo | null = null;
     private disposed = false;
@@ -654,6 +683,7 @@ export class ClaudeSDKService implements ISDKService {
             }
             this.queryFn = queryFn;
             this.forkSessionFn = this.resolveForkSessionFn(mod) ?? null;
+            this.getSessionMessagesFn = this.resolveGetSessionMessagesFn(mod) ?? null;
             this.availabilityCache = { available: true };
         } catch (err) {
             const isNotInstalled = err instanceof Error && (
@@ -693,12 +723,22 @@ export class ClaudeSDKService implements ISDKService {
         return undefined;
     }
 
-    private resolveForkSessionFn(
-        mod: ClaudeSDKModule,
-    ): ((sessionId: string, options?: { dir?: string }) => Promise<{ sessionId: string }>) | undefined {
+    private resolveForkSessionFn(mod: ClaudeSDKModule): ClaudeForkSessionFn | undefined {
         if (typeof mod.forkSession === 'function') return mod.forkSession;
         if (mod.default && typeof mod.default !== 'function' && typeof mod.default.forkSession === 'function') {
             return mod.default.forkSession;
+        }
+        return undefined;
+    }
+
+    private resolveGetSessionMessagesFn(mod: ClaudeSDKModule): ClaudeGetSessionMessagesFn | undefined {
+        if (typeof mod.getSessionMessages === 'function') return mod.getSessionMessages;
+        if (
+            mod.default &&
+            typeof mod.default !== 'function' &&
+            typeof mod.default.getSessionMessages === 'function'
+        ) {
+            return mod.default.getSessionMessages;
         }
         return undefined;
     }
@@ -707,6 +747,7 @@ export class ClaudeSDKService implements ISDKService {
         this.availabilityCache = null;
         this.queryFn = null;
         this.forkSessionFn = null;
+        this.getSessionMessagesFn = null;
         this.lastRateLimitInfo = null;
         this.lastAccountInfo = null;
     }
@@ -1208,6 +1249,10 @@ export class ClaudeSDKService implements ISDKService {
             // the final task notification still settles the turn instead of
             // leaving it hanging until the drain cap aborts it.
             let turnTerminalSignalSeen = false;
+            // Durable rewind anchor for this turn (AC-04): the transcript uuid of
+            // the user message that opened it. Persisted onto the user turn's
+            // `sdkEventId` and later fed back to `rewindSession()`.
+            let userMessageEventId: string | undefined;
             // Narrower: an `end_turn` frame is final for the WHOLE turn, so it
             // settles the moment the last task drains. A `result` is final only
             // for its own turn — the SDK re-invokes after a background task
@@ -1278,6 +1323,7 @@ export class ClaudeSDKService implements ISDKService {
                         await settleIfReady();
                     }
                 } else if (this.isUserMessage(msg)) {
+                    userMessageEventId = this.captureClaudeRewindAnchor(msg, userMessageEventId);
                     this.handleClaudeUserToolResults(msg, options, toolCalls, activeToolCalls);
                 } else if (this.isResultMessage(msg)) {
                     if (msg.subtype !== 'success' || msg.is_error) {
@@ -1411,6 +1457,7 @@ export class ClaudeSDKService implements ISDKService {
                 ...(tokenUsage ? { tokenUsage } : {}),
                 effectiveModel: model,
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
+                ...(userMessageEventId ? { userMessageEventId } : {}),
             } as IInvocationResult;
         } catch (err) {
             this.logClaudeSDKException(err, {
@@ -1655,6 +1702,25 @@ export class ClaudeSDKService implements ISDKService {
             msg !== null &&
             (msg as Record<string, unknown>).type === 'user'
         );
+    }
+
+    /**
+     * Pick the transcript uuid that anchors a rewind of this turn (AC-04).
+     *
+     * The SDK emits `type:'user'` for far more than the prompt itself — every
+     * tool result comes back on the same channel, and resumed sessions replay
+     * earlier turns. Forking at one of those would keep the prompt the rewind is
+     * meant to drop, so only the first non-replay, non-synthetic, non-tool-result
+     * frame counts. Anything else (including a frame with no uuid) leaves the
+     * turn without an anchor, i.e. simply not rewindable.
+     */
+    private captureClaudeRewindAnchor(msg: ClaudeUserMessage, current: string | undefined): string | undefined {
+        if (current) return current;
+        if (typeof msg.uuid !== 'string' || msg.uuid.length === 0) return current;
+        if (msg.isReplay || msg.isSynthetic) return current;
+        if (msg.parent_tool_use_id) return current;
+        if (containsClaudeToolResultBlock(msg.message?.content)) return current;
+        return msg.uuid;
     }
 
     private isResultMessage(msg: ClaudeSDKMessage): msg is ClaudeResultMessage {
@@ -2127,12 +2193,67 @@ export class ClaudeSDKService implements ISDKService {
     }
 
     /**
-     * History rewind/truncation is not supported by the Claude Code SDK
-     * (AC-02). Throws the typed {@link RewindUnsupportedError} so the backend
-     * can surface a "rewind unsupported" rejection to the user.
+     * Rewind a Claude session's chat history to an anchor user-message UUID.
+     *
+     * Claude has no in-place truncate the way Copilot does — its native rewind
+     * primitive is `forkSession(sessionId, { upToMessageId })`, which copies the
+     * transcript chain into a BRAND-NEW session up to (and including) the given
+     * entry. So rewind here is a fork: the returned {@link RewindResult} carries
+     * `newSessionId`, and the caller must swap that onto the process. The
+     * original session is left untouched on disk.
+     *
+     * `upToMessageId` is inclusive, but rewind semantics are "drop this user
+     * message and everything after it" — so we read the chain with
+     * `getSessionMessages()`, locate the anchor, and fork at its PREDECESSOR.
+     * That is also why the anchor must not be the first entry: there would be
+     * nothing left to fork from.
+     *
+     * Chat-only by contract (AC-05): `Query.rewindFiles()` is deliberately never
+     * called, so files, git state, and edits are untouched.
+     *
+     * Throws {@link RewindUnsupportedError} when the installed
+     * `@anthropic-ai/claude-agent-sdk` build lacks either export — the same
+     * defensive capability check used for `forkSession` and compaction.
      */
-    public async rewindSession(_sessionId: string, _eventId: string): Promise<RewindResult> {
-        throw new RewindUnsupportedError(CLAUDE_PROVIDER);
+    public async rewindSession(sessionId: string, eventId: string): Promise<RewindResult> {
+        if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
+        const avail = await this.isAvailable();
+        if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
+        if (!this.forkSessionFn || !this.getSessionMessagesFn) {
+            throw new RewindUnsupportedError(
+                CLAUDE_PROVIDER,
+                `Rewind is not supported: the installed ${CLAUDE_AGENT_SDK_PACKAGE} package does not ` +
+                'export both forkSession and getSessionMessages.',
+            );
+        }
+
+        const messages = await this.getSessionMessagesFn(sessionId);
+        const anchorIndex = messages.findIndex((m) => m?.uuid === eventId);
+        if (anchorIndex < 0) {
+            throw new Error(
+                `Claude session '${sessionId}' has no transcript entry '${eventId}' to rewind to.`,
+            );
+        }
+        if (anchorIndex === 0) {
+            throw new Error(
+                `Cannot rewind Claude session '${sessionId}' to its first transcript entry — ` +
+                'the fork would have no history to branch from.',
+            );
+        }
+
+        const forkPoint = messages[anchorIndex - 1]?.uuid;
+        if (!forkPoint) {
+            throw new Error(
+                `Claude session '${sessionId}' transcript entry before '${eventId}' has no uuid to fork at.`,
+            );
+        }
+
+        const forked = await this.forkSessionFn(sessionId, { upToMessageId: forkPoint });
+        return {
+            eventsRemoved: messages.length - anchorIndex,
+            upToEventId: eventId,
+            newSessionId: forked.sessionId,
+        };
     }
 
     /**
@@ -2353,6 +2474,7 @@ export class ClaudeSDKService implements ISDKService {
         this.availabilityCache = null;
         this.queryFn = null;
         this.forkSessionFn = null;
+        this.getSessionMessagesFn = null;
         this.lastRateLimitInfo = null;
         this.lastAccountInfo = null;
     }
@@ -2376,6 +2498,17 @@ export function registerClaudeSDKService(): ClaudeSDKService {
     const svc = new ClaudeSDKService();
     sdkServiceRegistry.register(CLAUDE_PROVIDER, svc);
     return svc;
+}
+
+/** True when a user message's content carries any `tool_result` block. */
+function containsClaudeToolResultBlock(content: unknown): boolean {
+    if (!Array.isArray(content)) return false;
+    return content.some(
+        (block) =>
+            typeof block === 'object' &&
+            block !== null &&
+            (block as Record<string, unknown>).type === 'tool_result',
+    );
 }
 
 /** True for an SDK `type: 'user'` message (used by the compaction summary fallback). */
