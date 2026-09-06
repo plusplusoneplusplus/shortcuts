@@ -20,43 +20,13 @@ import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
 import type { FileBlob } from '../../../shared/file-viewer/types';
 import { resolveSourceCanvasTarget, isSourceCanvasResolveError } from './resolve';
+import { extractContent, type PreviewResponse } from './previewResponse';
+import { SOURCE_CANVAS_LOADING as LOADING } from './types';
 import type { SourceCanvasContentState, SourceCanvasFileRef } from './types';
 
 // Re-exported so the panel/dock/index import sites stay put; the shape itself
 // lives with the folder's other public vocabulary.
 export type { SourceCanvasContentState, SourceCanvasContentStatus } from './types';
-
-/** What `previewWorkspaceFile` may hand back — every field is best-effort. */
-interface PreviewResponse {
-    content?: unknown;
-    lines?: unknown;
-    language?: unknown;
-    /** Absolute path the server settled on (a repo-group ref is sent relative). */
-    path?: unknown;
-    /** Member workspace that actually owns the file, for repo attribution. */
-    resolvedWorkspaceId?: unknown;
-}
-
-/** Reconstruct full text from a `previewWorkspaceFile` response. */
-function extractContent(res: PreviewResponse): string {
-    if (typeof res.content === 'string') {
-        return res.content;
-    }
-    if (Array.isArray(res.lines)) {
-        return (res.lines as unknown[])
-            .map((line) => (typeof line === 'string' ? line : ''))
-            .join('\n');
-    }
-    return '';
-}
-
-const LOADING: SourceCanvasContentState = {
-    status: 'loading',
-    content: '',
-    language: '',
-    resolvedPath: '',
-    error: '',
-};
 
 export function useSourceCanvasContent(
     fileRef: SourceCanvasFileRef | null,

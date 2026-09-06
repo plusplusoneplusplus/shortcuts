@@ -55,3 +55,15 @@ export interface SourceCanvasContentState {
     /** Failure reason (error). */
     error: string;
 }
+
+/**
+ * The neutral starting state, and the base every other state spreads from —
+ * so the empty-string defaults above are written exactly once.
+ */
+export const SOURCE_CANVAS_LOADING: SourceCanvasContentState = {
+    status: 'loading',
+    content: '',
+    language: '',
+    resolvedPath: '',
+    error: '',
+};
