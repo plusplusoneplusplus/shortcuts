@@ -23,7 +23,7 @@
  * Git, queue and preferences traffic targets the selected clone's server (AC-07).
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { GitPatchApplyResponse } from '@plusplusoneplusplus/coc-client';
 import { useWebSocket } from '../../hooks/useWebSocket';
@@ -64,6 +64,8 @@ const GIT_CHANGED_DEBOUNCE_MS = 500;
 
 interface RepoGitTabProps {
     workspaceId: string;
+    /** Repo-group selector hosted beside the branch, including during load/error states. */
+    repositorySelector?: ReactNode;
     /**
      * When `'split-workspace'`, the tab renders ONLY its git list (commits +
      * working tree + branch changes, including the header stage/commit/push
@@ -90,7 +92,7 @@ interface RepoGitTabProps {
     headerToolbarContainer?: HTMLElement | null;
 }
 
-export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps) {
+export function RepoGitTab({ workspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -486,15 +488,19 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
 
     if (data.loading) {
         return (
-            <div className="flex items-center justify-center py-8" data-testid="git-tab-loading">
-                <Spinner size="lg" />
-            </div>
+            <>
+                {repositorySelector && <div className="px-2.5 py-1.5">{repositorySelector}</div>}
+                <div className="flex items-center justify-center py-8" data-testid="git-tab-loading">
+                    <Spinner size="lg" />
+                </div>
+            </>
         );
     }
 
     if (data.error) {
         return (
             <div className="p-4 text-sm text-[#d32f2f] dark:text-[#f48771]" data-testid="git-tab-error">
+                {repositorySelector}
                 <p>{data.error}</p>
                 <button
                     className="mt-2 px-3 py-1 text-xs rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#333] dark:text-[#ccc] hover:opacity-80"
@@ -542,6 +548,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     // last-clicked and steal the shared detail pane from the chat.
     const panelHeader = (
         <GitPanelHeader
+            repositorySelector={repositorySelector}
             branch={data.branchName || 'HEAD'}
             ahead={data.ahead}
             behind={data.behind}

@@ -12,10 +12,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
-    RepoGitTab: ({ workspaceId }: { workspaceId: string }) => (
-        <div data-testid="stub-repo-git-tab" data-workspace={workspaceId} />
+    RepoGitTab: ({ workspaceId, repositorySelector }: { workspaceId: string; repositorySelector?: ReactNode }) => (
+        <div data-testid="stub-repo-git-tab" data-workspace={workspaceId}>{repositorySelector}</div>
     ),
 }));
 
@@ -81,7 +82,7 @@ describe('RepoGroupGitTab member persistence', () => {
         const { rerender } = render(
             <AppProvider><RepoGroupGitTab workspaceId={GROUP_ID} members={members} /></AppProvider>
         );
-        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
+        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), { target: { value: 'repo-b' } });
         expect(selectedMember()).toBe('repo-b');
 
         rerender(<AppProvider><div data-testid="elsewhere" /></AppProvider>);

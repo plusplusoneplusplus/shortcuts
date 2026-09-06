@@ -8,7 +8,7 @@
  * explicit workspace id, so full parity comes for free — including members owned
  * by a remote CoC server, which route through `useCocClient(workspaceId)`.
  *
- * A picker above the panel lists every member with its git status badge, so the
+ * A dropdown in the Git toolbar lists every member with its git status, so the
  * user switches repos inside the group without leaving the tab. Stale members
  * (`workspace-removed` / `path-missing`) are listed but disabled and are never
  * selected: they have no usable root path, so the host falls back to the first
@@ -19,7 +19,7 @@
  * group — after a tab switch or a full reload — lands on the same member.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useAppOptional } from '../contexts/AppContext';
 import { RepoGitTab } from '../features/git/RepoGitTab';
 import { RepoGroupGitMemberPicker } from './RepoGroupGitMemberPicker';
@@ -87,6 +87,20 @@ export function RepoGroupGitTab({ workspaceId, members }: RepoGroupGitTabProps) 
     const gitInfo = useRepoGroupMemberGitInfo(healthyIds);
 
     const handleSelect = useCallback((memberId: string) => setPreferredId(memberId), [setPreferredId]);
+    const selectorRef = useRef<HTMLSelectElement | null>(null);
+    const restoreSelectorFocus = useRef(false);
+    // The keyed Git panel and its loading/error views remount the selector.
+    // Carry keyboard focus with it so arrow-key navigation can continue.
+    const setSelectorRef = useCallback((element: HTMLSelectElement | null) => {
+        if (!element && selectorRef.current === document.activeElement) {
+            restoreSelectorFocus.current = true;
+        }
+        selectorRef.current = element;
+        if (element && restoreSelectorFocus.current) {
+            element.focus();
+            restoreSelectorFocus.current = false;
+        }
+    }, []);
 
     if (members === undefined) {
         return (
@@ -96,6 +110,16 @@ export function RepoGroupGitTab({ workspaceId, members }: RepoGroupGitTabProps) 
         );
     }
 
+    const repositorySelector = (
+        <RepoGroupGitMemberPicker
+            members={members}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+            gitInfo={gitInfo}
+            selectRef={setSelectorRef}
+        />
+    );
+
     return (
         <div
             className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden"
@@ -103,20 +127,13 @@ export function RepoGroupGitTab({ workspaceId, members }: RepoGroupGitTabProps) 
             data-group={workspaceId}
             data-member={selectedId ?? ''}
         >
-            <RepoGroupGitMemberPicker
-                members={members}
-                selectedId={selectedId}
-                onSelect={handleSelect}
-                gitInfo={gitInfo}
-            />
             <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 {selectedId ? (
-                    <RepoGitTab key={selectedId} workspaceId={selectedId} />
+                    <RepoGitTab key={selectedId} workspaceId={selectedId} repositorySelector={repositorySelector} />
                 ) : (
-                    // Every member is stale (or the group is empty): the picker
-                    // above still lists them so the user can see why.
                     <div className="text-xs text-[#848484] px-3 py-2" data-testid="repo-group-git-empty">
-                        This group has no usable member repo to show git history for.
+                        {repositorySelector}
+                        <p className="mt-2">This group has no usable member repo to show git history for.</p>
                     </div>
                 )}
             </div>

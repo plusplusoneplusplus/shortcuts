@@ -235,14 +235,27 @@ that same registry.
 
 **View.** A `group-<slug>` id renders `repos/RepoGroupView.tsx`, a branch in `ReposView`
 recognized by id **prefix** (unlike My Work / My Life's id-equality checks) with no
-feature flag. It exposes three tabs — Workspace (chat, key `chats`, `RepoChatTab`), Notes
-(`NotesView`, notes root = the group's own workspace dir), and Settings
-(`repos/RepoGroupSettingsTab.tsx`, `Alt+C`); git-dependent tabs are absent by
-construction. `getRepoGroupHeaderConfig(workspaceId, label)` supplies the
+feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Git
+(`RepoGroupGitTab`), Notes (`NotesView`, notes root = the group's own workspace dir),
+and Settings (`repos/RepoGroupSettingsTab.tsx`, `Alt+C`).
+`getRepoGroupHeaderConfig(workspaceId, label)` supplies the
 `VirtualWorkspaceHeaderConfig` (`testIdPrefix: 'repo-group'`, `defaultTab: 'chats'`, no
 actions), labeled with the registered workspace name (id fallback while loading).
 
-**Settings tab.** `features/repo-settings/SettingsShell.tsx` supplies the same sidebar
+### Group Git
+
+`RepoGroupGitTab` hosts one member's standalone `RepoGitTab`, keyed by member id
+to isolate panel state. `RepoGroupGitMemberPicker` is a native dropdown passed
+through `RepoGitTab.repositorySelector` into `GitPanelHeader`; the selector also
+stays available during loading and errors. Options include Git status from
+`useRepoGroupMemberGitInfo`; stale members are disabled with a reason. Selection
+persists per group in `AppContext.repoGroupGitMemberState` and localStorage,
+falling back to the first healthy member. Git calls use the selected member's
+clone-routed workspace id.
+
+### Group settings
+
+`features/repo-settings/SettingsShell.tsx` supplies the same sidebar
 and content-panel chrome used by `RepoSettingsTab`. A group renders one selected sidebar
 item, **Repos**, with no filter or group heading. `RepoGroupMemberList` sits directly in
 the section body: one row per member (name, `rootPath`, stale badge) with an
@@ -251,7 +264,7 @@ the save is optimistic and rolls back with a per-row error message when
 `PATCH /api/repo-groups/:id` (`{ descriptions: { [id]: next } }`) fails. Membership
 itself stays in `RepoGroupDialog`, which edits the same descriptions.
 
-A group has no git, MCP config, per-repo preferences, or `SettingsSection` sub-route.
+A group's root has no Git repository, MCP config, per-repo preferences, or `SettingsSection` sub-route.
 `#repos/<groupId>/settings` (no section suffix) is its canonical URL.
 `buildWorkspaceSubTabSuffix(workspaceId, tab, state, taskId)` in
 `layout/dashboardRoutes.ts` returns a bare `/settings` for a `group-*` id and otherwise
@@ -260,8 +273,8 @@ delegates to `buildRepoSubTabSuffix`. Every navigator that knows its target id c
 `resolveWorkspaceRouteSuffix`). `GlobalStatusDock` exempts groups from its settings
 stand-down because the group shell has no docked sidebar footer.
 Members come from `useRepoGroupMembers(workspaceId, baseUrl, enabled)`
-(`repos/useRepoGroupMembers.ts`), gated on the tab being visible so a group nobody opens
-Settings on costs no request.
+(`repos/useRepoGroupMembers.ts`), enabled when Settings, Git, or the right dock
+needs membership.
 
 **Right dock.** On desktop with `splitWorkspacePanel` on, `RepoGroupView` also renders
 `features/repo-detail/WorkspaceRightDock` as the outermost-right column (same gate as

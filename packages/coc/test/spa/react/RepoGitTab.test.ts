@@ -639,7 +639,7 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain('export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps)');
+            expect(source).toContain('export function RepoGitTab({ workspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps)');
         });
 
         it('derives isSplitWorkspace from the layout prop', () => {

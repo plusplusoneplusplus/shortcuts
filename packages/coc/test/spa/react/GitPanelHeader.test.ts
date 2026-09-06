@@ -449,7 +449,7 @@ describe('GitPanelHeader', () => {
         });
 
         it('drops the "Pull" word below 280px of header width, keeping the icon', () => {
-            expect(source).toContain('<span className="[@container_(max-width:279px)]:hidden">Pull</span>');
+            expect(source).toContain("'[@container_(max-width:279px)]:hidden'");
         });
 
         it('hides the last-refreshed timestamp below 320px of header width', () => {

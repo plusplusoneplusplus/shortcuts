@@ -14,6 +14,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 const client = {
     request: vi.fn().mockResolvedValue({ skills: [] }),
@@ -71,8 +72,11 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitList
     isTouchOnly: () => false,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', () => ({
-    GitPanelHeader: ({ onRefresh }: { onRefresh: () => void }) => (
-        <button data-testid="stub-git-header-refresh" onClick={onRefresh}>refresh</button>
+    GitPanelHeader: ({ onRefresh, repositorySelector }: { onRefresh: () => void; repositorySelector?: ReactNode }) => (
+        <div data-testid="stub-git-header">
+            {repositorySelector}
+            <button data-testid="stub-git-header-refresh" onClick={onRefresh}>refresh</button>
+        </div>
     ),
 }));
 
@@ -97,6 +101,37 @@ beforeEach(() => {
 });
 
 describe('RepoGitTab — standalone layout (flag off)', () => {
+    it('passes the repository selector into the Git toolbar', async () => {
+        await renderTab({ repositorySelector: <select aria-label="Member repository"><option>repo-a</option></select> });
+        expect(screen.getByTestId('stub-git-header').contains(screen.getByRole('combobox'))).toBe(true);
+    });
+
+    it('keeps the repository selector usable while Git data is loading', () => {
+        client.git.listCommits.mockReturnValueOnce(new Promise(() => {}));
+        const onChange = vi.fn();
+        render(<RepoGitTab workspaceId="ws-loading" repositorySelector={
+            <select aria-label="Member repository" onChange={onChange}>
+                <option value="repo-a">repo-a</option><option value="repo-b">repo-b</option>
+            </select>
+        } />);
+        expect(screen.getByTestId('git-tab-loading')).toBeTruthy();
+        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'repo-b' } });
+        expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the repository selector usable after Git data fails to load', async () => {
+        client.git.listCommits.mockRejectedValueOnce(new Error('Repo unavailable'));
+        const onChange = vi.fn();
+        render(<RepoGitTab workspaceId="ws-error" repositorySelector={
+            <select aria-label="Member repository" onChange={onChange}>
+                <option value="repo-a">repo-a</option><option value="repo-b">repo-b</option>
+            </select>
+        } />);
+        await waitFor(() => expect(screen.getByTestId('git-tab-error')).toBeTruthy());
+        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'repo-b' } });
+        expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
     it('renders its own list and detail panes in place', async () => {
         await renderTab({});
         expect(screen.getByTestId('repo-git-tab')).toBeTruthy();

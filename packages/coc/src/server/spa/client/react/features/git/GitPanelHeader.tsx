@@ -5,12 +5,14 @@
  * (Pull as default + chevron dropdown for Fetch/Pull/Push), and a refresh button.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { formatRelativeTime } from '../../utils/format';
 import { GitAutoPullControl, type AutoPullSetting } from './GitAutoPullControl';
 import type { GitAutoPullStatusResponse } from '@plusplusoneplusplus/coc-client';
 
 interface GitPanelHeaderProps {
+    /** Optional repo-group member selector, placed before the branch pill. */
+    repositorySelector?: ReactNode;
     branch: string;
     ahead: number;
     behind: number;
@@ -46,7 +48,7 @@ interface GitPanelHeaderProps {
 
 const spinKeyframes = `@keyframes gitRefreshSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .git-refresh-spin { animation: gitRefreshSpin 1s linear infinite; }`;
 
-export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing, autoPull, onAutoPullChange, autoPullStatus, lastRefreshedAt, compact }: GitPanelHeaderProps) {
+export function GitPanelHeader({ repositorySelector, branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing, autoPull, onAutoPullChange, autoPullStatus, lastRefreshedAt, compact }: GitPanelHeaderProps) {
     const hasAheadBehind = ahead > 0 || behind > 0;
     const hasAnyAction = onFetch || onPull || onPush || onRebaseAutosquash;
     const isActioning = fetching || pulling || pushing || rebasing;
@@ -91,9 +93,10 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
                 : 'git-panel-header flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526] sticky top-0 z-20 min-h-[38px] [container-type:inline-size]'}
             data-testid="git-panel-header"
         >
+            {repositorySelector}
             {/* Branch pill */}
             <button
-                className={`inline-flex items-center font-mono font-semibold border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#2d2d2d]/70 text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate min-w-0 ${compact ? 'gap-1 px-1.5 py-0 text-[10px] leading-[15px] max-w-[160px]' : 'gap-1.5 px-2 py-[2px] text-[11px] leading-[18px] max-w-[360px]'} ${onBranchClick ? 'cursor-pointer hover:bg-white hover:border-[#0078d4] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
+                className={`inline-flex items-center font-mono font-semibold border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#2d2d2d]/70 text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate min-w-0 ${repositorySelector ? 'shrink-0 max-w-[5rem]' : compact ? 'max-w-[160px]' : 'max-w-[360px]'} ${compact ? 'gap-1 px-1.5 py-0 text-[10px] leading-[15px]' : 'gap-1.5 px-2 py-[2px] text-[11px] leading-[18px]'} ${onBranchClick ? 'cursor-pointer hover:bg-white hover:border-[#0078d4] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
                 title={branch}
                 data-testid="git-branch-pill"
                 onClick={onBranchClick}
@@ -109,7 +112,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
             {/* Ahead/behind badge */}
             {hasAheadBehind && (
                 <span
-                    className={`inline-flex items-center gap-1 font-mono font-semibold text-[#616161] dark:text-[#999] tabular-nums whitespace-nowrap shrink-0 ${compact ? 'text-[10px] leading-[15px]' : 'text-[11px] leading-[18px]'}`}
+                    className={`inline-flex items-center gap-1 font-mono font-semibold text-[#616161] dark:text-[#999] tabular-nums whitespace-nowrap shrink-0 ${repositorySelector ? '[@container_(max-width:399px)]:hidden' : ''} ${compact ? 'text-[10px] leading-[15px]' : 'text-[11px] leading-[18px]'}`}
                     data-testid="git-ahead-behind-badge"
                 >
                     {ahead > 0 && <span className="text-[#16825d]" data-testid="git-ahead-count">↑{ahead}</span>}
@@ -146,7 +149,7 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
                                     <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
                                 </svg>
                             )}
-                            <span className="[@container_(max-width:279px)]:hidden">Pull</span>
+                            <span className={repositorySelector ? '[@container_(max-width:399px)]:hidden' : '[@container_(max-width:279px)]:hidden'}>Pull</span>
                         </button>
 
                         {/* Chevron toggle */}
