@@ -41,6 +41,21 @@ without writing the read value, and scroll restores only after the scoped tree i
 
 ## Rich editor basics
 
+### Host seams
+
+`NoteEditor` publishes two optional props for a host that owns the note's close
+affordance — `onDirtyChange(dirty)` and `onRegisterSave(save | null)`, the same
+contract `explorer/PreviewPane` established and `CanvasPanel` also implements. The
+registered save awaits `flushSave()` and then reads whether a pending write remains:
+`flushSave` **swallows its own errors by design** (autosave callers watch `saveState`
+instead), so its resolution says nothing about success and the pending write is the
+only honest signal. `onFlushSave` (save-before-send) is a separate, untouched prop.
+
+The unified right panel's dirty-close guard is the only consumer today — it needs a
+note to answer both "is there unsaved text?" and "write it now" before it will close
+a tab. See `features/repo-detail/unified-right-panel/AGENTS.md`.
+
+
 ### Links and file references
 
 The destination URL and platform-specific modifier-click instruction go in a native

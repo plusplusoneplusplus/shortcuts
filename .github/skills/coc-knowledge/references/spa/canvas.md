@@ -6,6 +6,13 @@ Two unrelated right-side panels sharing the chat detail column: the AI co-edited
 opens. Chat list and lens: [chat.md](chat.md); conversation rendering:
 [chat-conversation.md](chat-conversation.md).
 
+With `features.unifiedRightPanel` on, both surfaces become tabs in the one right panel
+instead of separate columns, and an AI `canvas-updated` event activates the affected
+canvas tab in the current chat; the panel supplies `liveEvent` from its own
+`useSyncExternalStore` relay, since the SSE stream arrives far from the mounted view.
+Flag-off, everything below is unchanged. See
+`features/repo-detail/unified-right-panel/AGENTS.md`.
+
 ## CanvasPanel
 
 `features/canvas/CanvasPanel.tsx` is a composition root gated by `canvas.enabled`
@@ -40,6 +47,14 @@ HTTP 409 surfaces a conflict, and a live AI update arriving over unsaved local e
 held rather than clobbering the draft. The header revision chip steps through the canvas
 versions API, showing older snapshots read-only and restoring one as a new revision
 (blocked while local edits are unsaved).
+
+`useCanvasRecord.saveNow()` cancels the pending debounce and writes through the same
+`writeDraft` the timer uses — an explicit save is not a second write path. It returns
+false on a 409, on any refused write, and when the draft moved while the write was in
+flight (the write landed but the text on screen did not, so a close would still lose an
+edit). `CanvasPanel` exposes it to a host through `onDirtyChange` / `onRegisterSave`,
+the same two props `explorer/PreviewPane` and `NoteEditor` publish, so a host owning the
+close affordance can prompt Save / Don't Save / Cancel.
 
 ### Window controls
 
@@ -142,6 +157,15 @@ which would cost a parse of up to `MAX_KUSTO_ROWS` (10,000) rows per revision sw
 descriptor and picks the renderer from the persisted `type`: Excalidraw a view-only preview, extension `ExtensionCanvasView`, `kusto` a compact
 `KustoView`, markdown/code a document preview. `.md-excalidraw-embed` placeholders in
 historical message HTML remain supported.
+
+With the unified right panel enabled for the embed's own chat, a loaded embed also
+renders an **Open in panel** action (`canvas-embed-open-in-panel`) above whichever
+body renders. The chat id reaches the embed through `ChatRenderContext.chatId` —
+`CanvasEmbed` is mounted by `MarkdownView` through a `createPortal` from a placeholder
+in pre-rendered HTML, and React context crosses portals where props cannot. The tab
+descriptor is built by the `+` menu's own builder, so the embed, the menu, and an AI
+update all reach one tab id for one canvas. Without a matching host the inline preview
+is byte-for-byte unchanged.
 
 `KustoEmbedGroupProvider` (`shared/KustoEmbedGroup.tsx`, wrapping the turn list in
 `ConversationArea`) keeps only the last inline Kusto embed in document order expanded,
