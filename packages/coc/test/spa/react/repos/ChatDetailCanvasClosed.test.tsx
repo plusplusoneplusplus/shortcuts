@@ -385,6 +385,15 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', as
     };
 });
 
+// Path resolution for a clicked source link reads the workspace list (with
+// remote clones folded in); AppProvider fetches it, so pin a known root here
+// rather than driving the reducer from a test.
+vi.mock('../../../../src/server/spa/client/react/repos/workspacesWithRemote', () => ({
+    useWorkspacesWithRemote: () => [{ id: 'ws-1', name: 'main-repo', rootPath: '/repos/main' }],
+    useWorkspacesWithRemoteOptional: () => [{ id: 'ws-1', name: 'main-repo', rootPath: '/repos/main' }],
+    withRemoteWorkspaces: (w: any[]) => w,
+}));
+
 // Now import the component under test (after mocks)
 import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
 
@@ -695,6 +704,70 @@ describe('ChatDetail — whisper diff entry point with the unified right panel (
         dispatchWhisperDiff('a.ts');
 
         await waitFor(() => expect(screen.getByTestId('whisper-diff-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    });
+});
+
+describe('ChatDetail — source-link entry point with the unified right panel (AC-04)', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+    });
+
+    function dispatchSourceLink(detail: Record<string, unknown>) {
+        act(() => {
+            window.dispatchEvent(new CustomEvent('coc-open-source-canvas', { detail }));
+        });
+    }
+
+    it('files a READ-ONLY file tab in the hosting panel instead of the docked source canvas', async () => {
+        renderHostedChat('task-A');
+        dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID, line: 12 });
+
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.kind)).toEqual(['file']);
+        });
+        // One right-side surface: the chat's own column must not also appear.
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+
+        const tab = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        expect(tab.ownerWorkspaceId).toBe(WS_ID);
+        expect(tab.chatId).toBe('task-A');
+        expect(tab.resourceId).toBe('src/app.ts');
+        expect(tab.line).toBe(12);
+        // A link is a reference, not an authorization — the tab stays read-only.
+        expect(tab.readOnly).toBe(true);
+    });
+
+    it('keeps the docked canvas for refs the panel’s file view cannot read', async () => {
+        // A note ref has no `file` view yet, and an out-of-root path is not
+        // readable through a repo's blob API — both keep the existing surface
+        // rather than opening a tab that could only render an error.
+        renderHostedChat('task-A');
+        dispatchSourceLink({ filePath: '/repos/main/notes/n.md', wsId: WS_ID, kind: 'note' });
+
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+
+        dispatchSourceLink({ filePath: '/elsewhere/src/a.ts', wsId: WS_ID });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock').getAttribute('data-path')).toBe('/elsewhere/src/a.ts'));
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    });
+
+    it('keeps the chat’s own column when the panel is showing another chat', async () => {
+        renderHostedChat('task-A', 'task-B');
+        dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID });
+
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-B')).toEqual([]);
+    });
+
+    it('keeps the chat’s own column with no panel hosting it at all', async () => {
+        renderChat('task-A');
+        dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID });
+
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
     });
 });

@@ -51,6 +51,8 @@ import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCo
 import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
+import { sourceLinkTabInput } from '../repo-detail/unified-right-panel/unifiedSourceLinks';
+import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
 import { WhisperSkillDetailDialogProvider } from './conversation/tool-calls/WhisperSkillDetailDialog';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
@@ -565,6 +567,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // of those the entry points below keep their existing sibling columns.
     const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
 
+    // Path resolution for a clicked source link needs the remote-server
+    // workspaces folded in, exactly as the docked canvas's own hook does — a
+    // link clicked in a remote conversation names a workspace that is not in
+    // `state.workspaces`, and without it nothing resolves.
+    const resolvableWorkspaces = useWorkspacesWithRemote();
+
     // A clicked changed-file row dispatches its diff context on `window` rather
     // than prop-drilling through the conversation tree (mirrors the
     // `coc-open-source-canvas` bridge); open the docked panel from it.
@@ -607,6 +615,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // `coc-open-source-canvas` to open the docked source-file canvas. The bare
     // path is what the canvas resolves + fetches; any `:line`/`:start-end` info
     // travels in the event for scroll + highlight.
+    //
+    // With a unified panel hosting this chat, a `code` ref becomes a READ-ONLY
+    // `file` tab instead (AC-04): `sourceLinkTabInput` runs the same resolution
+    // the docked canvas would have run and returns the descriptor when the ref
+    // lands inside a known workspace root. It returns null for note/folder refs
+    // and for refs only the canvas's probing transport can fetch (a repo-group
+    // relative ref, a path outside every root) — those keep the docked canvas,
+    // since a tab there could only ever render an error.
     const openSourceCanvas = sourceCanvas.open;
     useEffect(() => {
         const handler = (event: Event) => {
@@ -614,18 +630,35 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             const filePath = typeof detail.filePath === 'string' ? detail.filePath : '';
             if (!filePath) return;
             const kind = detail.kind === 'note' || detail.kind === 'dir' ? detail.kind : 'code';
-            openSourceCanvas({
+            const fileRef = {
                 fullPath: filePath,
                 wsId: typeof detail.wsId === 'string' ? detail.wsId : undefined,
                 line: typeof detail.line === 'number' ? detail.line : undefined,
                 endLine: typeof detail.endLine === 'number' ? detail.endLine : undefined,
                 sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
                 kind,
-            });
+            };
+            if (unifiedPanelHost) {
+                const input = sourceLinkTabInput({
+                    fileRef,
+                    workspaces: resolvableWorkspaces,
+                    // The panel's scope; the descriptor's owner is whichever clone
+                    // the resolution picked.
+                    scopeWorkspaceId: unifiedPanelHost.workspaceId,
+                    // The originating chat, never whichever chat is selected by
+                    // the time this lands.
+                    chatId: taskId,
+                });
+                if (input) {
+                    openUnifiedPanelTab(unifiedPanelHost.workspaceId, input);
+                    return;
+                }
+            }
+            openSourceCanvas(fileRef);
         };
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
         return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
-    }, [openSourceCanvas]);
+    }, [openSourceCanvas, unifiedPanelHost, resolvableWorkspaces, taskId]);
 
     // "Insert into chat" from the workspace right dock's Notes panel lands here:
     // the dock is a sibling column with no React path to this composer, so it
