@@ -181,6 +181,12 @@ interface ClaudeUserMessage {
     session_id?: string;
     subagent_type?: string;
     task_description?: string;
+    /** Transcript uuid — the id `forkSession({ upToMessageId })` accepts (AC-04). */
+    uuid?: string;
+    /** True when the SDK is replaying an already-persisted message on resume. */
+    isReplay?: boolean;
+    /** True for SDK-generated user frames (e.g. interrupt notices). */
+    isSynthetic?: boolean;
 }
 
 interface ClaudeStreamingUserMessage {
@@ -1243,6 +1249,10 @@ export class ClaudeSDKService implements ISDKService {
             // the final task notification still settles the turn instead of
             // leaving it hanging until the drain cap aborts it.
             let turnTerminalSignalSeen = false;
+            // Durable rewind anchor for this turn (AC-04): the transcript uuid of
+            // the user message that opened it. Persisted onto the user turn's
+            // `sdkEventId` and later fed back to `rewindSession()`.
+            let userMessageEventId: string | undefined;
             // Narrower: an `end_turn` frame is final for the WHOLE turn, so it
             // settles the moment the last task drains. A `result` is final only
             // for its own turn — the SDK re-invokes after a background task
@@ -1313,6 +1323,7 @@ export class ClaudeSDKService implements ISDKService {
                         await settleIfReady();
                     }
                 } else if (this.isUserMessage(msg)) {
+                    userMessageEventId = this.captureClaudeRewindAnchor(msg, userMessageEventId);
                     this.handleClaudeUserToolResults(msg, options, toolCalls, activeToolCalls);
                 } else if (this.isResultMessage(msg)) {
                     if (msg.subtype !== 'success' || msg.is_error) {
@@ -1446,6 +1457,7 @@ export class ClaudeSDKService implements ISDKService {
                 ...(tokenUsage ? { tokenUsage } : {}),
                 effectiveModel: model,
                 ...(toolCalls.size > 0 ? { toolCalls: Array.from(toolCalls.values()) } : {}),
+                ...(userMessageEventId ? { userMessageEventId } : {}),
             } as IInvocationResult;
         } catch (err) {
             this.logClaudeSDKException(err, {
@@ -1690,6 +1702,25 @@ export class ClaudeSDKService implements ISDKService {
             msg !== null &&
             (msg as Record<string, unknown>).type === 'user'
         );
+    }
+
+    /**
+     * Pick the transcript uuid that anchors a rewind of this turn (AC-04).
+     *
+     * The SDK emits `type:'user'` for far more than the prompt itself — every
+     * tool result comes back on the same channel, and resumed sessions replay
+     * earlier turns. Forking at one of those would keep the prompt the rewind is
+     * meant to drop, so only the first non-replay, non-synthetic, non-tool-result
+     * frame counts. Anything else (including a frame with no uuid) leaves the
+     * turn without an anchor, i.e. simply not rewindable.
+     */
+    private captureClaudeRewindAnchor(msg: ClaudeUserMessage, current: string | undefined): string | undefined {
+        if (current) return current;
+        if (typeof msg.uuid !== 'string' || msg.uuid.length === 0) return current;
+        if (msg.isReplay || msg.isSynthetic) return current;
+        if (msg.parent_tool_use_id) return current;
+        if (containsClaudeToolResultBlock(msg.message?.content)) return current;
+        return msg.uuid;
     }
 
     private isResultMessage(msg: ClaudeSDKMessage): msg is ClaudeResultMessage {
@@ -2467,6 +2498,17 @@ export function registerClaudeSDKService(): ClaudeSDKService {
     const svc = new ClaudeSDKService();
     sdkServiceRegistry.register(CLAUDE_PROVIDER, svc);
     return svc;
+}
+
+/** True when a user message's content carries any `tool_result` block. */
+function containsClaudeToolResultBlock(content: unknown): boolean {
+    if (!Array.isArray(content)) return false;
+    return content.some(
+        (block) =>
+            typeof block === 'object' &&
+            block !== null &&
+            (block as Record<string, unknown>).type === 'tool_result',
+    );
 }
 
 /** True for an SDK `type: 'user'` message (used by the compaction summary fallback). */

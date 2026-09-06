@@ -752,6 +752,55 @@ describe('OpenCodeSDKService', () => {
         });
     });
 
+    // AC-04: the user turn must carry a native anchor so it can be rewound later.
+    // For opencode that anchor is the message id `revert.stage({ messageID })`
+    // takes, read back from the session's message list after the prompt settles.
+    describe('sendMessage rewind anchor (AC-04)', () => {
+        it('returns the last user message id as userMessageEventId', async () => {
+            const client = createMockClient();
+            client.session.messages = vi.fn().mockResolvedValue({
+                data: [
+                    { info: { id: 'msg-old-user', sessionID: 's1', role: 'user' }, parts: [] },
+                    { info: { id: 'msg-old-assistant', sessionID: 's1', role: 'assistant' }, parts: [] },
+                    { info: { id: 'msg-new-user', sessionID: 's1', role: 'user' }, parts: [] },
+                    { info: { id: 'msg-new-assistant', sessionID: 's1', role: 'assistant' }, parts: [] },
+                ],
+            });
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({ prompt: 'Hello', sessionId: 's1' });
+
+            expect(result.success).toBe(true);
+            expect(result.userMessageEventId).toBe('msg-new-user');
+            expect(client.session.messages).toHaveBeenCalledWith({ path: { id: 's1' } });
+        });
+
+        it('leaves the anchor undefined when the session has no user message', async () => {
+            const client = createMockClient();
+            client.session.messages = vi.fn().mockResolvedValue({
+                data: [{ info: { id: 'msg-a', sessionID: 's1', role: 'assistant' }, parts: [] }],
+            });
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({ prompt: 'Hello', sessionId: 's1' });
+
+            expect(result.success).toBe(true);
+            expect(result.userMessageEventId).toBeUndefined();
+        });
+
+        it('still succeeds when the anchor lookup fails', async () => {
+            const client = createMockClient();
+            client.session.messages = vi.fn().mockRejectedValue(new Error('boom'));
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({ prompt: 'Hello', sessionId: 's1' });
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('Hello from OpenCode!');
+            expect(result.userMessageEventId).toBeUndefined();
+        });
+    });
+
     describe('abortSession', () => {
         it('aborts an active session and calls server abort', async () => {
             const client = createMockClient();

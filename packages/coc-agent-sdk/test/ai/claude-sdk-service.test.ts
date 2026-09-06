@@ -4120,3 +4120,144 @@ describe('ClaudeSDKService.transform', () => {
         expect(result.error).toBeTruthy();
     });
 });
+
+// AC-04: every rewind-capable provider stamps the user turn with a native anchor.
+// For claude that anchor is the transcript uuid of the user message the turn was
+// built from — the same id `forkSession({ upToMessageId })` and therefore
+// `rewindSession()` accept.
+describe('ClaudeSDKService.sendMessage rewind anchor (AC-04)', () => {
+    let svc: ClaudeSDKService;
+    const queryFn = vi.fn();
+
+    beforeEach(() => {
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset();
+        queryFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: queryFn });
+    });
+
+    afterEach(() => {
+        resetSDKLogger();
+        svc.dispose();
+    });
+
+    it('returns the user message uuid as userMessageEventId', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-user-1',
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'hello' },
+            },
+            { type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }] } },
+            { type: 'result', subtype: 'success', result: 'hi' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.success).toBe(true);
+        expect(result.userMessageEventId).toBe('uuid-user-1');
+    });
+
+    it('keeps the first anchor when the turn emits several user frames', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-first',
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'hello' },
+            },
+            {
+                type: 'user',
+                uuid: 'uuid-second',
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'steering follow-up' },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.userMessageEventId).toBe('uuid-first');
+    });
+
+    it('ignores tool-result user frames so the anchor is never a mid-turn message', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-tool-result',
+                parent_tool_use_id: 'toolu_1',
+                message: {
+                    role: 'user',
+                    content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'done' }],
+                },
+            },
+            {
+                type: 'user',
+                uuid: 'uuid-real-prompt',
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'hello' },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.userMessageEventId).toBe('uuid-real-prompt');
+    });
+
+    it('ignores a top-level tool_result frame that carries no parent_tool_use_id', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-tool-result',
+                parent_tool_use_id: null,
+                message: {
+                    role: 'user',
+                    content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'done' }],
+                },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.userMessageEventId).toBeUndefined();
+    });
+
+    it('ignores replayed and synthetic user frames', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            {
+                type: 'user',
+                uuid: 'uuid-replay',
+                isReplay: true,
+                parent_tool_use_id: null,
+                message: { role: 'user', content: 'earlier turn' },
+            },
+            {
+                type: 'user',
+                uuid: 'uuid-synthetic',
+                isSynthetic: true,
+                parent_tool_use_id: null,
+                message: { role: 'user', content: '[Request interrupted]' },
+            },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.userMessageEventId).toBeUndefined();
+    });
+
+    it('leaves the turn without an anchor when no user frame carries a uuid', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'user', parent_tool_use_id: null, message: { role: 'user', content: 'hello' } },
+            { type: 'result', subtype: 'success', result: 'ok' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'hello' });
+
+        expect(result.success).toBe(true);
+        expect(result.userMessageEventId).toBeUndefined();
+    });
+});

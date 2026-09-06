@@ -67,10 +67,17 @@ export interface IInvocationResult {
     /** Aggregated token usage / provider diagnostics, when the provider reports them. */
     tokenUsage?: TokenUsage;
     /**
-     * Copilot-SDK `user.message` event id that began this turn, captured from
-     * the live event stream. Durable anchor for history rewind/truncation
-     * (AC-01); persisted onto the user turn's `sdkEventId`. Only the copilot
-     * provider populates this; undefined elsewhere (turn is not rewindable).
+     * Provider-native id of the user message that began this turn — the durable
+     * anchor for history rewind, persisted onto the user turn's `sdkEventId` and
+     * handed back to {@link ISDKService.rewindSession}.
+     *
+     * Each provider supplies its own flavour of id:
+     * - copilot — the `user.message` event id from the live event stream
+     * - claude  — the user message's transcript uuid (`forkSession`'s `upToMessageId`)
+     * - opencode — the message id (`revert.stage`'s `messageID`)
+     * - codex   — never populated; codex has no rewind primitive
+     *
+     * Undefined means the turn is simply not rewindable.
      */
     userMessageEventId?: string;
 }

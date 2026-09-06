@@ -582,12 +582,14 @@ export class OpenCodeSDKService implements ISDKService {
 
             const response = chunks.join('');
             const effectiveModel = resolveEffectiveModel(options.model, result.data?.info);
+            const userMessageEventId = await this.resolveRewindAnchor(client, sessionId);
             return {
                 success: true,
                 response,
                 sessionId,
                 effectiveModel,
                 ...(tokenUsage ? { tokenUsage } : {}),
+                ...(userMessageEventId ? { userMessageEventId } : {}),
             };
         } catch (err) {
             if (idleTimedOut) {
@@ -802,6 +804,41 @@ export class OpenCodeSDKService implements ISDKService {
             effectiveModel: result.effectiveModel,
             tokenUsage: result.tokenUsage,
         };
+    }
+
+    /**
+     * Resolve this turn's durable rewind anchor: the id of the user message the
+     * turn was built from (AC-04). Persisted onto the user turn's `sdkEventId`
+     * and fed back to `rewindSession()`, which stages a revert at it.
+     *
+     * The prompt response only carries the *assistant* message, and the SSE
+     * stream is subscribed to only when streaming callbacks are supplied, so the
+     * id is read back from the session's message list — the last `role:'user'`
+     * entry is the prompt that just ran (opencode folds tool results into the
+     * assistant message rather than emitting extra user messages). Best effort:
+     * any failure just leaves the turn without an anchor, i.e. not rewindable,
+     * and must never fail a turn that otherwise succeeded.
+     */
+    private async resolveRewindAnchor(client: OpenCodeClient, sessionId: string): Promise<string | undefined> {
+        try {
+            const messages = await client.session.messages({ path: { id: sessionId } });
+            for (let i = (messages.data?.length ?? 0) - 1; i >= 0; i--) {
+                const info = messages.data![i]?.info;
+                if (info?.role === 'user' && typeof info.id === 'string' && info.id.length > 0) {
+                    return info.id;
+                }
+            }
+        } catch (err) {
+            getSDKLogger().debug(
+                {
+                    provider: OPENCODE_PROVIDER,
+                    sessionId,
+                    error: err instanceof Error ? err.message : String(err),
+                },
+                'OpenCode rewind anchor lookup failed; turn will not be rewindable',
+            );
+        }
+        return undefined;
     }
 
     // ── Session management ────────────────────────────────────────────────────

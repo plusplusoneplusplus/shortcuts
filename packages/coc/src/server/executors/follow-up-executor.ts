@@ -703,13 +703,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             assistantTurn = appendResult!.turn;
             allTurns = appendResult!.allTurns;
 
-            // Persist the copilot-sdk `user.message` event id captured during
-            // streaming onto the user turn that produced this exchange (the turn
-            // immediately preceding the assistant turn). This is the durable
-            // anchor used later to rewind/truncate the conversation at this turn.
-            // Only copilot streams surface an id; for other providers it is
-            // undefined and we skip. The store guards on role:'user' so a stray
-            // index is a safe no-op.
+            // Persist the provider-native id of the user message that produced
+            // this exchange onto the preceding user turn. This is the durable
+            // anchor used later to rewind the conversation at this turn: a
+            // copilot event id, a claude transcript uuid, or an opencode message
+            // id. Codex has no rewind primitive and never supplies one, so the
+            // field is undefined there and we skip. The store guards on
+            // role:'user' so a stray index is a safe no-op.
             if (result.userMessageEventId && assistantTurn.turnIndex > 0) {
                 try {
                     await this.store.updateTurnSdkEventId(
