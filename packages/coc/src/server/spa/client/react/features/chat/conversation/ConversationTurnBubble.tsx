@@ -143,6 +143,15 @@ interface ConversationTurnBubbleProps {
      * Defaults to `copilot` (green) when omitted to preserve the legacy look.
      */
     provider?: ChatProvider;
+    /**
+     * Provider used *only* to shape the "Rewind to here" action. Kept separate
+     * from {@link ConversationTurnBubbleProps.provider} because that one is a
+     * display/model-picker value that callers may collapse onto the user's
+     * configured default when the conversation's own provider is not one they
+     * recognize — which would silently hide rewind on an opencode chat owned by
+     * a codex-default user. Falls back to `provider` when omitted.
+     */
+    rewindProvider?: ChatProvider;
 }
 
 interface RenderToolCall {
@@ -1091,7 +1100,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, rewindProvider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
@@ -1275,7 +1284,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             // provider whose turn carries no anchor shows it disabled with an
             // explanatory tooltip. The backend still gates idle/eligibility and
             // surfaces an error toast on rejection.
-            const rewindCapability = resolveRewindCapability(provider, turn.sdkEventId);
+            const rewindCapability = resolveRewindCapability(rewindProvider ?? provider, turn.sdkEventId);
             if (onRewindTurn && isUser && rewindCapability !== 'hidden') {
                 const rewindDisabled = rewindCapability === 'disabled';
                 items.push({
@@ -1288,7 +1297,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             }
         }
         return items;
-    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn, provider]);
+    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn, provider, rewindProvider]);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {
