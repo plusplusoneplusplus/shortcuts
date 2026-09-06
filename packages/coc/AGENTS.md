@@ -20,7 +20,7 @@ detailed architecture lives in its `references/*.md` files.
 | Ralph sessions, iteration prompt, promote-to-ralph endpoint | [ralph.md](../../.github/skills/coc-knowledge/references/ralph.md) |
 | `src/server/cron/`, cron tools, tick lifecycle | [cron.md](../../.github/skills/coc-knowledge/references/cron.md) |
 | Process store / SQLite schema / FTS5 / pin / archive | [process-store.md](../../.github/skills/coc-knowledge/references/process-store.md) |
-| Dashboard SPA (`src/server/spa/`) | [dashboard-spa.md](../../.github/skills/coc-knowledge/references/dashboard-spa.md) |
+| Dashboard SPA (`src/server/spa/`) | [spa/shell.md](../../.github/skills/coc-knowledge/references/spa/shell.md) (entry point) |
 | REST endpoints | [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md) |
 | Notes sync engine (`src/server/sync/`) | [sync.md](../../.github/skills/coc-knowledge/references/sync.md) |
 | SDK wrapper, Copilot/Codex providers, `ISDKService`, `SDKServiceRegistry` | [sdk-wrapper.md](../../.github/skills/coc-knowledge/references/sdk-wrapper.md) |

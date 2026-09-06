@@ -154,6 +154,6 @@ Response: **202** `{ processId, turnIndex }`. Returns **410** if session expired
 | `GET` | `/api/queue?repoId=<wsId>` | List queued tasks |
 | `GET` | `/api/queue/stats` | Queue statistics |
 | `GET` | `/api/queue/models` | Available AI models |
-| `POST` | `/api/queue/:id/cancel` | Cancel a task |
+| `DELETE` | `/api/queue/:id` | Cancel a task |
 | `POST` | `/api/queue/pause` / `resume` | Pause/resume queue |
 | `POST` | `/api/queue/bulk` | Bulk enqueue (max 100) |

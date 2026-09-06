@@ -276,7 +276,7 @@ Supported query params: `workspace`, `status` (comma-separated), `type`, `since`
 | `GET` | `/api/queue/stats` | Queue statistics |
 | `GET` | `/api/queue/models` | Available AI models |
 | `GET` | `/api/queue/history?repoId=<wsId>&type=<t>` | Completed/failed task history |
-| `POST` | `/api/queue/:id/cancel` | Cancel a task |
+| `DELETE` | `/api/queue/:id` | Cancel a task |
 | `POST` | `/api/queue/pause` / `resume` | Pause/resume queue |
 | `POST` | `/api/queue/bulk` | Bulk enqueue (max 100) |
 

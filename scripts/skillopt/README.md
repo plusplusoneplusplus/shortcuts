@@ -20,7 +20,7 @@ Output: `best_skill.md` + `history.jsonl` + `summary.json` in the output directo
    # Authenticate
    copilot auth login
    ```
-2. **Node.js ≥ 18** (for `npx tsx`).
+2. **Node.js ≥ 24** (for `npx tsx`).
 3. Run from the **repository root** (or pass absolute paths).
 
 ---

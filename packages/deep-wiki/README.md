@@ -169,52 +169,34 @@ npm run test:run
 npm test
 ```
 
-451 tests across 21 test files covering all phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, command integration, hierarchical output, domain tagging, and domain-scoped article caching.
+1600+ tests across 70+ test files covering all phases: types, schemas, AI invoker, prompt generation, response parsing, map-reduce orchestration, file writing, caching (with incremental rebuild), CLI parsing, command integration, hierarchical output, domain tagging, domain-scoped article caching, theme pipeline, and seed generation.
 
 ## Architecture
 
 ```
 src/
 ├── index.ts                # CLI entry point
-├── cli.ts                  # Commander program (discover + generate)
+├── cli.ts                  # Commander program (discover, generate, init, seeds, theme)
 ├── types.ts                # All shared types (Phase 1+3+4)
 ├── schemas.ts              # JSON schemas + validation helpers
 ├── logger.ts               # Colored CLI output + spinner
 ├── ai-invoker.ts           # Analysis + writing invoker factories
-├── commands/
-│   ├── discover.ts         # deep-wiki discover <repo>
-│   └── generate.ts         # deep-wiki generate <repo> (5-phase orchestration)
-├── discovery/
-│   ├── index.ts            # discoverComponentGraph()
-│   ├── prompts.ts          # Discovery prompt templates
-│   ├── discovery-session.ts    # SDK session orchestration
-│   ├── response-parser.ts     # JSON extraction + validation
-│   └── large-repo-handler.ts  # Multi-round for big repos
-├── consolidation/
-│   ├── index.ts            # consolidateComponents()
-│   ├── consolidator.ts     # Hybrid orchestration
-│   ├── rule-based-consolidator.ts
-│   └── ai-consolidator.ts
-├── analysis/
-│   ├── index.ts            # analyzeComponents()
-│   ├── prompts.ts          # Analysis prompt templates (3 depths)
-│   ├── analysis-executor.ts    # MapReduceExecutor orchestration
-│   └── response-parser.ts     # ComponentAnalysis JSON parsing + Mermaid validation
-├── writing/
-│   ├── index.ts            # generateArticles()
-│   ├── prompts.ts          # Component article prompt templates
-│   ├── reduce-prompts.ts   # Index/architecture/getting-started prompts
-│   ├── article-executor.ts # MapReduceExecutor orchestration
-│   └── file-writer.ts      # Write markdown to disk (flat + hierarchical layouts)
-└── cache/
-    ├── index.ts            # Cache manager (graph + consolidation + analyses + domain-scoped articles)
-    └── git-utils.ts        # Git hash + change detection
+├── commands/               # CLI command handlers
+├── discovery/              # Phase 1: component graph discovery
+├── consolidation/          # Phase 2: graph consolidation
+├── analysis/               # Phase 3: deep component analysis
+├── writing/                # Phase 4: article generation + file writing
+├── cache/                  # Per-phase caching + git change detection
+├── seeds/                  # Theme seed generation
+├── theme/                  # Theme-based wiki pipeline
+├── rendering/              # Mermaid rendering helpers
+└── utils/                  # Shared helpers (error, git init, AI response parsing)
 ```
 
 ## Dependencies
 
 | Package | Purpose |
 |---------|---------|
-| `@plusplusoneplusplus/pipeline-core` | AI SDK, MapReduceExecutor, JSON extraction |
+| `@plusplusoneplusplus/forge` | AI SDK, MapReduceExecutor, JSON extraction |
 | `commander` | CLI argument parsing |
 | `js-yaml` | YAML handling |

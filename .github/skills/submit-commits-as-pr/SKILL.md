@@ -101,7 +101,7 @@ conflict" exit code.
 
 **Only activate this mode when the user explicitly asks to monitor the PR.**
 
-After the PR is created, invoke the `loop` skill with a self-contained prompt that describes the PR and asks it to watch for problems, fix any that are fixable, and stop once the PR is merged or closed.
+After the PR is created, invoke the `cron` skill with a self-contained prompt that describes the PR and asks it to watch for problems, fix any that are fixable, and stop once the PR is merged or closed.
 
 ## Prereqs & notes
 

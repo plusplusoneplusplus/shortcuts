@@ -174,8 +174,16 @@ sidecar? See [`deploy/tenant/`](deploy/tenant/README.md).
 | Package | Description | npm |
 |---------|-------------|-----|
 | [`coc`](packages/coc/) | CLI + dashboard for YAML AI workflows | [`@plusplusoneplusplus/coc`](https://www.npmjs.com/package/@plusplusoneplusplus/coc) |
-| [`forge`](packages/forge/) | Core AI engine: SDK wrapper, DAG workflow engine, task queue, process store, git CLI, utilities | [`@plusplusoneplusplus/forge`](https://www.npmjs.com/package/@plusplusoneplusplus/forge) |
+| [`forge`](packages/forge/) | Core AI engine: map-reduce, git CLI, diff providers, process store, review helpers | [`@plusplusoneplusplus/forge`](https://www.npmjs.com/package/@plusplusoneplusplus/forge) |
 | [`deep-wiki`](packages/deep-wiki/) | Auto-generates comprehensive wikis for any codebase | [`@plusplusoneplusplus/deep-wiki`](https://www.npmjs.com/package/@plusplusoneplusplus/deep-wiki) |
+| [`coc-workflow`](packages/coc-workflow/) | Pure DAG workflow compiler and executor | [`@plusplusoneplusplus/coc-workflow`](https://www.npmjs.com/package/@plusplusoneplusplus/coc-workflow) |
+| [`coc-agent-sdk`](packages/coc-agent-sdk/) | Provider-neutral SDK wrapper (Copilot, Codex, Claude) | [`@plusplusoneplusplus/coc-agent-sdk`](https://www.npmjs.com/package/@plusplusoneplusplus/coc-agent-sdk) |
+| [`coc-client`](packages/coc-client/) | TypeScript client library for the CoC server API | [`@plusplusoneplusplus/coc-client`](https://www.npmjs.com/package/@plusplusoneplusplus/coc-client) |
+| [`coc-memory`](packages/coc-memory/) | Memory V2: SQLite-backed fact/episode stores with hybrid search | [`@plusplusoneplusplus/coc-memory`](https://www.npmjs.com/package/@plusplusoneplusplus/coc-memory) |
+| [`coc-connector`](packages/coc-connector/) | Consolidated Teams + WhatsApp messaging connectors | [`@plusplusoneplusplus/coc-connector`](https://www.npmjs.com/package/@plusplusoneplusplus/coc-connector) |
+| [`coc-native`](packages/coc-native/) | Rust/N-API native addon for file search, git, and content indexing | — |
+| [`coccontainer`](packages/coccontainer/) | Multi-agent gateway for aggregating CoC instances | — |
+| [`coc-desktop`](packages/coc-desktop/) | Electron desktop shell for CoC | — |
 
 ## Links
 

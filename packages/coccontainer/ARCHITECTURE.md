@@ -71,16 +71,16 @@ Unified manager for all agent connections. Handles both connection modes:
 - **Call-home agents**: Agents connect outbound to the container via `handleConnection()`. Container sends requests back over the same WS channel using `proxyRequest()`.
 - **Outbound agents**: Container connects to agents via `connectOutbound()`. Raw WS messages sent via `sendOutbound()`.
 
-Both modes emit `agent-event` which is wired to WSRelay in `server/index.ts`.
+Both modes emit `agent-event` which is wired to WebSocketRelay in `server/runtime.ts` (`ContainerRuntime`).
 
-### WSRelay (`proxy/ws-relay.ts`)
+### WebSocketRelay (`proxy/ws-relay.ts`)
 
-Central bidirectional event bus. All inter-component communication goes through WSRelay:
+Central bidirectional event bus (class name `WebSocketRelay`, accessed as `wsRelay`). All inter-component communication goes through it:
 
 - **Agent → Bridges** (outbound events): `wsRelay.emit('message', ...)` — bridges subscribe with `.on('message')`
-- **Bridges → Agent** (inbound messages): bridges call `wsRelay.proxyToAgent()` (HTTP proxy) or `wsRelay.sendToAgent()` (raw WS) — WSRelay delegates to AgentManager
+- **Bridges → Agent** (inbound messages): bridges call `wsRelay.proxyToAgent()` (HTTP proxy) or `wsRelay.sendToAgent()` (raw WS) — delegates to AgentManager
 
-WSRelay does NOT manage any agent connections — that is AgentManager's job.
+WebSocketRelay does NOT manage any agent connections — that is AgentManager's job.
 
 ### WebClientBridge (`proxy/webclient-bridge.ts`)
 
@@ -128,44 +128,26 @@ Two separate concerns:
 - **WSRelay**: process lifecycle events — bidirectional bus between all components
 - **SSE relay**: chat content streaming — direct browser ↔ agent (no bridges involved)
 
-## Conversation Turn Storage & Timeline Chunks
-
-Each assistant response in a CoC process is stored as a single **conversation turn** row in SQLite (`conversation_turns` table):
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `content` | TEXT | Full concatenated text of all content chunks |
-| `tool_calls` | JSON | Array of tool call objects |
-| `timeline` | JSON | Ordered array of `TimelineItem` events preserving chunk boundaries |
-
-### Teams/WhatsApp bridge: last chunk only
-
-When delivering to external platforms, the bridge extracts only the **last** content chunk:
-
-```typescript
-const contentChunks = extractTimelineContentChunks(lastTurn.timeline);
-const lastChunk = contentChunks[contentChunks.length - 1];
-```
-
-This is the final prose after all tool calls. Intermediate chunks are reasoning between tool executions.
-
 ## Module Responsibilities
 
 | Module | File | Purpose |
 |--------|------|---------|
 | **AgentManager** | `inbound/agent-manager.ts` | All agent connections (call-home + outbound), HTTP proxy, WS send |
-| **WSRelay** | `proxy/ws-relay.ts` | Central bidirectional event bus |
+| **WebSocketRelay** | `proxy/ws-relay.ts` | Central bidirectional event bus |
 | **WebClientBridge** | `proxy/webclient-bridge.ts` | Browser WS client management |
 | **SSE Relay** | `proxy/sse-relay.ts` | Transparent proxy: browser ↔ agent SSE streaming |
 | **HTTP Proxy** | `proxy/http.ts` | Transparent proxy for REST calls |
 | **Tunnel Bridge** | `proxy/tunnel-bridge.ts` | Local proxy for devtunnel agents (auth + port) |
-| **Health Monitor** | `server/health-monitor.ts` | Periodic agent health checks |
-| **Agent Store** | `store/agent-store.ts` | Persists agent registry |
+| **AgentHealthMonitor** | `server/health-monitor.ts` | Periodic agent health checks |
+| **AgentStore** | `store/agent-store.ts` | Persists agent registry (interface + factory) |
 | **TeamsBridge** | `messaging/teams-bridge.ts` | WSRelay subscriber → Teams (chat + events) |
 | **TeamsCommandExecutor** | `messaging/teams-command-executor.ts` | Local `/command` execution |
 | **WhatsApp Bridge** | `messaging/whatsapp-bridge.ts` | WSRelay subscriber → WhatsApp |
 | **Messaging Store** | `messaging/messaging-store.ts` | SQLite store for sent/received messages |
-| **Server** | `server/index.ts` | HTTP server, SPA, routes, component wiring |
+| **ContainerRuntime** | `server/runtime.ts` | Composition root: creates and wires all services |
+| **AgentProxyClient** | `server/agent-proxy-client.ts` | Transport abstraction for per-agent API routing |
+| **SshBridge** | `proxy/ssh-bridge.ts` | Local proxy for SSH agents |
+| **Server** | `server/index.ts` | HTTP server, SPA, routes |
 
 ## Design Principles
 
