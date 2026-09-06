@@ -1,5 +1,6 @@
 /**
- * AC-04: file, canvas, and diff tabs render real views inside the unified panel.
+ * AC-04: file, note, canvas, and diff tabs render real views inside the unified
+ * panel.
  *
  * These cases pin what the panel adds on top of the reused views rather than
  * the views themselves (which keep their own suites): that a file tab is the
@@ -7,7 +8,8 @@
  * read-only bit really removes the write path, that a hidden tab's dirty and
  * failed state surface in the strip, that a canvas tab is routed at the
  * workspace that owns the canvas, and that a diff tab resolves its group
- * through the transient source registry (including the expired state).
+ * through the transient source registry (including the expired state), and that
+ * a note tab rebuilds the editor's wiring from its own descriptor.
  *
  * @vitest-environment jsdom
  */
@@ -56,6 +58,26 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
 vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
     DockNotesPanel: () => <div data-testid="mock-notes" />,
 }));
+// The note editor is a full tiptap stack; only the wiring it is handed matters
+// here. The IO adapters are tagged so the fetch-mode choice is observable.
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NoteEditor', () => ({
+    NoteEditor: ({ workspaceId, notePath, io, notesRoot, scrollToLine }: any) => (
+        <div
+            data-testid="mock-note-editor"
+            data-ws={workspaceId}
+            data-path={notePath}
+            data-io={io?.tag ?? 'default'}
+            data-root={notesRoot ?? 'none'}
+            data-line={scrollToLine ?? 'none'}
+        />
+    ),
+}));
+vi.mock('../../../../src/server/spa/client/react/tasks/TasksNoteEditorIO', () => ({
+    createTasksNoteEditorIO: () => ({ tag: 'tasks' }),
+}));
+vi.mock('../../../../src/server/spa/client/react/tasks/WorkspaceFileNoteEditorIO', () => ({
+    createWorkspaceFileNoteEditorIO: () => ({ tag: 'workspace-file' }),
+}));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
 }));
@@ -81,6 +103,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
 import type { WhisperDiffOpenContext } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { noteResourceId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedNoteTabs';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
 
 const WS = 'ws-1';
@@ -312,6 +335,67 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
         renderPanel();
 
         fireEvent.click(screen.getByTestId('mock-whisper-diff-close'));
+        expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
+    });
+});
+
+describe('UnifiedRightPanel — note tabs (AC-04)', () => {
+    /** File a note descriptor the way a chat note link does. */
+    function openNote(resourceId: string, opts: { owner?: string; line?: number } = {}) {
+        return openUnifiedPanelTab(WS, {
+            kind: 'note',
+            ownerWorkspaceId: opts.owner ?? WS,
+            chatId: CHAT,
+            resourceId,
+            label: 'plan.md',
+            ...(opts.line === undefined ? {} : { line: opts.line }),
+        });
+    }
+
+    it('rebuilds the editor wiring from the descriptor alone, at the owning clone', () => {
+        openNote(noteResourceId({ fetchMode: 'auto', notePath: '/repos/member/notes/plan.md' }), {
+            owner: MEMBER, line: 9,
+        });
+        renderPanel();
+
+        const editor = screen.getByTestId('mock-note-editor');
+        expect(editor.getAttribute('data-ws')).toBe(MEMBER);
+        expect(editor.getAttribute('data-path')).toBe('/repos/member/notes/plan.md');
+        expect(editor.getAttribute('data-io')).toBe('workspace-file');
+        expect(editor.getAttribute('data-line')).toBe('9');
+    });
+
+    it('uses the tasks adapter and root for a note under a tasks root', () => {
+        openNote(noteResourceId({
+            fetchMode: 'tasks', notesRoot: '/repos/main/.vscode/tasks', notePath: 't1/goal.md',
+        }));
+        renderPanel();
+
+        const editor = screen.getByTestId('mock-note-editor');
+        expect(editor.getAttribute('data-io')).toBe('tasks');
+        expect(editor.getAttribute('data-root')).toBe('/repos/main/.vscode/tasks');
+        expect(editor.getAttribute('data-path')).toBe('t1/goal.md');
+    });
+
+    it('stays visible after a chat switch — a note belongs to the workspace', () => {
+        const tabId = openNote(noteResourceId({ fetchMode: 'auto', notePath: '/repos/main/notes/plan.md' }));
+        const { rerender } = renderPanel();
+        expect(screen.getByTestId(`unified-panel-tab-${tabId}`)).toBeTruthy();
+
+        rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-other" dock={dockStub()} />);
+        expect(screen.getByTestId(`unified-panel-tab-${tabId}`)).toBeTruthy();
+        expect(screen.getByTestId('mock-note-editor')).toBeTruthy();
+    });
+
+    it('shows an explicit state, and marks the tab, for a descriptor it cannot decode', () => {
+        const tabId = openNote('notes/plan.md');
+        renderPanel();
+
+        expect(screen.getByTestId('unified-panel-note-invalid')).toBeTruthy();
+        expect(screen.queryByTestId('mock-note-editor')).toBeNull();
+        expect(screen.getByTestId(`unified-panel-tab-error-${tabId}`)).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('unified-panel-note-invalid-close'));
         expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
     });
 });

@@ -739,12 +739,32 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         expect(tab.readOnly).toBe(true);
     });
 
-    it('keeps the docked canvas for refs the panel’s file view cannot read', async () => {
-        // A note ref has no `file` view yet, and an out-of-root path is not
+    it('files a note ref as an editable, workspace-owned note tab', async () => {
+        renderHostedChat('task-A');
+        dispatchSourceLink({ filePath: '/repos/main/notes/n.md', wsId: WS_ID, kind: 'note', line: 3 });
+
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.kind)).toEqual(['note']);
+        });
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+
+        const tab = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        // Workspace-owned, so it survives a chat switch, and editable: a plan
+        // note reached through a link keeps the capability the docked editor had.
+        expect(tab.chatId).toBeNull();
+        expect(tab.readOnly).toBeUndefined();
+        expect(tab.ownerWorkspaceId).toBe(WS_ID);
+        expect(tab.resourceId).toBe('auto||/repos/main/notes/n.md');
+        expect(tab.line).toBe(3);
+    });
+
+    it('keeps the docked canvas for refs the panel’s views cannot read', async () => {
+        // A folder ref is the Explorer's, and an out-of-root path is not
         // readable through a repo's blob API — both keep the existing surface
         // rather than opening a tab that could only render an error.
         renderHostedChat('task-A');
-        dispatchSourceLink({ filePath: '/repos/main/notes/n.md', wsId: WS_ID, kind: 'note' });
+        dispatchSourceLink({ filePath: '/repos/main/src', wsId: WS_ID, kind: 'dir' });
 
         await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);

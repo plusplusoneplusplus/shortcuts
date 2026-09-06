@@ -52,6 +52,7 @@ import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/u
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { sourceLinkTabInput } from '../repo-detail/unified-right-panel/unifiedSourceLinks';
+import { noteTabInput } from '../repo-detail/unified-right-panel/unifiedNoteTabs';
 import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
 import { WhisperSkillDetailDialogProvider } from './conversation/tool-calls/WhisperSkillDetailDialog';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
@@ -619,10 +620,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // With a unified panel hosting this chat, a `code` ref becomes a READ-ONLY
     // `file` tab instead (AC-04): `sourceLinkTabInput` runs the same resolution
     // the docked canvas would have run and returns the descriptor when the ref
-    // lands inside a known workspace root. It returns null for note/folder refs
-    // and for refs only the canvas's probing transport can fetch (a repo-group
-    // relative ref, a path outside every root) — those keep the docked canvas,
-    // since a tab there could only ever render an error.
+    // lands inside a known workspace root. A `note` ref becomes a WORKSPACE-owned,
+    // editable note tab through `noteTabInput` — the same editor the docked
+    // canvas would have shown, so a plan-note link keeps its edit capability.
+    // Both return null for refs only the canvas's probing transport can fetch (a
+    // repo-group relative ref, a path outside every root, no owning workspace) —
+    // those keep the docked canvas, since a tab there could only ever render an
+    // error. Folder refs still belong to the Explorer and keep the canvas.
     const openSourceCanvas = sourceCanvas.open;
     useEffect(() => {
         const handler = (event: Event) => {
@@ -639,16 +643,22 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 kind,
             };
             if (unifiedPanelHost) {
-                const input = sourceLinkTabInput({
-                    fileRef,
-                    workspaces: resolvableWorkspaces,
-                    // The panel's scope; the descriptor's owner is whichever clone
-                    // the resolution picked.
-                    scopeWorkspaceId: unifiedPanelHost.workspaceId,
-                    // The originating chat, never whichever chat is selected by
-                    // the time this lands.
-                    chatId: taskId,
-                });
+                const input = kind === 'note'
+                    ? noteTabInput({
+                        fileRef,
+                        workspaces: resolvableWorkspaces,
+                        scopeWorkspaceId: unifiedPanelHost.workspaceId,
+                    })
+                    : sourceLinkTabInput({
+                        fileRef,
+                        workspaces: resolvableWorkspaces,
+                        // The panel's scope; the descriptor's owner is whichever
+                        // clone the resolution picked.
+                        scopeWorkspaceId: unifiedPanelHost.workspaceId,
+                        // The originating chat, never whichever chat is selected
+                        // by the time this lands.
+                        chatId: taskId,
+                    });
                 if (input) {
                     openUnifiedPanelTab(unifiedPanelHost.workspaceId, input);
                     return;

@@ -18,9 +18,12 @@
  *    `unifiedDiffSources` registry, because a diff is reconstructed from an
  *    in-memory tool-call group rather than fetched. A tab whose group is gone
  *    shows the expired state (`UnifiedDiffTab`).
+ *  - `note` — the editable `NoteEditor`, wired exactly as the docked source
+ *    canvas wires a note link, with the resolution decoded from the descriptor
+ *    rather than re-run (`UnifiedNoteTab`).
  *
- * `note` still renders the explicit unsupported state until the note entry
- * point lands.
+ * The fallback state is for a descriptor this build has no view for at all — a
+ * kind from a newer version, say — never for a kind listed above.
  *
  * Dirty and error state are reported upward rather than shown here, because the
  * strip is where a hidden tab's state has to be visible — a background buffer
@@ -35,6 +38,7 @@ import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
 import { CanvasPanel } from '../../canvas/CanvasPanel';
 import { UnifiedDiffTab } from './UnifiedDiffTab';
+import { UnifiedNoteTab } from './UnifiedNoteTab';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 export interface UnifiedTabViewProps {
@@ -105,6 +109,17 @@ export function UnifiedTabView({
                     canvasId={tab.resourceId}
                     liveEvent={null}
                     onClose={close}
+                />
+            );
+        case 'note':
+            return (
+                <UnifiedNoteTab
+                    workspaceId={tab.ownerWorkspaceId}
+                    resourceId={tab.resourceId}
+                    label={tab.label}
+                    line={tab.line}
+                    onClose={close}
+                    onErrorChange={handleError}
                 />
             );
         case 'diff':

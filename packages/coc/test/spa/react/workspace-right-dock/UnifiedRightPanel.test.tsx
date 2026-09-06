@@ -294,9 +294,11 @@ describe('UnifiedRightPanel', () => {
         expect(document.activeElement).toBe(trigger);
     });
 
-    it('shows an explicit state for a kind it cannot render yet, instead of a blank panel', () => {
+    it('shows an explicit state for a kind it has no view for, instead of a blank panel', () => {
+        // Every kind this build knows now renders, so the fallback is for a
+        // descriptor from a build that knows one more — it must not blank the panel.
         writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'note', ownerWorkspaceId: WS, chatId: null, resourceId: 'Plans/plan.md', label: 'plan.md',
+            kind: 'browser' as never, ownerWorkspaceId: WS, chatId: null, resourceId: 'https://x', label: 'x',
         }));
         renderPanel();
         expect(screen.getByTestId('unified-panel-unsupported')).toBeTruthy();
