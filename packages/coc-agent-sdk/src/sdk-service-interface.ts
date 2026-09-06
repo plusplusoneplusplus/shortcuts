@@ -86,6 +86,15 @@ export interface RewindResult {
     eventsRemoved: number;
     /** The anchor event id truncated to — this event and all later ones are gone. */
     upToEventId: string;
+    /**
+     * Set only by providers whose rewind is a *fork* rather than an in-place
+     * truncate: Claude branches the transcript into a brand-new session and
+     * leaves the original untouched on disk, so the caller must swap this id
+     * onto the process's `sdkSessionId` for the conversation to continue on the
+     * rewound branch. Providers that truncate in place (copilot, opencode) leave
+     * this undefined — their session id is unchanged.
+     */
+    newSessionId?: string;
 }
 
 /**
