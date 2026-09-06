@@ -32,12 +32,19 @@ import { runWhenIdle } from '../../../utils/runWhenIdle';
 import { buildCheckRowsFromChecks } from '../../pull-requests/pr-derived-data';
 import type { PrIdentity, PullRequestCheck, PullRequestDiffStats, Reviewer } from '../../pull-requests/pr-utils';
 import {
+    authoredJoinKeys,
     detectedPrsNeedingBinding,
     gatherDetectedPrsFromTurns,
+    matchAuthoredPrs,
     unionAssociations,
+    type AuthoredCommitLike,
     type PrAssociation,
     type PrChatBindingLike,
+    type PrCommitLike,
+    type PrDetailLike,
 } from './prChatAssociation';
+import { detectCommitsInToolGroup, type ToolCallLike } from './commitDetection';
+import { collectToolCallsFromTurns, type ToolCallBearingTurn } from '@plusplusoneplusplus/forge/git/pull-request-detection';
 import { PR_STATUS_POLL_INTERVAL_MS, shouldPollPrStatusItems } from './prStatusFreshness';
 import type { PrAutoMergeInfo, PrStatusCardItem, PrStatusCardPr } from './PrStatusCard';
 
@@ -183,6 +190,7 @@ function associationToLoadingItem(association: PrAssociation, repoId: string): P
         number: association.number,
         state: 'loading',
         url: association.url,
+        sources: association.sources,
     };
 }
 
@@ -190,6 +198,89 @@ function associationToLoadingItem(association: PrAssociation, repoId: string): P
 function bindingsFromResponse(bindings: Record<string, { taskId: string }> | undefined): PrChatBindingLike[] {
     if (!bindings) return [];
     return Object.entries(bindings).map(([prId, value]) => ({ prId, taskId: value.taskId }));
+}
+
+/**
+ * How many candidate PRs the authored-commit scan will look at per round.
+ * A chat's commits almost always land in one PR, and the scan stops at the
+ * first match, so the cap only bounds the miss case.
+ */
+const MAX_AUTHORED_CANDIDATES = 20;
+
+/**
+ * Session cache of a PR's commit list, keyed `${originId}:${prId}`. A PR's
+ * commits only change on a force-push, and several chats in the same repo scan
+ * the same candidates, so one fetch per PR per session is enough. A failed
+ * fetch is evicted so a later scan can retry.
+ */
+const prCommitsCache = new Map<string, Promise<PrCommitLike[]>>();
+
+/** Test seam — drops the memoized PR commit lists. */
+export function clearAuthoredPrCommitsCache(): void {
+    prCommitsCache.clear();
+}
+
+/** Reads a PR's commit list through {@link prCommitsCache}. */
+function loadPrCommits(repoId: string, originId: string, prId: string): Promise<PrCommitLike[]> {
+    const cacheKey = `${originId}:${prId}`;
+    const cached = prCommitsCache.get(cacheKey);
+    if (cached) return cached;
+    const pending = getCocClientForWorkspace(repoId)
+        .pullRequests.getCommitsForOrigin(originId, prId, { workspaceId: repoId })
+        .then(body => ((body.commits ?? []) as PrCommitLike[]))
+        .catch((err: unknown) => {
+            prCommitsCache.delete(cacheKey);
+            throw err;
+        });
+    prCommitsCache.set(cacheKey, pending);
+    return pending;
+}
+
+/** One PR to test against the chat's commits; `detail` is used when free. */
+interface AuthoredCandidate {
+    prId: string;
+    detail?: PrDetailLike;
+}
+
+/** Reads `sourceBranch` off a loosely-typed PR list item. */
+function candidateFromListItem(item: Record<string, unknown>): AuthoredCandidate | undefined {
+    const number = item.number;
+    const prId = typeof number === 'number' || typeof number === 'string' ? String(number) : undefined;
+    if (!prId) return undefined;
+    const sourceBranch = optionalString(item.sourceBranch);
+    return { prId, detail: sourceBranch ? { sourceBranch } : undefined };
+}
+
+/**
+ * Walks the candidates in order, testing each against the chat's commits with
+ * the pure {@link matchAuthoredPrs} join, and returns the first PR that ships
+ * them (or undefined). The branch fast path is free — it reads the detail the
+ * caller already had — so the commit list is only fetched when it misses.
+ */
+async function findAuthoredPr(
+    candidates: readonly AuthoredCandidate[],
+    commits: readonly AuthoredCommitLike[],
+    repoId: string,
+    originId: string,
+    isCurrent: () => boolean,
+): Promise<string | undefined> {
+    for (const candidate of candidates) {
+        if (!isCurrent()) return undefined;
+        if (candidate.detail) {
+            const byBranch = matchAuthoredPrs(commits, new Map(), new Map([[candidate.prId, candidate.detail]]));
+            if (byBranch.length > 0) return candidate.prId;
+        }
+        let prCommits: PrCommitLike[];
+        try {
+            prCommits = await loadPrCommits(repoId, originId, candidate.prId);
+        } catch {
+            continue; // A PR we cannot read simply does not match.
+        }
+        if (!isCurrent()) return undefined;
+        const bySubject = matchAuthoredPrs(commits, new Map([[candidate.prId, prCommits]]), new Map());
+        if (bySubject.length > 0) return candidate.prId;
+    }
+    return undefined;
 }
 
 /** Optional behaviour for a detail/checks fetch. */
@@ -250,6 +341,18 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
     // PR URLs actually changing.
     const detectedRef = useRef(detected);
     detectedRef.current = detected;
+
+    // The commits this chat made, client-side only. They are the join key for a
+    // PR that some *other* chat opened (a queued `submit-commits-as-pr` run):
+    // that chat owns the binding, so this one gets nothing from the union.
+    const authoredCommits = useMemo(
+        () => detectCommitsInToolGroup(collectToolCallsFromTurns<ToolCallLike>(turns as readonly ToolCallBearingTurn<ToolCallLike>[] | undefined)),
+        [turns],
+    );
+    // Same trick as `detectedKey`: only rescan when the *set* of commits changes.
+    const authoredKey = useMemo(() => authoredCommits.map(commit => commit.shortHash).join('|'), [authoredCommits]);
+    const authoredCommitsRef = useRef(authoredCommits);
+    authoredCommitsRef.current = authoredCommits;
 
     const fetchReviewersForAssociation = useCallback(
         (association: PrAssociation, repoId: string, generation: number, opts: FetchOptions = {}): Promise<void> => {
@@ -485,6 +588,96 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
             cancelIdle();
         };
     }, [workspaceId, chatOriginId, taskId, detectedKey, fetchDetailForAssociation]);
+
+    // Authored-commit scan: surface the PR that ships this chat's commits even
+    // though a different chat opened it (and owns the one binding row the PR is
+    // allowed to have). Runs after the main pipeline's idle callback has seeded
+    // the association set, appends rather than replaces, and never persists a
+    // binding — `detectedPrsNeedingBinding` stays the only POST path.
+    useEffect(() => {
+        if (!workspaceId || !chatOriginId) return undefined;
+        const commits = authoredCommitsRef.current;
+        const { subjects, shortHashes } = authoredJoinKeys(commits);
+        // No commits of our own → nothing to join against, so no I/O at all.
+        if (subjects.size === 0 && shortHashes.length === 0) return undefined;
+
+        let cancelled = false;
+        // Deliberately does NOT bump `generationRef` on cleanup: that ref belongs
+        // to the main pipeline and invalidating it here would cancel the detail
+        // fetches this scan depends on.
+        const generation = generationRef.current;
+        const isCurrent = () => !cancelled && generationRef.current === generation;
+        const client = getCocClientForWorkspace(workspaceId);
+
+        const cancelIdle = runWhenIdle(() => {
+            if (!isCurrent()) return;
+            void (async () => {
+                const alreadyAssociated = new Set(associationsRef.current.map(association => association.prId));
+                const take = (candidates: AuthoredCandidate[]): AuthoredCandidate[] =>
+                    candidates.filter(candidate => !alreadyAssociated.has(candidate.prId)).slice(0, MAX_AUTHORED_CANDIDATES);
+
+                // Round 1: every PR some chat in this repo opened. Cheapest and
+                // highest precision — a coc-submitted PR is always in here.
+                let candidates: AuthoredCandidate[] = [];
+                try {
+                    const response = await client.pullRequests.listChatBindingsForOrigin(chatOriginId);
+                    candidates = Object.entries(response.bindings ?? {})
+                        .sort((a, b) => String(b[1]?.createdAt ?? '').localeCompare(String(a[1]?.createdAt ?? '')))
+                        .map(([prId]) => ({ prId }));
+                } catch {
+                    candidates = [];
+                }
+                if (!isCurrent()) return;
+
+                let matchedPrId = await findAuthoredPr(take(candidates), commits, workspaceId, chatOriginId, isCurrent);
+
+                // Round 2: PRs opened outside coc have no binding to find them by.
+                if (!matchedPrId && isCurrent()) {
+                    let openCandidates: AuthoredCandidate[] = [];
+                    try {
+                        const response = await client.pullRequests.listForOrigin(chatOriginId, {
+                            workspaceId,
+                            status: 'open',
+                            top: MAX_AUTHORED_CANDIDATES,
+                        });
+                        openCandidates = (response.pullRequests ?? [])
+                            .map(item => candidateFromListItem(item as Record<string, unknown>))
+                            .filter((candidate): candidate is AuthoredCandidate => candidate !== undefined);
+                    } catch {
+                        openCandidates = [];
+                    }
+                    if (!isCurrent()) return;
+                    matchedPrId = await findAuthoredPr(take(openCandidates), commits, workspaceId, chatOriginId, isCurrent);
+                }
+
+                if (!matchedPrId || !isCurrent()) return;
+                const key = `${chatOriginId}:${matchedPrId}`;
+                if (associationsRef.current.some(association => association.key === key)) return;
+                const parsed = Number.parseInt(matchedPrId, 10);
+                const association: PrAssociation = {
+                    key,
+                    originId: chatOriginId,
+                    prId: matchedPrId,
+                    number: Number.isNaN(parsed) ? 0 : parsed,
+                    sources: ['authored'],
+                };
+                associationsRef.current = [...associationsRef.current, association];
+                setItems(prev =>
+                    prev.some(item => item.key === key)
+                        ? prev
+                        : [...prev, associationToLoadingItem(association, workspaceId)],
+                );
+                fetchDetailForAssociation(association, workspaceId, generation);
+            })();
+        });
+
+        return () => {
+            cancelled = true;
+            cancelIdle();
+        };
+        // `authoredKey` gates on the commit set; the rest mirror the main effect
+        // so this rescans whenever that pipeline rebuilds its associations.
+    }, [workspaceId, chatOriginId, taskId, detectedKey, authoredKey, fetchDetailForAssociation]);
 
     const retry = useCallback(
         (key: string) => {

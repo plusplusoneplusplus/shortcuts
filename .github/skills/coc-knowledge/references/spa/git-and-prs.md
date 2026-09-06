@@ -139,7 +139,8 @@ hunk. Branch-range pop-out diff UI uses the compact classification-free path.
 `features/chat/conversation/ChatComposerPrChips.tsx` docks read-only PR chips **inside
 the composer**, above the textarea, via the `prComposerChips` slot that
 `FollowUpInputArea` renders as the first child of the input card. Nothing renders when
-no PR is associated.
+no PR is associated. A chat's chips cover both the PRs it created and the PRs that ship
+commits it authored.
 
 ### Detection and binding
 
@@ -214,6 +215,41 @@ both `ChatComposerPrChips` mounts. Without it a pop-out has no canonical origin 
 every origin-scoped piece of chat chrome renders nothing, with zero requests to show for
 it. Other `getCocClientForWorkspace(workspaceId)` call sites in `ChatDetail` deliberately
 keep using the prop — they route requests to a specific CoC server.
+
+### Authored-commit association
+
+A chat that makes the commits but does not open the PR gets nothing from the union: a
+separate `submit-commits-as-pr` run (usually a queued chat) creates the PR and owns the
+one binding row it is allowed — `pull_request_chat_bindings` is keyed
+`(workspace_id, pr_id)`, so the PR cannot be bound to a second chat.
+
+`usePrChatStatusItems` therefore derives that association at render time and **never
+persists it**. A second `runWhenIdle` effect (separate from the main pipeline, appending
+to `items` instead of replacing them, and deliberately not bumping the main
+`generationRef`) runs `detectCommitsInToolGroup` over the chat's own turns and joins the
+result against candidate PRs in two rounds, stopping at the first match:
+
+1. `listChatBindingsForOrigin(originId)` with **no** `taskId` — every PR some chat in
+   this repo opened, newest binding first;
+2. `listForOrigin(originId, { status: 'open', top: 20 })` — for PRs opened outside coc.
+
+Candidates already associated with the chat are skipped and each round is capped at
+`MAX_AUTHORED_CANDIDATES` (20). The join itself is the pure `matchAuthoredPrs` in
+`prChatAssociation.ts`:
+
+- **branch fast path** — the PR's `sourceBranch` contains one of the chat's short
+  hashes (`submit_commits_as_pr.py` names its branch `pr/<shortSha>-<slug>`); free,
+  since it reads a detail the caller already had;
+- **subject match** — `getCommitsForOrigin` (memoized per `originId:prId` for the
+  session, evicted on failure) and an exact match on the whole normalized subject.
+  Hashes are useless here: the submit script cherry-picks, so the PR's SHAs are new.
+  `fixup!`/`squash!`/`--amend` commits are excluded — squashed away or rewritten.
+
+Matches get `sources: ['authored']`. `detectedPrsNeedingBinding` still returns only
+`detected` PRs, so an authored match issues **no** binding POST, and dismissing an
+authored-only chip in `ChatComposerPrChips` hides it for the session with **no** DELETE
+— deleting would unbind the chat that actually opened the PR. The whole scan is skipped
+when the chat detected no commits, so a chat that never committed does zero extra I/O.
 
 ### Chip contents
 

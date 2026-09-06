@@ -3,8 +3,10 @@
  * (AC-01, client half).
  *
  * The PRs shown for a chat = the union of:
- *   - PRs detected in the currently-loaded turns, and
- *   - persisted bindings for the chat's `task_id`.
+ *   - PRs detected in the currently-loaded turns,
+ *   - persisted bindings for the chat's `task_id`, and
+ *   - PRs that ship commits this chat authored ({@link matchAuthoredPrs}),
+ *     recomputed on every load and never persisted.
  *
  * Detection reuses {@link detectPullRequestsInToolGroup} (no new PR-URL regex).
  * Canonical origin ids reuse {@link resolveCanonicalOriginId} (no duplicate
@@ -46,9 +48,22 @@ export interface PrAssociation {
     url?: string;
     /** Detection provider, when known. */
     provider?: DetectedPullRequest['provider'];
-    /** Where this association came from (a PR can be in both). */
-    sources: Array<'detected' | 'binding'>;
+    /** Where this association came from (a PR can be in more than one). */
+    sources: PrAssociationSource[];
 }
+
+/**
+ * Where a {@link PrAssociation} came from.
+ *
+ * - `detected` — a PR URL found in this chat's own tool output.
+ * - `binding`  — a persisted `pull_request_chat_bindings` row for this task.
+ * - `authored` — derived at render time: the chat made the commits that the PR
+ *   ships, but a *different* chat (usually a queued `submit-commits-as-pr` run)
+ *   created the PR and owns the binding. Never persisted — the binding table's
+ *   primary key is `(workspace_id, pr_id)`, so writing one here would steal the
+ *   PR from the chat that actually opened it.
+ */
+export type PrAssociationSource = 'detected' | 'binding' | 'authored';
 
 /**
  * Detects every pull request created in the loaded turns by scanning their tool
@@ -95,7 +110,7 @@ export function unionAssociations(input: UnionAssociationsInput): PrAssociation[
     const byKey = new Map<string, PrAssociation>();
     const order: string[] = [];
 
-    const upsert = (candidate: PrAssociation, source: 'detected' | 'binding'): void => {
+    const upsert = (candidate: PrAssociation, source: PrAssociationSource): void => {
         const existing = byKey.get(candidate.key);
         if (existing) {
             if (!existing.sources.includes(source)) existing.sources.push(source);
@@ -158,4 +173,110 @@ export function detectedPrsNeedingBinding(
         out.push({ originId, prId, number: pr.number });
     }
     return out;
+}
+
+// ── Authored-commit → PR matching ───────────────────────────────────
+//
+// A chat that made the commits but did not open the PR has no binding of its
+// own, so `unionAssociations` gives it nothing. The join below recovers the
+// link client-side from what the chat already knows: the commits it detected in
+// its own tool output.
+
+/** Minimal commit shape the join needs (subset of {@link DetectedCommit}). */
+export interface AuthoredCommitLike {
+    shortHash: string;
+    subject: string;
+    /** `fixup!`/`squash!` — squashed away before the PR, so never matchable. */
+    isFixup?: boolean;
+    /** `--amend` — its subject may be rewritten, so it is not a reliable key. */
+    isAmend?: boolean;
+}
+
+/** Minimal shape of one commit on a candidate PR. */
+export interface PrCommitLike {
+    subject?: string;
+    message?: string;
+}
+
+/** Minimal shape of a candidate PR's detail (only the branch is read). */
+export interface PrDetailLike {
+    sourceBranch?: string;
+}
+
+/** Shortest hash accepted for the branch-name fast path (git's default width). */
+const MIN_BRANCH_HASH_LENGTH = 7;
+
+/** Trim + collapse internal whitespace so formatting noise does not block a match. */
+function normalizeCommitSubject(subject: string): string {
+    return subject.trim().replace(/\s+/g, ' ');
+}
+
+/** First line of a PR commit — providers may return the full message. */
+function prCommitSubject(commit: PrCommitLike): string {
+    const raw = commit.subject ?? commit.message ?? '';
+    return normalizeCommitSubject(raw.split(/\r?\n/, 1)[0] ?? '');
+}
+
+/**
+ * Commits usable as join keys: fixups and amends are dropped because the submit
+ * script squashes or rewrites them, so their subjects never reach the PR.
+ */
+export function authoredJoinKeys(commits: readonly AuthoredCommitLike[]): {
+    subjects: Set<string>;
+    shortHashes: string[];
+} {
+    const subjects = new Set<string>();
+    const shortHashes: string[] = [];
+    for (const commit of commits) {
+        if (commit.isFixup || commit.isAmend) continue;
+        const subject = normalizeCommitSubject(commit.subject ?? '');
+        if (subject) subjects.add(subject);
+        const hash = (commit.shortHash ?? '').toLowerCase();
+        if (hash.length >= MIN_BRANCH_HASH_LENGTH) shortHashes.push(hash);
+    }
+    return { subjects, shortHashes };
+}
+
+/**
+ * Joins a chat's own commits against candidate pull requests and returns the
+ * ids of the PRs that ship them, in candidate order.
+ *
+ * Two independent matches, either of which is sufficient:
+ *
+ * - **Branch name.** `submit_commits_as_pr.py` names its branch
+ *   `pr/<shortSha>-<slug>` from the first submitted commit, so the PR's
+ *   `sourceBranch` often literally contains one of the chat's short hashes.
+ * - **Commit subject.** The submit script cherry-picks, so the SHAs on the PR
+ *   are new and hash matching fails; the subject line survives verbatim.
+ *   Matching is on the whole normalized subject so a generic `fix tests` in two
+ *   chats does not cross-link them.
+ *
+ * Pure: callers supply whatever candidate data they fetched, and a candidate
+ * with neither a detail nor a commit list simply does not match.
+ */
+export function matchAuthoredPrs(
+    commits: readonly AuthoredCommitLike[],
+    prCommitsByPrId: ReadonlyMap<string, readonly PrCommitLike[]>,
+    prDetailsByPrId: ReadonlyMap<string, PrDetailLike>,
+): string[] {
+    const { subjects, shortHashes } = authoredJoinKeys(commits);
+    if (subjects.size === 0 && shortHashes.length === 0) return [];
+
+    const candidateIds: string[] = [];
+    for (const prId of prDetailsByPrId.keys()) candidateIds.push(prId);
+    for (const prId of prCommitsByPrId.keys()) {
+        if (!prDetailsByPrId.has(prId)) candidateIds.push(prId);
+    }
+
+    const matched: string[] = [];
+    for (const prId of candidateIds) {
+        const branch = (prDetailsByPrId.get(prId)?.sourceBranch ?? '').toLowerCase();
+        const branchHit = branch.length > 0 && shortHashes.some(hash => branch.includes(hash));
+        const subjectHit =
+            !branchHit &&
+            subjects.size > 0 &&
+            (prCommitsByPrId.get(prId) ?? []).some(commit => subjects.has(prCommitSubject(commit)));
+        if (branchHit || subjectHit) matched.push(prId);
+    }
+    return matched;
 }
