@@ -38,6 +38,10 @@ import { execGitAsync } from '@plusplusoneplusplus/forge/git';
 import { resolveParentHash } from '../../src/server/executors/commit-chat-executor';
 import { getFileDiff } from '../../src/server/llm-tools/diff-line-mapper';
 import { gitHeadSha } from '../../src/server/ralph/capture-baseline-sha';
+import { hostRepoPath } from '../helpers/host-repo-path';
+
+// A host checkout: on win32 a POSIX absolute path would take the WSL branch.
+const REPO = hostRepoPath('repo');
 
 const REBUILD = 'npm run build:native -w packages/coc-native';
 const mockExecGitAsync = execGitAsync as unknown as ReturnType<typeof vi.fn>;
@@ -59,24 +63,24 @@ describe('git callers without a usable addon', () => {
     });
 
     it('resolveParentHash rejects rather than reporting no parent', async () => {
-        await expect(resolveParentHash('abc123', '/repo')).rejects.toThrow(REBUILD);
+        await expect(resolveParentHash('abc123', REPO)).rejects.toThrow(REBUILD);
     });
 
     it('getFileDiff rejects rather than blaming the file', async () => {
         // The `git show` fallback fails the same way, so without the guard the
         // per-file message is the one the user would have seen.
-        await expect(getFileDiff('/repo', 'p', 'c', 'a.txt')).rejects.toThrow(REBUILD);
+        await expect(getFileDiff(REPO, 'p', 'c', 'a.txt')).rejects.toThrow(REBUILD);
         expect(mockExecGitAsync).toHaveBeenCalledTimes(1);
     });
 
     it('gitHeadSha rejects rather than reporting no baseline', async () => {
-        await expect(gitHeadSha('/repo')).rejects.toThrow(REBUILD);
+        await expect(gitHeadSha(REPO)).rejects.toThrow(REBUILD);
     });
 
     it('resolveParentHash still answers "no parent" for its own guard clauses', async () => {
         // The guards run before any git does, so a broken addon cannot reach
         // them — the empty string is still the answer for a missing argument.
-        await expect(resolveParentHash('', '/repo')).resolves.toBe('');
+        await expect(resolveParentHash('', REPO)).resolves.toBe('');
         await expect(resolveParentHash('abc123', undefined)).resolves.toBe('');
         expect(mockExecGitAsync).not.toHaveBeenCalled();
     });
@@ -95,17 +99,17 @@ describe('git callers against a directory git cannot read', () => {
     });
 
     it('resolveParentHash answers with the empty string', async () => {
-        await expect(resolveParentHash('abc123', '/repo')).resolves.toBe('');
+        await expect(resolveParentHash('abc123', REPO)).resolves.toBe('');
     });
 
     it('getFileDiff falls back, then blames the file', async () => {
-        await expect(getFileDiff('/repo', 'p', 'c', 'a.txt')).rejects.toThrow(
+        await expect(getFileDiff(REPO, 'p', 'c', 'a.txt')).rejects.toThrow(
             'Failed to retrieve diff for a.txt',
         );
         expect(mockExecGitAsync).toHaveBeenCalledTimes(2);
     });
 
     it('gitHeadSha answers undefined', async () => {
-        await expect(gitHeadSha('/repo')).resolves.toBeUndefined();
+        await expect(gitHeadSha(REPO)).resolves.toBeUndefined();
     });
 });

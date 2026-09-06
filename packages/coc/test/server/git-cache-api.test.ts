@@ -15,6 +15,7 @@ import { gitCache } from '../../src/server/git/git-cache';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
+import { hostRepoPath } from '../helpers/host-repo-path';
 
 // ============================================================================
 // Mock forge git exec and child_process
@@ -111,7 +112,7 @@ describe('Git API caching', () => {
     let store: MockProcessStore;
 
     const WORKSPACE_ID = 'ws-cache-test';
-    const WORKSPACE_ROOT = '/test/cache-repo';
+    const WORKSPACE_ROOT = hostRepoPath('test', 'cache-repo');
 
     beforeAll(async () => {
         store = createMockProcessStore();
@@ -339,7 +340,7 @@ describe('Git API caching', () => {
             // Register a second workspace
             (store.getWorkspaces as any).mockResolvedValue([
                 { id: WORKSPACE_ID, name: 'Repo A', rootPath: WORKSPACE_ROOT },
-                { id: 'ws-other', name: 'Repo B', rootPath: '/test/other' },
+                { id: 'ws-other', name: 'Repo B', rootPath: hostRepoPath('test', 'other') },
             ]);
 
             mockForgeExecGit.mockImplementation((args: string[]) => {

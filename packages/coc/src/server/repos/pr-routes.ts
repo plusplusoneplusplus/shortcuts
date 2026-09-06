@@ -1087,11 +1087,17 @@ export function dedupePrFetch(key: string, run: () => Promise<boolean>): Promise
     if (existing) return existing;
     const promise = run();
     inFlightPrFetches.set(key, promise);
-    promise.finally(() => {
-        if (inFlightPrFetches.get(key) === promise) {
-            inFlightPrFetches.delete(key);
-        }
-    });
+    // `.finally()` returns a *new* promise that settles the same way, and
+    // nothing awaits this one -- so a rejecting fetch lands as an unhandled
+    // rejection even though every caller handles the promise this returns.
+    // The rejection belongs to them; the cleanup branch only needs the tick.
+    void promise
+        .finally(() => {
+            if (inFlightPrFetches.get(key) === promise) {
+                inFlightPrFetches.delete(key);
+            }
+        })
+        .catch(() => {});
     return promise;
 }
 

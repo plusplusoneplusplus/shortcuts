@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@plusplusoneplusplus/forge', () => ({
-    getDefaultWslDistro: vi.fn(),
+    // The distro lookup is the async one: `listBrowseRoots` has to have the real
+    // name to spell `\\wsl$\<distro>`, and the synchronous reader answers
+    // `undefined` until something else has already resolved it.
+    getDefaultWslDistroAsync: vi.fn(),
     getWslExecutablePath: vi.fn().mockReturnValue('C:\\Windows\\System32\\wsl.exe'),
+    isWithinDirectory: vi.fn(),
     // WSL home lookup now runs through forge's non-blocking execFileAsync.
     execFileAsync: vi.fn(),
     // Importing api-fs-routes transitively loads sse-handler, whose module-level
@@ -29,6 +33,7 @@ vi.mock('fs', async () => {
 });
 
 import * as fs from 'fs';
+import { readFileSync } from 'fs';
 import * as forge from '@plusplusoneplusplus/forge';
 import { listBrowseRoots } from '../../src/server/routes/api-fs-routes';
 
@@ -49,7 +54,7 @@ describe('listBrowseRoots', () => {
 
     it.runIf(process.platform === 'win32')('returns WSL home plus available drive roots on Windows', async () => {
         mockExistingPaths(['C:\\', 'Q:\\', 'S:\\']);
-        vi.mocked(forge.getDefaultWslDistro).mockReturnValue('Ubuntu-24.04');
+        vi.mocked(forge.getDefaultWslDistroAsync).mockResolvedValue('Ubuntu-24.04');
         vi.mocked(forge.execFileAsync).mockResolvedValue({ stdout: '/home/georgeqiao\n', stderr: '' });
 
         const roots = await listBrowseRoots();
@@ -64,7 +69,7 @@ describe('listBrowseRoots', () => {
 
     it.runIf(process.platform === 'win32')('keeps a WSL distro root even when home lookup fails', async () => {
         mockExistingPaths(['C:\\']);
-        vi.mocked(forge.getDefaultWslDistro).mockReturnValue('Ubuntu-24.04');
+        vi.mocked(forge.getDefaultWslDistroAsync).mockResolvedValue('Ubuntu-24.04');
         vi.mocked(forge.execFileAsync).mockRejectedValue(new Error('home lookup failed'));
 
         const roots = await listBrowseRoots();
@@ -73,5 +78,40 @@ describe('listBrowseRoots', () => {
             { label: 'WSL (Ubuntu-24.04)', path: String.raw`\\wsl$\Ubuntu-24.04` },
             { label: 'C:\\', path: 'C:\\' },
         ]);
+    });
+});
+
+/**
+ * The two suites above only run on Windows, so a forge export this module
+ * imports can go missing from the factory mock and nothing says so anywhere
+ * else: `getDefaultWslDistroAsync` did exactly that when the distro lookup went
+ * async, and the failure surfaced only on the Windows shards.
+ *
+ * A factory mock (no `importOriginal` spread) is an exhaustive list by
+ * construction, so hold it to that. This runs everywhere.
+ */
+describe('the forge mock', () => {
+    it('defines every forge export api-fs-routes imports', () => {
+        const source = readFileSync(
+            new URL('../../src/server/routes/api-fs-routes.ts', import.meta.url),
+            'utf8',
+        );
+        const named = [
+            ...source.matchAll(/import\s*\{([^}]+)\}\s*from\s*'@plusplusoneplusplus\/forge'/g),
+        ].flatMap((m) =>
+            m[1]
+                .split(',')
+                .map((part) => part.trim().split(/\s+as\s+/)[0].trim())
+                .filter(Boolean),
+        );
+        expect(named.length).toBeGreaterThan(0);
+
+        for (const name of named) {
+            expect(
+                () => (forge as Record<string, unknown>)[name],
+                `api-fs-routes imports { ${name} } from @plusplusoneplusplus/forge, but the ` +
+                    `vi.mock factory in this file does not define it`,
+            ).not.toThrow();
+        }
     });
 });

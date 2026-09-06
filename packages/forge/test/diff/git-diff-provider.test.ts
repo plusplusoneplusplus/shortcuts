@@ -31,11 +31,12 @@ vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
 });
 
 import { execGitAsync } from '../../src/git/exec';
+import { hostRepoPath } from '../helpers/host-repo-path';
 const mockExecGit = vi.mocked(execGitAsync);
 
 // ── Test data ────────────────────────────────────────────────
 
-const REPO = '/test/repo';
+const REPO = hostRepoPath('test', 'repo');
 const COMMIT_HASH = 'abc1234567890';
 const PARENT_HASH = 'def0987654321';
 

@@ -21,6 +21,7 @@ import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git/git-cache';
 import { gitInfoCache } from '../../src/server/git/git-info-cache';
+import { hostRepoPath } from '../helpers/host-repo-path';
 
 // ============================================================================
 // Mock forge git exec and child_process
@@ -136,7 +137,7 @@ describe('Git API endpoints', () => {
     let tmpDir: string;
 
     const WORKSPACE_ID = 'ws-git-test';
-    const WORKSPACE_ROOT = '/test/repo';
+    const WORKSPACE_ROOT = hostRepoPath('test', 'repo');
 
     beforeAll(async () => {
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-api-test-'));

@@ -20,6 +20,7 @@ import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 import { gitCache } from '../../src/server/git/git-cache';
+import { hostRepoPath } from '../helpers/host-repo-path';
 
 // ============================================================================
 // Mock child_process (used by detectRemoteUrl via execSync)
@@ -154,7 +155,7 @@ describe('Git Commit Edge Cases', () => {
     let store: MockProcessStore;
 
     const WORKSPACE_ID = 'ws-commit-edge-test';
-    const WORKSPACE_ROOT = '/test/commit-edge-repo';
+    const WORKSPACE_ROOT = hostRepoPath('test', 'commit-edge-repo');
 
     const base = () => `http://127.0.0.1:${port}`;
 

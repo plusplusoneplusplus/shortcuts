@@ -28,10 +28,11 @@ vi.mock('@plusplusoneplusplus/coc-native', async (importOriginal) => {
 });
 
 import { gitHeadSha } from '../../../src/server/ralph/capture-baseline-sha';
+import { hostRepoPath } from '../../helpers/host-repo-path';
 
 const SHA = 'a'.repeat(40);
 const WSL_ROOT = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
-const HOST_ROOT = '/home/user/repo';
+const HOST_ROOT = hostRepoPath('home', 'user', 'repo');
 
 describe('gitHeadSha dispatch', () => {
     beforeEach(() => {
