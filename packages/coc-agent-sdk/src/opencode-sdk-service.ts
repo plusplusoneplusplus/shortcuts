@@ -189,6 +189,27 @@ interface OpenCodeServer {
     close(): void;
 }
 
+/**
+ * opencode's v2 staged-revert API (`/api/session/{sessionID}/revert/*`).
+ *
+ * `stage({ files: false })` moves the session's revert boundary WITHOUT touching
+ * the working tree, and `commit()` makes that boundary permanent (the messages
+ * after it are dropped). This pairing is the only opencode primitive that
+ * rewinds chat history alone — the v1 `POST /session/{id}/revert` endpoint has
+ * no opt-out and always restores its file snapshots.
+ */
+interface OpenCodeRevertApi {
+    stage(params: { sessionID: string; messageID?: string; files?: boolean }): Promise<OpenCodeRequestResult>;
+    commit(params: { sessionID: string }): Promise<OpenCodeRequestResult>;
+    clear?(params: { sessionID: string }): Promise<OpenCodeRequestResult>;
+}
+
+/** hey-api client envelope: `throwOnError: false` reports failures on `error`. */
+interface OpenCodeRequestResult {
+    data?: unknown;
+    error?: unknown;
+}
+
 interface OpenCodeSDKModule {
     createOpencode?: (options?: {
         hostname?: string;
@@ -204,6 +225,17 @@ interface OpenCodeSDKModule {
     default?: {
         createOpencode?: OpenCodeSDKModule['createOpencode'];
         createOpencodeClient?: OpenCodeSDKModule['createOpencodeClient'];
+    };
+}
+
+/** Optional `@opencode-ai/sdk/v2/client` subpath export. */
+interface OpenCodeV2SDKModule {
+    createOpencodeClient?: (options?: {
+        baseUrl?: string;
+        throwOnError?: boolean;
+    }) => Record<string, unknown>;
+    default?: {
+        createOpencodeClient?: OpenCodeV2SDKModule['createOpencodeClient'];
     };
 }
 
@@ -256,6 +288,7 @@ export class OpenCodeSDKService implements ISDKService {
     private server: OpenCodeServer | null = null;
     private createOpencodeClientFn: OpenCodeSDKModule['createOpencodeClient'] | null = null;
     private createOpencodeFn: OpenCodeSDKModule['createOpencode'] | null = null;
+    private v2Client: Record<string, unknown> | null = null;
     private disposed = false;
 
     /** sessionId → active session metadata */
@@ -311,6 +344,7 @@ export class OpenCodeSDKService implements ISDKService {
     public clearAvailabilityCache(): void {
         this.availabilityCache = null;
         this.client = null;
+        this.v2Client = null;
         this.createOpencodeFn = null;
         this.createOpencodeClientFn = null;
     }
@@ -823,8 +857,86 @@ export class OpenCodeSDKService implements ISDKService {
         }
     }
 
-    public async rewindSession(_sessionId: string, _eventId: string): Promise<RewindResult> {
-        throw new RewindUnsupportedError(OPENCODE_PROVIDER);
+    /**
+     * Rewind an opencode session's chat history to a message id (AC-02).
+     *
+     * Uses opencode's native staged revert: `revert.stage({ messageID, files: false })`
+     * moves the session's revert boundary to the anchor message, then
+     * `revert.commit()` makes it permanent so the anchor and everything after it
+     * are gone. The session id is unchanged (in-place truncate), so no
+     * `newSessionId` is returned.
+     *
+     * `files: false` is load-bearing (AC-05): opencode's revert restores the file
+     * snapshots it took during the reverted turns by default, and rewind here is
+     * chat-history-only — it must never touch the working tree. The v1
+     * `POST /session/{id}/revert` endpoint offers no such opt-out, so it is
+     * deliberately not used; when no staged-revert API is reachable this throws
+     * {@link RewindUnsupportedError} rather than silently reverting the user's files.
+     *
+     * `unrevert` is intentionally not wired up — rewind is one-way, matching copilot.
+     */
+    public async rewindSession(sessionId: string, eventId: string): Promise<RewindResult> {
+        if (this.disposed) throw new Error('OpenCodeSDKService has been disposed');
+        const avail = await this.isAvailable();
+        if (!avail.available) throw new Error(avail.error ?? 'OpenCode SDK is not available');
+
+        const revert = await this.resolveStagedRevertApi();
+        if (!revert) {
+            throw new RewindUnsupportedError(
+                OPENCODE_PROVIDER,
+                `Rewind is not supported: the connected ${OPENCODE_SDK_PACKAGE} server does not expose the ` +
+                'staged revert API (session.revert.stage/commit), and the legacy revert endpoint would ' +
+                'also restore file snapshots.',
+            );
+        }
+
+        const staged = await revert.stage({ sessionID: sessionId, messageID: eventId, files: false });
+        throwOnOpenCodeError(staged, `stage revert for opencode session '${sessionId}'`);
+        const committed = await revert.commit({ sessionID: sessionId });
+        throwOnOpenCodeError(committed, `commit revert for opencode session '${sessionId}'`);
+
+        return {
+            eventsRemoved: readRemovedCount(staged?.data) ?? readRemovedCount(committed?.data) ?? 0,
+            upToEventId: eventId,
+        };
+    }
+
+    /**
+     * Resolve opencode's staged-revert API, preferring the already-connected
+     * client and falling back to a v2 client pointed at the same server. Returns
+     * `null` when neither exposes it (older server or SDK without the v2 routes).
+     */
+    private async resolveStagedRevertApi(): Promise<OpenCodeRevertApi | null> {
+        const client = await this.ensureClient();
+        const inline = (client as unknown as { session?: { revert?: unknown } }).session?.revert;
+        if (isStagedRevertApi(inline)) return inline;
+
+        const v2 = await this.ensureV2Client();
+        const v2Revert = (v2 as { session?: { revert?: unknown } } | null)?.session?.revert;
+        return isStagedRevertApi(v2Revert) ? v2Revert : null;
+    }
+
+    /**
+     * Lazily build a v2 SDK client bound to the same opencode server as the
+     * primary client. The v2 subpath export is optional — an SDK build without it
+     * simply yields `null`, which callers translate into "capability missing".
+     */
+    private async ensureV2Client(): Promise<Record<string, unknown> | null> {
+        if (this.v2Client) return this.v2Client;
+        try {
+            const mod = await dynamicImportModule<OpenCodeV2SDKModule>(`${OPENCODE_SDK_PACKAGE}/v2/client`);
+            const createFn = mod.createOpencodeClient ?? mod.default?.createOpencodeClient;
+            if (!createFn) return null;
+            this.v2Client = createFn({ baseUrl: this.resolveBaseUrl(), throwOnError: false }) ?? null;
+            return this.v2Client;
+        } catch {
+            return null;
+        }
+    }
+
+    /** Base URL of the opencode server this service is talking to. */
+    private resolveBaseUrl(): string {
+        return this.server?.url ?? `http://${OPENCODE_DEFAULT_HOSTNAME}:${OPENCODE_DEFAULT_PORT}`;
     }
 
     public async compactSession(_sessionId: string, _customInstructions?: string): Promise<CompactResult> {
@@ -858,6 +970,7 @@ export class OpenCodeSDKService implements ISDKService {
         this.sessions.clear();
         this.availabilityCache = null;
         this.client = null;
+        this.v2Client = null;
         this.createOpencodeFn = null;
         this.createOpencodeClientFn = null;
     }
@@ -873,6 +986,40 @@ export class OpenCodeSDKService implements ISDKService {
 // ============================================================================
 // Mapping helpers
 // ============================================================================
+
+/** True when `value` looks like opencode's staged-revert API (v2 `Revert` class). */
+function isStagedRevertApi(value: unknown): value is OpenCodeRevertApi {
+    if (!value || (typeof value !== 'object' && typeof value !== 'function')) return false;
+    const candidate = value as { stage?: unknown; commit?: unknown };
+    return typeof candidate.stage === 'function' && typeof candidate.commit === 'function';
+}
+
+/**
+ * Surface a hey-api `{ error }` envelope as a thrown Error. The client is built
+ * with `throwOnError: false`, so failures arrive as data, not rejections.
+ */
+function throwOnOpenCodeError(result: OpenCodeRequestResult | undefined, action: string): void {
+    const err = result?.error;
+    if (err === undefined || err === null) return;
+    const message = typeof err === 'string'
+        ? err
+        : (err as { message?: string })?.message ?? JSON.stringify(err);
+    throw new Error(`OpenCode failed to ${action}: ${message}`);
+}
+
+/**
+ * Best-effort count of messages dropped by a revert. opencode's revert payloads
+ * carry no such count today, so callers fall back to 0.
+ */
+function readRemovedCount(data: unknown): number | undefined {
+    if (!data || typeof data !== 'object') return undefined;
+    const record = data as Record<string, unknown>;
+    for (const key of ['eventsRemoved', 'messagesRemoved', 'removed']) {
+        const value = record[key];
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+    }
+    return undefined;
+}
 
 /**
  * Flatten opencode providers/models into the IModelInfo[] shape.

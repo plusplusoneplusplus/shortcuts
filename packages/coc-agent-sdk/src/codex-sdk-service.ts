@@ -2123,9 +2123,17 @@ export class CodexSDKService implements ISDKService {
     }
 
     /**
-     * History rewind/truncation is not supported by the Codex SDK (AC-02).
-     * Throws the typed {@link RewindUnsupportedError} so the backend can surface
-     * a "rewind unsupported" rejection to the user.
+     * History rewind is genuinely unavailable for codex — not merely unimplemented.
+     *
+     * Neither surface CoC drives exposes a rewind primitive: `@openai/codex-sdk`
+     * offers only `startThread` / `resumeThread` (no truncate, revert, rollback or
+     * resume-at), and the `codex app-server` JSON-RPC channel (`thread/resume`,
+     * `thread/compact/start`) has no equivalent either. Faking it — truncating
+     * rollout files under `~/.codex/sessions`, or reseeding a fresh thread with the
+     * surviving history — is deliberately out of scope: rewind is native-SDK-only.
+     *
+     * Throws the typed {@link RewindUnsupportedError} so the backend maps it to a
+     * 409 `REWIND_UNSUPPORTED` and the SPA hides the rewind button for codex chats.
      */
     public async rewindSession(_sessionId: string, _eventId: string): Promise<RewindResult> {
         throw new RewindUnsupportedError(CODEX_PROVIDER);
