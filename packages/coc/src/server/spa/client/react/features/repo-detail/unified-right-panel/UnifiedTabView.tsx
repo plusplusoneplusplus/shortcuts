@@ -59,6 +59,13 @@ export interface UnifiedTabViewProps {
     /** Load failure state for this tab, for the strip's error marker. */
     onErrorChange?: (tabId: string, hasError: boolean) => void;
     /**
+     * Hands the panel a way to write this tab's buffer (AC-05), so the
+     * unsaved-changes prompt can save without the user re-visiting the tab.
+     * Called with `null` when the buffer stops being editable or unmounts, so a
+     * read-only tab never registers a write at all.
+     */
+    onRegisterSave?: (tabId: string, save: (() => Promise<boolean>) | null) => void;
+    /**
      * Live-session state for a terminal tab (AC-05). The panel owns the close
      * confirmation because the ✕ is in the strip, not in the terminal view.
      */
@@ -73,7 +80,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 
 export function UnifiedTabView({
     tab, scopeWorkspaceId, chatId, onOpenResource, onClose, onDirtyChange, onErrorChange,
-    onTerminalSessionsChange,
+    onRegisterSave, onTerminalSessionsChange,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
@@ -90,6 +97,10 @@ export function UnifiedTabView({
     const handleError = useCallback(
         (hasError: boolean) => onErrorChange?.(tab.id, hasError),
         [onErrorChange, tab.id],
+    );
+    const handleRegisterSave = useCallback(
+        (save: (() => Promise<boolean>) | null) => onRegisterSave?.(tab.id, save),
+        [onRegisterSave, tab.id],
     );
     const handleTerminalSessions = useCallback(
         (sessions: readonly TerminalSessionSummary[]) => onTerminalSessionsChange?.(tab.id, sessions),
@@ -141,6 +152,7 @@ export function UnifiedTabView({
                     readOnly={tab.readOnly === true}
                     onClose={close}
                     onDirtyChange={handleDirty}
+                    onRegisterSave={handleRegisterSave}
                     onStatusChange={handleStatus}
                 />
             );

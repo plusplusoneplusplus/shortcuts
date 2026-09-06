@@ -28,9 +28,10 @@
  *    same open/width persistence and the same header toggle.
  *
  * Closing is guarded rather than immediate where a close would destroy something
- * (AC-05): a terminal tab with live sessions asks first, cancel leaves both the
- * tab and the processes alone, and a terminate that fails keeps the tab with a
- * visible error instead of pretending it worked.
+ * (AC-05). A terminal tab with live sessions asks before ending them; a file tab
+ * with unsaved edits raises the Explorer's own Save / Don't Save / Cancel
+ * prompt. Both guards share one rule: cancel changes nothing, and an action that
+ * fails keeps the tab with a visible error instead of pretending it worked.
  *
  * Resource views are reused as-is and live in `UnifiedTabView`; their own
  * toolbars render below the strip rather than portaling into it, so the strip
@@ -43,6 +44,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
 import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../WorkspaceRightDock';
+import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
@@ -54,6 +56,11 @@ import {
     terminateTerminalSessions,
     type UnifiedTerminalSession,
 } from './unifiedTerminalClose';
+import {
+    DIRTY_CLOSE_SAVE_FAILED,
+    dirtyCloseLabel,
+    needsDirtyCloseConfirm,
+} from './unifiedDirtyClose';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 export interface UnifiedRightPanelProps {
@@ -159,6 +166,19 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         [],
     );
 
+    // Each editable buffer registers a save function here, so the unsaved-changes
+    // prompt can write the file without the user visiting the tab first. A
+    // read-only tab registers nothing, which is what makes it impossible for a
+    // close to attempt a write on one.
+    const saveHandlers = useRef(new Map<string, () => Promise<boolean>>());
+    const handleRegisterSave = useCallback(
+        (tabId: string, save: (() => Promise<boolean>) | null) => {
+            if (save) saveHandlers.current.set(tabId, save);
+            else saveHandlers.current.delete(tabId);
+        },
+        [],
+    );
+
     const closeTab = useCallback((id: string) => {
         close(id);
         setMountedIds(prev => {
@@ -173,6 +193,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             delete next[id];
             return next;
         });
+        saveHandlers.current.delete(id);
         // No flag clearing here on purpose: closing unmounts the view, and the
         // views report clean/ready from their own unmount cleanup, so a second
         // reset would be dead code. Verified by removing the cleanup's effect in
@@ -184,6 +205,13 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     >(null);
     const [closeError, setCloseError] = useState<string | null>(null);
     const [closeBusy, setCloseBusy] = useState(false);
+
+    // The close waiting on the unsaved-changes prompt. Kept apart from
+    // `pendingClose` because the two prompts ask different questions and can
+    // never be up at the same time — a tab is either a terminal or a buffer.
+    const [pendingDirty, setPendingDirty] = useState<{ tabId: string; label: string } | null>(null);
+    const [dirtySaving, setDirtySaving] = useState(false);
+    const [dirtyError, setDirtyError] = useState<string | null>(null);
 
     // The strip's ✕ and the views' own close buttons both come through here. A
     // terminal tab with nothing running still closes immediately: an exited
@@ -200,8 +228,14 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                 return;
             }
         }
+        if (needsDirtyCloseConfirm(tab, dirtyIds.has(id))) {
+            setPendingDirty({ tabId: id, label: dirtyCloseLabel(tab!) });
+            setDirtyError(null);
+            setDirtySaving(false);
+            return;
+        }
         closeTab(id);
-    }, [tabs, terminalSessions, closeTab]);
+    }, [tabs, terminalSessions, dirtyIds, closeTab]);
 
     const cancelClose = useCallback(() => {
         setPendingClose(null);
@@ -235,6 +269,53 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         if (pendingClose === null) return;
         if (!tabs.some(tab => tab.id === pendingClose.tabId)) cancelClose();
     }, [tabs, pendingClose, cancelClose]);
+
+    /** Cancel: the tab, its buffer, and its unsaved edits are all left alone. */
+    const cancelDirtyClose = useCallback(() => {
+        setPendingDirty(null);
+        setDirtyError(null);
+        setDirtySaving(false);
+    }, []);
+
+    /** Don't Save: close the tab and let the buffer go with it. */
+    const discardAndClose = useCallback(() => {
+        const pending = pendingDirty;
+        if (pending === null) return;
+        setPendingDirty(null);
+        setDirtyError(null);
+        closeTab(pending.tabId);
+    }, [pendingDirty, closeTab]);
+
+    /**
+     * Save: write the buffer, then close. A write that fails — or a tab that
+     * registered no save function at all — keeps the tab open and dirty with the
+     * error on the prompt, so a failed save is never reported as a close.
+     */
+    const saveAndClose = useCallback(() => {
+        const pending = pendingDirty;
+        if (pending === null || dirtySaving) return;
+        const save = saveHandlers.current.get(pending.tabId);
+        setDirtySaving(true);
+        setDirtyError(null);
+        void Promise.resolve(save ? save() : false)
+            .catch(() => false)
+            .then(saved => {
+                setDirtySaving(false);
+                if (!saved) {
+                    setDirtyError(DIRTY_CLOSE_SAVE_FAILED);
+                    return;
+                }
+                setPendingDirty(null);
+                closeTab(pending.tabId);
+            });
+    }, [pendingDirty, dirtySaving, closeTab]);
+
+    // Same rule as the terminal prompt: a question about a tab that is no longer
+    // there (a chat switch, a close from elsewhere) has nothing left to answer.
+    useEffect(() => {
+        if (pendingDirty === null) return;
+        if (!tabs.some(tab => tab.id === pendingDirty.tabId)) cancelDirtyClose();
+    }, [tabs, pendingDirty, cancelDirtyClose]);
 
     // The "+" menu. Dismissal always hands focus back to whatever opened it —
     // the "+" button or the empty state's "Open…" — so a keyboard user is never
@@ -378,11 +459,22 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                                 onClose={requestClose}
                                 onDirtyChange={handleDirtyChange}
                                 onErrorChange={handleErrorChange}
+                                onRegisterSave={handleRegisterSave}
                                 onTerminalSessionsChange={handleTerminalSessions}
                             />
                         </div>
                     ))
                 )}
+
+                <ExplorerCloseTabsDialog
+                    open={pendingDirty !== null}
+                    paths={pendingDirty === null ? [] : [pendingDirty.label]}
+                    saving={dirtySaving}
+                    error={dirtyError}
+                    onSave={saveAndClose}
+                    onDontSave={discardAndClose}
+                    onCancel={cancelDirtyClose}
+                />
 
                 {pendingClose !== null && (
                     <UnifiedPanelCloseConfirm

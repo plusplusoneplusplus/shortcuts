@@ -220,8 +220,11 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         expect(screen.getByTestId(`unified-panel-view-${fileId}`).getAttribute('data-active')).toBe('false');
         expect(screen.getByTestId(`unified-panel-tab-dirty-${fileId}`)).toBeTruthy();
 
+        // Closing it now goes through AC-05's unsaved-changes prompt; the
+        // marker clears once the buffer is actually discarded.
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${fileId}`));
-        expect(screen.queryByTestId(`unified-panel-tab-dirty-${fileId}`)).toBeNull();
+        fireEvent.click(screen.getByTestId('explorer-close-dont-save-btn'));
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-dirty-${fileId}`)).toBeNull());
 
         // Reopening the same file is a fresh, clean buffer rather than a tab
         // still wearing the closed one's dirty marker.
