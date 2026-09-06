@@ -56,6 +56,8 @@ import type { TurnPerformanceStore } from '../storage/turn-performance-store';
 import { registerDbBrowserRoutes } from '../admin/db-browser-handler';
 import { registerHeapRoutes } from '../admin/heap-monitor';
 import { registerSeenStateRoutes } from '../processes/seen-state-handler';
+import { registerWhatsNewRoutes } from '../whats-new/whats-new-handler';
+import { WhatsNewService } from '../whats-new/whats-new-service';
 import { registerPromptSuggestionRoutes } from '../processes/prompt-suggestion-handler';
 import { registerPromptHistoryRoutes } from '../processes/prompt-history-handler';
 import { registerGroupPinRoutes } from '../processes/group-pin-handler';
@@ -629,6 +631,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
     registerSeenStateRoutes(routes, store as any);
+    registerWhatsNewRoutes(routes, new WhatsNewService({ dataDir }));
     registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);
     registerPromptHistoryRoutes(routes, store as any);
     registerGroupPinRoutes(routes, store, dataDir);

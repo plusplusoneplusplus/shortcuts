@@ -1170,6 +1170,7 @@ async function bootstrap(): Promise<void> {
         // tee its stdout/stderr into the desktop log (packaged/no-TTY only).
         serverHandle = await attachOrStart({
             attachPort: devTunnelPort,
+            appVersion: app.getVersion(),
             onServerOutput: desktopLogger
                 ? (chunk) => desktopLogger?.write(chunk)
                 : undefined,

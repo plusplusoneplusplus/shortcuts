@@ -190,11 +190,37 @@ describe('attachOrStart', () => {
         expect(forkedEnv.COC_DESKTOP_PORT).toBe(String(preferredPort));
         expect(forkedEnv.COC_DESKTOP_DATA_DIR).toBe('/tmp/shared-coc');
         expect(requestedPreferredPort).toBe(preferredPort);
+        // No appVersion passed — the var is omitted rather than set to "undefined".
+        expect('COC_APP_VERSION' in forkedEnv).toBe(false);
 
         expect(handle.started).toBe(true);
         expect(handle.port).toBe(preferredPort);
         expect(handle.url).toBe(formatUrl(DEFAULT_HOST, preferredPort));
         expect(handle.child).toBe(child as unknown as ChildProcess);
+    });
+
+    // The server looks up the GitHub Release tagged v<app version> for the
+    // "What's New" modal; its own package version is not the released one, so
+    // the desktop must hand it app.getVersion() explicitly.
+    it('forwards appVersion to the forked server as COC_APP_VERSION', async () => {
+        const child = new FakeChild();
+        let forkedEnv: NodeJS.ProcessEnv = {};
+        await attachOrStart({
+            appVersion: '3.4.9-alpha.31',
+            serverEntryPath: '/abs/dist/server-entry.js',
+            attachPort: 56359,
+            deps: {
+                probeHealth: async () => false,
+                findFreePort: async (_host, requestedPort) => requestedPort!,
+                fork: (_modulePath, env) => {
+                    forkedEnv = env;
+                    child.emitListening(56359);
+                    return child as unknown as ChildProcess;
+                },
+            },
+        });
+
+        expect(forkedEnv.COC_APP_VERSION).toBe('3.4.9-alpha.31');
     });
 
     it('uses the fallback port when the preferred port is occupied by another process', async () => {

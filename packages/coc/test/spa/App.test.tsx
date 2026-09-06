@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, act, waitFor } from '@testing-library/react';
+import { render, act, waitFor, screen } from '@testing-library/react';
 
 // ── Captured hook callbacks ──────────────────────────────────────
 
@@ -29,6 +29,13 @@ vi.mock('../../src/server/spa/client/react/hooks/useWebSocket', () => ({
 const mockFetchApi = vi.fn();
 vi.mock('../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
+}));
+
+// The What's New modal issues its own GET /api/whats-new on mount. Left real, it
+// would consume the `mockResolvedValueOnce` values queued here for /preferences,
+// so it is stubbed with a marker that the mount test below asserts on instead.
+vi.mock('../../src/server/spa/client/react/whats-new/WhatsNewModal', () => ({
+    WhatsNewModal: () => <div data-testid="whats-new-modal-stub" />,
 }));
 
 const mockQueueList = vi.fn();
@@ -201,6 +208,12 @@ describe('App bootstrap', () => {
         mockAgentProviderModelsList.mockResolvedValue({ models: [] });
         mockReportActiveWorkspace.mockReset();
         mockReportActiveWorkspace.mockResolvedValue({ activeWorkspaceIds: [], clients: [] });
+    });
+
+    it('mounts the What\u2019s New modal at the app root', async () => {
+        render(<App />);
+
+        await waitFor(() => expect(screen.getByTestId('whats-new-modal-stub')).toBeTruthy());
     });
 
     it('fetches /preferences on mount and dispatches SET_WELCOME_PREFERENCES', async () => {
