@@ -40,8 +40,8 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
 // The canvas panel owns a large kernel stack of its own; here only the routing
 // it is handed matters.
 vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', () => ({
-    CanvasPanel: ({ workspaceId, canvasId, onClose }: any) => (
-        <div data-testid="mock-canvas">
+    CanvasPanel: ({ workspaceId, canvasId, liveEvent, onClose }: any) => (
+        <div data-testid="mock-canvas" data-revision={liveEvent ? String(liveEvent.revision) : 'none'}>
             canvas:{workspaceId}:{canvasId}
             <button data-testid="mock-canvas-close" onClick={onClose}>close</button>
         </div>
@@ -104,6 +104,10 @@ import {
 import type { WhisperDiffOpenContext } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { noteResourceId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedNoteTabs';
+import {
+    clearUnifiedCanvasEvents,
+    publishUnifiedCanvasEvent,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
 
 const WS = 'ws-1';
@@ -169,11 +173,13 @@ beforeEach(() => {
     mockExplorerApi.writeBlob.mockResolvedValue({ success: true });
     localStorage.clear();
     clearUnifiedPanelState();
+    clearUnifiedCanvasEvents();
 });
 afterEach(() => {
     cleanup();
     clearUnifiedPanelState();
     clearUnifiedDiffSources();
+    clearUnifiedCanvasEvents();
 });
 
 describe('UnifiedRightPanel — file tabs (AC-04)', () => {
@@ -264,6 +270,23 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
         renderPanel();
 
         expect(screen.getByTestId('mock-canvas')).toHaveTextContent(`canvas:${MEMBER}:canvas-7`);
+    });
+
+    it('hands the canvas view the live event for its own clone (AC-06)', () => {
+        openUnifiedPanelTab(WS, {
+            kind: 'canvas', ownerWorkspaceId: MEMBER, chatId: CHAT, resourceId: 'canvas-7', label: 'Plan',
+        });
+        renderPanel();
+        expect(screen.getByTestId('mock-canvas').getAttribute('data-revision')).toBe('none');
+
+        // An AI edit reaches the open view without a second fetch path, which is
+        // what keeps its conflict UI in charge when the user has a local draft.
+        act(() => { publishUnifiedCanvasEvent(MEMBER, { canvasId: 'canvas-7', title: 'Plan', revision: 4, editor: 'ai' }); });
+        expect(screen.getByTestId('mock-canvas').getAttribute('data-revision')).toBe('4');
+
+        // Same canvas id, another clone — a different resource entirely.
+        act(() => { publishUnifiedCanvasEvent(WS, { canvasId: 'canvas-7', title: 'Plan', revision: 9, editor: 'ai' }); });
+        expect(screen.getByTestId('mock-canvas').getAttribute('data-revision')).toBe('4');
     });
 
     it('closes the canvas tab from the canvas panel\'s own close action', () => {

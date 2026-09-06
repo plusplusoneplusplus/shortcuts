@@ -30,7 +30,9 @@ import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { clearUnifiedDiffSources, getUnifiedDiffSource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
-import { visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { clearUnifiedCanvasEvents } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
+import { closeTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 
 // ── Hoisted mock state ──────────────────────────────────────────────────────
 
@@ -788,6 +790,76 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID });
 
         await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    });
+});
+
+describe('ChatDetail — AI canvas updates with the unified right panel (AC-06)', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+        clearUnifiedCanvasEvents();
+    });
+
+    function fireCanvasUpdate(canvasId: string, revision: number) {
+        act(() => {
+            mockState.sseOpts.onCanvasUpdated({ canvasId, title: 'Plan', revision, editor: 'ai' });
+        });
+    }
+
+    it('activates the canvas as a panel tab instead of the chat\u2019s own canvas column', async () => {
+        renderHostedChat('task-A');
+        fireCanvasUpdate('canvas-A2', 1);
+
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.resourceId)).toEqual(['canvas-A2']);
+        });
+        const state = readUnifiedPanelState(WS_ID);
+        const tab = visibleTabs(state, 'task-A')[0]!;
+        expect(tab.chatId).toBe('task-A');
+        expect(tab.ownerWorkspaceId).toBe(WS_ID);
+        // Active, not merely present — the goal asks for activation on every
+        // create and update.
+        expect(state.activeByScope['task-A']).toBe(tab.id);
+        // One right-side surface: the docked agent canvas must stay shut.
+        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+    });
+
+    it('recreates a dismissed tab on a later update, without duplicating it', async () => {
+        renderHostedChat('task-A');
+        fireCanvasUpdate('canvas-A2', 1);
+        await waitFor(() => expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1));
+        const tabId = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!.id;
+
+        act(() => { updateUnifiedPanelState(WS_ID, prev => closeTab(prev, tabId)); });
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+
+        fireCanvasUpdate('canvas-A2', 2);
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.id)).toEqual([tabId]);
+        });
+
+        fireCanvasUpdate('canvas-A2', 3);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1);
+    });
+
+    it('leaves the visible panel alone for a chat it is not showing', async () => {
+        // A background chat's AI edit must not repoint the panel, so it keeps
+        // its own docked canvas instead of filing an invisible tab.
+        renderHostedChat('task-A', 'task-B');
+        fireCanvasUpdate('canvas-A2', 1);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-B')).toEqual([]);
+    });
+
+    it('keeps the chat\u2019s own canvas column with no panel hosting it at all', async () => {
+        renderChat('task-A');
+        fireCanvasUpdate('canvas-A2', 1);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
     });
 });

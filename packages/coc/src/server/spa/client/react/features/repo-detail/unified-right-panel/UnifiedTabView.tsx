@@ -15,7 +15,9 @@
  *    descriptor carries that bit (it is never re-derived), so restoring or
  *    reordering a tab cannot widen a read-only reference into a writable file.
  *  - `canvas` — `CanvasPanel`, routed at `tab.ownerWorkspaceId` so a canvas from
- *    a remote clone keeps hitting its own server for revisions and comments.
+ *    a remote clone keeps hitting its own server for revisions and comments,
+ *    with the live `canvas-updated` event for that clone's canvas wired in
+ *    (`UnifiedCanvasTab`) so an AI edit reconciles in place.
  *  - `diff` — the chat's own read-only `WhisperDiffPanel`, resolved through the
  *    `unifiedDiffSources` registry, because a diff is reconstructed from an
  *    in-memory tool-call group rather than fetched. A tab whose group is gone
@@ -38,7 +40,7 @@ import { TerminalView, type TerminalSessionSummary } from '../../terminal/Termin
 import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
 import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
-import { CanvasPanel } from '../../canvas/CanvasPanel';
+import { UnifiedCanvasTab } from './UnifiedCanvasTab';
 import { UnifiedDiffTab } from './UnifiedDiffTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
 import { explorerFileTabInput } from './unifiedExplorerFiles';
@@ -158,10 +160,9 @@ export function UnifiedTabView({
             );
         case 'canvas':
             return (
-                <CanvasPanel
+                <UnifiedCanvasTab
                     workspaceId={tab.ownerWorkspaceId}
                     canvasId={tab.resourceId}
-                    liveEvent={null}
                     onClose={close}
                     onDirtyChange={handleDirty}
                     onRegisterSave={handleRegisterSave}

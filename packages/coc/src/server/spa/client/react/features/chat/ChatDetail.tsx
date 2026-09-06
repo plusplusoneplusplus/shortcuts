@@ -50,6 +50,7 @@ import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER
 import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
+import { routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { sourceLinkTabInput } from '../repo-detail/unified-right-panel/unifiedSourceLinks';
 import { noteTabInput } from '../repo-detail/unified-right-panel/unifiedNoteTabs';
@@ -573,6 +574,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // link clicked in a remote conversation names a workspace that is not in
     // `state.workspaces`, and without it nothing resolves.
     const resolvableWorkspaces = useWorkspacesWithRemote();
+
+    // `useChatSSE` captures its callbacks when it opens the EventSource and does
+    // not re-subscribe when they change, so the canvas-updated handler reads the
+    // host and the workspace list through refs. Without them a stream opened
+    // before the panel mounted (or before the workspaces resolved) would keep
+    // routing AI canvases to the old docked surface for the life of the chat.
+    const unifiedPanelHostRef = useRef(unifiedPanelHost);
+    unifiedPanelHostRef.current = unifiedPanelHost;
+    const resolvableWorkspacesRef = useRef(resolvableWorkspaces);
+    resolvableWorkspacesRef.current = resolvableWorkspaces;
 
     // A clicked changed-file row dispatches its diff context on `window` rather
     // than prop-drilling through the conversation tree (mirrors the
@@ -1432,13 +1443,32 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== data.requestId));
         },
         onCanvasUpdated: (data) => {
-            setActiveCanvasId(data.canvasId);
-            setCanvasLiveEvent(data);
+            // Canvas discovery is shared by both surfaces: the chat's own canvas
+            // list drives its selector regardless of where the canvas is shown.
             if (workspaceId && canvasPid) {
                 client.canvases.list(workspaceId, { processId: canvasPid })
                     .then(canvases => setConversationCanvases(canvases))
                     .catch(() => { /* canvas discovery is best-effort */ });
             }
+            // AC-06: with a unified panel showing THIS chat, an AI create or
+            // update always activates the canvas's tab there — reopening the
+            // panel and recreating a tab the user closed — and the docked agent
+            // canvas stays shut, so there is no second right-side column. The
+            // host is null for a background chat, so its updates cannot repoint
+            // whatever the visible panel is showing.
+            const host = unifiedPanelHostRef.current;
+            if (host && routeUnifiedCanvasUpdate({
+                event: data,
+                // The clone whose canvas API served this canvas, not the panel's
+                // scope — in a repo group those differ.
+                ownerWorkspaceId: workspaceId ?? host.workspaceId,
+                scopeWorkspaceId: host.workspaceId,
+                // The chat that received the event, never the selected one.
+                chatId: taskId,
+                workspaces: resolvableWorkspacesRef.current,
+            })) return;
+            setActiveCanvasId(data.canvasId);
+            setCanvasLiveEvent(data);
             // A fresh AI canvas edit auto-opens the panel AND clears any
             // persisted deliberate-close, so future switch-backs auto-open too.
             setCanvasPanelClosed(false);
