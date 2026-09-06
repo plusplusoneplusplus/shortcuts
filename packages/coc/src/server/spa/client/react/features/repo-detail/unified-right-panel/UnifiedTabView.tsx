@@ -4,7 +4,9 @@
  * Every kind maps onto a view that already exists elsewhere in the app; nothing
  * here is a second editor, a second file transport, or a second canvas store:
  *
- *  - `terminal` / `explorer` / `notes` — the workspace dock's own views.
+ *  - `terminal` / `explorer` / `notes` — the workspace dock's own views. The
+ *    Explorer runs in navigator mode: it opens files as tabs in THIS strip
+ *    rather than in its own editor, so there is no nested resource tab row.
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
  *    flag-off Explorer tabs use, so load/retry/dirty/save/status behave
  *    identically wherever a file was opened from. `tab.readOnly` forces the
@@ -39,12 +41,17 @@ import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
 import { CanvasPanel } from '../../canvas/CanvasPanel';
 import { UnifiedDiffTab } from './UnifiedDiffTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
-import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
+import { explorerFileTabInput } from './unifiedExplorerFiles';
+import type { OpenUnifiedTabInput, UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 export interface UnifiedTabViewProps {
     tab: UnifiedPanelTab;
     /** The panel's own workspace — Notes' owner, and the deep-link test. */
     scopeWorkspaceId: string;
+    /** The selected chat, so an Explorer selection lands in the right scope. */
+    chatId: string | null;
+    /** File a resource this view opened (the Explorer's selections). */
+    onOpenResource: (input: OpenUnifiedTabInput) => void;
     /** Close this tab (the views' own close affordances route here). */
     onClose: (tabId: string) => void;
     /** Unsaved-edit state for this tab, for the strip's dirty marker. */
@@ -60,7 +67,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 }
 
 export function UnifiedTabView({
-    tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
+    tab, scopeWorkspaceId, chatId, onOpenResource, onClose, onDirtyChange, onErrorChange,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
@@ -78,6 +85,25 @@ export function UnifiedTabView({
         (hasError: boolean) => onErrorChange?.(tab.id, hasError),
         [onErrorChange, tab.id],
     );
+    // An Explorer tab is a navigator: its selections become file tabs beside it
+    // instead of buffers inside it. The file is owned by the repo the Explorer
+    // is browsing (a group member keeps its own bytes) and scoped to the
+    // selected chat, per "files opened from Explorer belong to the current chat".
+    const handleExplorerOpen = useCallback(
+        (
+            file: { path: string; name: string; line?: number },
+            options: { preview: boolean; readOnly?: boolean },
+        ) => {
+            const input = explorerFileTabInput(file, options, {
+                ownerWorkspaceId: tab.ownerWorkspaceId,
+                scopeWorkspaceId,
+                ownerLabel: tab.repoLabel,
+                chatId,
+            });
+            if (input) onOpenResource(input);
+        },
+        [tab.ownerWorkspaceId, tab.repoLabel, scopeWorkspaceId, chatId, onOpenResource],
+    );
 
     switch (tab.kind) {
         case 'terminal':
@@ -86,7 +112,13 @@ export function UnifiedTabView({
             // Deep-linking only when the tab targets the panel's own scope: the
             // hash a group member would write reads as "select that repo" and
             // would navigate the user out of the group on every file click.
-            return <ExplorerPanel workspaceId={tab.ownerWorkspaceId} deepLink={tab.ownerWorkspaceId === scopeWorkspaceId} />;
+            return (
+                <ExplorerPanel
+                    workspaceId={tab.ownerWorkspaceId}
+                    deepLink={tab.ownerWorkspaceId === scopeWorkspaceId}
+                    onOpenFile={handleExplorerOpen}
+                />
+            );
         case 'notes':
             return <DockNotesPanel workspaceId={scopeWorkspaceId} />;
         case 'file':

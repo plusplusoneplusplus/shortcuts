@@ -94,7 +94,11 @@ describe('ExplorerPanel', () => {
         });
 
         it('aside uses mobile-friendly flex sizing for scrollability', () => {
-            expect(source).toContain('flex-1 min-h-0 lg:flex-none');
+            expect(source).toContain('w-full flex-1 min-h-0');
+            // The fixed desktop width only applies beside an editor: in
+            // navigator mode (the unified panel's Explorer tab) the tree is the
+            // whole panel, so `lg:flex-none` is conditional.
+            expect(source).toContain("navigatorMode ? '' : ' lg:flex-none lg:border-r'");
         });
 
         it('main preview pane has min-h-0 for mobile scroll support', () => {

@@ -282,6 +282,8 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                             <UnifiedTabView
                                 tab={tab}
                                 scopeWorkspaceId={workspaceId}
+                                chatId={chatId}
+                                onOpenResource={openResource}
                                 onClose={closeTab}
                                 onDirtyChange={handleDirtyChange}
                                 onErrorChange={handleErrorChange}
