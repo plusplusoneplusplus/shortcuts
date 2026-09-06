@@ -6,6 +6,12 @@ export interface FileBlob {
     content: string;
     encoding: 'utf-8' | 'base64';
     mimeType: string;
+    /**
+     * Optional language hint from the transport, when it reports one. Purely
+     * additive — hosts whose transport says nothing about language leave it
+     * unset and derive the language from the file name instead.
+     */
+    language?: string;
 }
 
 /** What a viewer buffer is doing: fetching, failed, or showing content. */

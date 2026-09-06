@@ -1,44 +1,44 @@
 /**
  * useSourceCanvasContent — loads file content for the docked source canvas
- * (AC-06). Resolves the workspace + path (longest-prefix `rootPath` match,
- * relative paths against `sourceFilePath` or the workspace root), fetches via
- * the existing `previewWorkspaceFile` endpoint, and exposes explicit loading /
- * success / error states.
+ * (AC-06). Two jobs, and only the first is its own: it RESOLVES the workspace +
+ * path (longest-prefix `rootPath` match, relative paths against
+ * `sourceFilePath` or the workspace root), then hands the fetch to the shared
+ * `useFileContent` and maps the result onto the canvas's own vocabulary.
  *
  * An unresolvable or missing path still resolves to an `error` state — the
  * canvas stays open with a clear "couldn't load <path>" message rather than
- * silently showing nothing.
+ * silently showing nothing. Nothing resolvable means a `null` key, which tells
+ * `useFileContent` to issue no request and sit in `loading`.
  *
  * Returns raw text + a server language hint; rendering (markdown vs
  * syntax-highlighted source, line jump/highlight) is layered on top in AC-04/05.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { useWorkspacesWithRemote } from '../../../repos/workspacesWithRemote';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
+import { useFileContent } from '../../../shared/file-viewer/useFileContent';
+import type { FileBlob } from '../../../shared/file-viewer/types';
 import { resolveSourceCanvasTarget, isSourceCanvasResolveError } from './resolve';
-import type { SourceCanvasFileRef } from './types';
+import type { SourceCanvasContentState, SourceCanvasFileRef } from './types';
 
-export type SourceCanvasContentStatus = 'loading' | 'success' | 'error';
+// Re-exported so the panel/dock/index import sites stay put; the shape itself
+// lives with the folder's other public vocabulary.
+export type { SourceCanvasContentState, SourceCanvasContentStatus } from './types';
 
-export interface SourceCanvasContentState {
-    status: SourceCanvasContentStatus;
-    /** Loaded file text (success). */
-    content: string;
-    /** Server-reported language hint, for syntax highlighting (success). */
-    language: string;
-    /** The path actually fetched/attempted — for the header + error message. */
-    resolvedPath: string;
-    /** Workspace that owns the server-resolved path. */
-    resolvedWorkspaceId?: string;
-    /** Root of the owning workspace, used for repo-relative display paths. */
-    workspaceRootPath?: string;
-    /** Failure reason (error). */
-    error: string;
+/** What `previewWorkspaceFile` may hand back — every field is best-effort. */
+interface PreviewResponse {
+    content?: unknown;
+    lines?: unknown;
+    language?: unknown;
+    /** Absolute path the server settled on (a repo-group ref is sent relative). */
+    path?: unknown;
+    /** Member workspace that actually owns the file, for repo attribution. */
+    resolvedWorkspaceId?: unknown;
 }
 
 /** Reconstruct full text from a `previewWorkspaceFile` response. */
-function extractContent(res: { content?: unknown; lines?: unknown }): string {
+function extractContent(res: PreviewResponse): string {
     if (typeof res.content === 'string') {
         return res.content;
     }
@@ -61,8 +61,6 @@ const LOADING: SourceCanvasContentState = {
 export function useSourceCanvasContent(
     fileRef: SourceCanvasFileRef | null,
 ): SourceCanvasContentState {
-    const [content, setContent] = useState<SourceCanvasContentState>(LOADING);
-
     // Remote-server workspaces are aggregated into the repos list, not into the
     // global `state.workspaces` (routing goes through the clone registry). A chat
     // link clicked in a remote conversation carries that remote workspace id, so
@@ -70,79 +68,75 @@ export function useSourceCanvasContent(
     // its remote `rootPath`) is invisible and a relative path can't be anchored.
     const workspaces = useWorkspacesWithRemote();
 
-    // Line/range changes (scroll target only) must NOT trigger a refetch, so
-    // depend on the resolution-relevant fields rather than the ref identity.
+    // Line/range is a scroll target, not part of the file identity: resolve from
+    // the resolution-relevant fields only, so a `:line` change never refetches.
     const fullPath = fileRef?.fullPath;
     const sourceFilePath = fileRef?.sourceFilePath;
     const wsHint = fileRef?.wsId;
+    const resolved = useMemo(() => (fullPath === undefined
+        ? null
+        : resolveSourceCanvasTarget({ fullPath, sourceFilePath, wsId: wsHint }, workspaces)
+    ), [fullPath, sourceFilePath, wsHint, workspaces]);
 
-    useEffect(() => {
-        if (!fileRef) {
-            setContent(LOADING);
-            return;
-        }
+    const target = resolved && !isSourceCanvasResolveError(resolved) ? resolved : null;
+    // A null key is "nothing to fetch": no ref at all, or a ref that didn't
+    // resolve (whose error is reported below without ever hitting the network).
+    const key = target ? `${target.wsId}:${target.path}` : null;
 
-        const resolved = resolveSourceCanvasTarget(fileRef, workspaces);
-        if (isSourceCanvasResolveError(resolved)) {
-            setContent({
-                status: 'error',
-                content: '',
-                language: '',
-                resolvedPath: resolved.attemptedPath,
-                error: resolved.error,
+    // What the SERVER reported about ownership, which the request alone can't
+    // know: a repo-group ref is sent relative and comes back owned by a member
+    // workspace. Tagged with the key it was read for, so a superseded read can
+    // never label the file that replaced it.
+    type Attribution = { key: string; resolvedPath: string; resolvedWorkspaceId: string };
+    const [attribution, setAttribution] = useState<Attribution | null>(null);
+
+    const read = useCallback(async (signal: AbortSignal): Promise<FileBlob> => {
+        if (!target || key === null) throw new Error('Failed to load file');
+        // Clone-routed, so a remote workspace's preview comes from its own server.
+        const r = await getCocClientForWorkspace(target.wsId)
+            .tasks.previewWorkspaceFile(target.wsId, target.path, { lines: 0 })
+            // Transport-specific message mapping stays next to the transport.
+            .catch((err: unknown) => {
+                throw new Error(getSpaCocClientErrorMessage(err, 'Failed to load file'));
+            }) as PreviewResponse;
+        // A superseded read must not rewrite attribution — the repo chip is keyed
+        // off `resolvedWorkspaceId`, so a stale write mislabels the open file.
+        if (!signal.aborted) {
+            setAttribution({
+                key,
+                resolvedPath: typeof r.path === 'string' ? r.path : target.path,
+                resolvedWorkspaceId: typeof r.resolvedWorkspaceId === 'string' ? r.resolvedWorkspaceId : target.wsId,
             });
-            return;
         }
-
-        let cancelled = false;
-        setContent({ ...LOADING, resolvedPath: resolved.path });
-        // Route through the clone registry so a remote workspace's preview is
-        // fetched from its own server; local ids fall through to the default client.
-        getCocClientForWorkspace(resolved.wsId)
-            .tasks.previewWorkspaceFile(resolved.wsId, resolved.path, { lines: 0 })
-            .then((res) => {
-                if (cancelled) {
-                    return;
-                }
-                const r = res as {
-                    content?: unknown;
-                    lines?: unknown;
-                    language?: unknown;
-                    path?: unknown;
-                    resolvedWorkspaceId?: unknown;
-                };
-                const resolvedPath = typeof r.path === 'string' ? r.path : resolved.path;
-                const resolvedWorkspaceId = typeof r.resolvedWorkspaceId === 'string'
-                    ? r.resolvedWorkspaceId
-                    : resolved.wsId;
-                const owningWorkspace = workspaces.find((ws) => ws.id === resolvedWorkspaceId);
-                setContent({
-                    status: 'success',
-                    content: extractContent(r),
-                    language: typeof r.language === 'string' ? r.language : '',
-                    resolvedPath,
-                    resolvedWorkspaceId,
-                    workspaceRootPath: owningWorkspace?.rootPath || undefined,
-                    error: '',
-                });
-            })
-            .catch((err) => {
-                if (cancelled) {
-                    return;
-                }
-                setContent({
-                    status: 'error',
-                    content: '',
-                    language: '',
-                    resolvedPath: resolved.path,
-                    error: getSpaCocClientErrorMessage(err, 'Failed to load file'),
-                });
-            });
-
-        return () => {
-            cancelled = true;
+        return {
+            content: extractContent(r),
+            encoding: 'utf-8',
+            mimeType: 'text/plain',
+            language: typeof r.language === 'string' ? r.language : '',
         };
-    }, [fullPath, sourceFilePath, wsHint, workspaces]);
+    }, [target?.wsId, target?.path, key]);
 
-    return content;
+    const { blob, status, error } = useFileContent({ key, read });
+
+    return useMemo<SourceCanvasContentState>(() => {
+        if (!resolved) return LOADING;
+        if (isSourceCanvasResolveError(resolved)) {
+            return { ...LOADING, status: 'error', resolvedPath: resolved.attemptedPath, error: resolved.error };
+        }
+        if (status === 'error') {
+            return { ...LOADING, status: 'error', resolvedPath: resolved.path, error: error || 'Failed to load file' };
+        }
+        if (status === 'loading' || !blob) return { ...LOADING, resolvedPath: resolved.path };
+        const owned = attribution?.key === key ? attribution : null;
+        const resolvedWorkspaceId = owned?.resolvedWorkspaceId ?? resolved.wsId;
+        return {
+            status: 'success',
+            content: blob.content,
+            language: blob.language || '',
+            resolvedPath: owned?.resolvedPath ?? resolved.path,
+            resolvedWorkspaceId,
+            workspaceRootPath: workspaces.find((ws) => ws.id === resolvedWorkspaceId)?.rootPath || undefined,
+            error: '',
+        };
+    }, [resolved, status, error, blob, attribution, key, workspaces]);
 }

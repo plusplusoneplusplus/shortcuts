@@ -16,8 +16,12 @@ export interface UseFileContentOptions {
     /**
      * Identity of the file being viewed. Changing it aborts any in-flight read
      * and starts a fresh one, discarding the previous edit buffer.
+     *
+     * `null` means "there is nothing to read (yet)": no request is issued and
+     * the buffer sits in `loading`. Hosts that resolve a target before they can
+     * fetch use it for the not-yet-resolvable case.
      */
-    key: string;
+    key: string | null;
     /** Reads the file. Rejections surface as `error`; aborts are ignored. */
     read: (signal: AbortSignal) => Promise<FileBlob>;
     /** Writes the edit buffer back. Omit for a read-only buffer. */
@@ -73,6 +77,11 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         setIsDirty(false);
         setEditedContent('');
 
+        // No target to read — stay in `loading` without touching the transport.
+        if (key === null) {
+            return controller;
+        }
+
         readRef.current(controller.signal)
             .then((data) => {
                 if (!controller.signal.aborted) {
@@ -91,12 +100,12 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
             });
 
         return controller;
-    }, []);
+    }, [key]);
 
     useEffect(() => {
         const controller = load();
         return () => controller.abort();
-        // `key` is the file identity; `load` is stable.
+        // `key` is the file identity; `load` only changes when it does.
     }, [key, load]);
 
     const onChange = useCallback((value: string) => {
