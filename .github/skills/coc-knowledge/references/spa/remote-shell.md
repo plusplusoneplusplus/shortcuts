@@ -66,7 +66,7 @@ identity — group name only, no provider badge, no `⧉N`, none of which descri
 ### Pinned scope segments
 
 `features.pinnedScopes` (runtime `pinnedScopesEnabled`, `isPinnedScopesEnabled()`, hook
-`usePinnedScopesEnabled`; off by default, only meaningful with `scopeSwitcher`) adds
+`usePinnedScopesEnabled`; on by default, only meaningful with `scopeSwitcher`) adds
 user-pinned segments between the virtual scopes and the workspace chip, bracketed by
 `scope-pin-divider` on each side. A pin renders as `scope-segment` with
 `data-scope="pin"`, `data-pin-id`, `data-pin-kind`, an unread badge
@@ -104,7 +104,7 @@ remembered repo with the usual switch-back split button; a pinned *remote* sets
 ### Pinned scope segments
 
 `features.pinnedScopes` (runtime `pinnedScopesEnabled`, `isPinnedScopesEnabled()`, hook
-`usePinnedScopesEnabled`; off by default, only meaningful with `scopeSwitcher`) adds
+`usePinnedScopesEnabled`; on by default, only meaningful with `scopeSwitcher`) adds
 user-pinned segments between the virtual scopes and the workspace chip, bracketed by
 `scope-pin-divider` on each side. A pin renders as `scope-segment` with
 `data-scope="pin"`, `data-pin-id`, `data-pin-kind`, an unread badge

@@ -75,6 +75,8 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.features.gitCrossCloneCherryPick).toBe(true);
             expect(DEFAULT_CONFIG.features.commitChatLens).toBe(true);
             expect(DEFAULT_CONFIG.features.autoAgentProviderRouting).toBe(false);
+            expect(DEFAULT_CONFIG.features.scopeSwitcher).toBe(true);
+            expect(DEFAULT_CONFIG.features.pinnedScopes).toBe(true);
             expect(DEFAULT_CONFIG.defaultProvider).toBe('copilot');
             expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);
             expect(DEFAULT_CONFIG.agentProviderRouting.auto.rules.map(rule => rule.minimumRemainingPercent)).toEqual([33, 33, 10]);
@@ -1327,7 +1329,7 @@ timeout: 300
                     "gitCrossCloneCherryPick": true,
                     "gitWorktreeExecution": true,
                     "nativeCliSessions": false,
-                    "pinnedScopes": false,
+                    "pinnedScopes": true,
                     "quickAskSidenotes": true,
                     "ralphMultiAgentGrill": false,
                     "remoteShell": true,
