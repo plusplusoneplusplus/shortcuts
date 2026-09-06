@@ -2,6 +2,11 @@ import { useCallback, useRef, useState } from 'react';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { rewindImagesToAttachments } from '../utils/rewindImages';
 import type { ChatAttachment } from '../../../types/attachments';
+import { REWIND_NO_ANCHOR_TOOLTIP, resolveRewindCapability, type RewindCapability } from './rewindCapability';
+
+// Re-exported so the rewind UI surface (hook + capability rules) has one import site.
+export { REWIND_NO_ANCHOR_TOOLTIP, resolveRewindCapability };
+export type { RewindCapability };
 
 /** Minimal shape of the rewind response this hook consumes. */
 interface RewindResultLike {
@@ -28,8 +33,8 @@ export interface UseRewindTurnOptions {
     refreshConversation: (processId: string) => Promise<void> | void;
     /**
      * Surface a backend rejection to the user (typically an error toast).
-     * Rejections include non-copilot provider, non-idle conversation, and
-     * ineligible turn (no captured anchor).
+     * Rejections include an unsupported provider, a non-idle conversation, and
+     * an ineligible turn (no captured anchor).
      */
     onError: (message: string) => void;
 }
@@ -55,8 +60,8 @@ export interface UseRewindTurnResult {
  * the SDK session history AND hard-deletes the CoC turns at/after the target),
  * then restores the removed message's text + images into the composer and
  * re-fetches the conversation. Backend rejections are routed to `onError` and
- * leave the conversation untouched. The UI does no provider/idle filtering —
- * the backend is the single enforcement point.
+ * leave the conversation untouched. The menu affordance is shaped up-front by
+ * `resolveRewindCapability`, but the backend remains the definitive gate.
  */
 export function useRewindTurn({ client, processId, restoreComposer, refreshConversation, onError }: UseRewindTurnOptions): UseRewindTurnResult {
     const [targetIndex, setTargetIndex] = useState<number | null>(null);

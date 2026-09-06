@@ -2207,9 +2207,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     });
     // Idle guard (AC-04 UX state): withhold the rewind action while the
     // conversation is sending / generating / has queued messages, which hides
-    // the menu item. Provider eligibility is NOT gated here — the backend is the
-    // definitive gate and surfaces an error toast for an ineligible rewind.
-    const rewindAction = planChatBusy ? undefined : rewind.requestRewind;
+    // the menu item.
+    //
+    // Codex is also withheld here (AC-07): it has no native rewind primitive, so
+    // the action is never offered. This reads the RAW metadata provider rather
+    // than `sessionProvider`, which collapses unrecognized providers onto the
+    // user's default and would mislabel an opencode chat. Per-turn anchor
+    // eligibility is decided in the bubble; the backend stays the definitive
+    // gate and surfaces an error toast for anything it still rejects.
+    const rewindUnsupportedProvider = rawSessionProvider === 'codex';
+    const rewindAction = planChatBusy || rewindUnsupportedProvider ? undefined : rewind.requestRewind;
 
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;

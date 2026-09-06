@@ -3,7 +3,11 @@
  *
  * AC-04: the action is offered only on `role: 'user'` turns, only when an
  * `onRewindTurn` handler is provided, and clicking it calls the handler with the
- * turn index. There is no provider-specific hiding — the backend is the gate.
+ * turn index.
+ *
+ * AC-07: the affordance is shaped client-side from the provider plus the turn's
+ * captured anchor — hidden on codex (no native rewind primitive), shown but
+ * disabled with a tooltip when the turn has no `sdkEventId`, enabled otherwise.
  */
 
 // @vitest-environment jsdom
@@ -32,6 +36,7 @@ function makeTurn(overrides: Partial<ClientConversationTurn> = {}): ClientConver
     return {
         role: 'user',
         content: 'Hello world',
+        sdkEventId: 'evt_1',
         timestamp: '2026-01-15T10:30:00Z',
         streaming: false,
         timeline: [],
@@ -82,11 +87,38 @@ describe('ConversationTurnBubble — Rewind to here', () => {
         expect(onRewind).toHaveBeenCalledWith(4);
     });
 
-    it('is shown the same regardless of provider (backend is the gate)', () => {
+    it.each(['copilot', 'claude', 'opencode'] as const)('is enabled on an anchored %s turn', (provider) => {
         const { container } = render(
-            <ConversationTurnBubble turn={makeTurn()} turnIndex={1} provider="claude" onRewindTurn={vi.fn()} />,
+            <ConversationTurnBubble turn={makeTurn()} turnIndex={1} provider={provider} onRewindTurn={vi.fn()} />,
         );
         fireEvent.contextMenu(container.querySelector('.chat-message')!);
-        expect(screen.getByText('Rewind to here')).toBeTruthy();
+        const item = screen.getByText('Rewind to here').closest('button')!;
+        expect(item.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('hides the action entirely on a codex turn', () => {
+        const { container } = render(
+            <ConversationTurnBubble turn={makeTurn()} turnIndex={1} provider="codex" onRewindTurn={vi.fn()} />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        expect(screen.queryByText('Rewind to here')).toBeNull();
+    });
+
+    it('shows the action disabled with a tooltip when the turn has no anchor', () => {
+        const onRewind = vi.fn();
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ sdkEventId: undefined })}
+                turnIndex={1}
+                provider="claude"
+                onRewindTurn={onRewind}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        const item = screen.getByText('Rewind to here').closest('button')!;
+        expect(item.hasAttribute('disabled')).toBe(true);
+        expect(item.closest('[title]')?.getAttribute('title')).toBe('This turn predates rewind support');
+        fireEvent.click(item);
+        expect(onRewind).not.toHaveBeenCalled();
     });
 });
