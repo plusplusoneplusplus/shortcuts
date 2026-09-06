@@ -30,6 +30,16 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
     ),
 }));
 
+// The "+" menu searches on the server and lists the chat's canvases; both are
+// stubbed here so the shell cases exercise the seam, not the network.
+const searchFiles = vi.fn(async () => ({ results: [] as { path: string }[] }));
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
+    explorerApi: { searchFiles: (...args: unknown[]) => searchFiles(...(args as [])) },
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
+}));
+
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import {
     clearUnifiedPanelState,
@@ -245,6 +255,31 @@ describe('UnifiedRightPanel', () => {
         rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-2" dock={dockStub()} />);
         const labels = screen.getAllByRole('tab').map(node => node.getAttribute('data-kind'));
         expect(labels).toEqual(['terminal']);
+    });
+
+    it('opens a searched file as a tab of the selected chat', async () => {
+        searchFiles.mockResolvedValue({ results: [{ path: 'src/app.ts' }] });
+        renderPanel({ chatId: 'chat-1' });
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'app' } });
+        fireEvent.click(await screen.findByTestId('unified-panel-open-menu-file-0'));
+
+        // The menu closes and the file is a chat-scoped tab on the panel.
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        const fileId = unifiedTabId({ kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-1', resourceId: 'src/app.ts' });
+        expect(screen.getByTestId(`unified-panel-tab-${fileId}`)).toBeTruthy();
+    });
+
+    it('hands focus back to the "+" trigger when the menu is dismissed', () => {
+        renderPanel();
+        const trigger = screen.getByTestId('unified-panel-open-menu') as HTMLButtonElement;
+        trigger.focus();
+        fireEvent.click(trigger);
+        expect(screen.getByTestId('unified-panel-open-menu-popover')).toBeTruthy();
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        expect(document.activeElement).toBe(trigger);
     });
 
     it('shows an explicit state for a kind it cannot render yet, instead of a blank panel', () => {

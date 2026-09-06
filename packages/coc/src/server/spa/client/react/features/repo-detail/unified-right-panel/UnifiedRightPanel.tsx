@@ -40,15 +40,12 @@ import { cn } from '../../../ui/cn';
 import { TerminalView } from '../../terminal/TerminalView';
 import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
 import { ExplorerPanel } from '../explorer/ExplorerPanel';
-import {
-    DOCK_MIN_WIDTH,
-    dockViewsForWorkspace,
-    type DockTarget,
-} from '../WorkspaceDockToggle';
+import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../WorkspaceRightDock';
+import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
-import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
+import type { OpenUnifiedTabInput, UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 export interface UnifiedRightPanelProps {
     /**
@@ -63,27 +60,9 @@ export interface UnifiedRightPanelProps {
     chatId?: string | null;
     /** Open/width/resize + the target workspace new resources open against. */
     dock: WorkspaceDockController;
-    /**
-     * Target options for repo groups. Only used for repo attribution here; the
-     * searchable "+" menu owns picking one (AC-03).
-     */
+    /** Target options for repo groups; the "+" menu picks among them. */
     targets?: readonly DockTarget[];
 }
-
-/**
- * The workspace-owned resources the panel can open on its own, before the
- * searchable "+" menu lands (AC-03). Each is an explicit user action — nothing
- * here runs on mount or on restore.
- */
-const WORKSPACE_OPEN_ACTIONS: readonly {
-    kind: 'terminal' | 'explorer' | 'notes';
-    label: string;
-    testId: string;
-}[] = [
-    { kind: 'terminal', label: 'New Terminal', testId: 'unified-panel-open-terminal' },
-    { kind: 'explorer', label: 'Explorer', testId: 'unified-panel-open-explorer' },
-    { kind: 'notes', label: 'Notes', testId: 'unified-panel-open-notes' },
-];
 
 /**
  * The body for one tab. Workspace kinds map straight onto the existing dock
@@ -169,14 +148,16 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         });
     }, [close]);
 
-    // The resources this target actually offers — a repo group's own root has no
-    // single file tree, so it gets no Explorer (`dockViewsForWorkspace`).
-    const availableKinds = useMemo(() => dockViewsForWorkspace(target), [target]);
-    const openActions = WORKSPACE_OPEN_ACTIONS.filter(action => availableKinds.includes(action.kind));
-
+    // The "+" menu. Dismissal always hands focus back to whatever opened it —
+    // the "+" button or the empty state's "Open…" — so a keyboard user is never
+    // dropped back at the top of the document.
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement | null>(null);
     const menuTriggerRef = useRef<HTMLElement | null>(null);
+    const closeMenu = useCallback(() => {
+        setMenuOpen(false);
+        menuTriggerRef.current?.focus?.();
+    }, []);
     useEffect(() => {
         if (!menuOpen) return;
         const onPointerDown = (event: MouseEvent) => {
@@ -195,6 +176,14 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             document.removeEventListener('keydown', onKeyDown);
         };
     }, [menuOpen]);
+
+    // A concrete resource picked in the menu (a searched file, a chat canvas).
+    // The menu decides the descriptor — owning clone, chat scope, normalized
+    // identity — so the panel only has to file it.
+    const openResource = useCallback((input: OpenUnifiedTabInput) => {
+        setMenuOpen(false);
+        open(input);
+    }, [open]);
 
     const toggleMenu = useCallback(() => {
         menuTriggerRef.current = document.activeElement as HTMLElement | null;
@@ -246,27 +235,20 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                 />
 
                 {menuOpen && (
-                    <div
-                        ref={menuRef}
-                        className="absolute right-1 top-[34px] z-20 w-44 rounded border border-[#c8c8c8] bg-white py-1 shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526]"
-                        role="menu"
-                        data-testid="unified-panel-open-menu-popover"
-                    >
-                        {openActions.map(action => (
-                            <button
-                                key={action.kind}
-                                type="button"
-                                role="menuitem"
-                                data-testid={action.testId}
-                                className="block w-full px-3 py-1.5 text-left text-xs text-[#1f1f1f] hover:bg-[#e8e8e8] dark:text-[#cccccc] dark:hover:bg-[#37373d]"
-                                onClick={() => {
-                                    setMenuOpen(false);
-                                    openWorkspaceResource(action.kind);
-                                }}
-                            >
-                                {action.label}
-                            </button>
-                        ))}
+                    <div ref={menuRef} className="contents">
+                        <UnifiedPanelOpenMenu
+                            workspaceId={workspaceId}
+                            chatId={chatId}
+                            target={target}
+                            targets={targetOptions}
+                            onSelectTarget={dock.setTarget}
+                            onOpenResource={openResource}
+                            onOpenWorkspaceResource={kind => {
+                                setMenuOpen(false);
+                                openWorkspaceResource(kind);
+                            }}
+                            onClose={closeMenu}
+                        />
                     </div>
                 )}
 
