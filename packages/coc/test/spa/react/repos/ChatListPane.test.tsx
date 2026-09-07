@@ -1690,10 +1690,11 @@ describe('ChatListPane', () => {
                 expect(screen.queryByText(/Move Up/)).toBeNull();
             });
 
-            it('"Freeze" shown for unfrozen task', () => {
+            it('"Freeze" and the "Freeze for…" presets shown for unfrozen task', () => {
                 renderPane({ queued: [makeQueuedTask()] });
                 fireEvent.contextMenu(document.querySelector('[data-task-id="q-1"]')!);
-                expect(screen.getByText(/Freeze/)).toBeTruthy();
+                expect(screen.getByRole('button', { name: '❄ Freeze' })).toBeTruthy();
+                expect(screen.getByRole('button', { name: '⏳ Freeze for…' })).toBeTruthy();
             });
 
             it('"Unfreeze" shown for frozen task', () => {

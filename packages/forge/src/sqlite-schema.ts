@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 32;
 
 /**
  * Read the current schema version from the database.
@@ -149,6 +149,7 @@ export function initializeDatabase(db: Database.Database): void {
                 retry_count       INTEGER DEFAULT 0,
                 concurrency_mode  TEXT,
                 frozen            INTEGER DEFAULT 0,
+                frozen_until      INTEGER,
                 admitted          INTEGER DEFAULT 0,
                 kind              TEXT NOT NULL DEFAULT 'task',
                 queue_position    INTEGER,
@@ -163,6 +164,7 @@ export function initializeDatabase(db: Database.Database): void {
         ensureColumn(db, 'queue_tasks', 'queue_position', 'INTEGER');
         ensureColumn(db, 'queue_tasks', 'duration_hours', 'INTEGER');
         ensureColumn(db, 'queue_tasks', 'scope', 'TEXT');
+        ensureColumn(db, 'queue_tasks', 'frozen_until', 'INTEGER');
 
         // ── queue_repo_state ────────────────────────────────────────
         db.exec(`
@@ -532,6 +534,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 31) {
             migrateV30toV31(db);
+        }
+        if (versionBefore < 32) {
+            migrateV31toV32(db);
         }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -931,6 +936,15 @@ function migrateV29toV30(db: Database.Database): void {
  */
 function migrateV30toV31(db: Database.Database): void {
     ensureColumn(db, 'conversation_turns', 'chat_mode_context', 'TEXT');
+}
+
+/**
+ * V31 -> V32: add `frozen_until` to `queue_tasks` so a freeze can carry an
+ * expiry instead of only being indefinite. NULL is right for every existing
+ * row — those freezes were indefinite and stay that way.
+ */
+function migrateV31toV32(db: Database.Database): void {
+    ensureColumn(db, 'queue_tasks', 'frozen_until', 'INTEGER');
 }
 
 /**

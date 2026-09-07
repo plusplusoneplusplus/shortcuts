@@ -605,17 +605,32 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
 
     // ------------------------------------------------------------------
     // POST /api/queue/:id/freeze — Freeze a queued task
+    // Body (optional): { durationHours?: number }  — omitted means indefinite
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
         pattern: /^\/api\/queue\/([^/]+)\/freeze$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
-            const frozen = bridge.findManagerForTask(id)?.freezeTask(id) ?? false;
+
+            // An empty body is normal here: a plain Freeze click sends no JSON at
+            // all, and that has to keep meaning "freeze indefinitely".
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+            const duration = parseDurationHours(body?.durationHours);
+            if (duration.error) {
+                return sendError(res, 400, duration.error);
+            }
+
+            const frozen = bridge.findManagerForTask(id)?.freezeTask(id, duration.durationHours) ?? false;
             if (!frozen) {
                 return sendError(res, 404, 'Task not found in queue');
             }
-            process.stderr.write(`[Queue] freeze task=${id}\n`);
+            process.stderr.write(`[Queue] freeze task=${id} durationHours=${duration.durationHours ?? '-'}\n`);
             const task = bridge.findManagerForTask(id)?.getTask(id);
             sendJSON(res, 200, { frozen: true, task });
         },

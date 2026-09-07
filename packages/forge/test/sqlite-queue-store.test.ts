@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '../src/sqlite-schema';
 import { SqliteQueueStore } from '../src/sqlite-queue-store';
+import { createTaskQueueManager } from '../src/queue/task-queue-manager';
 import type { QueuedTask, PauseReason, PauseMarker } from '../src/queue/types';
 
 let db: Database.Database;
@@ -103,6 +104,37 @@ describe('upsertQueueTask', () => {
         expect(t.payload).toEqual({ key: 'value', nested: { a: 1 } });
         expect(t.config).toEqual({ timeout: 60_000 });
         expect(t.result).toEqual({ output: 'done' });
+    });
+
+    it('round-trips frozenUntil for a timed freeze', () => {
+        const frozenUntil = Date.now() + 3_600_000;
+        store.upsertQueueTask(makeTask('t-timed', { frozen: true, frozenUntil }));
+
+        const t = store.getQueueTasks('repo-1')[0];
+        expect(t.frozen).toBe(true);
+        expect(t.frozenUntil).toBe(frozenUntil);
+    });
+
+    it('leaves frozenUntil undefined for an indefinite freeze', () => {
+        store.upsertQueueTask(makeTask('t-indef', { frozen: true }));
+
+        const t = store.getQueueTasks('repo-1')[0];
+        expect(t.frozen).toBe(true);
+        expect(t.frozenUntil).toBeUndefined();
+    });
+
+    it('restores an already-expired timed freeze as runnable', () => {
+        store.upsertQueueTask(
+            makeTask('t-expired', { frozen: true, frozenUntil: Date.now() - 1000 })
+        );
+
+        const manager = createTaskQueueManager();
+        manager.restoreQueueItems(store.getQueueItems('repo-1', ['queued']));
+
+        const next = manager.peek();
+        expect(next?.id).toBe('t-expired');
+        expect(manager.getTask('t-expired')!.frozen).toBe(false);
+        expect(manager.getTask('t-expired')!.frozenUntil).toBeUndefined();
     });
 
     it('replaces existing row on upsert (same id)', () => {

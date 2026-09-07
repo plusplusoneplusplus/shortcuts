@@ -36,6 +36,9 @@ export interface QueuedTask {
   config: JsonObject;
   displayName?: string;
   processId?: string;
+  frozen?: boolean;
+  /** Epoch ms when a timed freeze lapses. Absent on an indefinite freeze. */
+  frozenUntil?: number;
   [key: string]: unknown;
 }
 

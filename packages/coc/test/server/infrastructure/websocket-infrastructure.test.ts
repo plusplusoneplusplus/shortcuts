@@ -200,6 +200,46 @@ describe('createWebSocketInfrastructure', () => {
             expect(aggregate.queue.repoId).toBeUndefined();
         });
 
+        it('per-repo and aggregate broadcasts carry frozen and frozenUntil', () => {
+            // Regression: mapQueued is a field whitelist. When it dropped the
+            // freeze fields the SPA lost the frozen badge (and its Unfreeze
+            // menu item) on the very next queue change.
+            const frozenUntil = Date.now() + 3_600_000;
+            const frozenTask = {
+                id: 'frozen-1', repoId: 'r1', status: 'queued',
+                frozen: true, frozenUntil, payload: { prompt: 'hold me' },
+            };
+            registry._mockManager.getQueued.mockReturnValue([frozenTask]);
+            registry.getAllQueues.mockReturnValue(new Map([['r1', registry._mockManager]]));
+
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'r1', type: 'frozen' });
+
+            for (const call of broadcast.mock.calls) {
+                const queued = (call[0] as any).queue.queued;
+                expect(queued).toHaveLength(1);
+                expect(queued[0].frozen).toBe(true);
+                expect(queued[0].frozenUntil).toBe(frozenUntil);
+            }
+        });
+
+        it('leaves frozen fields undefined for an unfrozen task', () => {
+            registry._mockManager.getQueued.mockReturnValue([
+                { id: 'plain-1', repoId: 'r1', status: 'queued', payload: {} },
+            ]);
+
+            const ws = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager);
+            const broadcast = vi.spyOn(ws, 'broadcastProcessEvent');
+
+            bridge.emit('queueChange', { repoPath: '/repo', repoId: 'r1', type: 'enqueued' });
+
+            const queued = (broadcast.mock.calls[0][0] as any).queue.queued;
+            expect(queued[0].frozen).toBeUndefined();
+            expect(queued[0].frozenUntil).toBeUndefined();
+        });
+
         it('per-repo broadcast does not include history', () => {
             const historyTask = { id: 'h1', repoId: 'r1', status: 'completed', completedAt: '2026-01-01', payload: { prompt: 'do stuff' }, title: 'Task 1' };
             registry._mockManager.getHistory.mockReturnValue([historyTask]);
