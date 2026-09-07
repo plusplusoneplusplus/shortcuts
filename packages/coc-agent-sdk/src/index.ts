@@ -331,6 +331,7 @@ export {
     screenDangerousCommand,
     isScreenedShellTool,
     extractShellCommand,
+    extractPermissionRequestShellCommand,
     buildDangerousCommandDenialMessage,
 } from './dangerous-command-guard';
 export type {

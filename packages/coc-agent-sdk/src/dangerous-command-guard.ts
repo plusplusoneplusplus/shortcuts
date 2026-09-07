@@ -103,6 +103,25 @@ export function extractShellCommand(
     return command;
 }
 
+/**
+ * The command text out of a Copilot SDK permission request, or `null` when the
+ * request is not a shell ask.
+ *
+ * Copilot does not hand its permission handler a tool name and an input object
+ * the way Claude's `canUseTool` does — it hands over a discriminated request
+ * whose `shell` variant carries `fullCommandText`. This narrows that shape
+ * structurally rather than by importing the SDK's types, so the guard stays
+ * provider-free and testable without `@github/copilot-sdk`.
+ */
+export function extractPermissionRequestShellCommand(
+    request: { kind?: unknown; fullCommandText?: unknown } | undefined,
+): string | null {
+    if (request?.kind !== 'shell') return null;
+    const command = request.fullCommandText;
+    if (typeof command !== 'string' || command.trim() === '') return null;
+    return command;
+}
+
 /** What the model is told when a command is blocked. */
 export function buildDangerousCommandDenialMessage(
     match: DangerousCommandMatch,
