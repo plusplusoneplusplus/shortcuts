@@ -35,6 +35,19 @@ import {
 import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
 import { setExplorerInstanceDirty } from './explorerDirtyStore';
 
+/**
+ * How much of the Explorer this mount renders.
+ *
+ * - `editor` — the whole thing: tree, resize handle, editor area and (behind
+ *   `features.explorerEditorTabs`) its own tab strip. The Explorer sub-tab.
+ * - `navigator` — tree only; every file open is handed to `onOpenFile` so the
+ *   host's tab strip is the only place a file appears.
+ * - `sidebar` — `navigator` minus the internal breadcrumb row, because the host
+ *   renders one breadcrumb row of its own above the whole panel. This is the
+ *   unified right panel's file-tree column.
+ */
+export type ExplorerPanelMode = 'editor' | 'navigator' | 'sidebar';
+
 export interface ExplorerPanelProps {
     workspaceId: string;
     /**
@@ -60,6 +73,23 @@ export interface ExplorerPanelProps {
         file: { path: string; name: string; line?: number },
         options: { preview: boolean; readOnly?: boolean },
     ) => void;
+    /**
+     * Which parts of the Explorer to render. Stated explicitly rather than
+     * inferred from `onOpenFile`, because `sidebar` and `navigator` both hand
+     * their opens to the host and only differ in whether the breadcrumb row is
+     * this panel's or the host's. Defaults to `navigator` when `onOpenFile` is
+     * given and `editor` otherwise, so existing callers keep their behaviour.
+     */
+    mode?: ExplorerPanelMode;
+}
+
+/** The mode a mount runs in, honouring an explicit prop over the legacy inference. */
+export function resolveExplorerMode(
+    mode: ExplorerPanelMode | undefined,
+    hasOpenFile: boolean,
+): ExplorerPanelMode {
+    if (mode) return mode;
+    return hasOpenFile ? 'navigator' : 'editor';
 }
 
 /** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
@@ -199,9 +229,12 @@ export function isNarrowSidebar(width: number, isMobile: boolean): boolean {
     return !isMobile && width < NARROW_SIDEBAR_WIDTH;
 }
 
-export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: ExplorerPanelProps) {
+export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode }: ExplorerPanelProps) {
+    const panelMode = resolveExplorerMode(mode, onOpenFile !== undefined);
     // Navigator mode: the host owns the editor, so this panel is only a tree.
-    const navigatorMode = onOpenFile !== undefined;
+    // `sidebar` is navigator plus "the host owns the breadcrumbs too".
+    const navigatorMode = panelMode !== 'editor';
+    const sidebarMode = panelMode === 'sidebar';
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
@@ -1172,6 +1205,10 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
                 style={showMobilePreview ? { display: 'none' } : { width: undefined }}
                 data-testid="explorer-sidebar"
                 data-navigator={navigatorMode ? 'true' : undefined}
+                data-explorer-mode={panelMode}
+                // A bare <aside> is an unlabelled complementary region. As a
+                // column beside the host's tabs it needs a name of its own.
+                aria-label={sidebarMode ? 'File tree' : undefined}
             >
                 {/* The persisted sidebar width only means something beside an
                     editor; in navigator mode the tree IS the panel and takes
@@ -1266,10 +1303,15 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
                     />
                 ) : (
                     <>
-                        <Breadcrumbs
-                            segments={breadcrumbSegments}
-                            onNavigate={handleBreadcrumbNavigate}
-                        />
+                        {/* Sidebar mode: the host renders one breadcrumb row
+                            above the whole panel, so a second one inside the
+                            tree column would say the same thing twice. */}
+                        {!sidebarMode && (
+                            <Breadcrumbs
+                                segments={breadcrumbSegments}
+                                onNavigate={handleBreadcrumbNavigate}
+                            />
+                        )}
                         <SearchBar
                             value={searchInput}
                             onChange={onSearchChange}

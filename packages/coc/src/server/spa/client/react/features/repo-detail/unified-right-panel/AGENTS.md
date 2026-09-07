@@ -51,9 +51,15 @@ There is no second editor, search backend, terminal manager, or canvas store.
 `file` renders the Explorer's own `PreviewPane` (same buffer controller as the
 flag-off Explorer tabs), `canvas` renders `CanvasPanel`, `note` renders
 `NoteEditor`, `diff` renders the chat's `WhisperDiffPanel`, `terminal` renders
-`TerminalView`, and `explorer` renders `ExplorerPanel` in **navigator mode**
-(`onOpenFile` present ⇒ no editor pane and no nested tab strip — that is the
-"one tab row per panel" rule).
+`TerminalView`, and `explorer` renders `ExplorerPanel` in **navigator mode** (no
+editor pane and no nested tab strip — that is the "one tab row per panel" rule).
+
+`ExplorerPanel`'s `mode` prop picks how much of it renders: `editor` (the whole
+Explorer sub-tab), `navigator` (tree only, opens handed to `onOpenFile`), and
+`sidebar` (navigator, minus the internal breadcrumb row — the file-tree column,
+whose breadcrumbs belong to the panel-level toolbar instead). State it
+explicitly; the legacy inference from `onOpenFile` cannot tell the two host
+modes apart and only survives as the default for existing callers.
 
 Resource toolbars render *below* the strip; nothing portals into it.
 

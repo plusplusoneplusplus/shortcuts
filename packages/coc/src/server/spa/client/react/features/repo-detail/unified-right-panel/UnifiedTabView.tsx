@@ -139,6 +139,7 @@ export function UnifiedTabView({
                 <ExplorerPanel
                     workspaceId={tab.ownerWorkspaceId}
                     deepLink={tab.ownerWorkspaceId === scopeWorkspaceId}
+                    mode="navigator"
                     onOpenFile={handleExplorerOpen}
                 />
             );
