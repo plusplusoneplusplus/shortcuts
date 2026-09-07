@@ -87,7 +87,11 @@ beforeEach(() => {
 });
 
 import { AdminPanel } from '../../../../../src/server/spa/client/react/admin/AdminPanel';
-import { ADMIN_SETTING_DEFINITIONS } from '../../../../../src/config/admin-setting-definitions';
+import {
+    ADMIN_SETTING_DEFINITIONS,
+    FEATURE_CARD_GROUPS,
+    getFeatureCardSettings,
+} from '../../../../../src/config/admin-setting-definitions';
 
 /** Config keys that legitimately appear in the Features save payload. */
 const FEATURE_KEYS = new Set(
@@ -127,6 +131,18 @@ function defaultFetchImpl(url: string, opts?: any) {
     if (url.includes('/admin/data/stats')) return Promise.resolve(mockStatsResponse());
     if (url.includes('/preferences')) return Promise.resolve(mockPreferencesResponse());
     return Promise.resolve({ ok: true, json: async () => ({}) });
+}
+
+/**
+ * Feature groups where no row's label or hint contains `query`, i.e. the
+ * groups the search filter must hide entirely.
+ */
+function groupsWithoutMatch(query: string) {
+    const needle = query.toLowerCase();
+    return FEATURE_CARD_GROUPS.filter(group => !getFeatureCardSettings(group.id).some(def => {
+        const ui = def.ui!;
+        return ui.label.toLowerCase().includes(needle) || ui.hint.toLowerCase().includes(needle);
+    }));
 }
 
 async function gotoFeaturesSubTab(): Promise<void> {
@@ -170,7 +186,14 @@ describe('AdminPanel — Workspace Features search', () => {
         expect(screen.queryByTestId('toggle-notes-enabled')).toBeNull();
         // Its group heading is kept; groups with no matches are hidden entirely.
         expect(screen.getByTestId('feature-group-dev-tools')).toBeTruthy();
-        expect(screen.queryByTestId('feature-group-dashboard')).toBeNull();
+        // Which groups have no match is read off the live catalog rather than
+        // hard-coded: adding a feature whose label or hint happens to mention
+        // "terminal" must not make this assertion fail spuriously.
+        const emptyGroups = groupsWithoutMatch('terminal');
+        expect(emptyGroups.length).toBeGreaterThan(0);
+        for (const group of emptyGroups) {
+            expect(screen.queryByTestId(group.testId)).toBeNull();
+        }
     });
 
     it('is case-insensitive and matches against hint text', async () => {
