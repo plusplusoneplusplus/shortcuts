@@ -35,6 +35,14 @@ export interface QueueCancelOptions {
   reason?: string;
 }
 
+/** Preset hold durations offered for a timed freeze. */
+export type QueueFreezeDurationHours = 1 | 2 | 4 | 8 | 24;
+
+export interface QueueFreezeOptions {
+  /** Omit for an indefinite freeze. */
+  durationHours?: QueueFreezeDurationHours;
+}
+
 export interface QueuePauseMarkerRequest {
   afterIndex?: number;
   repoId?: string;
@@ -197,8 +205,11 @@ export class QueueClient {
     return this.transport.request<QueueMoveResponse>(`/queue/${encodePathSegment(taskId)}/move-to/${position}`, { method: 'POST' });
   }
 
-  freeze(taskId: string): Promise<QueueTaskMutationResponse> {
-    return this.transport.request<QueueTaskMutationResponse>(`/queue/${encodePathSegment(taskId)}/freeze`, { method: 'POST' });
+  freeze(taskId: string, options?: QueueFreezeOptions): Promise<QueueTaskMutationResponse> {
+    return this.transport.request<QueueTaskMutationResponse>(`/queue/${encodePathSegment(taskId)}/freeze`, {
+      method: 'POST',
+      body: options?.durationHours === undefined ? undefined : { durationHours: options.durationHours },
+    });
   }
 
   unfreeze(taskId: string): Promise<QueueTaskMutationResponse> {

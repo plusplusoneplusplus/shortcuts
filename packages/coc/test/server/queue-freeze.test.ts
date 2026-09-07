@@ -123,8 +123,65 @@ describe('Queue Freeze / Unfreeze', () => {
     });
 
     // ========================================================================
+    // Timed freeze (durationHours)
+    // ========================================================================
+
+    it('freeze with no body at all → indefinite freeze, no frozenUntil', async () => {
+        const id = await enqueueTask('no-body-freeze');
+
+        // Deliberately send no request body — the plain "Freeze" menu item does this.
+        const res = await request(`${server!.url}/api/queue/${id}/freeze`, { method: 'POST' });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).frozen).toBe(true);
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const task = JSON.parse(listRes.body).queued.find((t: any) => t.id === id);
+        expect(task.frozen).toBe(true);
+        expect(task.frozenUntil).toBeUndefined();
+    });
+
+    it('freeze with durationHours: 2 → stores frozenUntil ~2h out', async () => {
+        const id = await enqueueTask('timed-freeze');
+        const before = Date.now();
+
+        const res = await post(`${server!.url}/api/queue/${id}/freeze`, { durationHours: 2 });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).frozen).toBe(true);
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const task = JSON.parse(listRes.body).queued.find((t: any) => t.id === id);
+        expect(task.frozen).toBe(true);
+        expect(task.frozenUntil).toBeGreaterThanOrEqual(before + 2 * 60 * 60 * 1000);
+        expect(task.frozenUntil).toBeLessThanOrEqual(Date.now() + 2 * 60 * 60 * 1000);
+    });
+
+    it.each([0, -1, 25, 'two', null])('freeze with invalid durationHours %p → 400', async (durationHours) => {
+        const id = await enqueueTask('bad-duration');
+
+        const res = await post(`${server!.url}/api/queue/${id}/freeze`, { durationHours });
+        expect(res.status).toBe(400);
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const task = JSON.parse(listRes.body).queued.find((t: any) => t.id === id);
+        expect(task.frozen).toBeFalsy();
+    });
+
+    // ========================================================================
     // Unfreeze
     // ========================================================================
+
+    it('unfreeze clears a timed freeze, including frozenUntil', async () => {
+        const id = await enqueueTask('unfreeze-timed');
+        await post(`${server!.url}/api/queue/${id}/freeze`, { durationHours: 4 });
+
+        const res = await post(`${server!.url}/api/queue/${id}/unfreeze`, {});
+        expect(res.status).toBe(200);
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const task = JSON.parse(listRes.body).queued.find((t: any) => t.id === id);
+        expect(task.frozen).toBeFalsy();
+        expect(task.frozenUntil).toBeUndefined();
+    });
 
     it('POST /api/queue/:id/unfreeze → 200, task no longer frozen', async () => {
         const id = await enqueueTask('unfreeze-me');

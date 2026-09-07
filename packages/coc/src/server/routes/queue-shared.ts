@@ -155,6 +155,7 @@ export function serializeTask(task: QueuedTask): Record<string, unknown> {
         error: task.error,
         retryCount: task.retryCount,
         frozen: task.frozen ?? undefined,
+        frozenUntil: task.frozenUntil ?? undefined,
     };
 }
 
@@ -271,6 +272,7 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         error: truncateString(task.error, 500),
         retryCount: task.retryCount,
         frozen: task.frozen ?? undefined,
+        frozenUntil: task.frozenUntil ?? undefined,
         admitted: task.admitted ?? undefined,
     };
 }

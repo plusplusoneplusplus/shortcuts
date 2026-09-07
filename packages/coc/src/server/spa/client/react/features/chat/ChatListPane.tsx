@@ -15,6 +15,7 @@ import { useQueueTouchDragDrop } from '../../queue/hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { useCocClient } from '../../repos/cloneRouting';
+import type { QueueFreezeDurationHours } from '@plusplusoneplusplus/coc-client';
 import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
 import { ScheduledSlideSchedules } from '../schedules/ScheduledSlideSchedules';
 import { getDraft } from './hooks/useDraftStore';
@@ -122,6 +123,22 @@ type GroupPinMenuTarget = {
     label: string;
 };
 const PAUSE_HOUR_PRESETS = [1, 2, 3, 4, 8] as const;
+/** Preset hold lengths offered under the per-task "Freeze for…" submenu. */
+const FREEZE_DURATION_PRESETS: readonly QueueFreezeDurationHours[] = [1, 2, 4, 8, 24];
+
+/**
+ * Remaining time on a timed freeze, rounded for a badge ("3h", "45m").
+ * Computed at render — the badge does not tick.
+ */
+function formatFrozenRemaining(frozenUntil: unknown): string | undefined {
+    if (typeof frozenUntil !== 'number' || !Number.isFinite(frozenUntil)) {return undefined;}
+    const msLeft = frozenUntil - Date.now();
+    if (msLeft <= 0) {return undefined;}
+    const minutes = Math.round(msLeft / 60000);
+    if (minutes < 1) {return '<1m';}
+    if (minutes < 60) {return `${minutes}m`;}
+    return `${Math.round(minutes / 60)}h`;
+}
 const EMPTY_GROUP_PINS: ProcessGroupPin[] = [];
 
 /** Session category labels for display and filtering. */
@@ -2795,8 +2812,8 @@ export function ChatListPane({
         fetchQueue();
     };
 
-    const handleFreeze = async (taskId: string) => {
-        await cloneClient.queue.freeze(taskId);
+    const handleFreeze = async (taskId: string, durationHours?: QueueFreezeDurationHours) => {
+        await cloneClient.queue.freeze(taskId, durationHours === undefined ? undefined : { durationHours });
         fetchQueue();
     };
 
@@ -3196,9 +3213,21 @@ export function ChatListPane({
                 if (task) void copyToClipboard(formatMetadataText(task));
                 closeContextMenu();
             }},
-            isFrozen
-                ? { label: 'Unfreeze', icon: '▶', onClick: () => handleUnfreeze(taskId) }
-                : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
+            ...(isFrozen
+                ? [{ label: 'Unfreeze', icon: '▶', onClick: () => handleUnfreeze(taskId) }]
+                : [
+                    { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
+                    {
+                        label: 'Freeze for…',
+                        icon: '⏳',
+                        onClick: () => { /* submenu parent */ },
+                        children: FREEZE_DURATION_PRESETS.map(hours => ({
+                            label: `${hours}h`,
+                            icon: '❄',
+                            onClick: () => { void handleFreeze(taskId, hours); },
+                        })),
+                    },
+                ]),
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
     }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, onSetGroupPin, setGroupPinned, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused, buildMoveToFolderItems, buildGroupMoveToFolderItems]);
@@ -3250,6 +3279,7 @@ export function ChatListPane({
         const isHistorySelected = selectedHistoryIds.has(task.id);
         const isRowSelected = isSelected(task.id);
         const isFrozen = !!task.frozen;
+        const frozenRemaining = isFrozen ? formatFrozenRemaining(task.frozenUntil) : undefined;
         const isHeld = isAutopilotPaused === true && isQueued && task.payload?.mode === 'autopilot' && !task.admitted;
         const isAdmitted = isAutopilotPaused === true && isQueued && task.payload?.mode === 'autopilot' && !!task.admitted;
         const askUserCountOnTask = typeof task?.pendingAskUserCount === 'number' ? task.pendingAskUserCount : 0;
@@ -3423,7 +3453,9 @@ export function ChatListPane({
                             <span className="shrink-0 text-[10px] text-amber-500 dark:text-amber-400" title="Pinned" aria-hidden="true">📌</span>
                         )}
                         {isFrozen && (
-                            <span className="shrink-0 text-[10px] text-[#848484]" title="Frozen" aria-hidden="true">❄️</span>
+                            frozenRemaining
+                                ? <span className="shrink-0 text-[10px] text-[#848484]" title={`Frozen ${frozenRemaining}`}>❄️ {frozenRemaining}</span>
+                                : <span className="shrink-0 text-[10px] text-[#848484]" title="Frozen" aria-hidden="true">❄️</span>
                         )}
                         <span
                             className={cn('chat-title truncate text-[#1e1e1e] dark:text-[#cccccc] cursor-text select-none', isUnseen && 'font-semibold', isFailed && 'text-red-700 dark:text-red-400', isFrozen && 'text-[#848484]')}
