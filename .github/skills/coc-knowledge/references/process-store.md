@@ -28,6 +28,21 @@ Single `processes.db` at `~/.coc/processes.db`. Schema version 22.
 | `task_groups` | Parent/child task-group registry: one row per hierarchical run/session or chat folder (type, title, normalized status, hidden flag, origin process, `parent_group_id`, extra JSON) |
 | `task_group_members` | Child links per group: role (`generation`/`item`/`reduce`/`iteration`/`final-check`/`analyzer`/`critic`), task/process IDs, `itemKey`, `memberIndex` |
 
+### Chat binding stores
+
+`commit_chat_bindings`, `pull_request_chat_bindings`, `work_item_chat_bindings` and
+`note_chat_bindings` all have the shape `workspace_id, <key>, task_id, created_at` with
+`PRIMARY KEY (workspace_id, <key>)`, so their stores extend `ChatBindingStore`
+(`server/shared/chat-binding-store.ts`), which prepares the statements from a
+`(table, keyColumn)` pair — compile-time literals only, never runtime strings — and owns
+`list`/`get`/`bind`/`unbind` plus `migrateLegacyScopes`. `list` aliases the key column to
+`key` in SQL so row typing stays static. Subclasses keep only their domain methods:
+`rebind` (commit), `load`/`listByTaskId` (PR), the note path/prefix rename and delete
+sweeps (note). The PR and Work Item stores are the only migrate-on-access users — every
+public method takes a trailing `legacyScopeIds` and migrates before querying; commit and
+note stores never call it. All four export their `XxxChatBinding`/`XxxChatBindings` types
+as aliases of the shared `ChatBinding`/`ChatBindings`.
+
 ### Commit chat bindings
 
 `commit_chat_bindings` is the routing source of truth; each commit chat also carries a
