@@ -103,6 +103,55 @@ describe('ContentSearchToolbar (presentational)', () => {
         expect(props.onCollapseAll).toHaveBeenCalledTimes(1);
     });
 
+    it('keeps refresh, clear and view-mode inline when narrow, folding the rest behind ⋯', () => {
+        render(<ContentSearchToolbar enabled narrow {...handlers()} />);
+        expect(screen.getByTestId('content-search-refresh')).toBeInTheDocument();
+        expect(screen.getByTestId('content-search-clear-results')).toBeInTheDocument();
+        expect(screen.getByTestId('content-search-view-mode')).toBeInTheDocument();
+        expect(screen.getByTestId('content-search-more')).toBeInTheDocument();
+        expect(screen.queryByTestId('content-search-collapse-all')).toBeNull();
+        expect(screen.queryByTestId('content-search-replace-all')).toBeNull();
+        expect(screen.queryByTestId('content-search-open-in-editor')).toBeNull();
+    });
+
+    it('reveals the overflow actions from the ⋯ menu and runs them', () => {
+        const props = handlers();
+        render(<ContentSearchToolbar enabled narrow hasResults {...props} />);
+        fireEvent.click(screen.getByTestId('content-search-more'));
+
+        expect(screen.getByTestId('content-search-more-menu')).toBeInTheDocument();
+        expect(screen.getByTestId('content-search-open-in-editor')).toBeEnabled();
+        fireEvent.click(screen.getByTestId('content-search-collapse-all'));
+
+        expect(props.onCollapseAll).toHaveBeenCalledTimes(1);
+        // The menu closes behind the action it ran, as a menu should.
+        expect(screen.queryByTestId('content-search-more-menu')).toBeNull();
+    });
+
+    it('carries the same disabled rules into the ⋯ menu', () => {
+        render(<ContentSearchToolbar enabled narrow {...handlers()} />);
+        fireEvent.click(screen.getByTestId('content-search-more'));
+        // No results and no replace available: both stay inert inside the menu.
+        expect(screen.getByTestId('content-search-open-in-editor')).toBeDisabled();
+        expect(screen.getByTestId('content-search-replace-all')).toBeDisabled();
+        expect(screen.getByTestId('content-search-collapse-all')).toBeEnabled();
+    });
+
+    it('disables ⋯ itself — and so its actions — without a query', () => {
+        render(<ContentSearchToolbar enabled={false} narrow {...handlers()} />);
+        expect(screen.getByTestId('content-search-more')).toBeDisabled();
+        expect(screen.queryByTestId('content-search-more-menu')).toBeNull();
+    });
+
+    it('closes an open ⋯ menu on a click outside it', () => {
+        render(<ContentSearchToolbar enabled narrow {...handlers()} />);
+        fireEvent.click(screen.getByTestId('content-search-more'));
+        expect(screen.getByTestId('content-search-more-menu')).toBeInTheDocument();
+
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('content-search-more-menu')).toBeNull();
+    });
+
     it('labels each button for the keyboard and for screen readers', () => {
         render(<ContentSearchToolbar enabled {...handlers()} />);
         expect(screen.getByTestId('content-search-refresh')).toHaveAttribute('aria-label', 'Refresh');

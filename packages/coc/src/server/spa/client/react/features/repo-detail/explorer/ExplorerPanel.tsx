@@ -172,6 +172,21 @@ export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set
 /** Stable empty tab-id set — a fresh `Set` per render would loop consumers. */
 const NO_TAB_IDS: ReadonlySet<string> = new Set<string>();
 
+/**
+ * Below this sidebar width the Search view switches to its narrow layout: three
+ * mode toggles inside the query box leave it about 80px of typing room, which is
+ * two characters of a real query.
+ */
+export const NARROW_SIDEBAR_WIDTH = 320;
+
+/**
+ * True when the Search view has to fold. Mobile is never narrow — there the
+ * sidebar is the full screen, whatever the persisted desktop width says.
+ */
+export function isNarrowSidebar(width: number, isMobile: boolean): boolean {
+    return !isMobile && width < NARROW_SIDEBAR_WIDTH;
+}
+
 export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
@@ -180,6 +195,12 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         maxWidth: 600,
         storageKey: 'explorer-sidebar-width',
     });
+    const narrowSidebar = isNarrowSidebar(sidebarWidth, isMobile);
+    // The Search view's action strip is rendered by ContentSearchPanel (which
+    // owns the handlers) but lives in this header, so the panel is handed the
+    // element to portal into. State, not a ref, because the panel has to re-run
+    // once the node exists.
+    const [searchToolbarSlot, setSearchToolbarSlot] = useState<HTMLDivElement | null>(null);
 
     // Fetched tree data — cached in-memory per workspace so a switch-back reuses
     // already-loaded directory listings instead of re-fetching (AC-02). These
@@ -1148,11 +1169,19 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                             </button>
                         ))}
                     </div>
-                    {/* The header toolbar belongs to the Files view: collapsing,
-                        revealing and refreshing the tree all say nothing in Search,
-                        which carries its own strip (ContentSearchToolbar) at the top
-                        of the panel instead. */}
+                    {/* One header row, two strips: collapsing, revealing and
+                        refreshing the tree say nothing in Search, which fills the
+                        same corner with ContentSearchToolbar instead — rendered
+                        into this slot by ContentSearchPanel, which owns the
+                        handlers. */}
                     <div className="flex items-center gap-2">
+                        {view === 'search' && (
+                            <div
+                                ref={setSearchToolbarSlot}
+                                className="flex items-center"
+                                data-testid="explorer-search-toolbar-slot"
+                            />
+                        )}
                         {view === 'tree' && (
                             <>
                                 <button
@@ -1201,6 +1230,8 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                         focusQueryToken={searchFocusToken}
                         onOpenMatch={handleOpenMatch}
                         onOpenInEditor={handleOpenSearchInEditor}
+                        narrow={narrowSidebar}
+                        toolbarSlot={searchToolbarSlot}
                     />
                 ) : (
                     <>

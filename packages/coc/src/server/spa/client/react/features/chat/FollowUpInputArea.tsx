@@ -10,6 +10,10 @@ import { SlashCommandMenu } from './SlashCommandMenu';
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { RepoMentionMenu } from './RepoMentionMenu';
 import { useRepoMentions } from './hooks/useRepoMentions';
+import { FileMentionMenu } from './FileMentionMenu';
+import { useFileMentions } from './hooks/useFileMentions';
+import { useFileMentionRepos } from './hooks/useFileMentionRepos';
+import type { FileMentionResult } from './hooks/useFileMentionSearch';
 import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 import { useRepoGroupMembers } from '../../repos/useRepoGroupMembers';
 import { useResolveCloneBaseUrl } from '../../repos/cloneRouting';
@@ -343,6 +347,10 @@ export function FollowUpInputArea({
     const repoMentionBaseUrl = useResolveCloneBaseUrl()(activeWorkspaceId);
     const repoGroupMembers = useRepoGroupMembers(activeWorkspaceId ?? '', repoMentionBaseUrl, repoMentionsEnabled);
     const repoMentions = useRepoMentions(repoGroupMembers, repoMentionsEnabled);
+    // File-path mentions search every repo the chat can see — the group's live
+    // members, or the single repo of a plain chat.
+    const fileMentionRepos = useFileMentionRepos(activeWorkspaceId, repoGroupMembers);
+    const fileMentions = useFileMentions(fileMentionRepos, !inputDisabled);
     const sessionContextAttachmentsEnabled = sessionContextAttachmentsEnabledProp ?? isSessionContextAttachmentsEnabled();
     const localCanRetrieveConversations = useConversationRetrievalCapability(
         activeWorkspaceId,
@@ -496,6 +504,19 @@ export function FollowUpInputArea({
             }
             return;
         }
+        // Priority 2c: file-mention menu. Last of the popups, so it can never
+        // take a key from the `/`, model, or `#repo` menus; it consumes
+        // Tab/Enter only while open.
+        if (fileMentions.handleKeyDown(e)) {
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                const result = fileMentions.results[fileMentions.highlightIndex];
+                if (result) {
+                    skipNextSyncRef.current = true;
+                    fileMentions.selectResult(result, followUpInput, setFollowUpInput, richTextRef);
+                }
+            }
+            return;
+        }
         // Priority 3: inline ghost-text accept (Tab, no modifiers).
         if (
             e.key === 'Tab'
@@ -587,7 +608,14 @@ export function FollowUpInputArea({
         } else {
             slashCommands.handleInputChange(val, cursorPos);
             repoMentions.handleInputChange(val, cursorPos);
+            fileMentions.handleInputChange(val, cursorPos);
         }
+    }
+
+    function handleFileMentionSelect(result: FileMentionResult) {
+        skipNextSyncRef.current = true;
+        fileMentions.selectResult(result, followUpInput, setFollowUpInput, richTextRef);
+        richTextRef.current?.focus();
     }
 
     function handleRepoMentionSelect(name: string) {
@@ -946,7 +974,13 @@ export function FollowUpInputArea({
                             ref={richTextRef}
                             disabled={inputDisabled}
                             value={followUpInput}
-                            ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
+                            // Backticked file paths (from a mention or a file drop) are
+                            // painted as pills by the overlay; the text itself stays plain
+                            // (AC-04).
+                            pillPaths
+                            // Ghost text is suppressed while the file popup is open
+                            // so Tab means exactly one thing (AC-05).
+                            ghostText={fileMentions.menuVisible ? undefined : (slashCommands.activeCommandHint ?? autocomplete.completion)}
                             placeholder={stackedPlaceholder}
                             // border-transparent + focus:ring-transparent neutralize the
                             // base RichTextInput's 1px gray border and default blue
@@ -1299,6 +1333,13 @@ export function FollowUpInputArea({
                             onDismiss={repoMentions.dismissMenu}
                             visible={repoMentions.menuVisible}
                             highlightIndex={repoMentions.highlightIndex}
+                        />
+                        <FileMentionMenu
+                            results={fileMentions.results}
+                            onSelect={handleFileMentionSelect}
+                            onDismiss={fileMentions.dismissMenu}
+                            visible={fileMentions.menuVisible}
+                            highlightIndex={fileMentions.highlightIndex}
                         />
                     </div>
                 </div>

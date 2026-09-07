@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { cn } from '../ui/cn';
 import { pasteHtmlToMarkdown } from './pasteHtmlToMarkdown';
+import { splitFilePathPills } from './richTextPills';
 
 export interface RichTextInputHandle {
     getValue(): string;
@@ -25,7 +26,29 @@ export interface RichTextInputProps {
      * Hidden when `disabled` or empty.
      */
     ghostText?: string;
+    /**
+     * When true, backticked file paths in `value` are painted with a pill
+     * background by the same transparent-text overlay that draws ghost text.
+     * Purely visual: the contenteditable below stays plain text and
+     * `getValue()` is unaffected.
+     */
+    pillPaths?: boolean;
 }
+
+/**
+ * Pill chrome for a backticked path in the overlay. The background is
+ * translucent and the text transparent, so the real characters in the
+ * contenteditable underneath show through as normal. The visual padding comes
+ * from a box-shadow spread rather than real padding — padding would shift every
+ * following character out of alignment with the text below.
+ */
+const PILL_CLASS = [
+    'rounded-[3px]',
+    // rgba() literals rather than `bg-[#hex]/12`: this project's Tailwind
+    // build does not emit the arbitrary-color + slash-opacity combination.
+    'bg-[rgba(0,120,212,0.12)] dark:bg-[rgba(79,193,255,0.20)]',
+    'shadow-[0_0_0_2px_rgba(0,120,212,0.12)] dark:shadow-[0_0_0_2px_rgba(79,193,255,0.20)]',
+].join(' ');
 
 export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>(
     function RichTextInput(props, ref) {
@@ -134,6 +157,20 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
             props.onChange(text, cursorPos);
         };
 
+        const overlayTestId = props['data-testid']
+            ? `${props['data-testid']}-ghost`
+            : 'rich-input-ghost';
+        const pillTestId = props['data-testid']
+            ? `${props['data-testid']}-pill`
+            : 'rich-input-pill';
+        const segments = props.pillPaths
+            ? splitFilePathPills(props.value ?? '')
+            : [{ text: props.value ?? '', pill: false }];
+        // The overlay is shared by ghost text and path pills; it only mounts
+        // when one of them actually has something to draw.
+        const showOverlay = !props.disabled && props.value !== undefined
+            && (!!props.ghostText || segments.some((s) => s.pill));
+
         return (
             <div className="relative w-full">
                 <div
@@ -157,7 +194,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                     id={props.id}
                     data-testid={props['data-testid']}
                 />
-                {!props.disabled && props.ghostText && props.value !== undefined ? (
+                {showOverlay ? (
                     // Overlay rendered ABOVE the contenteditable. The typed
                     // value is repeated here in fully-transparent text so the
                     // ghost suffix lines up exactly after the caret. The
@@ -166,11 +203,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                     // overlay's transparent text passes through to it).
                     <div
                         aria-hidden="true"
-                        data-testid={
-                            props['data-testid']
-                                ? `${props['data-testid']}-ghost`
-                                : 'rich-input-ghost'
-                        }
+                        data-testid={overlayTestId}
                         className={cn(
                             'pointer-events-none absolute inset-0 z-10 overflow-hidden',
                             'rounded border border-transparent',
@@ -183,18 +216,25 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
                             background: 'transparent',
                         }}
                     >
-                        <span style={{ color: 'transparent' }}>{props.value}</span>
+                        {segments.map((seg, i) => (
+                            <span
+                                key={i}
+                                className={seg.pill ? PILL_CLASS : undefined}
+                                data-testid={seg.pill ? pillTestId : undefined}
+                                style={{ color: 'transparent' }}
+                            >
+                                {seg.text}
+                            </span>
+                        ))}
+                        {props.ghostText ? (
                         <span
                             className="italic"
                             style={{ color: '#9e9e9e' }}
-                            data-testid={
-                                props['data-testid']
-                                    ? `${props['data-testid']}-ghost-suffix`
-                                    : 'rich-input-ghost-suffix'
-                            }
+                            data-testid={`${overlayTestId}-suffix`}
                         >
                             {props.ghostText}
                         </span>
+                        ) : null}
                     </div>
                 ) : null}
             </div>

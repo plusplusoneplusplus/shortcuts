@@ -30,6 +30,9 @@ import { SlashCommandMenu, getMetaSkillItems, mergeSkillsWithMeta, type SkillIte
 import { ModelCommandMenu } from './ModelCommandMenu';
 import { RepoMentionMenu } from './RepoMentionMenu';
 import { useRepoMentions } from './hooks/useRepoMentions';
+import { FileMentionMenu } from './FileMentionMenu';
+import { useFileMentions } from './hooks/useFileMentions';
+import { useFileMentionRepos } from './hooks/useFileMentionRepos';
 import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 import { useRepoGroupMembers } from '../../repos/useRepoGroupMembers';
 import { ModePillSelector, getVisibleModePillOptions } from './ModePillSelector';
@@ -416,6 +419,10 @@ export function InitialChatComposer({
     const repoMentionsEnabled = isRepoGroupWorkspaceId(workspaceId);
     const repoGroupMembers = useRepoGroupMembers(workspaceId ?? '', cloneBaseUrl, repoMentionsEnabled);
     const repoMentions = useRepoMentions(repoGroupMembers, repoMentionsEnabled);
+    // File-path mentions search every repo the chat can see — the group's live
+    // members, or the single repo of a plain chat.
+    const fileMentionRepos = useFileMentionRepos(workspaceId, repoGroupMembers);
+    const fileMentions = useFileMentions(fileMentionRepos, !sending);
     const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProviderForClientHooks, cloneBaseUrl);
     const validModelOverride = useMemo(() => {
         const override = modelCommand.modelOverride;
@@ -1624,7 +1631,13 @@ export function InitialChatComposer({
                         ref={richTextRef}
                         disabled={sending}
                         value={input}
-                        ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
+                        // Backticked file paths (from a mention or a file drop) are
+                        // painted as pills by the overlay; the text itself stays plain
+                        // (AC-04).
+                        pillPaths
+                        // Ghost text is suppressed while the file popup is open so
+                        // Tab means exactly one thing (AC-05).
+                        ghostText={fileMentions.menuVisible ? undefined : (slashCommands.activeCommandHint ?? autocomplete.completion)}
                         placeholder={placeholder}
                         // border-transparent + focus:ring-transparent neutralize the
                         // base RichTextInput's 1px gray border and default blue
@@ -1642,6 +1655,7 @@ export function InitialChatComposer({
                             } else {
                                 slashCommands.handleInputChange(val, pos);
                                 repoMentions.handleInputChange(val, pos);
+                                fileMentions.handleInputChange(val, pos);
                             }
                         }}
                         onKeyDown={(e) => {
@@ -1679,6 +1693,19 @@ export function InitialChatComposer({
                                     const member = repoMentions.filteredMembers[repoMentions.highlightIndex];
                                     if (member?.name) {
                                         repoMentions.selectMember(member.name, input, setInput, richTextRef);
+                                        richTextRef.current?.focus();
+                                    }
+                                }
+                                return;
+                            }
+                            // Priority 2c: file-mention menu. Last of the popups,
+                            // so it can never take a key from the `/`, model, or
+                            // `#repo` menus; it consumes Tab/Enter only while open.
+                            if (fileMentions.handleKeyDown(e)) {
+                                if (e.key === 'Enter' || e.key === 'Tab') {
+                                    const result = fileMentions.results[fileMentions.highlightIndex];
+                                    if (result) {
+                                        fileMentions.selectResult(result, input, setInput, richTextRef);
                                         richTextRef.current?.focus();
                                     }
                                 }
@@ -1934,6 +1961,16 @@ export function InitialChatComposer({
                         onDismiss={repoMentions.dismissMenu}
                         visible={repoMentions.menuVisible}
                         highlightIndex={repoMentions.highlightIndex}
+                    />
+                    <FileMentionMenu
+                        results={fileMentions.results}
+                        onSelect={(result) => {
+                            fileMentions.selectResult(result, input, setInput, richTextRef);
+                            richTextRef.current?.focus();
+                        }}
+                        onDismiss={fileMentions.dismissMenu}
+                        visible={fileMentions.menuVisible}
+                        highlightIndex={fileMentions.highlightIndex}
                     />
                 </div>
                 </div>

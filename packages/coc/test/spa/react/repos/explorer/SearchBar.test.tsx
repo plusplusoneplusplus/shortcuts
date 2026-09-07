@@ -58,6 +58,13 @@ describe('SearchBar', () => {
         expect(input.value).toBe('hello');
     });
 
+    it('spends no width on a decorative search icon', () => {
+        render(<SearchBar value="" onChange={vi.fn()} onClear={vi.fn()} />);
+        // The placeholder already says what the box is for; the emoji cost 28px
+        // of a 250px sidebar to repeat it.
+        expect(screen.getByTestId('explorer-search-bar').textContent).not.toContain('🔍');
+    });
+
     it('renders no toggles by default', () => {
         render(<SearchBar value="" onChange={vi.fn()} onClear={vi.fn()} />);
         expect(document.querySelectorAll('[data-testid^="explorer-search-toggle-"]')).toHaveLength(0);
@@ -121,6 +128,60 @@ describe('SearchBar', () => {
             );
             const input = screen.getByTestId('explorer-search-input') as HTMLInputElement;
             expect(input.style.paddingRight).toBe('106px');
+        });
+    });
+
+    describe('togglePlacement="below" (narrow sidebar)', () => {
+        const threeToggles = (onToggle = vi.fn()): SearchBarToggle[] => [
+            { id: 'case', label: 'Aa', title: 'Match case', active: false, onToggle },
+            { id: 'word', label: 'ab', title: 'Match whole word', active: false, onToggle },
+            { id: 'regex', label: '.*', title: 'Use regular expression', active: false, onToggle },
+        ];
+
+        it('moves the toggles out of the field, onto a row of their own', () => {
+            render(
+                <SearchBar value="" onChange={vi.fn()} onClear={vi.fn()} toggles={threeToggles()} togglePlacement="below" />,
+            );
+            const row = screen.getByTestId('explorer-search-toggle-row');
+            const input = screen.getByTestId('explorer-search-input');
+            for (const id of ['case', 'word', 'regex']) {
+                const button = screen.getByTestId(`explorer-search-toggle-${id}`);
+                expect(row.contains(button)).toBe(true);
+            }
+            expect(document.querySelectorAll('[data-testid^="explorer-search-toggle-"]')).toHaveLength(4);
+            expect(row.contains(input)).toBe(false);
+        });
+
+        it('reclaims the reserved width, leaving only the clear button', () => {
+            render(
+                <SearchBar value="abc" onChange={vi.fn()} onClear={vi.fn()} toggles={threeToggles()} togglePlacement="below" />,
+            );
+            const input = screen.getByTestId('explorer-search-input') as HTMLInputElement;
+            expect(input.style.paddingRight).toBe('28px');
+        });
+
+        it('still fires onToggle from the row', () => {
+            const onToggle = vi.fn();
+            render(
+                <SearchBar value="" onChange={vi.fn()} onClear={vi.fn()} toggles={threeToggles(onToggle)} togglePlacement="below" />,
+            );
+            fireEvent.click(screen.getByTestId('explorer-search-toggle-regex'));
+            expect(onToggle).toHaveBeenCalledOnce();
+        });
+
+        it('shares the row with the host\u2019s own control', () => {
+            render(
+                <SearchBar value="" onChange={vi.fn()} onClear={vi.fn()} toggles={threeToggles()} togglePlacement="below">
+                    <button data-testid="extra-control">…</button>
+                </SearchBar>,
+            );
+            expect(screen.getByTestId('explorer-search-toggle-row').contains(screen.getByTestId('extra-control')))
+                .toBe(true);
+        });
+
+        it('ignores the placement when there are no toggles', () => {
+            render(<SearchBar value="" onChange={vi.fn()} onClear={vi.fn()} togglePlacement="below" />);
+            expect(screen.queryByTestId('explorer-search-toggle-row')).toBeNull();
         });
     });
 

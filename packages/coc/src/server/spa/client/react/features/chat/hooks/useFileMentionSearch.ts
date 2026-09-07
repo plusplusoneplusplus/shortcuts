@@ -1,0 +1,144 @@
+/**
+ * useFileMentionSearch — debounced, multi-repo file search behind the composer's
+ * file-mention popup (AC-03).
+ *
+ * Every repo in the session's repo group is queried in parallel through the
+ * existing warm file index (`GET /api/repos/:repoId/search`), and the per-repo
+ * result lists are merged into one ranked list labelled by repo. The debounce
+ * and single-in-flight `AbortController` are lifted from `QuickOpen.tsx`: a fast
+ * typist should issue one request per pause, not one per keystroke, and a
+ * superseded query must never overwrite a newer one's results.
+ */
+
+import { useEffect, useRef, useState } from 'react';
+import type { ExplorerSearchResult } from '@plusplusoneplusplus/coc-client';
+import { explorerApi } from '../../repo-detail/explorer/explorerApi';
+
+/** Maximum results requested per repo, matching `QuickOpen`. */
+export const FILE_MENTION_RESULT_LIMIT = 50;
+
+/**
+ * How long typing must pause before a search is issued. Matches `QuickOpen`'s
+ * `SEARCH_DEBOUNCE_MS`.
+ */
+export const FILE_MENTION_DEBOUNCE_MS = 40;
+
+/** A repo to search, in the group's own order — the order breaks score ties. */
+export interface FileMentionRepo {
+    workspaceId: string;
+    /** Display label for the row; falls back to the id when the repo is unnamed. */
+    name: string;
+}
+
+/** One merged match: the scorer's fields plus which repo it came from. */
+export interface FileMentionResult extends ExplorerSearchResult {
+    workspaceId: string;
+    repoName: string;
+}
+
+export interface UseFileMentionSearchResult {
+    results: FileMentionResult[];
+    loading: boolean;
+}
+
+/**
+ * Merge per-repo result lists into one ranked list.
+ *
+ * Ranking is score descending, ties broken by the repo's position in the group
+ * and then by path length ascending — so a shorter path in the first repo wins a
+ * tie, which is what "the repo I'm working in, most specific match" feels like.
+ */
+export function mergeFileMentionResults(
+    perRepo: { repo: FileMentionRepo; results: readonly ExplorerSearchResult[] }[],
+): FileMentionResult[] {
+    const merged: (FileMentionResult & { repoOrder: number })[] = [];
+    perRepo.forEach(({ repo, results }, repoOrder) => {
+        for (const result of results) {
+            merged.push({
+                ...result,
+                workspaceId: repo.workspaceId,
+                repoName: repo.name,
+                repoOrder,
+            });
+        }
+    });
+
+    merged.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.repoOrder !== b.repoOrder) return a.repoOrder - b.repoOrder;
+        return a.path.length - b.path.length;
+    });
+
+    return merged.map(({ repoOrder: _repoOrder, ...rest }) => rest);
+}
+
+/**
+ * @param repos The repos to search, in group order. Empty means the session has
+ * no repo at all and the popup can never open.
+ * @param query The text typed under the caret, or null when the popup is closed.
+ * A null or blank query clears the results without touching the network.
+ */
+export function useFileMentionSearch(
+    repos: readonly FileMentionRepo[],
+    query: string | null,
+): UseFileMentionSearchResult {
+    const [results, setResults] = useState<FileMentionResult[]>([]);
+    const [loading, setLoading] = useState(false);
+    const abortRef = useRef<AbortController | null>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // `repos` is usually a fresh array each render; key the effect on its
+    // identity string so a re-render with the same group does not re-search.
+    const repoKey = repos.map(r => `${r.workspaceId}\u0000${r.name}`).join('\u0001');
+
+    useEffect(() => {
+        const trimmed = query?.trim() ?? '';
+        if (!trimmed || repos.length === 0) {
+            abortRef.current?.abort();
+            abortRef.current = null;
+            setResults([]);
+            setLoading(false);
+            return;
+        }
+
+        debounceRef.current = setTimeout(() => {
+            abortRef.current?.abort();
+            const abort = new AbortController();
+            abortRef.current = abort;
+            setLoading(true);
+
+            Promise.all(repos.map(repo =>
+                explorerApi
+                    .searchFiles(repo.workspaceId, trimmed, {
+                        limit: FILE_MENTION_RESULT_LIMIT,
+                        signal: abort.signal,
+                    })
+                    .then(data => ({ repo, results: data.results }))
+                    // One unreachable repo in the group must not blank the whole
+                    // list — the others still have useful matches.
+                    .catch(() => ({ repo, results: [] as ExplorerSearchResult[] })),
+            ))
+                .then(perRepo => {
+                    if (abort.signal.aborted) return;
+                    setResults(mergeFileMentionResults(perRepo));
+                })
+                .finally(() => {
+                    if (!abort.signal.aborted) setLoading(false);
+                });
+        }, FILE_MENTION_DEBOUNCE_MS);
+
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+        // `repos` is intentionally tracked through `repoKey`, not by identity.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query, repoKey]);
+
+    // Drop any in-flight request when the composer goes away.
+    useEffect(() => () => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        abortRef.current?.abort();
+    }, []);
+
+    return { results, loading };
+}

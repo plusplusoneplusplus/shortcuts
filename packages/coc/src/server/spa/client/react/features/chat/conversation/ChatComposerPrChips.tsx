@@ -9,7 +9,9 @@
  * Dismiss hides the chip immediately *and* deletes the PR's chat binding, so a
  * PR the user says is not theirs does not come back on reload. Detection is the
  * other half of that promise: it only re-surfaces a PR this chat actually
- * created (see {@link detectPullRequestsInToolGroup}).
+ * created (see {@link detectPullRequestsInToolGroup}). The exception is a chip
+ * sourced only from `authored` — a PR that ships this chat's commits but was
+ * opened by another chat — where dismiss hides locally and deletes nothing.
  *
  * Settled PRs fold into a single {@link ComposerPrFoldRow} so a chat that shipped
  * five commits does not out-grow the textarea it sits above — see
@@ -63,6 +65,10 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
         const item = itemsRef.current.find(candidate => candidate.key === key);
         const workspaceId = statusOptions.workspaceId;
         if (!item?.originId || !item.prId || !workspaceId) return;
+        // An authored-only chip has no binding of its own — the PR's single
+        // binding row belongs to the chat that opened it. Deleting it here would
+        // unbind that chat, so this dismiss is session-local.
+        if (item.sources && item.sources.every(source => source === 'authored')) return;
         // Best-effort and fully non-blocking: the chip is already hidden, so a
         // transport error (or a client without the route) must not surface here.
         try {

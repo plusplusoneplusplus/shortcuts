@@ -7,6 +7,8 @@ export { getSkillFileEntries, SkillVersionBadge } from './SkillMetadata';
 export type { SkillFileEntry } from './SkillMetadata';
 export { RichTextInput } from './RichTextInput';
 export type { RichTextInputProps, RichTextInputHandle } from './RichTextInput';
+export { isFilePathCodeSpan, splitFilePathPills, hasFilePathPill } from './richTextPills';
+export type { RichTextSegment } from './richTextPills';
 export { MarkdownView } from './MarkdownView';
 export type { MarkdownViewProps } from './MarkdownView';
 export { InteractiveTable } from './InteractiveTable';

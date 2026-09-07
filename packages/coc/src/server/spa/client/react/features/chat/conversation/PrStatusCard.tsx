@@ -29,6 +29,7 @@ import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
 import { formatUpdatedAgo } from './prStatusFreshness';
 import { isTerminalPrStatus } from './prTerminalStatus';
 import { summarizeLifecycleStatus, summarizeMergeStatus, type LifecycleStatusSummary, type MergeStatusSummary } from './prMergeStatusSummary';
+import type { PrAssociationSource } from './prChatAssociation';
 
 /** Per-PR fetch lifecycle for a card row. */
 export type PrStatusCardItemState = 'loading' | 'ready' | 'error';
@@ -107,6 +108,12 @@ export interface PrStatusCardItem {
     reviewers?: Reviewer[];
     /** Error message kept for diagnostics when `reviewersState === 'error'`. */
     reviewersError?: string;
+    /**
+     * Where the association came from. An item sourced only from `authored` has
+     * no binding row of its own, so dismissing it must not issue a binding
+     * DELETE (that would unbind the chat that actually opened the PR).
+     */
+    sources?: PrAssociationSource[];
 }
 
 export interface PrStatusCardProps {

@@ -213,3 +213,65 @@ export function getRepoMentionContext(text: string, cursorPosition: number): Rep
         startIndex: lastHashIdx,
     };
 }
+
+export interface FileMentionContext {
+    /** Whether the caret is inside a token that should open the file picker. */
+    active: boolean;
+    /** The path fragment to search for — the token without any leading `@`. */
+    prefix: string;
+    /** Start index of the token in the text, including the `@` when present. */
+    startIndex: number;
+    /** True when the token was opened with an explicit `@` sigil. */
+    hasSigil: boolean;
+}
+
+/** Trailing `.ext` that makes a bare token look like a file name. */
+const FILE_EXTENSION_SUFFIX = /\.[A-Za-z0-9_]+$/;
+
+/**
+ * Determine whether the caret sits inside a token that should open the file
+ * mention picker. Shaped like {@link getRepoMentionContext} so all three
+ * composer triggers behave the same way.
+ *
+ * The token is the run of non-whitespace characters ending at the caret. It
+ * opens the picker when either:
+ * - it starts with `@`, and that `@` is at the start of the input or preceded
+ *   by whitespace, or
+ * - trigger-less: it contains a `/` or ends in `.ext`.
+ *
+ * Bare prose words never trigger, and neither does anything with an `@` in the
+ * middle, so `index` and `email@example.com` type as ordinary text. Tokens
+ * starting with `/` or `#` belong to the slash and repo menus and are left
+ * alone.
+ */
+export function getFileMentionContext(text: string, cursorPosition: number): FileMentionContext | null {
+    // The caret must sit at the end of the token, not inside a longer one.
+    if (cursorPosition < text.length && !/\s/.test(text[cursorPosition])) {
+        return null;
+    }
+
+    const textBeforeCursor = text.slice(0, cursorPosition);
+
+    let start = cursorPosition;
+    while (start > 0 && !/\s/.test(text[start - 1])) {
+        start--;
+    }
+    const token = textBeforeCursor.slice(start);
+    if (!token) return null;
+
+    // Owned by the slash-command and repo-mention menus.
+    if (token[0] === '/' || token[0] === '#') return null;
+
+    if (token[0] === '@') {
+        return { active: true, prefix: token.slice(1), startIndex: start, hasSigil: true };
+    }
+
+    // A stray `@` mid-token means an email address or a handle, not a path.
+    if (token.includes('@')) return null;
+
+    if (token.includes('/') || FILE_EXTENSION_SUFFIX.test(token)) {
+        return { active: true, prefix: token, startIndex: start, hasSigil: false };
+    }
+
+    return null;
+}

@@ -2,28 +2,58 @@ export interface ExtractedInjectedBlocks {
     text: string;
     chatStyle?: string;
     chatMode?: string;
+    selectedSkills?: string;
+    selectedSkillNames?: string[];
 }
+
+/** Tags the server injects ahead of the user prompt, in no guaranteed order. */
+const INJECTED_TAGS = ['chat-style', 'coc-chat-mode', 'selected_skills'] as const;
+
+type InjectedTag = typeof INJECTED_TAGS[number];
 
 function trimLeadingBlankLines(text: string): string {
     return text.replace(/^(?:[\t ]*(?:\r\n|\n|\r))+/, '');
 }
 
 /**
- * Removes the server-injected chat style and mode blocks from the leading
- * prefix of display text while retaining each complete block verbatim.
+ * Recovers the selected skill names from the `<selected_skills>` block text.
+ *
+ * This parses a prompt string built by `prependSelectedSkillsDirective` in
+ * `server/executors/prompt-builder.ts` — the two must stay in sync. Once the
+ * selected skills are persisted as structured turn metadata, delete this
+ * parser and read the names off the turn instead.
+ *
+ * Never throws: an absent or reworded sentence yields `[]`, and the caller
+ * falls back to showing the raw block only.
+ */
+export function parseSelectedSkillNames(block: string): string[] {
+    const match = /^The user explicitly selected these skills:[ \t]*(.+?)\.?[ \t]*$/m.exec(block);
+    if (!match) {
+        return [];
+    }
+
+    const names: string[] = [];
+    for (const part of match[1].split(',')) {
+        const name = part.trim();
+        if (name.length > 0 && !names.includes(name)) {
+            names.push(name);
+        }
+    }
+    return names;
+}
+
+/**
+ * Removes the server-injected blocks from the leading prefix of display text
+ * while retaining each complete block verbatim. Blocks may appear in any order
+ * and any subset; each tag is consumed at most once, so a quoted repeat in the
+ * user's own text stays in `text`.
  */
 export function extractInjectedBlocks(text: string): ExtractedInjectedBlocks {
     let remaining = text;
-    let chatStyle: string | undefined;
-    let chatMode: string | undefined;
+    const blocks = new Map<InjectedTag, string>();
 
-    for (let blockCount = 0; blockCount < 2; blockCount += 1) {
-        const tag = chatStyle === undefined && remaining.startsWith('<chat-style>')
-            ? 'chat-style'
-            : chatMode === undefined && remaining.startsWith('<coc-chat-mode>')
-                ? 'coc-chat-mode'
-                : undefined;
-
+    for (;;) {
+        const tag = INJECTED_TAGS.find(candidate => !blocks.has(candidate) && remaining.startsWith(`<${candidate}>`));
         if (tag === undefined) {
             break;
         }
@@ -35,22 +65,26 @@ export function extractInjectedBlocks(text: string): ExtractedInjectedBlocks {
         }
 
         const blockEnd = closingTagStart + closingTag.length;
-        const block = remaining.slice(0, blockEnd);
-        if (tag === 'chat-style') {
-            chatStyle = block;
-        } else {
-            chatMode = block;
-        }
-
+        blocks.set(tag, remaining.slice(0, blockEnd));
         remaining = trimLeadingBlankLines(remaining.slice(blockEnd));
     }
 
     const result: ExtractedInjectedBlocks = { text: remaining };
+    const chatStyle = blocks.get('chat-style');
     if (chatStyle !== undefined) {
         result.chatStyle = chatStyle;
     }
+    const chatMode = blocks.get('coc-chat-mode');
     if (chatMode !== undefined) {
         result.chatMode = chatMode;
+    }
+    const selectedSkills = blocks.get('selected_skills');
+    if (selectedSkills !== undefined) {
+        result.selectedSkills = selectedSkills;
+        const names = parseSelectedSkillNames(selectedSkills);
+        if (names.length > 0) {
+            result.selectedSkillNames = names;
+        }
     }
     return result;
 }
