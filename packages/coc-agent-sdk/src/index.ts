@@ -340,6 +340,9 @@ export type {
     DangerousCommandApprovalRequest,
     DangerousCommandApprovalHandler,
     DangerousCommandGuardOptions,
+    DangerousCommandAuditDecision,
+    DangerousCommandAuditRecord,
+    DangerousCommandAuditSink,
     DangerousCommandGuardResult,
     DangerousCommandMatcher,
 } from './dangerous-command-guard';

@@ -259,12 +259,71 @@ describe('buildDangerousCommandGuardWiring', () => {
         expect(records).toHaveLength(2);
         expect(records[0]).toMatchObject({
             ruleId: 'rm-recursive-dangerous-target',
-            decision: 'approve-session',
+            decision: 'approved-session',
             fromSessionApproval: false,
         });
-        expect(records[1]).toMatchObject({ decision: 'approve-session', fromSessionApproval: true });
+        expect(records[1]).toMatchObject({ decision: 'approved-session', fromSessionApproval: true });
         expect(Number.isNaN(Date.parse(records[0].timestamp))).toBe(false);
         expect(JSON.stringify(records)).not.toContain('rm -rf');
+    });
+
+    it('records a non-interactive block, where there is no approval callback at all', async () => {
+        // AC-06 denies by omitting `requestApproval`, so the wiring's own
+        // callbacks never run. The audit sink still has to fire, otherwise a
+        // cron or Ralph turn blocks a command with nothing left behind to show
+        // for it.
+        const records: DangerousCommandDecisionRecord[] = [];
+        const guard = buildDangerousCommandGuardWiring({
+            processId: 'p1',
+            enabled: true,
+            isInteractive: () => false,
+            getAskApproval: () => undefined,
+            onDecision: (record) => { records.push(record); },
+        });
+        expect(guard.requestApproval).toBeUndefined();
+
+        await expect(screen(guard)).resolves.toMatchObject({ allowed: false });
+
+        expect(records).toEqual([
+            expect.objectContaining({
+                ruleId: 'rm-recursive-dangerous-target',
+                decision: 'auto-denied-non-interactive',
+                fromSessionApproval: false,
+            }),
+        ]);
+    });
+
+    it('records a denial when the user says no', async () => {
+        const records: DangerousCommandDecisionRecord[] = [];
+        const { emitted, addon } = makeTurn();
+        const guard = buildDangerousCommandGuardWiring({
+            processId: 'p1',
+            enabled: true,
+            isInteractive: () => true,
+            getAskApproval: () => addon.askApproval,
+            approvals: new DangerousCommandSessionApprovals(),
+            onDecision: (record) => { records.push(record); },
+        });
+
+        const pending = screen(guard);
+        await vi.waitFor(() => expect(emitted).toHaveLength(1));
+        addon.answerQuestion(emitted[0].questionId, 'deny');
+        await expect(pending).resolves.toMatchObject({ allowed: false });
+
+        expect(records).toEqual([
+            expect.objectContaining({ decision: 'denied', fromSessionApproval: false }),
+        ]);
+    });
+
+    it('does not wire an audit sink when the flag is off', () => {
+        const guard = buildDangerousCommandGuardWiring({
+            processId: 'p1',
+            enabled: false,
+            isInteractive: () => true,
+            getAskApproval: () => undefined,
+            onDecision: () => { throw new Error('should not be called'); },
+        });
+        expect(guard).toEqual({ enabled: false });
     });
 });
 

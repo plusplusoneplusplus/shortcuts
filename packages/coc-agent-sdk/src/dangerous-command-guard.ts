@@ -57,6 +57,35 @@ export type DangerousCommandApprovalHandler = (
     signal?: AbortSignal,
 ) => Promise<DangerousCommandDecision>;
 
+/**
+ * How a fired rule was resolved, in audit vocabulary.
+ *
+ * Wider than {@link DangerousCommandDecision} because the audit trail has to
+ * name outcomes the approval channel never saw: a turn with no one to ask, and
+ * a prompt that failed.
+ */
+export type DangerousCommandAuditDecision =
+    | 'approved-once'
+    | 'approved-session'
+    | 'denied'
+    | 'auto-denied-non-interactive';
+
+/**
+ * One line of the audit trail (AC-08). Deliberately carries no command text —
+ * a command can contain secrets, and this record is persisted.
+ */
+export interface DangerousCommandAuditRecord {
+    /** Stable id of the rule that fired. */
+    ruleId: string;
+    /** How it was resolved. */
+    decision: DangerousCommandAuditDecision;
+    /** ISO timestamp of the decision. */
+    timestamp: string;
+}
+
+/** Receives one record per fired rule. Must not throw; the guard swallows it either way. */
+export type DangerousCommandAuditSink = (record: DangerousCommandAuditRecord) => void;
+
 /** The guard wiring a caller hands to a provider service via `SendMessageOptions`. */
 export interface DangerousCommandGuardOptions {
     /** Mirror of the `dangerousCommandGuard.enabled` admin flag. Off → no screening at all. */
@@ -66,6 +95,17 @@ export interface DangerousCommandGuardOptions {
      * on a match — that is the non-interactive path (cron, schedule, Ralph).
      */
     requestApproval?: DangerousCommandApprovalHandler;
+    /**
+     * Audit sink (AC-08), called exactly once for every rule that fires —
+     * including the non-interactive path, where `requestApproval` is absent and
+     * the host would otherwise never learn a command was blocked.
+     *
+     * It lives here rather than in either gate because there are two gates
+     * (Claude's `canUseTool` and Copilot's permission handler) and both route
+     * through {@link screenDangerousCommand}, which is the one place that sees
+     * every outcome.
+     */
+    reportDecision?: DangerousCommandAuditSink;
 }
 
 /** The verdict on one screened tool call. */
@@ -182,7 +222,18 @@ export async function screenDangerousCommand(
         matchedSegment: verdict.matchedSegment ?? command,
     };
 
+    // A rule fired, so from here on every exit reports one audit record. The
+    // sink is best-effort: an audit write must never be the reason a turn dies.
+    const report = (decision: DangerousCommandAuditDecision): void => {
+        try {
+            guard.reportDecision?.({ ruleId: match.ruleId, decision, timestamp: new Date().toISOString() });
+        } catch {
+            // Ignore — the decision itself still stands.
+        }
+    };
+
     if (!guard.requestApproval) {
+        report('auto-denied-non-interactive');
         return {
             allowed: false,
             match,
@@ -195,6 +246,7 @@ export async function screenDangerousCommand(
     try {
         decision = await guard.requestApproval({ ...match, toolName, command }, options.signal);
     } catch {
+        report('denied');
         return {
             allowed: false,
             match,
@@ -204,6 +256,7 @@ export async function screenDangerousCommand(
     }
 
     if (decision === 'deny') {
+        report('denied');
         return {
             allowed: false,
             match,
@@ -211,5 +264,6 @@ export async function screenDangerousCommand(
             denialMessage: buildDangerousCommandDenialMessage(match, 'denied'),
         };
     }
+    report(decision === 'approve-session' ? 'approved-session' : 'approved-once');
     return { allowed: true, match, decision };
 }

@@ -30,6 +30,7 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import type { DangerousCommandGuardOptions, Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import { buildDangerousCommandGuardWiring } from './dangerous-command-guard-wiring';
+import { recordDangerousCommandDecision } from './dangerous-command-audit';
 import {
     approveAllPermissions,
     findClaudeCatalogModel,
@@ -698,14 +699,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             isInteractive: opts.isInteractive,
             getAskApproval: () => this.getAskUserHandles(processId)?.askApproval,
             onDecision: (record) => {
-                // The command text is deliberately not logged — it can carry
-                // secrets. Rule id and decision are enough to audit.
+                // The command text is deliberately not logged or persisted — it
+                // can carry secrets. Rule id and decision are enough to audit.
                 getLogger().info(
                     LogCategory.AI,
                     `[ChatModeExecutor] Dangerous-command guard for ${processId}: ` +
                     `rule ${record.ruleId} → ${record.decision}` +
                     `${record.fromSessionApproval ? ' (standing session approval)' : ''}.`,
                 );
+                // AC-08: the decision has to outlive the turn, so it also lands
+                // on the process record. Fire-and-forget — the model's answer
+                // must not wait on a database write.
+                void recordDangerousCommandDecision(this.store, processId, record);
             },
         });
     }

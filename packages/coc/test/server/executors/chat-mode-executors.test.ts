@@ -18,6 +18,7 @@ import * as os from 'os';
 import type { ModelInfo, QueuedTask } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore, toQueueProcessId, READ_ONLY_SYSTEM_MESSAGE, setHomeDirectoryOverride, clearMcpConfigCache, DEFAULT_AI_IDLE_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
 import { createFixedQueueRuntimeConfig } from '../../../src/server/queue/queue-runtime-config';
+import { readDangerousCommandAudit } from '../../../src/server/executors/dangerous-command-audit';
 import { ChatExecutor } from '../../../src/server/executors/chat-executor';
 import { AutopilotExecutor } from '../../../src/server/executors/autopilot-executor';
 import { ClassificationExecutor } from '../../../src/server/executors/classification-executor';
@@ -385,6 +386,48 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
                 // Autopilot is explicitly user-authorized and never gated.
                 expect(call.dangerousCommandGuard).toBeUndefined();
             }
+        });
+
+        it(`${expectedAgentMode === 'interactive' ? 'persists' : 'never records'} a guard decision on the process record`, async () => {
+            // AC-08: the decision has to survive the turn, so the sink the SDK
+            // calls writes it onto the process metadata.
+            const executor = makeExecutor(store, {
+                queueConfig: createFixedQueueRuntimeConfig({
+                    config: { dangerousCommandGuard: { enabled: true } },
+                }),
+            });
+            const task = makeTask('task-guard-audit');
+            const processId = toQueueProcessId(task.id);
+            await store.addProcess({
+                id: processId,
+                metadata: { type: 'chat' },
+            } as never);
+            await executor.execute(task, 'Hello');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            if (expectedAgentMode !== 'interactive') {
+                expect(call.dangerousCommandGuard).toBeUndefined();
+                return;
+            }
+
+            call.dangerousCommandGuard.reportDecision({
+                ruleId: 'pipe-to-shell',
+                decision: 'denied',
+                timestamp: '2026-09-07T00:00:00.000Z',
+            });
+
+            // The write is fire-and-forget so the model's answer never waits on it.
+            await vi.waitFor(() => {
+                const trail = readDangerousCommandAudit(store.processes.get(processId)?.metadata);
+                expect(trail).toEqual([
+                    {
+                        ruleId: 'pipe-to-shell',
+                        decision: 'denied',
+                        fromSessionApproval: false,
+                        timestamp: '2026-09-07T00:00:00.000Z',
+                    },
+                ]);
+            });
         });
 
         it('opts into warm-client keep-alive (keepWarm: true)', async () => {

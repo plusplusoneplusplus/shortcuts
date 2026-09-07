@@ -214,3 +214,126 @@ describe('screenDangerousCommand', () => {
         });
     });
 });
+
+describe('screenDangerousCommand audit reporting (AC-08)', () => {
+    it('reports approved-once when the user approves a single run', async () => {
+        const reportDecision = vi.fn();
+        await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf /' },
+            { enabled: true, requestApproval: async () => 'approve-once', reportDecision },
+            { matcher: matches },
+        );
+        expect(reportDecision).toHaveBeenCalledTimes(1);
+        expect(reportDecision.mock.calls[0][0]).toMatchObject({
+            ruleId: 'rm-recursive-dangerous-target',
+            decision: 'approved-once',
+        });
+        expect(Date.parse(reportDecision.mock.calls[0][0].timestamp)).not.toBeNaN();
+    });
+
+    it('reports approved-session separately from approved-once', async () => {
+        const reportDecision = vi.fn();
+        await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf /' },
+            { enabled: true, requestApproval: async () => 'approve-session', reportDecision },
+            { matcher: matches },
+        );
+        expect(reportDecision.mock.calls[0][0].decision).toBe('approved-session');
+    });
+
+    it('reports denied when the user says no', async () => {
+        const reportDecision = vi.fn();
+        await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf /' },
+            { enabled: true, requestApproval: async () => 'deny', reportDecision },
+            { matcher: matches },
+        );
+        expect(reportDecision.mock.calls[0][0].decision).toBe('denied');
+    });
+
+    it('reports denied when the approval prompt itself throws', async () => {
+        const reportDecision = vi.fn();
+        await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf /' },
+            {
+                enabled: true,
+                requestApproval: async () => {
+                    throw new Error('channel closed');
+                },
+                reportDecision,
+            },
+            { matcher: matches },
+        );
+        expect(reportDecision.mock.calls[0][0].decision).toBe('denied');
+    });
+
+    it('reports auto-denied-non-interactive when there is no one to ask', async () => {
+        // The whole point of the sink living in the SDK: on this path the host's
+        // approval callback is absent, so the host would otherwise never learn
+        // that a command was blocked on a cron or Ralph turn.
+        const reportDecision = vi.fn();
+        const result = await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf /' },
+            { enabled: true, reportDecision },
+            { matcher: matches },
+        );
+        expect(result.allowed).toBe(false);
+        expect(reportDecision).toHaveBeenCalledTimes(1);
+        expect(reportDecision.mock.calls[0][0].decision).toBe('auto-denied-non-interactive');
+    });
+
+    it('never records the command text', async () => {
+        const reportDecision = vi.fn();
+        await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf / --secret-token=hunter2' },
+            { enabled: true, reportDecision },
+            { matcher: matches },
+        );
+        expect(JSON.stringify(reportDecision.mock.calls[0][0])).not.toContain('hunter2');
+    });
+
+    it('reports nothing when no rule fires or the guard is off', async () => {
+        const reportDecision = vi.fn();
+        await screenDangerousCommand(
+            'Bash',
+            { command: 'ls -la' },
+            { enabled: true, requestApproval: async () => 'deny', reportDecision },
+            { matcher: clean },
+        );
+        await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf /' },
+            { enabled: true, requestApproval: async () => 'deny', reportDecision },
+            { matcher: unavailable },
+        );
+        await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf /' },
+            { enabled: false, reportDecision },
+            { matcher: matches },
+        );
+        expect(reportDecision).not.toHaveBeenCalled();
+    });
+
+    it('still decides when the audit sink throws', async () => {
+        const result = await screenDangerousCommand(
+            'Bash',
+            { command: 'rm -rf /' },
+            {
+                enabled: true,
+                requestApproval: async () => 'approve-once',
+                reportDecision: () => {
+                    throw new Error('store offline');
+                },
+            },
+            { matcher: matches },
+        );
+        expect(result.allowed).toBe(true);
+    });
+});

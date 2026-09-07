@@ -13,6 +13,7 @@
 
 import type {
     DangerousCommandApprovalRequest,
+    DangerousCommandAuditDecision,
     DangerousCommandDecision,
     DangerousCommandGuardOptions,
 } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -28,7 +29,7 @@ export type AskApprovalFn = (
 /** One decision, for the audit trail. Never carries the command text. */
 export interface DangerousCommandDecisionRecord {
     ruleId: string;
-    decision: DangerousCommandDecision | 'auto-denied-non-interactive';
+    decision: DangerousCommandAuditDecision;
     /** Whether a standing session approval answered it without a prompt. */
     fromSessionApproval: boolean;
     timestamp: string;
@@ -70,30 +71,34 @@ export function buildDangerousCommandGuardWiring(
     if (!input.enabled) return { enabled: false };
 
     const approvals = input.approvals ?? dangerousCommandSessionApprovals;
-    const record = (
-        ruleId: string,
-        decision: DangerousCommandDecisionRecord['decision'],
-        fromSessionApproval = false,
-    ): void => {
+
+    /**
+     * Rules this turn answered off a standing session approval. The SDK reports
+     * the decision (it is the only place that sees every outcome, including the
+     * non-interactive deny), but it cannot know whether an `approve-session`
+     * came from a fresh prompt or from a rule approved earlier in the chat, so
+     * the flag is stashed here on the way past.
+     */
+    const answeredFromSession = new Set<string>();
+
+    const reportDecision = (record: {
+        ruleId: string;
+        decision: DangerousCommandAuditDecision;
+        timestamp: string;
+    }): void => {
         input.onDecision?.({
-            ruleId,
-            decision,
-            fromSessionApproval,
-            timestamp: new Date().toISOString(),
+            ...record,
+            fromSessionApproval: answeredFromSession.has(record.ruleId),
         });
     };
 
     // AC-06: nobody to ask. Omitting the callback is the signal, not a
     // callback that returns `deny` — the SDK distinguishes the two so the
     // model is told "this turn is not interactive" rather than "the user
-    // said no".
+    // said no". The audit sink still rides along, so a blocked command on a
+    // cron or Ralph turn is visible after the fact.
     if (!input.isInteractive()) {
-        return {
-            enabled: true,
-            // Not a callback, but the audit trail still wants the match. The
-            // SDK reports the denial itself; we only need to know it happened,
-            // which the caller records off the guard result.
-        };
+        return { enabled: true, reportDecision };
     }
 
     const requestApproval = async (
@@ -103,15 +108,12 @@ export function buildDangerousCommandGuardWiring(
         // again. Re-answering `approve-session` keeps the SDK's decision
         // reporting honest about *why* the command was allowed.
         if (approvals.has(input.processId, request.ruleId)) {
-            record(request.ruleId, 'approve-session', true);
+            answeredFromSession.add(request.ruleId);
             return 'approve-session';
         }
 
         const askApproval = input.getAskApproval();
-        if (!askApproval) {
-            record(request.ruleId, 'deny');
-            return 'deny';
-        }
+        if (!askApproval) return 'deny';
 
         const decision = await askApproval({
             kind: 'dangerous-command',
@@ -124,9 +126,8 @@ export function buildDangerousCommandGuardWiring(
         if (decision === 'approve-session') {
             approvals.add(input.processId, request.ruleId);
         }
-        record(request.ruleId, decision);
         return decision;
     };
 
-    return { enabled: true, requestApproval };
+    return { enabled: true, requestApproval, reportDecision };
 }
