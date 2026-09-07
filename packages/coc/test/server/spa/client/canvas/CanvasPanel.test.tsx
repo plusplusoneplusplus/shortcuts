@@ -340,6 +340,104 @@ describe('CanvasPanel', () => {
         }
     });
 
+    it('reports unsaved edits to its host, and reports clean again once they land', async () => {
+        // The unified right panel shows a dirty marker for a canvas tab the user
+        // is not looking at, and asks before closing it, so this state has to
+        // leave the panel.
+        vi.useFakeTimers();
+        try {
+            mocks.get.mockResolvedValue(makeCanvas());
+            mocks.save.mockResolvedValue(makeCanvas({ revision: 2, content: 'edited', lastEditor: 'user' }));
+            const onDirtyChange = vi.fn();
+
+            const view = render(
+                <CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onDirtyChange={onDirtyChange} />,
+            );
+            await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+            expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+
+            fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+            fireEvent.change(screen.getByTestId('canvas-panel-editor'), { target: { value: 'edited' } });
+            expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+            await act(async () => { await vi.advanceTimersByTimeAsync(900); });
+            expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+
+            // A closed canvas holds nothing unsaved, whatever it held before.
+            onDirtyChange.mockClear();
+            view.unmount();
+            expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('publishes a save entry point that flushes the autosave debounce, and unpublishes it on unmount', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.get.mockResolvedValue(makeCanvas());
+            mocks.save.mockResolvedValue(makeCanvas({ revision: 2, content: 'edited', lastEditor: 'user' }));
+            const onRegisterSave = vi.fn();
+
+            const view = render(
+                <CanvasPanel workspaceId="ws-1" canvasId="doc-abc123" liveEvent={null} onRegisterSave={onRegisterSave} />,
+            );
+            await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+            const save = onRegisterSave.mock.calls[0]?.[0] as (() => Promise<boolean>) | null;
+            expect(typeof save).toBe('function');
+
+            fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+            fireEvent.change(screen.getByTestId('canvas-panel-editor'), { target: { value: 'edited' } });
+
+            // No timer advance: the host is closing the tab now, not in 800ms.
+            let saved: boolean | undefined;
+            await act(async () => { saved = await save!(); });
+            expect(saved).toBe(true);
+            expect(mocks.save).toHaveBeenCalledWith('ws-1', 'doc-abc123', {
+                content: 'edited',
+                expectedRevision: 1,
+            });
+
+            view.unmount();
+            expect(onRegisterSave).toHaveBeenLastCalledWith(null);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('the published save reports failure so a host close keeps the canvas open', async () => {
+        vi.useFakeTimers();
+        try {
+            mocks.get.mockResolvedValue(makeCanvas());
+            mocks.save.mockRejectedValueOnce(new Error('offline'));
+            const onRegisterSave = vi.fn();
+            const onDirtyChange = vi.fn();
+
+            render(
+                <CanvasPanel
+                    workspaceId="ws-1"
+                    canvasId="doc-abc123"
+                    liveEvent={null}
+                    onRegisterSave={onRegisterSave}
+                    onDirtyChange={onDirtyChange}
+                />,
+            );
+            await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+            const save = onRegisterSave.mock.calls[0]?.[0] as () => Promise<boolean>;
+
+            fireEvent.click(screen.getByTestId('canvas-panel-mode-edit'));
+            fireEvent.change(screen.getByTestId('canvas-panel-editor'), { target: { value: 'edited' } });
+
+            let saved: boolean | undefined;
+            await act(async () => { saved = await save(); });
+
+            expect(saved).toBe(false);
+            expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('shows a conflict banner on a 409 save and reloads on request', async () => {
         vi.useFakeTimers();
         try {

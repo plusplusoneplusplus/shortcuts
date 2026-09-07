@@ -31,3 +31,39 @@ export interface SourceCanvasFileRef {
      */
     kind?: 'note' | 'code' | 'dir';
 }
+
+/** What the canvas body is doing: fetching, loaded, or failed. */
+export type SourceCanvasContentStatus = 'loading' | 'success' | 'error';
+
+/**
+ * Everything the docked panel needs to render one file. Public: both
+ * `SourceCanvasPanel` and `SourceCanvasDock` take it as a prop, so the shape —
+ * including the empty-string (never `undefined`) defaults — is fixed.
+ */
+export interface SourceCanvasContentState {
+    status: SourceCanvasContentStatus;
+    /** Loaded file text (success). */
+    content: string;
+    /** Server-reported language hint, for syntax highlighting (success). */
+    language: string;
+    /** The path actually fetched/attempted — for the header + error message. */
+    resolvedPath: string;
+    /** Workspace that owns the server-resolved path. */
+    resolvedWorkspaceId?: string;
+    /** Root of the owning workspace, used for repo-relative display paths. */
+    workspaceRootPath?: string;
+    /** Failure reason (error). */
+    error: string;
+}
+
+/**
+ * The neutral starting state, and the base every other state spreads from —
+ * so the empty-string defaults above are written exactly once.
+ */
+export const SOURCE_CANVAS_LOADING: SourceCanvasContentState = {
+    status: 'loading',
+    content: '',
+    language: '',
+    resolvedPath: '',
+    error: '',
+};

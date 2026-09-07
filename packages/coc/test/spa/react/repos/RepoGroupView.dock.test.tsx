@@ -25,8 +25,10 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useReposOptional: () => ({ remoteGroupWorkspaces: mockRemoteGroupWorkspaces }),
 }));
+let mockSelectedTaskIdByRepo: Record<string, string | null> = {};
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
-    useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
+    useQueue: () => ({ state: { selectedTaskIdByRepo: mockSelectedTaskIdByRepo } }),
+    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: mockSelectedTaskIdByRepo } }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
@@ -81,6 +83,9 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
 
 import { RepoGroupView, repoGroupDockTargets, REPO_GROUP_ROOT_TARGET_LABEL } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
 import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
+import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
 const GROUP_ID = 'group-ai-repos';
 
@@ -98,6 +103,8 @@ beforeEach(() => {
     mockBreakpoint = 'desktop';
     mockSplitPanelEnabled = true;
     mockRemoteGroupWorkspaces = [];
+    mockSelectedTaskIdByRepo = {};
+    applyRuntimeConfigPatch({ unifiedRightPanelEnabled: undefined });
     mockAppState = {
         activeRepoSubTab: 'chats',
         selectedNotePath: null,
@@ -131,6 +138,54 @@ describe('repoGroupDockTargets', () => {
 });
 
 describe('RepoGroupView right dock (AC-05)', () => {
+    // The unified panel takes over this same slot behind its own flag. Both
+    // directions are pinned here: off means today's dock, exactly, and on means
+    // one panel rather than two right-side columns.
+    it('keeps the classic dock while `unifiedRightPanel` is off', () => {
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.getByTestId('workspace-right-dock')).toBeTruthy();
+        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
+    });
+
+    it('swaps in the unified panel — and only it — when the flag is on', () => {
+        applyRuntimeConfigPatch({ unifiedRightPanelEnabled: true });
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.getByTestId('unified-right-panel')).toBeTruthy();
+        expect(screen.queryByTestId('workspace-right-dock')).toBeNull();
+    });
+
+    // The group's selected chat is what owns the panel's chat-scoped tabs, so a
+    // file opened from a chat has to land in that chat's set rather than under
+    // the workspace. The panel reads the selection from the queue store — the
+    // chat list never hands it up — so this pins the read.
+    it('scopes the unified panel to the group\'s selected chat', () => {
+        mockSelectedTaskIdByRepo = { [GROUP_ID]: 'chat-7' };
+        applyRuntimeConfigPatch({ unifiedRightPanelEnabled: true });
+        localStorage.setItem(workspaceDockOpenStorageKey(GROUP_ID), '1');
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+
+        act(() => { openUnifiedPanelTab(GROUP_ID, {
+            kind: 'file', ownerWorkspaceId: 'r1', chatId: 'chat-7', resourceId: 'src/app.ts', label: 'app.ts',
+        }); });
+
+        expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
+            kind: 'file', ownerWorkspaceId: 'r1', chatId: 'chat-7', resourceId: 'src/app.ts',
+        })}`)).toBeTruthy();
+    });
+
+    it('leaves the panel unscoped when the group has no selected chat', () => {
+        applyRuntimeConfigPatch({ unifiedRightPanelEnabled: true });
+        localStorage.setItem(workspaceDockOpenStorageKey(GROUP_ID), '1');
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+
+        // Filed under chat-7 while nothing is selected: invisible here.
+        act(() => { openUnifiedPanelTab(GROUP_ID, {
+            kind: 'file', ownerWorkspaceId: 'r1', chatId: 'chat-7', resourceId: 'src/app.ts', label: 'app.ts',
+        }); });
+
+        expect(screen.queryAllByRole('tab', { hidden: true })).toHaveLength(0);
+    });
+
     it('renders the dock on desktop with the flag on', async () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('workspace-right-dock')).toBeTruthy();

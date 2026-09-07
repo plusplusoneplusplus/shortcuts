@@ -80,6 +80,13 @@ export interface NoteEditorProps {
     commentCount?: number;
     /** Called with the flushSave function so the parent can trigger a save before sending chat messages. */
     onFlushSave?: (flush: () => Promise<void>) => void;
+    /** Reports unsaved-edit state to the host (a tab strip shows it for a hidden
+     *  editor). Reports clean on unmount. */
+    onDirtyChange?: (dirty: boolean) => void;
+    /** Publishes a save entry point that flushes the autosave debounce and
+     *  reports whether the note landed, so a host closing this editor can save
+     *  first. Registers `null` on unmount. */
+    onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
     /** Called when the note file is not found (404). Allows the parent to hide the editor silently. */
     onNotFound?: () => void;
     /** Extra content rendered at the right end of the toolbar (before the mode toggle). */
@@ -206,6 +213,8 @@ export function NoteEditor({
     onToggleCommentsPanel,
     commentCount,
     onFlushSave,
+    onDirtyChange,
+    onRegisterSave,
     onNotFound,
     toolbarRight,
     initialViewMode,
@@ -916,6 +925,28 @@ export function NoteEditor({
     useEffect(() => {
         onFlushSave?.(flushSave);
     }, [onFlushSave, flushSave]);
+
+    // ── Host seams: dirty reporting and a save-before-close entry point ──
+    // `flushSave` swallows its own errors (autosave callers watch `saveState`),
+    // so success is read from the session instead: the pending write is cleared
+    // only when the save actually landed, and a conflict puts it back.
+
+    useEffect(() => {
+        onDirtyChange?.(dirty);
+    }, [dirty, onDirtyChange]);
+    useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
+
+    const saveForHost = useCallback(async (): Promise<boolean> => {
+        await flushSave();
+        return pendingContentRef.current === null;
+    }, [flushSave, pendingContentRef]);
+    const saveForHostRef = useRef(saveForHost);
+    saveForHostRef.current = saveForHost;
+    useEffect(() => {
+        if (!onRegisterSave) return;
+        onRegisterSave(() => saveForHostRef.current());
+        return () => onRegisterSave(null);
+    }, [onRegisterSave]);
 
     // ── AI edit navigator: dismiss all decorations ──────────────────────
 

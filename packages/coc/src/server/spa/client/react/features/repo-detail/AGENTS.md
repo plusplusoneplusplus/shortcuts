@@ -121,6 +121,17 @@ window-event bridge (`ChatDetail` and `NewChatArea` subscribe via
 `useComposerInsertListener`) because the dock is a sibling column with no React
 path to the composer.
 
+## Unified right panel
+
+`unified-right-panel/` is the flag-gated (`features.unifiedRightPanel`, default
+off) replacement for the dock: one resource-tabbed panel holding Terminal,
+Explorer, Notes, files, notes, canvases, and chat diffs. Both hosts render it in
+the *same slot* as `WorkspaceRightDock`, under the same gate, and it reuses
+`useWorkspaceDock` for open/width/target rather than growing a parallel
+controller. With the flag off nothing in that directory mounts. Its contract —
+scope vs. owner vs. target, tab identity, the entry-point seams, keep-alive, and
+the close guards — is in `unified-right-panel/AGENTS.md`.
+
 ## Explorer lazy-load state
 
 `explorer/TreeNode.tsx` derives its spinner — `isDir && isExpanded && children ===

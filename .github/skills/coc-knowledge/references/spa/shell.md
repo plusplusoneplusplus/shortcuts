@@ -216,6 +216,15 @@ features default off.
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
 | `features.quickAskSidenotes` | live server flag | — |
+| `features.unifiedRightPanel` | `isUnifiedRightPanelEnabled()` | off |
+
+`features.unifiedRightPanel` (default off) swaps the workspace right dock for one
+resource-tabbed panel — Terminal, Explorer, Notes, files, notes, canvases, and chat
+diffs as tabs in a single column, with a searchable `+` menu. Terminal, Explorer, and
+Notes tabs belong to the workspace; files, canvases, and diffs follow the selected
+chat. Tab descriptors (never document bodies, terminal output, or credentials) persist
+per panel scope in localStorage. Flag-off behavior is untouched. The contract lives in
+`features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Remote-target dialogs additionally fetch the selected server's `/config/runtime`
 `gitWorktreeExecutionEnabled` as a **per-target capability signal**, since the local flag

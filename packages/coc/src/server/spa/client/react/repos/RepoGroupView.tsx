@@ -30,8 +30,12 @@ import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
+import { useUnifiedRightPanelEnabled } from '../hooks/feature-flags/useUnifiedRightPanelEnabled';
+import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
+import { UnifiedPanelHostProvider } from '../features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
+import { useQueueOptional } from '../contexts/QueueContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { resolveRepoGroupName } from './repoGroupName';
 import type { RepoGroupMember } from './repoGroupService';
@@ -156,8 +160,24 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         [dockAvailable, members, workspaceId]
     );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
+    // Same slot, one panel, when `unifiedRightPanel` is on (AC-01).
+    const unifiedRightPanelEnabled = useUnifiedRightPanelEnabled();
+    // The group's selected chat owns the panel's chat-scoped tabs. `RepoChatTab`
+    // below runs against the group workspace id, so that is the key its
+    // selection is filed under; the per-repo entry only, never the global
+    // fallback, so another workspace's chat cannot claim these tabs.
+    // `useQueueOptional` because this read is cosmetic to the group view: with
+    // no provider (a focused test host) the panel simply has no chat scope.
+    const panelChatId = useQueueOptional()?.state.selectedTaskIdByRepo[workspaceId] ?? null;
+    // See RepoDetail: publishes the panel to chat entry points below, scoped to
+    // the group id (the panel's store key) and the chat it is showing.
+    const unifiedPanelHost = useMemo(
+        () => (dockAvailable && unifiedRightPanelEnabled ? { workspaceId, chatId: panelChatId } : null),
+        [dockAvailable, unifiedRightPanelEnabled, workspaceId, panelChatId],
+    );
 
     return (
+        <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
             {!headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
 
@@ -188,8 +208,11 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                         />
                     </div>
                 </div>
-                {dockAvailable && <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={dockTargets} />}
+                {dockAvailable && (unifiedRightPanelEnabled
+                    ? <UnifiedRightPanel workspaceId={workspaceId} chatId={panelChatId} dock={dock} targets={dockTargets} />
+                    : <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={dockTargets} />)}
             </div>
         </div>
+        </UnifiedPanelHostProvider>
     );
 }

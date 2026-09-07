@@ -46,6 +46,9 @@ import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
+import { useUnifiedRightPanelEnabled } from '../../hooks/feature-flags/useUnifiedRightPanelEnabled';
+import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
+import { UnifiedPanelHostProvider } from './unified-right-panel/unifiedPanelHost';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
@@ -168,6 +171,25 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // WorkspaceDockToggleButton — both drive the same cross-tree open store.
     const dock = useWorkspaceDock(ws.id);
     const dockAvailable = splitWorkspacePanelEnabled && !isMobile;
+    // With `unifiedRightPanel` on, the same dock slot renders the one
+    // resource-tabbed panel instead — same availability gate, same controller,
+    // so the header toggle and the persisted width carry over unchanged.
+    const unifiedRightPanelEnabled = useUnifiedRightPanelEnabled();
+    // Which chat owns the panel's chat-scoped tabs (files, canvases, diffs).
+    // The selection lives in the queue store rather than in `RepoChatTab`, so
+    // the panel can read it here without the chat list having to hand it up.
+    // Deliberately the per-repo entry only, never `queueState.selectedTaskId`:
+    // that global fallback can still name another workspace's chat, and filing
+    // this workspace's tabs under it would leak them across repos.
+    const panelChatId = queueState.selectedTaskIdByRepo?.[ws.id] ?? null;
+    // Published to the whole subtree so chat entry points (source links, diffs,
+    // canvas embeds) know a unified panel is on screen for them and which chat
+    // it is showing. Null with the flag off or no dock, so those entry points
+    // keep their existing in-chat surfaces.
+    const unifiedPanelHost = useMemo(
+        () => (dockAvailable && unifiedRightPanelEnabled ? { workspaceId: ws.id, chatId: panelChatId } : null),
+        [dockAvailable, unifiedRightPanelEnabled, ws.id, panelChatId],
+    );
     const showHeaderDockToggle = dockAvailable && !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
@@ -446,6 +468,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     ) : undefined;
 
     return (
+        <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div id="repo-detail-content" className="flex flex-col h-full min-h-0 min-w-0">
             {/* Header — desktop only; on mobile the repo name lives in MobileTabBar leadingSlot.
                 Suppressed when chromeless (the remote-first shell's header lives in the global TopBar). */}
@@ -890,7 +913,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     </div>
                 )}
             </div>
-            {dockAvailable && <WorkspaceRightDock workspaceId={ws.id} dock={dock} />}
+            {dockAvailable && (unifiedRightPanelEnabled
+                ? <UnifiedRightPanel workspaceId={ws.id} chatId={panelChatId} dock={dock} />
+                : <WorkspaceRightDock workspaceId={ws.id} dock={dock} />)}
             </div>
 
             {/* Generate Task with AI dialog */}
@@ -917,5 +942,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                 onSuccess={() => { setEditOpen(false); onRefresh(); }}
             />
         </div>
+        </UnifiedPanelHostProvider>
     );
 }

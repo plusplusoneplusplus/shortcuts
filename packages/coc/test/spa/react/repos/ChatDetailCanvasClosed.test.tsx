@@ -27,6 +27,12 @@ import {
     readCanvasClosed,
 } from '../../../../src/server/spa/client/react/features/chat/canvasClosedPreference';
 import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
+import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedDiffSources, getUnifiedDiffSource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
+import { clearUnifiedCanvasEvents } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
+import { closeTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 
 // ── Hoisted mock state ──────────────────────────────────────────────────────
 
@@ -381,6 +387,15 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', as
     };
 });
 
+// Path resolution for a clicked source link reads the workspace list (with
+// remote clones folded in); AppProvider fetches it, so pin a known root here
+// rather than driving the reducer from a test.
+vi.mock('../../../../src/server/spa/client/react/repos/workspacesWithRemote', () => ({
+    useWorkspacesWithRemote: () => [{ id: 'ws-1', name: 'main-repo', rootPath: '/repos/main' }],
+    useWorkspacesWithRemoteOptional: () => [{ id: 'ws-1', name: 'main-repo', rootPath: '/repos/main' }],
+    withRemoteWorkspaces: (w: any[]) => w,
+}));
+
 // Now import the component under test (after mocks)
 import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
 
@@ -452,6 +467,21 @@ function renderChat(taskId: string) {
 
 function rerenderChat(rerender: (ui: React.ReactElement) => void, taskId: string) {
     rerender(<Wrap><ChatDetail taskId={taskId} workspaceId={WS_ID} /></Wrap>);
+}
+
+/**
+ * The same chat, but rendered under a unified right panel that is showing
+ * `hostChatId`'s tabs — what `RepoDetail` / `RepoGroupView` publish with the
+ * flag on. Defaults to hosting the rendered chat itself.
+ */
+function renderHostedChat(taskId: string, hostChatId: string | null = taskId) {
+    return render(
+        <Wrap>
+            <UnifiedPanelHostProvider host={{ workspaceId: WS_ID, chatId: hostChatId }}>
+                <ChatDetail taskId={taskId} workspaceId={WS_ID} />
+            </UnifiedPanelHostProvider>
+        </Wrap>,
+    );
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -623,6 +653,214 @@ describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
         renderChat('task-A');
         await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
         expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+    });
+});
+
+describe('ChatDetail — whisper diff entry point with the unified right panel (AC-04)', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+        clearUnifiedDiffSources();
+    });
+
+    function dispatchWhisperDiff(path: string) {
+        act(() => {
+            window.dispatchEvent(new CustomEvent('coc-open-whisper-diff', {
+                detail: { files: [{ path }], toolCalls: [], commits: [], focusPath: path },
+            }));
+        });
+    }
+
+    it('files a diff tab in the hosting panel instead of opening the chat\u2019s own column', async () => {
+        renderHostedChat('task-A');
+        dispatchWhisperDiff('a.ts');
+
+        // The competing sibling column must not appear — one right-side surface.
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.kind)).toEqual(['diff']);
+        });
+        expect(screen.queryByTestId('whisper-diff-dock')).toBeNull();
+
+        const tab = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        // Owned by the clone the edited files came from, scoped to the chat that
+        // produced them, and pointing at a registered (renderable) source.
+        expect(tab.ownerWorkspaceId).toBe(WS_ID);
+        expect(tab.chatId).toBe('task-A');
+        expect(tab.label).toBe('1 file changed');
+        expect(getUnifiedDiffSource(tab.resourceId)?.ctx.focusPath).toBe('a.ts');
+    });
+
+    it('keeps the chat\u2019s own column when the panel is showing another chat', async () => {
+        // A background chat's diff would be filed under a tab set the panel is
+        // not displaying, so it must not be rerouted into an invisible tab.
+        renderHostedChat('task-A', 'task-B');
+        dispatchWhisperDiff('a.ts');
+
+        await waitFor(() => expect(screen.getByTestId('whisper-diff-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-B')).toEqual([]);
+    });
+
+    it('keeps the chat\u2019s own column with no panel hosting it at all', async () => {
+        renderChat('task-A');
+        dispatchWhisperDiff('a.ts');
+
+        await waitFor(() => expect(screen.getByTestId('whisper-diff-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    });
+});
+
+describe('ChatDetail — source-link entry point with the unified right panel (AC-04)', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+    });
+
+    function dispatchSourceLink(detail: Record<string, unknown>) {
+        act(() => {
+            window.dispatchEvent(new CustomEvent('coc-open-source-canvas', { detail }));
+        });
+    }
+
+    it('files a READ-ONLY file tab in the hosting panel instead of the docked source canvas', async () => {
+        renderHostedChat('task-A');
+        dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID, line: 12 });
+
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.kind)).toEqual(['file']);
+        });
+        // One right-side surface: the chat's own column must not also appear.
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+
+        const tab = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        expect(tab.ownerWorkspaceId).toBe(WS_ID);
+        expect(tab.chatId).toBe('task-A');
+        expect(tab.resourceId).toBe('src/app.ts');
+        expect(tab.line).toBe(12);
+        // A link is a reference, not an authorization — the tab stays read-only.
+        expect(tab.readOnly).toBe(true);
+    });
+
+    it('files a note ref as an editable, workspace-owned note tab', async () => {
+        renderHostedChat('task-A');
+        dispatchSourceLink({ filePath: '/repos/main/notes/n.md', wsId: WS_ID, kind: 'note', line: 3 });
+
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.kind)).toEqual(['note']);
+        });
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+
+        const tab = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        // Workspace-owned, so it survives a chat switch, and editable: a plan
+        // note reached through a link keeps the capability the docked editor had.
+        expect(tab.chatId).toBeNull();
+        expect(tab.readOnly).toBeUndefined();
+        expect(tab.ownerWorkspaceId).toBe(WS_ID);
+        expect(tab.resourceId).toBe('auto||/repos/main/notes/n.md');
+        expect(tab.line).toBe(3);
+    });
+
+    it('keeps the docked canvas for refs the panel’s views cannot read', async () => {
+        // A folder ref is the Explorer's, and an out-of-root path is not
+        // readable through a repo's blob API — both keep the existing surface
+        // rather than opening a tab that could only render an error.
+        renderHostedChat('task-A');
+        dispatchSourceLink({ filePath: '/repos/main/src', wsId: WS_ID, kind: 'dir' });
+
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+
+        dispatchSourceLink({ filePath: '/elsewhere/src/a.ts', wsId: WS_ID });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock').getAttribute('data-path')).toBe('/elsewhere/src/a.ts'));
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    });
+
+    it('keeps the chat’s own column when the panel is showing another chat', async () => {
+        renderHostedChat('task-A', 'task-B');
+        dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID });
+
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-B')).toEqual([]);
+    });
+
+    it('keeps the chat’s own column with no panel hosting it at all', async () => {
+        renderChat('task-A');
+        dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID });
+
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    });
+});
+
+describe('ChatDetail — AI canvas updates with the unified right panel (AC-06)', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+        clearUnifiedCanvasEvents();
+    });
+
+    function fireCanvasUpdate(canvasId: string, revision: number) {
+        act(() => {
+            mockState.sseOpts.onCanvasUpdated({ canvasId, title: 'Plan', revision, editor: 'ai' });
+        });
+    }
+
+    it('activates the canvas as a panel tab instead of the chat\u2019s own canvas column', async () => {
+        renderHostedChat('task-A');
+        fireCanvasUpdate('canvas-A2', 1);
+
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.resourceId)).toEqual(['canvas-A2']);
+        });
+        const state = readUnifiedPanelState(WS_ID);
+        const tab = visibleTabs(state, 'task-A')[0]!;
+        expect(tab.chatId).toBe('task-A');
+        expect(tab.ownerWorkspaceId).toBe(WS_ID);
+        // Active, not merely present — the goal asks for activation on every
+        // create and update.
+        expect(state.activeByScope['task-A']).toBe(tab.id);
+        // One right-side surface: the docked agent canvas must stay shut.
+        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+    });
+
+    it('recreates a dismissed tab on a later update, without duplicating it', async () => {
+        renderHostedChat('task-A');
+        fireCanvasUpdate('canvas-A2', 1);
+        await waitFor(() => expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1));
+        const tabId = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!.id;
+
+        act(() => { updateUnifiedPanelState(WS_ID, prev => closeTab(prev, tabId)); });
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+
+        fireCanvasUpdate('canvas-A2', 2);
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.id)).toEqual([tabId]);
+        });
+
+        fireCanvasUpdate('canvas-A2', 3);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1);
+    });
+
+    it('leaves the visible panel alone for a chat it is not showing', async () => {
+        // A background chat's AI edit must not repoint the panel, so it keeps
+        // its own docked canvas instead of filing an invisible tab.
+        renderHostedChat('task-A', 'task-B');
+        fireCanvasUpdate('canvas-A2', 1);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-B')).toEqual([]);
+    });
+
+    it('keeps the chat\u2019s own canvas column with no panel hosting it at all', async () => {
+        renderChat('task-A');
+        fireCanvasUpdate('canvas-A2', 1);
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
     });
 });
 

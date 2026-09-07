@@ -23,6 +23,20 @@ export interface TerminalViewProps {
      * and keeps the inline bordered toolbar.
      */
     toolbarPortalTarget?: HTMLElement | null;
+    /**
+     * Reports this view's sessions whenever they change (AC-05). The unified
+     * right panel uses it to know whether closing the terminal tab would kill
+     * live PTYs, since the tab's ✕ lives outside this component. Reporting only
+     * — the view keeps owning creation, restart, and its own ✕.
+     */
+    onSessionsChange?: (sessions: readonly TerminalSessionSummary[]) => void;
+}
+
+/** One session as reported through `onSessionsChange`. */
+export interface TerminalSessionSummary {
+    id: string;
+    serverSessionId?: string;
+    status: 'running' | 'exited';
 }
 
 interface TerminalTab {
@@ -40,7 +54,7 @@ interface TerminalTab {
 }
 
 
-export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewProps) {
+export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChange }: TerminalViewProps) {
     // Route terminal REST (list/restart/delete) to the workspace's clone. The PTY
     // socket itself is routed inside useTerminalWebSocket via the same registry.
     const client = useCocClient(workspaceId);
@@ -269,6 +283,13 @@ export function TerminalView({ workspaceId, toolbarPortalTarget }: TerminalViewP
     }, [menuOpen]);
 
     const activeTab = terminals.find(t => t.id === activeId) ?? null;
+
+    // Publish the session list upward. Every mutation above goes through
+    // `terminals`, so one effect on it covers create/attach/exit/restart/close
+    // without each call site remembering to report.
+    useEffect(() => {
+        onSessionsChange?.(terminals.map(({ id, serverSessionId, status }) => ({ id, serverSessionId, status })));
+    }, [terminals, onSessionsChange]);
 
     // Toolbar: compact terminal picker + new-terminal action. Rendered inline by
     // default; the workspace dock portals it into its single-row header so the

@@ -48,6 +48,13 @@ import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
 import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
+import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
+import { routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
+import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
+import { sourceLinkTabInput } from '../repo-detail/unified-right-panel/unifiedSourceLinks';
+import { noteTabInput } from '../repo-detail/unified-right-panel/unifiedNoteTabs';
+import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
 import { WhisperSkillDetailDialogProvider } from './conversation/tool-calls/WhisperSkillDetailDialog';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { hydrateAskUserBatch } from './hooks/hydrateAskUserBatch';
@@ -556,9 +563,37 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         direction: 'right',
     });
 
+    // The unified right panel, when one is on screen for THIS chat (AC-04).
+    // Null with the flag off, outside a dock host (pop-outs, note/PR/work-item
+    // chat panels), or while the panel is showing another chat's tabs — in all
+    // of those the entry points below keep their existing sibling columns.
+    const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
+
+    // Path resolution for a clicked source link needs the remote-server
+    // workspaces folded in, exactly as the docked canvas's own hook does — a
+    // link clicked in a remote conversation names a workspace that is not in
+    // `state.workspaces`, and without it nothing resolves.
+    const resolvableWorkspaces = useWorkspacesWithRemote();
+
+    // `useChatSSE` captures its callbacks when it opens the EventSource and does
+    // not re-subscribe when they change, so the canvas-updated handler reads the
+    // host and the workspace list through refs. Without them a stream opened
+    // before the panel mounted (or before the workspaces resolved) would keep
+    // routing AI canvases to the old docked surface for the life of the chat.
+    const unifiedPanelHostRef = useRef(unifiedPanelHost);
+    unifiedPanelHostRef.current = unifiedPanelHost;
+    const resolvableWorkspacesRef = useRef(resolvableWorkspaces);
+    resolvableWorkspacesRef.current = resolvableWorkspaces;
+
     // A clicked changed-file row dispatches its diff context on `window` rather
     // than prop-drilling through the conversation tree (mirrors the
     // `coc-open-source-canvas` bridge); open the docked panel from it.
+    //
+    // With a unified panel hosting this chat, the same context becomes a `diff`
+    // tab instead: `whisperDiffTabInput` registers the group in the transient
+    // source registry and returns the descriptor, so the panel rebuilds exactly
+    // this diff. The chat's own `whisperDiff` state then never opens, which is
+    // what keeps `whisperDiffColumn` null — one right-side surface, not two.
     const openWhisperDiff = whisperDiff.open;
     useEffect(() => {
         const handler = (event: Event) => {
@@ -566,16 +601,43 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             // Every converged context carries the group's ordered `files[]`; reject
             // anything malformed. `focusPath` (a file-row entry) is optional.
             if (!detail || !Array.isArray(detail.files)) return;
+            if (unifiedPanelHost) {
+                openUnifiedPanelTab(
+                    unifiedPanelHost.workspaceId,
+                    whisperDiffTabInput({
+                        ctx: detail,
+                        // The clone the edited files belong to; the host's id is
+                        // only the panel's scope (a group id inside a repo group).
+                        ownerWorkspaceId: workspaceId ?? unifiedPanelHost.workspaceId,
+                        // The originating chat, never whichever chat is selected
+                        // by the time this lands.
+                        chatId: taskId,
+                        workspaceRootPath,
+                    }),
+                );
+                return;
+            }
             openWhisperDiff(detail);
         };
         window.addEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
         return () => window.removeEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
-    }, [openWhisperDiff]);
+    }, [openWhisperDiff, unifiedPanelHost, workspaceId, taskId, workspaceRootPath]);
 
     // Chat AI-response file-path links (feature flag default ON) dispatch
     // `coc-open-source-canvas` to open the docked source-file canvas. The bare
     // path is what the canvas resolves + fetches; any `:line`/`:start-end` info
     // travels in the event for scroll + highlight.
+    //
+    // With a unified panel hosting this chat, a `code` ref becomes a READ-ONLY
+    // `file` tab instead (AC-04): `sourceLinkTabInput` runs the same resolution
+    // the docked canvas would have run and returns the descriptor when the ref
+    // lands inside a known workspace root. A `note` ref becomes a WORKSPACE-owned,
+    // editable note tab through `noteTabInput` — the same editor the docked
+    // canvas would have shown, so a plan-note link keeps its edit capability.
+    // Both return null for refs only the canvas's probing transport can fetch (a
+    // repo-group relative ref, a path outside every root, no owning workspace) —
+    // those keep the docked canvas, since a tab there could only ever render an
+    // error. Folder refs still belong to the Explorer and keep the canvas.
     const openSourceCanvas = sourceCanvas.open;
     useEffect(() => {
         const handler = (event: Event) => {
@@ -583,18 +645,41 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             const filePath = typeof detail.filePath === 'string' ? detail.filePath : '';
             if (!filePath) return;
             const kind = detail.kind === 'note' || detail.kind === 'dir' ? detail.kind : 'code';
-            openSourceCanvas({
+            const fileRef = {
                 fullPath: filePath,
                 wsId: typeof detail.wsId === 'string' ? detail.wsId : undefined,
                 line: typeof detail.line === 'number' ? detail.line : undefined,
                 endLine: typeof detail.endLine === 'number' ? detail.endLine : undefined,
                 sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
                 kind,
-            });
+            };
+            if (unifiedPanelHost) {
+                const input = kind === 'note'
+                    ? noteTabInput({
+                        fileRef,
+                        workspaces: resolvableWorkspaces,
+                        scopeWorkspaceId: unifiedPanelHost.workspaceId,
+                    })
+                    : sourceLinkTabInput({
+                        fileRef,
+                        workspaces: resolvableWorkspaces,
+                        // The panel's scope; the descriptor's owner is whichever
+                        // clone the resolution picked.
+                        scopeWorkspaceId: unifiedPanelHost.workspaceId,
+                        // The originating chat, never whichever chat is selected
+                        // by the time this lands.
+                        chatId: taskId,
+                    });
+                if (input) {
+                    openUnifiedPanelTab(unifiedPanelHost.workspaceId, input);
+                    return;
+                }
+            }
+            openSourceCanvas(fileRef);
         };
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
         return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
-    }, [openSourceCanvas]);
+    }, [openSourceCanvas, unifiedPanelHost, resolvableWorkspaces, taskId]);
 
     // "Insert into chat" from the workspace right dock's Notes panel lands here:
     // the dock is a sibling column with no React path to this composer, so it
@@ -1358,13 +1443,32 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== data.requestId));
         },
         onCanvasUpdated: (data) => {
-            setActiveCanvasId(data.canvasId);
-            setCanvasLiveEvent(data);
+            // Canvas discovery is shared by both surfaces: the chat's own canvas
+            // list drives its selector regardless of where the canvas is shown.
             if (workspaceId && canvasPid) {
                 client.canvases.list(workspaceId, { processId: canvasPid })
                     .then(canvases => setConversationCanvases(canvases))
                     .catch(() => { /* canvas discovery is best-effort */ });
             }
+            // AC-06: with a unified panel showing THIS chat, an AI create or
+            // update always activates the canvas's tab there — reopening the
+            // panel and recreating a tab the user closed — and the docked agent
+            // canvas stays shut, so there is no second right-side column. The
+            // host is null for a background chat, so its updates cannot repoint
+            // whatever the visible panel is showing.
+            const host = unifiedPanelHostRef.current;
+            if (host && routeUnifiedCanvasUpdate({
+                event: data,
+                // The clone whose canvas API served this canvas, not the panel's
+                // scope — in a repo group those differ.
+                ownerWorkspaceId: workspaceId ?? host.workspaceId,
+                scopeWorkspaceId: host.workspaceId,
+                // The chat that received the event, never the selected one.
+                chatId: taskId,
+                workspaces: resolvableWorkspacesRef.current,
+            })) return;
+            setActiveCanvasId(data.canvasId);
+            setCanvasLiveEvent(data);
             // A fresh AI canvas edit auto-opens the panel AND clears any
             // persisted deliberate-close, so future switch-backs auto-open too.
             setCanvasPanelClosed(false);

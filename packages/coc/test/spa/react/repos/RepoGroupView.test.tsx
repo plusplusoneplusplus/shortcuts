@@ -26,6 +26,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
+    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: {} } }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');

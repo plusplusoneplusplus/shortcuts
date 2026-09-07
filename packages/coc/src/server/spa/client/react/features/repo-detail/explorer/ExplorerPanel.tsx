@@ -48,6 +48,18 @@ export interface ExplorerPanelProps {
      * explorerStateStore). Defaults to `true`.
      */
     deepLink?: boolean;
+    /**
+     * Navigator mode. When given, this Explorer does not own an editor at all:
+     * every file open is handed to this callback and the editor area (and its
+     * tab strip) is not rendered, so a host that already has its own resource
+     * tabs — the unified right panel — does not end up showing two nested tab
+     * rows for the same files. Omitted, the Explorer keeps its own editor
+     * exactly as before.
+     */
+    onOpenFile?: (
+        file: { path: string; name: string; line?: number },
+        options: { preview: boolean; readOnly?: boolean },
+    ) => void;
 }
 
 /** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
@@ -187,7 +199,9 @@ export function isNarrowSidebar(width: number, isMobile: boolean): boolean {
     return !isMobile && width < NARROW_SIDEBAR_WIDTH;
 }
 
-export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelProps) {
+export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: ExplorerPanelProps) {
+    // Navigator mode: the host owns the editor, so this panel is only a tree.
+    const navigatorMode = onOpenFile !== undefined;
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
@@ -480,13 +494,20 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
         file: { path: string; name: string; line?: number },
         options: { preview: boolean; readOnly?: boolean },
     ) => {
+        // Navigator mode hands the open to the host and keeps no buffer of its
+        // own — neither a tab nor the preview file — so the host's tab strip is
+        // the only place this file appears.
+        if (onOpenFile) {
+            onOpenFile(file, options);
+            return;
+        }
         if (tabsEnabled) {
             setMobileTreeVisible(false);
             openFileTab({ ...file, preview: options.preview, readOnly: options.readOnly });
             return;
         }
         setPreviewFile(file);
-    }, [tabsEnabled, openFileTab, setPreviewFile]);
+    }, [onOpenFile, tabsEnabled, openFileTab, setPreviewFile]);
 
     /** Close tabs for real, dropping any search texts they owned. */
     const closeTabsNow = useCallback((ids: readonly string[]) => {
@@ -1138,18 +1159,26 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
 
     // On mobile: show file tree OR the editor area, not both. With tabs on the
     // Files back action only hides the editor, so the tab set survives it.
-    const editorHasContent = tabsEnabled ? tabsState.tabs.length > 0 : (!!previewFile || !!searchEditor);
+    const editorHasContent = navigatorMode
+        ? false
+        : (tabsEnabled ? tabsState.tabs.length > 0 : (!!previewFile || !!searchEditor));
     const showMobilePreview = isMobile && editorHasContent && !(tabsEnabled && mobileTreeVisible);
 
     return (
         <div ref={rootRef} className={`flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="explorer-panel">
             {/* Left aside — file tree (hidden on mobile when previewing a file) */}
             <aside
-                className="w-full flex-1 min-h-0 lg:flex-none border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col"
+                className={`w-full flex-1 min-h-0 border-b lg:border-b-0 border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col${navigatorMode ? '' : ' lg:flex-none lg:border-r'}`}
                 style={showMobilePreview ? { display: 'none' } : { width: undefined }}
                 data-testid="explorer-sidebar"
+                data-navigator={navigatorMode ? 'true' : undefined}
             >
-                <style>{`@media (min-width: 1024px) { [data-testid="explorer-sidebar"] { width: ${sidebarWidth}px !important; } }`}</style>
+                {/* The persisted sidebar width only means something beside an
+                    editor; in navigator mode the tree IS the panel and takes
+                    the host's full width. */}
+                {!navigatorMode && (
+                    <style>{`@media (min-width: 1024px) { [data-testid="explorer-sidebar"] { width: ${sidebarWidth}px !important; } }`}</style>
+                )}
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <div className="flex items-center gap-2" role="tablist" aria-label="Explorer view">
                         {(['tree', 'search'] as const).map(target => (
@@ -1229,7 +1258,9 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                         workspaceId={workspaceId}
                         focusQueryToken={searchFocusToken}
                         onOpenMatch={handleOpenMatch}
-                        onOpenInEditor={handleOpenSearchInEditor}
+                        // "Open in Editor" parks a result set in an editor this
+                        // mount does not have; the action hides in navigator mode.
+                        onOpenInEditor={navigatorMode ? undefined : handleOpenSearchInEditor}
                         narrow={narrowSidebar}
                         toolbarSlot={searchToolbarSlot}
                     />
@@ -1270,6 +1301,10 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                 )}
             </aside>
 
+            {/* The resize handle and the editor area belong to the editor:
+                in navigator mode the host renders the file, so neither is
+                mounted here (no second tab strip, no duplicate buffer). */}
+            {!navigatorMode && (<>
             {/* Resize handle — desktop only */}
             <div
                 className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
@@ -1426,6 +1461,7 @@ export function ExplorerPanel({ workspaceId, deepLink = true }: ExplorerPanelPro
                     : <p className="text-[#848484] text-sm">Click a file to preview</p>}
                 </>)}
             </main>
+            </>)}
 
             {/* Explorer context menu */}
             {contextMenu && (

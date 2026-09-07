@@ -170,6 +170,9 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isPullRequestsEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
     isSplitWorkspacePanelEnabled: () => mockSplitWorkspacePanelEnabled,
+    // The unified right panel is off in these cases: they pin the classic
+    // layout, which the flag must leave exactly as it is.
+    isUnifiedRightPanelEnabled: () => false,
     isSchedulesInScheduledSlideEnabled: () => false,
     getScratchpadLayout: () => 'horizontal',
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',

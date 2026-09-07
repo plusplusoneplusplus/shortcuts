@@ -837,6 +837,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.unifiedRightPanel', default: false, runtime: 'live', runtimeFlag: 'unifiedRightPanelEnabled',
+        ui: {
+            group: 'dashboard', order: 67.5, label: 'Unified right panel', badge: 'experimental',
+            hint: 'Replaces the separate right-side surfaces with one Cursor-style resource-tabbed panel for terminals, Explorer, notes, files, canvases, and chat diffs. Disabled by default.',
+            testId: 'toggle-unified-right-panel-enabled',
+        },
+    }),
+    bool({
         key: 'features.schedulesInScheduledSlide', default: true, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
         ui: {
             group: 'dashboard', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',

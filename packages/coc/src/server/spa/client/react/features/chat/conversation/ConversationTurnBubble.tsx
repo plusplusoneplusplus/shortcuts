@@ -1115,8 +1115,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     // Shared with nested chat-markdown renderers (e.g. the expanded task_complete
     // body) so they resolve the same workspace and embed options as this turn.
     const chatRenderContext = useMemo<ChatRenderContextValue>(
-        () => ({ wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
-        [wsId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
+        () => ({ wsId, chatId: taskId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),
+        [wsId, taskId, htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled],
     );
     const assistantRender = useMemo(
         () => isUser ? null : buildAssistantRender(turn, wsId, { htmlEmbedEnabled, excalidrawEmbedEnabled, canvasEmbedEnabled }),

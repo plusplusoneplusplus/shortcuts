@@ -89,6 +89,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `scopeSwitcher` | on | Needs `remoteShell`; one segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
 | `pinnedScopes` | on | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
 | `splitWorkspacePanel` | on | Split Workspace view (chat list over git, one shared detail pane) replacing the Activity and Git tabs |
+| `unifiedRightPanel` | off | Needs `splitWorkspacePanel` + desktop; one resource-tabbed right panel (Terminal / Explorer / Notes / files / notes / canvases / chat diffs) replacing the workspace right dock and the chat-opened source, canvas, and diff columns |
 | `chatFolders` | off | User-created chat folders in the chat list (tree section, drag/context-menu filing); gates UI only — the `/chat-folders` routes and the schema-29 migration ship regardless |
 | `singleRowShell` | off | Needs `remoteShell`; moves shell controls plus `+ New` into the global header |
 | `ralphMultiAgentGrill` | off | Ralph grill question-planning card, separate grill-agent calls, dedupe/provenance metadata |
