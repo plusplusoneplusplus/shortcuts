@@ -34,6 +34,7 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 |---|---|
 | `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec. Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. |
+| `unifiedPanelTree.ts` | The file-tree column's own state: one open bit and one width per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat switches, collapse, and reload. Owns the two width rules: the tree is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column (`isUnifiedTreeVisible`) **without** flipping the stored open bit, so widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
 | `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted. |
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
