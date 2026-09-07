@@ -19,7 +19,7 @@
  * group — after a tab switch or a full reload — lands on the same member.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAppOptional } from '../contexts/AppContext';
 import { RepoGitTab } from '../features/git/RepoGitTab';
 import { RepoGroupGitMemberPicker } from './RepoGroupGitMemberPicker';
@@ -50,6 +50,21 @@ export interface RepoGroupGitTabProps {
     workspaceId: string;
     /** Members as resolved by `GET /api/repo-groups/:id`; `undefined` = loading. */
     members: readonly RepoGroupMember[] | undefined;
+    /**
+     * Split-workspace wiring, forwarded verbatim to the hosted `RepoGitTab` so a
+     * group's git list can live inside `SplitWorkspacePanel` exactly like a
+     * repo's does (AC-06). All optional: absent ⇒ the host renders the ordinary
+     * standalone Git tab, unchanged.
+     */
+    layout?: 'split-workspace';
+    /** Portal target for the git detail pane when `layout === 'split-workspace'`. */
+    detailContainer?: HTMLElement | null;
+    /** Only portal the detail while git holds the last click. */
+    detailActive?: boolean;
+    /** Fired when the user clicks in the git list. */
+    onActivateDetail?: () => void;
+    /** Portal target for the compact, hoisted git toolbar. */
+    headerToolbarContainer?: HTMLElement | null;
 }
 
 /**
@@ -69,7 +84,15 @@ function useRepoGroupGitMemberPreference(groupId: string): [string | null, (memb
     return [app ? persisted : localPreferredId, setPreferred];
 }
 
-export function RepoGroupGitTab({ workspaceId, members }: RepoGroupGitTabProps) {
+export function RepoGroupGitTab({
+    workspaceId,
+    members,
+    layout,
+    detailContainer,
+    detailActive,
+    onActivateDetail,
+    headerToolbarContainer,
+}: RepoGroupGitTabProps) {
     // What the user last picked, remembered across reloads. It is a
     // *preference*, not the answer: a member that goes stale (or leaves the
     // group) falls back to the first healthy one without the user re-picking.
@@ -129,7 +152,16 @@ export function RepoGroupGitTab({ workspaceId, members }: RepoGroupGitTabProps) 
         >
             <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 {selectedId ? (
-                    <RepoGitTab key={selectedId} workspaceId={selectedId} repositorySelector={repositorySelector} />
+                    <RepoGitTab
+                        key={selectedId}
+                        workspaceId={selectedId}
+                        repositorySelector={repositorySelector}
+                        layout={layout}
+                        detailContainer={detailContainer}
+                        detailActive={detailActive}
+                        onActivateDetail={onActivateDetail}
+                        headerToolbarContainer={headerToolbarContainer}
+                    />
                 ) : (
                     <div className="text-xs text-[#848484] px-3 py-2" data-testid="repo-group-git-empty">
                         {repositorySelector}

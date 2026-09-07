@@ -28,6 +28,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
+import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
@@ -64,13 +65,17 @@ const REPO_GROUP_TABS: VirtualWorkspaceHeaderConfig['tabs'] = [
  * header variants. Unlike My Work / My Life the config is per-group (id + name),
  * so it is built on demand rather than being a module constant.
  */
-export function getRepoGroupHeaderConfig(workspaceId: string, label: string): VirtualWorkspaceHeaderConfig {
+export function getRepoGroupHeaderConfig(
+    workspaceId: string,
+    label: string,
+    tabs: VirtualWorkspaceHeaderConfig['tabs'] = REPO_GROUP_TABS,
+): VirtualWorkspaceHeaderConfig {
     return {
         workspaceId,
         icon: '🗂️',
         label,
         testIdPrefix: 'repo-group',
-        tabs: REPO_GROUP_TABS,
+        tabs,
         actions: [],
         defaultTab: 'chats',
     };
@@ -125,12 +130,30 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         () => resolveRepoGroupName(workspaceId, state.workspaces, remoteGroups),
         [state.workspaces, remoteGroups, workspaceId]
     );
-    const headerConfig = useMemo(() => getRepoGroupHeaderConfig(workspaceId, groupName), [workspaceId, groupName]);
+    // Mobile Workspace panel: on a phone the group's chat and git share ONE
+    // "Workspace" tab through the same `SplitWorkspacePanel` shell a repo uses —
+    // segmented control, one pane at a time, full-screen detail push (AC-06).
+    // Since git then lives inside that tab, the standalone Git tab drops off the
+    // mobile header so there is exactly one way in. Desktop is untouched: it
+    // keeps its separate Chats / Git tabs.
+    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
+    const mobileWorkspaceSplit = splitWorkspacePanelEnabled && isMobile;
+    const tabs = useMemo(
+        () => (mobileWorkspaceSplit ? REPO_GROUP_TABS.filter(t => t.key !== 'git') : REPO_GROUP_TABS),
+        [mobileWorkspaceSplit],
+    );
+    const headerConfig = useMemo(
+        () => getRepoGroupHeaderConfig(workspaceId, groupName, tabs),
+        [workspaceId, groupName, tabs],
+    );
 
     // Landing tab when the current sub-tab is not one of the group's tabs (e.g.
     // arriving from a repo's Git tab). Mirrors useVirtualWorkspaceHeader so the
     // highlighted header tab and the content pane always agree.
-    const activeTab = REPO_GROUP_TABS.some(t => t.key === state.activeRepoSubTab)
+    // A `git` deep link (or a leftover selection) on the merged mobile path has
+    // no tab of its own any more, so it lands on Workspace — the segmented
+    // control inside it is where git lives now.
+    const activeTab = tabs.some(t => t.key === state.activeRepoSubTab)
         ? state.activeRepoSubTab
         : 'chats';
 
@@ -144,7 +167,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // resizes it; only the terminal/explorer content follows the picker. The
     // group detail read goes to whichever server owns the group — local for a
     // local group, the remote's baseUrl for one aggregated from a remote server.
-    const dockAvailable = useSplitWorkspacePanelEnabled() && !isMobile;
+    const dockAvailable = splitWorkspacePanelEnabled && !isMobile;
     const groupBaseUrl = useMemo(() => {
         const match = (remoteGroups ?? []).find(ws => String(ws?.id ?? '') === workspaceId);
         const url = (match as { baseUrl?: unknown } | undefined)?.baseUrl;
@@ -153,13 +176,22 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // Member repos, for the dock's target picker and the Git tab's host. The
     // Settings tab does its own read — it needs the descriptions too, and only
     // while it is the visible tab.
-    const membersNeeded = dockAvailable || gitVisited;
+    // The merged mobile panel mounts the git list with the Workspace tab, so it
+    // needs the members straight away rather than on first Git-tab visit.
+    const membersNeeded = dockAvailable || gitVisited || mobileWorkspaceSplit;
     const members = useRepoGroupMembers(workspaceId, groupBaseUrl, membersNeeded);
     const dockTargets = useMemo(
         () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
         [dockAvailable, members, workspaceId]
     );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
+    // Slots for the merged mobile Workspace panel: which list last drove the
+    // shared detail, and the DOM nodes the two tabs portal into. State-backed
+    // (not refs) so the portals mount once the nodes exist — same shape as
+    // RepoDetail's split wiring.
+    const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
+    const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null);
+    const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
     // The group's selected chat owns the panel's chat-scoped tabs. `RepoChatTab`
     // below runs against the group workspace id, so that is the key its
     // selection is filed under; the per-repo entry only, never the global
@@ -178,7 +210,10 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
             {isMobile
-                ? <VirtualWorkspaceMobileTabBar config={headerConfig} pinnedTabs={['chats', 'git', 'notes']} />
+                ? <VirtualWorkspaceMobileTabBar
+                    config={headerConfig}
+                    pinnedTabs={mobileWorkspaceSplit ? ['chats', 'notes', 'settings'] : ['chats', 'git', 'notes']}
+                />
                 : !headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
 
             {/* Tab content + the right dock as the outermost-right, full-height
@@ -186,11 +221,54 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
             <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
                 <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                     <div style={{ display: activeTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                        <RepoChatTab workspaceId={workspaceId} dockStatusFooter />
+                        {mobileWorkspaceSplit ? (
+                            <SplitWorkspacePanel
+                                workspaceId={workspaceId}
+                                chatList={
+                                    <RepoChatTab
+                                        workspaceId={workspaceId}
+                                        dockStatusFooter
+                                        layout="split-workspace"
+                                        detailContainer={splitDetailNode}
+                                        detailActive={splitLastClicked === 'chat'}
+                                        onActivateDetail={() => setSplitLastClicked('chat')}
+                                    />
+                                }
+                                gitList={
+                                    <RepoGroupGitTab
+                                        workspaceId={workspaceId}
+                                        members={members}
+                                        layout="split-workspace"
+                                        detailContainer={splitDetailNode}
+                                        detailActive={splitLastClicked === 'git'}
+                                        onActivateDetail={() => setSplitLastClicked('git')}
+                                        headerToolbarContainer={splitGitHeaderNode}
+                                    />
+                                }
+                                gitHeaderExtra={
+                                    <div
+                                        ref={setSplitGitHeaderNode}
+                                        className="flex min-w-0 flex-1 items-center"
+                                        data-testid="split-workspace-git-header-toolbar"
+                                    />
+                                }
+                                detail={
+                                    <div
+                                        ref={setSplitDetailNode}
+                                        className="flex flex-col flex-1 min-h-0 min-w-0 h-full w-full overflow-hidden"
+                                        data-testid="split-workspace-detail-host"
+                                    />
+                                }
+                            />
+                        ) : (
+                            <RepoChatTab workspaceId={workspaceId} dockStatusFooter />
+                        )}
                     </div>
-                    <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                        {gitVisited && <RepoGroupGitTab workspaceId={workspaceId} members={members} />}
-                    </div>
+                    {!mobileWorkspaceSplit && (
+                        <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                            {gitVisited && <RepoGroupGitTab workspaceId={workspaceId} members={members} />}
+                        </div>
+                    )}
                     <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                         <NotesView
                             workspaceId={workspaceId}
