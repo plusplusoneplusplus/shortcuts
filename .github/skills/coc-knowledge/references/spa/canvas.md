@@ -183,6 +183,15 @@ scoped to this Canvas/Kusto surface and its imported helpers.
 `features/chat/source-canvas/` renders the docked, read-only source-file canvas for local
 file references clicked inside assistant chat responses.
 
+### File rendering
+
+`previewResponse.toFileBlob` maps preview responses to the shared `FileBlob` contract.
+`useSourceCanvasContent` carries the content, encoding, and MIME type through
+`SourceCanvasPanel` and `SourceCanvasBody` into `shared/file-viewer/FileViewer`.
+Image responses render as base64 data-URL images, including SVGs; oversized or malformed
+image previews surface the panel's error state. Text uses Monaco or the rendered/raw
+Markdown toggle. Line highlighting applies only to text.
+
 ### Link delegation
 
 Global delegation normalizes bare `.file-path-link` spans, shared renderer `.md-link`

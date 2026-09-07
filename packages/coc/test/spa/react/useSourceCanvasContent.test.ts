@@ -81,6 +81,8 @@ describe('useSourceCanvasContent', () => {
         expect(result.current.status).toBe('loading');
         await waitFor(() => expect(result.current.status).toBe('success'));
         expect(result.current.content).toBe('hello world\n');
+        expect(result.current.encoding).toBe('utf-8');
+        expect(result.current.mimeType).toBe('text/plain');
         expect(result.current.language).toBe('typescript');
         expect(result.current.resolvedPath).toBe('/home/u/proj/src/a.ts');
         // Local workspace ids route through the clone registry's default SPA client.
@@ -97,6 +99,89 @@ describe('useSourceCanvasContent', () => {
         await waitFor(() => expect(result.current.status).toBe('success'));
         expect(result.current.content).toBe('line1\nline2');
         expect(result.current.language).toBe('');
+    });
+
+    it.each([
+        ['screenshot.png', 'image/png'],
+        ['photo.jpg', 'image/jpeg'],
+        ['diagram.svg', 'image/svg+xml'],
+    ])('preserves image data and MIME type for %s', async (fileName, mimeType) => {
+        const content = 'a'.repeat(600 * 1024);
+        previewMock.mockResolvedValue({ type: 'image', content, mimeType });
+        const { result } = renderHook(() =>
+            useSourceCanvasContent({ fullPath: fileName, wsId: 'ws1' }),
+        );
+
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current).toMatchObject({ content, encoding: 'base64', mimeType, language: '' });
+    });
+
+    it.each([
+        [{ type: 'image-too-large', size: 3 * 1024 * 1024 }, 'Image too large to preview (max 2 MB).'],
+        [{ type: 'image', content: 'AAAA' }, 'Invalid image preview'],
+        [{ type: 'image', mimeType: 'image/png' }, 'Invalid image preview'],
+        [{ type: 'image', content: 'AAAA', mimeType: 'text/html' }, 'Invalid image preview'],
+    ])('reports an unavailable image preview as an error: %j', async (response, error) => {
+        previewMock.mockResolvedValue(response);
+        const { result } = renderHook(() =>
+            useSourceCanvasContent({ fullPath: 'screenshot.png', wsId: 'ws1' }),
+        );
+
+        await waitFor(() => expect(result.current.status).toBe('error'));
+        expect(result.current.error).toBe(error);
+        expect(result.current.content).toBe('');
+    });
+
+    it('replaces image metadata when switching to text in another workspace and back', async () => {
+        workspacesRef.current.push({ id: 'ws2', rootPath: '/home/u/second' });
+        previewMock
+            .mockResolvedValueOnce({ type: 'image', content: 'AAAA', mimeType: 'image/png' })
+            .mockResolvedValueOnce({ lines: ['const n = 1;'], language: 'typescript' })
+            .mockResolvedValueOnce({ type: 'image', content: 'BBBB', mimeType: 'image/jpeg' });
+        const { result, rerender } = renderHook(
+            (ref) => useSourceCanvasContent(ref),
+            { initialProps: { fullPath: 'screenshot.png', wsId: 'ws1' } },
+        );
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current.encoding).toBe('base64');
+
+        rerender({ fullPath: 'app.ts', wsId: 'ws2' });
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current).toMatchObject({
+            content: 'const n = 1;', encoding: 'utf-8', mimeType: 'text/plain', language: 'typescript',
+            resolvedWorkspaceId: 'ws2',
+        });
+
+        rerender({ fullPath: 'photo.jpg', wsId: 'ws1' });
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current).toMatchObject({
+            content: 'BBBB', encoding: 'base64', mimeType: 'image/jpeg', language: '',
+            resolvedWorkspaceId: 'ws1',
+        });
+    });
+
+    it('preserves image data and member attribution from a remote repo group', async () => {
+        workspacesRef.current.push(
+            { id: 'group-remote', rootPath: '/remote/group' },
+            { id: 'remote-member', rootPath: '/remote/repo' },
+        );
+        registerCloneBaseUrls([{ workspaceId: 'group-remote', baseUrl: REMOTE_BASE_URL }]);
+        remotePreviewMock.mockResolvedValue({
+            type: 'image', content: 'AAAA', mimeType: 'image/png',
+            path: '/remote/repo/screenshot.png', resolvedWorkspaceId: 'remote-member',
+        });
+        const { result } = renderHook(() =>
+            useSourceCanvasContent({ fullPath: 'screenshot.png', wsId: 'group-remote' }),
+        );
+
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(result.current).toMatchObject({
+            content: 'AAAA', encoding: 'base64', mimeType: 'image/png',
+            resolvedPath: '/remote/repo/screenshot.png', resolvedWorkspaceId: 'remote-member',
+            workspaceRootPath: '/remote/repo',
+        });
+        expect(remotePreviewMock).toHaveBeenCalledWith('group-remote', 'screenshot.png', { lines: 0 });
+        expect(previewMock).not.toHaveBeenCalled();
     });
 
     it('enters the error state when the fetch rejects', async () => {

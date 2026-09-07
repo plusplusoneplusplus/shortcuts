@@ -59,6 +59,7 @@ vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/Source
     ),
 }));
 
+import { SOURCE_CANVAS_LOADING } from '../../../src/server/spa/client/react/features/chat/source-canvas/types';
 import { SourceCanvasDock } from '../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasDock';
 
 const resize = { width: 560, handleMouseDown: vi.fn(), handleTouchStart: vi.fn() };
@@ -134,6 +135,7 @@ describe('SourceCanvasDock', () => {
                 fileRef={codeRef}
                 wsId="ws1"
                 content={{
+                    ...SOURCE_CANVAS_LOADING,
                     status: 'success',
                     content: 'const x = 1;\n',
                     language: 'typescript',

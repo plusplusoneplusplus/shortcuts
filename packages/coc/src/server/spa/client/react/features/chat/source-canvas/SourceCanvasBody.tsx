@@ -12,11 +12,14 @@
  */
 import { FileViewer } from '../../../shared/file-viewer/FileViewer';
 import { toLines, resolveLineRange } from '../../../shared/file-viewer/lineRange';
+import type { FileBlob } from '../../../shared/file-viewer/types';
 
 export interface SourceCanvasBodyProps {
     /** File name (used to detect markdown + derive the editor language). */
     fileName: string;
     content: string;
+    encoding?: FileBlob['encoding'];
+    mimeType?: string;
     /** Optional server-reported language hint (helps detect markdown). */
     language?: string;
     /** Target (start) line to scroll to + highlight, when the ref carried one. */
@@ -25,12 +28,14 @@ export interface SourceCanvasBodyProps {
     endLine?: number;
 }
 
-/** Render the loaded canvas content: formatted markdown vs the code viewer. */
-export function SourceCanvasBody({ fileName, content, language, line, endLine }: SourceCanvasBodyProps) {
-    const range = resolveLineRange(line, endLine, toLines(content).length);
+/** Render loaded text or image content through the shared file viewer. */
+export function SourceCanvasBody({
+    fileName, content, encoding = 'utf-8', mimeType = 'text/plain', language, line, endLine,
+}: SourceCanvasBodyProps) {
+    const range = encoding === 'utf-8' ? resolveLineRange(line, endLine, toLines(content).length) : null;
     return (
         <FileViewer
-            blob={{ content, encoding: 'utf-8', mimeType: 'text/plain' }}
+            blob={{ content, encoding, mimeType }}
             fileName={fileName}
             language={language}
             readOnly

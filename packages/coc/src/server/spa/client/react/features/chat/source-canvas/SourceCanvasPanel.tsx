@@ -596,6 +596,8 @@ export function SourceCanvasPanel({
                         <SourceCanvasBody
                             fileName={fileName}
                             content={content.content}
+                            encoding={content.encoding}
+                            mimeType={content.mimeType}
                             language={content.language}
                             line={fileRef.line}
                             endLine={fileRef.endLine}

@@ -291,6 +291,9 @@ all have their own `references/*.md`.
   absolute `path` and owning `resolvedWorkspaceId`. Content, header/copy/reveal,
   tree roots, lazy children, hover previews, and app-level Markdown link handling
   carry that member ownership forward. Group Markdown links stay read-only.
+  Preserve the preview's encoding and MIME type through the shared `FileBlob`
+  contract so image payloads reach `FileViewer` as images. Oversized image
+  responses must surface an error rather than an empty text editor.
 - **Repo-group file preview reads** may reach the virtual group root, existing
   trusted read-only roots, the group task root, and any live registered member
   root. A relative group request probes live member roots in `group.json` order
