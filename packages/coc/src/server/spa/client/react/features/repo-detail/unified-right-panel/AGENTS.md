@@ -163,6 +163,35 @@ set even when the panel is too narrow for `isUnifiedTreeVisible`: the bit is wha
 the user asked for and widening restores it, but the panel is never force-widened
 over a boundary the user dragged.
 
+## Ctrl/Cmd+W closes the active tab (`closeTabRouting.ts`)
+
+Same capture-phase listener idiom as Quick Open, for the same reason: it has to
+beat Monaco inside a code buffer. `closeTabOutcome({ panelOpen, panelHasFocus,
+focusInActiveTerminal, metaKey, hasActiveTab })` is the whole decision, pure and
+unit-tested, and it has three outcomes rather than two — `close`, `swallow`,
+`ignore`.
+
+`swallow` is the load-bearing one. Ctrl/Cmd+W is the browser's close-window key,
+so while the panel holds the focus it must claim the key **even with an empty
+strip**: falling through would shut the user's window because they tidied a tab
+strip. Panel focus is a live DOM check against `panelRootRef` plus
+`offsetParent !== null` (the collapsed panel is `display:none`), never focus
+state in the store.
+
+The one `ignore` beyond "not our focus" is the terminal: a plain Ctrl+W is
+readline's delete-previous-word, so it is handed to xterm — which sends `\x17`
+and preventDefaults it itself, so the browser still never sees it. The carve-out
+is keyed on the active tab being a `terminal` **and** the focus sitting inside
+that tab's own `unified-panel-view-<id>` container, never on platform detection;
+focus on the strip's tab button is not somebody typing at a prompt. Cmd/Meta+W
+closes a terminal normally. The accepted consequence is that on Linux/Windows a
+terminal tab is closed with the ✕ or a middle click, not the keyboard.
+
+The close goes through `requestClose`, never `closeTab`, so a live PTY and an
+unsaved buffer still get their prompts. `ExplorerPanel`'s own Ctrl+W handler is
+independent and self-gates on its own root; there is deliberately no shared
+helper.
+
 ## The preview slot
 
 Each scope section has at most **one preview tab**, and it is always the
@@ -309,7 +338,9 @@ through refs. **Any future SSE-driven entry point must do the same.**
 
 `test/spa/react/workspace-right-dock/unified*`, `quickOpenRouting.test.ts` and
 `Unified*` cover the model, store, strip, shell, menu, per-kind views, both close
-guards, terminal-session survival, the Ctrl+P routing matrix, and the canvas
+guards, terminal-session survival, the Ctrl+P routing matrix, the Ctrl/Cmd+W
+close-tab shortcut (`closeTabRouting.test.ts`,
+`UnifiedPanelCloseTabShortcut.test.tsx`), and the canvas
 event relay. Entry-point rerouting is tested where the
 entry point lives — `test/spa/react/repos/ChatDetailCanvasClosed.test.tsx` holds
 the diff, source-link, note-link, and canvas cases.

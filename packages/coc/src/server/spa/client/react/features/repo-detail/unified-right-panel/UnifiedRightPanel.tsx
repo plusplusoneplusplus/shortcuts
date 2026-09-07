@@ -69,6 +69,7 @@ import {
     quickOpenOwner,
     quickOpenShortcut,
 } from './quickOpenRouting';
+import { closeTabOutcome, closeTabShortcut } from './closeTabRouting';
 import { explorerFileTabInput } from './unifiedExplorerFiles';
 import {
     UNIFIED_TREE_MIN_WIDTH,
@@ -509,6 +510,49 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         document.addEventListener('keydown', onKeyDown, true);
         return () => document.removeEventListener('keydown', onKeyDown, true);
     }, [isOpen, quickOpenVisible, exactOpenVisible]);
+
+    // ------------------------------------------------------------------
+    // Close the active tab (Ctrl/Cmd+W)
+    // ------------------------------------------------------------------
+    //
+    // Same capture-phase listener idiom as Quick Open above, and for the same
+    // reason: it has to beat Monaco's own handlers inside a code buffer. The
+    // routing rule — including the terminal carve-out and the "focused with an
+    // empty strip still swallows it" case — lives in `closeTabRouting`, and the
+    // close itself goes through `requestClose`, never `closeTab`, so a live PTY
+    // or an unsaved buffer still gets its prompt.
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (closeTabShortcut(event) === null) return;
+            const root = panelRootRef.current;
+            const focused = document.activeElement;
+            const panelHasFocus = (
+                root !== null
+                && root.offsetParent !== null
+                && focused !== null
+                && focused !== document.body
+                && root.contains(focused)
+            );
+            // "Inside the active terminal" is the tab's own mounted view, not
+            // the panel: focus parked on the strip's tab button is not somebody
+            // typing at a prompt, so it must not fall through to the browser.
+            const activeView = focused?.closest('[data-testid^="unified-panel-view-"]') ?? null;
+            const focusedViewId = activeView?.getAttribute('data-testid')?.slice('unified-panel-view-'.length) ?? null;
+            const outcome = closeTabOutcome({
+                panelOpen: isOpen,
+                panelHasFocus,
+                focusInActiveTerminal: active?.kind === 'terminal' && focusedViewId === activeId,
+                metaKey: event.metaKey,
+                hasActiveTab: activeId !== null,
+            });
+            if (outcome === 'ignore') return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (outcome === 'close' && activeId !== null) requestClose(activeId);
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        return () => document.removeEventListener('keydown', onKeyDown, true);
+    }, [isOpen, active, activeId, requestClose]);
 
     // A collapsed panel has no dialog to show: dismiss rather than leave one
     // floating over the chat with nothing behind it.
