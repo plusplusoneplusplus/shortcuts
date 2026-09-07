@@ -21,6 +21,7 @@ import {
     devTunnelUrlMatchesPort,
     parseDevTunnelCluster,
     killProcessTree,
+    resolveRestartIntervalMs,
     resolveUrlTimeoutMs,
     selectDevTunnelUrl,
 } from '../src/devtunnel-host';
@@ -29,6 +30,7 @@ import type { DevTunnelConfigureResult } from '../src/devtunnel-cli';
 const TUNNEL = 'box-coc';
 const PORT = 4000;
 const URL_TIMEOUT_MS = 5_000;
+const RESTART_INTERVAL_MS = 60_000;
 
 /** Flush pending microtasks (real setImmediate, unaffected by injected timers). */
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -143,6 +145,7 @@ function makeManager(overrides: Partial<Parameters<typeof createDevTunnelHostMan
         resolveCliPath: () => '/opt/devtunnel',
         spawn: spawner,
         urlTimeoutMs: URL_TIMEOUT_MS,
+        restartIntervalMs: RESTART_INTERVAL_MS,
         setTimer: timers.setTimer,
         clearTimer: timers.clearTimer,
         onStateChange: (s) => states.push(s),
@@ -287,6 +290,27 @@ describe('resolveUrlTimeoutMs', () => {
         expect(resolveUrlTimeoutMs({ COC_DEVTUNNEL_URL_TIMEOUT: '0' })).toBe(30_000);
         expect(resolveUrlTimeoutMs({ COC_DEVTUNNEL_URL_TIMEOUT: '-5' })).toBe(30_000);
         expect(resolveUrlTimeoutMs({ COC_DEVTUNNEL_URL_TIMEOUT: 'soon' })).toBe(30_000);
+    });
+});
+
+describe('resolveRestartIntervalMs', () => {
+    it('defaults to 6 hours', () => {
+        expect(resolveRestartIntervalMs({})).toBe(6 * 60 * 60 * 1_000);
+    });
+
+    it('honors a positive-integer COC_DEVTUNNEL_RESTART_INTERVAL_HOURS override', () => {
+        expect(resolveRestartIntervalMs({ COC_DEVTUNNEL_RESTART_INTERVAL_HOURS: '2' })).toBe(
+            2 * 60 * 60 * 1_000,
+        );
+    });
+
+    it('falls back to 6 hours for zero, negative, non-numeric, or empty input', () => {
+        // `0` is invalid input, not an off switch — periodic restarts cannot be disabled.
+        for (const raw of ['0', '-1', 'abc', '', ' ', '1.5']) {
+            expect(resolveRestartIntervalMs({ COC_DEVTUNNEL_RESTART_INTERVAL_HOURS: raw })).toBe(
+                6 * 60 * 60 * 1_000,
+            );
+        }
     });
 });
 
@@ -568,5 +592,125 @@ describe('DevTunnelHostManager.reconfigure', () => {
         const state = await h.manager.reconfigure({ tunnelId: 'other-coc' });
         expect(state.status).toBe('off');
         expect(h.procs).toHaveLength(0);
+    });
+});
+
+describe('DevTunnelHostManager periodic restart', () => {
+    /** Fire the lone pending timer, asserting it is the restart clock. */
+    function fireRestart(h: Harness): void {
+        expect(h.timers.pending()).toEqual([RESTART_INTERVAL_MS]);
+        expect(h.timers.fireOnly()).toBe(RESTART_INTERVAL_MS);
+    }
+
+    it('arms the restart clock on the Online transition', async () => {
+        const h = makeManager();
+        await bringOnline(h);
+        expect(h.timers.pending()).toEqual([RESTART_INTERVAL_MS]);
+    });
+
+    it('re-hosts silently when the interval elapses: online → starting → online', async () => {
+        const h = makeManager();
+        const ensureBinding = vi.fn(okBinding());
+        (h.manager as unknown as { _ensureBinding: unknown })._ensureBinding = ensureBinding;
+        const proc0 = await bringOnline(h);
+        h.states.length = 0;
+
+        fireRestart(h);
+        expect(proc0.killed).toBe(true);
+        await flush();
+
+        // A brand-new host child, and the binding was reconciled again so a drifted
+        // port binding self-heals.
+        expect(h.procs).toHaveLength(2);
+        expect(h.last()).not.toBe(proc0);
+        expect(ensureBinding).toHaveBeenCalledWith({ tunnelId: TUNNEL, port: PORT });
+
+        h.last().emit(`Connect via browser: ${urlFor(PORT)}\n`);
+        await flush();
+        expect(h.manager.state.status).toBe('online');
+        expect(h.manager.state.publicUrl).toBe(urlFor(PORT));
+        expect(h.states.map((s) => s.status)).toEqual(['starting', 'online']);
+        // A scheduled restart is not a failure episode.
+        expect(h.notifications).toHaveLength(0);
+    });
+
+    it('re-arms the clock after each successful restart', async () => {
+        const h = makeManager();
+        await bringOnline(h);
+        fireRestart(h);
+        await flush();
+        h.last().emit(urlFor(PORT));
+        await flush();
+        expect(h.timers.pending()).toEqual([RESTART_INTERVAL_MS]);
+    });
+
+    it('does not misread its own teardown kill as an unexpected exit', async () => {
+        const h = makeManager();
+        const proc0 = await bringOnline(h);
+        fireRestart(h);
+        await flush();
+        // The killed child reports its exit late; it is stale and must open no episode.
+        proc0.exit(null, 'SIGKILL');
+        expect(h.notifications).toHaveLength(0);
+        expect(h.manager.state.status).toBe('starting');
+        expect(h.timers.pending()).toEqual([URL_TIMEOUT_MS]);
+    });
+
+    it('a failing restart falls through to the normal notify + backoff path', async () => {
+        const h = makeManager();
+        await bringOnline(h);
+        (h.manager as unknown as { _ensureBinding: () => Promise<DevTunnelConfigureResult> })._ensureBinding =
+            failBinding('unauthenticated', 'log in');
+        fireRestart(h);
+        await flush();
+        expect(h.manager.state.status).toBe('failed');
+        expect(h.manager.state.error?.category).toBe('unauthenticated');
+        // 'restart' behaves like a non-manual trigger: one notification, then backoff.
+        expect(h.notifications).toEqual([{ category: 'unauthenticated', message: 'log in' }]);
+        expect(h.timers.pending()).toEqual([2_000]);
+    });
+
+    it('skips (without rescheduling) when the manager is no longer online', async () => {
+        const h = makeManager();
+        const proc0 = await bringOnline(h);
+        const restartTimer = [...(h.timers as unknown as { timers: Map<number, { fn: () => void }> }).timers.values()];
+        expect(restartTimer).toHaveLength(1);
+
+        // Fall out of `online` via an unexpected exit; the backoff path now owns us.
+        proc0.exit(1);
+        expect(h.manager.state.status).toBe('failed');
+        expect(h.timers.pending()).toEqual([2_000]);
+
+        // Fire the (already-detached) restart callback anyway: it must be inert.
+        restartTimer[0].fn();
+        expect(h.procs).toHaveLength(1);
+        expect(h.timers.pending()).toEqual([2_000]);
+    });
+
+    it('the restart clock is cancelled by stop, dispose, and reconfigure', async () => {
+        const stopped = makeManager();
+        await bringOnline(stopped);
+        await stopped.manager.stop();
+        expect(stopped.timers.pending()).toEqual([]);
+
+        const disposed = makeManager();
+        await bringOnline(disposed);
+        disposed.manager.dispose();
+        expect(disposed.timers.pending()).toEqual([]);
+
+        const reconfigured = makeManager();
+        await bringOnline(reconfigured);
+        void reconfigured.manager.reconfigure({ tunnelId: 'other-coc' });
+        await flush();
+        // Only the new attempt's URL deadline remains — the old restart clock is gone.
+        expect(reconfigured.timers.pending()).toEqual([URL_TIMEOUT_MS]);
+    });
+
+    it('a duplicate Start while online leaves the pending restart clock intact', async () => {
+        const h = makeManager();
+        await bringOnline(h);
+        await h.manager.start({ tunnelId: TUNNEL, port: PORT });
+        expect(h.procs).toHaveLength(1);
+        expect(h.timers.pending()).toEqual([RESTART_INTERVAL_MS]);
     });
 });
