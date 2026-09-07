@@ -8,6 +8,7 @@ import {
     splitWorkspaceChatCollapsedStorageKey,
     splitWorkspaceGitCollapsedStorageKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
+import { splitWorkspaceMobilePaneStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/mobileWorkspacePane';
 import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
 
 // Toggle the responsive fallback per test without a real matchMedia.
@@ -194,14 +195,14 @@ describe('SplitWorkspacePanel', () => {
         expect(screen.getByTestId('my-footer')).toHaveTextContent('footer');
     });
 
-    it('falls back to a single column with no dividers at narrow width (AC-07)', () => {
+    it('drops both dividers at narrow width', () => {
         mockIsMobile = true;
         renderPanel();
-        // Slots still render...
+        // All three slots stay mounted (keep-alive)...
         expect(screen.getByTestId('chat-content')).toBeTruthy();
         expect(screen.getByTestId('git-content')).toBeTruthy();
         expect(screen.getByTestId('detail-content')).toBeTruthy();
-        // ...but as a single narrow column with no resize dividers.
+        // ...but there is nothing to resize on one pane at a time.
         expect(screen.getByTestId('split-workspace-panel').getAttribute('data-narrow')).toBe('true');
         expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
         expect(screen.queryByTestId('split-workspace-width-divider')).toBeNull();
@@ -444,11 +445,113 @@ describe('SplitWorkspacePanel git header extra slot', () => {
         expect(screen.getByTestId('split-workspace-chat-header').className).toContain('w-full');
     });
 
-    it('mobile single-column fallback ignores the extra slot (no section headers)', () => {
+    // AC-04: mounting the extra slot on mobile is what makes RepoGitTab's
+    // `headerToolbarContainer` non-null, so it hoists ONE compact toolbar
+    // instead of rendering the full inline branch/Pull/sync block in the list.
+    it('mobile mounts the extra slot as the single git toolbar row (AC-04)', () => {
         mockIsMobile = true;
         renderWithExtra();
+        // No 22px desktop section header...
         expect(screen.queryByTestId('split-workspace-git-header')).toBeNull();
-        expect(screen.queryByTestId('split-workspace-git-header-extra')).toBeNull();
+        // ...but the hoisted toolbar target IS mounted, once, inside the git pane.
+        const extra = screen.getByTestId('split-workspace-git-header-extra');
+        expect(screen.getAllByTestId('hoisted-toolbar')).toHaveLength(1);
+        expect(screen.getByTestId('split-workspace-git').contains(extra)).toBe(true);
+        expect(extra.className).toContain('min-h-[44px]');
+    });
+
+    it('keeps the git toolbar mounted while the chat segment is active', () => {
+        mockIsMobile = true;
+        renderWithExtra();
+        fireEvent.click(screen.getByTestId('split-workspace-mobile-pane-chat'));
+        expect(screen.getByTestId('split-workspace-git-header-extra')).toBeTruthy();
+    });
+});
+
+// AC-01/02/03/05 — the mobile Workspace panel shows one pane at a time.
+describe('SplitWorkspacePanel mobile pane switcher', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        mockIsMobile = true;
+    });
+
+    const chatPane = () => screen.getByTestId('split-workspace-chat');
+    const gitPane = () => screen.getByTestId('split-workspace-git');
+    const detailPane = () => screen.getByTestId('split-workspace-detail');
+    const isHidden = (el: HTMLElement) => el.className.split(/\s+/).includes('hidden');
+
+    it('renders a Chats | Git segmented control and shows only the chat pane by default (AC-01)', () => {
+        renderPanel();
+        expect(screen.getByTestId('split-workspace-mobile-switcher')).toBeTruthy();
+        expect(screen.getByTestId('split-workspace-mobile-pane-chat')).toHaveTextContent('Chats');
+        expect(screen.getByTestId('split-workspace-mobile-pane-git')).toHaveTextContent('Git');
+        expect(isHidden(chatPane())).toBe(false);
+        expect(isHidden(gitPane())).toBe(true);
+        expect(isHidden(detailPane())).toBe(true);
+    });
+
+    it('switches panes without unmounting the hidden one (keep-alive, AC-01)', () => {
+        renderPanel();
+        fireEvent.click(screen.getByTestId('split-workspace-mobile-pane-git'));
+        expect(isHidden(gitPane())).toBe(false);
+        expect(isHidden(chatPane())).toBe(true);
+        // Hidden means display:none, not gone — the chat content is still mounted.
+        expect(screen.getByTestId('chat-content')).toBeTruthy();
+        expect(screen.getByTestId('git-content')).toBeTruthy();
+    });
+
+    it('marks the active segment with aria-selected', () => {
+        renderPanel();
+        expect(screen.getByTestId('split-workspace-mobile-pane-chat').getAttribute('aria-selected')).toBe('true');
+        fireEvent.click(screen.getByTestId('split-workspace-mobile-pane-git'));
+        expect(screen.getByTestId('split-workspace-mobile-pane-git').getAttribute('aria-selected')).toBe('true');
+        expect(screen.getByTestId('split-workspace-mobile-pane-chat').getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('persists the active segment per workspace and restores it (AC-03)', () => {
+        const { unmount } = renderPanel('wsA');
+        fireEvent.click(screen.getByTestId('split-workspace-mobile-pane-git'));
+        expect(localStorage.getItem(splitWorkspaceMobilePaneStorageKey('wsA'))).toBe('git');
+        unmount();
+
+        renderPanel('wsA');
+        expect(screen.getByTestId('split-workspace-panel').getAttribute('data-mobile-pane')).toBe('git');
+    });
+
+    it('keeps each workspace on its own segment (AC-03)', () => {
+        localStorage.setItem(splitWorkspaceMobilePaneStorageKey('wsA'), 'git');
+        renderPanel('wsB');
+        expect(screen.getByTestId('split-workspace-panel').getAttribute('data-mobile-pane')).toBe('chat');
+    });
+
+    it('falls back to Chats for an unrecognized stored value (AC-03)', () => {
+        localStorage.setItem(splitWorkspaceMobilePaneStorageKey('wsA'), 'not-a-pane');
+        renderPanel('wsA');
+        expect(screen.getByTestId('split-workspace-panel').getAttribute('data-mobile-pane')).toBe('chat');
+        expect(isHidden(chatPane())).toBe(false);
+    });
+
+    it('does not write a segment on a plain mount (AC-03)', () => {
+        renderPanel('wsA');
+        expect(localStorage.getItem(splitWorkspaceMobilePaneStorageKey('wsA'))).toBeNull();
+    });
+
+    it('does not itself scroll and gives every pane the flex-1 min-h-0 height chain (AC-05)', () => {
+        renderPanel();
+        const panel = screen.getByTestId('split-workspace-panel');
+        expect(panel.className).toContain('h-full');
+        expect(panel.className).not.toContain('overflow-y-auto');
+        for (const pane of [chatPane(), gitPane(), detailPane()]) {
+            expect(pane.className).toContain('flex-1');
+            expect(pane.className).toContain('min-h-0');
+        }
+    });
+
+    it('is a strict no-op on desktop — no switcher, no back bar', () => {
+        mockIsMobile = false;
+        renderPanel();
+        expect(screen.queryByTestId('split-workspace-mobile-switcher')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-mobile-back')).toBeNull();
     });
 });
 
