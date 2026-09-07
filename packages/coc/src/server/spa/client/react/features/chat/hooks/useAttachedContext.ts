@@ -120,7 +120,9 @@ export type AttachedContextItem =
 
 const PREVIEW_LENGTH = 100;
 const ATTACHED_CONTEXT_BLOCK_PATTERN = /<attached_session_context\s+version="1">[\s\S]*?<\/attached_session_context>|<attached_ralph_session_context\s+version="1">[\s\S]*?<\/attached_ralph_session_context>|<attached_pointer_context\s+version="1">[\s\S]*?<\/attached_pointer_context>/g;
-const SESSION_CONTEXT_BLOCK_PATTERN = /^<attached_session_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*<instruction>[\s\S]*?<\/instruction>\s*<\/source>\s*<\/attached_session_context>$/;
+// The `<instruction>` element is no longer emitted, but stays optional here so blocks
+// already persisted in older messages still parse back into a session chip.
+const SESSION_CONTEXT_BLOCK_PATTERN = /^<attached_session_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*(?:<instruction>[\s\S]*?<\/instruction>\s*)?<\/source>\s*<\/attached_session_context>$/;
 const RALPH_SESSION_CONTEXT_BLOCK_PATTERN = /^<attached_ralph_session_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*<display_label>([\s\S]*?)<\/display_label>\s*<child_process_ids>\s*([\s\S]*?)\s*<\/child_process_ids>\s*<instruction>[\s\S]*?<\/instruction>\s*<\/source>\s*<\/attached_ralph_session_context>$/;
 const POINTER_CONTEXT_BLOCK_PATTERN = /^<attached_pointer_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*<instruction>[\s\S]*?<\/instruction>\s*<\/source>\s*<\/attached_pointer_context>$/;
 const CHILD_PROCESS_ID_PATTERN = /<process_id>([\s\S]*?)<\/process_id>/g;
@@ -652,7 +654,6 @@ export function formatAttachedContext(items: AttachedContextItem[]): string {
                 '<attached_session_context version="1">',
                 `<source workspace_id="${escapeContextText(sourceWorkspaceId)}" process_id="${escapeContextText(sourceProcessId)}" status="${escapeContextText(item.status)}" last_activity_at="${escapeContextText(item.lastActivityAt)}">`,
                 `<title>${escapeContextText(sanitizeContextDisplayText(item.title, 'Untitled source session'))}</title>`,
-                '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
                 '</source>',
                 '</attached_session_context>',
             ].join('\n');

@@ -434,7 +434,6 @@ describe('ConversationTurnBubble — attached session context blocks', () => {
             '<attached_session_context version="1">',
             '<source workspace_id="ws-1" process_id="process-1234567890" status="failed" last_activity_at="2026-01-01T00:00:00.000Z">',
             '<title>Debug &lt;source&gt; &amp; inspect</title>',
-            '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
             '</source>',
             '</attached_session_context>',
             '',
