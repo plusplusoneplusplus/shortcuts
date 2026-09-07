@@ -92,7 +92,7 @@ function storedExpanded(): string[] {
 /** Mount with `src` + `src/lib` already expanded and the mount fetch settled. */
 async function mountExpanded(): Promise<void> {
     localStorage.setItem(explorerExpandedStorageKey(WS), JSON.stringify(['src', 'src/lib']));
-    render(<ExplorerPanel workspaceId={WS} />);
+    render(<ExplorerPanel workspaceId={WS} mode="editor" />);
     await waitFor(() => expect(screen.getByTestId('tree-node-src/lib/a.ts')).toBeInTheDocument());
     treeSpy.mockClear();
 }
@@ -167,7 +167,7 @@ describe('ExplorerPanel — Refresh prunes vanished directories (AC-02)', () => 
             explorerExpandedStorageKey(WS),
             JSON.stringify(['src', 'src/lib', 'src/lib/nested', 'docs']),
         );
-        render(<ExplorerPanel workspaceId={WS} />);
+        render(<ExplorerPanel workspaceId={WS} mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('tree-node-src')).toBeInTheDocument());
         treeSpy.mockClear();
 

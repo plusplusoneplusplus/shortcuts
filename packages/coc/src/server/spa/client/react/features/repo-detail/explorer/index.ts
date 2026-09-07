@@ -1,4 +1,4 @@
-export { ExplorerPanel, isNarrowSidebar, resolveExplorerMode, NARROW_SIDEBAR_WIDTH } from './ExplorerPanel';
+export { ExplorerPanel, isNarrowSidebar, NARROW_SIDEBAR_WIDTH } from './ExplorerPanel';
 export type { ExplorerPanelProps, ExplorerPanelMode } from './ExplorerPanel';
 export { FileTree, flattenVisibleNodes, filterEntries, hasMatchingDescendant } from './FileTree';
 export type { FileTreeProps } from './FileTree';

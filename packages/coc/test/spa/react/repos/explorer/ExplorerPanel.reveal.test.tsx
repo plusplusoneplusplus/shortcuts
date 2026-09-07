@@ -90,7 +90,7 @@ async function mount(options: {
     if (options.selected) {
         localStorage.setItem(explorerSelectedStorageKey(WS), JSON.stringify(options.selected));
     }
-    render(<ExplorerPanel workspaceId={WS} />);
+    render(<ExplorerPanel workspaceId={WS} mode="editor" />);
     await waitFor(() => expect(screen.getByTestId('tree-node-a')).toBeInTheDocument());
     treeSpy.mockClear();
 }

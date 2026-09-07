@@ -94,7 +94,7 @@ function openTabIds(): string[] {
 }
 
 async function renderPanel(wsId = 'ws-close') {
-    render(<ExplorerPanel workspaceId={wsId} />);
+    render(<ExplorerPanel workspaceId={wsId} mode="editor" />);
     await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
 }
 

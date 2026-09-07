@@ -15,6 +15,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 const treeSpy = vi.fn();
@@ -31,10 +33,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
     PreviewPane: () => null,
 }));
 
-import {
-    ExplorerPanel,
-    resolveExplorerMode,
-} from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel';
+import { ExplorerPanel } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel';
 import { clearExplorerTreeCache } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerTreeCache';
 import type { TreeEntry } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
 
@@ -67,25 +66,29 @@ async function renderPanel(props: Parameters<typeof ExplorerPanel>[0]) {
     return view;
 }
 
-describe('resolveExplorerMode', () => {
-    it('defaults to editor with no callback and no explicit mode', () => {
-        expect(resolveExplorerMode(undefined, false)).toBe('editor');
+describe('ExplorerPanel — mode is stated, never inferred', () => {
+    const SOURCE = fs.readFileSync(
+        path.join(
+            __dirname, '..', '..', '..', '..', '..', 'src', 'server', 'spa', 'client',
+            'react', 'features', 'repo-detail', 'explorer', 'ExplorerPanel.tsx',
+        ),
+        'utf-8',
+    );
+
+    it('declares mode as a required prop', () => {
+        expect(SOURCE).toContain('mode: ExplorerPanelMode;');
+        expect(SOURCE).not.toContain('mode?: ExplorerPanelMode');
     });
 
-    it('keeps inferring navigator from onOpenFile so existing callers are unchanged', () => {
-        expect(resolveExplorerMode(undefined, true)).toBe('navigator');
-    });
-
-    it('lets an explicit mode win over the inference in both directions', () => {
-        expect(resolveExplorerMode('sidebar', true)).toBe('sidebar');
-        expect(resolveExplorerMode('editor', true)).toBe('editor');
-        expect(resolveExplorerMode('navigator', false)).toBe('navigator');
+    it('keeps no fallback that reads the mode off onOpenFile', () => {
+        expect(SOURCE).not.toContain('resolveExplorerMode');
+        expect(SOURCE).not.toContain("onOpenFile !== undefined");
     });
 });
 
 describe('ExplorerPanel — editor mode (the Explorer sub-tab)', () => {
     it('renders the editor area, its resize handle and the breadcrumb row', async () => {
-        await renderPanel({ workspaceId: WS });
+        await renderPanel({ workspaceId: WS, mode: 'editor' });
         expect(screen.getByTestId('explorer-preview-pane')).toBeTruthy();
         expect(screen.getByTestId('explorer-resize-handle')).toBeTruthy();
         expect(screen.getByTestId('explorer-breadcrumbs')).toBeTruthy();
@@ -95,14 +98,14 @@ describe('ExplorerPanel — editor mode (the Explorer sub-tab)', () => {
 
 describe('ExplorerPanel — navigator mode', () => {
     it('drops the editor area and its resize handle but keeps the breadcrumb row', async () => {
-        await renderPanel({ workspaceId: WS, onOpenFile: vi.fn() });
+        await renderPanel({ workspaceId: WS, mode: 'navigator', onOpenFile: vi.fn() });
         expect(screen.queryByTestId('explorer-preview-pane')).toBeNull();
         expect(screen.queryByTestId('explorer-resize-handle')).toBeNull();
         expect(screen.getByTestId('explorer-breadcrumbs')).toBeTruthy();
         expect(screen.getByTestId('explorer-sidebar').getAttribute('data-explorer-mode')).toBe('navigator');
     });
 
-    it('drops the editor even when stated explicitly with no onOpenFile', async () => {
+    it('drops the editor with no onOpenFile at all, on the mode alone', async () => {
         await renderPanel({ workspaceId: WS, mode: 'navigator' });
         expect(screen.queryByTestId('explorer-preview-pane')).toBeNull();
     });

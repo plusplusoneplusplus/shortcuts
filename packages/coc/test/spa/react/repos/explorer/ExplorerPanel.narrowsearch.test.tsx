@@ -45,7 +45,7 @@ const ROOT_ENTRIES: TreeEntry[] = [{ name: 'README.md', type: 'file', path: 'REA
 /** Render at a given persisted sidebar width, already switched to Search. */
 async function renderSearchAt(width: number) {
     localStorage.setItem('explorer-sidebar-width', String(width));
-    render(<ExplorerPanel workspaceId={WS} />);
+    render(<ExplorerPanel workspaceId={WS} mode="editor" />);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     fireEvent.click(screen.getByTestId('explorer-view-search'));
     await act(async () => { await Promise.resolve(); });

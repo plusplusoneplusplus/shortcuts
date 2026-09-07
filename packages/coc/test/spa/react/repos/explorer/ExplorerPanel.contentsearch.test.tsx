@@ -66,7 +66,7 @@ async function advance(ms: number): Promise<void> {
 }
 
 async function renderPanel() {
-    const result = render(<ExplorerPanel workspaceId={WS} />);
+    const result = render(<ExplorerPanel workspaceId={WS} mode="editor" />);
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     return result;
 }

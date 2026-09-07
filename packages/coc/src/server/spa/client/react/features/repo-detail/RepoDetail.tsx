@@ -870,7 +870,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         </div>}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                            {wasVisited('explorer') && <ExplorerPanel key={ws.id} workspaceId={ws.id} />}
+                            {wasVisited('explorer') && <ExplorerPanel key={ws.id} workspaceId={ws.id} mode="editor" />}
                         </div>
                         {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             {wasVisited('pull-requests') && <PullRequestsTab

@@ -62,25 +62,22 @@ export interface ExplorerPanelProps {
      */
     deepLink?: boolean;
     /**
-     * Navigator mode. When given, this Explorer does not own an editor at all:
-     * every file open is handed to this callback and the editor area (and its
-     * tab strip) is not rendered, so a host that already has its own resource
-     * tabs — the unified right panel — does not end up showing two nested tab
-     * rows for the same files. Omitted, the Explorer keeps its own editor
-     * exactly as before.
+     * Where a file open goes in `navigator` and `sidebar` mode: this Explorer
+     * owns no editor there, so every open is handed to this callback and the
+     * host's tab strip is the only place a file appears. An `editor` mount
+     * shows the file itself and leaves this unset.
      */
     onOpenFile?: (
         file: { path: string; name: string; line?: number },
         options: { preview: boolean; readOnly?: boolean },
     ) => void;
     /**
-     * Which parts of the Explorer to render. Stated explicitly rather than
-     * inferred from `onOpenFile`, because `sidebar` and `navigator` both hand
-     * their opens to the host and only differ in whether the breadcrumb row is
-     * this panel's or the host's. Defaults to `navigator` when `onOpenFile` is
-     * given and `editor` otherwise, so existing callers keep their behaviour.
+     * Which parts of the Explorer to render. Every mount states it: `sidebar`
+     * and `navigator` both hand their opens to the host and differ only in
+     * whether the breadcrumb row is this panel's or the host's, so nothing
+     * about `onOpenFile` can tell them apart.
      */
-    mode?: ExplorerPanelMode;
+    mode: ExplorerPanelMode;
     /**
      * The file the *host* is currently showing, for a tree that follows the
      * host's active tab (the unified right panel's column). Three values:
@@ -93,15 +90,6 @@ export interface ExplorerPanelProps {
      *  - omitted — this host does not track; the tree keeps whatever it shows.
      */
     activeFilePath?: string | null;
-}
-
-/** The mode a mount runs in, honouring an explicit prop over the legacy inference. */
-export function resolveExplorerMode(
-    mode: ExplorerPanelMode | undefined,
-    hasOpenFile: boolean,
-): ExplorerPanelMode {
-    if (mode) return mode;
-    return hasOpenFile ? 'navigator' : 'editor';
 }
 
 /** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
@@ -241,8 +229,13 @@ export function isNarrowSidebar(width: number, isMobile: boolean): boolean {
     return !isMobile && width < NARROW_SIDEBAR_WIDTH;
 }
 
-export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode, activeFilePath }: ExplorerPanelProps) {
-    const panelMode = resolveExplorerMode(mode, onOpenFile !== undefined);
+export function ExplorerPanel({
+    workspaceId,
+    deepLink = true,
+    onOpenFile,
+    mode: panelMode,
+    activeFilePath,
+}: ExplorerPanelProps) {
     // Navigator mode: the host owns the editor, so this panel is only a tree.
     // `sidebar` is navigator plus "the host owns the breadcrumbs too".
     const navigatorMode = panelMode !== 'editor';
