@@ -186,4 +186,65 @@ describe('useSendMessage – attachment forwarding', () => {
         expect(body.attachments).toEqual(attachmentPayload);
         expect(body.deliveryMode).toBe('immediate');
     });
+
+    // The in-bubble "Edit message" editor keeps its draft in its own attachment
+    // hook, so it hands the list to sendFollowUp explicitly.
+    it('attachmentsOverride replaces the composer attachments and images', async () => {
+        const toPayload = vi.fn().mockReturnValue([
+            { name: 'composer.txt', mimeType: 'text/plain', size: 10, dataUrl: 'data:text/plain;base64,Y29tcA==' },
+        ]);
+        const options = createOptions({ toPayload, images: ['data:image/png;base64,composer'] });
+        const { result } = renderHook(() => useSendMessage(options as any));
+
+        await act(async () => {
+            await result.current.sendFollowUp('edited message', 'enqueue', {
+                includeComposerContext: false,
+                attachmentsOverride: [
+                    { id: 'a1', name: 'kept.png', mimeType: 'image/png', size: 20, dataUrl: 'data:image/png;base64,kept', category: 'image' },
+                ],
+            });
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.content).toBe('edited message');
+        expect(body.images).toEqual(['data:image/png;base64,kept']);
+        expect(body.attachments).toEqual([
+            { name: 'kept.png', mimeType: 'image/png', size: 20, dataUrl: 'data:image/png;base64,kept' },
+        ]);
+    });
+
+    it('an empty attachmentsOverride sends no attachments even when the composer has some', async () => {
+        const toPayload = vi.fn().mockReturnValue([
+            { name: 'composer.txt', mimeType: 'text/plain', size: 10, dataUrl: 'data:text/plain;base64,Y29tcA==' },
+        ]);
+        const options = createOptions({ toPayload, images: ['data:image/png;base64,composer'] });
+        const { result } = renderHook(() => useSendMessage(options as any));
+
+        await act(async () => {
+            await result.current.sendFollowUp('edited message', 'enqueue', {
+                includeComposerContext: false,
+                attachmentsOverride: [],
+            });
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.images).toBeUndefined();
+        expect(body.attachments).toBeUndefined();
+    });
+
+    it('without an override, includeComposerContext: false still sends no attachments', async () => {
+        const toPayload = vi.fn().mockReturnValue([
+            { name: 'composer.txt', mimeType: 'text/plain', size: 10, dataUrl: 'data:text/plain;base64,Y29tcA==' },
+        ]);
+        const options = createOptions({ toPayload, images: ['data:image/png;base64,composer'] });
+        const { result } = renderHook(() => useSendMessage(options as any));
+
+        await act(async () => {
+            await result.current.sendFollowUp('generated message', 'enqueue', { includeComposerContext: false });
+        });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.images).toBeUndefined();
+        expect(body.attachments).toBeUndefined();
+    });
 });
