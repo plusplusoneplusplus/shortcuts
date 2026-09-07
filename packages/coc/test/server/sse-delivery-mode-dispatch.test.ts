@@ -1,3 +1,4 @@
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 /**
  * Verifies that handleProcessStream correctly relays message-queued and
  * message-steering ProcessOutputEvents to SSE clients as named events.
@@ -13,29 +14,6 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 // ============================================================================
 // Helpers
 // ============================================================================
-
-interface SSEEvent {
-    event: string;
-    data: unknown;
-}
-
-function parseSSEFrames(chunks: string[]): SSEEvent[] {
-    const raw = chunks.join('');
-    const frames: SSEEvent[] = [];
-    for (const part of raw.split('\n\n').filter(Boolean)) {
-        const lines = part.split('\n');
-        let event = '';
-        let data = '';
-        for (const line of lines) {
-            if (line.startsWith('event: ')) { event = line.slice(7); }
-            if (line.startsWith('data: ')) { data = line.slice(6); }
-        }
-        if (event && data) {
-            frames.push({ event, data: JSON.parse(data) });
-        }
-    }
-    return frames;
-}
 
 function createMockReq(): IncomingMessage {
     return new PassThrough() as unknown as IncomingMessage;

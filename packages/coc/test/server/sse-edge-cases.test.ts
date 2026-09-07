@@ -6,6 +6,7 @@
  * Sections 5 (replay) is covered by sse-replay.test.ts.
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -42,25 +43,6 @@ function createMockRes(): ServerResponse & { _chunks: string[]; _ended: boolean;
         }),
     };
     return res as unknown as ServerResponse & { _chunks: string[]; _ended: boolean; _statusCode: number };
-}
-
-function parseSSEFrames(chunks: string[]): Array<{ event: string; data: any }> {
-    const raw = chunks.join('');
-    const frames: Array<{ event: string; data: any }> = [];
-    const parts = raw.split('\n\n').filter(Boolean);
-    for (const part of parts) {
-        const lines = part.split('\n');
-        let event = '';
-        let data = '';
-        for (const line of lines) {
-            if (line.startsWith('event: ')) { event = line.slice(7); }
-            if (line.startsWith('data: ')) { data = line.slice(6); }
-        }
-        if (event && data) {
-            frames.push({ event, data: JSON.parse(data) });
-        }
-    }
-    return frames;
 }
 
 // ============================================================================

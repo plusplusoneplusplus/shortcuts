@@ -5,6 +5,7 @@
  * - POST /api/admin/storage/import-directory
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
@@ -88,18 +89,6 @@ function makeProcess(id: string, workspaceId: string): { index: ProcessIndexEntr
         },
         stored: { workspaceId, process: serialized },
     };
-}
-
-function parseSSEEvents(body: string): any[] {
-    const events: any[] = [];
-    for (const line of body.split('\n')) {
-        if (line.startsWith('data: ')) {
-            try {
-                events.push(JSON.parse(line.slice(6)));
-            } catch { /* ignore */ }
-        }
-    }
-    return events;
 }
 
 // ============================================================================
@@ -299,7 +288,7 @@ describe('Admin Directory Import API', () => {
             expect(importRes.status).toBe(200);
             expect(importRes.headers['content-type']).toContain('text/event-stream');
 
-            const events = parseSSEEvents(importRes.body);
+            const events = parseSSEFrames([importRes.body]).map(frame => frame.data);
             const doneEvent = events.find(e => e.type === 'done');
             expect(doneEvent).toBeDefined();
             expect(doneEvent.success).toBe(true);
@@ -331,7 +320,7 @@ describe('Admin Directory Import API', () => {
             );
 
             expect(importRes.status).toBe(200);
-            const events = parseSSEEvents(importRes.body);
+            const events = parseSSEFrames([importRes.body]).map(frame => frame.data);
             const doneEvent = events.find(e => e.type === 'done');
             expect(doneEvent).toBeDefined();
             expect(doneEvent.success).toBe(true);

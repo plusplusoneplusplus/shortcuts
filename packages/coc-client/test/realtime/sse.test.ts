@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CocClient } from '../../src';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import ts from 'typescript';
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -26,6 +29,37 @@ class FakeEventSource {
 }
 
 describe('ProcessSseClient', () => {
+  it('subscribes to every named event emitted by the server', () => {
+    const server = readFileSync(resolve(__dirname, '../../../coc/src/server/streaming/sse-handler.ts'), 'utf8');
+    const emitted = new Set<string>();
+    const sourceFile = ts.createSourceFile('sse-handler.ts', server, ts.ScriptTarget.Latest, true);
+    function collectEvents(node: ts.Node): void {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'writeNamedEvent') {
+        const name = node.arguments[1];
+        // A dynamic event name needs explicit coverage rather than silently evading parity.
+        expect(name && ts.isStringLiteralLike(name), 'Server event names must be statically enumerable').toBe(true);
+        if (name && ts.isStringLiteralLike(name)) emitted.add(name.text);
+      }
+      ts.forEachChild(node, collectEvents);
+    }
+    collectEvents(sourceFile);
+    expect(emitted.size).toBeGreaterThan(0);
+    FakeEventSource.instances = [];
+    const onTypedEvent = vi.fn();
+    const client = new CocClient({ EventSource: FakeEventSource });
+    const stream = client.processes.stream('p1', { onEvent: vi.fn(), onTypedEvent });
+    const source = FakeEventSource.instances[0];
+    expect([...source.listeners.keys()].sort()).toEqual([...emitted].sort());
+    for (const event of emitted) {
+      if (event === 'done') continue;
+      const message = { data: '{"value":1}' } as MessageEvent;
+      source.listeners.get(event)!(message);
+      expect(onTypedEvent).toHaveBeenLastCalledWith(event, { value: 1 }, message);
+    }
+    stream.close();
+    expect(source.listeners.size).toBe(0);
+  });
+
   it('dispatches stream events and closes on done', () => {
     FakeEventSource.instances = [];
     const onEvent = vi.fn();

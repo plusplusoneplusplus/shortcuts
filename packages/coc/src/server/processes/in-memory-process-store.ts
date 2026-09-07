@@ -3,23 +3,13 @@
  * Supports event emission for SSE streaming and process tracking.
  */
 
-import { EventEmitter } from 'events';
-import type { ProcessStore, AIProcess, ProcessChangeCallback, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
+import { createProcessEventBus } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, AIProcess, ProcessChangeCallback } from '@plusplusoneplusplus/forge';
 import type { ConversationTurn, TimelineItem } from '@plusplusoneplusplus/forge';
 
 export function createStubStore(): ProcessStore {
     const processes = new Map<string, AIProcess>();
-    const emitters = new Map<string, EventEmitter>();
     let changeCallback: ProcessChangeCallback | undefined;
-
-    function getOrCreateEmitter(id: string): EventEmitter {
-        let emitter = emitters.get(id);
-        if (!emitter) {
-            emitter = new EventEmitter();
-            emitters.set(id, emitter);
-        }
-        return emitter;
-    }
 
     const store: ProcessStore = {
         addProcess: async (proc) => {
@@ -58,26 +48,7 @@ export function createStubStore(): ProcessStore {
         getProcessCount: async () => processes.size,
         getProcessIds: async () => Array.from(processes.keys()),
         getStorageStats: async () => ({ totalProcesses: 0, totalWorkspaces: 0, totalWikis: 0, storageSize: 0 }),
-        onProcessOutput: (id, callback) => {
-            const emitter = getOrCreateEmitter(id);
-            const listener = (event: ProcessOutputEvent) => callback(event);
-            emitter.on('output', listener);
-            return () => { emitter.removeListener('output', listener); };
-        },
-        emitProcessOutput: (id, content) => {
-            const emitter = getOrCreateEmitter(id);
-            emitter.emit('output', { type: 'chunk', content });
-        },
-        emitProcessComplete: (id, status, duration) => {
-            const emitter = emitters.get(id);
-            if (!emitter) return;
-            emitter.emit('output', { type: 'complete', status, duration });
-            emitters.delete(id);
-        },
-        emitProcessEvent: (id, event) => {
-            const emitter = getOrCreateEmitter(id);
-            emitter.emit('output', event);
-        },
+        ...createProcessEventBus(),
         appendConversationTurn: async (processId, makeTurn, options) => {
             const existing = processes.get(processId);
             if (!existing) return undefined;

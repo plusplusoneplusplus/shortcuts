@@ -6,6 +6,7 @@
  * closing one connection (simulating a chat switch) does not affect the other.
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -52,25 +53,6 @@ function makeTurn(role: 'user' | 'assistant', content: string): ConversationTurn
         timestamp: new Date('2026-01-01T00:00:00Z'),
         timeline: [],
     };
-}
-
-function parseSSEFrames(chunks: string[]): Array<{ event: string; data: string }> {
-    const raw = chunks.join('');
-    const frames: Array<{ event: string; data: string }> = [];
-    const parts = raw.split('\n\n').filter(Boolean);
-    for (const part of parts) {
-        const lines = part.split('\n');
-        let event = '';
-        let data = '';
-        for (const line of lines) {
-            if (line.startsWith('event: ')) { event = line.slice(7); }
-            if (line.startsWith('data: ')) { data = line.slice(6); }
-        }
-        if (event && data) {
-            frames.push({ event, data });
-        }
-    }
-    return frames;
 }
 
 // ============================================================================
@@ -122,10 +104,10 @@ describe('SSE concurrent sessions & chat-switch isolation', () => {
 
         expect(snapshotA).toBeDefined();
         expect(snapshotB).toBeDefined();
-        expect(JSON.parse(snapshotA!.data).turns).toHaveLength(2);
-        expect(JSON.parse(snapshotB!.data).turns).toHaveLength(1);
-        expect(JSON.parse(snapshotA!.data).turns[0].content).toBe('Hello from A');
-        expect(JSON.parse(snapshotB!.data).turns[0].content).toBe('Hello from B');
+        expect(snapshotA!.data.turns).toHaveLength(2);
+        expect(snapshotB!.data.turns).toHaveLength(1);
+        expect(snapshotA!.data.turns[0].content).toBe('Hello from A');
+        expect(snapshotB!.data.turns[0].content).toBe('Hello from B');
     });
 
     it('closing SSE connection A (chat switch) does not affect connection B live stream', async () => {
@@ -159,8 +141,8 @@ describe('SSE concurrent sessions & chat-switch isolation', () => {
         const framesA = parseSSEFrames(resA._chunks);
         const framesB = parseSSEFrames(resB._chunks);
 
-        const chunksA = framesA.filter(f => f.event === 'chunk').map(f => JSON.parse(f.data).content);
-        const chunksB = framesB.filter(f => f.event === 'chunk').map(f => JSON.parse(f.data).content);
+        const chunksA = framesA.filter(f => f.event === 'chunk').map(f => f.data.content);
+        const chunksB = framesB.filter(f => f.event === 'chunk').map(f => f.data.content);
 
         expect(chunksA).toEqual(['A-before-switch']);                        // stopped at switch
         expect(chunksB).toEqual(['B-before-switch', 'B-after-switch']);      // unaffected
@@ -194,8 +176,8 @@ describe('SSE concurrent sessions & chat-switch isolation', () => {
         // B should have 2-turn snapshot
         const snapshotB = parseSSEFrames(resB._chunks).find(f => f.event === 'conversation-snapshot');
         expect(snapshotB).toBeDefined();
-        expect(JSON.parse(snapshotB!.data).turns).toHaveLength(2);
-        expect(JSON.parse(snapshotB!.data).turns[1].content).toBe('B answer');
+        expect(snapshotB!.data.turns).toHaveLength(2);
+        expect(snapshotB!.data.turns[1].content).toBe('B answer');
 
         // A is closed — no more writes after 'close'
         callbackA?.({ type: 'chunk', content: 'ghost-chunk' });

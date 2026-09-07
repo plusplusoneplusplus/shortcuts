@@ -3,7 +3,7 @@
  * including getProcessCount.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createStubStore } from '../../src/server/processes/in-memory-process-store';
 import type { AIProcess, AIProcessStatus } from '@plusplusoneplusplus/forge';
 
@@ -20,6 +20,29 @@ function makeProcess(id: string, overrides?: Partial<AIProcess>): AIProcess {
 }
 
 describe('createStubStore', () => {
+    it('keeps output subscriptions store-local and releases them on completion', () => {
+        const first = createStubStore();
+        const second = createStubStore();
+        const listener = vi.fn();
+        const unsubscribe = first.onProcessOutput('p', listener);
+        second.emitProcessOutput('p', 'other store');
+        expect(listener).not.toHaveBeenCalled();
+        first.emitProcessOutput('p', 'hello');
+        first.emitProcessEvent('p', { type: 'chunk', content: 'custom' });
+        first.emitProcessComplete('p', 'completed', '1s');
+        first.emitProcessOutput('p', 'after completion');
+        expect(listener.mock.calls.map(([event]) => event)).toEqual([
+            { type: 'chunk', content: 'hello' },
+            { type: 'chunk', content: 'custom' },
+            { type: 'complete', status: 'completed', duration: '1s' },
+        ]);
+        const next = vi.fn();
+        first.onProcessOutput('p', next);
+        unsubscribe();
+        first.emitProcessOutput('p', 'next turn');
+        expect(next).toHaveBeenCalledTimes(1);
+    });
+
     it('getProcessCount returns 0 for empty store', async () => {
         const store = createStubStore();
         expect(await store.getProcessCount()).toBe(0);

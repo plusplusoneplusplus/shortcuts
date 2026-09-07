@@ -70,6 +70,7 @@ function makeIncomingMessage(statusCode: number, headers: Record<string, string>
     msg.statusCode = statusCode;
     msg.headers = headers;
     msg.resume = vi.fn();
+    msg.setEncoding = vi.fn();
     return msg;
 }
 
@@ -499,6 +500,17 @@ describe('listMcpTools', () => {
             const result = await listMcpTools({ type: 'http', url: 'http://localhost:8080/mcp' });
             expect(result.success).toBe(true);
             expect(result.tools).toEqual([{ name: 'x' }]);
+        });
+
+        it('accepts CRLF, comments, retry lines, multiline batches and an unterminated final frame', async () => {
+            setupHttpSequence([
+                { headers: { 'content-type': 'text/event-stream' }, body: ':ok\r\nretry: 100\r\n\r\ndata: bad json\r\n\r\ndata: {"id":1,"result":{"protocolVersion":"2024-11-05"}}' },
+                { status: 202, body: '' },
+                { headers: { 'content-type': 'text/event-stream' }, body: 'id: ignored\r\n\r\ndata: [null, false,\r\ndata: {"id":2,"result":{"tools":[{"name":"search","description":"搜索 😀"}]}}]\r\n\r\n' },
+            ]);
+            const result = await listMcpTools({ type: 'http', url: 'http://localhost:8080/mcp' });
+            expect(result.success).toBe(true);
+            expect(result.tools).toEqual([{ name: 'search', description: '搜索 😀' }]);
         });
 
         it('returns a per-server error on HTTP 500', async () => {

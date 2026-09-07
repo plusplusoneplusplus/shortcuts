@@ -3,6 +3,7 @@
  * for real-time per-item progress during pipeline map execution.
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -14,30 +15,6 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 // ============================================================================
 // Helpers
 // ============================================================================
-
-interface SSEEvent {
-    event: string;
-    data: unknown;
-}
-
-function parseSSEFrames(chunks: string[]): SSEEvent[] {
-    const raw = chunks.join('');
-    const frames: SSEEvent[] = [];
-    const parts = raw.split('\n\n').filter(Boolean);
-    for (const part of parts) {
-        const lines = part.split('\n');
-        let event = '';
-        let data = '';
-        for (const line of lines) {
-            if (line.startsWith('event: ')) { event = line.slice(7); }
-            if (line.startsWith('data: ')) { data = line.slice(6); }
-        }
-        if (event && data) {
-            frames.push({ event, data: JSON.parse(data) });
-        }
-    }
-    return frames;
-}
 
 function createMockReq(): IncomingMessage {
     const emitter = new PassThrough();

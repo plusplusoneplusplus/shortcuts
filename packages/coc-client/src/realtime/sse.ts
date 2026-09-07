@@ -22,6 +22,11 @@ const PROCESS_STREAM_EVENT_TYPES = [
   'message-steering',
   'pending-message-added',
   'hook-step',
+  'mcp-oauth-required',
+  'mcp-oauth-completed',
+  'ralph-grill-planning',
+  'canvas-updated',
+  'warm_status',
 ] as const;
 
 export class ProcessSseClient {

@@ -63,6 +63,9 @@
       "templates": [
         "dist/templates/index.d.ts"
       ],
+      "sse": [
+        "dist/sse/index.d.ts"
+      ],
       "connectors": [
         "dist/connectors/index.d.ts"
       ]
@@ -90,6 +93,7 @@
     "./workflow": "./dist/workflow/index.js",
     "./memory": "./dist/memory/index.js",
     "./templates": "./dist/templates/index.js",
+    "./sse": "./dist/sse/index.js",
     "./connectors": "./dist/connectors/index.js"
   },
   "files": [

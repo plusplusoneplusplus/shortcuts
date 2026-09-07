@@ -6,6 +6,7 @@
  * Loaded lazily in DataOperationsPanel via React.lazy.
  */
 
+import { readSseStream } from '../utils/readSseStream';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button, Spinner } from '../ui';
 import { Dialog } from '../ui/Dialog';
@@ -159,38 +160,24 @@ function DirectoryImportSection() {
                 return;
             }
 
-            const reader = res.body!.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        if (data.type === 'done') {
-                            if (data.success) {
-                                setSummary(data.summary);
-                                setPhase('done');
-                            } else {
-                                setError(data.error ?? 'Import failed');
-                                setPhase('error');
-                            }
-                        } else if (data.type === 'error') {
-                            setError(data.message ?? 'Import error');
+            for await (const frame of readSseStream(res.body!)) {
+                try {
+                    const data = JSON.parse(frame.data);
+                    if (data.type === 'done') {
+                        if (data.success) {
+                            setSummary(data.summary);
+                            setPhase('done');
+                        } else {
+                            setError(data.error ?? 'Import failed');
                             setPhase('error');
-                        } else if (data.message) {
-                            setLogs(prev => [...prev, data.message]);
                         }
-                    } catch { /* ignore malformed */ }
-                }
+                    } else if (data.type === 'error') {
+                        setError(data.message ?? 'Import error');
+                        setPhase('error');
+                    } else if (data.message) {
+                        setLogs(prev => [...prev, data.message]);
+                    }
+                } catch { /* ignore malformed */ }
             }
         } catch (err: unknown) {
             setError(getSpaCocClientErrorMessage(err, 'Network error'));
@@ -450,25 +437,11 @@ export default function StorageSection() {
                 return;
             }
 
-            const reader = res.body!.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        handleSSEEvent(data);
-                    } catch { /* ignore malformed */ }
-                }
+            for await (const frame of readSseStream(res.body!)) {
+                try {
+                    const data = JSON.parse(frame.data);
+                    handleSSEEvent(data);
+                } catch { /* ignore malformed */ }
             }
         } catch (err: unknown) {
             if (err instanceof DOMException && err.name === 'AbortError') {

@@ -6,6 +6,7 @@
  * the deep-wiki standalone handler (`dw-ask-handler.ts`).
  */
 
+import { writeDataEvent as sendSSE, writeSseHeaders } from '../shared/sse-writer';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
@@ -116,11 +117,7 @@ export async function handleAskCore(
     context: ResolvedAskContext,
 ): Promise<void> {
     // Set SSE headers (CORS is handled by the router/middleware layer)
-    res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-    });
+    writeSseHeaders(res);
 
     try {
         const retrieved = context.contextBuilder.retrieve(askReq.question);
@@ -257,17 +254,7 @@ export function buildAskPrompt(
  * Send a Server-Sent Event.
  * Returns false if the response stream is no longer writable (client disconnected).
  */
-export function sendSSE(res: ServerResponse, data: Record<string, unknown>): boolean {
-    if (res.destroyed || res.writableEnded) {
-        return false;
-    }
-    try {
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-        return true;
-    } catch {
-        return false;
-    }
-}
+export { writeDataEvent as sendSSE } from '../shared/sse-writer';
 
 export function readBody(req: IncomingMessage): Promise<string> {
     return new Promise((resolve, reject) => {

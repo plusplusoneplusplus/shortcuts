@@ -332,6 +332,8 @@ export {
     ensureDataDir,
 } from './file-process-store';
 
+export { createProcessEventBus, type ProcessEventBus } from './process-event-bus';
+
 export { SqliteProcessStore, SqliteProcessStoreOptions } from './sqlite-process-store';
 export { SqliteQueueStore, SqliteQueueStoreOptions } from './sqlite-queue-store';
 export {
