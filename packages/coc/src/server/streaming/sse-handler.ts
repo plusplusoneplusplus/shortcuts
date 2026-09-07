@@ -4,6 +4,7 @@
  * as they arrive, followed by a status + done event on completion.
  */
 
+import { writeNamedEvent, writeSseHeaders } from '../shared/sse-writer';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProcessStore, ProcessOutputEvent } from '@plusplusoneplusplus/forge';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
@@ -181,12 +182,7 @@ export async function handleProcessStream(
     }
 
     // 2. Set SSE headers
-    res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-    });
+    writeSseHeaders(res);
     res.flushHeaders();
     getServerLogger().debug({ processId, warmOnly }, 'SSE stream started');
 
@@ -212,18 +208,18 @@ export async function handleProcessStream(
     // authoritative signal that the user still owes an answer.
     if (process.pendingAskUser && process.pendingAskUser.length > 0) {
         for (const question of process.pendingAskUser) {
-            sendEvent(res, 'ask-user', question);
+            writeNamedEvent(res, 'ask-user', question);
         }
     }
 
     // 5. If already completed/failed/cancelled, send final status + close
     if (process.status !== 'running' && process.status !== 'queued') {
-        sendEvent(res, 'status', {
+        writeNamedEvent(res, 'status', {
             status: process.status,
             result: process.result,
             error: process.error,
         });
-        sendEvent(res, 'done', { processId });
+        writeNamedEvent(res, 'done', { processId });
         res.end();
         getServerLogger().debug({ processId, eventCount: 0 }, 'SSE stream ended');
         return;
@@ -261,9 +257,9 @@ export async function handleProcessStream(
         const ralphGrillPlanning = (event as { ralphGrillPlanning?: RalphGrillPlanningProgress }).ralphGrillPlanning;
         eventCount++;
         if (event.type === 'chunk') {
-            sendEvent(res, 'chunk', { content: event.content });
+            writeNamedEvent(res, 'chunk', { content: event.content });
         } else if (event.type === 'tool-start') {
-            sendEvent(res, 'tool-start', {
+            writeNamedEvent(res, 'tool-start', {
                 turnIndex: event.turnIndex,
                 toolCallId: event.toolCallId,
                 parentToolCallId: event.parentToolCallId,
@@ -271,7 +267,7 @@ export async function handleProcessStream(
                 parameters: event.parameters,
             });
         } else if (event.type === 'tool-complete') {
-            sendEvent(res, 'tool-complete', {
+            writeNamedEvent(res, 'tool-complete', {
                 turnIndex: event.turnIndex,
                 toolCallId: event.toolCallId,
                 parentToolCallId: event.parentToolCallId,
@@ -280,7 +276,7 @@ export async function handleProcessStream(
                 result: event.result,
             });
         } else if (event.type === 'tool-failed') {
-            sendEvent(res, 'tool-failed', {
+            writeNamedEvent(res, 'tool-failed', {
                 turnIndex: event.turnIndex,
                 toolCallId: event.toolCallId,
                 parentToolCallId: event.parentToolCallId,
@@ -289,25 +285,25 @@ export async function handleProcessStream(
                 error: event.error,
             });
         } else if (event.type === 'permission-request') {
-            sendEvent(res, 'permission-request', {
+            writeNamedEvent(res, 'permission-request', {
                 turnIndex: event.turnIndex,
                 permissionId: event.permissionId,
                 kind: event.kind,
                 description: event.description,
             });
         } else if (event.type === 'pipeline-phase') {
-            sendEvent(res, 'workflow-phase', event.pipelinePhase);
+            writeNamedEvent(res, 'workflow-phase', event.pipelinePhase);
         } else if (event.type === 'pipeline-progress') {
-            sendEvent(res, 'workflow-progress', event.pipelineProgress);
+            writeNamedEvent(res, 'workflow-progress', event.pipelineProgress);
         } else if (event.type === 'item-process') {
-            sendEvent(res, 'item-process', event.itemProcess);
+            writeNamedEvent(res, 'item-process', event.itemProcess);
         } else if (event.type === 'suggestions') {
-            sendEvent(res, 'suggestions', {
+            writeNamedEvent(res, 'suggestions', {
                 suggestions: event.suggestions,
                 turnIndex: event.turnIndex,
             });
         } else if (event.type === 'token-usage') {
-            sendEvent(res, 'token-usage', {
+            writeNamedEvent(res, 'token-usage', {
                 turnIndex: event.turnIndex,
                 tokenUsage: event.tokenUsage,
                 cumulativeTokenUsage: event.cumulativeTokenUsage,
@@ -319,55 +315,55 @@ export async function handleProcessStream(
                 ...(event.sessionConversationTokens != null ? { sessionConversationTokens: event.sessionConversationTokens } : {}),
             });
         } else if (event.type === 'message-queued') {
-            sendEvent(res, 'message-queued', {
+            writeNamedEvent(res, 'message-queued', {
                 turnIndex: event.turnIndex,
                 deliveryMode: event.deliveryMode,
                 queuePosition: event.queuePosition,
                 ...(event.optimisticId !== undefined ? { optimisticId: event.optimisticId } : {}),
             });
         } else if (event.type === 'message-steering') {
-            sendEvent(res, 'message-steering', {
+            writeNamedEvent(res, 'message-steering', {
                 turnIndex: event.turnIndex,
                 ...(event.optimisticId !== undefined ? { optimisticId: event.optimisticId } : {}),
             });
         } else if (event.type === 'pending-message-added') {
-            sendEvent(res, 'pending-message-added', {
+            writeNamedEvent(res, 'pending-message-added', {
                 pendingMessage: event.pendingMessage,
             });
         } else if (event.type === 'ask-user' && event.askUser) {
-            sendEvent(res, 'ask-user', event.askUser);
+            writeNamedEvent(res, 'ask-user', event.askUser);
         } else if (event.type === 'hook-step') {
-            sendEvent(res, 'hook-step', { hookStep: event.hookStep });
+            writeNamedEvent(res, 'hook-step', { hookStep: event.hookStep });
         } else if (event.type === 'background-tasks') {
             sentLiveBackgroundTasks = true;
-            sendEvent(res, 'background-tasks', {
+            writeNamedEvent(res, 'background-tasks', {
                 backgroundAgents: event.backgroundAgents,
                 backgroundShells: event.backgroundShells,
                 backgroundTotalActive: event.backgroundTotalActive,
                 backgroundWaitingForDrain: event.backgroundWaitingForDrain,
             });
         } else if (event.type === 'mcp-oauth-required' && event.mcpOAuth) {
-            sendEvent(res, 'mcp-oauth-required', event.mcpOAuth);
+            writeNamedEvent(res, 'mcp-oauth-required', event.mcpOAuth);
         } else if (event.type === 'mcp-oauth-completed' && event.mcpOAuth) {
-            sendEvent(res, 'mcp-oauth-completed', event.mcpOAuth);
+            writeNamedEvent(res, 'mcp-oauth-completed', event.mcpOAuth);
         } else if (eventType === 'ralph-grill-planning' && ralphGrillPlanning) {
-            sendEvent(res, 'ralph-grill-planning', ralphGrillPlanning);
+            writeNamedEvent(res, 'ralph-grill-planning', ralphGrillPlanning);
         } else if (eventType === 'canvas-updated') {
             const canvasUpdate = (event as { canvasUpdate?: CanvasUpdatedPayload }).canvasUpdate;
             if (canvasUpdate) {
-                sendEvent(res, 'canvas-updated', canvasUpdate);
+                writeNamedEvent(res, 'canvas-updated', canvasUpdate);
             }
         } else if (eventType === 'warm-status') {
             const warmStatus = (event as { warmStatus?: WarmStatus }).warmStatus;
             if (warmStatus) {
-                sendEvent(res, 'warm_status', { status: warmStatus } satisfies WarmStatusPayload);
+                writeNamedEvent(res, 'warm_status', { status: warmStatus } satisfies WarmStatusPayload);
             }
         } else if (event.type === 'complete') {
-            sendEvent(res, 'status', {
+            writeNamedEvent(res, 'status', {
                 status: event.status,
                 duration: event.duration,
             });
-            sendEvent(res, 'done', { processId });
+            writeNamedEvent(res, 'done', { processId });
             cleanup();
             res.end();
         }
@@ -382,7 +378,7 @@ export async function handleProcessStream(
     if (!sentLiveBackgroundTasks) {
         const snapshot = backgroundTasks.get(processId);
         if (snapshot) {
-            sendEvent(res, 'background-tasks', {
+            writeNamedEvent(res, 'background-tasks', {
                 backgroundAgents: snapshot.backgroundAgents,
                 backgroundShells: snapshot.backgroundShells,
                 backgroundTotalActive: snapshot.backgroundTotalActive,
@@ -392,11 +388,11 @@ export async function handleProcessStream(
     }
 
     // 7a. Immediate heartbeat signals the client that the stream is ready
-    sendEvent(res, 'heartbeat', {});
+    writeNamedEvent(res, 'heartbeat', {});
 
     // 7b. Periodic heartbeat to detect stale connections (every 15s)
     const heartbeat = setInterval(() => {
-        sendEvent(res, 'heartbeat', {});
+        writeNamedEvent(res, 'heartbeat', {});
     }, 15_000);
 
     // 8. Cleanup on client disconnect
@@ -425,7 +421,7 @@ function streamWarmStatusOnly(
     const workingDirectory = process.workingDirectory;
 
     const sendWarmStatus = (status: WarmStatus) => {
-        sendEvent(res, 'warm_status', { status } satisfies WarmStatusPayload);
+        writeNamedEvent(res, 'warm_status', { status } satisfies WarmStatusPayload);
     };
 
     // Order matters (closes two gaps):
@@ -463,17 +459,12 @@ function streamWarmStatusOnly(
 
     // Immediate heartbeat signals the client the stream is ready; periodic
     // heartbeats keep the connection alive and detect stale sockets.
-    sendEvent(res, 'heartbeat', {});
+    writeNamedEvent(res, 'heartbeat', {});
     const heartbeat = setInterval(() => {
-        sendEvent(res, 'heartbeat', {});
+        writeNamedEvent(res, 'heartbeat', {});
     }, 15_000);
 
     req.on('close', cleanup);
-}
-
-/** Write a single SSE event frame. */
-function sendEvent(res: ServerResponse, event: string, data: unknown): void {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
 /**
@@ -496,7 +487,7 @@ function replayConversationTurns(res: ServerResponse, process: AIProcess): void 
     const turns = process.conversationTurns;
     if (!turns || turns.length === 0) { return; }
 
-    sendEvent(res, 'conversation-snapshot', {
+    writeNamedEvent(res, 'conversation-snapshot', {
         turns,
         sessionTokenLimit: process.tokenLimit,
         sessionCurrentTokens: process.currentTokens,

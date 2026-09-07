@@ -784,15 +784,30 @@ all have their own `references/*.md`.
   and the ask→autopilot transition note ride the outgoing user turn instead
   (`src/server/executors/chat-mode-directive.ts`, prepended on every turn); the
   shared `instructions.md` stays in the system prompt via
-  `withBaseRepoInstructions`. The auto-folder save-location block is passed
-  unconditionally — it is inert in autopilot, and gating it on the mode would
-  reintroduce the same churn. `ChatBaseExecutor.buildFirstTurnSystemMessage` is
+  `withBaseRepoInstructions`. `ChatBaseExecutor.buildFirstTurnSystemMessage` is
   the single first-turn builder for both the ask and autopilot executors so
   whichever one opens a chat produces the same prefix the follow-up path
   reproduces. `test/server/executors/chat-turn-system-message.test.ts` is the
   fence. Known remaining divergence: autopilot first turns still opt out of
   Memory V2, which costs nothing while the Memory V2 recall block is rebuilt
   per turn anyway.
+- **Plan save destination:** the `notes/Plans` root and its folder listing ride
+  the ask-mode user directive, nested inside `<coc-read-only-mode>` behind "If
+  the user asks you to save a plan:" — it explains the plan-file exception those
+  rules already carve out, and it is workspace state that would churn the cached
+  prefix if it sat in the system message. `buildChatModeDirective` takes an
+  optional `planSaveContext`; folders are sorted before rendering so directory
+  enumeration order alone never counts as drift. `suppressesPlanSaveGuidance`
+  (auto-folder-utils) is the single eligibility predicate for both the first-turn
+  and follow-up paths: artifact-bound chats (note, commit, PR) and Ralph grilling
+  get no destination, because each owns its own output contract. Follow-ups pass
+  `checkPlanContextDrift: true` to `shouldInjectChatModeDirective`, which
+  re-injects once when the root, the folder list, or eligibility changes; the
+  display side omits the flag and compares against the guidance-stripped rules so
+  an unresolved destination is never read as a removed one. The transcript's Chat
+  mode disclosure prefers the turn's recorded `chatModeContext`, projected by
+  `projectChatModeContextForDisplay` down to the read-only section, and falls back
+  to the block extracted from stored content.
 - **Codex `ask_user` discovery:** Codex models in `code_mode_only` (e.g.
   `gpt-5.6-sol`) are shown no bare top-level `ask_user` — CoC's MCP tools are
   deferred behind `functions.exec` under `mcp__coc_llm_tools__`, so a skill that

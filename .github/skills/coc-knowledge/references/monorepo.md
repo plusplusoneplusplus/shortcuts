@@ -91,7 +91,9 @@ The plain-Node server and the Electron desktop share one hoisted `node_modules`,
 
 **Repo-scoped data:** all runtime data specific to one repository lives under `~/.coc/repos/<workspaceId>/`, resolved with `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/`. Do **not** add new top-level directories under `~/.coc/` for per-repo data.
 
-**Canonical origin IDs:** `resolveCanonicalOrigin()` / `resolveCanonicalOriginId()` from `@plusplusoneplusplus/forge/git` derive `gh_<owner>_<repo>` (GitHub), `ado_<org>_<project>` (Azure DevOps), `git_<remoteHash>` (unknown remotes), and `local_<workspaceId>` (no remote).
+**Canonical origin IDs:** `resolveCanonicalOrigin()` / `resolveCanonicalOriginId()` derive `gh_<owner>_<repo>` (GitHub), `ado_<org>_<project>` (Azure DevOps), `git_<remoteHash>` (unknown remotes), and `local_<workspaceId>` (no remote). Both are synchronous and pure, and live in `packages/forge/src/git/origin-id.ts` — reachable as `@plusplusoneplusplus/forge/git` (Node) and `@plusplusoneplusplus/forge/git/origin-id` (browser-safe). The SPA's `repos/originScope.ts` is a thin adapter over the same module, so persisted origin keys agree byte-for-byte; hashing uses the portable `git/sha256.ts` rather than Node `crypto` so the browser gets the same digest synchronously. The SPA adapter keeps one deliberate deviation: an empty workspace ID with no remote yields the `local_` placeholder instead of throwing.
+
+`computeRemoteHash()` in `git/remote.ts` is a *separate*, historical, protocol-sensitive hash — not the canonical origin hash. Do not merge the two.
 
 **Creating work items:** work items are JSON files in `~/.coc/repos/<originId>/work-items/` keyed by canonical origin ID, not `.plan.md` files in `tasks/`. Same-origin workspace directories migrate into the canonical origin directory on first store access. **Always use the REST API** while the server runs — `POST http://localhost:4000/api/workspaces/<workspaceId>/work-items` with `{ title, description, priority, tags, source }` — and never write work-item JSON directly, because the server uses an atomic write-queue.
 

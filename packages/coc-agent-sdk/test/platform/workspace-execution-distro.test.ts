@@ -29,7 +29,7 @@ import {
     resolveWorkspaceExecutionContextAsync,
     translatePathForHostFilesystemAsync,
     warmWslDistroCache,
-} from '../../src/utils/workspace-execution';
+} from '../../src/platform/workspace-execution';
 
 const WSL_LIST_OUTPUT = `
   NAME            STATE           VERSION

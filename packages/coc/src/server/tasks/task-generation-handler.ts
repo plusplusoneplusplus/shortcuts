@@ -7,9 +7,9 @@
  *   POST /api/workspaces/:id/tasks/discover  — Discover related items for a feature
  */
 
+import { writeNamedEvent, writeSseHeaders } from '../shared/sse-writer';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { ServerResponse } from 'http';
 import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ChatPayload } from './task-types';
 import {
@@ -35,26 +35,6 @@ import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { resolveTaskRoot } from './task-root-resolver';
 import { isValidTaskFolder } from '../executors/auto-folder-utils';
 import { validateAndParseTask } from '../routes/queue-shared';
-
-// ============================================================================
-// SSE Helpers
-// ============================================================================
-
-/** Write SSE headers to the response. */
-function writeSSEHeaders(res: ServerResponse): void {
-    res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-    });
-    res.flushHeaders();
-}
-
-/** Send a single SSE event frame. */
-function sendEvent(res: ServerResponse, event: string, data: unknown): void {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
 
 // ============================================================================
 // Route Registration
@@ -153,8 +133,9 @@ export function registerTaskGenerationRoutes(
             });
 
             // Switch to SSE streaming
-            writeSSEHeaders(res);
-            sendEvent(res, 'progress', { phase: 'generating', message: 'Sending prompt to AI...' });
+            writeSseHeaders(res);
+            res.flushHeaders();
+            writeNamedEvent(res, 'progress', { phase: 'generating', message: 'Sending prompt to AI...' });
 
             let clientDisconnected = false;
             req.on('close', () => { clientDisconnected = true; });
@@ -162,13 +143,13 @@ export function registerTaskGenerationRoutes(
             try {
                 const available = await aiService.isAvailable();
                 if (!available.available) {
-                    sendEvent(res, 'error', { message: 'AI service unavailable' });
-                    sendEvent(res, 'done', { success: false });
+                    writeNamedEvent(res, 'error', { message: 'AI service unavailable' });
+                    writeNamedEvent(res, 'done', { success: false });
                     res.end();
                     return;
                 }
 
-                sendEvent(res, 'progress', { phase: 'generating', message: 'AI is generating task...' });
+                writeNamedEvent(res, 'progress', { phase: 'generating', message: 'AI is generating task...' });
 
                 const result = await aiService.sendMessage({
                     prompt: aiPrompt,
@@ -179,7 +160,7 @@ export function registerTaskGenerationRoutes(
                     onPermissionRequest: approveAllPermissions,
                     onStreamingChunk: (chunk: string) => {
                         if (!clientDisconnected) {
-                            sendEvent(res, 'chunk', { content: chunk });
+                            writeNamedEvent(res, 'chunk', { content: chunk });
                         }
                     },
                 });
@@ -190,8 +171,8 @@ export function registerTaskGenerationRoutes(
                 }
 
                 if (!result.success) {
-                    sendEvent(res, 'error', { message: result.error || 'AI generation failed' });
-                    sendEvent(res, 'done', { success: false });
+                    writeNamedEvent(res, 'error', { message: result.error || 'AI generation failed' });
+                    writeNamedEvent(res, 'done', { success: false });
                     res.end();
                     return;
                 }
@@ -200,8 +181,8 @@ export function registerTaskGenerationRoutes(
                 const searchRoot = isAutoFolder ? tasksBase : resolvedTarget;
                 const filePath = parseCreatedFilePath(result.response, searchRoot);
 
-                sendEvent(res, 'progress', { phase: 'complete', message: 'Task generated' });
-                sendEvent(res, 'done', {
+                writeNamedEvent(res, 'progress', { phase: 'complete', message: 'Task generated' });
+                writeNamedEvent(res, 'done', {
                     success: true,
                     filePath: filePath || null,
                     content: result.response || '',
@@ -212,11 +193,11 @@ export function registerTaskGenerationRoutes(
                     const message = error instanceof Error ? error.message : String(error);
                     // Timeout → 504
                     if (message.toLowerCase().includes('timeout')) {
-                        sendEvent(res, 'error', { message: 'AI request timed out' });
+                        writeNamedEvent(res, 'error', { message: 'AI request timed out' });
                     } else {
-                        sendEvent(res, 'error', { message });
+                        writeNamedEvent(res, 'error', { message });
                     }
-                    sendEvent(res, 'done', { success: false });
+                    writeNamedEvent(res, 'done', { success: false });
                     res.end();
                 }
             }

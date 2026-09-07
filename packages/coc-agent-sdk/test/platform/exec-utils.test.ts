@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { exec } from 'child_process';
-import { execAsync } from '../../src/utils/exec-utils';
+import { execAsync } from '../../src/platform/exec-utils';
 
 vi.mock('child_process', () => ({
     exec: vi.fn(),

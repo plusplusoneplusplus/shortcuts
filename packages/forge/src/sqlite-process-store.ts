@@ -7,7 +7,7 @@
  */
 
 import * as fs from 'fs';
-import { EventEmitter } from 'events';
+import { createProcessEventBus } from './process-event-bus';
 import Database from 'better-sqlite3';
 import type { Statement } from 'better-sqlite3';
 
@@ -624,7 +624,7 @@ function rowToWiki(row: WikiRow): WikiInfo {
 export class SqliteProcessStore implements ProcessStore {
     private readonly db: Database.Database;
     private readonly dbPath: string;
-    private readonly emitters = new Map<string, EventEmitter>();
+    private readonly bus = createProcessEventBus();
     private readonly flushHandlers = new Map<string, () => Promise<void>>();
 
     // Cached prepared statements
@@ -1801,31 +1801,19 @@ export class SqliteProcessStore implements ProcessStore {
     // ========================================================================
 
     onProcessOutput(id: string, callback: (event: ProcessOutputEvent) => void): () => void {
-        const emitter = this.getOrCreateEmitter(id);
-        const listener = (event: ProcessOutputEvent) => callback(event);
-        emitter.on('output', listener);
-        return () => {
-            emitter.removeListener('output', listener);
-        };
+        return this.bus.onProcessOutput(id, callback);
     }
 
     emitProcessOutput(id: string, content: string): void {
-        const emitter = this.getOrCreateEmitter(id);
-        const event: ProcessOutputEvent = { type: 'chunk', content };
-        emitter.emit('output', event);
+        this.bus.emitProcessOutput(id, content);
     }
 
     emitProcessComplete(id: string, status: AIProcessStatus, duration: string): void {
-        const emitter = this.emitters.get(id);
-        if (!emitter) return;
-        const event: ProcessOutputEvent = { type: 'complete', status, duration };
-        emitter.emit('output', event);
-        this.emitters.delete(id);
+        this.bus.emitProcessComplete(id, status, duration);
     }
 
     emitProcessEvent(id: string, event: ProcessOutputEvent): void {
-        const emitter = this.getOrCreateEmitter(id);
-        emitter.emit('output', event);
+        this.bus.emitProcessEvent(id, event);
     }
 
     // ========================================================================
@@ -2416,15 +2404,6 @@ export class SqliteProcessStore implements ProcessStore {
     // ========================================================================
     // Private helpers
     // ========================================================================
-
-    private getOrCreateEmitter(id: string): EventEmitter {
-        let emitter = this.emitters.get(id);
-        if (!emitter) {
-            emitter = new EventEmitter();
-            this.emitters.set(id, emitter);
-        }
-        return emitter;
-    }
 
     /** Build a WHERE clause from ProcessFilter fields. */
     private buildProcessWhereClause(

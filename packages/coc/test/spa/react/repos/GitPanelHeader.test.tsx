@@ -26,6 +26,14 @@ describe('basic rendering', () => {
         expect(screen.getByTestId('git-branch-pill').textContent).toContain('main');
     });
 
+    it('places the optional repository selector in the same toolbar as the branch', () => {
+        renderHeader({ repositorySelector: <select aria-label="Member repository"><option>repo-a</option></select> });
+        const header = screen.getByTestId('git-panel-header');
+        const picker = screen.getByRole('combobox', { name: 'Member repository' });
+        expect(header.contains(picker)).toBe(true);
+        expect(picker.nextElementSibling).toBe(screen.getByTestId('git-branch-pill'));
+    });
+
     it('renders refresh button', () => {
         renderHeader();
         expect(screen.getByTestId('git-refresh-btn')).toBeTruthy();

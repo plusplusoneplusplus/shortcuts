@@ -8,53 +8,31 @@
  */
 
 import type Database from 'better-sqlite3';
+import { ChatBindingStore, type ChatBinding, type ChatBindings } from '../shared/chat-binding-store';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /** A single binding entry. taskId is the process/task ID of the chat conversation. */
-export interface NoteChatBinding {
-    taskId: string;
-    /** ISO-8601 timestamp of when the binding was created. */
-    createdAt: string;
-}
+export type NoteChatBinding = ChatBinding;
 
 /** Map of notePath → NoteChatBinding. Keys are forward-slash-normalized relative paths. */
-export interface NoteChatBindings {
-    [notePath: string]: NoteChatBinding;
-}
+export type NoteChatBindings = ChatBindings;
 
 // ============================================================================
 // NoteChatBindingStore
 // ============================================================================
 
-export class NoteChatBindingStore {
-    private readonly db: Database.Database;
-    private readonly stmtList: Database.Statement;
-    private readonly stmtGet: Database.Statement;
-    private readonly stmtBind: Database.Statement;
-    private readonly stmtUnbind: Database.Statement;
+export class NoteChatBindingStore extends ChatBindingStore {
     private readonly stmtUnbindByTask: Database.Statement;
     private readonly stmtRenamePath: Database.Transaction<(workspaceId: string, oldPath: string, newPath: string) => number>;
     private readonly stmtRenamePrefix: Database.Transaction<(workspaceId: string, oldPrefix: string, newPrefix: string) => number>;
     private readonly stmtDeletePrefix: Database.Statement;
 
     constructor(db: Database.Database) {
-        this.db = db;
+        super(db, 'note_chat_bindings', 'note_path');
 
-        this.stmtList = db.prepare(
-            'SELECT note_path, task_id, created_at FROM note_chat_bindings WHERE workspace_id = ?',
-        );
-        this.stmtGet = db.prepare(
-            'SELECT task_id, created_at FROM note_chat_bindings WHERE workspace_id = ? AND note_path = ?',
-        );
-        this.stmtBind = db.prepare(
-            'INSERT OR REPLACE INTO note_chat_bindings (workspace_id, note_path, task_id, created_at) VALUES (?, ?, ?, ?)',
-        );
-        this.stmtUnbind = db.prepare(
-            'DELETE FROM note_chat_bindings WHERE workspace_id = ? AND note_path = ?',
-        );
         this.stmtUnbindByTask = db.prepare(
             'DELETE FROM note_chat_bindings WHERE workspace_id = ? AND task_id = ?',
         );
@@ -64,15 +42,13 @@ export class NoteChatBindingStore {
 
         // Single-path rename. Delete any colliding destination row first so the
         // primary-key update doesn't fail.
-        const deleteByPathStmt = db.prepare(
-            'DELETE FROM note_chat_bindings WHERE workspace_id = ? AND note_path = ?',
-        );
+        const deleteByPath = (workspaceId: string, notePath: string) => { this.stmtUnbind.run(workspaceId, notePath); };
         const updatePathStmt = db.prepare(
             'UPDATE note_chat_bindings SET note_path = ? WHERE workspace_id = ? AND note_path = ?',
         );
         this.stmtRenamePath = db.transaction((workspaceId: string, oldPath: string, newPath: string) => {
             if (oldPath === newPath) return 0;
-            deleteByPathStmt.run(workspaceId, newPath);
+            deleteByPath(workspaceId, newPath);
             const info = updatePathStmt.run(newPath, workspaceId, oldPath);
             return info.changes;
         });
@@ -98,45 +74,17 @@ export class NoteChatBindingStore {
                 const suffix = note_path.slice(oldF.length + 1);
                 const dest = newF + '/' + suffix;
                 if (dest === note_path) continue;
-                deleteByPathStmt.run(workspaceId, dest);
+                deleteByPath(workspaceId, dest);
                 updatePathStmt.run(dest, workspaceId, note_path);
                 moved++;
             }
             // A section-scoped chat is keyed on the folder path itself, which the
             // `oldFolder/%` sweep above cannot match. Move it too, or renaming the
             // folder would strand the section chat.
-            deleteByPathStmt.run(workspaceId, newF);
+            deleteByPath(workspaceId, newF);
             moved += updatePathStmt.run(newF, workspaceId, oldF).changes;
             return moved;
         });
-    }
-
-    /** Load all bindings for a workspace. Returns {} when none exist. */
-    list(workspaceId: string): NoteChatBindings {
-        const rows = this.stmtList.all(workspaceId) as Array<{ note_path: string; task_id: string; created_at: string }>;
-        const result: NoteChatBindings = {};
-        for (const row of rows) {
-            result[row.note_path] = { taskId: row.task_id, createdAt: row.created_at };
-        }
-        return result;
-    }
-
-    /** Get the binding for a single note path, or undefined. */
-    get(workspaceId: string, notePath: string): NoteChatBinding | undefined {
-        const row = this.stmtGet.get(workspaceId, notePath) as { task_id: string; created_at: string } | undefined;
-        if (!row) return undefined;
-        return { taskId: row.task_id, createdAt: row.created_at };
-    }
-
-    /** Create or overwrite the binding for a note path. */
-    bind(workspaceId: string, notePath: string, taskId: string): void {
-        this.stmtBind.run(workspaceId, notePath, taskId, new Date().toISOString());
-    }
-
-    /** Remove the binding for a note path. Returns true if a row was removed. */
-    unbind(workspaceId: string, notePath: string): boolean {
-        const info = this.stmtUnbind.run(workspaceId, notePath);
-        return info.changes > 0;
     }
 
     /**

@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { getAIServiceLogger } from './logger';
-import { isLinuxAbsolutePath, isWslUncPath, toForwardSlashes, trimTrailingPathSeparators } from './internal/path-utils';
+import { isLinuxAbsolutePath, isWslUncPath, toForwardSlashes, trimTrailingPathSeparators } from './platform/path-utils';
 
 /** Config directory name under home */
 const CONFIG_DIR = '.copilot';

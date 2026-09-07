@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { isWithinDirectory } from '../../src/utils/path-security';
-import { clearWorkspaceExecutionCaches } from '../../src/utils/workspace-execution';
+import { isWithinDirectory } from '../../src/platform/path-security';
+import { clearWorkspaceExecutionCaches } from '../../src/platform/workspace-execution';
 
 describe('isWithinDirectory', () => {
     it('returns true for a direct child path', () => {

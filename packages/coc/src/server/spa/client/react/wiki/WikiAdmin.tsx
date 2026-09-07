@@ -2,6 +2,7 @@
  * WikiAdmin — admin panel with Generate, Seeds, Config, Delete sub-tabs.
  */
 
+import { readSseStream } from '../utils/readSseStream';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -201,52 +202,38 @@ function GenerateTab({ wikiId, autoGenerate, onAutoGenerateConsumed }: { wikiId:
                 return;
             }
 
-            const reader = res.body!.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        const phase: number = data.phase ?? startPhase;
-                        if (data.type === 'log' || data.type === 'progress') {
-                            setLogs(prev => ({
-                                ...prev,
-                                [phase]: [...(prev[phase] || []), data.message || data.text || JSON.stringify(data)],
-                            }));
-                        } else if (data.type === 'status') {
-                            setRunningPhase(phase);
-                            if (data.message) {
-                                setLogs(prev => ({ ...prev, [phase]: [...(prev[phase] || []), data.message] }));
-                            }
-                        } else if (data.type === 'phase-complete') {
-                            setLogs(prev => ({
-                                ...prev,
-                                [data.phase]: [...(prev[data.phase] || []), `✓ ${data.message || 'Complete'}`],
-                            }));
-                        } else if (data.type === 'component-written') {
-                            setPhase4Components(prev => [...prev, data.name || data.componentId || '']);
-                        } else if (data.type === 'done' || data.type === 'complete') {
-                            setRunningPhase(null);
-                            loadCacheStatus();
-                        } else if (data.type === 'error') {
-                            setLogs(prev => ({
-                                ...prev,
-                                [phase]: [...(prev[phase] || []), '❌ ' + (data.message || 'Error')],
-                            }));
-                            setRunningPhase(null);
+            for await (const frame of readSseStream(res.body!)) {
+                try {
+                    const data = JSON.parse(frame.data);
+                    const phase: number = data.phase ?? startPhase;
+                    if (data.type === 'log' || data.type === 'progress') {
+                        setLogs(prev => ({
+                            ...prev,
+                            [phase]: [...(prev[phase] || []), data.message || data.text || JSON.stringify(data)],
+                        }));
+                    } else if (data.type === 'status') {
+                        setRunningPhase(phase);
+                        if (data.message) {
+                            setLogs(prev => ({ ...prev, [phase]: [...(prev[phase] || []), data.message] }));
                         }
-                    } catch { /* ignore */ }
-                }
+                    } else if (data.type === 'phase-complete') {
+                        setLogs(prev => ({
+                            ...prev,
+                            [data.phase]: [...(prev[data.phase] || []), `✓ ${data.message || 'Complete'}`],
+                        }));
+                    } else if (data.type === 'component-written') {
+                        setPhase4Components(prev => [...prev, data.name || data.componentId || '']);
+                    } else if (data.type === 'done' || data.type === 'complete') {
+                        setRunningPhase(null);
+                        loadCacheStatus();
+                    } else if (data.type === 'error') {
+                        setLogs(prev => ({
+                            ...prev,
+                            [phase]: [...(prev[phase] || []), '❌ ' + (data.message || 'Error')],
+                        }));
+                        setRunningPhase(null);
+                    }
+                } catch { /* ignore */ }
             }
             setRunningPhase(null);
         }).catch(err => {
@@ -542,38 +529,25 @@ function EditorTab({ wikiId, kind }: { wikiId: string; kind: 'seeds' | 'config' 
                 return;
             }
 
-            const reader = res.body!.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        if (data.type === 'status' || data.type === 'log') {
-                            setGenLogs(prev => [...prev, data.message || '']);
-                        } else if (data.type === 'done' && data.success && Array.isArray(data.seeds)) {
-                            // Build YAML matching ThemeSeed shape (theme/description/hints)
-                            const normalized = data.seeds.map((s: any) => ({
-                                theme: typeof s.theme === 'string' ? s.theme : String(s.theme ?? ''),
-                                description: typeof s.description === 'string' ? s.description : '',
-                                hints: Array.isArray(s.hints) ? s.hints : [],
-                            }));
-                            const yamlContent = yaml.dump({ themes: normalized });
-                            setContent(yamlContent);
-                            setGenLogs(prev => [...prev, `✓ Generated ${data.seeds.length} seeds`]);
-                        } else if (data.type === 'error') {
-                            setGenLogs(prev => [...prev, '❌ ' + (data.message || 'Error')]);
-                        }
-                    } catch { /* ignore */ }
-                }
+            for await (const frame of readSseStream(res.body!)) {
+                try {
+                    const data = JSON.parse(frame.data);
+                    if (data.type === 'status' || data.type === 'log') {
+                        setGenLogs(prev => [...prev, data.message || '']);
+                    } else if (data.type === 'done' && data.success && Array.isArray(data.seeds)) {
+                        // Build YAML matching ThemeSeed shape (theme/description/hints)
+                        const normalized = data.seeds.map((s: any) => ({
+                            theme: typeof s.theme === 'string' ? s.theme : String(s.theme ?? ''),
+                            description: typeof s.description === 'string' ? s.description : '',
+                            hints: Array.isArray(s.hints) ? s.hints : [],
+                        }));
+                        const yamlContent = yaml.dump({ themes: normalized });
+                        setContent(yamlContent);
+                        setGenLogs(prev => [...prev, `✓ Generated ${data.seeds.length} seeds`]);
+                    } else if (data.type === 'error') {
+                        setGenLogs(prev => [...prev, '❌ ' + (data.message || 'Error')]);
+                    }
+                } catch { /* ignore */ }
             }
         } catch (err: any) {
             setGenLogs(['❌ ' + (err?.message || 'Network error')]);

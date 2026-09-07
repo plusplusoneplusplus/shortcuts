@@ -178,6 +178,8 @@ describe('StorageSection — migration progress', () => {
 
         // Mock fetch for the streaming POST
         const mockReader = {
+        cancel: vi.fn().mockResolvedValue(undefined),
+        releaseLock: vi.fn(),
             read: vi.fn()
                 .mockResolvedValueOnce({
                     done: false,
@@ -242,6 +244,8 @@ describe('StorageSection — migration progress', () => {
         mocks.admin.getStorageMigrateToken.mockResolvedValue({ token: 'tok', expiresIn: 300 });
 
         const mockReader = {
+        cancel: vi.fn().mockResolvedValue(undefined),
+        releaseLock: vi.fn(),
             read: vi.fn()
                 .mockResolvedValueOnce({
                     done: false,
@@ -423,6 +427,8 @@ function sseResponse(text: string): any {
         ok: true,
         body: {
             getReader: () => ({
+                cancel: vi.fn().mockResolvedValue(undefined),
+                releaseLock: vi.fn(),
                 read: vi.fn()
                     .mockResolvedValueOnce({ done: false, value: chunks[0] })
                     .mockResolvedValueOnce({ done: true, value: undefined }),

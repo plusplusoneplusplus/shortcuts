@@ -3,6 +3,7 @@
  * ProcessOutputEvents to SSE events.
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PassThrough } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -16,25 +17,6 @@ import type { MockProcessStore } from './helpers/mock-process-store';
 // ============================================================================
 // SSE harness (mirrors sse-warm-status.test.ts)
 // ============================================================================
-
-interface SSEEvent {
-    event: string;
-    data: unknown;
-}
-
-function parseSSEFrames(chunks: string[]): SSEEvent[] {
-    const frames: SSEEvent[] = [];
-    for (const part of chunks.join('').split('\n\n').filter(Boolean)) {
-        let event = '';
-        let data = '';
-        for (const line of part.split('\n')) {
-            if (line.startsWith('event: ')) { event = line.slice(7); }
-            if (line.startsWith('data: ')) { data = line.slice(6); }
-        }
-        if (event && data) { frames.push({ event, data: JSON.parse(data) }); }
-    }
-    return frames;
-}
 
 function createMockReq(url = '/api/processes/p/stream'): IncomingMessage {
     const req = new PassThrough() as unknown as IncomingMessage;

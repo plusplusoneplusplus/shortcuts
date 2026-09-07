@@ -2,6 +2,7 @@
  * SSE relay — connects to agent SSE streams and multiplexes to container clients.
  */
 
+import { parseSseBuffer } from '@plusplusoneplusplus/forge/sse';
 import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
@@ -50,14 +51,13 @@ export class SSERelay extends EventEmitter {
                 this.connections.set(agentId, res);
 
                 let buffer = '';
-                res.on('data', (chunk: Buffer) => {
-                    buffer += chunk.toString();
-                    const events = this.parseSSE(buffer, agentId, agentName);
-                    // Keep remainder after last double newline
-                    const lastIdx = buffer.lastIndexOf('\n\n');
-                    buffer = lastIdx >= 0 ? buffer.slice(lastIdx + 2) : buffer;
+                res.setEncoding('utf8');
+                res.on('data', (chunk: string) => {
+                    const { frames, rest } = parseSseBuffer(buffer + chunk);
+                    buffer = rest;
 
-                    for (const event of events) {
+                    for (const frame of frames) {
+                        const event: SSEEvent = { agentId, agentName, ...frame };
                         // Log relay dispatch with event type
                         try {
                             const parsed = JSON.parse(event.data);
@@ -97,30 +97,5 @@ export class SSERelay extends EventEmitter {
         for (const [id] of this.connections) {
             this.disconnect(id);
         }
-    }
-
-    private parseSSE(buffer: string, agentId: string, agentName: string): SSEEvent[] {
-        const events: SSEEvent[] = [];
-        const blocks = buffer.split('\n\n');
-        // Last block may be incomplete, skip it
-        for (let i = 0; i < blocks.length - 1; i++) {
-            const block = blocks[i].trim();
-            if (!block) continue;
-
-            let event: string | undefined;
-            let data = '';
-            let id: string | undefined;
-
-            for (const line of block.split('\n')) {
-                if (line.startsWith('event:')) event = line.slice(6).trim();
-                else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).trim();
-                else if (line.startsWith('id:')) id = line.slice(3).trim();
-            }
-
-            if (data) {
-                events.push({ agentId, agentName, event, data, id });
-            }
-        }
-        return events;
     }
 }

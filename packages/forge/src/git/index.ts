@@ -58,12 +58,15 @@ export {
     getRemoteUrl,
     computeRemoteHash,
     detectRemoteUrl,
+} from './remote';
+export {
     resolveCanonicalOrigin,
     resolveCanonicalOriginId,
     type CanonicalOriginInput,
     type CanonicalOriginIdentity,
     type CanonicalOriginProvider,
-} from './remote';
+} from './origin-id';
+export { sha256Hex } from './sha256';
 export {
     GitOpsStore,
     GitOpJob,

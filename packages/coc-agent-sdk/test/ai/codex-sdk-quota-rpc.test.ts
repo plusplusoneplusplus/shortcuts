@@ -14,14 +14,14 @@ import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { PassThrough, Writable } from 'node:stream';
 import { CodexSDKService } from '../../src/codex-sdk-service';
-import { execFileAsync } from '../../src/internal/exec-utils';
+import { execFileAsync } from '../../src/platform/exec-utils';
 import { resolveCodexExecutablePath } from '../../src/codex-exec-path';
 
 vi.mock('child_process', () => ({
     spawn: vi.fn(),
 }));
 
-vi.mock('../../src/internal/exec-utils', () => ({
+vi.mock('../../src/platform/exec-utils', () => ({
     execFileAsync: vi.fn(),
 }));
 

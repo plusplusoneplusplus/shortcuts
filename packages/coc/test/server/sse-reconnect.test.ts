@@ -7,6 +7,7 @@
  * between disconnect and reconnect.
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -53,25 +54,6 @@ function makeTurn(role: 'user' | 'assistant', content: string): ConversationTurn
         timestamp: new Date('2026-01-01T00:00:00Z'),
         timeline: [],
     };
-}
-
-function parseSSEFrames(chunks: string[]): Array<{ event: string; data: unknown }> {
-    const raw = chunks.join('');
-    const frames: Array<{ event: string; data: unknown }> = [];
-    const parts = raw.split('\n\n').filter(Boolean);
-    for (const part of parts) {
-        const lines = part.split('\n');
-        let event = '';
-        let data = '';
-        for (const line of lines) {
-            if (line.startsWith('event: ')) { event = line.slice(7); }
-            if (line.startsWith('data: ')) { data = line.slice(6); }
-        }
-        if (event && data) {
-            frames.push({ event, data: JSON.parse(data) });
-        }
-    }
-    return frames;
 }
 
 // ============================================================================

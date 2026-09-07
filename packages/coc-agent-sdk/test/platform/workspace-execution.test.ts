@@ -17,7 +17,7 @@ import {
     translatePathForExecution,
     translatePathForHostFilesystem,
     type WslExecutionContext,
-} from '../../src/utils/workspace-execution';
+} from '../../src/platform/workspace-execution';
 
 describe('workspace-execution', () => {
     describe('getWslExecutablePath', () => {

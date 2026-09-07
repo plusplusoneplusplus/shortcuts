@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractInjectedBlocks, parseSelectedSkillNames } from '../../../src/server/spa/client/react/features/chat/conversation/injectedBlocks';
+import { extractInjectedBlocks, parseSelectedSkillNames, projectChatModeContextForDisplay } from '../../../src/server/spa/client/react/features/chat/conversation/injectedBlocks';
 
 const CHAT_STYLE_BLOCK = [
     '<chat-style>',
@@ -167,5 +167,59 @@ describe('parseSelectedSkillNames', () => {
 
     it('returns an empty list when the sentence is reworded', () => {
         expect(parseSelectedSkillNames('The user picked these skills: impl.')).toEqual([]);
+    });
+});
+
+describe('projectChatModeContextForDisplay', () => {
+    const READ_ONLY_WITH_PLAN = [
+        '<coc-chat-mode>',
+        '<coc-read-only-mode>',
+        'You are in read-only mode.',
+        '',
+        'If the user asks you to save a plan:',
+        '- Save location: `/data/repos/ws-a/notes/Plans/<chosen-folder>/<descriptive-name>.plan.md`',
+        '- Existing folder options: right-panel',
+        '- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the root directory directly.',
+        '</coc-read-only-mode>',
+        '</coc-chat-mode>',
+    ].join('\n');
+
+    it('keeps the read-only section and its nested plan destination', () => {
+        const projected = projectChatModeContextForDisplay(READ_ONLY_WITH_PLAN);
+
+        expect(projected).toContain('<coc-read-only-mode>');
+        expect(projected).toContain('- Existing folder options: right-panel');
+        expect(projected).toContain('.plan.md');
+        expect(projected!.startsWith('<coc-chat-mode>')).toBe(true);
+        expect(projected!.endsWith('</coc-chat-mode>')).toBe(true);
+    });
+
+    it('drops the repo mode instructions that trail the read-only section', () => {
+        const marker = READ_ONLY_WITH_PLAN.replace(
+            '</coc-read-only-mode>\n</coc-chat-mode>',
+            '</coc-read-only-mode>\n\nPRIVATE-REPO-INSTRUCTIONS\n</coc-chat-mode>',
+        );
+
+        const projected = projectChatModeContextForDisplay(marker)!;
+
+        expect(projected).toContain('<coc-read-only-mode>');
+        expect(projected).not.toContain('PRIVATE-REPO-INSTRUCTIONS');
+    });
+
+    it('returns undefined for a missing marker so the caller falls back to stored content', () => {
+        expect(projectChatModeContextForDisplay(undefined)).toBeUndefined();
+        expect(projectChatModeContextForDisplay('')).toBeUndefined();
+    });
+
+    it('returns undefined for an autopilot transition marker', () => {
+        const marker = '<coc-chat-mode>\nThis chat has been switched to autopilot mode.\n</coc-chat-mode>';
+
+        expect(projectChatModeContextForDisplay(marker)).toBeUndefined();
+    });
+
+    it('returns undefined for a read-only section that never closes', () => {
+        const marker = '<coc-chat-mode>\n<coc-read-only-mode>\ntruncated\n</coc-chat-mode>';
+
+        expect(projectChatModeContextForDisplay(marker)).toBeUndefined();
     });
 });

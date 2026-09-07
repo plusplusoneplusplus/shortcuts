@@ -6,6 +6,7 @@
  * the deep-wiki standalone handler (`dw-explore-handler.ts`).
  */
 
+import { writeSseHeaders } from '../shared/sse-writer';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { WikiManager } from './wiki-manager';
 import type { AskAIFunction } from './types';
@@ -117,11 +118,7 @@ export async function handleExploreCore(
     }
 
     // Set SSE headers (CORS is handled by the router/middleware layer)
-    res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-    });
+    writeSseHeaders(res);
 
     const { model, workingDirectory, sendMessage } = context;
 

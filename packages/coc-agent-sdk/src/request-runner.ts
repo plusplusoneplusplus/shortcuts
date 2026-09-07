@@ -31,8 +31,8 @@ import { createMidTurnUsageThrottle } from './mid-turn-usage';
 import type { TransformOptions, TransformResult } from './sdk-service-interface';
 import { SessionManager } from './session-manager';
 import { isStreamDestroyedError } from './stream-error-guard';
-import { isWithinDirectory } from './internal/path-security';
-import { resolveWorkspaceExecutionContext, translatePathForExecution } from './internal/workspace-execution';
+import { isWithinDirectory } from './platform/path-security';
+import { resolveWorkspaceExecutionContext, translatePathForExecution } from './platform/workspace-execution';
 
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 

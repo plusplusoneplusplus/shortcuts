@@ -51,6 +51,9 @@
       "git/repo-identity": [
         "dist/git/repo-identity.d.ts"
       ],
+      "git/origin-id": [
+        "dist/git/origin-id.d.ts"
+      ],
       "git/pull-request-detection": [
         "dist/git/pull-request-detection.d.ts"
       ],
@@ -59,6 +62,9 @@
       ],
       "templates": [
         "dist/templates/index.d.ts"
+      ],
+      "sse": [
+        "dist/sse/index.d.ts"
       ],
       "connectors": [
         "dist/connectors/index.d.ts"
@@ -70,6 +76,7 @@
     "./git": "./dist/git/index.js",
     "./git/normalize-url": "./dist/git/normalize-url.js",
     "./git/repo-identity": "./dist/git/repo-identity.js",
+    "./git/origin-id": "./dist/git/origin-id.js",
     "./git/pull-request-detection": "./dist/git/pull-request-detection.js",
     "./ai": "./dist/ai/index.js",
     "./map-reduce": "./dist/map-reduce/index.js",
@@ -86,6 +93,7 @@
     "./workflow": "./dist/workflow/index.js",
     "./memory": "./dist/memory/index.js",
     "./templates": "./dist/templates/index.js",
+    "./sse": "./dist/sse/index.js",
     "./connectors": "./dist/connectors/index.js"
   },
   "files": [

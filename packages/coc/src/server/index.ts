@@ -26,7 +26,6 @@ import {
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
 import { warmWslDistroCache } from '@plusplusoneplusplus/forge';
-import { warmSdkWslDistroCache } from '@plusplusoneplusplus/coc-agent-sdk';
 import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
 import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
@@ -213,8 +212,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // up front and awaited: a bare Linux path normalized before the cache is warm
     // would key as `wsl://default/...` and the same path key as
     // `wsl://<distro>/...` afterwards, splitting one repo across two identities.
-    // Both copies of the helper have their own cache, hence both warms.
-    await Promise.all([warmWslDistroCache(), warmSdkWslDistroCache()]);
+    // Forge's export and the SDK's alias now reach one shared module with one
+    // cache, so a single warm covers both; the pair is asserted in
+    // forge's `test/utils/shared-platform-exports.test.ts`.
+    await warmWslDistroCache();
 
     // Notes content search is native-only. Validate the complete capability at
     // composition time, while each root's filesystem build remains lazy until

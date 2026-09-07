@@ -83,8 +83,11 @@ callers never wire the addon themselves.
 
 With Memory V2 active it returns `excludedTools: ['vote_memory', 'store_memory']`, suppressing
 the Copilot SDK built-ins that compete with `save_memory`; `includeMemoryV2: false` opts out.
-Consumers: `ChatBaseExecutor.buildStandardModeOptions`, `RalphExecutor.buildModeOptions`,
-`FollowUpExecutor.executeFollowUp`, and `AutopilotExecutor.buildModeOptions` (opted out).
+Consumers: `ChatBaseExecutor.buildStandardModeOptions` (ask and autopilot),
+`RalphExecutor.buildModeOptions`, and `FollowUpExecutor.executeFollowUp`. No chat path opts
+out today — autopilot used to, which made its tool block and system message differ from ask
+mode's and cost the conversation's prefix cache on a mid-chat mode toggle
+(`memory-v2-parity.test.ts` is the fence).
 
 ## Tools
 

@@ -10,7 +10,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { EventEmitter } from 'events';
+import { createProcessEventBus } from './process-event-bus';
 
 import { ProcessStore, ProcessFilter, ProcessIndexEntry, WorkspaceInfo, WikiInfo, ProcessChangeCallback, ProcessOutputEvent, StorageStats } from './process-store';
 import {
@@ -65,7 +65,7 @@ export class FileProcessStore implements ProcessStore {
     private readonly workspacesPath: string;
     private readonly wikisPath: string;
     private writeQueue: Promise<void>;
-    private readonly emitters: Map<string, EventEmitter> = new Map();
+    private readonly bus = createProcessEventBus();
     private readonly flushHandlers: Map<string, () => Promise<void>> = new Map();
 
     onProcessChange?: ProcessChangeCallback;
@@ -1317,44 +1317,19 @@ export class FileProcessStore implements ProcessStore {
     }
 
     onProcessOutput(id: string, callback: (event: ProcessOutputEvent) => void): () => void {
-        let emitter = this.emitters.get(id);
-        if (!emitter) {
-            emitter = new EventEmitter();
-            this.emitters.set(id, emitter);
-        }
-        const listener = (event: ProcessOutputEvent) => callback(event);
-        emitter.on('output', listener);
-        return () => {
-            emitter!.removeListener('output', listener);
-        };
+        return this.bus.onProcessOutput(id, callback);
     }
 
     emitProcessOutput(id: string, content: string): void {
-        let emitter = this.emitters.get(id);
-        if (!emitter) {
-            emitter = new EventEmitter();
-            this.emitters.set(id, emitter);
-        }
-        const event: ProcessOutputEvent = { type: 'chunk', content };
-        emitter.emit('output', event);
+        this.bus.emitProcessOutput(id, content);
     }
 
     emitProcessComplete(id: string, status: AIProcessStatus, duration: string): void {
-        const emitter = this.emitters.get(id);
-        if (!emitter) { return; }
-        const event: ProcessOutputEvent = { type: 'complete', status, duration };
-        emitter.emit('output', event);
-        // Clean up emitter after notifying all listeners
-        this.emitters.delete(id);
+        this.bus.emitProcessComplete(id, status, duration);
     }
 
     emitProcessEvent(id: string, event: ProcessOutputEvent): void {
-        let emitter = this.emitters.get(id);
-        if (!emitter) {
-            emitter = new EventEmitter();
-            this.emitters.set(id, emitter);
-        }
-        emitter.emit('output', event);
+        this.bus.emitProcessEvent(id, event);
     }
 
     registerFlushHandler(id: string, handler: () => Promise<void>): void {

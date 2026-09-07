@@ -23,6 +23,8 @@ function mockStreamingFetch(chunks: string[] = [], sessionId = 's1') {
     const encoder = new TextEncoder();
     let idx = 0;
     const mockReader = {
+        cancel: vi.fn().mockResolvedValue(undefined),
+        releaseLock: vi.fn(),
         read: vi.fn().mockImplementation(() => {
             if (idx < allChunks.length) {
                 return Promise.resolve({ done: false, value: encoder.encode(allChunks[idx++]) });
@@ -40,7 +42,7 @@ function mockStreamingFetch(chunks: string[] = [], sessionId = 's1') {
 beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
-        body: { getReader: () => ({ read: vi.fn().mockResolvedValue({ done: true, value: undefined }) }) },
+        body: { getReader: () => ({ cancel: vi.fn(), releaseLock: vi.fn(), read: vi.fn().mockResolvedValue({ done: true, value: undefined }) }) },
     }));
 });
 
@@ -162,7 +164,7 @@ describe('WikiAsk — message handling', () => {
     });
 
     it('appends assistant message after successful SSE stream', async () => {
-        mockStreamingFetch([
+        const reader = mockStreamingFetch([
             'data: {"type":"chunk","content":"Hello "}\n\n',
         ]);
         render(<WikiAsk {...defaultProps} />);
@@ -173,6 +175,28 @@ describe('WikiAsk — message handling', () => {
         await waitFor(() => {
             expect(screen.getByText('Response text')).toBeTruthy();
         });
+        expect(reader.cancel).toHaveBeenCalledTimes(1);
+        expect(reader.releaseLock).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders an unterminated final done frame and preserves its session for follow-up', async () => {
+        const body = new ReadableStream({
+            start(controller) {
+                controller.enqueue(new TextEncoder().encode('data: {"type":"done","fullResponse":"Final answer","sessionId":"tail-session"}'));
+                controller.close();
+            },
+        });
+        vi.mocked(fetch).mockResolvedValueOnce({ ok: true, body } as Response);
+        render(<WikiAsk {...defaultProps} />);
+        const textarea = document.getElementById('wiki-ask-textarea') as HTMLTextAreaElement;
+        fireEvent.change(textarea, { target: { value: 'first question' } });
+        fireEvent.click(document.getElementById('wiki-ask-widget-send')!);
+        await waitFor(() => expect(screen.getByText('Final answer')).toBeTruthy());
+        expect(body.locked).toBe(false);
+        fireEvent.change(textarea, { target: { value: 'follow-up' } });
+        fireEvent.click(document.getElementById('wiki-ask-widget-send')!);
+        await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+        expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string).sessionId).toBe('tail-session');
     });
 
     it('appends error message when fetch returns non-ok response', async () => {
@@ -213,7 +237,7 @@ describe('WikiAsk — Send button streaming state', () => {
         const pendingRead = new Promise(r => { resolveRead = r; });
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
-            body: { getReader: () => ({ read: vi.fn().mockReturnValue(pendingRead) }) },
+            body: { getReader: () => ({ cancel: vi.fn(), releaseLock: vi.fn(), read: vi.fn().mockReturnValue(pendingRead) }) },
         }));
 
         render(<WikiAsk {...defaultProps} />);

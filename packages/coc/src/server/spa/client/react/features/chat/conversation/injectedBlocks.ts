@@ -6,8 +6,11 @@ export interface ExtractedInjectedBlocks {
     selectedSkillNames?: string[];
 }
 
+/** Tag wrapping the per-turn mode directive; mirrors `CHAT_MODE_DIRECTIVE_TAG`. */
+const CHAT_MODE_TAG = 'coc-chat-mode';
+
 /** Tags the server injects ahead of the user prompt, in no guaranteed order. */
-const INJECTED_TAGS = ['chat-style', 'coc-chat-mode', 'selected_skills'] as const;
+const INJECTED_TAGS = ['chat-style', CHAT_MODE_TAG, 'selected_skills'] as const;
 
 type InjectedTag = typeof INJECTED_TAGS[number];
 
@@ -87,4 +90,52 @@ export function extractInjectedBlocks(text: string): ExtractedInjectedBlocks {
         }
     }
     return result;
+}
+
+/**
+ * Project a stored `chatModeContext` marker down to the part a transcript may
+ * show: the `<coc-read-only-mode>` section, including any nested plan save
+ * destination.
+ *
+ * The marker is the directive the executor actually sent, so it is the only
+ * source that reflects a workspace's live plan destination — the route that
+ * writes the user turn's display copy cannot read the filesystem, and a
+ * re-injection caused purely by folder drift leaves no leading block in the
+ * stored content at all.
+ *
+ * The trailing half of the marker is the repo's mode-specific instructions
+ * (`.github/coc/instructions-<mode>.md`), which have never been surfaced in a
+ * transcript and would bury the user's message, so they are dropped here.
+ *
+ * Returns `undefined` for a marker with no read-only section — an autopilot
+ * transition note or an instructions-only block. Callers fall back to the
+ * block extracted from the stored turn content, which already carries the
+ * transition prose alone.
+ */
+export function projectChatModeContextForDisplay(marker: string | undefined): string | undefined {
+    if (!marker) {
+        return undefined;
+    }
+
+    const open = `<${CHAT_MODE_TAG}>\n`;
+    const close = `\n</${CHAT_MODE_TAG}>`;
+    let body = marker;
+    if (body.startsWith(open)) {
+        body = body.slice(open.length);
+    }
+    if (body.endsWith(close)) {
+        body = body.slice(0, -close.length);
+    }
+
+    const readOnlyOpen = '<coc-read-only-mode>';
+    const readOnlyClose = '</coc-read-only-mode>';
+    if (!body.startsWith(readOnlyOpen)) {
+        return undefined;
+    }
+    const end = body.indexOf(readOnlyClose);
+    if (end < 0) {
+        return undefined;
+    }
+    const section = body.slice(0, end + readOnlyClose.length);
+    return `<${CHAT_MODE_TAG}>\n${section}\n</${CHAT_MODE_TAG}>`;
 }

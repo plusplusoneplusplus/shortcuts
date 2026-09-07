@@ -4,6 +4,7 @@
  * and its own confirmation token managers.
  */
 
+import { writeSseHeaders } from '../shared/sse-writer';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
@@ -109,12 +110,7 @@ export function registerStorageRoutes(routes: Route[], options: AdminRouteOption
             }
 
             // SSE headers
-            res.writeHead(200, {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'X-Accel-Buffering': 'no',
-            });
+            writeSseHeaders(res);
 
             const controller = new AbortController();
             activeMigration = { controller, running: true };
@@ -272,12 +268,7 @@ export function registerStorageRoutes(routes: Route[], options: AdminRouteOption
             }
 
             // SSE headers
-            res.writeHead(200, {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'X-Accel-Buffering': 'no',
-            });
+            writeSseHeaders(res);
 
             try {
                 const importer = new DirectoryHistoryImporter();

@@ -3,6 +3,7 @@
  * clients as `data:` frames, unsubscribing when the client disconnects.
  */
 
+import { writeSseHeaders, writeNamedEvent, writeDataEvent } from '@plusplusoneplusplus/forge/sse';
 import type { SSEEvent } from '../../proxy/sse-relay';
 import type { ContainerRuntime } from '../runtime';
 import type { RouteTable } from '../http-util';
@@ -11,23 +12,20 @@ export function installEventRoutes(table: RouteTable, runtime: ContainerRuntime)
     const { sseRelay } = runtime;
 
     table.when((_method, url) => url.pathname === '/api/events', ({ req, res }) => {
-        res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-        });
+        writeSseHeaders(res);
         res.write(':ok\n\n');
 
         const onEvent = (event: SSEEvent) => {
-            const envelope = JSON.stringify({
+            const envelope = {
                 agentId: event.agentId,
                 agentName: event.agentName,
                 payload: event.data,
-            });
+            };
             if (event.event) {
-                res.write(`event: ${event.event}\n`);
+                writeNamedEvent(res, event.event, envelope);
+            } else {
+                writeDataEvent(res, envelope);
             }
-            res.write(`data: ${envelope}\n\n`);
         };
 
         sseRelay.on('event', onEvent);

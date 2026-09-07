@@ -5,6 +5,7 @@
  * Uses port 0 (OS-assigned) for test isolation.
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
@@ -78,23 +79,6 @@ function postJSON(url: string, data: unknown) {
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
     });
-}
-
-function parseSSEEvents(body: string): Array<{ event: string; data: any }> {
-    const events: Array<{ event: string; data: any }> = [];
-    const lines = body.split('\n');
-    let currentEvent = '';
-    for (const line of lines) {
-        if (line.startsWith('event: ')) {
-            currentEvent = line.substring(7).trim();
-        } else if (line.startsWith('data: ')) {
-            try {
-                events.push({ event: currentEvent, data: JSON.parse(line.substring(6)) });
-            } catch { /* ignore */ }
-            currentEvent = '';
-        }
-    }
-    return events;
 }
 
 // ============================================================================
@@ -190,7 +174,7 @@ describe('Task Generation Handler', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/event-stream');
 
-            const events = parseSSEEvents(res.body);
+            const events = parseSSEFrames([res.body]);
             const eventTypes = events.map(e => e.event);
             expect(eventTypes).toContain('progress');
             expect(eventTypes).toContain('done');
@@ -237,7 +221,7 @@ describe('Task Generation Handler', () => {
             });
 
             expect(res.status).toBe(200); // SSE stream still opens
-            const events = parseSSEEvents(res.body);
+            const events = parseSSEFrames([res.body]);
             const errorEvent = events.find(e => e.event === 'error');
             expect(errorEvent).toBeDefined();
             expect(errorEvent?.data.message).toContain('unavailable');
@@ -256,7 +240,7 @@ describe('Task Generation Handler', () => {
                 prompt: 'Test prompt',
             });
 
-            const events = parseSSEEvents(res.body);
+            const events = parseSSEFrames([res.body]);
             const errorEvent = events.find(e => e.event === 'error');
             expect(errorEvent?.data.message).toContain('Rate limited');
         });

@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, describe, it, expect } from 'vitest';
-import { isValidTaskFolder, resolveAutoFolderContext, suppressesAutoFolder } from '../../../src/server/executors/auto-folder-utils';
+import { isRalphGrillingContext, isValidTaskFolder, resolveAutoFolderContext, suppressesAutoFolder, suppressesPlanSaveGuidance } from '../../../src/server/executors/auto-folder-utils';
 
 describe('isValidTaskFolder', () => {
     it('returns true for a normal folder name', () => {
@@ -157,5 +157,137 @@ describe('suppressesAutoFolder', () => {
         expect(suppressesAutoFolder({ payload: 'not-an-object' })).toBe(false);
         expect(suppressesAutoFolder({ metadata: { notePath: '   ' } })).toBe(false);
         expect(suppressesAutoFolder({ metadata: { commitChat: null } })).toBe(false);
+    });
+});
+
+describe('resolveAutoFolderContext — workspace isolation', () => {
+    const tempRoots: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
+    });
+
+    async function makeDataDir(): Promise<string> {
+        const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-auto-folder-ws-'));
+        tempRoots.push(dataDir);
+        return dataDir;
+    }
+
+    it('keeps two workspaces’ folder listings disjoint', async () => {
+        const dataDir = await makeDataDir();
+        await fs.mkdir(path.join(dataDir, 'repos', 'ws-a', 'notes', 'Plans', 'alpha'), { recursive: true });
+        await fs.mkdir(path.join(dataDir, 'repos', 'ws-b', 'notes', 'Plans', 'beta'), { recursive: true });
+
+        const a = await resolveAutoFolderContext({
+            dataDir,
+            workingDirectory: path.join(dataDir, 'repo-a'),
+            workspaceId: 'ws-a',
+            mode: 'ask',
+            resolveWorkspaceIdForPath: async () => 'unused',
+        });
+        const b = await resolveAutoFolderContext({
+            dataDir,
+            workingDirectory: path.join(dataDir, 'repo-b'),
+            workspaceId: 'ws-b',
+            mode: 'ask',
+            resolveWorkspaceIdForPath: async () => 'unused',
+        });
+
+        expect(a.existingFolders).toEqual(['alpha']);
+        expect(b.existingFolders).toEqual(['beta']);
+        expect(a.tasksRoot).not.toBe(b.tasksRoot);
+    });
+
+    it('prefers an explicit workspace ID over the working-directory resolver', async () => {
+        const dataDir = await makeDataDir();
+        await fs.mkdir(path.join(dataDir, 'repos', 'ws-explicit', 'notes', 'Plans', 'chosen'), { recursive: true });
+        await fs.mkdir(path.join(dataDir, 'repos', 'ws-resolver', 'notes', 'Plans', 'ignored'), { recursive: true });
+
+        const context = await resolveAutoFolderContext({
+            dataDir,
+            workingDirectory: path.join(dataDir, 'repo'),
+            workspaceId: 'ws-explicit',
+            mode: 'ask',
+            resolveWorkspaceIdForPath: async () => 'ws-resolver',
+        });
+
+        expect(context.tasksRoot).toBe(path.join(dataDir, 'repos', 'ws-explicit', 'notes', 'Plans'));
+        expect(context.existingFolders).toEqual(['chosen']);
+    });
+
+    it('uses a repo group’s own Plans root, not a member’s', async () => {
+        const dataDir = await makeDataDir();
+        await fs.mkdir(path.join(dataDir, 'repos', 'group-1', 'notes', 'Plans', 'group-plan'), { recursive: true });
+        await fs.mkdir(path.join(dataDir, 'repos', 'member-1', 'notes', 'Plans', 'member-plan'), { recursive: true });
+
+        const context = await resolveAutoFolderContext({
+            dataDir,
+            workingDirectory: path.join(dataDir, 'member-checkout'),
+            workspaceId: 'group-1',
+            mode: 'ask',
+            resolveWorkspaceIdForPath: async () => 'member-1',
+        });
+
+        expect(context.existingFolders).toEqual(['group-plan']);
+    });
+
+    it('handles a data directory whose path contains spaces', async () => {
+        const base = await fs.mkdtemp(path.join(os.tmpdir(), 'coc-auto-folder-space-'));
+        tempRoots.push(base);
+        const dataDir = path.join(base, 'My Data Dir');
+        await fs.mkdir(path.join(dataDir, 'repos', 'ws-space', 'notes', 'Plans', 'a folder'), { recursive: true });
+
+        const context = await resolveAutoFolderContext({
+            dataDir,
+            workingDirectory: path.join(base, 'repo'),
+            workspaceId: 'ws-space',
+            mode: 'ask',
+            resolveWorkspaceIdForPath: async () => 'unused',
+        });
+
+        expect(context.tasksRoot).toBe(path.join(dataDir, 'repos', 'ws-space', 'notes', 'Plans'));
+        expect(context.existingFolders).toEqual(['a folder']);
+    });
+});
+
+describe('plan save guidance eligibility', () => {
+    it('detects grilling from a first-turn payload', () => {
+        expect(isRalphGrillingContext({
+            payload: { kind: 'chat', context: { ralph: { phase: 'grilling' } } },
+        })).toBe(true);
+    });
+
+    it('detects a Work Item Goal grilling payload', () => {
+        expect(isRalphGrillingContext({
+            payload: { kind: 'chat', context: { workItemGoalGrilling: { workItemId: 'wi-1' } } },
+        })).toBe(true);
+    });
+
+    it('detects grilling from the denormalized follow-up metadata projection', () => {
+        expect(isRalphGrillingContext({ metadata: { ralph: { phase: 'grilling' } } })).toBe(true);
+    });
+
+    it('does not treat a non-grilling Ralph phase as grilling', () => {
+        expect(isRalphGrillingContext({ metadata: { ralph: { phase: 'execution' } } })).toBe(false);
+        expect(isRalphGrillingContext({ payload: { context: { ralph: { phase: 'execution' } } } })).toBe(false);
+    });
+
+    it('does not fire on empty or malformed input', () => {
+        expect(isRalphGrillingContext({})).toBe(false);
+        expect(isRalphGrillingContext({ payload: 'nope', metadata: null })).toBe(false);
+        expect(isRalphGrillingContext({ metadata: { ralph: null } })).toBe(false);
+    });
+
+    it('suppresses guidance for artifact-bound chats and for grilling alike', () => {
+        expect(suppressesPlanSaveGuidance({ metadata: { notePath: 'Plans/x.md' } })).toBe(true);
+        expect(suppressesPlanSaveGuidance({ metadata: { pullRequestChat: { prId: '7' } } })).toBe(true);
+        expect(suppressesPlanSaveGuidance({ metadata: { commitChat: { commitHash: 'abc' } } })).toBe(true);
+        expect(suppressesPlanSaveGuidance({ metadata: { ralph: { phase: 'grilling' } } })).toBe(true);
+    });
+
+    it('allows guidance for a plain ask chat', () => {
+        expect(suppressesPlanSaveGuidance({ payload: { kind: 'chat', mode: 'ask' }, metadata: { mode: 'ask' } }))
+            .toBe(false);
+        expect(suppressesAutoFolder({ metadata: { ralph: { phase: 'grilling' } } })).toBe(false);
     });
 });

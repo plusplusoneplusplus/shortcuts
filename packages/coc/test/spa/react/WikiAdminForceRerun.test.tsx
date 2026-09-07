@@ -70,7 +70,7 @@ async function mockJsonResponse(value: unknown) {
 }
 
 function mockSSEResponse(events: Array<{ type: string; [key: string]: any }>) {
-    const lines = events.map(e => `data: ${JSON.stringify(e)}`).join('\n') + '\n';
+    const lines = events.map(e => `data: ${JSON.stringify(e)}`).join('\n\n') + '\n\n';
     const encoder = new TextEncoder();
     const encoded = encoder.encode(lines);
     let consumed = false;
@@ -79,6 +79,8 @@ function mockSSEResponse(events: Array<{ type: string; [key: string]: any }>) {
         ok: true,
         body: {
             getReader: () => ({
+                cancel: vi.fn().mockResolvedValue(undefined),
+                releaseLock: vi.fn(),
                 read: () => {
                     if (!consumed) {
                         consumed = true;

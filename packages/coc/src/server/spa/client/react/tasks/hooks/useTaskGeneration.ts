@@ -5,6 +5,7 @@
  * Parses named SSE events (progress, chunk, done, error) from the response stream.
  */
 
+import { readSseStream } from '../../utils/readSseStream';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { getApiBase } from '../../utils/config';
 
@@ -155,33 +156,12 @@ export function useTaskGeneration(wsId: string): UseTaskGenerationReturn {
             return;
         }
 
-        // Stream SSE frames
-        const reader = res.body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let currentEvent = '';
-
         try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop()!; // keep unterminated tail
-
-                for (const line of lines) {
-                    if (line.startsWith('event: ')) {
-                        currentEvent = line.slice(7).trim();
-                    } else if (line.startsWith('data: ') && currentEvent !== '') {
-                        const payload = JSON.parse(line.slice(6));
-                        if (mountedRef.current) {
-                            dispatchEvent(currentEvent, payload);
-                        }
-                        currentEvent = '';
-                    } else if (line === '') {
-                        currentEvent = '';
-                    }
+            for await (const frame of readSseStream(res.body!)) {
+                if (!frame.event) continue;
+                const payload = JSON.parse(frame.data);
+                if (mountedRef.current) {
+                    dispatchEvent(frame.event, payload);
                 }
             }
         } catch (err: any) {

@@ -14,9 +14,11 @@ import { READ_ONLY_SYSTEM_MESSAGE } from '@plusplusoneplusplus/forge';
 import {
     CHAT_MODE_DIRECTIVE_TAG,
     MODE_SWITCHED_TO_AUTOPILOT_NOTE,
+    PLAN_SAVE_GUIDANCE_INTRO,
     buildChatModeDirective,
     buildChatModeDisplayBlock,
     loadChatModeInstructions,
+    parseChatModeMarker,
     prependChatModeDirective,
     resolveFirstTurnDirectiveMode,
     shouldInjectChatModeDirective,
@@ -405,5 +407,352 @@ describe('shouldInjectChatModeDirective', () => {
         }
 
         expect(sent).toEqual([askMarker, undefined, undefined, undefined]);
+    });
+});
+
+// ============================================================================
+// Plan save guidance nested inside the read-only section
+// ============================================================================
+
+describe('plan save guidance', () => {
+    const ctx = (existingFolders: string[], tasksRoot = '/data/repos/ws-a/notes/Plans') =>
+        ({ tasksRoot, existingFolders });
+
+    it('nests the destination inside the read-only section, before its closing tag', () => {
+        const directive = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['chat-retry']) })!;
+
+        const readOnlyOpen = directive.indexOf('<coc-read-only-mode>');
+        const intro = directive.indexOf(PLAN_SAVE_GUIDANCE_INTRO);
+        const save = directive.indexOf('- Save location:');
+        const readOnlyClose = directive.indexOf('</coc-read-only-mode>');
+        const modeClose = directive.indexOf(`</${CHAT_MODE_DIRECTIVE_TAG}>`);
+
+        expect(readOnlyOpen).toBeGreaterThanOrEqual(0);
+        expect(intro).toBeGreaterThan(readOnlyOpen);
+        expect(save).toBeGreaterThan(intro);
+        expect(readOnlyClose).toBeGreaterThan(save);
+        expect(modeClose).toBeGreaterThan(readOnlyClose);
+    });
+
+    it('keeps the shared SDK constant free of workspace data', () => {
+        buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['chat-retry']) });
+
+        expect(READ_ONLY_SYSTEM_MESSAGE).not.toContain('Save location');
+        expect(READ_ONLY_SYSTEM_MESSAGE).not.toContain('chat-retry');
+    });
+
+    it('renders the resolved root, the folder list, and the naming rule', () => {
+        const directive = buildChatModeDirective({
+            mode: 'ask',
+            planSaveContext: ctx(['right-panel', 'chat-retry']),
+        })!;
+
+        expect(directive).toContain('/data/repos/ws-a/notes/Plans/<chosen-folder>/<descriptive-name>.plan.md');
+        expect(directive).toContain('Existing folder options: chat-retry, right-panel');
+        expect(directive).toContain('kebab-case, ≤3 words');
+    });
+
+    it('scopes the guidance to an explicit request rather than every question', () => {
+        const directive = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx([]) })!;
+
+        expect(directive).toContain('If the user asks you to save a plan:');
+    });
+
+    it('reports (none yet) for an empty workspace and still names the root', () => {
+        const directive = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx([]) })!;
+
+        expect(directive).toContain('Existing folder options: (none yet)');
+        expect(directive).toContain('/data/repos/ws-a/notes/Plans/<chosen-folder>');
+    });
+
+    it('renders the same bytes whatever order the directory listing came back in', () => {
+        const a = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['b-folder', 'a-folder', 'c-folder']) });
+        const b = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['c-folder', 'a-folder', 'b-folder']) });
+
+        expect(a).toBe(b);
+    });
+
+    it('does not mutate the caller\u2019s folder array', () => {
+        const folders = ['z-folder', 'a-folder'];
+        buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(folders) });
+
+        expect(folders).toEqual(['z-folder', 'a-folder']);
+    });
+
+    it('drops archive folders from the advertised choices', () => {
+        const directive = buildChatModeDirective({
+            mode: 'ask',
+            planSaveContext: ctx(['archive', 'archive/old', 'right-panel']),
+        })!;
+
+        expect(directive).toContain('Existing folder options: right-panel');
+    });
+
+    it('converts a Windows root to forward slashes', () => {
+        const directive = buildChatModeDirective({
+            mode: 'ask',
+            planSaveContext: ctx(['plans'], 'C:\\Users\\dev\\.coc\\repos\\ws-a\\notes\\Plans'),
+        })!;
+
+        expect(directive).toContain('C:/Users/dev/.coc/repos/ws-a/notes/Plans/<chosen-folder>');
+        expect(directive).not.toContain('\\');
+    });
+
+    it('handles a root containing spaces', () => {
+        const directive = buildChatModeDirective({
+            mode: 'ask',
+            planSaveContext: ctx([], '/data/My Repos/ws a/notes/Plans'),
+        })!;
+
+        expect(directive).toContain('/data/My Repos/ws a/notes/Plans/<chosen-folder>');
+    });
+
+    it('falls back to the bare read-only rules with no context', () => {
+        expect(buildChatModeDirective({ mode: 'ask' })).toBe(
+            buildChatModeDirective({ mode: 'ask', planSaveContext: undefined }),
+        );
+        expect(buildChatModeDirective({ mode: 'ask' })).not.toContain('Save location');
+    });
+
+    it('is ask-only: autopilot and its transition note carry no destination', () => {
+        expect(buildChatModeDirective({ mode: 'autopilot', planSaveContext: ctx(['x']) })).toBeUndefined();
+        const transition = buildChatModeDirective({
+            mode: 'autopilot',
+            previousMode: 'ask',
+            planSaveContext: ctx(['x']),
+        })!;
+        expect(transition).toContain(MODE_SWITCHED_TO_AUTOPILOT_NOTE);
+        expect(transition).not.toContain('Save location');
+    });
+
+    it('applies to legacy plan mode through the same normalization', () => {
+        expect(buildChatModeDirective({ mode: 'plan' as never, planSaveContext: ctx(['x']) }))
+            .toBe(buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['x']) }));
+    });
+
+    it('keeps repo mode instructions after the read-only section, not inside it', () => {
+        const directive = buildChatModeDirective({
+            mode: 'ask',
+            planSaveContext: ctx(['x']),
+            modeInstructions: 'ASK-ONLY-INSTRUCTIONS',
+        })!;
+
+        expect(directive.indexOf('ASK-ONLY-INSTRUCTIONS'))
+            .toBeGreaterThan(directive.indexOf('</coc-read-only-mode>'));
+    });
+});
+
+// ============================================================================
+// parseChatModeMarker
+// ============================================================================
+
+describe('parseChatModeMarker', () => {
+    const ctx = { tasksRoot: '/data/repos/ws-a/notes/Plans', existingFolders: ['right-panel'] };
+
+    it('splits a directive carrying guidance and instructions into three pieces', () => {
+        const marker = buildChatModeDirective({
+            mode: 'ask',
+            planSaveContext: ctx,
+            modeInstructions: 'ASK-ONLY',
+        })!;
+
+        const parsed = parseChatModeMarker(marker);
+        expect(parsed.prose).toContain('Save location');
+        expect(parsed.prose!.endsWith('</coc-read-only-mode>')).toBe(true);
+        expect(parsed.instructions).toBe('ASK-ONLY');
+        expect(parsed.proseBase).not.toContain('Save location');
+    });
+
+    it('recovers exactly the guidance-free rules a folder-blind caller would build', () => {
+        const withGuidance = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx })!;
+        const without = buildChatModeDirective({ mode: 'ask' })!;
+
+        expect(parseChatModeMarker(withGuidance).proseBase).toBe(parseChatModeMarker(without).prose);
+    });
+
+    it('recognizes a legacy marker that predates the guidance', () => {
+        const legacy = `<${CHAT_MODE_DIRECTIVE_TAG}>\n${READ_ONLY_SYSTEM_MESSAGE.trim()}\n</${CHAT_MODE_DIRECTIVE_TAG}>`;
+
+        const parsed = parseChatModeMarker(legacy);
+        expect(parsed.prose).toBe(READ_ONLY_SYSTEM_MESSAGE.trim());
+        expect(parsed.proseBase).toBe(READ_ONLY_SYSTEM_MESSAGE.trim());
+        expect(parsed.instructions).toBeUndefined();
+    });
+
+    it('recognizes the autopilot transition note, with and without instructions', () => {
+        expect(parseChatModeMarker(buildChatModeDirective({ mode: 'autopilot', previousMode: 'ask' })!))
+            .toEqual({ prose: MODE_SWITCHED_TO_AUTOPILOT_NOTE, proseBase: MODE_SWITCHED_TO_AUTOPILOT_NOTE });
+
+        const withInstructions = parseChatModeMarker(buildChatModeDirective({
+            mode: 'autopilot',
+            previousMode: 'ask',
+            modeInstructions: 'AUTOPILOT-ONLY',
+        })!);
+        expect(withInstructions.prose).toBe(MODE_SWITCHED_TO_AUTOPILOT_NOTE);
+        expect(withInstructions.instructions).toBe('AUTOPILOT-ONLY');
+    });
+
+    it('yields no prose for a marker whose read-only section never closes', () => {
+        const malformed = `<${CHAT_MODE_DIRECTIVE_TAG}>\n<coc-read-only-mode>\nrules but no close\n</${CHAT_MODE_DIRECTIVE_TAG}>`;
+
+        const parsed = parseChatModeMarker(malformed);
+        expect(parsed.prose).toBeUndefined();
+        expect(parsed.proseBase).toBeUndefined();
+    });
+
+    it('treats an instructions-only marker as carrying no prose', () => {
+        const marker = buildChatModeDirective({ mode: 'autopilot', modeInstructions: 'AUTOPILOT-ONLY' })!;
+
+        expect(parseChatModeMarker(marker)).toEqual({ instructions: 'AUTOPILOT-ONLY' });
+    });
+});
+
+// ============================================================================
+// shouldInjectChatModeDirective — plan-destination drift
+// ============================================================================
+
+describe('shouldInjectChatModeDirective — plan-destination drift', () => {
+    const root = '/data/repos/ws-a/notes/Plans';
+    const ctx = (existingFolders: string[], tasksRoot = root) => ({ tasksRoot, existingFolders });
+
+    const injected = (marker: string) => ([{
+        role: 'user' as const,
+        content: 'hi',
+        timestamp: new Date('2026-01-01T00:00:00.000Z'),
+        turnIndex: 0,
+        timeline: [],
+        chatModeContext: marker,
+    }]);
+
+    /** The executor's own comparison: it resolved the context, so it checks drift. */
+    const ask = (
+        planSaveContext: { tasksRoot: string; existingFolders: string[] } | undefined,
+        turns: ReturnType<typeof injected>,
+        overrides: Partial<ChatModeInjectionCheck> = {},
+    ) => shouldInjectChatModeDirective({
+        mode: 'ask',
+        previousMode: 'ask',
+        planSaveContext,
+        checkPlanContextDrift: true,
+        turns,
+        compaction: undefined,
+        canResumeSession: true,
+        ...overrides,
+    });
+
+    it('skips when the destination and folder list are unchanged', () => {
+        const marker = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a', 'b']) })!;
+
+        expect(ask(ctx(['a', 'b']), injected(marker))).toBe(false);
+    });
+
+    it('skips when the same folders come back in a different order', () => {
+        const marker = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a', 'b', 'c']) })!;
+
+        expect(ask(ctx(['c', 'b', 'a']), injected(marker))).toBe(false);
+    });
+
+    it('re-injects once when a folder is added, removed, or renamed', () => {
+        const marker = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a', 'b']) })!;
+
+        expect(ask(ctx(['a', 'b', 'c']), injected(marker))).toBe(true);
+        expect(ask(ctx(['a']), injected(marker))).toBe(true);
+        expect(ask(ctx(['a', 'b-renamed']), injected(marker))).toBe(true);
+
+        // …and then settles.
+        const refreshed = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a', 'b', 'c']) })!;
+        expect(ask(ctx(['a', 'b', 'c']), injected(refreshed))).toBe(false);
+    });
+
+    it('re-injects when the resolved root changes (a different workspace)', () => {
+        const marker = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a']) })!;
+
+        expect(ask(ctx(['a'], '/data/repos/ws-b/notes/Plans'), injected(marker))).toBe(true);
+    });
+
+    it('re-injects when the turn becomes eligible or becomes suppressed', () => {
+        const withGuidance = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a']) })!;
+        const without = buildChatModeDirective({ mode: 'ask' })!;
+
+        expect(ask(ctx(['a']), injected(without))).toBe(true);
+        expect(ask(undefined, injected(withGuidance))).toBe(true);
+    });
+
+    it('re-injects once for a legacy marker that predates the guidance, then settles', () => {
+        const legacy = `<${CHAT_MODE_DIRECTIVE_TAG}>\n${READ_ONLY_SYSTEM_MESSAGE.trim()}\n</${CHAT_MODE_DIRECTIVE_TAG}>`;
+
+        expect(ask(ctx(['a']), injected(legacy))).toBe(true);
+
+        const refreshed = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a']) })!;
+        expect(ask(ctx(['a']), injected(refreshed))).toBe(false);
+    });
+
+    it('re-injects for a marker whose read-only section is malformed', () => {
+        const malformed = `<${CHAT_MODE_DIRECTIVE_TAG}>\n<coc-read-only-mode>\ntruncated\n</${CHAT_MODE_DIRECTIVE_TAG}>`;
+
+        expect(ask(ctx(['a']), injected(malformed))).toBe(true);
+        expect(ask(undefined, injected(malformed))).toBe(true);
+    });
+
+    it('leaves a folder-blind caller unmoved by a destination it cannot see', () => {
+        // The display side never resolves folders. Without the stripped
+        // comparison it would read "unknown" as "removed" and disclose a block
+        // the executor did not send.
+        const marker = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a', 'b']) })!;
+
+        expect(shouldInjectChatModeDirective({
+            mode: 'ask',
+            previousMode: 'ask',
+            turns: injected(marker),
+            compaction: undefined,
+            canResumeSession: true,
+        })).toBe(false);
+    });
+
+    it('keeps folder drift and repo-instruction drift independent', () => {
+        const marker = buildChatModeDirective({
+            mode: 'ask',
+            planSaveContext: ctx(['a']),
+            modeInstructions: 'ASK-ONLY',
+        })!;
+
+        // Instructions changed, folders held.
+        expect(ask(ctx(['a']), injected(marker), {
+            modeInstructions: 'ASK-ONLY-V2',
+            checkInstructionDrift: true,
+        })).toBe(true);
+        // Folders changed, instructions held.
+        expect(ask(ctx(['a', 'b']), injected(marker), {
+            modeInstructions: 'ASK-ONLY',
+            checkInstructionDrift: true,
+        })).toBe(true);
+        // Neither changed.
+        expect(ask(ctx(['a']), injected(marker), {
+            modeInstructions: 'ASK-ONLY',
+            checkInstructionDrift: true,
+        })).toBe(false);
+    });
+
+    it('still re-injects on a cold resume and after a compaction', () => {
+        const marker = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a']) })!;
+
+        expect(ask(ctx(['a']), injected(marker), { canResumeSession: false })).toBe(true);
+        expect(ask(ctx(['a']), injected(marker), {
+            compaction: { state: 'completed', completedAt: '2026-02-01T00:00:00.000Z' } as never,
+        })).toBe(true);
+    });
+
+    it('sends the transition note, and no destination, when ask switches to autopilot', () => {
+        const marker = buildChatModeDirective({ mode: 'ask', planSaveContext: ctx(['a']) })!;
+
+        expect(shouldInjectChatModeDirective({
+            mode: 'autopilot',
+            previousMode: 'ask',
+            planSaveContext: undefined,
+            checkPlanContextDrift: true,
+            turns: injected(marker),
+            compaction: undefined,
+            canResumeSession: true,
+        })).toBe(true);
     });
 });

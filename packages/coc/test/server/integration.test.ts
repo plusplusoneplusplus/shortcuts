@@ -5,6 +5,7 @@
  * Uses port 0 (OS-assigned) for test isolation.
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
@@ -71,25 +72,6 @@ function makeProcessBody(id: string, overrides: Record<string, unknown> = {}): s
 
 function makeWorkspaceBody(id: string, name: string): string {
     return JSON.stringify({ id, name, rootPath: `/ws/${name}` });
-}
-
-/** Parse SSE text into events array: [{event, data}] */
-function parseSSE(text: string): Array<{ event: string; data: unknown }> {
-    const events: Array<{ event: string; data: unknown }> = [];
-    const blocks = text.split('\n\n').filter(b => b.trim());
-    for (const block of blocks) {
-        const lines = block.split('\n');
-        let event = '';
-        let data = '';
-        for (const line of lines) {
-            if (line.startsWith('event: ')) { event = line.slice(7); }
-            if (line.startsWith('data: ')) { data = line.slice(6); }
-        }
-        if (event && data) {
-            events.push({ event, data: JSON.parse(data) });
-        }
-    }
-    return events;
 }
 
 // ============================================================================
@@ -252,7 +234,7 @@ describe('Server Integration', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toBe('text/event-stream');
 
-            const events = parseSSE(res.body);
+            const events = parseSSEFrames([res.body]);
             expect(events.some(e => e.event === 'status')).toBe(true);
             expect(events.some(e => e.event === 'done')).toBe(true);
 
@@ -344,7 +326,7 @@ describe('Server Integration', () => {
             const res = await request(`${baseUrl}/api/processes/sse-failed/stream`);
             expect(res.status).toBe(200);
 
-            const events = parseSSE(res.body);
+            const events = parseSSEFrames([res.body]);
             const statusEvent = events.find(e => e.event === 'status');
             expect((statusEvent!.data as any).status).toBe('failed');
             expect((statusEvent!.data as any).error).toBe('boom');

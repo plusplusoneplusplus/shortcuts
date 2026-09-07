@@ -2,6 +2,7 @@
  * WikiAsk — AI chat panel with SSE streaming.
  */
 
+import { readSseStream } from '../utils/readSseStream';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -85,98 +86,69 @@ export function WikiAsk({ wikiId, wikiName, currentComponentId }: WikiAskProps) 
                 return;
             }
 
-            const reader = response.body!.getReader();
             const done = () => { setStreaming(false); };
-            const decoder = new TextDecoder();
-            let buffer = '';
             let fullResponse = '';
 
             // Add placeholder assistant message
             setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
-            const processChunk = async (result: ReadableStreamReadResult<Uint8Array>): Promise<void> => {
-                if (result.done) {
-                    if (buffer.trim() && buffer.trim().startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(buffer.trim().slice(6));
-                            if (data.type === 'chunk') fullResponse += data.content;
-                            else if (data.type === 'done') {
-                                fullResponse = data.fullResponse || fullResponse;
-                                if (data.sessionId) setSessionId(data.sessionId);
+            for await (const frame of readSseStream(response.body!, { flushFinalFrame: true })) {
+                try {
+                    const data = JSON.parse(frame.data);
+                    if (data.type === 'context') {
+                        const parts: string[] = [];
+                        if (data.componentIds?.length) parts.push(`📦 ${data.componentIds.join(', ')}`);
+                        if (data.themeIds?.length) parts.push(`📋 ${data.themeIds.join(', ')}`);
+                        if (parts.length) {
+                            setMessages(prev => {
+                                // Insert context before the last assistant message
+                                const copy = [...prev];
+                                const lastIdx = copy.length - 1;
+                                if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
+                                    copy.splice(lastIdx, 0, { role: 'context', content: 'Context: ' + parts.join(', ') });
+                                }
+                                return copy;
+                            });
+                        }
+                    } else if (data.type === 'chunk') {
+                        fullResponse += data.content;
+                        setMessages(prev => {
+                            const updated = [...prev];
+                            if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
+                                updated[updated.length - 1] = { role: 'assistant', content: fullResponse };
                             }
-                        } catch { /* ignore */ }
+                            return updated;
+                        });
+                    } else if (data.type === 'done') {
+                        fullResponse = data.fullResponse || fullResponse;
+                        if (data.sessionId) setSessionId(data.sessionId);
+                        historyRef.current.push({ role: 'assistant', content: fullResponse });
+                        setMessages(prev => {
+                            const updated = [...prev];
+                            if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
+                                updated[updated.length - 1] = { role: 'assistant', content: fullResponse };
+                            }
+                            return updated;
+                        });
+                        done();
+                        return;
+                    } else if (data.type === 'error') {
+                        setMessages(prev => [...prev, { role: 'error', content: data.message }]);
+                        done();
+                        return;
                     }
-                    // Finalize
-                    historyRef.current.push({ role: 'assistant', content: fullResponse });
-                    setMessages(prev => {
-                        const updated = [...prev];
-                        if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
-                            updated[updated.length - 1] = { role: 'assistant', content: fullResponse };
-                        }
-                        return updated;
-                    });
-                    done();
-                    return;
+                } catch { /* ignore */ }
+            }
+
+            // Finalize streams that close without a done event.
+            historyRef.current.push({ role: 'assistant', content: fullResponse });
+            setMessages(prev => {
+                const updated = [...prev];
+                if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
+                    updated[updated.length - 1] = { role: 'assistant', content: fullResponse };
                 }
-
-                buffer += decoder.decode(result.value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed.startsWith('data: ')) continue;
-                    try {
-                        const data = JSON.parse(trimmed.slice(6));
-                        if (data.type === 'context') {
-                            const parts: string[] = [];
-                            if (data.componentIds?.length) parts.push(`📦 ${data.componentIds.join(', ')}`);
-                            if (data.themeIds?.length) parts.push(`📋 ${data.themeIds.join(', ')}`);
-                            if (parts.length) {
-                                setMessages(prev => {
-                                    // Insert context before the last assistant message
-                                    const copy = [...prev];
-                                    const lastIdx = copy.length - 1;
-                                    if (lastIdx >= 0 && copy[lastIdx].role === 'assistant') {
-                                        copy.splice(lastIdx, 0, { role: 'context', content: 'Context: ' + parts.join(', ') });
-                                    }
-                                    return copy;
-                                });
-                            }
-                        } else if (data.type === 'chunk') {
-                            fullResponse += data.content;
-                            setMessages(prev => {
-                                const updated = [...prev];
-                                if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
-                                    updated[updated.length - 1] = { role: 'assistant', content: fullResponse };
-                                }
-                                return updated;
-                            });
-                        } else if (data.type === 'done') {
-                            fullResponse = data.fullResponse || fullResponse;
-                            if (data.sessionId) setSessionId(data.sessionId);
-                            historyRef.current.push({ role: 'assistant', content: fullResponse });
-                            setMessages(prev => {
-                                const updated = [...prev];
-                                if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
-                                    updated[updated.length - 1] = { role: 'assistant', content: fullResponse };
-                                }
-                                return updated;
-                            });
-                            done();
-                            return;
-                        } else if (data.type === 'error') {
-                            setMessages(prev => [...prev, { role: 'error', content: data.message }]);
-                            done();
-                            return;
-                        }
-                    } catch { /* ignore */ }
-                }
-
-                return reader.read().then(processChunk);
-            };
-
-            await reader.read().then(processChunk);
+                return updated;
+            });
         } catch (err: any) {
             setMessages(prev => [...prev, { role: 'error', content: err.message || 'Failed to connect' }]);
         } finally {

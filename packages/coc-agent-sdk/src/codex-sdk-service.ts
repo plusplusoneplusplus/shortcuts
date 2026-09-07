@@ -33,7 +33,7 @@ import { runWithWarmClient } from './warm-client-runner';
 import { resolveWarmClientTtlMs } from './warm-client-config';
 import { getSDKLogger } from './logger';
 import { dynamicImportModule } from './sdk-esm-loader';
-import { execFileAsync } from './internal/exec-utils';
+import { execFileAsync } from './platform/exec-utils';
 import { loadNativeGit, type NativeGitAddon } from '@plusplusoneplusplus/coc-native';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';

@@ -16,8 +16,7 @@
  *   6. Memory V2 context
  *   7. tool guidance
  *   7b. Codex `ask_user` discovery note (Codex only, when the tool is enabled)
- *   8. auto-folder save location
- *   9. note file context
+ *   8. note file context
  *
  * **This message is mode-invariant by contract.** It carries no `mode` input:
  * the read-only directive and the mode-specific repo instructions ride the
@@ -26,11 +25,16 @@
  * re-introduce a mode branch here — `chat-turn-system-message.test.ts` asserts
  * byte equality across modes.
  *
- * Callers decide *whether* a block applies (e.g. grilling suppresses the
- * auto-folder block) by passing `undefined`; they do not decide where it lands.
+ * Callers decide *whether* a block applies by passing `undefined`; they do not
+ * decide where it lands.
+ *
+ * The plan save destination is deliberately NOT here: it is workspace state
+ * that changes whenever a folder is created or renamed, so keeping it in the
+ * cached prefix would churn the whole conversation. It rides the ask-mode user
+ * directive instead — see `chat-mode-directive.ts`.
  */
 
-import type { AutoFolderContext, SystemMessageConfig } from '@plusplusoneplusplus/forge';
+import type { SystemMessageConfig } from '@plusplusoneplusplus/forge';
 import type { ChatProvider } from '../tasks/task-types';
 import {
     buildForEachGenerationSystemMessage,
@@ -66,8 +70,6 @@ export interface ChatTurnSystemMessageInput {
      * `chat.askUser.enabled`, which would advertise a tool the workspace removed.
      */
     askUserAvailable?: boolean;
-    /** Auto-folder save target; pass `undefined` to suppress the block. */
-    autoFolderContext?: AutoFolderContext;
     /** Note being edited by a note chat, when applicable. */
     notePath?: string;
 }
@@ -136,7 +138,6 @@ export function buildChatTurnSystemMessage(
         .appendMemoryV2(input.memoryV2)
         .appendToolGuidance(input.toolGuidance)
         .append(buildCodexAskUserDiscoveryBlock(input.provider, input.askUserAvailable))
-        .appendAutoFolder(input.autoFolderContext)
         .appendNoteFile(input.notePath)
         .build();
 }

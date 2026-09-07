@@ -4,6 +4,7 @@
  * Each endpoint is a flat Route — no sub-router pattern.
  */
 
+import { writeSseHeaders } from '../shared/sse-writer';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -283,12 +284,7 @@ export async function handleGenerateSeeds(
     }
 
     // SSE setup
-    res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-    });
+    writeSseHeaders(res);
 
     // Track client disconnect to avoid writing to a destroyed stream
     let clientDisconnected = false;

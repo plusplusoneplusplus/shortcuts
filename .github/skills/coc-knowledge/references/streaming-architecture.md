@@ -9,6 +9,45 @@ communication.
 | SSE (HTTP) | Server → Browser | Per-process token streaming | Open while viewing a chat, closes on `done` |
 | WebSocket | Server ↔ Browser | Global real-time notifications | Persistent (dashboard lifetime) |
 
+## SSE infrastructure
+
+### Shared frames and writers
+
+`@plusplusoneplusplus/forge/sse` is the browser-safe framing module for CoC, its SPA,
+and coccontainer. `parseSseBlock` joins `data:` lines with newlines, removes leading
+whitespace using `trimStart`, preserves trailing whitespace and empty data, and ignores
+blocks without data. `parseSseBuffer` accepts LF/CRLF delimiters and returns complete
+frames plus the unconsumed `rest`. Metadata fields are optional; comments and `retry:`
+lines are ignored. The MCP connection tester explicitly parses its final unterminated
+block at HTTP EOF.
+
+`SSE_HEADERS` and `writeSseHeaders` set the stream content type, no-cache, keep-alive,
+and disabled proxy buffering. `writeNamedEvent` emits named JSON events;
+`writeDataEvent` emits data-only JSON for wiki/storage consumers, with `sendSSE` exported
+as its alias from `wiki/ask-handler.ts`. CoC imports the writers through
+`server/shared/sse-writer.ts`; the container imports forge directly. Both writers return
+false on destroyed/ended responses and true for successful writes even under backpressure.
+Data-only writes catch write errors; named writes propagate them. Header flushing belongs
+to each endpoint.
+
+### Fetch consumers and contract coverage
+
+The SPA's `react/utils/readSseStream.ts` wraps `parseSseBuffer` in an async generator,
+preserves split UTF-8 characters, and releases the reader lock on completion or error.
+Early consumer returns cancel the reader. Wiki ask opts into parsing a final unterminated
+frame. Wiki admin, storage, and task generation consume complete frames and own their
+existing payload dispatch. Raw `EventSource` chat hooks keep their own reconnection and
+replay behavior.
+
+`coc-client/test/realtime/sse.test.ts` compares actual `ProcessSseClient` listener names
+against server `writeNamedEvent` literals, including its separate `done` listener.
+The server preserves `pipeline-phase/progress` → `workflow-phase/progress` wire names.
+Process SSE, server integration, task generation, and storage suites use
+`coc/test/helpers/sse-test-utils.ts` to decode JSON through forge. Container relay tests pin both named and unnamed JSON envelopes.
+
+The standalone Teams MCP client in `coc-connector` extracts its last JSON-RPC data line
+locally. That connector package has no forge dependency and sits outside the shared SSE surface.
+
 ## SSE (per-process)
 
 The browser opens `EventSource("GET /api/processes/{processId}/stream")`; the server replies
@@ -112,6 +151,14 @@ Everything runs in one Node.js process; LLM API calls are async network I/O, not
 | **Queue bridge** | Manages the task queue state machine (drain events) |
 
 ### ProcessStore — two event channels
+
+`forge/src/process-event-bus.ts` owns the per-process output channel.
+`createProcessEventBus()` returns closure-bound methods used by both persistent stores
+and spread into CoC's in-memory store. Each store owns its emitter map. Subscribing,
+emitting chunks, and emitting arbitrary events create emitters on demand;
+`emitProcessComplete` notifies listeners then deletes the emitter. Generic
+`emitProcessEvent({ type: 'complete', ... })` keeps the emitter. Unsubscribing targets
+the original subscription even if the process ID has acquired a fresh emitter.
 
 ```
 ProcessStore

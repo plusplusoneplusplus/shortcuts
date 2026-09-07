@@ -4,6 +4,7 @@
  * any live output.
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -15,32 +16,6 @@ import type { MockProcessStore } from '../helpers/mock-process-store';
 // ============================================================================
 // Helpers
 // ============================================================================
-
-interface SSEEvent {
-    event: string;
-    data: unknown;
-}
-
-/** Parse raw SSE frames written to a PassThrough stream. */
-function parseSSEFrames(chunks: string[]): SSEEvent[] {
-    const raw = chunks.join('');
-    const frames: SSEEvent[] = [];
-    // Each frame: "event: <name>\ndata: <json>\n\n"
-    const parts = raw.split('\n\n').filter(Boolean);
-    for (const part of parts) {
-        const lines = part.split('\n');
-        let event = '';
-        let data = '';
-        for (const line of lines) {
-            if (line.startsWith('event: ')) { event = line.slice(7); }
-            if (line.startsWith('data: ')) { data = line.slice(6); }
-        }
-        if (event && data) {
-            frames.push({ event, data: JSON.parse(data) });
-        }
-    }
-    return frames;
-}
 
 /** Create a mock IncomingMessage (just needs 'on' for close handler). */
 function createMockReq(): IncomingMessage {

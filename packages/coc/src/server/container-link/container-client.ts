@@ -3,6 +3,7 @@
  * Handles registration, heartbeats, event forwarding, and request proxying.
  */
 
+import { parseSseBuffer } from '@plusplusoneplusplus/forge/sse';
 import * as WebSocket from 'ws';
 import * as http from 'http';
 import * as os from 'os';
@@ -302,16 +303,12 @@ export class ContainerLinkClient extends EventEmitter {
             this.sseSubscriptions.set(payload.subscriptionId, res);
 
             let buffer = '';
-            res.on('data', (chunk: Buffer) => {
-                buffer += chunk.toString();
-                const parts = buffer.split('\n\n');
-                buffer = parts.pop() ?? '';
-                for (const part of parts) {
-                    if (!part.trim()) continue;
-                    const event = this.parseSSEBlock(part);
-                    if (event) {
-                        this.forwardSSEEvent(payload.subscriptionId, event.event, event.data, event.id);
-                    }
+            res.setEncoding('utf8');
+            res.on('data', (chunk: string) => {
+                const { frames, rest } = parseSseBuffer(buffer + chunk);
+                buffer = rest;
+                for (const event of frames) {
+                    this.forwardSSEEvent(payload.subscriptionId, event.event, event.data, event.id);
                 }
             });
 
@@ -335,25 +332,6 @@ export class ContainerLinkClient extends EventEmitter {
             existing.destroy();
             this.sseSubscriptions.delete(id);
         }
-    }
-
-    private parseSSEBlock(block: string): { event?: string; data: string; id?: string } | null {
-        let event: string | undefined;
-        let id: string | undefined;
-        const dataLines: string[] = [];
-
-        for (const line of block.split('\n')) {
-            if (line.startsWith('event:')) {
-                event = line.slice(6).trim();
-            } else if (line.startsWith('data:')) {
-                dataLines.push(line.slice(5).trimStart());
-            } else if (line.startsWith('id:')) {
-                id = line.slice(3).trim();
-            }
-        }
-
-        if (dataLines.length === 0) return null;
-        return { event, data: dataLines.join('\n'), id };
     }
 
     private sendResponse(requestId: string, status: number, headers: Record<string, string>, body: string): void {

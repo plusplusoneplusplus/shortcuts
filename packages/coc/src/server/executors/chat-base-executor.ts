@@ -57,15 +57,16 @@ import { createFixedQueueRuntimeConfig } from '../queue/queue-runtime-config';
 import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
-import { resolveAutoFolderContext, suppressesAutoFolder } from './auto-folder-utils';
+import { resolveAutoFolderContext, suppressesAutoFolder, suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
-import { buildMcpOAuthHandler } from './chat-turn-runner';
+import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn } from '../workspaces/repo-group-chat-context';
+import type { RepoGroupChatContext } from '../workspaces/repo-group-chat-context';
 import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompletedProgress, buildRalphGrillPlanningStartedProgress, buildRalphGrillProcessStateFromPlan, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
 import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
 /** Log prefix for every line this executor writes. */
@@ -477,6 +478,142 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         });
     }
 
+    // ========================================================================
+    // Turn scaffolding — shared by both chat turn paths
+    // ========================================================================
+
+    /**
+     * Apply the two prompt decorations both chat turn paths share: the
+     * selected-skills directive and the repo-group member listing.
+     *
+     * The skills directive always rides the prompt (it names the skills the
+     * user picked for *this* message). The repo-group listing is conditional,
+     * and that is the one real difference between the paths — so the decision
+     * is an input, not a branch in here:
+     *
+     * - First turn: always. It opens a new SDK session, which is exactly the
+     *   case a follow-up re-injects for.
+     * - Follow-up: only when the session cannot already hold the block — see
+     *   `shouldInjectRepoGroupContext`.
+     *
+     * Also records the injection on the user turn, so the chat's disclosure
+     * never claims the model was told something it was not.
+     *
+     * The mode directive is deliberately not handled here: the two paths decide
+     * whether to send one very differently, and they prepend it at different
+     * points. It commutes with this decoration (one prepends, one appends), so
+     * a caller may apply it before or after.
+     */
+    protected async decorateChatTurnPrompt(input: {
+        processId: string;
+        prompt: string;
+        workspaceId: string | undefined;
+        selectedSkillNames: string[] | undefined;
+        skillDirectories?: string[];
+        disabledSkills?: string[];
+        /**
+         * Whether the resolved repo-group listing rides this turn's prompt.
+         * Receives the resolved context so a follow-up can consult it.
+         */
+        shouldInjectRepoGroup: (context: RepoGroupChatContext | undefined) => boolean;
+    }): Promise<{
+        prompt: string;
+        /**
+         * The resolved context, injected or not. Member roots are granted as
+         * `additionalDirectories` on *every* turn — that is a permission
+         * option, not conversation state.
+         */
+        repoGroupContext: RepoGroupChatContext | undefined;
+    }> {
+        const withSkills = prependSelectedSkillsDirective(
+            input.prompt,
+            input.selectedSkillNames,
+            resolveSelectedSkillReferences(
+                input.selectedSkillNames,
+                input.skillDirectories,
+                input.disabledSkills,
+            ),
+        );
+
+        const repoGroupContext = await resolveRepoGroupChatContext(
+            this.store,
+            this.dataDir,
+            input.workspaceId,
+        );
+        const injectedRepoGroupContext = input.shouldInjectRepoGroup(repoGroupContext)
+            ? repoGroupContext
+            : undefined;
+        await persistRepoGroupContextOnUserTurn(this.store, input.processId, injectedRepoGroupContext);
+
+        return {
+            prompt: appendRepoGroupContext(withSkills, injectedRepoGroupContext),
+            repoGroupContext,
+        };
+    }
+
+    /**
+     * Open a chat turn: clear the previous turn's streaming state, register the
+     * flush handler that drains a partial turn if the process is stopped, and
+     * start TTFT/TPS timing before any output can arrive.
+     *
+     * `enqueuedAt` is the queue-enqueue timestamp, supplied only by the
+     * first-turn path (a follow-up is dispatched directly and has no queue
+     * wait to reconstruct).
+     */
+    protected beginChatTurn(processId: string, opts: { enqueuedAt?: number } = {}): void {
+        this.resetSessionStreamingState(processId);
+        this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
+        this.turnPerformance.begin(processId, opts);
+    }
+
+    /**
+     * Close a chat turn. Runs from the `finally` of both paths, so every step
+     * must be safe on the success, error, and abort paths alike.
+     *
+     * Order matters: the output buffer is read before `cleanupSession` drops
+     * it, and the flush handler is unregistered before the final persist so a
+     * late stop cannot re-enter a half-torn-down session.
+     */
+    protected async finalizeChatTurn(
+        processId: string,
+        opts: {
+            controller: AbortController;
+            /** `ChatModeAIOptions.dispose` / `ChatTurnContext.dispose`. */
+            dispose?: () => void;
+            workspaceId?: string;
+            /** Temp dir holding decoded image attachments, if this turn made one. */
+            imageTempDir?: string;
+            /** Cleanup for a prompt rewritten to a paste file, if any. */
+            pasteCleanup?: () => void;
+            logLabel: string;
+        },
+    ): Promise<void> {
+        this.releaseTurnAbortController(processId, opts.controller);
+        // Timing state is settled on both success and error paths; this is
+        // a leak guard for throws that bypass both settles.
+        this.turnPerformance.abandon(processId);
+        // Background tasks cannot outlive the turn; drop the replay snapshot
+        // on every exit path, including a drain-cap abort that never settles.
+        this.backgroundTasks.clear(processId);
+        if (opts.imageTempDir) { cleanupTempDir(opts.imageTempDir); }
+        if (opts.pasteCleanup) { opts.pasteCleanup(); }
+        opts.dispose?.();
+        // Cancel any pending ask-user questions before cleanup
+        this.cancelAskUserHandles(processId);
+        try {
+            await this.clearPendingAskUser(processId);
+        } catch (err) {
+            getLogger().debug(
+                LogCategory.AI,
+                `${opts.logLabel} Failed to clear pending ask-user for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
+        const buffer = this.getOutputBuffer(processId);
+        this.cleanupSession(processId);
+        this.store.unregisterFlushHandler?.(processId);
+        await this.persistOutput(processId, buffer, opts.workspaceId);
+    }
+
     /**
      * Build the `askUser` block passed to `buildChatTurnContext`.
      *
@@ -557,22 +694,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected async buildFirstTurnSystemMessage(input: {
         task: QueuedTask;
         workingDirectory: string | undefined;
-        autoFolderContext: AutoFolderContext | undefined;
         memoryV2: MemoryV2Addon;
         toolGuidance: string;
         /** Whether `ask_user` survived the turn's tool filtering — see `askUserSurvivedFiltering`. */
         askUserAvailable: boolean;
     }): Promise<SystemMessageConfig | undefined> {
         const payload = input.task.payload as unknown as ChatPayload;
-        // During grilling, the user-message directive owns the output contract
-        // (Notes goal file for general Ralph, Work Item versioning for Goal items).
-        // Suppress the generic auto-folder system block so the model does not
-        // receive a contradictory `.plan.md` save target. Artifact-bound chats
-        // (PR chats route through here) drop the block outright - see
-        // `suppressesAutoFolder`.
-        const autoFolderSuppressed =
-            payload.context?.ralph?.phase === 'grilling'
-            || suppressesAutoFolder({ payload: input.task.payload });
         return buildChatTurnSystemMessage({
             workingDirectory: input.workingDirectory,
             provider: payload.provider ?? this.provider,
@@ -588,20 +715,44 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             memoryV2: input.memoryV2,
             toolGuidance: input.toolGuidance,
             askUserAvailable: input.askUserAvailable,
-            autoFolderContext: autoFolderSuppressed ? undefined : input.autoFolderContext,
             notePath: payload.context?.noteChat?.notePath,
         });
     }
 
+    /**
+     * Build the first-turn options for a standard chat turn.
+     *
+     * Shared by ask and autopilot so the two modes cannot drift: the tool
+     * bundle, the system message, and the whole context build are identical,
+     * and only the three things that genuinely differ branch on `mode`.
+     *
+     * What `mode` changes, and nothing else:
+     * - `agentMode` — the SDK's protocol-level write enforcement.
+     * - The plan-save / auto-folder context and the Ralph grilling directive,
+     *   which are ask-only concerns (autopilot writes wherever the task says).
+     * - `ask_user` interactivity: an autopilot chat open in the dashboard is
+     *   attended, so its questions are always answerable. Registration itself
+     *   never varies — see `buildAskUserWiring`.
+     *
+     * Notably NOT mode-dependent: Memory V2. Autopilot used to opt out, which
+     * made its tool block and system message differ from ask mode's and cost
+     * the conversation's prefix cache the moment a user toggled the mode pill.
+     */
     protected async buildStandardModeOptions(
         task: QueuedTask,
         prompt: string,
-        mode: 'ask',
+        mode: 'ask' | 'autopilot',
         workingDirectory: string | undefined,
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
+        const isAsk = mode === 'ask';
 
-        const autoFolderContext = workingDirectory
+        // Resolved for the two consumers that still need it: the Ralph grilling
+        // directive's `.goal.md` destination and the ask directive's `.plan.md`
+        // destination. Artifact-bound chats want neither, so they skip the
+        // mkdir + readdir entirely. Autopilot carries no save-location contract
+        // at all, so it never resolves one.
+        const autoFolderContext = isAsk && workingDirectory && !suppressesAutoFolder({ payload: task.payload })
             ? await this.buildAutoFolderContext(workingDirectory, payload.workspaceId, mode)
             : undefined;
 
@@ -622,9 +773,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
+            // Registered in autopilot too, so the tool block is identical to
+            // ask mode and a mid-chat mode switch does not invalidate the
+            // conversation's prefix cache. An autopilot chat open in the
+            // dashboard is attended, so the question is answerable.
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
-                ralphGrillPlanningState,
+                ...(isAsk ? { ralphGrillPlanningState } : { isInteractive: () => true }),
             }),
         });
         this.setAskUserHandles(processId, {
@@ -635,16 +790,17 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             hasPending: ctx.askUser!.hasPending,
         });
 
-        const isGrilling = payload.context?.ralph?.phase === 'grilling';
+        // Grilling is an ask-mode contract (it produces a `.goal.md` spec for a
+        // later Ralph run); an autopilot first turn never enters it.
+        const isGrilling = isAsk && payload.context?.ralph?.phase === 'grilling';
         const workItemGoalGrilling = payload.context?.workItemGoalGrilling;
-        const ralphGrillSetup = this.ralphMultiAgentGrillEnabled
+        const ralphGrillSetup = isAsk && this.ralphMultiAgentGrillEnabled
             ? payload.context?.ralph?.grill
             : undefined;
 
         const systemMessage = await this.buildFirstTurnSystemMessage({
             task,
             workingDirectory,
-            autoFolderContext,
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
             askUserAvailable: this.askUserSurvivedFiltering(ctx.tools),
@@ -663,15 +819,23 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // injects — there is no session that could already hold the block — and
         // records it, so the first follow-up can tell the model already has it
         // (see `shouldInjectChatModeDirective`).
+        //
+        // The plan destination rides inside the read-only section: it explains
+        // the plan-file exception those rules already carve out. Grilling turns
+        // and artifact-bound chats resolve to `undefined` so the model never
+        // holds two competing save targets.
         const modeDirective = buildChatModeDirective({
             mode,
             modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
+            planSaveContext: suppressesPlanSaveGuidance({ payload: task.payload })
+                ? undefined
+                : autoFolderContext,
         });
         await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
         const effectivePrompt = prependChatModeDirective(grilledPrompt, modeDirective);
 
         return {
-            agentMode: 'interactive' as AgentMode,
+            agentMode: (isAsk ? 'interactive' : 'autopilot') as AgentMode,
             systemMessage,
             tools: ctx.tools,
             effectivePrompt,
@@ -741,14 +905,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
         this.persistSystemPromptAsync(processId, task.type, systemMessage?.content);
 
-        this.resetSessionStreamingState(processId);
-        this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
-
-        // Start TTFT/TPS timing before any streaming can begin; the first
-        // output chunk is stamped by appendOutputChunk via the tracker.
         // task.createdAt is the enqueue timestamp, so queue wait stays
         // reconstructable from the raw row.
-        this.turnPerformance.begin(processId, { enqueuedAt: task.createdAt });
+        this.beginChatTurn(processId, { enqueuedAt: task.createdAt });
 
         // Rehydrate externalized images from blob store before image decoding
         await rehydrateImagesIfNeeded(payload as unknown as Record<string, unknown>);
@@ -824,22 +983,20 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const idleTimeoutMs = this.defaultIdleTimeoutMs;
             const taskWorkspaceId = payload.workspaceId;
             const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(taskWorkspaceId, workingDirectory);
-            const selectedSkillNames = resolvePayloadSkillNames(payload as unknown as ChatPayload | PrClassificationPayload);
-            effectivePrompt = prependSelectedSkillsDirective(
-                effectivePrompt,
-                selectedSkillNames,
-                resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
-            );
-
-            // Repo-group workspaces: append the live-member listing to the
-            // prompt and grant member roots as additional working directories.
-            // Unconditional here — this path only ever opens a brand-new SDK
-            // session, which is exactly the first-turn case the follow-up path
-            // re-injects for. Follow-ups then skip it while the session stays
-            // alive and uncompacted (see `shouldInjectRepoGroupContext`).
-            const repoGroupContext = await resolveRepoGroupChatContext(this.store, this.dataDir, payload.workspaceId);
-            effectivePrompt = appendRepoGroupContext(effectivePrompt, repoGroupContext);
-            await persistRepoGroupContextOnUserTurn(this.store, processId, repoGroupContext);
+            const decorated = await this.decorateChatTurnPrompt({
+                processId,
+                prompt: effectivePrompt,
+                workspaceId: taskWorkspaceId,
+                selectedSkillNames: resolvePayloadSkillNames(payload as unknown as ChatPayload | PrClassificationPayload),
+                skillDirectories,
+                disabledSkills,
+                // Unconditional: this path only ever opens a brand-new SDK
+                // session, which is exactly the first-turn case the follow-up
+                // path re-injects for.
+                shouldInjectRepoGroup: () => true,
+            });
+            effectivePrompt = decorated.prompt;
+            const repoGroupContext = decorated.repoGroupContext;
 
             const toolEventHandler = this.buildToolEventHandler(
                 processId,
@@ -869,7 +1026,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     this.getModelMetadataForReasoning(modelId, taskProvider, effectiveAiService),
             });
             const effectiveModel = policy.resolvedModel;
-            const contextTier = policy.contextTier;
             policyModelId = policy.modelId;
             policyReasoningEffort = policy.reasoningEffort;
 
@@ -919,10 +1075,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 }
             }
 
-            const sendTools = tools.length > 0 ? tools : undefined;
             // Guard: CoC uses its custom ask_user tool (SSE/widget flow).
             // The SDK's native onUserInputRequest must NOT be set at the same time.
-            assertNoAskUserConflict({ tools: sendTools });
+            assertNoAskUserConflict({ tools: tools.length > 0 ? tools : undefined });
 
             // AC-04 — Apply the per-repo MCP allow-lists (server-level
             // `enabledMcpServers` + per-tool `enabledMcpTools`) to the
@@ -936,44 +1091,48 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 workingDirectory,
             });
 
+            // Everything that is not first-turn-specific comes from the shared
+            // builder; a first turn adds only its attachments. `timeoutMs` is
+            // passed already-resolved because this path prefers the task's own
+            // budget while a follow-up (which has no task config) cannot.
             const sendOptions = {
-                prompt: effectivePrompt,
-                mode: agentMode,
-                ...(policy.modelId ? { model: policy.modelId } : {}),
-                ...(policy.reasoningEffort ? { reasoningEffort: policy.reasoningEffort } : {}),
-                ...(contextTier ? { contextTier } : {}),
-                infiniteSessions: { enabled: true } as const,
-                ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
-                workingDirectory,
-                ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
-                signal: turnAbort.signal,
-                timeoutMs,
-                idleTimeoutMs,
-                attachments,
-                tools: sendTools,
-                systemMessage,
-                skillDirectories,
-                disabledSkills,
-                ...(excludedTools && excludedTools.length > 0 ? { excludedTools } : {}),
-                ...(resolvedMcpServers ? { mcpServers: resolvedMcpServers, loadDefaultMcpConfig: false } : {}),
-                onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
-                onSessionCreated: (sessionId: string) => {
-                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
-                        // Non-fatal: store may be a stub
-                    });
-                },
-                onStreamingChunk: this.buildStreamingChunkHandler(processId, CHAT_EXECUTOR_LOG_LABEL),
-                onToolEvent: toolEventHandler,
-                onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
-                onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
-                onMcpOAuthRequired: buildMcpOAuthHandler({
-                    store: this.store,
-                    processId,
-                    workspaceId: payload.workspaceId,
-                    originalMessage: prompt,
-                    manager: this.runtime.getMcpOauthManager?.(),
-                    logLabel: CHAT_EXECUTOR_LOG_LABEL,
+                ...buildChatTurnSendOptions({
+                    prompt: effectivePrompt,
+                    agentMode,
+                    policy,
+                    workingDirectory,
+                    ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
+                    signal: turnAbort.signal,
+                    timeoutMs,
+                    idleTimeoutMs,
+                    keepWarm: this.keepClientWarm(),
+                    warmKey: processId,
+                    systemMessage,
+                    tools,
+                    excludedTools,
+                    skillDirectories,
+                    disabledSkills,
+                    mcpServers: resolvedMcpServers,
+                    approvePermissions: this.approvePermissions,
+                    onSessionCreated: (sessionId: string) => {
+                        this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
+                            // Non-fatal: store may be a stub
+                        });
+                    },
+                    onStreamingChunk: this.buildStreamingChunkHandler(processId, CHAT_EXECUTOR_LOG_LABEL),
+                    onToolEvent: toolEventHandler,
+                    onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
+                    onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
+                    onMcpOAuthRequired: buildMcpOAuthHandler({
+                        store: this.store,
+                        processId,
+                        workspaceId: payload.workspaceId,
+                        originalMessage: prompt,
+                        manager: this.runtime.getMcpOauthManager?.(),
+                        logLabel: CHAT_EXECUTOR_LOG_LABEL,
+                    }),
                 }),
+                attachments,
             };
 
             let result: SDKInvocationResult;
@@ -1053,30 +1212,14 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             }
             throw err;
         } finally {
-            this.releaseTurnAbortController(processId, turnAbort);
-            // Timing state is settled on both success and error paths; this is
-            // a leak guard for throws that bypass both settles.
-            this.turnPerformance.abandon(processId);
-            // Background tasks cannot outlive the turn; drop the replay snapshot
-            // on every exit path, including a drain-cap abort that never settles.
-            this.backgroundTasks.clear(processId);
-            if (imageTempDir) { cleanupTempDir(imageTempDir); }
-            if (pasteCleanup) { pasteCleanup(); }
-            modeDispose?.();
-            // Cancel any pending ask-user questions before cleanup
-            this.cancelAskUserHandles(processId);
-            try {
-                await this.clearPendingAskUser(processId);
-            } catch (err) {
-                getLogger().debug(
-                    LogCategory.AI,
-                    `[ChatModeExecutor] Failed to clear pending ask-user for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
-                );
-            }
-            const buffer = this.getOutputBuffer(processId);
-            this.cleanupSession(processId);
-            this.store.unregisterFlushHandler?.(processId);
-            await this.persistOutput(processId, buffer, payload.workspaceId);
+            await this.finalizeChatTurn(processId, {
+                controller: turnAbort,
+                dispose: modeDispose,
+                workspaceId: payload.workspaceId,
+                imageTempDir,
+                pasteCleanup,
+                logLabel: CHAT_EXECUTOR_LOG_LABEL,
+            });
         }
     }
 }

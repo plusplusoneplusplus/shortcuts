@@ -5,6 +5,7 @@
  * Timeout: 10 seconds. Process is always killed after the test.
  */
 
+import { parseSseBlock, parseSseBuffer } from '@plusplusoneplusplus/forge/sse';
 import { spawn } from 'child_process';
 import * as http from 'http';
 import * as https from 'https';
@@ -439,15 +440,13 @@ interface JsonRpcPostResult {
 /** Parse newline/blank-delimited SSE `data:` lines into JSON-RPC message objects. */
 function parseSseMessages(raw: string): Array<Record<string, unknown>> {
     const messages: Array<Record<string, unknown>> = [];
-    const blocks = raw.split(/\r?\n\r?\n/);
-    for (const block of blocks) {
-        const dataLines = block
-            .split(/\r?\n/)
-            .filter((l) => l.startsWith('data:'))
-            .map((l) => l.slice(5).replace(/^ /, ''));
-        if (dataLines.length === 0) continue;
+    const { frames, rest } = parseSseBuffer(raw);
+    // Some MCP servers end the HTTP response without a final blank line.
+    const finalFrame = parseSseBlock(rest);
+    if (finalFrame) frames.push(finalFrame);
+    for (const frame of frames) {
         try {
-            const parsed = JSON.parse(dataLines.join('\n'));
+            const parsed = JSON.parse(frame.data);
             if (Array.isArray(parsed)) {
                 for (const m of parsed) if (m && typeof m === 'object') messages.push(m as Record<string, unknown>);
             } else if (parsed && typeof parsed === 'object') {
@@ -483,7 +482,8 @@ function postMcpJsonRpc(
 
         const clientReq = transport.request(options, (incomingRes) => {
             let data = '';
-            incomingRes.on('data', (chunk: Buffer) => { data += chunk.toString('utf-8'); });
+            incomingRes.setEncoding('utf8');
+            incomingRes.on('data', (chunk: string) => { data += chunk; });
             incomingRes.on('end', () => {
                 const contentType = String(incomingRes.headers['content-type'] ?? '');
                 const sessionHeader = incomingRes.headers['mcp-session-id'];

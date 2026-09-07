@@ -9,6 +9,7 @@
  * No log files are required for live streaming; file-based history is optional.
  */
 
+import { writeNamedEvent, writeSseHeaders } from '../shared/sse-writer';
 import * as url from 'url';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { Route } from '../types';
@@ -25,10 +26,6 @@ import {
 // ============================================================================
 // Helpers
 // ============================================================================
-
-function sendSseEvent(res: ServerResponse, event: string, data: unknown): void {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
 
 function parseLevel(raw: unknown): LogLevel | undefined {
     const VALID: Set<string> = new Set(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
@@ -58,12 +55,7 @@ export function registerLogsRoutes(routes: Route[], logDir?: string): void {
                 ? parsedUrl.query.sessionId : undefined;
 
             // Set SSE headers
-            res.writeHead(200, {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'X-Accel-Buffering': 'no',
-            });
+            writeSseHeaders(res);
             res.flushHeaders();
 
             // Send buffered history as initial batch (newest-last order for stream)
@@ -72,7 +64,7 @@ export function registerLogsRoutes(routes: Route[], logDir?: string): void {
             if (sessionId) historyOpts.sessionId = sessionId;
             const history = getLogHistory(historyOpts).reverse(); // oldest-first for initial replay
             if (history.length > 0) {
-                sendSseEvent(res, 'history', history);
+                writeNamedEvent(res, 'history', history);
             }
 
             // Subscribe to live entries
@@ -84,14 +76,14 @@ export function registerLogsRoutes(routes: Route[], logDir?: string): void {
                 const e = entry as LogEntry;
                 if (minLevel && levelToNum(e.level) < levelToNum(minLevel)) return;
                 if (sessionId && e.sessionId !== sessionId) return;
-                sendSseEvent(res, 'log-entry', entry);
+                writeNamedEvent(res, 'log-entry', entry);
             };
 
             logEmitter.on('log-entry', onEntry);
 
             // Heartbeat every 15 s
             const heartbeat = setInterval(() => {
-                if (!closed) sendSseEvent(res, 'heartbeat', {});
+                if (!closed) writeNamedEvent(res, 'heartbeat', {});
             }, 15_000);
 
             const cleanup = () => {

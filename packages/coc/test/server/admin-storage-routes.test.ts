@@ -6,6 +6,7 @@
  *   - POST /api/admin/storage/migrate/cancel
  */
 
+import { parseSSEFrames } from '../helpers/sse-test-utils';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
@@ -81,13 +82,6 @@ function requestSSE(
         req.on('error', reject);
         req.end();
     });
-}
-
-/** Parse SSE body into individual event data objects. */
-function parseSSEEvents(body: string): unknown[] {
-    return body.split('\n')
-        .filter((line) => line.startsWith('data: '))
-        .map((line) => JSON.parse(line.slice('data: '.length)));
 }
 
 // ============================================================================
@@ -243,7 +237,7 @@ describe('Admin Storage Routes', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toBe('text/event-stream');
 
-            const events = parseSSEEvents(res.body);
+            const events = parseSSEFrames([res.body]).map(frame => frame.data);
             expect(events.length).toBeGreaterThan(0);
 
             const doneEvent = events.find((e: any) => e.type === 'done') as any;
@@ -300,7 +294,7 @@ describe('Admin Storage Routes', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toBe('text/event-stream');
 
-            const events = parseSSEEvents(res.body);
+            const events = parseSSEFrames([res.body]).map(frame => frame.data);
             const phase5 = events.find((e: any) => e.phase === 5 && e.message?.includes('skipped'));
             expect(phase5).toBeDefined();
 

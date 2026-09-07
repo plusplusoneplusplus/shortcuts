@@ -12,6 +12,7 @@
  *   POST /api/wikis/:wikiId/admin/generate/component/:id — Regenerate single component
  */
 
+import { writeSseHeaders } from '../shared/sse-writer';
 import * as http from 'http';
 import * as path from 'path';
 import { readBody } from './ask-handler';
@@ -48,13 +49,6 @@ export interface GenerateHandlerDeps {
     registry?: WikiGenerationRegistry;
     adapter?: DeepWikiAdapter;
 }
-
-const SSE_HEADERS = {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no',
-} as const;
 
 // ============================================================================
 // Start Generation
@@ -121,7 +115,7 @@ export async function handleStartGenerate(
     }
 
     // No redundant CORS — the router handles it.
-    res.writeHead(200, { ...SSE_HEADERS });
+    writeSseHeaders(res);
 
     const emit = createSseEventSink(res);
 
@@ -272,7 +266,7 @@ export async function handleComponentRegenerate(
         return;
     }
 
-    res.writeHead(200, { ...SSE_HEADERS });
+    writeSseHeaders(res);
 
     const emit = createSseEventSink(res);
 

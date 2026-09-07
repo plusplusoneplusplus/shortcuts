@@ -8,8 +8,8 @@ import {
     toNativePath,
     toWslUncPath,
     windowsPathToWslPath,
-} from '../../src/utils/path-utils';
-import { isWithinDirectory } from '../../src/utils/path-security';
+} from '../../src/platform/path-utils';
+import { isWithinDirectory } from '../../src/platform/path-security';
 
 describe('toForwardSlashes', () => {
     it('converts backslashes to forward slashes', () => {
