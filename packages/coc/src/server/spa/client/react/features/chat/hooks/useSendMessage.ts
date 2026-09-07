@@ -7,7 +7,7 @@ import type { AttachedContextItem } from './useAttachedContext';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { ChatMode } from '../../../repos/modeConfig';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
-import type { AttachmentPayload } from '../../../types/attachments';
+import type { AttachmentPayload, ChatAttachment } from '../../../types/attachments';
 import { CocApiError, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
@@ -22,6 +22,16 @@ export interface SendFollowUpOptions {
     includeComposerContext?: boolean;
     /** Optional mode override for generated sends that should not follow the current composer mode. */
     modeOverride?: ChatMode;
+    /**
+     * Attachments to send *instead of* the composer's current ones.
+     *
+     * The in-bubble message editor keeps its draft in its own
+     * `useFileAttachments` instance, so its images never reach the composer
+     * state this hook closes over. Passing them here sends exactly that list
+     * (an empty array sends none) and leaves the composer untouched. It is
+     * independent of `includeComposerContext`, which governs draft/paste/context.
+     */
+    attachmentsOverride?: ChatAttachment[];
 }
 
 export interface UseSendMessageOptions {
@@ -158,17 +168,28 @@ export function useSendMessage({
     // double-click race that a React state flag would lose between renders.
     const compactingRef = useRef(false);
 
-    const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[], options: SendFollowUpOptions = {}): ProcessMessageRequest => ({
+    const buildMessageRequest = useCallback((content: string, deliveryMode: DeliveryMode, skillNames: string[], options: SendFollowUpOptions = {}): ProcessMessageRequest => {
+        // An explicit override wins over the composer's own attachments; without
+        // one, `includeComposerContext: false` means "send no attachments".
+        const override = options.attachmentsOverride;
+        const outImages = override
+            ? override.filter(a => a.category === 'image').map(a => a.dataUrl)
+            : (options.includeComposerContext === false ? [] : images);
+        const outAttachments: AttachmentPayload[] = override
+            ? override.map(a => ({ name: a.name, mimeType: a.mimeType, size: a.size, dataUrl: a.dataUrl }))
+            : (options.includeComposerContext === false || !toPayload ? [] : toPayload());
+        return ({
         content,
-        images: options.includeComposerContext === false ? undefined : (images.length > 0 ? images : undefined),
-        ...(options.includeComposerContext === false || !toPayload ? {} : (() => { const ap = toPayload(); return ap.length > 0 ? { attachments: ap } : {}; })()),
+        images: outImages.length > 0 ? outImages : undefined,
+        ...(outAttachments.length > 0 ? { attachments: outAttachments } : {}),
         mode: options.modeOverride ?? selectedMode,
         deliveryMode,
         ...(skillNames.length > 0 ? { skillNames } : {}),
         ...(modelOverride ? { model: modelOverride } : {}),
         ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
         ...(chatStyle ? { chatStyle } : {}),
-    }), [images, modelOverride, effortOverride, chatStyle, selectedMode, toPayload]);
+        });
+    }, [images, modelOverride, effortOverride, chatStyle, selectedMode, toPayload]);
 
     const closeFollowUpStream = useCallback(() => {
         if (followUpEventSourceRef.current) {

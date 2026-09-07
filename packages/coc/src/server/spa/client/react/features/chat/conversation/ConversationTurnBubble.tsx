@@ -101,6 +101,28 @@ interface ConversationTurnBubbleProps {
      * disabled. The backend is still the enforcement point for idle/eligibility.
      */
     onRewindTurn?: (turnIndex: number) => void;
+    /**
+     * Called when the user clicks the "Edit message" pencil in the hover strip
+     * of a user turn. Presented under exactly the same capability rules as
+     * {@link ConversationTurnBubbleProps.onRewindTurn} — saving the edit rewinds
+     * to this turn and resends — so `resolveRewindCapability` stays the single
+     * source of truth for both affordances.
+     */
+    onEditTurn?: (turnIndex: number) => void;
+    /**
+     * When set, the "Edit message" pencil renders disabled with this string as
+     * its tooltip. Used for the busy/non-idle guard, which must *disable* the
+     * button rather than hide it (unlike the rewind menu item, which is simply
+     * withheld while the conversation is streaming).
+     */
+    editTurnDisabledReason?: string;
+    /**
+     * When provided, this node replaces the turn's rendered content — the
+     * in-bubble "Edit message" editor. The bubble stays dumb about editing: the
+     * owner decides which turn (if any) is being edited, which is also what
+     * makes "one editor at a time" impossible to violate from here.
+     */
+    inlineEditor?: React.ReactNode;
     /** Note edit snapshots from process.metadata.noteEdits — used to render NoteEditCard. */
     noteEdits?: Array<{
         editId: string;
@@ -1101,7 +1123,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, rewindProvider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
@@ -1310,6 +1332,23 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         }
         return items;
     }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn, provider, rewindProvider]);
+
+    // "Edit message" pencil in the user-turn hover strip. Same gating as the
+    // rewind menu item (saving an edit *is* a rewind + resend), so the capability
+    // resolver is shared rather than duplicated. The busy guard differs: rewind
+    // withholds its menu item, while the pencil stays visible but disabled so the
+    // affordance does not flicker in and out while the agent is streaming.
+    const editCapability = useMemo(
+        () => resolveRewindCapability(rewindProvider ?? provider, turn.sdkEventId),
+        [rewindProvider, provider, turn.sdkEventId],
+    );
+    // While this turn is being edited its own content is replaced by the
+    // editor, so the pencil that opened it has nothing left to act on.
+    const showInlineEditor = isUser && !!inlineEditor;
+    const showEditButton = isUser && !showInlineEditor && !!onEditTurn && turnIndex != null && editCapability !== 'hidden';
+    const editDisabledTooltip = editCapability === 'disabled'
+        ? REWIND_NO_ANCHOR_TOOLTIP
+        : (editTurnDisabledReason ?? null);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {
@@ -1593,6 +1632,19 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             {copiedHtml ? '✓' : 'HTML'}
                         </button>
                     )}
+                    {showEditButton && (
+                        <button
+                            type="button"
+                            className="bubble-edit-btn text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] opacity-0 group-hover:opacity-100 transition-opacity text-[10px] disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={editDisabledTooltip ?? 'Edit message'}
+                            aria-label="Edit message"
+                            data-testid="bubble-edit-btn"
+                            disabled={editDisabledTooltip !== null}
+                            onClick={() => { if (editDisabledTooltip === null) onEditTurn!(turnIndex!); }}
+                        >
+                            ✏️
+                        </button>
+                    )}
                 </div>
 
                 {isUser && turn.pinnedAt && (
@@ -1606,6 +1658,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                 )}
 
                 <div className="space-y-2 chat-message-content" ref={!isUser ? sidenoteContentRef : undefined}>
+                    {showInlineEditor ? inlineEditor : (<>
                     {!isUser && turn.isError && (
                         <aside
                             className={cn(
@@ -1908,6 +1961,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             onAttachContext={onAttachContext}
                         />
                     )}
+                    </>)}
                 </div>
             </div>
             {isUser && (

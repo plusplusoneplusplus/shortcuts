@@ -311,7 +311,10 @@ describe('ChatDetail', () => {
         it('includes images in sendFollowUp POST body', () => {
             const sendFollowUpSection = USE_SEND_MESSAGE_SOURCE.substring(USE_SEND_MESSAGE_SOURCE.indexOf('const buildMessageRequest'));
             expect(sendFollowUpSection).toContain('images: ');
-            expect(sendFollowUpSection).toContain('images.length > 0 ? images : undefined');
+            // The composer's images feed the body unless a caller (the in-bubble
+            // editor) overrides the attachment list for that one send.
+            expect(sendFollowUpSection).toContain('options.includeComposerContext === false ? [] : images');
+            expect(sendFollowUpSection).toContain('images: outImages.length > 0 ? outImages : undefined');
         });
 
         it('clears images immediately after send (before waiting for completion)', () => {

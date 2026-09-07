@@ -106,7 +106,10 @@ import { CronManagementPanel } from './CronManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
 import { RewindConfirmDialog } from './conversation/RewindConfirmDialog';
+import { InlineTurnEditor } from './conversation/InlineTurnEditor';
+import { useEditTurn } from './hooks/useEditTurn';
 import { useRewindTurn } from './hooks/useRewindTurn';
+import { EDIT_BUSY_TOOLTIP } from './hooks/rewindCapability';
 import type { ChatProvider } from './ProviderBadge';
 import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
@@ -2340,6 +2343,49 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const rewindUnsupportedProvider = conversationProvider === 'codex';
     const rewindAction = planChatBusy || rewindUnsupportedProvider ? undefined : rewind.requestRewind;
 
+    // Inline "Edit message" editor: at most one turn is in edit mode at a time,
+    // so a single index is the whole state — opening a second editor implicitly
+    // discards the first. Unlike `rewindAction`, the handler is passed even while
+    // the conversation is busy: the bubble renders the pencil disabled with a
+    // tooltip rather than making the affordance disappear mid-stream.
+    const editTurnDisabledReason = planChatBusy ? EDIT_BUSY_TOOLTIP : undefined;
+    const edit = useEditTurn({
+        client,
+        processId,
+        refreshConversation,
+        // `includeComposerContext: false` keeps the main composer's draft, paste
+        // buffer and attached context out of this send — the editor is the only
+        // source — while the editor's own attachments ride along explicitly.
+        sendEdited: useCallback(async (text: string, atts: ChatAttachment[]) => {
+            lastFailedMessageRef.current = '';
+            await sendFollowUp(text, 'enqueue', { includeComposerContext: false, attachmentsOverride: atts });
+        }, [sendFollowUp]),
+        // `sendFollowUp` surfaces its own error and never rejects; this ref is
+        // its record of the last send that failed.
+        didSendFail: useCallback(() => lastFailedMessageRef.current !== '', []),
+        restoreComposer: restoreComposerFromRewind,
+        onError: handleRewindError,
+    });
+
+    const renderInlineTurnEditor = useCallback((turnIndex: number) => {
+        if (edit.editingTurnIndex !== turnIndex) return null;
+        // The two bubble render sites index turns differently (stored
+        // `turnIndex` vs. array position), so accept either.
+        const turn = turns.find(t => t.turnIndex === turnIndex) ?? turns[turnIndex];
+        return (
+            <InlineTurnEditor
+                initialText={typeof turn?.content === 'string' ? turn.content : ''}
+                initialImages={turn?.images}
+                workspaceId={workspaceId}
+                skills={augmentedSkills}
+                pending={edit.pending}
+                error={edit.error}
+                onCancel={edit.cancelEdit}
+                onSubmit={(submission) => { void edit.submitEdit(turnIndex, submission); }}
+            />
+        );
+    }, [edit, turns, workspaceId, augmentedSkills]);
+
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;
         let removed: QueuedMessage | undefined;
@@ -2709,6 +2755,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onPinTurn={handlePinTurn}
                         onArchiveTurn={handleArchiveTurn}
                         onRewindTurn={rewindAction}
+                        onEditTurn={edit.startEdit}
+                        editTurnDisabledReason={editTurnDisabledReason}
+                        renderInlineTurnEditor={renderInlineTurnEditor}
                         noteEdits={noteEdits}
                         processId={processId ?? bareTaskId}
                         openNotePath={openNotePath}
