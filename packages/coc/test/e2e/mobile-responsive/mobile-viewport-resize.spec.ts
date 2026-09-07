@@ -6,13 +6,13 @@ import { test, expect } from '../fixtures/server-fixture';
 import { MOBILE, TABLET } from './viewports';
 
 test.describe('Viewport Resize', () => {
-    test('resize mobile→tablet: BottomNav disappears, TopBar tabs appear', async ({ page, serverUrl }) => {
+    test('resize mobile→tablet: the mobile scope bar disappears, TopBar tabs appear', async ({ page, serverUrl }) => {
         // Start at mobile viewport
         await page.setViewportSize(MOBILE);
-        await page.goto(serverUrl);
+        await page.goto(`${serverUrl}/#repos`);
 
-        // BottomNav should be visible at mobile width
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
+        // The scope bar owns the row under the TopBar at mobile width.
+        const bottomNav = page.locator('[data-testid="mobile-scope-bar"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
         // TopBar tab buttons should be hidden at mobile width
@@ -25,7 +25,7 @@ test.describe('Viewport Resize', () => {
         // Wait for breakpoint update (matchMedia event fires)
         await page.waitForTimeout(300);
 
-        // BottomNav should disappear (isMobile = false at 768px)
+        // The scope bar should disappear (isMobile = false at 768px)
         await expect(bottomNav).toBeHidden({ timeout: 5000 });
 
         // TopBar tab buttons should now be visible at tablet width

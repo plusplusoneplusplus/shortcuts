@@ -1,7 +1,10 @@
 /**
  * ReposView — full-width content area for the Repos tab.
  * Repo selection is handled via the RepoTabStrip in the TopBar.
- * Mobile: master-detail (grid list or repo detail).
+ * Mobile: master-detail (MobileScopeList or repo detail). The list is the full
+ * scope model — pinned scopes, My Work / My Life, repo groups, and git-remote
+ * clusters — not just the registered-repo grid `ReposGrid` still renders for the
+ * desktop hamburger popover.
  * Tablet/Desktop: full-width RepoDetail (repo chosen from top-bar tabs).
  */
 
@@ -11,7 +14,7 @@ import { useRepos } from '../contexts/ReposContext';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
-import { ReposGrid } from './ReposGrid';
+import { MobileScopeList } from './MobileScopeList';
 import { RepoDetail } from '../features/repo-detail/RepoDetail';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { ContainerSessionView, CONTAINER_DEFAULT_REPO_ID } from '../features/container-session/ContainerSessionView';
@@ -34,7 +37,8 @@ export function ReposView() {
     const heightClass = isMobile
         ? hasSelection
             ? 'h-[calc(100dvh-40px)]'
-            : 'h-[calc(100dvh-40px-48px)]'
+            // 40px TopBar + 40px MobileScopeBar.
+            : 'h-[calc(100dvh-40px-40px)]'
         : remoteShell
             ? 'h-[calc(100vh-40px)]'
             : 'h-[calc(100vh-48px)]';
@@ -116,7 +120,7 @@ export function ReposView() {
                     </div>
                 ) : (
                     <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden">
-                        <ReposGrid repos={repos} onRefresh={fetchRepos} />
+                        <MobileScopeList repos={repos} />
                     </div>
                 )
             ) : (

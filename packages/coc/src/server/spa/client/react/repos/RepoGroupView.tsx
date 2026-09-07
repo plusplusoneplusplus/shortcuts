@@ -43,6 +43,7 @@ import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
 import { useRepoGroupMembers } from './useRepoGroupMembers';
 import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWorkspaceDock';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
+import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 
 /**
@@ -176,7 +177,9 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     return (
         <UnifiedPanelHostProvider host={unifiedPanelHost}>
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
-            {!headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
+            {isMobile
+                ? <VirtualWorkspaceMobileTabBar config={headerConfig} pinnedTabs={['chats', 'git', 'notes']} />
+                : !headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
 
             {/* Tab content + the right dock as the outermost-right, full-height
                 column — mirrors RepoDetail's workspace content row. */}

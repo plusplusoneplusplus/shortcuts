@@ -20,6 +20,7 @@ import { useApp } from '../contexts/AppContext';
 import type { RepoData } from './repoGrouping';
 import { generateMyLifeSummary, syncMyLife } from './repositoryService';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
+import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 import { MY_LIFE_WORKSPACE_ID } from './virtualWorkspaceIds';
 
@@ -104,7 +105,9 @@ export function MyLifeView() {
 
     return (
         <div className="flex flex-col h-full" data-testid="my-life-view">
-            {!headerInTopBar && <VirtualWorkspaceInlineHeader config={MY_LIFE_HEADER_CONFIG} />}
+            {isMobile
+                ? <VirtualWorkspaceMobileTabBar config={MY_LIFE_HEADER_CONFIG} />
+                : !headerInTopBar && <VirtualWorkspaceInlineHeader config={MY_LIFE_HEADER_CONFIG} />}
 
             {/* Tab content */}
             <div className="flex-1 min-h-0 overflow-hidden">

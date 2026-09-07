@@ -8,13 +8,17 @@ import { MOBILE } from './viewports';
 test.use({ viewport: MOBILE, hasTouch: true });
 
 test.describe('Mobile Touch Interaction', () => {
-    test('mobile: all bottom nav buttons meet 44px min touch target', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
+    test('mobile: all scope-bar destination rows meet 44px min touch target', async ({ page, serverUrl }) => {
+        // The admin destinations moved from BottomNav into the scope bar's `⋯`
+        // sheet, so that sheet is where the touch-target bar applies now.
+        await page.goto(`${serverUrl}/#repos`);
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
+        await page.locator('[data-testid="mobile-scope-more-btn"]').tap();
 
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
+        const sheet = page.locator('[data-testid="mobile-scope-more-sheet"]');
+        await expect(sheet).toBeVisible({ timeout: 5000 });
 
-        const buttons = bottomNav.locator('button');
+        const buttons = sheet.locator('button[data-tab]');
         const count = await buttons.count();
         expect(count).toBe(5);
 
@@ -44,7 +48,7 @@ test.describe('Mobile Touch Interaction', () => {
             // down to ~26px (single-line dense layout). 24px is a regression
             // bar — anything below that signals a layout collapse. The 44px
             // accessibility recommendation isn't met by these dense rows; the
-            // bottom-nav button check above is the canonical 44px assertion.
+            // scope-bar sheet check above is the canonical 44px assertion.
             expect(box!.height).toBeGreaterThanOrEqual(24);
         }
     });
@@ -67,8 +71,9 @@ test.describe('Mobile Touch Interaction', () => {
     test('mobile: dialog renders full-screen', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
-        await page.click('#add-repo-btn');
-        await page.locator('[data-testid="add-single-repo-item"]').dispatchEvent('click');
+        // Mobile add actions live in the scope list's `+` sheet.
+        await page.click('[data-testid="scope-list-add-btn"]');
+        await page.locator('[data-testid="remote-add-repo-option"]').dispatchEvent('click');
 
         const overlay = page.locator('#add-repo-overlay');
         await expect(overlay).toBeVisible();
@@ -82,7 +87,7 @@ test.describe('Mobile Touch Interaction', () => {
 
     test('mobile: sidebar drawer opens and closes', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await expect(page.locator('[data-testid="bottom-nav"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
 
         // Hamburger button should be visible
         const hamburger = page.locator('#hamburger-btn');
@@ -107,7 +112,7 @@ test.describe('Mobile Touch Interaction', () => {
 
     test('mobile: swipe-left on sidebar drawer dismisses it', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await expect(page.locator('[data-testid="bottom-nav"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
 
         // Open the sidebar drawer via hamburger
         const hamburger = page.locator('#hamburger-btn');
@@ -153,7 +158,7 @@ test.describe('Mobile Touch Interaction', () => {
 
     test('mobile: Escape key closes the sidebar drawer', async ({ page, serverUrl }) => {
         await page.goto(serverUrl);
-        await expect(page.locator('[data-testid="bottom-nav"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
 
         const hamburger = page.locator('#hamburger-btn');
         await expect(hamburger).toBeVisible();

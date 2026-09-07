@@ -19,6 +19,7 @@ import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import { groupReposByRemote, type RepoData } from '../../repos/repoGrouping';
 import { removeWorkspace } from '../../repos/repositoryService';
 import { Dialog } from '../../ui/Dialog';
+import type { ToastItem } from '../../ui/Toast';
 import { describeActiveWork } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 
@@ -27,7 +28,12 @@ export interface UseWorkspaceRemovalOptions {
     repos: RepoData[];
     /** The currently selected clone, if any; selection only moves when it is removed. */
     selectedRepo?: RepoData | null;
-    addToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+    /**
+     * Matches `useToast`'s `addToast` signature exactly. A wider union here would
+     * make that hook's own `addToast` unassignable (parameters are contravariant),
+     * and only `success` / `error` are ever raised from this flow anyway.
+     */
+    addToast: (message: string, type?: ToastItem['type']) => void;
 }
 
 export interface WorkspaceRemoval {

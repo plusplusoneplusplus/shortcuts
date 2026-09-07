@@ -544,12 +544,13 @@ describe('MyWorkView', () => {
             expect(screen.getByTestId('my-work-view')).toBeTruthy();
         });
 
-        it('keeps the in-body header on remote-first mobile (no TopBar header there)', () => {
+        it('swaps the in-body header for the mobile tab bar on mobile', () => {
             mockRemoteShell = true;
             mockIsMobile = true;
             renderView();
 
-            expect(screen.getByTestId('my-work-header')).toBeTruthy();
+            expect(screen.queryByTestId('my-work-header')).toBeNull();
+            expect(screen.getByTestId('my-work-mobile-header')).toBeTruthy();
         });
 
         it('keeps the in-body header in the classic (non-remote) shell', () => {
@@ -560,60 +561,46 @@ describe('MyWorkView', () => {
         });
     });
 
-    describe('mobile responsive header (AC-01)', () => {
-        it('scrolls the tab strip horizontally instead of squeezing it', () => {
+    describe('mobile header (MobileTabBar)', () => {
+        it('replaces the in-body header with the mobile tab bar plus a back affordance', () => {
             mockIsMobile = true;
             renderView();
 
-            const strip = screen.getByTestId('my-work-header-tabs');
-            expect(strip.className).toContain('overflow-x-auto');
-            // Hidden scrollbar — the strip is swiped, not scrollbar-dragged.
-            expect(strip.className).toContain('scrollbar-hide');
-            expect(strip.className).toContain('min-w-0');
-
-            // Tabs never shrink or wrap, so the row stays one row.
-            const tab = screen.getByTestId('my-work-tab-notes');
-            expect(tab.className).toContain('whitespace-nowrap');
-            expect(tab.className).toContain('shrink-0');
+            expect(screen.queryByTestId('my-work-header')).toBeNull();
+            expect(screen.getByTestId('my-work-mobile-header')).toBeTruthy();
+            expect(screen.getByTestId('mobile-tab-bar')).toBeTruthy();
         });
 
-        it('collapses the action buttons into a single overflow menu on mobile', () => {
+        it('returns to the scope list from the back button', () => {
             mockIsMobile = true;
             renderView();
 
-            expect(screen.getByTestId('my-work-actions-overflow-btn')).toBeTruthy();
-            // Closed by default — no labelled action buttons on the row.
-            expect(screen.queryByTestId('my-work-sync-btn')).toBeNull();
-            expect(screen.queryByTestId('my-work-generate-btn')).toBeNull();
-            expect(screen.queryByTestId('my-work-actions-overflow-menu')).toBeNull();
+            fireEvent.click(screen.getByTestId('my-work-name-back'));
+            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: null });
         });
 
-        it('lists both actions in the overflow menu and runs them', async () => {
+        it('pins the first three tabs inline and folds the rest behind ···', () => {
             mockIsMobile = true;
             renderView();
 
-            fireEvent.click(screen.getByTestId('my-work-actions-overflow-btn'));
-            expect(screen.getByTestId('my-work-actions-overflow-menu')).toBeTruthy();
-            expect(screen.getByTestId('my-work-sync-btn')).toBeTruthy();
-            expect(screen.getByTestId('my-work-generate-btn')).toBeTruthy();
+            const bar = screen.getByTestId('mobile-tab-bar');
+            const tabs = [...bar.querySelectorAll('button[data-tab]')].map(b => b.getAttribute('data-tab'));
+            expect(tabs).toEqual(['notes', 'activity', 'git', 'more']);
+        });
+
+        it('lists both header actions in the ··· sheet and runs them', async () => {
+            mockIsMobile = true;
+            renderView();
+
+            fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
+            const sheet = screen.getByTestId('mobile-tab-more-sheet');
+            expect(sheet.textContent).toContain('Sync Work IQ');
+            expect(sheet.textContent).toContain('Generate Summary');
 
             await act(async () => {
-                fireEvent.click(screen.getByTestId('my-work-sync-btn'));
+                fireEvent.click(screen.getByTestId('mobile-tab-action-0'));
             });
             expect(repositoryServiceMocks.syncMyWork).toHaveBeenCalledTimes(1);
-            // Picking an item closes the menu.
-            expect(screen.queryByTestId('my-work-actions-overflow-menu')).toBeNull();
-        });
-
-        it('closes the overflow menu on Escape', () => {
-            mockIsMobile = true;
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-work-actions-overflow-btn'));
-            expect(screen.getByTestId('my-work-actions-overflow-menu')).toBeTruthy();
-
-            fireEvent.keyDown(document, { key: 'Escape' });
-            expect(screen.queryByTestId('my-work-actions-overflow-menu')).toBeNull();
         });
 
         it('keeps full labelled action buttons on desktop with no overflow trigger', () => {

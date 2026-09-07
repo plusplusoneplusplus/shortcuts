@@ -24,7 +24,7 @@ spa/client/react/
 ├── components/    # Shared UI (ContextWindowIndicator)
 ├── contexts/      # App, Queue, Task, Toast, FloatingChats
 ├── hooks/         # 30+ custom hooks
-├── layout/        # Router, TopBar, BottomNav, ThemeProvider
+├── layout/        # Router, TopBar, BottomNav, MobileScopeBar, navDestinations, ThemeProvider
 ├── features/
 │   ├── canvas/    # CanvasPanel, ExtensionCanvasView, KustoView/KustoChart
 │   ├── chat/      # ChatDetail, ChatListPane, ConversationArea

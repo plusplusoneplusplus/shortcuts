@@ -169,6 +169,32 @@ hook `useDropdownPopover` (open state, outside-click, Escape-close-and-refocus-t
 search auto-focus). They differ in the remote picker's Add-repository footer and remote
 sub-tabs versus the virtual picker's identity chip and navigation-only rows; offline is
 per-repo in the virtual picker only, group rows show the aggregate dot.
+`PickerRow` also takes an optional `className`, which the mobile list uses for the
+shared `.repo-item` hook and a 44px touch target.
+
+### Shared picker model
+
+`features/remote-shell/useScopePickerModel.tsx` is the headless model behind **every**
+scope picker surface — the desktop dropdown (`WorkspaceIdentityChip`), the mobile sheet
+(`ScopePickerSheet`) and the mobile list (`MobileScopeList`). It composes four sections
+once so the shells cannot drift:
+
+1. `pinnedRows` — `usePinnedScopes` + `resolvePinnedScopes`
+2. `virtualRows` — My Work / My Life, gated on their flags
+3. `groupRows` — `group-*` virtual workspaces (local + `remoteGroupWorkspaces`)
+4. `remoteRows` — recent (or search-matching) git-remote clusters; `buildRemoteRow`
+   builds one row for a caller-supplied ordering
+
+It also owns `chooseGroup` / `selectScope` (both through `useShellNavigation`), the
+`RECORD_REMOTE_CLONE` bookkeeping, the pin toggles, the row/group `ContextMenu` item
+builders, `footerActions` (add folder / add repo / clone / new repo group), and a single
+`dialogs` node holding every dialog, confirm and toast a row can open. Search is one
+predicate per section: `groupMatchesSearch` for clusters, `repoGroupMatchesSearch` for
+groups, name-match for the virtual scopes — OR-ed, with headers kept so results stay
+attributable. Icons and badges live in `scopePickerGlyphs.tsx` (inline SVG, never emoji).
+
+`test/spa/react/remote-shell/ScopePickerSheet.test.tsx` asserts model↔desktop-picker
+row parity, so a row added to one surface cannot silently skip the other.
 
 Row helpers `getServerName` / `isRepoOffline` / `shortPath` sit in
 `repos/repoPickerModel.ts` with group markers `getGroupWsl` (all-or-nothing `WSL` pill)
@@ -182,9 +208,10 @@ server; server names stay in the hover and accessible label, never in row text.
 A repo group is a virtual workspace whose id carries the `group-` prefix
 (`isRepoGroupWorkspaceId`, `repos/virtualWorkspaceIds.ts`).
 
-**In the picker.** `WorkspaceIdentityChip` builds a "Repo groups" `PickerSection` (rows
+**In the picker.** `useScopePickerModel` builds the "Repo groups" `PickerSection` (rows
 `repo-group-item`, icon `repo-group-icon`) from the **full AppContext workspace list** —
-`repos` cannot be the source because `ReposContext` strips virtual workspaces. The
+`repos` cannot be the source because `ReposContext` strips virtual workspaces. All three
+picker surfaces (desktop dropdown, mobile sheet, mobile scope list) render those rows. The
 footer's `remote-new-repo-group-option` opens `repos/RepoGroupDialog.tsx`: name, Server
 dropdown, checkbox multi-select of that server's registered repos; free-form paths are
 never offered, and edit prefills from `GET /api/repo-groups/:id`, badging stale members.
@@ -295,6 +322,51 @@ Group selections never overwrite `lastWorkspaceRepoId` (an AppContext guard).
 `resolveRepoGroupName(selectedRepoId, state.workspaces, remoteGroupWorkspaces)` and
 passing it as `groupIdentity`; that derivation stays in the switcher because it is gated
 on the repos tab. The chevron's picker is the only way out of an active group.
+
+## Mobile scope shell (`breakpoint === 'mobile'`, < 768px)
+
+The narrow shell does **not** turn on `remoteShell` — `RemoteShellHeader`,
+`ScopeSlideSwitcher` and `WorkspaceTabsCluster` are width-hungry by construction. It
+gets its own presentation over the same model modules instead.
+
+**`repos/MobileScopeList.tsx`** replaces `ReposGrid` in `ReposView`'s mobile branch
+(`ReposGrid` stays the desktop hamburger popover's surface). One scroll container,
+sections Pinned → Scopes → Repo groups → Repositories, all from `useScopePickerModel`.
+Cluster ordering and expansion stay shared with the desktop grid: the same
+`gitGroupOrder` preference and the same `coc-git-group-expanded-state` key. A
+single-clone cluster navigates straight into the clone; a multi-clone cluster expands
+into clone rows (`scope-list-clone`) that carry the desktop clone contract —
+`data-offline="true"` plus `clone-offline-badge`, disabled. Header holds the title, a
+search box, and a `+` sheet with the model's footer actions plus Reorder. Footer stats
+name groups: `11 repos · 2 clones in 1 remote · 3 groups · 1 running`
+(`buildScopeListFooterText`). With nothing registered it falls back to
+`ReposEmptyState`. Row actions open through the shared `ContextMenu`, which already
+renders as a bottom sheet on mobile.
+
+**`layout/MobileScopeBar.tsx`** (40px, `mobile-scope-bar`) replaces `BottomNav` on the
+repos tab: the active scope chip (`mobile-scope-chip` — status dot, group glyph or
+virtual-scope emoji, name, `⧉N`, unseen badge, chevron) plus a `⋯` button whose sheet
+holds the admin destinations. The chip names `selectedRepoId ?? lastWorkspaceRepoId` and
+opens `ScopePickerSheet`. Both bars publish their height as `--bottom-nav-height`, and
+exactly one is mounted: `BottomNav` now returns null on the repos tab, and the scope bar
+returns null everywhere else and once a workspace is selected. The shared destination
+list lives in `layout/navDestinations.tsx` so neither component imports the other. Every
+one of those destinations is an admin-shell tab, so the sheet is how they are reached
+from the repos tab.
+
+**`features/remote-shell/ScopePickerSheet.tsx`** is the same four sections and footer as
+the desktop dropdown in a `BottomSheet` (`scope-picker-sheet`, search
+`scope-picker-search`). Pin toggles are always visible here — a hover-revealed control is
+unreachable on touch.
+
+**`features/remote-shell/VirtualWorkspaceMobileTabBar.tsx`** gives every virtual
+workspace the mobile skin repos already had. `RepoGroupView`, `MyWorkView` and
+`MyLifeView` render it instead of `VirtualWorkspaceInlineHeader` when `isMobile`:
+`MobileTabBar` with `config.tabs`, `config.actions` folded into the `···` sheet, and a
+leading back-to-scope-list slot (`<prefix>-name-back`) mirroring `repo-name-back`. A
+repo group pins `chats · git · notes` and keeps Settings in the overflow; My Work / My
+Life pin their first three visible tabs. Before this a mobile user who landed on a group
+had no way back.
 
 ## Remote workspace aggregation
 

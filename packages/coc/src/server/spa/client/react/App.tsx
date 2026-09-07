@@ -21,6 +21,7 @@ import { TopBar } from './layout/TopBar';
 import { GlobalStatusDock } from './layout/GlobalStatusDock';
 import { SecurityBanner } from './layout/SecurityBanner';
 import { BottomNav } from './layout/BottomNav';
+import { MobileScopeBar } from './layout/MobileScopeBar';
 import { Router } from './layout/Router';
 import { FloatingChatManager } from './layout/FloatingChatManager';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -449,7 +450,11 @@ function AppInner() {
                     </Suspense>
                 )}
                 <FloatingChatManager />
+                {/* Exactly one of these renders at a time on mobile: the scope
+                    bar owns the repos tab, BottomNav owns every other tab. Both
+                    publish their height as `--bottom-nav-height`. */}
                 <BottomNav />
+                <MobileScopeBar />
                 <ToastContainer toasts={toasts} removeToast={removeToast} />
                 <EnqueueDialog />
                 <RunScriptDialog />

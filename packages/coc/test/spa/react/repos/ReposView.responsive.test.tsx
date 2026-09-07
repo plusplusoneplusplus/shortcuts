@@ -72,8 +72,8 @@ vi.mock('../../../../src/server/spa/client/react/hooks/preferences/usePreference
 
 // ── Mock child components to isolate layout logic ──────────────────────
 
-vi.mock('../../../../src/server/spa/client/react/repos/ReposGrid', () => ({
-    ReposGrid: () => <div data-testid="repos-grid">ReposGrid</div>,
+vi.mock('../../../../src/server/spa/client/react/repos/MobileScopeList', () => ({
+    MobileScopeList: () => <div data-testid="mobile-scope-list">MobileScopeList</div>,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/repos/MiniReposSidebar', () => ({
@@ -258,7 +258,7 @@ describe('ReposView — responsive layout', () => {
             mockAppState.selectedRepoId = null;
             render(<ReposView />);
 
-            await screen.findByTestId('repos-grid');
+            await screen.findByTestId('mobile-scope-list');
             expect(screen.queryByTestId('repo-detail')).toBeNull();
             expect(screen.queryByTestId('repos-sidebar')).toBeNull();
             expect(screen.queryByTestId('mini-sidebar')).toBeNull();
@@ -271,7 +271,8 @@ describe('ReposView — responsive layout', () => {
 
             // Height class is applied even during loading
             const container = document.getElementById('view-repos')!;
-            expect(container.className).toContain('h-[calc(100dvh-40px-48px)]');
+            // 40px TopBar + 40px MobileScopeBar.
+            expect(container.className).toContain('h-[calc(100dvh-40px-40px)]');
         });
 
         it('selected repo shows full-screen detail without MobileRepoHeader bar', async () => {
@@ -281,7 +282,7 @@ describe('ReposView — responsive layout', () => {
 
             // Component stays in loading because no repos match selectedRepoId
             // but we set the mock to return a matching repo
-            await screen.findByTestId('repos-grid');
+            await screen.findByTestId('mobile-scope-list');
             // When no repos match, mobile falls back to grid (no selection match)
         });
 
@@ -304,7 +305,7 @@ describe('ReposView — responsive layout', () => {
             mockAppState.selectedRepoId = null;
             render(<ReposView />);
 
-            await screen.findByTestId('repos-grid');
+            await screen.findByTestId('mobile-scope-list');
             expect(screen.queryByTestId('mini-sidebar')).toBeNull();
         });
     });

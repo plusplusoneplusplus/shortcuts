@@ -54,12 +54,12 @@ test.describe('MobileTabBar', () => {
         }
     });
 
-    test('mobile: BottomNav is hidden when a repo is selected', async ({ page, serverUrl }) => {
+    test('mobile: the scope bar is hidden when a repo is selected', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-bnav-1', 'bnav-repo-1');
         await page.goto(`${serverUrl}/#repos`);
 
-        // BottomNav must be visible before any repo is selected
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
+        // The scope bar (not BottomNav) owns the repos tab before a selection.
+        const bottomNav = page.locator('[data-testid="mobile-scope-bar"]');
         await expect(bottomNav).toBeVisible({ timeout: 10000 });
 
         // Tap a repo item to select it

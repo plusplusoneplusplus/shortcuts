@@ -23,6 +23,7 @@ import { useApp } from '../contexts/AppContext';
 import type { RepoData } from './repoGrouping';
 import { generateMyWorkSummary, syncMyWork } from './repositoryService';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
+import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 import { MY_WORK_WORKSPACE_ID } from './virtualWorkspaceIds';
 
@@ -136,7 +137,9 @@ export function MyWorkView() {
 
     return (
         <div className="flex flex-col h-full" data-testid="my-work-view">
-            {!headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
+            {isMobile
+                ? <VirtualWorkspaceMobileTabBar config={headerConfig} />
+                : !headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
 
             {/* Tab content */}
             <div className="flex-1 min-h-0 overflow-hidden">
