@@ -51,6 +51,9 @@
       "git/repo-identity": [
         "dist/git/repo-identity.d.ts"
       ],
+      "git/origin-id": [
+        "dist/git/origin-id.d.ts"
+      ],
       "git/pull-request-detection": [
         "dist/git/pull-request-detection.d.ts"
       ],
@@ -70,6 +73,7 @@
     "./git": "./dist/git/index.js",
     "./git/normalize-url": "./dist/git/normalize-url.js",
     "./git/repo-identity": "./dist/git/repo-identity.js",
+    "./git/origin-id": "./dist/git/origin-id.js",
     "./git/pull-request-detection": "./dist/git/pull-request-detection.js",
     "./ai": "./dist/ai/index.js",
     "./map-reduce": "./dist/map-reduce/index.js",

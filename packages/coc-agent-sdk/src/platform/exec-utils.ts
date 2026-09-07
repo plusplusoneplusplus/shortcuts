@@ -1,0 +1,63 @@
+import { exec, execFile, ExecFileOptions, ExecOptions } from 'child_process';
+
+/**
+ * Execute a shell command asynchronously
+ * @returns Promise with stdout and stderr
+ */
+export function execAsync(
+    command: string,
+    options?: ExecOptions
+): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+        const defaultOptions: ExecOptions = {
+            timeout: 30000, // 30 second default timeout
+            maxBuffer: 50 * 1024 * 1024, // 50MB buffer
+            ...options
+        };
+
+        exec(command, { ...defaultOptions, encoding: 'utf-8' }, (error, stdout, stderr) => {
+            if (error) {
+                // Augment the error message with stderr when the process is killed
+                // (e.g. timeout/SIGTERM) and stderr is not already in the message.
+                const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
+                if (stderrStr && !error.message.includes(stderrStr)) {
+                    error.message += `\n${stderrStr}`;
+                }
+                reject(error);
+            } else {
+                resolve({ stdout: stdout as string, stderr: stderr as string });
+            }
+        });
+    });
+}
+
+/**
+ * Execute a binary asynchronously without shell parsing.
+ * @returns Promise with stdout and stderr
+ */
+export function execFileAsync(
+    file: string,
+    args: readonly string[] = [],
+    options?: ExecFileOptions
+): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+        const defaultOptions: ExecFileOptions = {
+            timeout: 30000,
+            maxBuffer: 50 * 1024 * 1024,
+            windowsHide: true,
+            ...options,
+        };
+
+        execFile(file, args, { ...defaultOptions, encoding: 'utf-8' }, (error, stdout, stderr) => {
+            if (error) {
+                const stderrStr = typeof stderr === 'string' ? stderr.trim() : '';
+                if (stderrStr && !error.message.includes(stderrStr)) {
+                    error.message += `\n${stderrStr}`;
+                }
+                reject(error);
+            } else {
+                resolve({ stdout: stdout as string, stderr: stderr as string });
+            }
+        });
+    });
+}

@@ -42,7 +42,7 @@ Forge imports directly from this package.
 | `tool-call.ts` | `ToolCall`, `ToolCallStatus`, `ToolCallPermissionRequest`, serialization types |
 | `model-info.ts` | `ModelInfo` (id, name, description, tier, …) |
 | `logger.ts` | `initSDKLogger` / `resetSDKLogger` / `getSDKLogger` |
-| `internal/` | `exec-utils.ts` (`execFileAsync`), `path-security.ts` (traversal validation), `path-utils.ts`, `workspace-execution.ts` |
+| `platform/` | Shared platform utilities, published as the `./platform` (Node-only) and `./platform/path-utils` (browser-safe) subpath exports: `exec-utils.ts` (`execAsync`, `execFileAsync`), `path-security.ts` (traversal validation), `path-utils.ts` (pure path strings), `workspace-execution.ts` (native vs WSL routing). `@plusplusoneplusplus/forge`'s `utils/{exec-utils,path-security,path-utils,workspace-execution}` are compatibility re-exports over these; `forge/utils/path-utils` forwards to the pure leaf so it stays browser-safe. |
 | `llm-tools/coc-tool-runtime.ts` | `CocToolRuntime` — provider-neutral runtime over a per-invocation `Tool<any>[]` |
 | `llm-tools/bridge-server.ts` | `CocToolBridgeServer` + `cocToolBridgeServer` singleton — loopback IPC channel |
 | `llm-tools/bridge.ts` | `coc-llm-tools-mcp` — standalone stdio MCP server (child process) |

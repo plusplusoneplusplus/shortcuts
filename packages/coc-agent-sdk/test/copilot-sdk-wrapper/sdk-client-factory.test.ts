@@ -20,7 +20,7 @@ vi.mock('../../src/trusted-folder', () => ({
     ensureFolderTrusted: vi.fn(),
 }));
 
-vi.mock('../../src/internal/workspace-execution', () => ({
+vi.mock('../../src/platform/workspace-execution', () => ({
     resolveWorkspaceExecutionContext: vi.fn((cwd?: string) => cwd && (cwd.startsWith(String.raw`\\wsl$`) || cwd.startsWith('/home/tester/'))
         ? { kind: 'wsl', distro: 'Ubuntu', linuxWorkingDirectory: '/home/tester/repo', originalWorkingDirectory: cwd }
         : { kind: 'windows', workingDirectory: cwd }),
@@ -75,7 +75,7 @@ import {
 } from '../../src/sdk-client-factory';
 import * as trustedFolder from '../../src/trusted-folder';
 import * as fs from 'fs';
-import * as workspaceExecution from '../../src/internal/workspace-execution';
+import * as workspaceExecution from '../../src/platform/workspace-execution';
 
 // ---------------------------------------------------------------------------
 // Tests

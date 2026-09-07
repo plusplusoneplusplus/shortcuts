@@ -16,7 +16,7 @@ import { preferUnpackedPath } from './asar-path';
 import {
     resolveWorkspaceExecutionContext,
     translatePathForHostFilesystem,
-} from './internal/workspace-execution';
+} from './platform/workspace-execution';
 
 /**
  * Walk up from `startDir` looking for `node_modules/@github/copilot/index.js`.

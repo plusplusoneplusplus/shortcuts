@@ -325,4 +325,4 @@ export type {
 // carries its own default-distro cache. Warm it alongside the host's during
 // startup, otherwise the synchronous readers here answer "no distro" for the
 // whole process lifetime.
-export { warmWslDistroCache as warmSdkWslDistroCache } from './internal/workspace-execution';
+export { warmWslDistroCache as warmSdkWslDistroCache } from './platform/workspace-execution';

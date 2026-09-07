@@ -4,10 +4,31 @@
   "description": "Provider-agnostic AI agent SDK for CoC — supports Copilot, Codex, Claude, and OpenCode",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "platform": [
+        "dist/platform/index.d.ts"
+      ],
+      "platform/path-utils": [
+        "dist/platform/path-utils.d.ts"
+      ],
+      "testing": [
+        "dist/testing/index.d.ts"
+      ]
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./platform": {
+      "types": "./dist/platform/index.d.ts",
+      "default": "./dist/platform/index.js"
+    },
+    "./platform/path-utils": {
+      "types": "./dist/platform/path-utils.d.ts",
+      "default": "./dist/platform/path-utils.js"
     },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
