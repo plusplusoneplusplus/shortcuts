@@ -107,6 +107,7 @@ import { RenameDialog } from '../../ui/RenameDialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
 import { RewindConfirmDialog } from './conversation/RewindConfirmDialog';
 import { useRewindTurn } from './hooks/useRewindTurn';
+import { EDIT_BUSY_TOOLTIP } from './hooks/rewindCapability';
 import type { ChatProvider } from './ProviderBadge';
 import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
@@ -2340,6 +2341,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const rewindUnsupportedProvider = conversationProvider === 'codex';
     const rewindAction = planChatBusy || rewindUnsupportedProvider ? undefined : rewind.requestRewind;
 
+    // Inline "Edit message" editor: at most one turn is in edit mode at a time,
+    // so a single index is the whole state — opening a second editor implicitly
+    // discards the first. Unlike `rewindAction`, the handler is passed even while
+    // the conversation is busy: the bubble renders the pencil disabled with a
+    // tooltip rather than making the affordance disappear mid-stream.
+    const [editingTurnIndex, setEditingTurnIndex] = useState<number | null>(null);
+    const handleEditTurn = useCallback((turnIndex: number) => setEditingTurnIndex(turnIndex), []);
+    const editTurnDisabledReason = planChatBusy ? EDIT_BUSY_TOOLTIP : undefined;
+
     const handleCancelPendingMessage = useCallback((messageId: string) => {
         if (!processId) return;
         let removed: QueuedMessage | undefined;
@@ -2709,6 +2719,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onPinTurn={handlePinTurn}
                         onArchiveTurn={handleArchiveTurn}
                         onRewindTurn={rewindAction}
+                        onEditTurn={handleEditTurn}
+                        editTurnDisabledReason={editTurnDisabledReason}
                         noteEdits={noteEdits}
                         processId={processId ?? bareTaskId}
                         openNotePath={openNotePath}

@@ -33,3 +33,11 @@ export function resolveRewindCapability(provider: ChatProvider | undefined, sdkE
     if (provider && !REWIND_CAPABLE_PROVIDERS.has(provider)) return 'hidden';
     return sdkEventId ? 'enabled' : 'disabled';
 }
+
+/**
+ * Tooltip shown on the "Edit message" pencil while the conversation is not
+ * idle. Editing rewinds + resends, and the rewind route rejects a busy
+ * conversation with 409 `CONVERSATION_NOT_IDLE`, so the button is disabled
+ * up-front rather than failing on click.
+ */
+export const EDIT_BUSY_TOOLTIP = 'The conversation is busy';

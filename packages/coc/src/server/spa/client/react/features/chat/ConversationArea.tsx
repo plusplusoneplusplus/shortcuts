@@ -77,6 +77,10 @@ export interface ConversationAreaProps {
     onArchiveTurn?: (turnIndex: number, archived: boolean) => void;
     /** Called when user rewinds the conversation to a user turn via context menu. */
     onRewindTurn?: (turnIndex: number) => void;
+    /** Called when user clicks the "Edit message" pencil on a user turn. */
+    onEditTurn?: (turnIndex: number) => void;
+    /** When set, the "Edit message" pencil is rendered disabled with this tooltip. */
+    editTurnDisabledReason?: string;
     /** Note edit snapshots from process.metadata.noteEdits — passed to ConversationTurnBubble for NoteEditCard. */
     noteEdits?: Array<{
         editId: string;
@@ -204,6 +208,8 @@ export function ConversationArea({
     onPinTurn,
     onArchiveTurn,
     onRewindTurn,
+    onEditTurn,
+    editTurnDisabledReason,
     noteEdits,
     processId,
     openNotePath,
@@ -323,6 +329,8 @@ export function ConversationArea({
                                                 onPinTurn={onPinTurn}
                                                 onArchiveTurn={onArchiveTurn}
                                                 onRewindTurn={onRewindTurn}
+                                                onEditTurn={onEditTurn}
+                                                editTurnDisabledReason={editTurnDisabledReason}
                                                 onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                 noteEdits={noteEdits}
                                                 processId={processId}
@@ -464,6 +472,8 @@ export function ConversationArea({
                                                     onPinTurn={onPinTurn}
                                                     onArchiveTurn={onArchiveTurn}
                                                     onRewindTurn={onRewindTurn}
+                                                    onEditTurn={onEditTurn}
+                                                    editTurnDisabledReason={editTurnDisabledReason}
                                                     onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                     noteEdits={noteEdits}
                                                     processId={processId}
