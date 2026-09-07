@@ -9,8 +9,12 @@ import {
     closeTab,
     findTab,
     moveTab,
+    openPreviewTab,
     openTab,
     parseUnifiedPanelState,
+    previewTab,
+    previewTabToReplace,
+    promoteTab,
     scopeForKind,
     scopeKeyFor,
     serializeUnifiedPanelState,
@@ -18,6 +22,7 @@ import {
     unifiedTabId,
     visibleTabIds,
     visibleTabs,
+    type OpenUnifiedPreviewTabInput,
     type OpenUnifiedTabInput,
     type UnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
@@ -311,5 +316,170 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
         const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
         expect(restored.workspaceTabs).toHaveLength(1);
         expect(restored.workspaceTabs[0].resourceId).toBe('sess-7');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Preview tabs (AC-03/AC-04)
+// ---------------------------------------------------------------------------
+
+/** A tree single click on `path`, in the section `chatId` selects. */
+function preview(
+    state: UnifiedPanelState,
+    path: string,
+    extra: Partial<OpenUnifiedPreviewTabInput> = {},
+): UnifiedPanelState {
+    return openPreviewTab(state, {
+        ownerWorkspaceId: WS,
+        chatId: null,
+        resourceId: path,
+        label: path,
+        ...extra,
+    });
+}
+
+/** Tab labels of the section a file opened with `chatId` lands in. */
+function sectionLabels(state: UnifiedPanelState, chatId: string | null = null): string[] {
+    return (state.chatTabs[scopeKeyFor('file', chatId)] ?? []).map(tab => tab.label);
+}
+
+describe('unifiedPanelTabsModel — preview tabs', () => {
+    it('opens a single click as a preview tab at the end of its section', () => {
+        const state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts');
+        const tab = previewTab(state, null);
+        expect(tab?.resourceId).toBe('src/a.ts');
+        expect(tab?.kind).toBe('file');
+        expect(tab?.preview).toBe(true);
+        expect(activeTabId(state, null)).toBe(tab?.id);
+        expect(sectionLabels(state)).toEqual(['src/a.ts']);
+    });
+
+    it('reuses the same slot for the next single click instead of stacking tabs', () => {
+        let state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts');
+        state = open(state, { kind: 'file', resourceId: 'src/keep.ts', label: 'keep.ts' });
+        const before = sectionLabels(state);
+        state = preview(state, 'src/b.ts');
+
+        // One preview, in the position the previous one held, and the permanent
+        // neighbour untouched.
+        expect(before).toEqual(['keep.ts', 'src/a.ts']);
+        expect(sectionLabels(state)).toEqual(['keep.ts', 'src/b.ts']);
+        expect(previewTab(state, null)?.resourceId).toBe('src/b.ts');
+        expect(activeTabId(state, null)).toBe(previewTab(state, null)?.id);
+    });
+
+    it('keeps at most one preview tab per scope section', () => {
+        let state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts', { chatId: CHAT_1 });
+        state = preview(state, 'src/b.ts', { chatId: CHAT_1 });
+        state = preview(state, 'src/c.ts', { chatId: CHAT_2 });
+
+        for (const chat of [CHAT_1, CHAT_2]) {
+            expect((state.chatTabs[chat] ?? []).filter(tab => tab.preview).length).toBe(1);
+        }
+        expect(previewTab(state, CHAT_1)?.resourceId).toBe('src/b.ts');
+        expect(previewTab(state, CHAT_2)?.resourceId).toBe('src/c.ts');
+    });
+
+    it('drops a selection that pointed at the replaced preview', () => {
+        let state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts', { chatId: CHAT_1 });
+        const replacedId = previewTab(state, CHAT_1)!.id;
+        // A second scope also remembers it — a legal selection while viewing it.
+        state = { ...state, activeByScope: { ...state.activeByScope, [CHAT_2]: replacedId } };
+        state = preview(state, 'src/b.ts', { chatId: CHAT_1 });
+
+        expect(Object.values(state.activeByScope)).not.toContain(replacedId);
+        expect(findTab(state, replacedId)).toBeNull();
+    });
+
+    it('focuses an existing permanent tab instead of previewing it again', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, { kind: 'file', resourceId: 'src/a.ts', label: 'a.ts' });
+        state = preview(state, 'src/z.ts');
+        const withPreview = state;
+        state = preview(state, 'src/a.ts');
+
+        // The permanent tab is selected, keeps its position, and stays permanent;
+        // the preview slot still holds z.ts.
+        expect(activeTab(state, null)?.resourceId).toBe('src/a.ts');
+        expect(activeTab(state, null)?.preview).toBeUndefined();
+        expect(sectionLabels(state)).toEqual(sectionLabels(withPreview));
+        expect(previewTab(state, null)?.resourceId).toBe('src/z.ts');
+    });
+
+    it('returns the same state when the current preview is clicked again', () => {
+        const state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts');
+        expect(preview(state, 'src/a.ts')).toBe(state);
+    });
+
+    it('reports which preview a click would replace, and when it would replace none', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, { kind: 'file', resourceId: 'src/perm.ts', label: 'perm.ts' });
+        const input = (resourceId: string): OpenUnifiedPreviewTabInput => ({
+            ownerWorkspaceId: WS, chatId: null, resourceId, label: resourceId,
+        });
+
+        expect(previewTabToReplace(state, null, input('src/a.ts'))).toBeNull();
+        state = preview(state, 'src/a.ts');
+        // The file already open permanently, and the current preview itself,
+        // both evict nothing.
+        expect(previewTabToReplace(state, null, input('src/perm.ts'))).toBeNull();
+        expect(previewTabToReplace(state, null, input('src/a.ts'))).toBeNull();
+        expect(previewTabToReplace(state, null, input('src/b.ts'))?.resourceId).toBe('src/a.ts');
+    });
+
+    it('opens permanent tabs before the preview so the slot stays last', () => {
+        let state = preview(EMPTY_UNIFIED_PANEL, 'src/prev.ts');
+        state = open(state, { kind: 'file', resourceId: 'src/one.ts', label: 'one.ts' });
+        state = open(state, { kind: 'file', resourceId: 'src/two.ts', label: 'two.ts' });
+        expect(sectionLabels(state)).toEqual(['one.ts', 'two.ts', 'src/prev.ts']);
+    });
+
+    it('keeps the preview last when a permanent tab is moved to the end', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, { kind: 'file', resourceId: 'src/one.ts', label: 'one.ts' });
+        state = open(state, { kind: 'file', resourceId: 'src/two.ts', label: 'two.ts' });
+        state = preview(state, 'src/prev.ts');
+        const oneId = state.chatTabs[WORKSPACE_SCOPE_KEY]![0].id;
+
+        state = moveTab(state, oneId, null);
+        expect(sectionLabels(state)).toEqual(['two.ts', 'one.ts', 'src/prev.ts']);
+
+        // The preview itself may still be dragged to the end of its section.
+        state = moveTab(state, previewTab(state, null)!.id, null);
+        expect(sectionLabels(state)).toEqual(['two.ts', 'one.ts', 'src/prev.ts']);
+    });
+
+    it('promotes a preview in place, keeping identity and position', () => {
+        let state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts');
+        state = open(state, { kind: 'file', resourceId: 'src/keep.ts', label: 'keep.ts' });
+        const previewId = previewTab(state, null)!.id;
+
+        const promoted = promoteTab(state, previewId);
+        expect(findTab(promoted, previewId)?.preview).toBeUndefined();
+        expect(previewTab(promoted, null)).toBeNull();
+        expect(sectionLabels(promoted)).toEqual(sectionLabels(state));
+        // One-way, and a no-op on an already-permanent tab returns the same ref.
+        expect(promoteTab(promoted, previewId)).toBe(promoted);
+    });
+
+    it('frees the slot: the next single click opens beside a promoted tab', () => {
+        let state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts');
+        state = promoteTab(state, previewTab(state, null)!.id);
+        state = preview(state, 'src/b.ts');
+
+        expect(sectionLabels(state)).toEqual(['src/a.ts', 'src/b.ts']);
+        expect(previewTab(state, null)?.resourceId).toBe('src/b.ts');
+    });
+
+    it('promotes the preview when the same file is opened by a permanent entry point', () => {
+        let state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts');
+        state = open(state, { kind: 'file', resourceId: 'src/a.ts', label: 'a.ts' });
+
+        expect(previewTab(state, null)).toBeNull();
+        expect(sectionLabels(state)).toEqual(['a.ts']);
+    });
+
+    it('does not widen a read-only preview, and keeps the reveal line', () => {
+        const state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts', { readOnly: true, line: 12 });
+        const tab = previewTab(state, null)!;
+        expect(tab.readOnly).toBe(true);
+        expect(tab.line).toBe(12);
     });
 });

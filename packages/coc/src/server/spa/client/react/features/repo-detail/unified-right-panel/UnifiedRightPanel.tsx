@@ -31,6 +31,11 @@
  *    kinds keep rendering their own toolbars inside their own views, and when
  *    this row is absent the toggle moves into the strip beside "+", so there is
  *    always exactly one visible way to reach the tree.
+ *  - **The preview slot.** A single click in the tree opens into the section's
+ *    one replaceable, italic preview tab; every other entry point — `+`, a chat
+ *    source link, a note link, a double click — opens a permanent tab. The
+ *    rules live in `unifiedPanelTabsModel`; what the shell adds is the guard,
+ *    because reusing the slot destroys a buffer exactly as a close does.
  *  - **The file-tree column.** A collapsible tree pinned to the panel's right
  *    edge, beside whatever the active tab is showing — a terminal, a canvas, or
  *    the empty state. It is panel-level (`unifiedPanelTree`), not a tab and not
@@ -85,7 +90,7 @@ import {
     dirtyCloseLabel,
     needsDirtyCloseConfirm,
 } from './unifiedDirtyClose';
-import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import type { OpenUnifiedPreviewTabInput, OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 export interface UnifiedRightPanelProps {
     /**
@@ -106,7 +111,9 @@ export interface UnifiedRightPanelProps {
 
 export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }: UnifiedRightPanelProps) {
     const { isOpen, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
-    const { tabs, activeId, active, open, activate, close, move } = useUnifiedPanelTabs(workspaceId, chatId);
+    const {
+        tabs, activeId, active, open, openPreview, previewToReplace, activate, close, move,
+    } = useUnifiedPanelTabs(workspaceId, chatId);
 
     // Views mounted so far, by tab id. A tab enters this set when it first
     // becomes active and stays until it is closed — that is the keep-alive that
@@ -186,24 +193,8 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     // `treeVisible` hides it without touching the user's open bit.
     const treeWidth = clampUnifiedTreeWidth(treeResize.width, width);
 
-    // A file picked in the tree opens against the dock's target, exactly as an
-    // Explorer navigator tab's selection does — same descriptor builder, so the
-    // tree column and the `+` menu file the same kind of tab.
-    const openTreeFile = useCallback(
-        (
-            file: { path: string; name: string; line?: number },
-            options: { preview: boolean; readOnly?: boolean },
-        ) => {
-            const input = explorerFileTabInput(file, options, {
-                ownerWorkspaceId: target,
-                scopeWorkspaceId: workspaceId,
-                ownerLabel: targetLabel,
-                chatId,
-            });
-            if (input) open(input);
-        },
-        [target, workspaceId, targetLabel, chatId, open],
-    );
+    // A file picked in the tree opens a panel tab; that flow needs the close
+    // guard's dirty state, so `openTreeFile` is defined with it further down.
 
     // ------------------------------------------------------------------
     // The toolbar row (AC-02)
@@ -294,6 +285,11 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         [],
     );
 
+    // A preview replacement that is waiting on the unsaved-edits prompt: the
+    // outgoing buffer has to be saved or discarded before the slot can be
+    // reused, and the new file must still open once it is.
+    const pendingPreviewOpen = useRef<{ tabId: string; input: OpenUnifiedPreviewTabInput } | null>(null);
+
     const closeTab = useCallback((id: string) => {
         close(id);
         setMountedIds(prev => {
@@ -309,6 +305,14 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             return next;
         });
         saveHandlers.current.delete(id);
+        // The tree click that was blocked on this tab's unsaved edits now gets
+        // its open, in the freed slot. Both go through the same functional
+        // setter, so the close and the open compose in one tick.
+        const queued = pendingPreviewOpen.current;
+        if (queued !== null && queued.tabId === id) {
+            pendingPreviewOpen.current = null;
+            openPreview(queued.input);
+        }
         // No flag clearing here on purpose: closing unmounts the view, and the
         // views report clean/ready from their own unmount cleanup, so a second
         // reset would be dead code. Verified by removing the cleanup's effect in
@@ -352,6 +356,44 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         closeTab(id);
     }, [tabs, terminalSessions, dirtyIds, closeTab]);
 
+    // A file picked in the tree opens against the dock's target, exactly as an
+    // Explorer navigator tab's selection does — same descriptor builder, so the
+    // tree column and the `+` menu file the same kind of tab.
+    const openTreeFile = useCallback(
+        (
+            file: { path: string; name: string; line?: number },
+            options: { preview: boolean; readOnly?: boolean },
+        ) => {
+            const input = explorerFileTabInput(file, options, {
+                ownerWorkspaceId: target,
+                scopeWorkspaceId: workspaceId,
+                ownerLabel: targetLabel,
+                chatId,
+            });
+            if (input === null) return;
+            // A double click (or any other permanent entry point) opens a normal
+            // tab; only the tree's single click takes the preview slot (AC-03).
+            if (!options.preview) {
+                open(input);
+                return;
+            }
+            const { kind: _kind, ...previewInput } = input;
+            // Reusing the slot destroys the outgoing buffer, so it goes through
+            // the same unsaved-edits guard a close does. In practice an edit has
+            // already promoted the tab (AC-04), so this is a safety net: cancel
+            // or a failed save leaves the old buffer, and the queued open is
+            // dropped with the prompt.
+            const outgoing = previewToReplace(previewInput);
+            if (outgoing !== null && dirtyIds.has(outgoing.id)) {
+                pendingPreviewOpen.current = { tabId: outgoing.id, input: previewInput };
+                requestClose(outgoing.id);
+                return;
+            }
+            openPreview(previewInput);
+        },
+        [target, workspaceId, targetLabel, chatId, open, openPreview, previewToReplace, dirtyIds, requestClose],
+    );
+
     const cancelClose = useCallback(() => {
         setPendingClose(null);
         setCloseError(null);
@@ -385,8 +427,13 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         if (!tabs.some(tab => tab.id === pendingClose.tabId)) cancelClose();
     }, [tabs, pendingClose, cancelClose]);
 
-    /** Cancel: the tab, its buffer, and its unsaved edits are all left alone. */
+    /**
+     * Cancel: the tab, its buffer, and its unsaved edits are all left alone —
+     * and so is the preview slot, so a cancelled replacement leaves the old
+     * file showing rather than opening the new one anyway.
+     */
     const cancelDirtyClose = useCallback(() => {
+        pendingPreviewOpen.current = null;
         setPendingDirty(null);
         setDirtyError(null);
         setDirtySaving(false);

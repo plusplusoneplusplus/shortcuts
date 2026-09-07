@@ -23,6 +23,10 @@
  *  4. **`activeByScope` holds at most one id per scope**, and it is always
  *     either null or a tab visible in that scope — so switching chats and back
  *     restores what was selected there, including a workspace tab.
+ *  5. **At most one preview tab per scope section, and it sits last.** The file
+ *     tree's single click opens into that one replaceable slot (`openPreviewTab`)
+ *     and every other entry point opens a permanent tab; promotion
+ *     (`promoteTab`) is one-way and frees the slot for the next single click.
  *
  * Operations return the *same* state reference when they change nothing, which
  * is load-bearing: the state is served through `useSyncExternalStore`, which
@@ -124,6 +128,17 @@ export interface UnifiedPanelTab {
     readOnly?: boolean;
     /** One-based line to reveal when the resource loads, for a deep link. */
     line?: number;
+    /**
+     * True on the section's single *preview* tab — VS Code's italic slot. A
+     * preview tab is a normal tab in every respect except that the next
+     * single click in the file tree reuses its slot instead of opening a
+     * second tab, and any of the promotion gestures clears the bit for good.
+     *
+     * Only ever `true`: an absent bit and `false` would otherwise be two
+     * spellings of "permanent", and the codec, `sameTab`, and the
+     * at-most-one-per-section repair all compare on presence.
+     */
+    preview?: true;
 }
 
 export interface UnifiedPanelState {
@@ -219,9 +234,31 @@ export function findTab(state: UnifiedPanelState, id: string): UnifiedPanelTab |
     return null;
 }
 
+/**
+ * The preview tab of the section a file opened from `chatId` would land in, or
+ * null when that section has none. At most one exists per section, which is
+ * what makes "the preview slot" a thing the UI can point at (AC-03).
+ */
+export function previewTab(state: UnifiedPanelState, chatId: string | null): UnifiedPanelTab | null {
+    const list = state.chatTabs[scopeKeyFor('file', chatId)] ?? [];
+    return list.find(tab => tab.preview === true) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Where a newly opened permanent tab goes: the end of its section, or just
+ * before the preview tab when there is one. The preview slot is always the
+ * section's last tab, so it stays the rightmost thing the next tree click
+ * replaces rather than drifting into the middle of the strip.
+ */
+function insertPermanent(list: readonly UnifiedPanelTab[], tab: UnifiedPanelTab): readonly UnifiedPanelTab[] {
+    const previewIndex = list.findIndex(entry => entry.preview === true);
+    if (previewIndex < 0) return [...list, tab];
+    return [...list.slice(0, previewIndex), tab, ...list.slice(previewIndex)];
+}
 
 function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
     return a.id === b.id
@@ -232,7 +269,8 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.label === b.label
         && a.repoLabel === b.repoLabel
         && a.readOnly === b.readOnly
-        && a.line === b.line;
+        && a.line === b.line
+        && a.preview === b.preview;
 }
 
 function sameList(a: readonly UnifiedPanelTab[], b: readonly UnifiedPanelTab[]): boolean {
@@ -297,7 +335,14 @@ export interface OpenUnifiedTabInput {
  * already-read-only tab for editing, but a read-only open can never widen an
  * editable tab's capability, and neither can a restore.
  *
- * Not open → append to the end of its own scope section.
+ * Not open → append to the end of its own scope section, or just before the
+ * preview tab when that section has one, so the preview slot stays last.
+ *
+ * This is the *permanent* open — `+`, a chat source link, a note link, a canvas
+ * embed, a diff action. `opened` carries no `preview` bit, so opening the file
+ * that currently sits in the preview slot promotes that tab in place rather
+ * than leaving a permanent entry point rendering italics. Only
+ * `openPreviewTab` ever sets the bit.
  */
 export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): UnifiedPanelState {
     const scope = scopeForKind(input.kind);
@@ -338,10 +383,114 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         copy[index] = sameTab(existing, merged) ? existing : merged;
         nextList = copy;
     } else {
-        nextList = [...list, opened];
+        nextList = insertPermanent(list, opened);
     }
 
     return withActive(withList(state, scopeKey, scope, nextList), input.chatId ?? WORKSPACE_SCOPE_KEY, id);
+}
+
+/** What `openPreviewTab` needs. Preview is a file-tab notion, so no `kind`. */
+export type OpenUnifiedPreviewTabInput = Omit<OpenUnifiedTabInput, 'kind'>;
+
+/**
+ * Open a file in the section's single preview slot — the file tree's single
+ * click, and nothing else (AC-03).
+ *
+ * Three cases, in the order they are checked:
+ *
+ *  1. **The file already has a tab visible here.** Focus it and change nothing
+ *     else. That covers both a permanent tab — which must not be demoted, nor
+ *     duplicated into the preview slot — and the file that is already the
+ *     current preview, where re-clicking must not churn the buffer. Both return
+ *     the same state reference when that tab is already active, so the view
+ *     does not even re-render.
+ *  2. **The section already has a preview.** Reuse the slot: the outgoing
+ *     descriptor is replaced *at its own index* by the new one, so the strip
+ *     shows one italic tab that changed its resource rather than a tab closing
+ *     and another appearing.
+ *  3. **Otherwise** append a new preview at the end of the section.
+ *
+ * Dirty state is not this function's business: the caller runs the unsaved-edits
+ * guard before replacing a dirty preview, exactly as it does for a close.
+ */
+export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPreviewTabInput): UnifiedPanelState {
+    const kind: UnifiedTabKind = 'file';
+    const scope = scopeForKind(kind);
+    const scopeKey = scopeKeyFor(kind, input.chatId);
+    const viewKey = input.chatId ?? WORKSPACE_SCOPE_KEY;
+    const id = unifiedTabId({ kind, ownerWorkspaceId: input.ownerWorkspaceId, chatId: input.chatId, resourceId: input.resourceId });
+
+    // Visible, not just same-section: a file opened permanently with no chat
+    // selected still shows in the strip once a chat is, and clicking it in the
+    // tree should focus that tab rather than preview a second copy of it.
+    if (visibleTabs(state, input.chatId).some(tab => tab.id === id)) {
+        return withActive(state, viewKey, id);
+    }
+
+    const opened: UnifiedPanelTab = {
+        id,
+        kind,
+        ownerWorkspaceId: input.ownerWorkspaceId,
+        chatId: input.chatId ?? null,
+        resourceId: input.resourceId,
+        label: input.label,
+        ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
+        ...(input.readOnly ? { readOnly: true } : {}),
+        ...(input.line === undefined ? {} : { line: input.line }),
+        preview: true,
+    };
+
+    const list = state.chatTabs[scopeKey] ?? [];
+    const previewIndex = list.findIndex(tab => tab.preview === true);
+    const outgoingId = previewIndex < 0 ? null : list[previewIndex].id;
+    const nextList = previewIndex < 0
+        ? [...list, opened]
+        : [...list.slice(0, previewIndex), opened, ...list.slice(previewIndex + 1)];
+
+    let next = withList(state, scopeKey, scope, nextList);
+    // The replaced tab is gone; a scope still pointing at it would resurrect a
+    // dangling id the way a close does, so clear those selections first.
+    if (outgoingId !== null) {
+        for (const [key, activeId] of Object.entries(next.activeByScope)) {
+            if (activeId === outgoingId) next = withActive(next, key, null);
+        }
+    }
+    return withActive(next, viewKey, id);
+}
+
+/**
+ * The preview tab that `openPreviewTab` would evict for `input`, or null when
+ * it would evict nothing — the file already has a visible tab, or the section
+ * has no preview yet.
+ *
+ * The shell asks this before opening so it can run the unsaved-edits guard on
+ * the outgoing buffer first. Keeping the question here rather than in the shell
+ * means the guard and the open agree on what "replaced" means by construction.
+ */
+export function previewTabToReplace(
+    state: UnifiedPanelState,
+    chatId: string | null,
+    input: OpenUnifiedPreviewTabInput,
+): UnifiedPanelTab | null {
+    const id = unifiedTabId({ kind: 'file', ownerWorkspaceId: input.ownerWorkspaceId, chatId: input.chatId, resourceId: input.resourceId });
+    if (visibleTabs(state, chatId).some(tab => tab.id === id)) return null;
+    const current = previewTab(state, input.chatId);
+    return current === null || current.id === id ? null : current;
+}
+
+/**
+ * Clear the preview bit, keeping everything else — identity, position, buffer,
+ * scroll, dirty state (AC-04). One-way: nothing puts the bit back, and
+ * promoting a tab that is already permanent returns the same state reference.
+ */
+export function promoteTab(state: UnifiedPanelState, id: string): UnifiedPanelState {
+    const tab = findTab(state, id);
+    if (tab === null || tab.preview !== true) return state;
+    const scope = scopeForKind(tab.kind);
+    const scopeKey = scopeKeyFor(tab.kind, tab.chatId);
+    const list = scope === 'workspace' ? state.workspaceTabs : (state.chatTabs[scopeKey] ?? []);
+    const { preview: _preview, ...promoted } = tab;
+    return withList(state, scopeKey, scope, list.map(entry => (entry.id === id ? promoted : entry)));
 }
 
 // ---------------------------------------------------------------------------
@@ -397,7 +546,8 @@ export function visibleTabIds(state: UnifiedPanelState, chatId: string | null): 
  * Move `id` so it sits where `beforeId` currently is, within its own scope
  * section. Dragging a chat tab onto the workspace section (or vice versa) is
  * rejected rather than silently re-homed: ownership is not a drag gesture.
- * Passing `beforeId: null` moves the tab to the end of its section.
+ * Passing `beforeId: null` moves the tab to the end of its section — or to
+ * just before the preview tab, which keeps the preview slot last.
  */
 export function moveTab(state: UnifiedPanelState, id: string, beforeId: string | null): UnifiedPanelState {
     const tab = findTab(state, id);
@@ -410,7 +560,12 @@ export function moveTab(state: UnifiedPanelState, id: string, beforeId: string |
 
     const without = list.filter(entry => entry.id !== id);
     if (beforeId === null) {
-        return withList(state, scopeKey, scope, [...without, tab]);
+        // "To the end" for a permanent tab means *before* the preview slot, not
+        // after it: the preview is always the section's last tab, so a drag or
+        // an Alt+Arrow to the far right stops one place short of it (AC-03).
+        return withList(state, scopeKey, scope, tab.preview === true
+            ? [...without, tab]
+            : insertPermanent(without, tab));
     }
     const to = without.findIndex(entry => entry.id === beforeId);
     // `beforeId` outside this section means a cross-section drag; ignore it.

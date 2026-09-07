@@ -112,6 +112,34 @@ from the store the toggle reads) and commits to `unifiedPanelTree` when the drag
 ends. What renders is that width put through `clampUnifiedTreeWidth` against the
 panel's live width, so the tree gives up space before the view does.
 
+## The preview slot
+
+Each scope section has at most **one preview tab**, and it is always the
+section's last tab. The file tree's single click opens into it
+(`openPreviewTab`); the next single click replaces the descriptor *at that same
+index*, so the strip shows one italic tab that changed resource rather than a
+tab closing and another appearing. Every other entry point — `+`, a chat source
+link, a note link, a canvas embed, a diff action, the tree's own double click —
+goes through `openTab` and is permanent, which is also why `openTab` inserts a
+new tab *before* the preview and `moveTab`'s "to the end" stops one place short
+of it.
+
+Two rules keep the slot honest:
+
+- **A file that already has a visible tab is focused, never previewed.** That
+  covers both a permanent tab (which must not be demoted) and the current
+  preview (which must not churn its buffer) — and both return the same state
+  reference when that tab is already active.
+- **Reuse destroys a buffer, so it is guarded like a close.** The shell asks
+  `previewToReplace` first and, if the outgoing preview is dirty, queues the
+  open behind the unsaved-edits prompt (`pendingPreviewOpen`); cancel drops the
+  queued open. In practice an edit has already promoted the tab, so this is a
+  safety net rather than the common path.
+
+`promoteTab` clears the bit in place — same id, position, buffer, dirty state —
+and is one-way. Promotion frees the slot, so the next single click opens a new
+preview beside the promoted tab.
+
 ## Permissions ride on one bit
 
 `tab.readOnly` moves only on an explicit `openTab` — the entry point decides, and
@@ -167,7 +195,7 @@ surface untouched.
 | Chat diff action | `ChatDetail` `WHISPER_DIFF_EVENT` handler | A whisper diff is rebuilt from an in-memory transcript, so `unifiedDiffSources` is the join between a persisted tab and its source. |
 | Chat source link | `ChatDetail` `coc-open-source-canvas` | Declines relative/group refs and paths outside a known root — `PreviewPane` reads repo-relative blobs, so a tab for those could only render an error. |
 | Note link | same handler, `kind: 'note'` branch | `resourceId` is `<fetchMode>\|<root>\|<path>`: the note root is part of the identity, resolved once at open time because the link is gone by restore time. |
-| Explorer selection | `ExplorerPanel` `onOpenFile` | Navigator mode. |
+| Explorer selection | `ExplorerPanel` `onOpenFile` | Navigator mode, and the tree column: `options.preview` picks the preview slot vs a permanent tab. |
 | Canvas embed | `shared/CanvasEmbed.tsx` "Open in panel" | The only entry point that needed a new affordance. Gated on `useUnifiedPanelHostForChat`; the chat id arrives through `ChatRenderContext.chatId` because the embed is portaled. |
 | AI canvas create/update | `ChatDetail` `onCanvasUpdated` | See below. |
 | `+` menu | the panel itself | Reuses QuickOpen's search behavior: nothing before the first keystroke, debounce, abort the previous request. |

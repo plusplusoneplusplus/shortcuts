@@ -27,9 +27,15 @@ import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type React
 import { cn } from '../../../ui/cn';
 import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 
-/** The tooltip a tab shows on hover: the full label plus its repo, if any. */
+/**
+ * The tooltip a tab shows on hover: the full label, its repo if any, and — for
+ * the preview slot — what the italics mean. Italics alone say "temporary" only
+ * to someone who already knows the convention, so the words are always there
+ * too, in the tooltip and in the tab's screen-reader text (AC-03).
+ */
 export function unifiedTabTooltip(tab: UnifiedPanelTab): string {
-    return tab.repoLabel ? `${tab.label} — ${tab.repoLabel}` : tab.label;
+    const withRepo = tab.repoLabel ? `${tab.label} — ${tab.repoLabel}` : tab.label;
+    return tab.preview ? `${withRepo} (preview — double-click to keep open)` : withRepo;
 }
 
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
@@ -217,6 +223,7 @@ export function UnifiedPanelTabStrip({
                             data-scope={scopeForKind(tab.kind)}
                             data-active={isActive || undefined}
                             data-dirty={isDirty || undefined}
+                            data-preview={tab.preview || undefined}
                             data-readonly={tab.readOnly || undefined}
                             data-section-start={startsChatSection || undefined}
                             onClick={() => onActivate(tab.id)}
@@ -267,7 +274,12 @@ export function UnifiedPanelTabStrip({
                             {hasError && (
                                 <span aria-hidden="true" className="flex-shrink-0" data-testid={`unified-panel-tab-error-${tab.id}`}>⚠</span>
                             )}
-                            <span className="truncate" data-testid={`unified-panel-tab-label-${tab.id}`}>{tab.label}</span>
+                            <span
+                                className={cn('truncate', tab.preview && 'italic')}
+                                data-testid={`unified-panel-tab-label-${tab.id}`}
+                            >
+                                {tab.label}
+                            </span>
                             {tab.repoLabel && (
                                 <span
                                     className="max-w-[64px] flex-shrink truncate text-[10px] opacity-70"
@@ -277,6 +289,7 @@ export function UnifiedPanelTabStrip({
                                 </span>
                             )}
                             <span className="sr-only">
+                                {tab.preview ? ' (preview — double-click to keep open)' : ''}
                                 {tab.readOnly ? ' (read-only)' : ''}
                                 {isDirty ? ' (unsaved changes)' : ''}
                                 {hasError ? ' (unavailable)' : ''}

@@ -19,10 +19,12 @@
  *    selections here rather than through the source-link path: the Explorer is
  *    an authorized entry point, a chat link is a reference.
  *
- * Explorer's preview/pinned distinction is deliberately dropped. The panel has
- * no replaceable preview slot — one tab per resource — so a single click opens
- * the tab and a double click focuses that same tab instead of stacking a
- * second one.
+ * Explorer's preview/pinned distinction is honored, but not here: this builder
+ * returns the descriptor and the *caller* decides which slot it lands in.
+ * `UnifiedRightPanel.openTreeFile` sends a single click (`preview: true`) to
+ * the panel's one replaceable preview slot and everything else to a permanent
+ * tab (AC-03), so `options.preview` reaches this function only to be ignored —
+ * a preview tab and a permanent tab describe the same resource identically.
  */
 
 import { TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
