@@ -116,6 +116,13 @@ interface ConversationTurnBubbleProps {
      * withheld while the conversation is streaming).
      */
     editTurnDisabledReason?: string;
+    /**
+     * When provided, this node replaces the turn's rendered content — the
+     * in-bubble "Edit message" editor. The bubble stays dumb about editing: the
+     * owner decides which turn (if any) is being edited, which is also what
+     * makes "one editor at a time" impossible to violate from here.
+     */
+    inlineEditor?: React.ReactNode;
     /** Note edit snapshots from process.metadata.noteEdits — used to render NoteEditCard. */
     noteEdits?: Array<{
         editId: string;
@@ -1116,7 +1123,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, noteEdits, processId, openNotePath, provider, rewindProvider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
@@ -1335,7 +1342,10 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         () => resolveRewindCapability(rewindProvider ?? provider, turn.sdkEventId),
         [rewindProvider, provider, turn.sdkEventId],
     );
-    const showEditButton = isUser && !!onEditTurn && turnIndex != null && editCapability !== 'hidden';
+    // While this turn is being edited its own content is replaced by the
+    // editor, so the pencil that opened it has nothing left to act on.
+    const showInlineEditor = isUser && !!inlineEditor;
+    const showEditButton = isUser && !showInlineEditor && !!onEditTurn && turnIndex != null && editCapability !== 'hidden';
     const editDisabledTooltip = editCapability === 'disabled'
         ? REWIND_NO_ANCHOR_TOOLTIP
         : (editTurnDisabledReason ?? null);
@@ -1648,6 +1658,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                 )}
 
                 <div className="space-y-2 chat-message-content" ref={!isUser ? sidenoteContentRef : undefined}>
+                    {showInlineEditor ? inlineEditor : (<>
                     {!isUser && turn.isError && (
                         <aside
                             className={cn(
@@ -1950,6 +1961,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             onAttachContext={onAttachContext}
                         />
                     )}
+                    </>)}
                 </div>
             </div>
             {isUser && (

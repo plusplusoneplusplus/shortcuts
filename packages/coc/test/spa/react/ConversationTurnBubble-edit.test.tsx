@@ -145,4 +145,44 @@ describe('ConversationTurnBubble — Edit message pencil', () => {
         );
         expect(editBtn()).toBeNull();
     });
+
+    it('swaps the rendered content for the inline editor node when one is supplied', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ content: 'Hello world' })}
+                turnIndex={2}
+                provider="claude"
+                onEditTurn={vi.fn()}
+                inlineEditor={<div data-testid="fake-editor">editor</div>}
+            />,
+        );
+        expect(screen.getByTestId('fake-editor')).toBeTruthy();
+        expect(screen.queryByTestId('user-plain-text')).toBeNull();
+    });
+
+    it('hides the pencil on the turn that is already being edited', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                turnIndex={2}
+                provider="claude"
+                onEditTurn={vi.fn()}
+                inlineEditor={<div data-testid="fake-editor">editor</div>}
+            />,
+        );
+        expect(editBtn()).toBeNull();
+    });
+
+    it('renders the turn normally when no inline editor is supplied', () => {
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ content: 'Hello world' })}
+                turnIndex={2}
+                provider="claude"
+                onEditTurn={vi.fn()}
+            />,
+        );
+        expect(screen.queryByTestId('fake-editor')).toBeNull();
+        expect(screen.getByTestId('user-plain-text')).toBeTruthy();
+    });
 });

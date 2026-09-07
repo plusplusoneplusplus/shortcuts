@@ -81,6 +81,13 @@ export interface ConversationAreaProps {
     onEditTurn?: (turnIndex: number) => void;
     /** When set, the "Edit message" pencil is rendered disabled with this tooltip. */
     editTurnDisabledReason?: string;
+    /**
+     * Renders the in-bubble edit editor for a turn, or returns nothing when
+     * that turn is not being edited. Kept as a render prop so the composer-grade
+     * editor's dependencies (skills, mention sources, send settings) stay in
+     * ChatDetail instead of leaking into every bubble.
+     */
+    renderInlineTurnEditor?: (turnIndex: number) => React.ReactNode;
     /** Note edit snapshots from process.metadata.noteEdits — passed to ConversationTurnBubble for NoteEditCard. */
     noteEdits?: Array<{
         editId: string;
@@ -210,6 +217,7 @@ export function ConversationArea({
     onRewindTurn,
     onEditTurn,
     editTurnDisabledReason,
+    renderInlineTurnEditor,
     noteEdits,
     processId,
     openNotePath,
@@ -331,6 +339,7 @@ export function ConversationArea({
                                                 onRewindTurn={onRewindTurn}
                                                 onEditTurn={onEditTurn}
                                                 editTurnDisabledReason={editTurnDisabledReason}
+                                                inlineEditor={turn.turnIndex != null ? renderInlineTurnEditor?.(turn.turnIndex) : undefined}
                                                 onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                 noteEdits={noteEdits}
                                                 processId={processId}
@@ -474,6 +483,7 @@ export function ConversationArea({
                                                     onRewindTurn={onRewindTurn}
                                                     onEditTurn={onEditTurn}
                                                     editTurnDisabledReason={editTurnDisabledReason}
+                                                    inlineEditor={renderInlineTurnEditor?.(idx)}
                                                     onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                     noteEdits={noteEdits}
                                                     processId={processId}
