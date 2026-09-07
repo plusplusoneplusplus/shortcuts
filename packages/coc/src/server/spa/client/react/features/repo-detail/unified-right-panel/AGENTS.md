@@ -1,14 +1,14 @@
 # unified-right-panel
 
-One Cursor-style resource-tabbed right panel behind `features.unifiedRightPanel`
-(default **off**, runtime flag `unifiedRightPanelEnabled`, hook
-`hooks/feature-flags/useUnifiedRightPanelEnabled`). With the flag off nothing here
-mounts and `WorkspaceRightDock` behaves exactly as before — see the "Workspace
-right dock" section of `../AGENTS.md`.
+The workspace's one and only right panel: a Cursor-style resource-tabbed column
+holding Terminal, Notes, files, notes, canvases, and chat diffs, with the file
+tree as its right-edge column. There is no second right panel and no flag.
 
-`RepoDetail.tsx` and `repos/RepoGroupView.tsx` render one of the two panels in the
-same slot, under the same `dockAvailable` gate; the panel does not widen dock
-availability. Both wrap their subtree in `UnifiedPanelHostProvider`.
+`RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
+`dockAvailable` gate (`splitWorkspacePanel` + desktop) and wrap their subtree in
+`UnifiedPanelHostProvider` under the same condition; the panel does not widen
+that gate. The state around it — open, width, resize, target — comes from
+`../useWorkspaceDock`, described in `../AGENTS.md`.
 
 ## Scope, owner, and identity
 
@@ -50,19 +50,19 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 ## Views are reused, never re-implemented
 
 There is no second editor, search backend, terminal manager, or canvas store.
-`file` renders the Explorer's own `PreviewPane` (same buffer controller as the
-flag-off Explorer tabs), `canvas` renders `CanvasPanel`, `note` renders
-`NoteEditor`, `diff` renders the chat's `WhisperDiffPanel`, `terminal` renders
-and `terminal` renders `TerminalView`. The file tree is not among them: it is
+`file` renders the Explorer's own `PreviewPane` (the same buffer controller the
+Explorer sub-tab uses), `canvas` renders `CanvasPanel`, `note` renders
+`NoteEditor`, `diff` renders the chat's `WhisperDiffPanel`, and `terminal`
+renders `TerminalView`. The file tree is not among them: it is
 the panel's own column (`ExplorerPanel` in sidebar mode), so no tab mounts a
 nested tab strip or a second editor — that is the "one tab row per panel" rule.
 
-`ExplorerPanel`'s `mode` prop picks how much of it renders: `editor` (the whole
-Explorer sub-tab), `navigator` (tree only, opens handed to `onOpenFile`), and
-`sidebar` (navigator, minus the internal breadcrumb row — the file-tree column,
-whose breadcrumbs belong to the panel-level toolbar instead). State it
-explicitly; the legacy inference from `onOpenFile` cannot tell the two host
-modes apart and only survives as the default for existing callers.
+`ExplorerPanel`'s `mode` prop is required and picks how much of it renders:
+`editor` (the whole Explorer sub-tab, RepoDetail's only mount), `navigator` (tree
+only, opens handed to `onOpenFile`), and `sidebar` (navigator, minus the internal
+breadcrumb row — this panel's file-tree column, whose breadcrumbs belong to the
+panel-level toolbar instead). Nothing is inferred from `onOpenFile`: the two host
+modes are indistinguishable that way, so every caller states its mode.
 
 Resource toolbars render *below* the strip; the only thing that ever enters the
 strip is the tree toggle, through its `trailing` slot.
@@ -168,7 +168,7 @@ The tree's double click arrives as click, click, dblclick. The two clicks are th
 same preview open, which the model answers with the identical state reference, so
 nothing remounts before the promotion lands. `ExplorerPanel` needs `onFilePin`
 wherever a permanent tab has somewhere to live — its own strip *or* a host that
-takes the opens — not only when the explorer-tabs flag is on.
+takes the opens — not only when its own `explorerEditorTabs` flag is on.
 
 ## Persistence and migration (codec v2)
 
@@ -275,8 +275,10 @@ through refs. **Any future SSE-driven entry point must do the same.**
 store, strip, shell, menu, per-kind views, both close guards, terminal-session
 survival, and the canvas event relay. Entry-point rerouting is tested where the
 entry point lives — `test/spa/react/repos/ChatDetailCanvasClosed.test.tsx` holds
-the diff, source-link, note-link, and canvas cases; the flag-off/flag-on swap is
-pinned in `test/spa/react/repos/RepoGroupView.dock.test.tsx`.
+the diff, source-link, note-link, and canvas cases.
+`test/spa/react/repos/RepoGroupView.dock.test.tsx` and
+`test/spa/react/repos/RepoDetail-workspace-dock.test.ts` pin that both hosts
+render this panel whenever the panel slot is available, and nothing else in it.
 
 Traps that have bitten this directory:
 
@@ -285,10 +287,11 @@ Traps that have bitten this directory:
   to a no-op so the reuse guard is still exercised; do not "fix" that suite by
   deleting it, and do not try to set the case up through the editor.
 
-- Several suites mock `react/utils/config` with an **explicit export list**, so a
-  new `is…Enabled` reaching RepoDetail/RepoGroupView breaks them with "No <name>
-  export is defined on the mock" (`RepoDetail-layout-mode.test.tsx`,
-  `RepoDetail.queue-remote-routing.test.tsx`). The same applies to context mocks.
+- Several suites mock `react/utils/config` with an **explicit export list**, so
+  any `is…Enabled` reaching RepoDetail/RepoGroupView must appear in every such
+  mock or they fail with "No <name> export is defined on the mock"
+  (`RepoDetail-layout-mode.test.tsx`, `RepoDetail.queue-remote-routing.test.tsx`).
+  The same applies to context mocks.
 - Role queries skip `display:none` subtrees — assert a collapsed panel with
   `{ hidden: true }`.
 - A mid-test `writeUnifiedPanelState` needs `act()`; it notifies

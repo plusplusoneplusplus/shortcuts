@@ -171,9 +171,9 @@ describe('TopBar — repo-group virtual header', () => {
 });
 
 /**
- * AC-06 — the dock toggle in the TopBar. A repo group's dock body renders in
+ * AC-06 — the dock toggle in the TopBar. A repo group's right panel renders in
  * RepoGroupView; the toggle sits in the TopBar next to the virtual header and
- * shares the group-scoped cross-tree open store. My Work / My Life have no dock.
+ * shares the group-scoped cross-tree open store. My Work / My Life have none.
  */
 describe('TopBar — repo-group dock toggle (AC-06)', () => {
     it('renders the dock toggle alongside the group virtual header', () => {

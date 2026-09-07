@@ -132,7 +132,7 @@ export function useDockOpen(storageKey: string): [boolean, () => void] {
 
 /**
  * Lightweight controller for just the dock's open/close flag — for a toggle that
- * lives apart from the dock body (the global TopBar in the remote-first shell). It
+ * lives apart from the panel (the global TopBar in the remote-first shell). It
  * shares the same cross-tree store as `useWorkspaceDock`, so toggling here opens
  * the body rendered by RepoDetail, without pulling in the view/width machinery.
  */
@@ -155,7 +155,7 @@ export function DockToggleIcon() {
 /**
  * The dock open/close toggle for shells whose header lives outside RepoDetail —
  * i.e. the remote-first shell's global TopBar (placed next to "+ New"). Shares the
- * cross-tree open store with the dock body via `useWorkspaceDockToggle`, styled to
+ * cross-tree open store with the panel via `useWorkspaceDockToggle`, styled to
  * sit in the TopBar action cluster. RepoDetail's classic chrome header renders its
  * own equivalent button inline; both use the `workspace-dock-toggle` test id, and
  * only one is on screen at a time (chromeless XOR classic).

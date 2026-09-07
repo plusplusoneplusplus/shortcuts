@@ -4,11 +4,11 @@
  * Every kind maps onto a view that already exists elsewhere in the app; nothing
  * here is a second editor, a second file transport, or a second canvas store:
  *
- *  - `terminal` / `notes` — the workspace dock's own views. There is no Explorer
+ *  - `terminal` / `notes` — `TerminalView` and `DockNotesPanel`. There is no Explorer
  *    tab: the file tree is the panel's own right-edge column, which the panel
  *    shell renders beside whichever view is active.
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
- *    flag-off Explorer tabs use, so load/retry/dirty/save/status behave
+ *    Explorer sub-tab uses, so load/retry/dirty/save/status behave
  *    identically wherever a file was opened from. `tab.readOnly` forces the
  *    editor read-only and suppresses its save path, which is how a chat source
  *    link stays a preview while an Explorer selection stays editable. The

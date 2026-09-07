@@ -10,8 +10,8 @@
  * Three things the shell is responsible for and the model is not:
  *
  *  - **Keep-alive.** A view is mounted the first time its tab becomes active and
- *    then stays mounted, hidden with `display:none` — the same pattern
- *    the old dock used. That is what keeps a PTY, a scrollback, and an
+ *    then stays mounted, hidden with `display:none`. That is what keeps a
+ *    PTY, a scrollback, and an
  *    unsaved buffer alive across tab switches and a collapse. The flip side is
  *    just as load-bearing: a view is NOT mounted merely because its tab was
  *    restored from localStorage, so a reload never spawns a terminal the user
@@ -22,8 +22,8 @@
  *    "Open…" action rather than auto-creating anything.
  *  - **Width.** One workspace-scoped width, clamped so the central chat keeps at
  *    least `DOCK_MIN_CHAT_WIDTH`. It comes from the existing
- *    `useWorkspaceDock` controller, so the flag-on and flag-off panels share the
- *    same open/width persistence and the same header toggle.
+ *    `useWorkspaceDock` controller, which also owns the header toggle's open
+ *    bit — the panel does not persist a width of its own.
  *  - **The toolbar row.** Directly under the strip, and only while a file tab
  *    is active: breadcrumbs for that file plus the file-tree toggle. Other
  *    kinds keep rendering their own toolbars inside their own views, and when

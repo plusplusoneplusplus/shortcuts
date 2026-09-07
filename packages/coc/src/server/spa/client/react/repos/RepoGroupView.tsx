@@ -17,7 +17,7 @@
  *
  * On desktop (behind `splitWorkspacePanel`) the group also gets the workspace
  * right dock. The dock's own state scopes to the group, while its Terminal and
- * Explorer point at a target picked in the dock header: the group root, or any
+ * Explorer point at a target picked in the panel's open menu: the group root, or any
  * live member repo. Notes stays on the group. Members come from
  * `GET /api/repo-groups/:id`; stale ones are listed but not selectable.
  *
