@@ -78,6 +78,7 @@ import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { breadcrumbFolderPath, unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
+import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import {
     liveTerminalSessionIds,
@@ -143,14 +144,14 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     // New workspace resources open against the dock's current target, and carry
     // a repo label when that is not the panel's own workspace (a group member or
     // a remote clone) so two same-named tabs stay tellable apart.
-    const openWorkspaceResource = useCallback((kind: 'terminal' | 'explorer' | 'notes') => {
+    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes') => {
         const owner = kind === 'notes' ? workspaceId : target;
         open({
             kind,
             ownerWorkspaceId: owner,
             chatId,
             resourceId: kind,
-            label: kind === 'terminal' ? 'Terminal' : kind === 'explorer' ? 'Explorer' : 'Notes',
+            label: kind === 'terminal' ? 'Terminal' : 'Notes',
             ...(owner === workspaceId || !targetLabel ? {} : { repoLabel: targetLabel }),
         });
     }, [open, workspaceId, target, targetLabel, chatId]);
@@ -164,6 +165,15 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     // view — including the empty state, which is why closing the last tab with
     // the tree open leaves the panel showing a tree next to "Nothing open".
     const tree = useUnifiedPanelTree(workspaceId);
+
+    // Bring an older persisted layout up to the current codec, once per panel
+    // scope. It runs in an effect rather than in the store's read because it
+    // writes: an `explorer` tab from the previous version restores as "open the
+    // tree column" instead of as a tab. Reads already tolerate the old payload,
+    // so the first render is correct either way.
+    useEffect(() => {
+        migrateUnifiedPanelState(workspaceId);
+    }, [workspaceId]);
     const treeVisible = isUnifiedTreeVisible(tree.state, width);
 
     // The column's drag. It is deliberately given no `storageKey`: the width
@@ -588,6 +598,13 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                             onOpenResource={openResource}
                             onOpenWorkspaceResource={kind => {
                                 setMenuOpen(false);
+                                // The menu keeps its Explorer entry, but the
+                                // Explorer is a column now: the action toggles
+                                // the tree instead of opening a tab (AC-05).
+                                if (kind === 'explorer') {
+                                    tree.toggleOpen();
+                                    return;
+                                }
                                 openWorkspaceResource(kind);
                             }}
                             onClose={closeMenu}
@@ -637,8 +654,6 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                                 <UnifiedTabView
                                     tab={tab}
                                     scopeWorkspaceId={workspaceId}
-                                    chatId={chatId}
-                                    onOpenResource={openResource}
                                     onClose={requestClose}
                                     onDirtyChange={handleDirtyChange}
                                     onErrorChange={handleErrorChange}

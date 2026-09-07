@@ -5,7 +5,7 @@
  * Purely presentational: it renders the tab session `useUnifiedPanelTabs` owns
  * and reports what the user did. The one thing it decides for itself is where
  * the section divider goes, which it reads off each tab's kind rather than
- * being told — workspace-owned tabs (terminal, explorer, notes, notes
+ * being told — workspace-owned tabs (terminal, notes, notes
  * documents) come first, then the selected chat's tabs, and the boundary is
  * simply where that flips.
  *
@@ -46,11 +46,6 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="3,4 6,8 3,12" />
             <line x1="8" y1="12" x2="13" y2="12" />
-        </svg>
-    ),
-    explorer: (
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
-            <path d="M2 4.2h4l1.2 1.6H14v6.9H2z" />
         </svg>
     ),
     notes: (

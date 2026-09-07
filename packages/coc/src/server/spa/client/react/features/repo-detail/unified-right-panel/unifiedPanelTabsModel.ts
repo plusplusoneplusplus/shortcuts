@@ -10,7 +10,7 @@
  * fiddly part — are testable without a DOM.
  *
  * Four invariants hold for every value this module returns:
- *  1. **Ownership follows the kind.** Terminal, Explorer, and Notes tabs belong
+ *  1. **Ownership follows the kind.** Terminal and Notes tabs belong
  *     to the workspace and stay visible across chat switches; file, canvas, and
  *     diff tabs belong to the chat that opened them (or to the workspace when
  *     no chat is selected). See `scopeForKind`.
@@ -40,24 +40,27 @@
 /**
  * What a tab renders.
  *
- * `terminal` is one live PTY session, `explorer` the singleton file navigator,
- * and `notes` the singleton note navigator — all workspace-owned. `file`,
- * `note`, `canvas`, and `diff` are concrete opened resources; `note` is
- * workspace-owned (a note belongs to the workspace, not to the chat that linked
- * it), the rest follow the selected chat.
+ * `terminal` is one live PTY session and `notes` the singleton note navigator —
+ * both workspace-owned. `file`, `note`, `canvas`, and `diff` are concrete
+ * opened resources; `note` is workspace-owned (a note belongs to the workspace,
+ * not to the chat that linked it), the rest follow the selected chat.
+ *
+ * There is deliberately no `explorer` kind: the file tree is a panel-level
+ * column (`unifiedPanelTree`), not a tab, so it cannot be closed by accident,
+ * duplicated per chat, or ordered among resources.
  */
-export type UnifiedTabKind = 'terminal' | 'explorer' | 'notes' | 'file' | 'note' | 'canvas' | 'diff';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Every kind, in the order the "+" menu and default strip present them. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'explorer', 'notes', 'file', 'note', 'canvas', 'diff',
+    'terminal', 'notes', 'file', 'note', 'canvas', 'diff',
 ];
 
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'explorer', 'notes', 'note']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
@@ -66,7 +69,7 @@ const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['t
 export const WORKSPACE_SCOPE_KEY = '@workspace';
 
 /**
- * Ownership rule (AC-02). Terminals, Explorer, Notes, and note documents are
+ * Ownership rule (AC-02). Terminals, Notes, and note documents are
  * workspace-owned; specific files, canvases, and diffs follow the chat that
  * opened them. Files opened with no chat selected fall back to the workspace,
  * which `scopeKeyFor` handles.
@@ -586,8 +589,25 @@ export function moveTab(state: UnifiedPanelState, id: string, beforeId: string |
 // Persistence codec
 // ---------------------------------------------------------------------------
 
-/** Bump when the descriptor shape changes; older payloads are then discarded. */
-export const UNIFIED_PANEL_STATE_VERSION = 1;
+/**
+ * Bump when the descriptor shape changes. A payload whose version is neither
+ * this one nor a listed legacy version is discarded wholesale.
+ *
+ * v2 added the `preview` bit and removed the `explorer` kind.
+ */
+export const UNIFIED_PANEL_STATE_VERSION = 2;
+
+/**
+ * Versions this build can still read. A v1 payload restores field-for-field —
+ * its descriptors are a subset of v2's — except for its `explorer` tabs, which
+ * name a kind that no longer exists and are dropped by the kind check like any
+ * other unknown descriptor. `restoreUnifiedPanelState` reports that drop so the
+ * caller can open the tree column instead, which is where the Explorer went.
+ */
+const UNIFIED_PANEL_LEGACY_VERSIONS: readonly number[] = [1];
+
+/** The `kind` a pre-v2 payload used for the Explorer tab this build dropped. */
+const LEGACY_EXPLORER_KIND = 'explorer';
 
 /** localStorage key for one workspace's unified panel layout. */
 export function unifiedPanelStorageKey(workspaceId: string): string {
@@ -648,6 +668,9 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         ...(typeof value.repoLabel === 'string' ? { repoLabel: value.repoLabel } : {}),
         ...(value.readOnly === true ? { readOnly: true } : {}),
         ...(typeof value.line === 'number' && Number.isFinite(value.line) && value.line > 0 ? { line: value.line } : {}),
+        // Only `file` tabs can hold the preview slot: the tree's single click is
+        // the one entry point that creates one, and it only ever opens files.
+        ...(value.preview === true && kind === 'file' ? { preview: true } : {}),
     };
     return tab;
 }
@@ -663,7 +686,39 @@ function parseList(raw: unknown, expectedScopeKey: string): UnifiedPanelTab[] {
         seen.add(tab.id);
         tabs.push(tab);
     }
-    return tabs;
+    return repairPreviewSlot(tabs);
+}
+
+/**
+ * Enforce "at most one preview per scope section, and it sits last" on a
+ * restored list. A hand-edited entry or two writes racing on one key could
+ * otherwise produce two replaceable slots, which the open path would then
+ * disagree with itself about. The *last* flagged tab wins — it is the one the
+ * writer meant, since every op that creates a preview appends it — and the rest
+ * come back permanent rather than being dropped: a tab the user can still see
+ * and close beats a buffer that silently vanished.
+ */
+function repairPreviewSlot(tabs: readonly UnifiedPanelTab[]): UnifiedPanelTab[] {
+    let lastPreview = -1;
+    let count = 0;
+    for (let i = 0; i < tabs.length; i += 1) {
+        if (tabs[i].preview === true) {
+            lastPreview = i;
+            count += 1;
+        }
+    }
+    if (count === 0) return [...tabs];
+    if (count === 1 && lastPreview === tabs.length - 1) return [...tabs];
+    const kept = tabs[lastPreview];
+    const permanent = tabs.filter((_, i) => i !== lastPreview).map(stripPreview);
+    return [...permanent, kept];
+}
+
+/** The same tab, permanent. Returns the input unchanged when it already is. */
+function stripPreview(tab: UnifiedPanelTab): UnifiedPanelTab {
+    if (tab.preview !== true) return tab;
+    const { preview: _preview, ...permanent } = tab;
+    return permanent;
 }
 
 /**
@@ -676,16 +731,45 @@ function parseList(raw: unknown, expectedScopeKey: string): UnifiedPanelTab[] {
  * this session id if it still exists", never "spawn a replacement".
  */
 export function parseUnifiedPanelState(raw: string | null): UnifiedPanelState {
-    if (!raw) return EMPTY_UNIFIED_PANEL;
+    return restoreUnifiedPanelState(raw).state;
+}
+
+/** What a restore produced, plus what the caller still has to act on. */
+export interface UnifiedPanelRestore {
+    state: UnifiedPanelState;
+    /** The payload came from an older version and should be rewritten. */
+    migrated: boolean;
+    /**
+     * The old payload held an `explorer` tab. The Explorer is a column now, so
+     * the caller opens the tree rather than restoring a tab — a user who had it
+     * open still lands with a file tree visible, and nothing is lost, because
+     * an Explorer tab carried no state of its own.
+     */
+    openTree: boolean;
+}
+
+function noRestore(state: UnifiedPanelState): UnifiedPanelRestore {
+    return { state, migrated: false, openTree: false };
+}
+
+/**
+ * `parseUnifiedPanelState` plus the migration facts the pure state cannot
+ * carry: whether the payload needs rewriting, and whether it held an `explorer`
+ * tab whose replacement is the tree column.
+ */
+export function restoreUnifiedPanelState(raw: string | null): UnifiedPanelRestore {
+    if (!raw) return noRestore(EMPTY_UNIFIED_PANEL);
     let parsed: unknown;
     try {
         parsed = JSON.parse(raw);
     } catch {
-        return EMPTY_UNIFIED_PANEL;
+        return noRestore(EMPTY_UNIFIED_PANEL);
     }
-    if (parsed === null || typeof parsed !== 'object') return EMPTY_UNIFIED_PANEL;
+    if (parsed === null || typeof parsed !== 'object') return noRestore(EMPTY_UNIFIED_PANEL);
     const payload = parsed as Record<string, unknown>;
-    if (payload.version !== UNIFIED_PANEL_STATE_VERSION) return EMPTY_UNIFIED_PANEL;
+    const version = payload.version;
+    const migrated = typeof version === 'number' && UNIFIED_PANEL_LEGACY_VERSIONS.includes(version);
+    if (version !== UNIFIED_PANEL_STATE_VERSION && !migrated) return noRestore(EMPTY_UNIFIED_PANEL);
 
     const workspaceTabs = parseList(payload.workspaceTabs, WORKSPACE_SCOPE_KEY);
     const chatTabs: Record<string, readonly UnifiedPanelTab[]> = {};
@@ -709,5 +793,22 @@ export function parseUnifiedPanelState(raw: string | null): UnifiedPanelState {
         }
     }
 
-    return { workspaceTabs, chatTabs, activeByScope };
+    return {
+        state: { workspaceTabs, chatTabs, activeByScope },
+        migrated,
+        openTree: migrated && hasLegacyExplorerTab(payload),
+    };
+}
+
+/** Whether a pre-v2 payload listed an Explorer tab anywhere in it. */
+function hasLegacyExplorerTab(payload: Record<string, unknown>): boolean {
+    const lists: unknown[] = [payload.workspaceTabs];
+    const rawChatTabs = payload.chatTabs;
+    if (rawChatTabs !== null && typeof rawChatTabs === 'object' && !Array.isArray(rawChatTabs)) {
+        lists.push(...Object.values(rawChatTabs as Record<string, unknown>));
+    }
+    return lists.some(list => Array.isArray(list) && list.some(entry => (
+        entry !== null && typeof entry === 'object'
+        && (entry as Record<string, unknown>).kind === LEGACY_EXPLORER_KIND
+    )));
 }

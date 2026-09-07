@@ -1,16 +1,17 @@
 /**
- * AC-04: the Explorer entry point inside the unified panel.
+ * The Explorer entry point inside the unified panel: the tree COLUMN.
  *
- * The Explorer tab is a NAVIGATOR here — it opens files as tabs in the panel's
- * own strip. Two things have to hold, and both are checked against the real
- * ExplorerPanel (only its API, PreviewPane and search panel are stubbed):
+ * There is no Explorer tab — the tree is panel-level chrome — but it is still a
+ * navigator: its selections become file tabs in the panel's own strip. Two
+ * things have to hold, and both are checked against the real ExplorerPanel
+ * (only its API, PreviewPane and search panel are stubbed):
  *
  *  - a tree selection files an editable file tab in the current chat's scope,
- *    routed at the clone the Explorer is browsing;
- *  - the Explorer mounts no editor of its own, so the panel never shows a
- *    second, nested resource tab row — including with the Explorer's own
- *    editor-tabs flag ON, which is the configuration that would otherwise put
- *    two tab strips on screen.
+ *    routed at the clone the tree is browsing;
+ *  - the tree mounts no editor of its own, so the panel never shows a second,
+ *    nested resource tab row — including with the Explorer's own editor-tabs
+ *    flag ON, which is the configuration that would otherwise put two tab
+ *    strips on screen.
  *
  * @vitest-environment jsdom
  */
@@ -56,7 +57,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/C
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
-import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { clearUnifiedTreeState, writeUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { clearExplorerTreeCache } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerTreeCache';
 import { clearExplorerSearchBuffers } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerStateStore';
@@ -74,14 +75,14 @@ const ROOT_ENTRIES: TreeEntry[] = [
     { name: 'b.ts', type: 'file', path: 'b.ts' },
 ];
 
-function dockStub(): WorkspaceDockController {
+function dockStub(target = WS): WorkspaceDockController {
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
         view: 'explorer',
         setView: vi.fn(),
         views: ['terminal', 'explorer', 'notes'],
-        target: WS,
+        target,
         setTarget: vi.fn(),
         targets: [],
         width: 420,
@@ -92,17 +93,17 @@ function dockStub(): WorkspaceDockController {
     };
 }
 
-/** File an Explorer tab the way the "+" menu does, then mount the panel. */
+/** Open the tree column the way the "+" menu does, then mount the panel. */
 async function renderWithExplorer(owner = WS, repoLabel?: string) {
-    openUnifiedPanelTab(WS, {
-        kind: 'explorer',
-        ownerWorkspaceId: owner,
-        chatId: CHAT,
-        resourceId: 'explorer',
-        label: 'Explorer',
-        ...(repoLabel === undefined ? {} : { repoLabel }),
-    });
-    render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+    writeUnifiedTreeState(WS, { open: true, width: 220 });
+    render(
+        <UnifiedRightPanel
+            workspaceId={WS}
+            chatId={CHAT}
+            dock={dockStub(owner)}
+            {...(repoLabel === undefined ? {} : { targets: [{ workspaceId: owner, label: repoLabel }] })}
+        />,
+    );
     await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
 }
 
@@ -117,13 +118,12 @@ function unifiedTabIds(): string[] {
 
 const fileTabId = (path: string, owner = WS) =>
     unifiedTabId({ kind: 'file', ownerWorkspaceId: owner, chatId: CHAT, resourceId: path });
-const explorerTabId = (owner = WS) =>
-    unifiedTabId({ kind: 'explorer', ownerWorkspaceId: owner, chatId: CHAT, resourceId: 'explorer' });
 
 beforeEach(() => {
     localStorage.clear();
     location.hash = '';
     clearUnifiedPanelState();
+    clearUnifiedTreeState();
     clearExplorerTreeCache();
     clearExplorerSearchBuffers();
     treeSpy.mockReset();
@@ -135,10 +135,11 @@ beforeEach(() => {
 afterEach(() => {
     cleanup();
     clearUnifiedPanelState();
+    clearUnifiedTreeState();
     applyRuntimeConfigPatch({ explorerEditorTabsEnabled: false });
 });
 
-describe('unified panel — Explorer as a navigator', () => {
+describe('unified panel — the tree column as a navigator', () => {
     it('opens a tree selection as an editable file tab in the panel strip', async () => {
         await renderWithExplorer();
 
@@ -153,18 +154,18 @@ describe('unified panel — Explorer as a navigator', () => {
         expect(screen.getByTestId(`unified-panel-tab-${fileTabId('a.ts')}`)).toHaveAttribute('aria-selected', 'true');
     });
 
-    it('focuses the existing tab instead of stacking a second one for the same file', async () => {
+    it('keeps one tab per file, with the promoted one left in place', async () => {
         await renderWithExplorer();
 
         fireEvent.click(screen.getByTestId('tree-node-a.ts'));
-        await waitFor(() => expect(unifiedTabIds()).toEqual([explorerTabId(), fileTabId('a.ts')]));
-        // The panel has no replaceable preview slot, so the double click that
-        // would pin an Explorer tab just re-focuses the one tab.
+        await waitFor(() => expect(unifiedTabIds()).toEqual([fileTabId('a.ts')]));
+        // The double click promotes the preview it just opened rather than
+        // stacking a second tab on the same file; b.ts then takes the freed
+        // slot beside it.
         fireEvent.doubleClick(screen.getByTestId('tree-node-a.ts'));
         fireEvent.click(screen.getByTestId('tree-node-b.ts'));
 
         await waitFor(() => expect(unifiedTabIds()).toEqual([
-            explorerTabId(),
             fileTabId('a.ts'),
             fileTabId('b.ts'),
         ]));

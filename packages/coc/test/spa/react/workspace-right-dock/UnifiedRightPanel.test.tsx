@@ -62,6 +62,7 @@ import {
     openTab,
     unifiedTabId,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
 
 const WS = 'ws-1';
@@ -104,10 +105,12 @@ describe('UnifiedRightPanel', () => {
     beforeEach(() => {
         localStorage.clear();
         clearUnifiedPanelState();
+        clearUnifiedTreeState();
     });
     afterEach(() => {
         cleanup();
         clearUnifiedPanelState();
+        clearUnifiedTreeState();
     });
 
     it('starts empty, and its empty state creates nothing on its own', () => {
@@ -126,13 +129,13 @@ describe('UnifiedRightPanel', () => {
     it('shows exactly one panel with one visible view per selected tab', () => {
         renderPanel();
         openViaMenu('unified-panel-open-terminal');
-        openViaMenu('unified-panel-open-explorer');
+        openViaMenu('unified-panel-open-notes');
 
         expect(screen.getAllByTestId('unified-right-panel')).toHaveLength(1);
         const terminalId = unifiedTabId({ kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal' });
-        const explorerId = unifiedTabId({ kind: 'explorer', ownerWorkspaceId: WS, chatId: null, resourceId: 'explorer' });
+        const notesId = unifiedTabId({ kind: 'notes', ownerWorkspaceId: WS, chatId: null, resourceId: 'notes' });
         // Opening activates the new tab; the terminal stays mounted but hidden.
-        expect(screen.getByTestId(`unified-panel-view-${explorerId}`).getAttribute('data-active')).toBe('true');
+        expect(screen.getByTestId(`unified-panel-view-${notesId}`).getAttribute('data-active')).toBe('true');
         expect(screen.getByTestId(`unified-panel-view-${terminalId}`).getAttribute('data-active')).toBe('false');
         expect(screen.getByTestId('mock-terminal')).toBeTruthy();
     });
@@ -220,10 +223,15 @@ describe('UnifiedRightPanel', () => {
                 targets: [{ workspaceId: WS, label: 'group' }, { workspaceId: member, label: 'api' }],
             }),
         });
+        // The menu's Explorer entry toggles the tree column rather than opening
+        // a tab; the column browses the dock target, with deep-linking off for
+        // a member repo.
         openViaMenu('unified-panel-open-explorer');
-
-        // Explorer follows the target repo; deep-linking is off for a member.
         expect(screen.getByTestId('mock-explorer').textContent).toBe(`explorer:${member}:false`);
+        expect(screen.getByTestId('unified-panel-tab-list').querySelectorAll('[role="tab"]')).toHaveLength(0);
+
+        // A tab opened against the member carries the repo attribution.
+        openViaMenu('unified-panel-open-terminal');
         expect(screen.getByText('api')).toBeTruthy();
         // Notes stays with the panel's own workspace scope.
         openViaMenu('unified-panel-open-notes');

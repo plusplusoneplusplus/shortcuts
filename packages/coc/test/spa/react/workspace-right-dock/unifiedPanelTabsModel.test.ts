@@ -13,6 +13,7 @@ import {
     openTab,
     parseUnifiedPanelState,
     previewTab,
+    restoreUnifiedPanelState,
     previewTabToReplace,
     promoteTab,
     scopeForKind,
@@ -40,17 +41,17 @@ function open(state: UnifiedPanelState, input: Partial<OpenUnifiedTabInput> & Pi
     });
 }
 
-/** A workspace terminal + an explorer + one chat-1 file, in that strip order. */
+/** A workspace terminal + a notes tab + one chat-1 file, in that strip order. */
 function baseState(): UnifiedPanelState {
     let state = open(EMPTY_UNIFIED_PANEL, { kind: 'terminal', resourceId: 'sess-1', label: 'bash' });
-    state = open(state, { kind: 'explorer', resourceId: 'explorer', label: 'Explorer' });
+    state = open(state, { kind: 'notes', resourceId: 'notes', label: 'Notes' });
     state = open(state, { kind: 'file', resourceId: 'src/a.ts', label: 'a.ts', chatId: CHAT_1 });
     return state;
 }
 
 describe('unifiedPanelTabsModel — ownership', () => {
-    it('files terminal, explorer, notes and note documents under the workspace', () => {
-        for (const kind of ['terminal', 'explorer', 'notes', 'note'] as const) {
+    it('files terminal, notes and note documents under the workspace', () => {
+        for (const kind of ['terminal', 'notes', 'note'] as const) {
             expect(scopeForKind(kind)).toBe('workspace');
             expect(scopeKeyFor(kind, CHAT_1)).toBe(WORKSPACE_SCOPE_KEY);
         }
@@ -74,14 +75,14 @@ describe('unifiedPanelTabsModel — ownership', () => {
 
     it('keeps a workspace tab visible in every chat while chat tabs stay isolated', () => {
         const state = baseState();
-        expect(visibleTabs(state, CHAT_1).map(t => t.label)).toEqual(['bash', 'Explorer', 'a.ts']);
-        expect(visibleTabs(state, CHAT_2).map(t => t.label)).toEqual(['bash', 'Explorer']);
+        expect(visibleTabs(state, CHAT_1).map(t => t.label)).toEqual(['bash', 'Notes', 'a.ts']);
+        expect(visibleTabs(state, CHAT_2).map(t => t.label)).toEqual(['bash', 'Notes']);
     });
 
     it('orders workspace tabs before the selected chat tabs', () => {
         let state = baseState();
-        state = open(state, { kind: 'notes', resourceId: 'notes', label: 'Notes' });
-        expect(visibleTabs(state, CHAT_1).map(t => t.kind)).toEqual(['terminal', 'explorer', 'notes', 'file']);
+        state = open(state, { kind: 'note', resourceId: 'notes/plan.md', label: 'plan.md' });
+        expect(visibleTabs(state, CHAT_1).map(t => t.kind)).toEqual(['terminal', 'notes', 'note', 'file']);
     });
 });
 
@@ -184,10 +185,10 @@ describe('unifiedPanelTabsModel — closing', () => {
 
     it('closing a workspace tab removes it from every chat', () => {
         let state = baseState();
-        const explorerId = state.workspaceTabs[1].id;
-        state = closeTab(state, explorerId);
-        expect(visibleTabIds(state, CHAT_1)).not.toContain(explorerId);
-        expect(visibleTabIds(state, CHAT_2)).not.toContain(explorerId);
+        const notesId = state.workspaceTabs[1].id;
+        state = closeTab(state, notesId);
+        expect(visibleTabIds(state, CHAT_1)).not.toContain(notesId);
+        expect(visibleTabIds(state, CHAT_2)).not.toContain(notesId);
     });
 
     it('drops a chat scope entirely once its last tab closes', () => {
@@ -212,16 +213,16 @@ describe('unifiedPanelTabsModel — closing', () => {
 describe('unifiedPanelTabsModel — reordering', () => {
     it('moves a tab within its own section', () => {
         let state = baseState();
-        const [terminal, explorer] = state.workspaceTabs;
-        state = moveTab(state, explorer.id, terminal.id);
-        expect(state.workspaceTabs.map(t => t.id)).toEqual([explorer.id, terminal.id]);
+        const [terminal, notes] = state.workspaceTabs;
+        state = moveTab(state, notes.id, terminal.id);
+        expect(state.workspaceTabs.map(t => t.id)).toEqual([notes.id, terminal.id]);
     });
 
     it('moves a tab to the end of its section with a null target', () => {
         let state = baseState();
-        const [terminal, explorer] = state.workspaceTabs;
+        const [terminal, notes] = state.workspaceTabs;
         state = moveTab(state, terminal.id, null);
-        expect(state.workspaceTabs.map(t => t.id)).toEqual([explorer.id, terminal.id]);
+        expect(state.workspaceTabs.map(t => t.id)).toEqual([notes.id, terminal.id]);
     });
 
     it('refuses a cross-section drag rather than re-homing the tab', () => {
@@ -278,7 +279,7 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
         payload.workspaceTabs.push({ kind: 'terminal', ownerWorkspaceId: '', chatId: null, resourceId: 'x', label: 'x', id: 'x' });
         const restored = parseUnifiedPanelState(JSON.stringify(payload));
         expect(restored.workspaceTabs).toHaveLength(2);
-        expect(restored.workspaceTabs.map(t => t.kind)).toEqual(['terminal', 'explorer']);
+        expect(restored.workspaceTabs.map(t => t.kind)).toEqual(['terminal', 'notes']);
     });
 
     it('rejects a descriptor whose id does not match its own fields', () => {
@@ -287,7 +288,7 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
         // aliased descriptor must not restore.
         payload.workspaceTabs[0].ownerWorkspaceId = 'other-repo';
         const restored = parseUnifiedPanelState(JSON.stringify(payload));
-        expect(restored.workspaceTabs.map(t => t.kind)).toEqual(['explorer']);
+        expect(restored.workspaceTabs.map(t => t.kind)).toEqual(['notes']);
     });
 
     it('rejects a descriptor filed under the wrong scope', () => {
@@ -510,5 +511,100 @@ describe('unifiedPanelTabsModel — preview tabs', () => {
         const tab = previewTab(state, null)!;
         expect(tab.readOnly).toBe(true);
         expect(tab.line).toBe(12);
+    });
+});
+
+describe('unifiedPanelTabsModel — codec v2: preview, repair, and migration', () => {
+    /** A v1 payload: the previous version's shape, with an `explorer` tab. */
+    function legacyPayload(): Record<string, unknown> {
+        // The id v1 would have written for it: kind|scope|owner|resource.
+        const explorerId = ['explorer', WORKSPACE_SCOPE_KEY, WS, 'explorer'].join('|');
+        const payload = JSON.parse(serializeUnifiedPanelState(baseState()));
+        payload.version = 1;
+        // Between the terminal and the notes tab, so "order survives" is a real
+        // assertion rather than a tail truncation.
+        payload.workspaceTabs.splice(1, 0, {
+            id: explorerId, kind: 'explorer', ownerWorkspaceId: WS, chatId: null,
+            resourceId: 'explorer', label: 'Explorer',
+        });
+        return payload;
+    }
+
+    it('round-trips the preview bit, so a restored preview is still replaceable', () => {
+        const state = openPreviewTab(EMPTY_UNIFIED_PANEL, {
+            ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'src/a.ts', label: 'a.ts',
+        });
+        const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
+        expect(restored).toEqual(state);
+        expect(previewTab(restored, CHAT_1)?.resourceId).toBe('src/a.ts');
+    });
+
+    it('drops a preview bit smuggled onto a kind that cannot hold the slot', () => {
+        const payload = JSON.parse(serializeUnifiedPanelState(baseState()));
+        payload.workspaceTabs[0].preview = true;
+        const restored = parseUnifiedPanelState(JSON.stringify(payload));
+        expect(restored.workspaceTabs[0].preview).toBeUndefined();
+    });
+
+    it('repairs a two-preview section: the last one wins and the rest come back permanent', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'src/a.ts', label: 'a.ts' });
+        state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'src/b.ts', label: 'b.ts' });
+        const payload = JSON.parse(serializeUnifiedPanelState(state));
+        for (const tab of payload.chatTabs[CHAT_1]) tab.preview = true;
+
+        const restored = parseUnifiedPanelState(JSON.stringify(payload));
+        const list = restored.chatTabs[CHAT_1];
+        // Nothing is dropped — a tab the user can see and close beats a buffer
+        // that silently vanished.
+        expect(list.map(t => t.resourceId)).toEqual(['src/a.ts', 'src/b.ts']);
+        expect(list.filter(t => t.preview === true)).toHaveLength(1);
+        expect(list[list.length - 1].preview).toBe(true);
+    });
+
+    it('moves a restored preview back to the end of its section', () => {
+        let state = openPreviewTab(EMPTY_UNIFIED_PANEL, { ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'src/a.ts', label: 'a.ts' });
+        state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'src/b.ts', label: 'b.ts' });
+        const payload = JSON.parse(serializeUnifiedPanelState(state));
+        payload.chatTabs[CHAT_1].reverse();
+
+        const list = parseUnifiedPanelState(JSON.stringify(payload)).chatTabs[CHAT_1];
+        expect(list.map(t => t.resourceId)).toEqual(['src/b.ts', 'src/a.ts']);
+        expect(list[1].preview).toBe(true);
+    });
+
+    it('migrates a v1 payload: the other tabs survive in order, the explorer tab does not', () => {
+        const restored = restoreUnifiedPanelState(JSON.stringify(legacyPayload()));
+        expect(restored.migrated).toBe(true);
+        expect(restored.openTree).toBe(true);
+        expect(restored.state.workspaceTabs.map(t => t.kind)).toEqual(['terminal', 'notes']);
+        expect(restored.state.chatTabs[CHAT_1].map(t => t.label)).toEqual(['a.ts']);
+    });
+
+    it('reports no tree to open when the old payload had no explorer tab', () => {
+        const payload = JSON.parse(serializeUnifiedPanelState(baseState()));
+        payload.version = 1;
+        const restored = restoreUnifiedPanelState(JSON.stringify(payload));
+        expect(restored.migrated).toBe(true);
+        expect(restored.openTree).toBe(false);
+    });
+
+    it('finds an explorer tab filed under a chat scope too', () => {
+        const payload = legacyPayload();
+        const [explorer] = (payload.workspaceTabs as Record<string, unknown>[]).splice(1, 1);
+        (payload.chatTabs as Record<string, unknown[]>)[CHAT_1].push(explorer);
+        expect(restoreUnifiedPanelState(JSON.stringify(payload)).openTree).toBe(true);
+    });
+
+    it('reports a current payload as needing no migration', () => {
+        const restored = restoreUnifiedPanelState(serializeUnifiedPanelState(baseState()));
+        expect(restored.migrated).toBe(false);
+        expect(restored.openTree).toBe(false);
+    });
+
+    it('still discards a payload from a version this build does not know', () => {
+        const payload = { ...JSON.parse(serializeUnifiedPanelState(baseState())), version: UNIFIED_PANEL_STATE_VERSION + 1 };
+        const restored = restoreUnifiedPanelState(JSON.stringify(payload));
+        expect(restored.state).toEqual(EMPTY_UNIFIED_PANEL);
+        expect(restored.migrated).toBe(false);
     });
 });

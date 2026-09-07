@@ -21,7 +21,7 @@ Three different workspace ids, kept apart on purpose:
 - **Dock target** — what `useWorkspaceDock` points Terminal and Explorer at. It
   affects new tabs only; changing it never retargets an open one.
 
-Tabs are scoped by kind: `terminal | explorer | notes | note` are workspace-owned,
+Tabs are scoped by kind: `terminal | notes | note` are workspace-owned,
 `file | canvas | diff` belong to the selected chat (`scopeForKind`). `unifiedTabId`
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the
@@ -32,8 +32,8 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 
 | File | Holds |
 |---|---|
-| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec. Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. |
-| `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. |
+| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 2`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab. |
+| `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
 | `unifiedPanelTree.ts` | The file-tree column's own state: one open bit and one width per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat switches, collapse, and reload. Owns the two width rules: the tree is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column (`isUnifiedTreeVisible`) **without** flipping the stored open bit, so widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
 | `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted. |
@@ -53,8 +53,9 @@ There is no second editor, search backend, terminal manager, or canvas store.
 `file` renders the Explorer's own `PreviewPane` (same buffer controller as the
 flag-off Explorer tabs), `canvas` renders `CanvasPanel`, `note` renders
 `NoteEditor`, `diff` renders the chat's `WhisperDiffPanel`, `terminal` renders
-`TerminalView`, and `explorer` renders `ExplorerPanel` in **navigator mode** (no
-editor pane and no nested tab strip — that is the "one tab row per panel" rule).
+and `terminal` renders `TerminalView`. The file tree is not among them: it is
+the panel's own column (`ExplorerPanel` in sidebar mode), so no tab mounts a
+nested tab strip or a second editor — that is the "one tab row per panel" rule.
 
 `ExplorerPanel`'s `mode` prop picks how much of it renders: `editor` (the whole
 Explorer sub-tab), `navigator` (tree only, opens handed to `onOpenFile`), and
@@ -97,8 +98,8 @@ mutes an open tab's crumbs without touching the tab.
 Below the strip the panel is one row: the active tab's view on the left, the
 file-tree column pinned to the right edge. The column is `ExplorerPanel` in
 **sidebar mode**, pointed at the dock target (`deepLink` only when that target is
-the panel's own scope), and its selections build the same descriptor an Explorer
-navigator tab's do (`explorerFileTabInput`).
+the panel's own scope), and its selections build their descriptor with
+`explorerFileTabInput`.
 
 It is panel-level chrome, not a tab: it renders for every tab kind and for none
 at all, so closing the last tab with the tree open leaves the panel showing the
@@ -155,6 +156,28 @@ nothing remounts before the promotion lands. `ExplorerPanel` needs `onFilePin`
 wherever a permanent tab has somewhere to live — its own strip *or* a host that
 takes the opens — not only when the explorer-tabs flag is on.
 
+## Persistence and migration (codec v2)
+
+The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION`). v2 persists the
+`preview` bit, so a restored preview comes back italic in the same slot, still
+replaceable, and it dropped the `explorer` kind. `restoreUnifiedPanelState`
+reads a v1 payload rather than discarding it: its Explorer descriptors fail the
+kind check like any other unknown entry, and the restore reports `openTree` so
+the caller opens the tree column instead — an Explorer tab carried no state, so
+nothing is lost. `migrateUnifiedPanelState` (called from a mount effect in
+`UnifiedRightPanel`) is what acts on that: it flips the tree's open bit and
+rewrites the entry at the current version. A version this build does not know is
+still discarded whole.
+
+The parse repairs as well as validates. A section with two preview bits keeps
+the **last** one and returns the rest permanent — nothing is dropped, because a
+visible tab beats a silently vanished buffer — and a restored preview that is
+not last is moved to the end. A `preview` bit on any kind but `file` is
+discarded: only the tree's single click creates the slot, and it opens files.
+
+The `+` menu keeps its **Explorer** entry, in place and with its label, but the
+action toggles the tree column instead of opening a tab.
+
 ## Permissions ride on one bit
 
 `tab.readOnly` moves only on an explicit `openTab` — the entry point decides, and
@@ -210,7 +233,7 @@ surface untouched.
 | Chat diff action | `ChatDetail` `WHISPER_DIFF_EVENT` handler | A whisper diff is rebuilt from an in-memory transcript, so `unifiedDiffSources` is the join between a persisted tab and its source. |
 | Chat source link | `ChatDetail` `coc-open-source-canvas` | Declines relative/group refs and paths outside a known root — `PreviewPane` reads repo-relative blobs, so a tab for those could only render an error. |
 | Note link | same handler, `kind: 'note'` branch | `resourceId` is `<fetchMode>\|<root>\|<path>`: the note root is part of the identity, resolved once at open time because the link is gone by restore time. |
-| Explorer selection | `ExplorerPanel` `onOpenFile` | Navigator mode, and the tree column: `options.preview` picks the preview slot vs a permanent tab. |
+| Explorer selection | `ExplorerPanel` `onOpenFile` | The tree column (and navigator mode elsewhere): `options.preview` picks the preview slot vs a permanent tab. |
 | Canvas embed | `shared/CanvasEmbed.tsx` "Open in panel" | The only entry point that needed a new affordance. Gated on `useUnifiedPanelHostForChat`; the chat id arrives through `ChatRenderContext.chatId` because the embed is portaled. |
 | AI canvas create/update | `ChatDetail` `onCanvasUpdated` | See below. |
 | `+` menu | the panel itself | Reuses QuickOpen's search behavior: nothing before the first keystroke, debounce, abort the previous request. |
@@ -258,3 +281,7 @@ Traps that have bitten this directory:
   `useSyncExternalStore` subscribers outside React's batch.
 - Tab testids embed the whole tab id, so match on the kind prefix, not the
   resource id.
+- Any suite that reaches the `+` menu's Explorer entry, or that mounts a panel
+  scope another case left with an open tree, must call `clearUnifiedTreeState()`
+  in its setup: the toggle now persists to its own store, which
+  `clearUnifiedPanelState()` does not touch.

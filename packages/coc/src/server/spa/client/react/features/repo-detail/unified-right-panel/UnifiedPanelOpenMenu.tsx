@@ -25,7 +25,8 @@
  *    repo-bound actions with the reason rather than silently dropping them.
  *
  * Selection is handed back as an `OpenUnifiedTabInput` (files, canvases) or a
- * workspace-resource kind (terminal, explorer, notes); the panel owns the tab
+ * workspace-resource action (terminal, explorer, notes) — `explorer` toggles
+ * the panel's file-tree column rather than opening a tab; the panel owns the tab
  * session, so this component never touches it directly.
  */
 
@@ -68,7 +69,7 @@ export interface UnifiedPanelOpenMenuProps {
     /** Open a concrete resource — a searched file or a chat canvas. */
     onOpenResource: (input: OpenUnifiedTabInput) => void;
     /** Open one of the workspace-owned views against the current target. */
-    onOpenWorkspaceResource: (kind: 'terminal' | 'explorer' | 'notes') => void;
+    onOpenWorkspaceResource: (action: 'terminal' | 'explorer' | 'notes') => void;
     /** Dismiss the menu and hand focus back to the "+" trigger. */
     onClose: () => void;
 }

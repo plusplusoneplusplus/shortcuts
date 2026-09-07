@@ -24,10 +24,12 @@ import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction }
 import {
     EMPTY_UNIFIED_PANEL,
     parseUnifiedPanelState,
+    restoreUnifiedPanelState,
     serializeUnifiedPanelState,
     unifiedPanelStorageKey,
     type UnifiedPanelState,
 } from './unifiedPanelTabsModel';
+import { readUnifiedTreeState, writeUnifiedTreeState } from './unifiedPanelTree';
 
 const listeners = new Map<string, Set<() => void>>();
 
@@ -82,6 +84,37 @@ export function writeUnifiedPanelState(workspaceId: string, next: UnifiedPanelSt
     // operation keeps returning the identical reference.
     snapshotCache.set(storageKey, { raw, value: next });
     listeners.get(storageKey)?.forEach(listener => listener());
+}
+
+/**
+ * Bring a workspace's persisted entry up to the current codec version, once.
+ *
+ * Reading is already migration-tolerant — an older payload restores through the
+ * same parse — so this exists for the two things a pure read cannot do: rewrite
+ * the entry so the old shape stops being re-migrated on every load, and open the
+ * tree column for a user whose payload held an `explorer` tab, since that tab's
+ * replacement is the column rather than another tab.
+ *
+ * Call it from an effect, never from a `getSnapshot`: it writes, and writing
+ * during a render-phase read would notify subscribers mid-render. It is a no-op
+ * on an entry that is already current, so calling it on every mount is fine.
+ */
+export function migrateUnifiedPanelState(workspaceId: string): void {
+    const storageKey = unifiedPanelStorageKey(workspaceId);
+    let raw: string | null = null;
+    try {
+        raw = localStorage.getItem(storageKey);
+    } catch {
+        return;
+    }
+    if (raw == null) return;
+    const restored = restoreUnifiedPanelState(raw);
+    if (!restored.migrated) return;
+    if (restored.openTree) {
+        const tree = readUnifiedTreeState(workspaceId);
+        if (!tree.open) writeUnifiedTreeState(workspaceId, { ...tree, open: true });
+    }
+    writeUnifiedPanelState(workspaceId, restored.state);
 }
 
 /**

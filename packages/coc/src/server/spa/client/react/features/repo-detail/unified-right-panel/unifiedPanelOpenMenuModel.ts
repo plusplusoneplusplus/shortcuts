@@ -57,7 +57,9 @@ export interface OpenMenuActionsInput {
  * The action rows for a target + chat selection, in menu order.
  *
  * Explorer is omitted (not disabled) when the target has no single file tree,
- * matching the dock's own `dockViewsForWorkspace` rule. Notes stays enabled
+ * matching the dock's own `dockViewsForWorkspace` rule. Selecting it toggles the
+ * panel's file-tree column rather than opening a tab — the entry keeps its
+ * position and label, but the Explorer is no longer a tab kind. Notes stays enabled
  * even for an unavailable target: notes belong to the panel's workspace, not to
  * the repo the terminal points at.
  */
