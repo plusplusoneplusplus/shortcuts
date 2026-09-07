@@ -21,6 +21,13 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * The single `{dockAvailable && …}` render slot that mounts the right-side
+ * panel. Which component it mounts depends on the `unifiedRightPanel` flag, so
+ * these assertions pin the guard and not the JSX inside it.
+ */
+const DOCK_SLOT_GUARD = '{dockAvailable && (';
+
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
     'utf-8',
@@ -39,16 +46,20 @@ describe('Workspace dock — flag gating (AC-01)', () => {
         // Toggle button
         expect(REPO_DETAIL_SOURCE).toContain("data-testid=\"workspace-dock-toggle\"");
         expect(REPO_DETAIL_SOURCE).toContain('{showHeaderDockToggle && (');
-        // Dock body
-        expect(REPO_DETAIL_SOURCE).toContain('{dockAvailable && <WorkspaceRightDock workspaceId={ws.id} dock={dock} />}');
+        // Dock body — exactly one `dockAvailable` slot, and the dock renders inside it.
+        expect(REPO_DETAIL_SOURCE.split(DOCK_SLOT_GUARD).length - 1).toBe(1);
+        expect(REPO_DETAIL_SOURCE.indexOf('<WorkspaceRightDock'))
+            .toBeGreaterThan(REPO_DETAIL_SOURCE.indexOf(DOCK_SLOT_GUARD));
     });
 
-    it('never renders the dock body unconditionally', () => {
-        // Every WorkspaceRightDock usage in the render is guarded by dockAvailable.
-        const guarded = REPO_DETAIL_SOURCE.includes('{dockAvailable && <WorkspaceRightDock');
-        const usages = REPO_DETAIL_SOURCE.split('<WorkspaceRightDock').length - 1;
-        expect(guarded).toBe(true);
-        expect(usages).toBe(1);
+    it('never renders a dock body unconditionally', () => {
+        // Both panel components are mounted once, inside the dockAvailable slot.
+        const guardIdx = REPO_DETAIL_SOURCE.indexOf(DOCK_SLOT_GUARD);
+        expect(guardIdx).toBeGreaterThan(-1);
+        for (const component of ['<WorkspaceRightDock', '<UnifiedRightPanel']) {
+            expect(REPO_DETAIL_SOURCE.split(component).length - 1).toBe(1);
+            expect(REPO_DETAIL_SOURCE.indexOf(component)).toBeGreaterThan(guardIdx);
+        }
     });
 });
 
