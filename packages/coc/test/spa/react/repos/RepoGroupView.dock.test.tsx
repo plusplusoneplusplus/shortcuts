@@ -84,7 +84,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
 }));
 
 import { RepoGroupView, repoGroupDockTargets, REPO_GROUP_ROOT_TARGET_LABEL } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
-import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
+import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 

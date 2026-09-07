@@ -94,7 +94,7 @@ import {
     explorerExpandedStorageKey,
     explorerSelectedStorageKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerStateStore';
-import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
+import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
 const MEMBER = 'ws-member';
@@ -103,9 +103,6 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
-        view: 'terminal',
-        setView: vi.fn(),
-        views: ['terminal', 'explorer', 'notes'],
         target: WS,
         setTarget: vi.fn(),
         targets: [],

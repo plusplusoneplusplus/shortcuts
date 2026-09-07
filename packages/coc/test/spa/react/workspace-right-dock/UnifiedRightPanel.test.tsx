@@ -63,21 +63,18 @@ import {
     unifiedTabId,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
-import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
+import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
 
 /**
- * A dock controller stub. The real one is exercised by the existing
- * WorkspaceRightDock tests; the panel only reads open/width/target from it.
+ * A dock controller stub. The real one is exercised by
+ * useWorkspaceDock.test; the panel only reads open/width/target from it.
  */
 function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDockController {
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
-        view: 'terminal',
-        setView: vi.fn(),
-        views: ['terminal', 'explorer', 'notes'],
         target: WS,
         setTarget: vi.fn(),
         targets: [],

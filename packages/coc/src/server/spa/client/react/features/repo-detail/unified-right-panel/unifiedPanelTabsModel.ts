@@ -1,6 +1,6 @@
 /**
  * unifiedPanelTabsModel — the pure, React-free model behind the unified right
- * panel's Cursor-style resource tab strip (feature flag `unifiedRightPanel`).
+ * panel's Cursor-style resource tab strip.
  *
  * Everything here is a plain function over an immutable `UnifiedPanelState`:
  * the descriptor shape, the identity rule that makes "open this again" focus an

@@ -3,7 +3,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 /**
  * Cross-tree collapsed store for the whole left workspace column (CHAT + GIT) in
  * the split-workspace layout. Split into its own tiny module — mirroring how
- * `WorkspaceDockToggle` splits the dock's open flag out of `WorkspaceRightDock` —
+ * `WorkspaceDockToggle` splits the panel's open flag out of `useWorkspaceDock` —
  * so the global keydown handler (Router) can toggle the same state as the
  * sidebar's own chevron without pulling in the heavy `SplitWorkspacePanel` graph.
  *

@@ -1,19 +1,17 @@
 /**
- * UnifiedRightPanel — the single right-side surface behind the
- * `unifiedRightPanel` flag (AC-01).
+ * UnifiedRightPanel — the workspace's one and only right-side surface.
  *
- * One column, one tab strip, one visible view. Where the flag-off desktop has a
- * workspace dock plus whatever column a chat source link / canvas / diff opened
- * beside it, this panel is the only right-side column: selecting a tab swaps its
- * content in place. The tab session itself (ownership, identity, order,
- * persistence) lives in `useUnifiedPanelTabs`; this component is the shell
- * around it.
+ * One column, one tab strip, one visible view: every terminal, file, note,
+ * canvas and diff a workspace opens on the right lands here as a tab, and
+ * selecting one swaps its content in place. The tab session itself
+ * (ownership, identity, order, persistence) lives in `useUnifiedPanelTabs`;
+ * this component is the shell around it.
  *
  * Three things the shell is responsible for and the model is not:
  *
  *  - **Keep-alive.** A view is mounted the first time its tab becomes active and
  *    then stays mounted, hidden with `display:none` — the same pattern
- *    `WorkspaceRightDock` uses. That is what keeps a PTY, a scrollback, and an
+ *    the old dock used. That is what keeps a PTY, a scrollback, and an
  *    unsaved buffer alive across tab switches and a collapse. The flip side is
  *    just as load-bearing: a view is NOT mounted merely because its tab was
  *    restored from localStorage, so a reload never spawns a terminal the user
@@ -59,7 +57,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
-import type { WorkspaceDockController } from '../WorkspaceRightDock';
+import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ExplorerPanel, getAncestorPaths } from '../explorer/ExplorerPanel';
 import { useExplorerExpandedPaths, useExplorerSelectedPath } from '../explorer/explorerStateStore';

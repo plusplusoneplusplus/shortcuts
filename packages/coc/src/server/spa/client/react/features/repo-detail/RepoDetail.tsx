@@ -17,7 +17,7 @@ import { RepoSchedulesTab } from '../schedules/RepoSchedulesTab';
 import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
-import { useWorkspaceDock } from './WorkspaceRightDock';
+import { useWorkspaceDock } from './useWorkspaceDock';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';

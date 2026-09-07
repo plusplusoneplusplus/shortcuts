@@ -131,8 +131,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/cloneRegistry', async 
 vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
     Button: (props: any) => <button {...props} />,
-    // Used by the WorkspaceRightDock segmented Terminal|Explorer switcher, which
-    // RepoDetail now imports (behind the split flag).
+    // Used by RepoDetail's own sub-tab chrome.
     SegmentedControl: ({ options, value, onChange, ...rest }: any) => (
         <div data-testid={rest['data-testid']}>
             {options?.map((o: any) => (

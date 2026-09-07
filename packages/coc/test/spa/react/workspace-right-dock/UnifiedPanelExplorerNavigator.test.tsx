@@ -63,7 +63,7 @@ import { clearExplorerTreeCache } from '../../../../src/server/spa/client/react/
 import { clearExplorerSearchBuffers } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerStateStore';
 import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
 import type { TreeEntry } from '../../../../src/server/spa/client/react/features/repo-detail/explorer/types';
-import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
+import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
 const CHAT = 'chat-1';
@@ -79,9 +79,6 @@ function dockStub(target = WS): WorkspaceDockController {
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
-        view: 'explorer',
-        setView: vi.fn(),
-        views: ['terminal', 'explorer', 'notes'],
         target,
         setTarget: vi.fn(),
         targets: [],

@@ -41,7 +41,7 @@ import type { RepoGroupMember } from './repoGroupService';
 import { RepoGroupGitTab } from './RepoGroupGitTab';
 import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
 import { useRepoGroupMembers } from './useRepoGroupMembers';
-import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/WorkspaceRightDock';
+import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWorkspaceDock';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 

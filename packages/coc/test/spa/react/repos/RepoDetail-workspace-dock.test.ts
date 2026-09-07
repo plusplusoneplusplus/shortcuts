@@ -55,7 +55,6 @@ describe('Workspace dock — flag gating (AC-01)', () => {
         // The panel is mounted exactly once and only from the dockAvailable slot:
         // no ternary, and no second right-side component to swap against.
         expect(REPO_DETAIL_SOURCE.split('<UnifiedRightPanel').length - 1).toBe(1);
-        expect(REPO_DETAIL_SOURCE).not.toContain('WorkspaceRightDock w');
         expect(REPO_DETAIL_SOURCE).not.toContain('unifiedRightPanelEnabled');
     });
 
@@ -110,7 +109,7 @@ describe('Workspace dock — shell placement (AC-03)', () => {
         expect(dockIdx).toBeGreaterThan(contentIdx);
     });
 
-    it('imports only the controller hook from WorkspaceRightDock', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { useWorkspaceDock } from './WorkspaceRightDock';");
+    it('imports only the state controller, never a second panel body', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { useWorkspaceDock } from './useWorkspaceDock';");
     });
 });
