@@ -8,6 +8,17 @@
  */
 export type PauseDurationHours = number;
 
+/** Largest freeze/pause duration we accept, in hours. */
+export const MAX_PAUSE_DURATION_HOURS = 24;
+
+/** True when `value` is a finite number in (0, 24]. */
+export function isValidPauseDurationHours(value: unknown): value is PauseDurationHours {
+    return typeof value === 'number'
+        && Number.isFinite(value)
+        && value > 0
+        && value <= MAX_PAUSE_DURATION_HOURS;
+}
+
 /**
  * What a pause marker holds back. Absent means `'all'`.
  */
@@ -138,6 +149,13 @@ export interface QueuedTask {
 
     /** Whether this task is frozen (skipped by the executor but stays in queue) */
     frozen?: boolean;
+
+    /**
+     * Epoch milliseconds when a timed freeze expires. Omitted for an indefinite
+     * freeze. Expiry is swept lazily — a frozen task whose `frozenUntil` has
+     * passed is cleared in place and keeps its queue position.
+     */
+    frozenUntil?: number;
 
     /** Whether this task has been admitted to run despite autopilot being paused */
     admitted?: boolean;

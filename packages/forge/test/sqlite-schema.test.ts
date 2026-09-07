@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(31);
+        expect(SCHEMA_VERSION).toBe(32);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -139,6 +139,7 @@ describe('sqlite-schema', () => {
         expect(colNames).toContain('queue_position');
         expect(colNames).toContain('duration_hours');
         expect(colNames).toContain('scope');
+        expect(colNames).toContain('frozen_until');
     });
 
     it('is idempotent — calling initializeDatabase twice does not throw', () => {
@@ -1175,7 +1176,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(31);
+            expect(SCHEMA_VERSION).toBe(32);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1402,7 +1403,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(31);
+            expect(SCHEMA_VERSION).toBe(32);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1505,6 +1506,76 @@ describe('sqlite-schema', () => {
             const scopeCols = (db.prepare("PRAGMA table_info(queue_tasks)").all() as Array<{ name: string }>)
                 .filter(c => c.name === 'scope');
             expect(scopeCols).toHaveLength(1);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+        });
+    });
+
+    describe('V31 -> V32 migration (queue_tasks.frozen_until)', () => {
+        it('adds frozen_until to an existing V31 queue_tasks table without data loss', () => {
+            // Simulate a V31 queue_tasks table that predates the frozen_until column.
+            db.exec(`
+                CREATE TABLE queue_tasks (
+                    id                TEXT PRIMARY KEY,
+                    repo_id           TEXT NOT NULL,
+                    folder_path       TEXT,
+                    type              TEXT NOT NULL,
+                    priority          TEXT NOT NULL DEFAULT 'normal',
+                    status            TEXT NOT NULL DEFAULT 'queued',
+                    created_at        INTEGER NOT NULL,
+                    started_at        INTEGER,
+                    completed_at      INTEGER,
+                    display_name      TEXT,
+                    process_id        TEXT,
+                    error             TEXT,
+                    retry_count       INTEGER DEFAULT 0,
+                    concurrency_mode  TEXT,
+                    frozen            INTEGER DEFAULT 0,
+                    admitted          INTEGER DEFAULT 0,
+                    kind              TEXT NOT NULL DEFAULT 'task',
+                    queue_position    INTEGER,
+                    duration_hours    INTEGER,
+                    scope             TEXT,
+                    payload           TEXT NOT NULL DEFAULT '{}',
+                    config            TEXT NOT NULL DEFAULT '{}',
+                    result            TEXT
+                );
+            `);
+            db.prepare(`
+                INSERT INTO queue_tasks (id, repo_id, type, created_at, kind, queue_position, frozen)
+                VALUES ('task-v31', 'repo-1', 'ai', 1000, 'task', 0, 1)
+            `).run();
+            db.pragma('user_version = 31');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+
+            const cols = db.prepare("PRAGMA table_info(queue_tasks)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('frozen_until');
+
+            // No backfill: the pre-existing freeze was indefinite and stays that way.
+            const row = db.prepare(`
+                SELECT frozen, frozen_until FROM queue_tasks WHERE id = 'task-v31'
+            `).get() as any;
+            expect(row.frozen).toBe(1);
+            expect(row.frozen_until).toBeNull();
+
+            // New column is writable.
+            db.prepare('UPDATE queue_tasks SET frozen_until = ? WHERE id = ?').run(5000, 'task-v31');
+            const updated = db.prepare("SELECT frozen_until FROM queue_tasks WHERE id = 'task-v31'").get() as any;
+            expect(updated.frozen_until).toBe(5000);
+        });
+
+        it('is idempotent when initializeDatabase runs twice on a V31 database', () => {
+            initializeDatabase(db);
+            db.pragma('user_version = 31');
+
+            expect(() => initializeDatabase(db)).not.toThrow();
+            expect(() => initializeDatabase(db)).not.toThrow();
+
+            const frozenUntilCols = (db.prepare("PRAGMA table_info(queue_tasks)").all() as Array<{ name: string }>)
+                .filter(c => c.name === 'frozen_until');
+            expect(frozenUntilCols).toHaveLength(1);
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
         });
     });

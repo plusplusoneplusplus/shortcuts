@@ -15,10 +15,13 @@ import {
     QueueChangeType,
     QueueStats,
     PauseReason,
+    PauseDurationHours,
     TaskQueueManagerOptions,
     DEFAULT_QUEUE_MANAGER_OPTIONS,
+    MAX_PAUSE_DURATION_HOURS,
     comparePriority,
     generateTaskId,
+    isValidPauseDurationHours,
 } from './types';
 
 // ============================================================================
@@ -599,19 +602,35 @@ export class TaskQueueManager extends EventEmitter {
     /**
      * Freeze a queued task so the executor skips it.
      * The task remains in its queue position with status 'queued'.
+     *
+     * With no duration the freeze is indefinite. With a duration the freeze
+     * expires on its own — no timer is set, expiry is swept lazily on the next
+     * `peek()` / `dequeue()` / `isPaused()`.
+     *
      * @param id Task ID
+     * @param durationHours Optional freeze length in hours, within (0, 24]
      * @returns true if the task was found in the queue and frozen
+     * @throws RangeError if `durationHours` is outside (0, 24]
      */
-    freezeTask(id: string): boolean {
+    freezeTask(id: string, durationHours?: PauseDurationHours): boolean {
+        if (durationHours !== undefined && !isValidPauseDurationHours(durationHours)) {
+            throw new RangeError(
+                `durationHours must be a number greater than 0 and at most ${MAX_PAUSE_DURATION_HOURS}`
+            );
+        }
         const task = this.queue.find(t => !isPauseMarker(t) && t.id === id) as QueuedTask | undefined;
         if (!task) return false;
         task.frozen = true;
+        task.frozenUntil = durationHours === undefined
+            ? undefined
+            : Date.now() + durationHours * 60 * 60 * 1000;
         this.emitChange('frozen', task);
         return true;
     }
 
     /**
      * Unfreeze a previously frozen task, making it eligible for execution again.
+     * Clears both the flag and any timed-freeze expiry.
      * @param id Task ID
      * @returns true if the task was found in the queue and unfrozen
      */
@@ -619,6 +638,7 @@ export class TaskQueueManager extends EventEmitter {
         const task = this.queue.find(t => !isPauseMarker(t) && t.id === id) as QueuedTask | undefined;
         if (!task || !task.frozen) return false;
         task.frozen = false;
+        task.frozenUntil = undefined;
         this.emitChange('unfrozen', task);
         return true;
     }

@@ -105,6 +105,23 @@ describe('upsertQueueTask', () => {
         expect(t.result).toEqual({ output: 'done' });
     });
 
+    it('round-trips frozenUntil for a timed freeze', () => {
+        const frozenUntil = Date.now() + 3_600_000;
+        store.upsertQueueTask(makeTask('t-timed', { frozen: true, frozenUntil }));
+
+        const t = store.getQueueTasks('repo-1')[0];
+        expect(t.frozen).toBe(true);
+        expect(t.frozenUntil).toBe(frozenUntil);
+    });
+
+    it('leaves frozenUntil undefined for an indefinite freeze', () => {
+        store.upsertQueueTask(makeTask('t-indef', { frozen: true }));
+
+        const t = store.getQueueTasks('repo-1')[0];
+        expect(t.frozen).toBe(true);
+        expect(t.frozenUntil).toBeUndefined();
+    });
+
     it('replaces existing row on upsert (same id)', () => {
         store.upsertQueueTask(makeTask('t1', { status: 'queued' }));
         store.upsertQueueTask(makeTask('t1', { status: 'running' }));

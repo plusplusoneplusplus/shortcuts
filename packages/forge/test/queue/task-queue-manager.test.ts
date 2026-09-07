@@ -1942,9 +1942,54 @@ describe('TaskQueueManager', () => {
             manager.freezeTask(id);
             expect(manager.getTask(id)!.status).toBe('queued');
         });
+
+        it('leaves frozenUntil unset for an indefinite freeze', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id);
+            expect(manager.getTask(id)!.frozenUntil).toBeUndefined();
+        });
+
+        it('stores frozenUntil for a timed freeze', () => {
+            const now = Date.now();
+            vi.useFakeTimers();
+            vi.setSystemTime(now);
+            const id = manager.enqueue(createTestTask());
+
+            expect(manager.freezeTask(id, 2)).toBe(true);
+
+            const task = manager.getTask(id)!;
+            expect(task.frozen).toBe(true);
+            expect(task.frozenUntil).toBe(now + 2 * 60 * 60 * 1000);
+            vi.useRealTimers();
+        });
+
+        it.each([0, -1, 25, NaN, Infinity])('rejects an out-of-range duration: %s', (hours) => {
+            const id = manager.enqueue(createTestTask());
+            expect(() => manager.freezeTask(id, hours)).toThrow(RangeError);
+            expect(manager.getTask(id)!.frozen).toBeFalsy();
+        });
+
+        it('replaces a timed freeze with an indefinite one', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id, 1);
+            manager.freezeTask(id);
+            expect(manager.getTask(id)!.frozen).toBe(true);
+            expect(manager.getTask(id)!.frozenUntil).toBeUndefined();
+        });
     });
 
     describe('unfreezeTask', () => {
+        it('clears both frozen and frozenUntil', () => {
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id, 4);
+
+            expect(manager.unfreezeTask(id)).toBe(true);
+
+            const task = manager.getTask(id)!;
+            expect(task.frozen).toBe(false);
+            expect(task.frozenUntil).toBeUndefined();
+        });
+
         it('unfreezes a frozen task', () => {
             const id = manager.enqueue(createTestTask());
             manager.freezeTask(id);
