@@ -269,7 +269,7 @@ describe('formatAttachedContext', () => {
         expect(result).toContain('status="failed"');
         expect(result).toContain('last_activity_at="2026-01-01T00:00:00.000Z"');
         expect(result).toContain('<title>Debug &lt;source&gt; &amp; inspect</title>');
-        expect(result).toContain('retrieve and read this source conversation by process ID');
+        expect(result).not.toContain('<instruction>');
         expect(result).not.toContain('transcript');
     });
 
@@ -417,7 +417,6 @@ describe('parseAttachedSessionContextBlocks', () => {
             '<attached_session_context version="1">',
             '<source workspace_id="ws-1" process_id="source-process-123456" status="failed" last_activity_at="2026-01-01T00:00:00.000Z">',
             '<title>Debug &lt;source&gt; &amp; inspect</title>',
-            '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
             '</source>',
             '</attached_session_context>',
             '',
@@ -437,6 +436,32 @@ describe('parseAttachedSessionContextBlocks', () => {
             title: 'Debug <source> & inspect',
         });
         expect(result.sessionContexts[0].rawBlock).toContain('<attached_session_context version="1">');
+        expect(result.remainingContent).toBe('Continue debugging.');
+    });
+
+    it('parses a legacy session context block that still contains an instruction element', () => {
+        const content = [
+            '<attached_session_context version="1">',
+            '<source workspace_id="ws-1" process_id="source-process-123456" status="failed" last_activity_at="2026-01-01T00:00:00.000Z">',
+            '<title>Debug &lt;source&gt; &amp; inspect</title>',
+            '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
+            '</source>',
+            '</attached_session_context>',
+            '',
+            'Continue debugging.',
+        ].join('\n');
+
+        const result = parseAttachedSessionContextBlocks(content);
+
+        expect(result.sessionContexts).toHaveLength(1);
+        expect(result.sessionContexts[0]).toMatchObject({
+            kind: 'session',
+            sourceWorkspaceId: 'ws-1',
+            sourceProcessId: 'source-process-123456',
+            status: 'failed',
+            lastActivityAt: '2026-01-01T00:00:00.000Z',
+            title: 'Debug <source> & inspect',
+        });
         expect(result.remainingContent).toBe('Continue debugging.');
     });
 
@@ -485,7 +510,6 @@ describe('parseAttachedSessionContextBlocks', () => {
             '<attached_session_context version="1">',
             '<source workspace_id="ws-1" process_id="source-process-123456" status="failed" last_activity_at="2026-01-01T00:00:00.000Z">',
             '<title>Debug source</title>',
-            '<instruction>Before answering, retrieve and read this source conversation by process ID using the available conversation retrieval tool.</instruction>',
             '</source>',
             '</attached_session_context>',
             '',

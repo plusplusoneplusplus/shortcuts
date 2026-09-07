@@ -8,6 +8,7 @@
 //! one thin N-API module per capability.
 
 pub mod content_search;
+pub mod dangerous_command;
 pub mod git;
 pub mod notes_index;
 pub mod repo_index;

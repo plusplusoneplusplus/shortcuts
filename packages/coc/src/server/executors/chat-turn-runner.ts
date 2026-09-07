@@ -179,6 +179,12 @@ export interface ChatTurnSendOptionsInput {
     onBackgroundTasksChanged: SendMessageOptions['onBackgroundTasksChanged'];
     /** From `buildMcpOAuthHandler`; `undefined` disables OAuth tracking. */
     onMcpOAuthRequired: SendMessageOptions['onMcpOAuthRequired'];
+    /**
+     * Dangerous-command guard wiring. Only forwarded when the admin flag is on,
+     * so a turn with the guard off carries no new key at all and stays
+     * byte-identical to what it sent before the guard existed.
+     */
+    dangerousCommandGuard?: SendMessageOptions['dangerousCommandGuard'];
 }
 
 /**
@@ -226,5 +232,6 @@ export function buildChatTurnSendOptions(input: ChatTurnSendOptionsInput): SendM
         onTokenUsage: input.onTokenUsage,
         onBackgroundTasksChanged: input.onBackgroundTasksChanged,
         onMcpOAuthRequired: input.onMcpOAuthRequired,
+        ...(input.dangerousCommandGuard?.enabled ? { dangerousCommandGuard: input.dangerousCommandGuard } : {}),
     };
 }

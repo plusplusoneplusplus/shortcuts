@@ -98,6 +98,24 @@ export interface ContentSearchResult {
   truncated: boolean
 }
 
+/** The verdict on one shell command. */
+export interface DangerousCommandVerdict {
+  /**
+   * True when a built-in rule matched. The other fields are present only
+   * then.
+   */
+  matched: boolean
+  /** Stable rule identifier — what an approve-for-session decision remembers. */
+  ruleId?: string
+  /** Human-readable reason, shown in the approval prompt. */
+  description?: string
+  /**
+   * The `;`/`&&`/`||`/`|`/newline-separated segment that matched, or the
+   * whole command for a rule defined by the pipe itself.
+   */
+  matchedSegment?: string
+}
+
 /**
  * Run `git -C <repoRoot> <args>` and resolve with its trimmed stdout.
  *
@@ -680,6 +698,15 @@ export interface GitUpstreamConfig {
  * command peeled and neither does this.
  */
 export declare function gitValidateRef(repoRoot: string, rev: string): Promise<string | null>
+
+/**
+ * Screen one shell command against the built-in disallow list.
+ *
+ * A disallow list only: an unmatched command is reported as `matched: false`
+ * and is not thereby asserted to be safe. Quoting is not parsed — see the
+ * core module for what that costs and why it is the trade taken.
+ */
+export declare function matchDangerousCommand(command: string): DangerousCommandVerdict
 
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {

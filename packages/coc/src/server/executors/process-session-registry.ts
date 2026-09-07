@@ -1,5 +1,10 @@
 import type { TimelineItem } from '@plusplusoneplusplus/forge';
-import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
+import type {
+    AskUserAnswerInput,
+    AskUserAnswerValue,
+    AskUserApprovalDecision,
+    AskUserDangerousCommandApproval,
+} from '../llm-tools/ask-user-tool';
 import type { RalphGrillProcessState } from '../ralph/grill-planning';
 
 export interface StreamingTurnState {
@@ -14,6 +19,13 @@ export interface TurnWriteState {
 }
 
 export interface InteractiveAskUserHandles {
+    /**
+     * Pose a dangerous-command approval prompt on the same channel and wait.
+     * Optional because a handle set built before the guard existed (and every
+     * test that constructs one) has no reason to supply it; the guard treats a
+     * missing approval channel as a denial.
+     */
+    askApproval?: (request: AskUserDangerousCommandApproval) => Promise<AskUserApprovalDecision>;
     answerQuestion: (questionId: string, answer: AskUserAnswerValue) => boolean;
     skipQuestion: (questionId: string) => boolean;
     answerQuestions: (responses: AskUserAnswerInput[]) => boolean;

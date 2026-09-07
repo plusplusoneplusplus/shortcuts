@@ -326,3 +326,23 @@ export type {
 // startup, otherwise the synchronous readers here answer "no distro" for the
 // whole process lifetime.
 export { warmWslDistroCache as warmSdkWslDistroCache } from './platform/workspace-execution';
+
+export {
+    screenDangerousCommand,
+    isScreenedShellTool,
+    extractShellCommand,
+    extractPermissionRequestShellCommand,
+    buildDangerousCommandDenialMessage,
+} from './dangerous-command-guard';
+export type {
+    DangerousCommandDecision,
+    DangerousCommandMatch,
+    DangerousCommandApprovalRequest,
+    DangerousCommandApprovalHandler,
+    DangerousCommandGuardOptions,
+    DangerousCommandAuditDecision,
+    DangerousCommandAuditRecord,
+    DangerousCommandAuditSink,
+    DangerousCommandGuardResult,
+    DangerousCommandMatcher,
+} from './dangerous-command-guard';

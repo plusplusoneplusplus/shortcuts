@@ -32,6 +32,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'ralph'
     | 'forEach'
     | 'mapReduce'
+    | 'dangerousCommandGuard'
     | 'vimNavigation'
     | 'cron'
     | 'triggers'

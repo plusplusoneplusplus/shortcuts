@@ -2277,7 +2277,7 @@ describe('NewChatArea', () => {
             const prompt = onSubmit.mock.calls[0][0].prompt;
             expect(prompt).toContain('<attached_session_context version="1">');
             expect(prompt).toContain('<title>Context only source</title>');
-            expect(prompt).toContain('<instruction>Before answering, retrieve and read this source conversation by process ID');
+            expect(prompt).not.toContain('<instruction>');
             expect(prompt.endsWith('\n\n')).toBe(true);
             expect(prompt).not.toContain('undefined');
             expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();

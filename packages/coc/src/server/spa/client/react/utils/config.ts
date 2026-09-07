@@ -34,6 +34,7 @@ interface DashboardConfig {
     ralphEnabled?: boolean;
     forEachEnabled?: boolean;
     mapReduceEnabled?: boolean;
+    dangerousCommandGuardEnabled?: boolean;
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
     cronEnabled?: boolean;

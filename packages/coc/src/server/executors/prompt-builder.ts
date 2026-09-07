@@ -25,7 +25,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
-import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import type { AskUserAnswerInput, AskUserAnswerValue, AskUserApprovalDecision, AskUserDangerousCommandApproval, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
@@ -531,6 +531,12 @@ export function buildSendToConversationAddon(
  * The returned `answerQuestion`, `skipQuestion`, and `cancelAll` are stored
  * on the session state so the API endpoint and session cleanup can reach them.
  *
+ * `enabled` gates the *tool*, not the machinery: the factory is built either
+ * way so the dangerous-command guard's `askApproval` prompt still reaches the
+ * user in a workspace that turned `ask_user` off. The guard's prompt is not a
+ * tool the model can call, so offering it costs nothing in the tool block —
+ * `tools` stays empty when disabled, which is what keeps the prefix cache.
+ *
  * @param enabled  Whether to attach the ask_user tool.
  * @param deps     Callbacks for emitting the SSE event and computing the current turn index.
  */
@@ -540,29 +546,27 @@ export function buildAskUserAddon(
 ): {
     tools: Tool<any>[];
     suffix: string;
+    askApproval: (request: AskUserDangerousCommandApproval) => Promise<AskUserApprovalDecision>;
     answerQuestion: (questionId: string, answer: AskUserAnswerValue) => boolean;
     skipQuestion: (questionId: string) => boolean;
     answerQuestions: (responses: AskUserAnswerInput[]) => boolean;
     cancelAll: () => void;
     hasPending: () => boolean;
 } {
-    if (!enabled) {
-        return {
-            tools: [],
-            suffix: '',
-            answerQuestion: () => false,
-            skipQuestion: () => false,
-            answerQuestions: () => false,
-            cancelAll: () => { },
-            hasPending: () => false,
-        };
-    }
-
-    const { tool, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending } = createAskUserTool(deps);
+    const { tool, askApproval, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending } = createAskUserTool(deps);
     // No prose suffix — the ask_user tool description carries its own guidance.
     const suffix = '';
 
-    return { tools: [tool], suffix, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };
+    return {
+        tools: enabled ? [tool] : [],
+        suffix,
+        askApproval,
+        answerQuestion,
+        skipQuestion,
+        answerQuestions,
+        cancelAll,
+        hasPending,
+    };
 }
 
 /**

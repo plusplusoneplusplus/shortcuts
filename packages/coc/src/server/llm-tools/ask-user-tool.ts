@@ -90,6 +90,35 @@ export interface AskUserResponse {
     guidance?: string;
 }
 
+/**
+ * The dangerous-command guard's approval prompt, carried on an otherwise
+ * ordinary `ask_user` question. Its presence is what tells the SPA to render
+ * the approval variant (full command text + the rule that fired) instead of a
+ * plain select; a client that does not know the field still renders a usable
+ * three-option question.
+ */
+export interface AskUserDangerousCommandApproval {
+    kind: 'dangerous-command';
+    /** The full command the model asked to run, verbatim. */
+    command: string;
+    /** Id of the built-in rule that fired, e.g. `pipe-to-shell`. */
+    ruleId: string;
+    /** What that rule guards against, in prose. */
+    description: string;
+    /** The `;`/`&&`/`||`/`|`-delimited segment the rule actually matched. */
+    matchedSegment: string;
+}
+
+/** How the user answered an approval prompt. */
+export type AskUserApprovalDecision = 'approve-once' | 'approve-session' | 'deny';
+
+/** The option values the approval prompt offers. Order is the display order. */
+export const ASK_USER_APPROVAL_OPTIONS: AskUserOption[] = [
+    { value: 'approve-once', label: 'Approve once', description: 'Run this command now. Ask again next time.' },
+    { value: 'approve-session', label: 'Approve for this session', description: 'Run it, and stop asking about this rule for the rest of this chat.' },
+    { value: 'deny', label: 'Deny', description: 'Block the command and tell the model why.' },
+];
+
 export interface AskUserSSEPayload {
     batchId: string;
     questionId: string;
@@ -101,6 +130,11 @@ export interface AskUserSSEPayload {
     index: number;
     batchSize: number;
     ralphGrill?: AskUserRalphGrillMetadata;
+    /**
+     * Set only on a dangerous-command approval prompt. Nothing else on the
+     * `ask-user` channel carries it, so a client can branch on its presence.
+     */
+    approval?: AskUserDangerousCommandApproval;
 }
 
 export interface AskUserAnswerInput {
@@ -273,6 +307,59 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         },
     });
 
+    /**
+     * Pose a dangerous-command approval prompt and wait for the answer.
+     *
+     * Deliberately shares this factory's `pending` map with the `ask_user`
+     * tool: the answer arrives through the same
+     * `POST /api/processes/:id/ask-user-response` endpoint and the same
+     * `answerQuestion` handle, so nothing new has to be routed. It is *not* a
+     * tool call — the model never asks for it; the guard does, on the model's
+     * behalf, while a `Bash` call is held.
+     *
+     * Every non-approval outcome maps to `deny`: a skipped, cancelled (the turn
+     * was aborted), or unrecognized answer must not let the command through.
+     */
+    async function askApproval(request: AskUserDangerousCommandApproval): Promise<AskUserApprovalDecision> {
+        // Belt-and-braces: the host omits the approval callback entirely on a
+        // non-interactive turn, so this branch should not be reachable. If it
+        // is, deny rather than block a turn nobody is watching.
+        if (deps.isInteractive?.() === false) {
+            deps.onUnavailable?.(1);
+            return 'deny';
+        }
+
+        const payload: AskUserSSEPayload = {
+            batchId: randomUUID(),
+            questionId: randomUUID(),
+            question: `Allow this command to run?\n\n${request.command}`,
+            type: 'select',
+            options: ASK_USER_APPROVAL_OPTIONS,
+            defaultValue: 'deny',
+            turnIndex: deps.computeTurnIndex(),
+            index: 0,
+            batchSize: 1,
+            approval: request,
+        };
+
+        const responsePromise = new Promise<AskUserResponse>((resolve) => {
+            pending.set(payload.questionId, { resolve });
+        });
+
+        try {
+            await deps.emitQuestions([payload]);
+        } catch (err) {
+            pending.delete(payload.questionId);
+            throw err;
+        }
+
+        const response = await responsePromise;
+        if (response.skipped || response.deferred) return 'deny';
+        return response.answer === 'approve-once' || response.answer === 'approve-session'
+            ? response.answer
+            : 'deny';
+    }
+
     function answerQuestion(questionId: string, answer: AskUserAnswerValue): boolean {
         const entry = pending.get(questionId);
         if (!entry) return false;
@@ -326,5 +413,5 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         return pending.size > 0;
     }
 
-    return { tool, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };
+    return { tool, askApproval, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };
 }

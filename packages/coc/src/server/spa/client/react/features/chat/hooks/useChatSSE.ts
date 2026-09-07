@@ -42,6 +42,19 @@ export interface AskUserQuestion {
     turnIndex: number;
     index: number;
     batchSize: number;
+    /**
+     * Set only on a dangerous-command guard approval prompt. Its presence is
+     * what marks this question as the approval variant; the three options come
+     * through as an ordinary select, so a client that ignores the field still
+     * renders something answerable.
+     */
+    approval?: {
+        kind: 'dangerous-command';
+        command: string;
+        ruleId: string;
+        description: string;
+        matchedSegment: string;
+    };
     ralphGrill?: {
         sources?: Array<{
             role: string;

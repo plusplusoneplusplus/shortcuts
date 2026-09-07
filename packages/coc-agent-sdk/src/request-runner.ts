@@ -32,9 +32,50 @@ import type { TransformOptions, TransformResult } from './sdk-service-interface'
 import { SessionManager } from './session-manager';
 import { isStreamDestroyedError } from './stream-error-guard';
 import { isWithinDirectory } from './platform/path-security';
+import {
+    screenDangerousCommand,
+    extractPermissionRequestShellCommand,
+    type DangerousCommandGuardOptions,
+} from './dangerous-command-guard';
 import { resolveWorkspaceExecutionContext, translatePathForExecution } from './platform/workspace-execution';
 
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Wrap a Copilot permission handler with the dangerous-command guard (AC-07).
+ *
+ * Copilot already has a permission channel, so unlike the Claude path there is
+ * no new interception layer to build: the SDK surfaces a `shell` permission
+ * request carrying `fullCommandText`, and this screens that text with the same
+ * shared guard the Claude gate uses before the host's own handler ever sees it.
+ *
+ * Returns `handler` unchanged when the guard is off, so a turn with the admin
+ * flag off runs the exact handler it ran before the guard existed.
+ *
+ * Known gap, per the feature spec's fallback: the guard only sees commands the
+ * Copilot runtime decides to ask about. A command the runtime auto-approves
+ * without raising a permission request is not screened, and we deliberately do
+ * not invent an interception layer to catch it.
+ */
+export function applyDangerousCommandGuardToPermissionHandler(
+    handler: (request: PermissionRequest, invocation: { sessionId: string }) => Promise<PermissionRequestResult> | PermissionRequestResult,
+    guard: DangerousCommandGuardOptions | undefined,
+    signal?: AbortSignal,
+): (request: PermissionRequest, invocation: { sessionId: string }) => Promise<PermissionRequestResult> | PermissionRequestResult {
+    if (!guard?.enabled) return handler;
+    return async (request, invocation) => {
+        const command = extractPermissionRequestShellCommand(request as { kind?: unknown; fullCommandText?: unknown });
+        if (command === null) return handler(request, invocation);
+        const verdict = await screenDangerousCommand('Bash', { command }, guard, { signal });
+        if (verdict.allowed) return handler(request, invocation);
+        // Rule id and decision only — the command text can carry secrets.
+        getAIServiceLogger().info(
+            { ruleId: verdict.match?.ruleId, decision: verdict.decision },
+            'Dangerous-command guard blocked a Copilot shell command',
+        );
+        return { kind: 'reject', feedback: verdict.denialMessage };
+    };
+}
 
 // ============================================================================
 // RequestRunner
@@ -88,7 +129,11 @@ export class RequestRunner {
 
             // Build session options — start with the required permission handler
             // so we can incrementally add optional fields.
-            const effectiveHandler = options.onPermissionRequest || denyAllPermissions;
+            const effectiveHandler = applyDangerousCommandGuardToPermissionHandler(
+                options.onPermissionRequest || denyAllPermissions,
+                options.dangerousCommandGuard,
+                options.signal,
+            );
             const toolCallsMap = new Map<string, ToolCall>();
 
             const sessionOptions: SessionConfig = {

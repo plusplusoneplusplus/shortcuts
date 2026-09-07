@@ -51,6 +51,11 @@ export interface QueueSkillFoldersConfig {
     readonly autoDetectDefaultFolders?: boolean;
 }
 
+/** Dangerous-command guard policy applied when a chat turn is built. */
+export interface QueueDangerousCommandGuardConfig {
+    readonly enabled: boolean;
+}
+
 /** Ralph final-check loop policy. */
 export interface QueueRalphFinalCheckPolicy {
     readonly maxGapFixLoops: number;
@@ -75,6 +80,8 @@ export interface QueueRuntimeConfig {
     getSkillFolders(): QueueSkillFoldersConfig;
     /** Ralph final-check loop policy for the next final check scheduled. */
     getRalphFinalCheckPolicy(): QueueRalphFinalCheckPolicy;
+    /** Dangerous-command guard policy for the next turn built. */
+    getDangerousCommandGuard(): QueueDangerousCommandGuardConfig;
 }
 
 // ============================================================================
@@ -112,6 +119,7 @@ function readFromSnapshot(config: ResolvedCLIConfig): {
     askUser: QueueAskUserConfig;
     skillFolders: QueueSkillFoldersConfig;
     ralphFinalCheck: QueueRalphFinalCheckPolicy;
+    dangerousCommandGuard: QueueDangerousCommandGuardConfig;
 } {
     return {
         timeoutMs: resolveDefaultTimeoutMs(config.timeout),
@@ -125,6 +133,7 @@ function readFromSnapshot(config: ResolvedCLIConfig): {
         ralphFinalCheck: {
             maxGapFixLoops: config.ralph.finalCheck.maxGapFixLoops,
         },
+        dangerousCommandGuard: config.dangerousCommandGuard,
     };
 }
 
@@ -156,6 +165,7 @@ export function createQueueRuntimeConfig(source: QueueConfigSource): QueueRuntim
         getAskUser: () => readFromSnapshot(source.config).askUser,
         getSkillFolders: () => readFromSnapshot(source.config).skillFolders,
         getRalphFinalCheckPolicy: () => readFromSnapshot(source.config).ralphFinalCheck,
+        getDangerousCommandGuard: () => readFromSnapshot(source.config).dangerousCommandGuard,
     });
 }
 
@@ -177,6 +187,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
     askUser?: QueueAskUserConfig;
     skillFolders?: QueueSkillFoldersConfig;
     ralphFinalCheck?: QueueRalphFinalCheckPolicy;
+    dangerousCommandGuard?: QueueDangerousCommandGuardConfig;
 } = {}): QueueRuntimeConfig {
     const file = overrides.config;
 
@@ -202,6 +213,10 @@ export function createFixedQueueRuntimeConfig(overrides: {
             ?? DEFAULT_CONFIG.ralph.finalCheck.maxGapFixLoops,
     };
 
+    const dangerousCommandGuard: QueueDangerousCommandGuardConfig = overrides.dangerousCommandGuard ?? {
+        enabled: file?.dangerousCommandGuard?.enabled ?? DEFAULT_CONFIG.dangerousCommandGuard.enabled,
+    };
+
     return Object.freeze({
         getDefaultTimeoutMs: () => timeoutMs,
         getDefaultIdleTimeoutMs: () => idleTimeoutMs,
@@ -209,6 +224,7 @@ export function createFixedQueueRuntimeConfig(overrides: {
         getAskUser: () => askUser,
         getSkillFolders: () => skillFolders,
         getRalphFinalCheckPolicy: () => ralphFinalCheck,
+        getDangerousCommandGuard: () => dangerousCommandGuard,
     });
 }
 

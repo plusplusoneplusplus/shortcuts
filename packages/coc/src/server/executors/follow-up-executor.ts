@@ -430,6 +430,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             });
             const filteredTools = chatCtx.tools;
             this.setAskUserHandles(processId, {
+                askApproval: chatCtx.askUser!.askApproval,
                 answerQuestion: chatCtx.askUser!.answerQuestion,
                 skipQuestion: chatCtx.askUser!.skipQuestion,
                 answerQuestions: chatCtx.askUser!.answerQuestions,
@@ -600,6 +601,14 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     disabledSkills,
                     mcpServers: resolvedMcpServers,
                     approvePermissions: this.approvePermissions,
+                    // Ask mode only, and interactive only: a cron/wakeup/trigger
+                    // follow-up (`turnSource` set) has nobody to approve, which
+                    // the wiring turns into an immediate deny with a reason the
+                    // model can act on.
+                    dangerousCommandGuard: this.buildDangerousCommandGuardWiring(processId, {
+                        enabled: currentMode === 'ask',
+                        isInteractive: () => turnSource === undefined,
+                    }),
                     // Strict resume owns this callback: a provider that hands
                     // back a different session must not overwrite the stopped
                     // one we are trying to continue.
