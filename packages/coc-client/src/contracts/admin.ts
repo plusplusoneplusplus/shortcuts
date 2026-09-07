@@ -100,6 +100,7 @@ export interface AdminResolvedConfig {
     timeoutMs?: number;
   };
   excalidraw?: { enabled?: boolean };
+  dangerousCommandGuard?: { enabled?: boolean };
   codex?: { enabled?: boolean };
   claude?: { enabled?: boolean };
   opencode?: { enabled?: boolean };
@@ -192,6 +193,7 @@ export interface AdminConfigUpdate {
   'dreams.idleCheckIntervalMs'?: number;
   'dreams.timeoutMs'?: number;
   'excalidraw.enabled'?: boolean;
+  'dangerousCommandGuard.enabled'?: boolean;
   'mcpOauth.enabled'?: boolean;
   'mcpOauth.autoRefresh.enabled'?: boolean;
   'codex.enabled'?: boolean;
@@ -263,6 +265,8 @@ export interface RuntimeDashboardConfig {
     commitChatLensEnabled: boolean;
     commitChatLensDormantMode: 'ghost' | 'pill';
     effortLevelsEnabled: boolean;
+    /** Ask-mode dangerous shell command approval gate (feature flag, default off). */
+    dangerousCommandGuardEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;
     arxivPaperIngestEnabled: boolean;

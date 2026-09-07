@@ -185,6 +185,14 @@ export interface CLIConfig {
     mapReduce?: {
         enabled?: boolean;
     };
+    /**
+     * Dangerous-command guard: screens ask-mode shell commands against a
+     * built-in disallow list and asks the user before running a match.
+     * Disabled by default.
+     */
+    dangerousCommandGuard?: {
+        enabled?: boolean;
+    };
     /** Cron/recurring follow-up subsystem configuration. Disabled by default. */
     cron?: {
         enabled?: boolean;
@@ -536,6 +544,10 @@ export interface ResolvedCLIConfig {
     mapReduce: {
         enabled: boolean;
     };
+    /** Dangerous-command guard for ask-mode shell commands. */
+    dangerousCommandGuard: {
+        enabled: boolean;
+    };
     /** Cron/recurring follow-up subsystem configuration. */
     cron: {
         enabled: boolean;
@@ -821,6 +833,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     mapReduce: {
+        enabled: false,
+    },
+    dangerousCommandGuard: {
         enabled: false,
     },
     cron: {

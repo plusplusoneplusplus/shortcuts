@@ -615,6 +615,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         runtime: 'live',
     },
     bool({
+        key: 'dangerousCommandGuard.enabled', default: false, runtime: 'live', runtimeFlag: 'dangerousCommandGuardEnabled',
+        ui: {
+            group: 'aiModes', order: 35, label: 'Dangerous command guard', badge: 'experimental',
+            hint: 'In ask mode, screen shell commands against a built-in disallow list (rm -rf /, dd, curl | sh, shutdown) and ask you to approve before they run. Disabled by default.',
+            testId: 'toggle-dangerous-command-guard-enabled',
+        },
+    }),
+    bool({
         key: 'vimNavigation.enabled', default: false, runtime: 'live', runtimeFlag: 'vimNavigationEnabled',
         ui: {
             group: 'infrastructure', order: 40, label: 'Vim-style navigation',
