@@ -23,7 +23,7 @@
  *    no matter how many tabs are open.
  */
 
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
 import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 
@@ -97,6 +97,13 @@ export interface UnifiedPanelTabStripProps {
     onMove: (id: string, beforeId: string | null) => void;
     /** The trailing "+" — opens the searchable resource menu (AC-03). */
     onOpenMenu?: () => void;
+    /**
+     * The file-tree toggle, parked beside the "+" whenever the panel's own
+     * toolbar row is not rendered (a non-file tab, or no tabs at all) so the
+     * tree is always one click away. It is the strip's only guest — nothing
+     * else portals in here, because the strip is the panel's one tab row.
+     */
+    trailing?: ReactNode;
     className?: string;
 }
 
@@ -109,6 +116,7 @@ export function UnifiedPanelTabStrip({
     onClose,
     onMove,
     onOpenMenu,
+    trailing,
     className,
 }: UnifiedPanelTabStripProps) {
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
@@ -307,7 +315,7 @@ export function UnifiedPanelTabStrip({
                 })}
             </div>
 
-            {/* Outside the scrolling row, so it stays reachable at any tab count. */}
+            {/* Outside the scrolling row, so they stay reachable at any tab count. */}
             {onOpenMenu && (
                 <button
                     type="button"
@@ -325,6 +333,8 @@ export function UnifiedPanelTabStrip({
                     +
                 </button>
             )}
+
+            {trailing}
         </div>
     );
 }

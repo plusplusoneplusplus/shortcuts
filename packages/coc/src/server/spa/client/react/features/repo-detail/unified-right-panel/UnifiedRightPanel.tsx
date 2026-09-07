@@ -26,6 +26,11 @@
  *    least `DOCK_MIN_CHAT_WIDTH`. It comes from the existing
  *    `useWorkspaceDock` controller, so the flag-on and flag-off panels share the
  *    same open/width persistence and the same header toggle.
+ *  - **The toolbar row.** Directly under the strip, and only while a file tab
+ *    is active: breadcrumbs for that file plus the file-tree toggle. Other
+ *    kinds keep rendering their own toolbars inside their own views, and when
+ *    this row is absent the toggle moves into the strip beside "+", so there is
+ *    always exactly one visible way to reach the tree.
  *  - **The file-tree column.** A collapsible tree pinned to the panel's right
  *    edge, beside whatever the active tab is showing — a terminal, a canvas, or
  *    the empty state. It is panel-level (`unifiedPanelTree`), not a tab and not
@@ -51,7 +56,8 @@ import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../WorkspaceRightDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
-import { ExplorerPanel } from '../explorer/ExplorerPanel';
+import { ExplorerPanel, getAncestorPaths } from '../explorer/ExplorerPanel';
+import { useExplorerExpandedPaths, useExplorerSelectedPath } from '../explorer/explorerStateStore';
 import { explorerFileTabInput } from './unifiedExplorerFiles';
 import {
     UNIFIED_TREE_MIN_WIDTH,
@@ -63,6 +69,9 @@ import {
 import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
+import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
+import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
+import { breadcrumbFolderPath, unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import {
@@ -194,6 +203,40 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             if (input) open(input);
         },
         [target, workspaceId, targetLabel, chatId, open],
+    );
+
+    // ------------------------------------------------------------------
+    // The toolbar row (AC-02)
+    // ------------------------------------------------------------------
+
+    // Breadcrumbs exist for file tabs only; every other kind brings its own
+    // toolbar. A null here is what removes the row entirely — and what moves the
+    // tree toggle into the strip.
+    const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active, target), [active, target]);
+
+    // Breadcrumb clicks drive the tree column through the Explorer's own
+    // per-workspace state, the same store the column reads — so a click reveals
+    // the folder without a second selection model and without touching tabs.
+    const [, setTreeSelectedPath] = useExplorerSelectedPath(target);
+    const [, setTreeExpandedPaths] = useExplorerExpandedPaths(target);
+    const revealTreeFolder = useCallback((segmentIndex: number) => {
+        const folder = breadcrumbFolderPath(toolbar?.segments ?? [], segmentIndex);
+        if (folder === null) {
+            // The root crumb: clear the selection, leave the expansion alone.
+            setTreeSelectedPath(null);
+            return;
+        }
+        setTreeSelectedPath(folder);
+        // Expand the folder AND its ancestors: a row nobody can see is not a
+        // reveal, and the tree lazy-loads each level as it renders.
+        setTreeExpandedPaths(prev => new Set([...prev, ...getAncestorPaths(folder), folder]));
+    }, [toolbar, setTreeSelectedPath, setTreeExpandedPaths]);
+
+    const treeToggle = useCallback(
+        (placement: 'toolbar' | 'strip') => (
+            <UnifiedPanelTreeToggle open={tree.state.open} onToggle={tree.toggleOpen} placement={placement} />
+        ),
+        [tree.state.open, tree.toggleOpen],
     );
 
     // Per-tab dirty / error state, reported by the views. It lives here rather
@@ -475,6 +518,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     onClose={requestClose}
                     onMove={move}
                     onOpenMenu={toggleMenu}
+                    trailing={toolbar === null ? treeToggle('strip') : undefined}
                 />
 
                 {menuOpen && (
@@ -499,6 +543,13 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     edge — one row spanning everything below the tab strip. */}
                 <div className="flex min-h-0 min-w-0 flex-1" data-testid="unified-panel-content">
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                    {toolbar !== null && (
+                        <UnifiedPanelToolbar
+                            breadcrumbs={toolbar}
+                            onNavigate={revealTreeFolder}
+                            trailing={treeToggle('toolbar')}
+                        />
+                    )}
                     {tabs.length === 0 ? (
                         <div
                             className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"

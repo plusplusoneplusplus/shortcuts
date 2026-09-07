@@ -39,7 +39,9 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 | `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted. |
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
 | `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — views on the left, the file-tree column on the right edge. |
-| `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
+| `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. Its `trailing` slot is the tree toggle's fallback home. |
+| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab plus the tree toggle. The model decides whether the crumbs may navigate the tree. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
+| `UnifiedPanelTreeToggle.tsx` | The single open/close control for the tree column, rendered in whichever of the two hosts is available. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
@@ -61,7 +63,34 @@ whose breadcrumbs belong to the panel-level toolbar instead). State it
 explicitly; the legacy inference from `onOpenFile` cannot tell the two host
 modes apart and only survives as the default for existing callers.
 
-Resource toolbars render *below* the strip; nothing portals into it.
+Resource toolbars render *below* the strip; the only thing that ever enters the
+strip is the tree toggle, through its `trailing` slot.
+
+## The toolbar row
+
+Directly under the strip and above the active view, rendered **only** while the
+active tab is a `file` tab — every other kind brings its own toolbar inside its
+own view, and the panel does not stack two. It shows `explorer/Breadcrumbs` for
+the file's path (scrolled to the tail, so a long path truncates from the left
+with the whole thing in the row's tooltip), the tab's `repoLabel` when it has
+one, and the tree toggle at its right end.
+
+The toggle has two homes and one state: the row while it exists, and the tab
+strip beside `+` whenever it does not (a non-file tab, or no tabs). Exactly one
+is on screen at a time and both drive `unifiedPanelTree`.
+
+A breadcrumb click **reveals a folder in the tree** — it never opens, closes, or
+activates a tab. It does that by writing the Explorer's own per-workspace
+`explorerStateStore` selection/expansion for the tree's target, which is the
+same store the column reads, so there is no second selection model. Ancestors
+are expanded along with the target; a row inside a collapsed parent is not a
+reveal.
+
+`unifiedToolbarBreadcrumbs` turns the crumbs off — the row falls back to a plain
+path label — for a `__trusted__:` absolute path (not repo-relative, no row in
+any tree) and for a file whose `ownerWorkspaceId` is not the tree's current
+target (its path resolves in a different repo). Retargeting the dock therefore
+mutes an open tab's crumbs without touching the tab.
 
 ## The file-tree column
 

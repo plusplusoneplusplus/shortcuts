@@ -200,11 +200,14 @@ describe('unified panel file-tree column', () => {
         });
 
         fireEvent.click(screen.getByTestId('mock-explorer-open'));
+        const [tab] = screen.getAllByRole('tab');
         expect(screen.getAllByRole('tab')).toHaveLength(1);
-        expect(screen.getByText('app.ts')).toBeTruthy();
+        // Scoped to the tab: the panel's toolbar row now names the same file, so
+        // a document-wide text query would match twice.
+        expect(tab.querySelector('[data-testid^="unified-panel-tab-label-"]')?.textContent).toBe('app.ts');
         // The owning clone is not the panel's own workspace, so the tab is
         // attributed to it rather than reading as a local file.
-        expect(screen.getByText('api')).toBeTruthy();
+        expect(tab.querySelector('[data-testid^="unified-panel-tab-repo-"]')?.textContent).toBe('api');
     });
 
     it('clamps its width so the active view keeps its minimum', () => {
