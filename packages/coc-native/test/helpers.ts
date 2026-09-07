@@ -8,6 +8,8 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 import { loadNativeContentSearch } from '../src/content-search';
 import type { NativeContentSearchAddon } from '../src/content-search';
@@ -71,4 +73,34 @@ export function makeRandom(seed: number): () => number {
         state >>>= 0;
         return state / 0x100000000;
     };
+}
+
+/**
+ * The `codex-file-diff-*` directories `diff_no_index` creates under the system
+ * temp root, by entry name.
+ */
+export function diffTempDirs(): string[] {
+    return fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith('codex-file-diff-'));
+}
+
+/**
+ * The directories that appeared since `before` and are still there.
+ *
+ * The system temp root is shared — with the other vitest workers, and with
+ * everything else on the machine — so "its contents are unchanged" is not a
+ * property of the code under test and fails at random when another worker has
+ * a diff in flight. What is a property of the code under test: whatever it
+ * created is gone when it returns. So diff against the snapshot and wait out
+ * the entries that drain on their own; a real leak never drains and comes back
+ * named.
+ */
+export async function leakedDiffTempDirs(before: string[], timeoutMs = 5000): Promise<string[]> {
+    const known = new Set(before);
+    let extra = diffTempDirs().filter(entry => !known.has(entry));
+    const deadline = Date.now() + timeoutMs;
+    while (extra.length > 0 && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+        extra = extra.filter(entry => fs.existsSync(path.join(os.tmpdir(), entry)));
+    }
+    return extra;
 }

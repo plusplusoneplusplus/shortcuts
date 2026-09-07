@@ -10,7 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { gitAddon, removeDir } from './helpers';
+import { diffTempDirs, gitAddon, leakedDiffTempDirs, removeDir } from './helpers';
 
 let repo: string;
 
@@ -1296,12 +1296,11 @@ describe('gitDiffNoIndex', () => {
     });
 
     it('leaves no temp directory behind', async () => {
-        const before = fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith('codex-file-diff-'));
+        const before = diffTempDirs();
         await gitAddon.gitDiffNoIndex({ before: 'one\n', after: 'two\n', ...labels });
         await gitAddon
             .gitDiffNoIndex({ before: 'one\n', after: 'two\n', ...labels }, { maxBuffer: 8 })
             .catch(() => undefined);
-        const after = fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith('codex-file-diff-'));
-        expect(after).toEqual(before);
+        expect(await leakedDiffTempDirs(before)).toEqual([]);
     });
 });
