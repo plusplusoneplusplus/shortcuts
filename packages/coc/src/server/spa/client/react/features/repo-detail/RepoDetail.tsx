@@ -17,7 +17,7 @@ import { RepoSchedulesTab } from '../schedules/RepoSchedulesTab';
 import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
-import { WorkspaceRightDock, useWorkspaceDock } from './WorkspaceRightDock';
+import { useWorkspaceDock } from './WorkspaceRightDock';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
@@ -46,7 +46,6 @@ import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
-import { useUnifiedRightPanelEnabled } from '../../hooks/feature-flags/useUnifiedRightPanelEnabled';
 import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
 import { UnifiedPanelHostProvider } from './unified-right-panel/unifiedPanelHost';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
@@ -171,10 +170,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // WorkspaceDockToggleButton — both drive the same cross-tree open store.
     const dock = useWorkspaceDock(ws.id);
     const dockAvailable = splitWorkspacePanelEnabled && !isMobile;
-    // With `unifiedRightPanel` on, the same dock slot renders the one
-    // resource-tabbed panel instead — same availability gate, same controller,
-    // so the header toggle and the persisted width carry over unchanged.
-    const unifiedRightPanelEnabled = useUnifiedRightPanelEnabled();
+    // The dock slot renders the one resource-tabbed panel — same availability
+    // gate, same controller, so the header toggle and the persisted width all
+    // hang off `useWorkspaceDock` above.
     // Which chat owns the panel's chat-scoped tabs (files, canvases, diffs).
     // The selection lives in the queue store rather than in `RepoChatTab`, so
     // the panel can read it here without the chat list having to hand it up.
@@ -184,11 +182,11 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const panelChatId = queueState.selectedTaskIdByRepo?.[ws.id] ?? null;
     // Published to the whole subtree so chat entry points (source links, diffs,
     // canvas embeds) know a unified panel is on screen for them and which chat
-    // it is showing. Null with the flag off or no dock, so those entry points
-    // keep their existing in-chat surfaces.
+    // it is showing. Null when there is no dock (mobile, or `splitWorkspacePanel`
+    // off), so those entry points keep their existing in-chat surfaces.
     const unifiedPanelHost = useMemo(
-        () => (dockAvailable && unifiedRightPanelEnabled ? { workspaceId: ws.id, chatId: panelChatId } : null),
-        [dockAvailable, unifiedRightPanelEnabled, ws.id, panelChatId],
+        () => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId } : null),
+        [dockAvailable, ws.id, panelChatId],
     );
     const showHeaderDockToggle = dockAvailable && !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
@@ -913,9 +911,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     </div>
                 )}
             </div>
-            {dockAvailable && (unifiedRightPanelEnabled
-                ? <UnifiedRightPanel workspaceId={ws.id} chatId={panelChatId} dock={dock} />
-                : <WorkspaceRightDock workspaceId={ws.id} dock={dock} />)}
+            {dockAvailable && <UnifiedRightPanel workspaceId={ws.id} chatId={panelChatId} dock={dock} />}
             </div>
 
             {/* Generate Task with AI dialog */}

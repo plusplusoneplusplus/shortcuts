@@ -5,9 +5,10 @@
  * self-toggle rail) is covered by the render test at
  * test/spa/react/workspace-right-dock/. Here we pin how RepoDetail gates and
  * mounts it:
- * - AC-01: the dock body AND the header toggle are gated behind the
+ * - AC-01: the panel body AND the header toggle are gated behind the
  *   `splitWorkspacePanel` flag + desktop breakpoint (via `dockAvailable`), never
- *   unconditionally rendered.
+ *   unconditionally rendered — and `dockAvailable` is the ONLY gate, since the
+ *   unified panel is the one right panel and has no flag to switch against.
  * - AC-04: exactly one header toggle button, in the header action cluster.
  * - AC-03: the dock is a sibling of the sub-tab content (outermost-right column),
  *   mounted regardless of which sub-tab is active, and hidden on mobile.
@@ -23,10 +24,10 @@ import * as path from 'path';
 
 /**
  * The single `{dockAvailable && …}` render slot that mounts the right-side
- * panel. Which component it mounts depends on the `unifiedRightPanel` flag, so
- * these assertions pin the guard and not the JSX inside it.
+ * panel. There is one panel component now, so the guard and the JSX inside it
+ * are both pinned here.
  */
-const DOCK_SLOT_GUARD = '{dockAvailable && (';
+const DOCK_SLOT_GUARD = '{dockAvailable && <UnifiedRightPanel';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
@@ -42,24 +43,24 @@ describe('Workspace dock — flag gating (AC-01)', () => {
         expect(REPO_DETAIL_SOURCE).toContain('const showHeaderDockToggle = dockAvailable && !chromeless;');
     });
 
-    it('gates the header toggle on showHeaderDockToggle and the dock body on dockAvailable', () => {
+    it('gates the header toggle on showHeaderDockToggle and the panel body on dockAvailable', () => {
         // Toggle button
         expect(REPO_DETAIL_SOURCE).toContain("data-testid=\"workspace-dock-toggle\"");
         expect(REPO_DETAIL_SOURCE).toContain('{showHeaderDockToggle && (');
-        // Dock body — exactly one `dockAvailable` slot, and the dock renders inside it.
+        // Panel body — exactly one `dockAvailable` slot.
         expect(REPO_DETAIL_SOURCE.split(DOCK_SLOT_GUARD).length - 1).toBe(1);
-        expect(REPO_DETAIL_SOURCE.indexOf('<WorkspaceRightDock'))
-            .toBeGreaterThan(REPO_DETAIL_SOURCE.indexOf(DOCK_SLOT_GUARD));
     });
 
-    it('never renders a dock body unconditionally', () => {
-        // Both panel components are mounted once, inside the dockAvailable slot.
-        const guardIdx = REPO_DETAIL_SOURCE.indexOf(DOCK_SLOT_GUARD);
-        expect(guardIdx).toBeGreaterThan(-1);
-        for (const component of ['<WorkspaceRightDock', '<UnifiedRightPanel']) {
-            expect(REPO_DETAIL_SOURCE.split(component).length - 1).toBe(1);
-            expect(REPO_DETAIL_SOURCE.indexOf(component)).toBeGreaterThan(guardIdx);
-        }
+    it('renders the unified panel unconditionally under the slot, with no flag branch', () => {
+        // The panel is mounted exactly once and only from the dockAvailable slot:
+        // no ternary, and no second right-side component to swap against.
+        expect(REPO_DETAIL_SOURCE.split('<UnifiedRightPanel').length - 1).toBe(1);
+        expect(REPO_DETAIL_SOURCE).not.toContain('WorkspaceRightDock w');
+        expect(REPO_DETAIL_SOURCE).not.toContain('unifiedRightPanelEnabled');
+    });
+
+    it('gates the unified panel host on dockAvailable alone', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('() => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId } : null),');
     });
 });
 
@@ -99,17 +100,17 @@ describe('Workspace dock — shell placement (AC-03)', () => {
         expect(REPO_DETAIL_SOURCE).toContain('const dock = useWorkspaceDock(ws.id);');
     });
 
-    it('mounts the dock as a sibling of the sub-tab content (outermost-right column)', () => {
+    it('mounts the panel as a sibling of the sub-tab content (outermost-right column)', () => {
         const rowIdx = REPO_DETAIL_SOURCE.indexOf('flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden');
         const contentIdx = REPO_DETAIL_SOURCE.indexOf('id="repo-sub-tab-content"');
-        const dockIdx = REPO_DETAIL_SOURCE.indexOf('<WorkspaceRightDock');
+        const dockIdx = REPO_DETAIL_SOURCE.indexOf('<UnifiedRightPanel');
         // Row wrapper opens before the content, and the dock renders after it.
         expect(rowIdx).toBeGreaterThan(-1);
         expect(contentIdx).toBeGreaterThan(rowIdx);
         expect(dockIdx).toBeGreaterThan(contentIdx);
     });
 
-    it('imports the dock component and hook from WorkspaceRightDock', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("import { WorkspaceRightDock, useWorkspaceDock } from './WorkspaceRightDock';");
+    it('imports only the controller hook from WorkspaceRightDock', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("import { useWorkspaceDock } from './WorkspaceRightDock';");
     });
 });

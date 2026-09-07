@@ -295,8 +295,6 @@ export interface CLIConfig {
         pinnedScopes?: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel?: boolean;
-        /** Unified Cursor-style right panel: one resource-tabbed dock for terminals, explorer, notes, files, canvases, and chat diffs. Disabled by default. */
-        unifiedRightPanel?: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide?: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
@@ -649,8 +647,6 @@ export interface ResolvedCLIConfig {
         pinnedScopes: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel: boolean;
-        /** Unified Cursor-style right panel: one resource-tabbed dock for terminals, explorer, notes, files, canvases, and chat diffs. Disabled by default. */
-        unifiedRightPanel: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
@@ -926,7 +922,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         scopeSwitcher: true,
         pinnedScopes: true,
         splitWorkspacePanel: true,
-        unifiedRightPanel: false,
         schedulesInScheduledSlide: true,
         chatFolders: false,
         gitWorktreeExecution: false,
