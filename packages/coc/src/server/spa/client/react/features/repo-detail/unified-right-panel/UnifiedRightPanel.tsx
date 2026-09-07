@@ -61,6 +61,14 @@ import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ExplorerPanel, getAncestorPaths } from '../explorer/ExplorerPanel';
 import { useExplorerExpandedPaths, useExplorerSelectedPath } from '../explorer/explorerStateStore';
+import { QuickOpen } from '../explorer/QuickOpen';
+import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
+import {
+    explorerQuickOpenHasFocus,
+    isExplorerQuickOpenMounted,
+    quickOpenOwner,
+    quickOpenShortcut,
+} from './quickOpenRouting';
 import { explorerFileTabInput } from './unifiedExplorerFiles';
 import {
     UNIFIED_TREE_MIN_WIDTH,
@@ -421,6 +429,95 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         [target, workspaceId, targetLabel, chatId, open, openPreview, previewToReplace, dirtyIds, requestClose],
     );
 
+    // ------------------------------------------------------------------
+    // Quick Open (Ctrl/Cmd+P) and Exact Open (Ctrl/Cmd+O)
+    // ------------------------------------------------------------------
+    //
+    // The panel owns these itself rather than borrowing them from the Explorer
+    // in its tree column: the column is collapsible, and a collapsed column used
+    // to mean no listener at all. So the shortcut works with the tree open, with
+    // it closed, and with the panel showing nothing but its empty state.
+
+    const [quickOpenVisible, setQuickOpenVisible] = useState(false);
+    const [exactOpenVisible, setExactOpenVisible] = useState(false);
+
+    /**
+     * A file picked in either dialog. Same shape as the Explorer's own
+     * `handleQuickOpenSelect`: a trusted absolute path is deliberate and
+     * unwritable, so it lands as a pinned read-only tab, and everything else
+     * takes the preview slot exactly as a single click in the tree would.
+     *
+     * Picking also opens the tree column. Revealing the row needs no new
+     * machinery — the new tab becomes active, the toolbar model resolves its
+     * path against the tree's target, and `ExplorerPanel`'s `activeFilePath`
+     * tracking expands the ancestors and centres the row from there.
+     */
+    const handlePanelFileSelect = useCallback((filePath: string) => {
+        setQuickOpenVisible(false);
+        setExactOpenVisible(false);
+        // The open bit is set even when the panel is currently too narrow for
+        // `isUnifiedTreeVisible` to show the column: the bit is what the user
+        // asked for, and widening the panel later brings the tree back. Forcing
+        // the panel wider would move a boundary the user set by hand.
+        tree.setOpen(true);
+        if (filePath.startsWith(TRUSTED_PATH_PREFIX)) {
+            const name = trustedFileName(filePath.slice(TRUSTED_PATH_PREFIX.length));
+            openTreeFile({ path: filePath, name }, { preview: false, readOnly: true });
+            return;
+        }
+        const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
+        openTreeFile({ path: filePath, name }, { preview: true });
+    }, [tree, openTreeFile]);
+
+    const panelRootRef = useRef<HTMLDivElement | null>(null);
+
+    // Claimed in the CAPTURE phase, and stopped when this panel wins. That is
+    // what keeps a single keypress to a single dialog: the Explorer sub-tab's
+    // own listener sits on `document` in the bubble phase, so stopping here
+    // suppresses it — and it also beats Monaco, whose handlers live on the
+    // editor's own DOM, so Ctrl+P inside a code buffer in this panel opens this
+    // dialog rather than Monaco's command palette (AC-04).
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            const shortcut = quickOpenShortcut(event);
+            if (shortcut === null) return;
+            const root = panelRootRef.current;
+            const focused = document.activeElement;
+            // The dialogs portal to `document.body`, so containment alone would
+            // hand the panel's own open dialog back to the Explorer tab.
+            const dialogOpen = quickOpenVisible || exactOpenVisible;
+            const panelHasFocus = dialogOpen || (
+                root !== null && focused !== null && focused !== document.body && root.contains(focused)
+            );
+            const owner = quickOpenOwner({
+                panelOpen: isOpen,
+                panelHasFocus,
+                explorerMounted: isExplorerQuickOpenMounted(),
+                explorerHasFocus: explorerQuickOpenHasFocus(),
+            });
+            if (owner !== 'panel') return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (shortcut === 'quick') {
+                setExactOpenVisible(false);
+                setQuickOpenVisible(true);
+            } else {
+                setQuickOpenVisible(false);
+                setExactOpenVisible(true);
+            }
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        return () => document.removeEventListener('keydown', onKeyDown, true);
+    }, [isOpen, quickOpenVisible, exactOpenVisible]);
+
+    // A collapsed panel has no dialog to show: dismiss rather than leave one
+    // floating over the chat with nothing behind it.
+    useEffect(() => {
+        if (isOpen) return;
+        setQuickOpenVisible(false);
+        setExactOpenVisible(false);
+    }, [isOpen]);
+
     const cancelClose = useCallback(() => {
         setPendingClose(null);
         setCloseError(null);
@@ -550,6 +647,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
 
     return (
         <div
+            ref={panelRootRef}
             className="unified-right-panel flex h-full flex-shrink-0 border-l border-[#e5e5e5] dark:border-[#333]"
             // Collapsed hides the column without unmounting it: tabs, drafts,
             // and terminal sessions all survive a collapse/reopen cycle.
@@ -728,6 +826,22 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                         </div>
                     )}
                 </div>
+
+                {/* Both portal to document.body, and both search the tree's
+                    target workspace — the same clone the column browses — not
+                    the panel's own scope, which in a repo group is the group. */}
+                <QuickOpen
+                    workspaceId={target}
+                    open={quickOpenVisible}
+                    onClose={() => setQuickOpenVisible(false)}
+                    onFileSelect={handlePanelFileSelect}
+                />
+                <ExactOpen
+                    workspaceId={target}
+                    open={exactOpenVisible}
+                    onClose={() => setExactOpenVisible(false)}
+                    onFileSelect={handlePanelFileSelect}
+                />
 
                 <ExplorerCloseTabsDialog
                     open={pendingDirty !== null}

@@ -127,6 +127,42 @@ from the store the toggle reads) and commits to `unifiedPanelTree` when the drag
 ends. What renders is that width put through `clampUnifiedTreeWidth` against the
 panel's live width, so the tree gives up space before the view does.
 
+## Quick Open owns its own keyboard (`quickOpenRouting.ts`)
+
+Ctrl/Cmd+P (Quick Open) and Ctrl/Cmd+O (Exact Open) are the panel's, not the
+tree column's. The handler used to live in `ExplorerPanel`, which this panel
+only mounts while the column is open — so a collapsed column meant no listener
+at all, and a mounted Explorer sub-tab meant *two* listeners and two stacked
+dialogs.
+
+`quickOpenOwner({ panelOpen, panelHasFocus, explorerMounted, explorerHasFocus })`
+is the whole decision, pure and unit-tested: focus inside the panel wins;
+otherwise a mounted Explorer sub-tab wins (focused or not, which is what keeps
+today's behaviour for a user with no panel open); otherwise the open panel; else
+nobody. `explorerMounted`/`explorerHasFocus` come from a module-level registry of
+focus probes — only `mode: 'editor'` mounts register, because a navigator/sidebar
+Explorer is somebody else's column.
+
+The panel listens in the **capture** phase on `document` and calls
+`stopPropagation()` when it wins, so `ExplorerPanel`'s bubble-phase listener never
+runs — and neither does Monaco, whose handlers sit on the editor's own DOM, so
+Ctrl+P inside a code buffer in this panel opens this dialog. `preventDefault()`
+is always called by the winner, so the browser print dialog never appears.
+
+The dialogs are the Explorer's own `QuickOpen` / `ExactOpen` (portalled to
+`document.body`), pointed at the **dock target** — the clone the tree column
+browses — not the panel scope, which in a repo group is the group. Because they
+portal outside the panel root, "my dialog is already up" counts as panel focus.
+
+A pick goes through `openTreeFile`: a trusted `__trusted__:` path lands pinned and
+read-only, everything else takes the preview slot, exactly like a tree click. It
+also sets the tree's open bit, and the reveal comes free — the new tab is active,
+`unifiedToolbarBreadcrumbs` resolves its path, and `ExplorerPanel`'s
+`activeFilePath` tracking expands the ancestors and centres the row. The bit is
+set even when the panel is too narrow for `isUnifiedTreeVisible`: the bit is what
+the user asked for and widening restores it, but the panel is never force-widened
+over a boundary the user dragged.
+
 ## The preview slot
 
 Each scope section has at most **one preview tab**, and it is always the
@@ -271,9 +307,10 @@ through refs. **Any future SSE-driven entry point must do the same.**
 
 ## Tests
 
-`test/spa/react/workspace-right-dock/unified*` and `Unified*` cover the model,
-store, strip, shell, menu, per-kind views, both close guards, terminal-session
-survival, and the canvas event relay. Entry-point rerouting is tested where the
+`test/spa/react/workspace-right-dock/unified*`, `quickOpenRouting.test.ts` and
+`Unified*` cover the model, store, strip, shell, menu, per-kind views, both close
+guards, terminal-session survival, the Ctrl+P routing matrix, and the canvas
+event relay. Entry-point rerouting is tested where the
 entry point lives — `test/spa/react/repos/ChatDetailCanvasClosed.test.tsx` holds
 the diff, source-link, note-link, and canvas cases.
 `test/spa/react/repos/RepoGroupView.dock.test.tsx` and
