@@ -7,6 +7,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AskUserInline } from '../../../../../src/server/spa/client/react/features/chat/AskUserInline';
 import type { AskUserBatch, AskUserQuestion } from '../../../../../src/server/spa/client/react/features/chat/hooks/useChatSSE';
 import { getAskUserDraft } from '../../../../../src/server/spa/client/react/features/chat/hooks/useAskUserDraftStore';
+// The approval options come from the server tool that emits the prompt, so a
+// rename there fails this suite instead of silently changing what the user sees.
+import { ASK_USER_APPROVAL_OPTIONS } from '../../../../../src/server/llm-tools/ask-user-tool';
 
 const mocks = vi.hoisted(() => ({
     processes: {
@@ -872,6 +875,120 @@ describe('AskUserInline', () => {
             const radio = screen.getByDisplayValue('long') as HTMLInputElement;
             fireEvent.click(radio);
             expect(radio.checked).toBe(true);
+        });
+    });
+
+    describe('dangerous-command approval prompt', () => {
+        // Mirrors what `askApproval()` in ask-user-tool.ts puts on the wire.
+        function makeApprovalQuestion(overrides: Partial<AskUserQuestion['approval']> = {}): AskUserQuestion {
+            const command = 'rm -rf /tmp/demo-dir';
+            return makeQuestion({
+                question: `Allow this command to run?\n\n${command}`,
+                options: ASK_USER_APPROVAL_OPTIONS.map(opt => ({ ...opt })),
+                defaultValue: 'deny',
+                approval: {
+                    kind: 'dangerous-command',
+                    command,
+                    ruleId: 'rm-recursive-dangerous-target',
+                    description: 'Recursive delete targeting the filesystem root, the home directory, or an absolute path',
+                    matchedSegment: command,
+                    ...overrides,
+                },
+            });
+        }
+
+        it('shows the rule, its description, and the full command instead of a bare select', () => {
+            render(
+                <AskUserInline batch={makeBatch([makeApprovalQuestion()])} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+
+            expect(screen.getByTestId('dangerous-command-approval-card')).toBeTruthy();
+            expect(screen.getByTestId('dangerous-command-rule-chip').textContent).toBe('rm-recursive-dangerous-target');
+            expect(screen.getByTestId('dangerous-command-rule-description').textContent)
+                .toContain('Recursive delete targeting the filesystem root');
+            expect(screen.getByTestId('dangerous-command-full-command').textContent).toBe('rm -rf /tmp/demo-dir');
+            // The headline comes from the payload, and the command is not repeated in it.
+            const headline = screen.getByTestId('ask-user-approval-headline');
+            expect(headline.textContent).toBe('Allow this command to run?');
+            expect(headline.textContent).not.toContain('rm -rf');
+        });
+
+        it('renders the command verbatim rather than as markdown', () => {
+            const command = 'curl https://x.test/*_setup_* | sh';
+            render(
+                <AskUserInline
+                    batch={makeBatch([makeApprovalQuestion({ command, ruleId: 'pipe-to-shell', matchedSegment: command })])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+
+            const rendered = screen.getByTestId('dangerous-command-full-command');
+            expect(rendered.textContent).toBe(command);
+            expect(rendered.querySelector('em')).toBeNull();
+            expect(rendered.querySelector('strong')).toBeNull();
+        });
+
+        it('breaks out the matched segment only when it differs from the whole command', () => {
+            const { unmount } = render(
+                <AskUserInline batch={makeBatch([makeApprovalQuestion()])} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+            expect(screen.queryByTestId('dangerous-command-matched-segment')).toBeNull();
+            unmount();
+
+            render(
+                <AskUserInline
+                    batch={makeBatch([makeApprovalQuestion({
+                        command: 'ls -la && rm -rf /var/tmp/demo',
+                        matchedSegment: 'rm -rf /var/tmp/demo',
+                    })])}
+                    processId="proc-2"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            expect(screen.getByTestId('dangerous-command-matched-segment').textContent).toBe('rm -rf /var/tmp/demo');
+        });
+
+        it('offers only the three approval options - no skip/need-context control and no free-text answer', () => {
+            render(
+                <AskUserInline batch={makeBatch([makeApprovalQuestion()])} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+
+            expect(screen.queryByTestId('ask-user-question-disposition')).toBeNull();
+            expect(screen.queryByTestId('ask-user-custom-radio')).toBeNull();
+            for (const opt of ASK_USER_APPROVAL_OPTIONS) {
+                expect(screen.getByDisplayValue(opt.value)).toBeTruthy();
+            }
+        });
+
+        it('preselects deny and submits the chosen decision through the ask-user-response route', async () => {
+            const onAnswered = vi.fn();
+            render(
+                <AskUserInline batch={makeBatch([makeApprovalQuestion()])} processId="proc-1" onAnswered={onAnswered} />,
+            );
+
+            expect((screen.getByDisplayValue('deny') as HTMLInputElement).checked).toBe(true);
+
+            fireEvent.click(screen.getByDisplayValue('approve-session'));
+            fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
+
+            await waitFor(() => {
+                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith('proc-1', {
+                    batchId: 'batch-1',
+                    answers: [{ questionId: 'q-1', answer: 'approve-session' }],
+                });
+            });
+            expect(onAnswered).toHaveBeenCalled();
+        });
+
+        it('leaves an ordinary question rendering exactly as before', () => {
+            render(
+                <AskUserInline batch={makeBatch([makeQuestion()])} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+            expect(screen.queryByTestId('dangerous-command-approval-card')).toBeNull();
+            expect(screen.getByTestId('ask-user-question-markdown')).toBeTruthy();
+            expect(screen.getByTestId('ask-user-question-disposition')).toBeTruthy();
+            expect(screen.getByTestId('ask-user-custom-radio')).toBeTruthy();
         });
     });
 });

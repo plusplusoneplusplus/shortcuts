@@ -7,6 +7,7 @@ import type { AskUserResponseRequest } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
 import { AskUserMarkdown } from './AskUserMarkdown';
+import { DangerousCommandApprovalCard } from './DangerousCommandApprovalCard';
 import {
     clearAskUserDraft,
     clearOtherAskUserDraftsForProcess,
@@ -347,28 +348,47 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                         <div className="text-[13px] leading-5 text-[#1e1e1e] dark:text-[#e0e0e0] flex items-start gap-1.5 min-w-0">
                                             <span className="text-[#848484] shrink-0">{questionIndex + 1}.</span>
                                             <div className="min-w-0 flex-1">
-                                                <AskUserMarkdown
-                                                    markdown={question.question}
-                                                    className="markdown-body ask-user-markdown min-w-0"
-                                                    data-testid="ask-user-question-markdown"
-                                                />
+                                                {question.approval ? (
+                                                    // The payload's question text repeats the command so a
+                                                    // client that ignores `approval` still shows it. Here the
+                                                    // card owns the command, so only the headline is kept —
+                                                    // as plain text, since a command must never be parsed as
+                                                    // markdown.
+                                                    <p className="text-[13px] leading-5" data-testid="ask-user-approval-headline">
+                                                        {question.question.split('\n')[0]}
+                                                    </p>
+                                                ) : (
+                                                    <AskUserMarkdown
+                                                        markdown={question.question}
+                                                        className="markdown-body ask-user-markdown min-w-0"
+                                                        data-testid="ask-user-question-markdown"
+                                                    />
+                                                )}
+                                                {question.approval && <DangerousCommandApprovalCard approval={question.approval} />}
                                                 <QuestionProvenance question={question} />
                                             </div>
                                         </div>
-                                        <label className="shrink-0">
-                                            <span className="sr-only">Response type for question {questionIndex + 1}</span>
-                                            <select
-                                                value={state.disposition}
-                                                onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as AskUserQuestionDisposition })}
-                                                disabled={submitting}
-                                                className="max-w-[9rem] cursor-pointer rounded border border-transparent bg-transparent px-1 py-0 text-[11px] text-[#848484] hover:border-[#d4d4d4] hover:text-[#1e1e1e] dark:hover:border-[#3e3e3e] dark:hover:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
-                                                data-testid="ask-user-question-disposition"
-                                            >
-                                                <option value="answer">Answer</option>
-                                                <option value="skip">Skip</option>
-                                                <option value="needs-context">Need context</option>
-                                            </select>
-                                        </label>
+                                        {/*
+                                          * An approval prompt answers only through its three options.
+                                          * Skip and "need context" both resolve to deny on the server, so
+                                          * offering them here would just be a slower way to say no.
+                                          */}
+                                        {!question.approval && (
+                                            <label className="shrink-0">
+                                                <span className="sr-only">Response type for question {questionIndex + 1}</span>
+                                                <select
+                                                    value={state.disposition}
+                                                    onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as AskUserQuestionDisposition })}
+                                                    disabled={submitting}
+                                                    className="max-w-[9rem] cursor-pointer rounded border border-transparent bg-transparent px-1 py-0 text-[11px] text-[#848484] hover:border-[#d4d4d4] hover:text-[#1e1e1e] dark:hover:border-[#3e3e3e] dark:hover:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                                    data-testid="ask-user-question-disposition"
+                                                >
+                                                    <option value="answer">Answer</option>
+                                                    <option value="skip">Skip</option>
+                                                    <option value="needs-context">Need context</option>
+                                                </select>
+                                            </label>
+                                        )}
                                     </div>
 
                             {state.disposition === 'skip' ? (
@@ -426,21 +446,29 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                     </span>
                                                 </label>
                                             ))}
-                                            <label className={optionRowClass(isCustomSelected)}>
-                                                <input
-                                                    type="radio"
-                                                    name={`ask-user-${question.questionId}`}
-                                                    value={CUSTOM_OPTION_VALUE}
-                                                    checked={isCustomSelected}
-                                                    onChange={() => updateQuestion(question.questionId, { value: CUSTOM_OPTION_VALUE })}
-                                                    disabled={inputDisabled}
-                                                    className={OPTION_INPUT_CLASS}
-                                                    data-testid="ask-user-custom-radio"
-                                                />
-                                                <span className={OPTION_TEXT_CLASS}>
-                                                    <span className={OPTION_LABEL_CLASS}>Something else...</span>
-                                                </span>
-                                            </label>
+                                            {/*
+                                              * No free-text answer on an approval prompt: anything that is
+                                              * not one of the three option values is a deny on the server,
+                                              * so a text box would only invite an answer that silently
+                                              * blocks the command.
+                                              */}
+                                            {!question.approval && (
+                                                <label className={optionRowClass(isCustomSelected)}>
+                                                    <input
+                                                        type="radio"
+                                                        name={`ask-user-${question.questionId}`}
+                                                        value={CUSTOM_OPTION_VALUE}
+                                                        checked={isCustomSelected}
+                                                        onChange={() => updateQuestion(question.questionId, { value: CUSTOM_OPTION_VALUE })}
+                                                        disabled={inputDisabled}
+                                                        className={OPTION_INPUT_CLASS}
+                                                        data-testid="ask-user-custom-radio"
+                                                    />
+                                                    <span className={OPTION_TEXT_CLASS}>
+                                                        <span className={OPTION_LABEL_CLASS}>Something else...</span>
+                                                    </span>
+                                                </label>
+                                            )}
                                             {isCustomSelected && (
                                                 <input
                                                     type="text"
