@@ -2,15 +2,18 @@
  * Memory V2 cross-path parity tests.
  *
  * These invariant tests verify:
- * 1. Every active chat executor path (ask, ralph, follow-up) calls
+ * 1. Every active chat executor path (ask, autopilot, ralph, follow-up) calls
  *    buildChatTurnContext WITHOUT includeMemoryV2: false (defaults to true).
- * 2. AutopilotExecutor explicitly passes includeMemoryV2: false.
- * 3. When buildChatTurnContext returns a context with Memory V2 tools and
- *    excludedTools, each opted-in executor forwards those values to
+ * 2. When buildChatTurnContext returns a context with Memory V2 tools and
+ *    excludedTools, each executor forwards those values to
  *    aiService.sendMessage.
- * 4. AutopilotExecutor never forwards memory tools or excludedTools.
- * 5. When the context has no Memory V2 (empty addon), no memory tools or
+ * 3. When the context has no Memory V2 (empty addon), no memory tools or
  *    excludedTools appear in sendMessage for any executor.
+ *
+ * Autopilot used to opt out (`includeMemoryV2: false`), which made its tool
+ * block and system message differ from ask mode's and cost the conversation's
+ * prefix cache on a mid-chat mode toggle. It is now on the same path — these
+ * tests are the fence against a re-introduced mode branch.
  *
  * By mocking buildChatTurnContext at the module boundary these tests guarantee
  * that the contract cannot be silently broken by future executor refactoring.
@@ -263,15 +266,13 @@ describe('Memory V2 buildChatTurnContext call contract', () => {
         expect(args.includeMemoryV2).not.toBe(false);
     });
 
-    it('AutopilotExecutor explicitly passes includeMemoryV2: false', async () => {
-        // Autopilot operates in full-access mode and opts out of Memory V2
-        mockBuildChatTurnContext.mockResolvedValue(makeEmptyMemoryContext());
+    it('AutopilotExecutor calls buildChatTurnContext without includeMemoryV2: false', async () => {
         const executor = new AutopilotExecutor(store, makeOptions(store));
         await executor.execute(makeChatTask('autopilot', 'auto-contract'), 'Hello');
 
         expect(mockBuildChatTurnContext).toHaveBeenCalledOnce();
         const args = mockBuildChatTurnContext.mock.calls[0][0];
-        expect(args.includeMemoryV2).toBe(false);
+        expect(args.includeMemoryV2).not.toBe(false);
     });
 });
 
@@ -342,18 +343,15 @@ describe('Memory V2 tool parity across executor paths', () => {
         expect(call.excludedTools).toEqual(MEMORY_V2_EXCLUDED_BUILTINS);
     });
 
-    it('AutopilotExecutor: sendMessage receives NO memory tools and NO excludedTools', async () => {
-        // Autopilot opts out — the mocked context has no memory tools/excludedTools
-        mockBuildChatTurnContext.mockResolvedValue(makeEmptyMemoryContext());
+    it('AutopilotExecutor: sendMessage receives save_memory, recall_memory, and excludedTools', async () => {
         const executor = new AutopilotExecutor(store, makeOptions(store));
         await executor.execute(makeChatTask('autopilot', 'auto-parity'), 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         const toolNames = (call.tools ?? []).map((t: any) => t.name);
-        expect(toolNames).not.toContain('save_memory');
-        expect(toolNames).not.toContain('recall_memory');
-        // AutopilotExecutor does not pass excludedTools back from buildModeOptions
-        expect(call.excludedTools).toBeUndefined();
+        expect(toolNames).toContain('save_memory');
+        expect(toolNames).toContain('recall_memory');
+        expect(call.excludedTools).toEqual(MEMORY_V2_EXCLUDED_BUILTINS);
     });
 });
 
@@ -416,6 +414,17 @@ describe('Memory V2 disabled — no memory tools for any executor', () => {
         await store.addProcess(proc);
         const executor = new FollowUpExecutor(store, makeOptions(store) as any);
         await executor.executeFollowUp('proc-fu-empty', 'follow-up');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        const toolNames = (call.tools ?? []).map((t: any) => t.name);
+        expect(toolNames).not.toContain('save_memory');
+        expect(toolNames).not.toContain('recall_memory');
+        expect(call.excludedTools).toBeUndefined();
+    });
+
+    it('AutopilotExecutor: no memory tools and no excludedTools when context is empty', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store));
+        await executor.execute(makeChatTask('autopilot', 'auto-empty'), 'Hello');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         const toolNames = (call.tools ?? []).map((t: any) => t.name);

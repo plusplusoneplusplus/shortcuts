@@ -11,13 +11,12 @@
  * registration must depend on the global `askUser.enabled` config and never on
  * chat mode.
  *
- * Known exceptions, deliberately not asserted here:
- * - The Ralph grill terminal branch strips `ask_user` mid-turn to end the
- *   questioning phase (chat-base-executor). Covered separately below.
- * - Autopilot initial turns opt out of Memory V2 while ask turns do not, so
- *   initial-turn tool blocks still differ for an unrelated reason. The
- *   initial-turn test stubs the Memory V2 addon to a constant so the
- *   assertion stays about `ask_user`.
+ * The same reasoning applies to the system message, which is serialized right
+ * after the tool block — so it is asserted here too.
+ *
+ * Known exception, deliberately not asserted here: the Ralph grill terminal
+ * branch strips `ask_user` mid-turn to end the questioning phase
+ * (chat-base-executor). Covered separately below.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -62,9 +61,10 @@ vi.mock('../../../src/server/processes/output-file-manager', () => ({
     },
 }));
 
-// Memory V2 stubbed to a constant so the initial-turn assertion can compare the
-// full tool list. Without this, autopilot's `includeMemoryV2: false` masks the
-// property under test.
+// Memory V2 stubbed to a constant so both modes compare against a fixed
+// recall block. Both modes build it (autopilot's old `includeMemoryV2: false`
+// opt-out is gone); pinning it keeps the assertions about mode, not about a
+// recall that varies with the on-disk memory store.
 vi.mock('../../../src/server/executors/memory-v2-addon', () => ({
     buildMemoryV2Addon: vi.fn().mockResolvedValue({
         tools: [],
@@ -149,6 +149,33 @@ describe('mode-invariant tool block', () => {
 
         expect(askTools).toContain('ask_user');
         expect(autopilotTools).toEqual(askTools);
+    });
+
+    it('initial turns send identical system messages for ask and autopilot', async () => {
+        // The system message is serialized immediately after the tool block, so
+        // a mode-dependent byte here costs the same prefix cache. Autopilot has
+        // no mode input by design — see `chat-turn-system-message.ts`.
+        const askStore = createMockProcessStore();
+        await new ChatExecutor(askStore, makeOptions()).execute(makeChatTask('ask', 'task-sys-ask'), 'Hello');
+        const askSystem = (sdkMocks.mockSendMessage.mock.calls[0][0] as any).systemMessage;
+
+        const autoStore = createMockProcessStore();
+        await new AutopilotExecutor(autoStore, makeOptions()).execute(makeChatTask('autopilot', 'task-sys-auto'), 'Hello');
+        const autopilotSystem = (sdkMocks.mockSendMessage.mock.calls[1][0] as any).systemMessage;
+
+        expect(autopilotSystem).toEqual(askSystem);
+    });
+
+    it('sends the mode-appropriate agentMode on initial turns', async () => {
+        // The one first-turn field that must differ: protocol-level write
+        // enforcement. It rides `messages`, not the cached prefix.
+        const askStore = createMockProcessStore();
+        await new ChatExecutor(askStore, makeOptions()).execute(makeChatTask('ask', 'task-agent-ask'), 'Hello');
+        expect((sdkMocks.mockSendMessage.mock.calls[0][0] as any).mode).toBe('interactive');
+
+        const autoStore = createMockProcessStore();
+        await new AutopilotExecutor(autoStore, makeOptions()).execute(makeChatTask('autopilot', 'task-agent-auto'), 'Hello');
+        expect((sdkMocks.mockSendMessage.mock.calls[1][0] as any).mode).toBe('autopilot');
     });
 
     it('follow-up turns send identical tool blocks across a mid-chat mode switch', async () => {

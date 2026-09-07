@@ -114,7 +114,7 @@ src/
 | `chat-turn-context-builder.ts` | Per-turn tools, memory, ask-user handles, tool guidance |
 | `chat-turn-system-message.ts` | Canonical chat-turn system-message block order |
 | `chat-turn-policy-resolver.ts` | Per-turn model / reasoning effort / Copilot context tier |
-| `chat-turn-runner.ts` | Shared SDK callbacks (MCP OAuth dispatch) |
+| `chat-turn-runner.ts` | Path-invariant `sendMessage` options + shared SDK callbacks (MCP OAuth dispatch) |
 | `chat-turn-settlement.ts` | Turn completion: cumulative tokens, token-usage event, note snapshots |
 | `memory-v2-addon.ts` | Wires Memory V2 facts/recall and the memory tools into chat executors |
 
@@ -158,6 +158,11 @@ Diff classification is queued as a first-class `pr-classification` task or a cla
 ### Shared turn pipeline
 
 First turns (`ChatBaseExecutor.execute`) and continuations (`FollowUpExecutor.executeFollowUp`) share one pipeline. `buildChatTurnSystemMessage` fixes block order (global prompt → For Each/Map Reduce → repo instructions → source-location → memory → tool guidance → Codex `ask_user` discovery → note file); callers only pass `undefined` to skip a block. It takes no plan-folder input: the plan save destination rides the ask-mode `<coc-chat-mode>` user directive, nested inside its `<coc-read-only-mode>` section (`chat-mode-directive.ts`). `suppressesPlanSaveGuidance` (auto-folder-utils) is the shared eligibility predicate on both first and follow-up turns, keyed off payload context or the denormalized process metadata: artifact-bound chats — note, commit, PR — and Ralph grilling get no generic destination, because each owns its own output contract.
+
+
+`buildChatTurnSendOptions` (`chat-turn-runner.ts`) owns the path-invariant `sendMessage` payload: prompt, agent mode, the resolved model/effort/context tier, infinite sessions, keep-warm, directories, timeouts, tools and exclusions, the system message, skills, the MCP allow-list, and the streaming / tool-event / token / background-task / MCP-OAuth callbacks. Each path spreads only its own extras on top — a first turn adds `attachments`, a follow-up adds `sessionId`, `strictSessionResume` and `deliveryMode` plus a strict-resume `onSessionCreated`. Two differences are declared rather than accidental: a first turn passes `task.config.timeoutMs || defaultTimeoutMs` while a follow-up (which has no task config) always passes the admin default, and `rewriteLargePrompt` still runs on first turns only. `ChatBaseExecutor.beginChatTurn` / `finalizeChatTurn` wrap both paths' turn scaffolding and `finally` cleanup; `decorateChatTurnPrompt` applies the selected-skills directive and the repo-group listing, taking the injection decision as an input (unconditional on a first turn, `shouldInjectRepoGroupContext` on a follow-up).
+
+Ask and autopilot first turns are the same code path: `buildStandardModeOptions(task, prompt, mode, workingDirectory)`. `mode` changes only `agentMode`, the ask-only plan-save / Ralph-grill contracts, and `ask_user` interactivity — the tool bundle and system message are byte-identical in both modes, so toggling the mode pill mid-chat never rewrites the conversation's cached prefix (fenced by `mode-invariant-tool-block.test.ts`).
 
 `resolveChatTurnPolicy` owns model resolution (explicit → per-repo default for the turn's slot → provider default), reasoning-effort precedence (per-turn → provider-scoped persisted → Copilot-only global → SDK default), and the Copilot-only long-context tier derived from tiered billing metadata. On an unsupported effort a first turn fails while a follow-up drops only the per-turn override and continues; persisted/default effort validation stays strict. Follow-ups resolve provider/session/default model before applying per-turn effort.
 

@@ -37,18 +37,13 @@ import {
     STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
 } from '../tasks/task-types';
 import {
-    approveAllPermissions,
     getLogger,
     LogCategory,
     mergeConsecutiveContentItems,
     resolveModelForProvider,
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
-import {
-    buildConversationHistoryContext,
-    prependSelectedSkillsDirective,
-    resolveSelectedSkillReferences,
-} from './prompt-builder';
+import { buildConversationHistoryContext } from './prompt-builder';
 import { readNoteContent } from './note-chat-executor';
 import { suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
@@ -62,6 +57,7 @@ import {
     shouldInjectChatModeDirective,
 } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
+import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
 import {
     buildCumulativeTokenUsage,
     buildSessionTokenUpdates,
@@ -74,7 +70,7 @@ import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
-import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn, shouldInjectRepoGroupContext } from '../workspaces/repo-group-chat-context';
+import { shouldInjectRepoGroupContext } from '../workspaces/repo-group-chat-context';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 // ============================================================================
@@ -354,12 +350,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             ? undefined
             : buildConversationHistoryContext(process.conversationTurns);
 
-        this.resetSessionStreamingState(processId);
-        this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
-
-        // Start TTFT/TPS timing before any streaming can begin; the first
-        // output chunk is stamped by appendOutputChunk via the tracker.
-        this.turnPerformance.begin(processId);
+        // No `enqueuedAt`: a follow-up is dispatched directly, so there is no
+        // queue wait to reconstruct.
+        this.beginChatTurn(processId);
 
         // Metric turn index: 0-based assistant-response ordinal (never 0 on a
         // follow-up — the first response of a new session settles in
@@ -462,21 +455,28 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             this.persistSystemPromptAsync(processId, 'chat', systemMessage?.content);
 
-            // Repo-group workspaces: grant member roots as additional working
-            // directories on every turn (a permission option, not conversation
-            // state), but append the live-member listing to the outgoing message
-            // only when the session does not already carry it — a first turn, a
-            // history rebuild, membership drift, or a compaction that may have
-            // summarized it away. See `shouldInjectRepoGroupContext`.
-            const repoGroupContext = await resolveRepoGroupChatContext(this.store, this.dataDir, wsId);
-            const injectedRepoGroupContext = shouldInjectRepoGroupContext({
-                context: repoGroupContext,
-                turns: process.conversationTurns,
-                compaction: process.metadata?.compaction,
-                canResumeSession,
-            })
-                ? repoGroupContext
-                : undefined;
+            // Selected skills always ride the prompt. Repo-group workspaces
+            // grant member roots as additional working directories on every
+            // turn (a permission option, not conversation state), but append
+            // the live-member listing to the outgoing message only when the
+            // session does not already carry it — a history rebuild, membership
+            // drift, or a compaction that may have summarized it away. See
+            // `shouldInjectRepoGroupContext`.
+            const decorated = await this.decorateChatTurnPrompt({
+                processId,
+                prompt: message,
+                workspaceId: wsId,
+                selectedSkillNames,
+                skillDirectories,
+                disabledSkills,
+                shouldInjectRepoGroup: (context) => shouldInjectRepoGroupContext({
+                    context,
+                    turns: process.conversationTurns,
+                    compaction: process.metadata?.compaction,
+                    canResumeSession,
+                }),
+            });
+            const repoGroupContext = decorated.repoGroupContext;
             // The mode directive rides the user turn, not the system prompt, so
             // a mode toggle never rewrites the (cached) system prefix. It is
             // session state, so it is sent only when the model provably does
@@ -504,24 +504,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             })
                 ? buildChatModeDirective({ mode: currentMode, previousMode, modeInstructions, planSaveContext })
                 : undefined;
-            const followUpMessage = appendRepoGroupContext(
-                prependChatModeDirective(
-                    prependSelectedSkillsDirective(
-                        message,
-                        selectedSkillNames,
-                        resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
-                    ),
-                    modeDirective,
-                ),
-                injectedRepoGroupContext,
-            );
-            // Recorded only on turns that actually carried the block, so the
-            // chat's disclosure never claims the model was told something it
-            // was not.
-            await persistRepoGroupContextOnUserTurn(this.store, processId, injectedRepoGroupContext);
-            // Same rule for the mode block: recorded only on the turns that
-            // actually carried it, so the next turn's decision (and the
-            // transcript's disclosure) reads a truthful history.
+            // Order-independent with the decoration above: the directive
+            // prepends, the repo-group listing appends.
+            const followUpMessage = prependChatModeDirective(decorated.prompt, modeDirective);
+            // Recorded only on the turns that actually carried the block (the
+            // repo-group listing is recorded the same way inside the
+            // decoration), so the next turn's decision — and the transcript's
+            // disclosure — reads a truthful history.
             await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
             const agentMode = toAgentMode(currentMode);
 
@@ -567,7 +556,6 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     logger,
                 }),
             });
-            const contextTier = policy.contextTier;
 
             // AC-04 — Apply the per-repo MCP allow-lists (server-level
             // `enabledMcpServers` + per-tool `enabledMcpTools`) to the
@@ -582,51 +570,73 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             });
 
             let strictResumeMismatch = false;
+            // Everything that is not continuation-specific comes from the
+            // shared builder; a follow-up adds the session it resumes, its
+            // strict-resume flag, the delivery mode, and any attachments.
+            // Timeouts come from the admin config: a follow-up has no task
+            // config to prefer, unlike a first turn.
+            //
+            // `rewriteLargePrompt` is deliberately NOT applied here, unlike on
+            // a first turn. The POST /message route has already persisted the
+            // user turn with the full pasted text; rewriting only the outgoing
+            // copy would make a long pasted follow-up read differently in the
+            // transcript than what the model actually received.
             const sendOptions = {
-                prompt: followUpMessage,
+                ...buildChatTurnSendOptions({
+                    prompt: followUpMessage,
+                    agentMode,
+                    policy,
+                    workingDirectory,
+                    ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
+                    signal: turnAbort.signal,
+                    timeoutMs: this.defaultTimeoutMs,
+                    idleTimeoutMs: this.defaultIdleTimeoutMs,
+                    keepWarm: this.keepClientWarm(),
+                    warmKey: processId,
+                    systemMessage: historySystemMessage,
+                    tools: filteredTools,
+                    excludedTools: chatCtx.excludedTools,
+                    skillDirectories,
+                    disabledSkills,
+                    mcpServers: resolvedMcpServers,
+                    approvePermissions: this.approvePermissions,
+                    // Strict resume owns this callback: a provider that hands
+                    // back a different session must not overwrite the stopped
+                    // one we are trying to continue.
+                    onSessionCreated: (sessionId: string) => {
+                        if (strictResumeSessionId && sessionId !== strictResumeSessionId) {
+                            strictResumeMismatch = true;
+                            logger.warn(LogCategory.AI, `[FollowUp] Provider returned a different SDK session while strict-resuming process ${processId}; preserving the stopped session id.`);
+                            return;
+                        }
+                        this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch((err: unknown) => {
+                            logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkSessionId for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
+                        });
+                    },
+                    onStreamingChunk: this.buildStreamingChunkHandler(processId, FOLLOW_UP_LOG_LABEL),
+                    onToolEvent: this.buildToolEventHandler(
+                        processId,
+                        () => process.conversationTurns?.length ?? 0,
+                    ),
+                    onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
+                    onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
+                    // An MCP server can demand OAuth on any turn, not just the
+                    // one that opened the session. This path used to omit the
+                    // handler entirely, so a mid-conversation prompt was
+                    // silently dropped.
+                    onMcpOAuthRequired: buildMcpOAuthHandler({
+                        store: this.store,
+                        processId,
+                        workspaceId: wsId,
+                        originalMessage: message,
+                        manager: this.runtime.getMcpOauthManager?.(),
+                        logLabel: FOLLOW_UP_LOG_LABEL,
+                    }),
+                }),
                 sessionId: sessionIdForSend,
                 ...(strictResumeSessionId ? { strictSessionResume: true as const } : {}),
-                ...(policy.modelId ? { model: policy.modelId } : {}),
-                mode: agentMode,
-                workingDirectory,
-                ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
-                signal: turnAbort.signal,
-                ...(policy.reasoningEffort ? { reasoningEffort: policy.reasoningEffort } : {}),
-                ...(contextTier ? { contextTier } : {}),
-                infiniteSessions: { enabled: true } as const,
-                ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
-                // Follow-up turns previously ran on the SDK's built-in
-                // defaults; both budgets now come from the admin config.
-                timeoutMs: this.defaultTimeoutMs,
-                idleTimeoutMs: this.defaultIdleTimeoutMs,
-                systemMessage: historySystemMessage,
-                onPermissionRequest: this.approvePermissions ? approveAllPermissions : undefined,
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
-                tools: filteredTools.length > 0 ? filteredTools : undefined,
-                ...(chatCtx.excludedTools.length > 0
-                    ? { excludedTools: chatCtx.excludedTools }
-                    : {}),
-                ...(resolvedMcpServers ? { mcpServers: resolvedMcpServers, loadDefaultMcpConfig: false } : {}),
-                skillDirectories,
-                disabledSkills,
-                onSessionCreated: (sessionId: string) => {
-                    if (strictResumeSessionId && sessionId !== strictResumeSessionId) {
-                        strictResumeMismatch = true;
-                        logger.warn(LogCategory.AI, `[FollowUp] Provider returned a different SDK session while strict-resuming process ${processId}; preserving the stopped session id.`);
-                        return;
-                    }
-                    this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch((err: unknown) => {
-                        logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkSessionId for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
-                    });
-                },
-                onStreamingChunk: this.buildStreamingChunkHandler(processId, FOLLOW_UP_LOG_LABEL),
-                onToolEvent: this.buildToolEventHandler(
-                    processId,
-                    () => process.conversationTurns?.length ?? 0,
-                ),
-                onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
-                onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
             };
 
             let result: SDKInvocationResult;
@@ -828,27 +838,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 throw error instanceof Error ? error : new Error(errorMsg);
             }
         } finally {
-            this.releaseTurnAbortController(processId, turnAbort);
-            // Timing state is settled on both success and error paths; this is
-            // a leak guard for throws that bypass both settles.
-            this.turnPerformance.abandon(processId);
-            // Background tasks cannot outlive the turn; drop the replay snapshot
-            // on every exit path, including a drain-cap abort that never settles.
-            this.backgroundTasks.clear(processId);
-            chatCtx?.dispose();
-            this.cancelAskUserHandles(processId);
-            try {
-                await this.clearPendingAskUser(processId);
-            } catch (err) {
-                logger.debug(
-                    LogCategory.AI,
-                    `[FollowUp] Failed to clear pending ask-user for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
-                );
-            }
-            const buffer = this.getOutputBuffer(processId);
-            this.cleanupSession(processId);
-            this.store.unregisterFlushHandler?.(processId);
-            await this.persistOutput(processId, buffer);
+            await this.finalizeChatTurn(processId, {
+                controller: turnAbort,
+                dispose: chatCtx?.dispose,
+                logLabel: FOLLOW_UP_LOG_LABEL,
+            });
         }
     }
 }

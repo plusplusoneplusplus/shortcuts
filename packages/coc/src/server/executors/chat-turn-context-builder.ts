@@ -2,10 +2,9 @@
  * Chat Turn Context Builder
  *
  * Centralizes common addon assembly for all chat-mode executor paths:
- * ask (ChatBaseExecutor.buildStandardModeOptions), Ralph
- * (RalphExecutor.buildModeOptions), follow-up
- * (FollowUpExecutor.executeFollowUp), and optionally autopilot
- * (AutopilotExecutor.buildModeOptions).
+ * ask and autopilot (both `ChatBaseExecutor.buildStandardModeOptions`), Ralph
+ * (RalphExecutor.buildModeOptions), and follow-up
+ * (FollowUpExecutor.executeFollowUp).
  *
  * Returns one cohesive context object so callers do not need to
  * independently coordinate Memory V2 tools, Memory V2 prompt context,
@@ -61,7 +60,9 @@ export interface ChatTurnContextInput {
     excludeTools?: string[];
     /**
      * Whether to include Memory V2 tools and context in this turn.
-     * Defaults to true. Set to false to explicitly opt out (e.g. autopilot).
+     * Defaults to true. No chat path opts out today — autopilot used to, which
+     * made its tool block differ from ask mode's and cost the conversation's
+     * prefix cache on a mid-chat mode toggle.
      */
     includeMemoryV2?: boolean;
 }
