@@ -565,6 +565,14 @@ export interface SendMessageOptions {
     onPermissionRequest?: import('@github/copilot-sdk').PermissionHandler;
 
     /**
+     * Dangerous-command guard wiring for ask mode: the `dangerousCommandGuard.enabled`
+     * admin flag plus the host's approval prompt. Omitted or disabled means no
+     * screening happens at all and the turn behaves exactly as it did before the
+     * guard existed. See `./dangerous-command-guard`.
+     */
+    dangerousCommandGuard?: import('./dangerous-command-guard').DangerousCommandGuardOptions;
+
+    /**
      * Handler for user input requests from the agent.
      * When provided, the SDK enables its built-in `ask_user` tool so the model
      * can ask the user a question and receive an answer.

@@ -42,6 +42,7 @@ import { preferUnpackedPath } from './asar-path';
 import { getSDKLogger } from './logger';
 import { createMidTurnUsagePoller, type MidTurnTokenUsage, type MidTurnUsagePoller } from './mid-turn-usage';
 import { IdleWatchdog, idleTimeoutErrorMessage } from './idle-watchdog';
+import { screenDangerousCommand, isScreenedShellTool } from './dangerous-command-guard';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
@@ -433,8 +434,27 @@ interface ClaudeQueryOptions {
          * {@link ClaudeSDKService.compactSession}).
          */
         hooks?: Partial<Record<string, ClaudeHookCallbackMatcher[]>>;
+        /**
+         * Host permission prompt. Installed only by the dangerous-command guard
+         * (see {@link ClaudeSDKService.buildAskModeCanUseTool}); without it the
+         * SDK runs headless and auto-denies anything not in `allowedTools`.
+         */
+        canUseTool?: ClaudeCanUseTool;
     };
 }
+
+/**
+ * Subset of the SDK's `CanUseTool` this file uses. Resolving `null` leaves the
+ * tool parked forever, so every path here returns an explicit allow or deny.
+ */
+type ClaudeCanUseTool = (
+    toolName: string,
+    input: Record<string, unknown>,
+    options: { signal: AbortSignal; toolUseID: string },
+) => Promise<
+    | { behavior: 'allow'; updatedInput?: Record<string, unknown> }
+    | { behavior: 'deny'; message: string }
+>;
 
 /**
  * Account information returned by the SDK's accountInfo() control method.
@@ -1150,10 +1170,22 @@ export class ClaudeSDKService implements ISDKService {
             mcpCleanup = cleanup;
             const disallowedTools = resolveClaudeDisallowedTools(options);
             const systemPromptOptions = resolveClaudeSystemPromptOptions(options.systemMessage);
-            const askModeAllowed =
-                permissionOptions.permissionMode === 'acceptEdits'
-                    ? [...ASK_MODE_AUTO_APPROVED_TOOLS]
-                    : [];
+            const isAskMode = permissionOptions.permissionMode === 'acceptEdits';
+            // With the guard on, `Bash` has to leave the allow list: an allow
+            // rule short-circuits the permission engine, so a tool named there
+            // never reaches `canUseTool` and could never be gated. Dropping it
+            // routes every ask-mode shell call through the callback below, which
+            // re-grants the benign ones. WebFetch/WebSearch stay allow-listed —
+            // the guard screens shell only.
+            const guardsAskModeShell = isAskMode && options.dangerousCommandGuard?.enabled === true;
+            const askModeAllowed = isAskMode
+                ? ASK_MODE_AUTO_APPROVED_TOOLS.filter(
+                      tool => !(guardsAskModeShell && isScreenedShellTool(tool)),
+                  )
+                : [];
+            const canUseTool = guardsAskModeShell
+                ? this.buildAskModeCanUseTool(options)
+                : undefined;
             const effectiveAllowedTools = [...allowedTools, ...askModeAllowed];
             const drainCapMs = this.resolveBackgroundDrainCapMs(options);
             // Arm the drain cap lazily — only when a `result` defers settle with
@@ -1195,6 +1227,7 @@ export class ClaudeSDKService implements ISDKService {
                     ...(effectiveAllowedTools.length > 0 ? { allowedTools: effectiveAllowedTools } : {}),
                     ...(disallowedTools.length > 0 ? { disallowedTools } : {}),
                     ...(options.sessionId ? { resume: options.sessionId } : { sessionId }),
+                    ...(canUseTool ? { canUseTool } : {}),
                     ...permissionOptions,
                 },
             };
@@ -2144,6 +2177,61 @@ export class ClaudeSDKService implements ISDKService {
             };
         }
         return { permissionMode: 'acceptEdits' };
+    }
+
+    /**
+     * The ask-mode permission callback, installed only while the
+     * dangerous-command guard is enabled.
+     *
+     * Two responsibilities, and the second one is easy to overlook:
+     *
+     * 1. Screen shell calls. `Bash` is off the allow list whenever this
+     *    callback exists, so every shell call lands here. A command no rule
+     *    matches is allowed straight through — that is the behaviour ask mode
+     *    has always had, just now expressed as a callback instead of an allow
+     *    rule. A match waits on the host's approval prompt.
+     * 2. Reproduce the headless auto-deny for everything else. Installing a
+     *    callback at all takes the SDK out of headless mode, so any tool that
+     *    would previously have been auto-denied (`ask` is terminal with no
+     *    prompt surface) now reaches this function instead. Returning `null`
+     *    would park it forever, so it is denied explicitly, which is the same
+     *    outcome the turn had before the guard existed.
+     */
+    private buildAskModeCanUseTool(options: SendMessageOptions): ClaudeCanUseTool {
+        const guard = options.dangerousCommandGuard;
+        return async (toolName, input, callbackOptions) => {
+            if (!isScreenedShellTool(toolName)) {
+                return {
+                    behavior: 'deny',
+                    message:
+                        `${toolName} is not permitted in ask mode. Ask the user to switch to ` +
+                        'autopilot if this tool is required.',
+                };
+            }
+            const result = await screenDangerousCommand(toolName, input, guard, {
+                signal: callbackOptions.signal,
+            });
+            if (result.match) {
+                getSDKLogger().info(
+                    {
+                        provider: CLAUDE_PROVIDER,
+                        event: 'claude_dangerous_command_guard',
+                        toolName,
+                        toolUseId: callbackOptions.toolUseID,
+                        ruleId: result.match.ruleId,
+                        decision: result.decision,
+                        allowed: result.allowed,
+                    },
+                    // The command text itself is never logged — it can carry secrets.
+                    'Dangerous-command guard decided a shell tool call',
+                );
+            }
+            if (result.allowed) return { behavior: 'allow' };
+            return {
+                behavior: 'deny',
+                message: result.denialMessage ?? 'Blocked by the CoC dangerous-command guard.',
+            };
+        };
     }
 
     public async transform(
