@@ -107,6 +107,20 @@ tree beside the empty state. It is mounted while `unifiedPanelTree`'s open bit i
 set and hidden with `display:none` when the panel is too narrow for both columns,
 so widening brings it back with its expansion intact.
 
+It **follows the host's active file**: `ExplorerPanel`'s `activeFilePath` prop
+is a tri-state, and the panel derives it from the same `unifiedToolbarBreadcrumbs`
+answer the breadcrumbs use. A path (a file tab whose owner is the tree's target)
+expands its ancestors — lazy-loading the levels that are not cached — selects the
+row and centres it. `null` (a file tab the tree cannot show: another clone, a
+`__trusted__:` path) drops the highlight and leaves the scroll alone. Omitting it
+(any other kind, or no tabs) means the tree keeps the last file highlighted where
+it is. Revealing is additive, so a folder the user opened by hand stays open, and
+it fires on the tracked *value* changing rather than on every render, so an
+ordinary scroll or collapse is never yanked back. A lazy load that fails during
+tracking is silent: no panel-wide error, no highlight moved — the same walk from
+the toolbar's "Reveal open file" button still reports its failure, because that
+one the user asked for.
+
 Its width has two owners on purpose: the drag runs through `useResizablePanel`
 with **no** `storageKey` (a second localStorage owner for one number would drift
 from the store the toggle reads) and commits to `unifiedPanelTree` when the drag

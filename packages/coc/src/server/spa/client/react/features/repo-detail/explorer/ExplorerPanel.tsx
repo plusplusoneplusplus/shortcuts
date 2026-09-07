@@ -81,6 +81,18 @@ export interface ExplorerPanelProps {
      * given and `editor` otherwise, so existing callers keep their behaviour.
      */
     mode?: ExplorerPanelMode;
+    /**
+     * The file the *host* is currently showing, for a tree that follows the
+     * host's active tab (the unified right panel's column). Three values:
+     *
+     *  - a repo-relative path — highlight it, expand its ancestors (lazy-loading
+     *    each level) and centre its row;
+     *  - `null` — the host has a file open that has no row in this tree (another
+     *    clone, or a `__trusted__:` absolute path): drop the highlight and leave
+     *    the scroll position alone;
+     *  - omitted — this host does not track; the tree keeps whatever it shows.
+     */
+    activeFilePath?: string | null;
 }
 
 /** The mode a mount runs in, honouring an explicit prop over the legacy inference. */
@@ -229,7 +241,7 @@ export function isNarrowSidebar(width: number, isMobile: boolean): boolean {
     return !isMobile && width < NARROW_SIDEBAR_WIDTH;
 }
 
-export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode }: ExplorerPanelProps) {
+export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode, activeFilePath }: ExplorerPanelProps) {
     const panelMode = resolveExplorerMode(mode, onOpenFile !== undefined);
     // Navigator mode: the host owns the editor, so this panel is only a tree.
     // `sidebar` is navigator plus "the host owns the breadcrumbs too".
@@ -865,12 +877,12 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode }
      * Distinct from `explorerApi.reveal`, which reveals a path in the OS file
      * manager; this is purely client-side tree navigation.
      */
-    const handleRevealOpenFile = useCallback(async () => {
-        const target = openFilePath;
+    const revealPath = useCallback(async (target: string | null, options?: { silent?: boolean }) => {
         // A trusted absolute path is outside the repo tree — it has no row to reveal.
         if (!target || target.startsWith(TRUSTED_PATH_PREFIX)) return;
+        const silent = options?.silent === true;
 
-        setError(null);
+        if (!silent) setError(null);
         const ancestors = getAncestorPaths(target);
         const known = new Set(childrenMap.keys());
         const toExpand: string[] = [];
@@ -885,7 +897,9 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode }
                     handleChildrenLoaded(dir, data.entries);
                     known.add(dir);
                 } catch (err) {
-                    setError(errorMessage(err));
+                    // A background reveal must not turn a lazy-load failure into a
+                    // panel-wide error: the tree stays usable, just un-highlighted.
+                    if (!silent) setError(errorMessage(err));
                     failedAt = dir;
                     break;
                 }
@@ -896,9 +910,44 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode }
         if (toExpand.length > 0) {
             setExpandedPaths(prev => new Set([...prev, ...toExpand]));
         }
+        if (failedAt !== null && silent) {
+            // The row cannot be reached, so leave the selection and the scroll
+            // position exactly where the user left them.
+            return;
+        }
         setSelectedPath(target);
         setRevealTarget(failedAt ?? target);
-    }, [openFilePath, childrenMap, workspaceId, handleChildrenLoaded]);
+    }, [childrenMap, workspaceId, handleChildrenLoaded]);
+
+    /** The toolbar's "Reveal open file" button — the editor's own file. */
+    const handleRevealOpenFile = useCallback(async () => {
+        await revealPath(openFilePath);
+    }, [revealPath, openFilePath]);
+
+    /**
+     * Track the host's active file (AC-06). `activeFilePath` is a tri-state: a
+     * path to reveal, `null` for "the host has a file open that this tree cannot
+     * show" (a different clone, a trusted absolute path) which clears the
+     * highlight without moving the scroll, and `undefined` for "not tracking" —
+     * a terminal/canvas/note/diff tab leaves the last file highlighted where it
+     * is. Guarded on the *value* changing rather than on the render, so the tree
+     * only re-centres when the host's active file actually moves and an ordinary
+     * scroll or expansion is never yanked back.
+     */
+    const trackedFileRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (activeFilePath === undefined) return;
+        // Keyed by workspace as well as path: retargeting the column to another
+        // clone is a new tree, so the same path there is a different row.
+        const key = `${workspaceId}\u0000${activeFilePath ?? ''}`;
+        if (key === trackedFileRef.current) return;
+        trackedFileRef.current = key;
+        if (activeFilePath === null) {
+            setSelectedPath(null);
+            return;
+        }
+        void revealPath(activeFilePath, { silent: true });
+    }, [activeFilePath, workspaceId, revealPath, setSelectedPath]);
 
     // Centre the revealed row once the expansion above has rendered. Runs against
     // the tree's own scroll container so nothing outside the sidebar moves.

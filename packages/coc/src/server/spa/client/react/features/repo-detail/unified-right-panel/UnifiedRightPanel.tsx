@@ -233,6 +233,17 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         setTreeExpandedPaths(prev => new Set([...prev, ...getAncestorPaths(folder), folder]));
     }, [toolbar, setTreeSelectedPath, setTreeExpandedPaths]);
 
+    // What the tree column should track (AC-06). The toolbar model already
+    // decides whether the active file's path resolves inside the tree on screen,
+    // so tracking reuses that answer rather than restating the rule: a file tab
+    // the tree can show reveals it, a file tab it cannot (another clone, a
+    // trusted absolute path) drops the highlight, and any other kind — or no
+    // tabs at all — leaves the tree exactly where it is.
+    const trackedTreeFile = useMemo<string | null | undefined>(() => {
+        if (toolbar === null) return undefined;
+        return toolbar.interactive ? toolbar.path : null;
+    }, [toolbar]);
+
     const treeToggle = useCallback(
         (placement: 'toolbar' | 'strip') => (
             <UnifiedPanelTreeToggle open={tree.state.open} onToggle={tree.toggleOpen} placement={placement} />
@@ -712,6 +723,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                                     // file click would navigate out of the group.
                                     deepLink={target === workspaceId}
                                     mode="sidebar"
+                                    activeFilePath={trackedTreeFile}
                                     onOpenFile={openTreeFile}
                                 />
                             </div>

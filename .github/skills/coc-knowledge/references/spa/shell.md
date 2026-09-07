@@ -225,7 +225,9 @@ panel's right edge and a breadcrumb toolbar row under the strip. Terminal and No
 tabs belong to the workspace; files, canvases, and diffs follow the selected chat.
 The tree is panel-level chrome rather than a tab, and its single click opens a
 VS Code-style preview tab that the next single click reuses until a double click,
-an edit, or a reorder makes it permanent. Tab descriptors (never document bodies,
+an edit, or a reorder makes it permanent. The tree follows the active file tab —
+highlighting it, expanding its ancestors and centring the row — whenever that
+file belongs to the repo the dock is targeting. Tab descriptors (never document bodies,
 terminal output, or credentials) persist per panel scope in localStorage. Flag-off
 behavior is untouched. The contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
