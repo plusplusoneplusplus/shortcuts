@@ -38,7 +38,7 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
 | `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted. |
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
-| `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/width/resize/target), keep-alive, dirty/error sets, the close guards. |
+| `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — views on the left, the file-tree column on the right edge. |
 | `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. |
@@ -62,6 +62,26 @@ explicitly; the legacy inference from `onOpenFile` cannot tell the two host
 modes apart and only survives as the default for existing callers.
 
 Resource toolbars render *below* the strip; nothing portals into it.
+
+## The file-tree column
+
+Below the strip the panel is one row: the active tab's view on the left, the
+file-tree column pinned to the right edge. The column is `ExplorerPanel` in
+**sidebar mode**, pointed at the dock target (`deepLink` only when that target is
+the panel's own scope), and its selections build the same descriptor an Explorer
+navigator tab's do (`explorerFileTabInput`).
+
+It is panel-level chrome, not a tab: it renders for every tab kind and for none
+at all, so closing the last tab with the tree open leaves the panel showing the
+tree beside the empty state. It is mounted while `unifiedPanelTree`'s open bit is
+set and hidden with `display:none` when the panel is too narrow for both columns,
+so widening brings it back with its expansion intact.
+
+Its width has two owners on purpose: the drag runs through `useResizablePanel`
+with **no** `storageKey` (a second localStorage owner for one number would drift
+from the store the toggle reads) and commits to `unifiedPanelTree` when the drag
+ends. What renders is that width put through `clampUnifiedTreeWidth` against the
+panel's live width, so the tree gives up space before the view does.
 
 ## Permissions ride on one bit
 

@@ -26,6 +26,11 @@
  *    least `DOCK_MIN_CHAT_WIDTH`. It comes from the existing
  *    `useWorkspaceDock` controller, so the flag-on and flag-off panels share the
  *    same open/width persistence and the same header toggle.
+ *  - **The file-tree column.** A collapsible tree pinned to the panel's right
+ *    edge, beside whatever the active tab is showing — a terminal, a canvas, or
+ *    the empty state. It is panel-level (`unifiedPanelTree`), not a tab and not
+ *    per-tab, and it has its own drag: the tree gives up width before the view
+ *    does, and a panel too narrow for both hides it without closing it.
  *
  * Closing is guarded rather than immediate where a close would destroy something
  * (AC-05). A terminal tab with live sessions asks before ending them; a file tab
@@ -42,9 +47,19 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
+import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../WorkspaceRightDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
+import { ExplorerPanel } from '../explorer/ExplorerPanel';
+import { explorerFileTabInput } from './unifiedExplorerFiles';
+import {
+    UNIFIED_TREE_MIN_WIDTH,
+    clampUnifiedTreeWidth,
+    isUnifiedTreeVisible,
+    maxUnifiedTreeWidth,
+    useUnifiedPanelTree,
+} from './unifiedPanelTree';
 import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
@@ -123,6 +138,63 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             ...(owner === workspaceId || !targetLabel ? {} : { repoLabel: targetLabel }),
         });
     }, [open, workspaceId, target, targetLabel, chatId]);
+
+    // ------------------------------------------------------------------
+    // The file-tree column (AC-01)
+    // ------------------------------------------------------------------
+
+    // Panel-level, not per-tab: the column stays put across tab switches, chat
+    // switches, a collapse, and a reload, and it renders beside every kind of
+    // view — including the empty state, which is why closing the last tab with
+    // the tree open leaves the panel showing a tree next to "Nothing open".
+    const tree = useUnifiedPanelTree(workspaceId);
+    const treeVisible = isUnifiedTreeVisible(tree.state, width);
+
+    // The column's drag. It is deliberately given no `storageKey`: the width
+    // lives in the tree store, which the toggle in the toolbar shares, and two
+    // localStorage owners for one number would drift. So the drag runs
+    // uncommitted and the result is written back when it ends.
+    const treeResize = useResizablePanel({
+        initialWidth: tree.state.width,
+        minWidth: UNIFIED_TREE_MIN_WIDTH,
+        maxWidth: maxUnifiedTreeWidth(width),
+        direction: 'right',
+    });
+    const treeDragged = useRef(false);
+    useEffect(() => {
+        if (treeResize.isDragging) {
+            treeDragged.current = true;
+            return;
+        }
+        if (!treeDragged.current) return;
+        treeDragged.current = false;
+        tree.setWidth(treeResize.width);
+    }, [treeResize.isDragging, treeResize.width, tree]);
+
+    // What the column actually renders at: the live drag width, clamped against
+    // the panel's current width so the active view keeps its minimum. A panel
+    // dragged narrow shrinks the tree first, and below the point where both fit
+    // `treeVisible` hides it without touching the user's open bit.
+    const treeWidth = clampUnifiedTreeWidth(treeResize.width, width);
+
+    // A file picked in the tree opens against the dock's target, exactly as an
+    // Explorer navigator tab's selection does — same descriptor builder, so the
+    // tree column and the `+` menu file the same kind of tab.
+    const openTreeFile = useCallback(
+        (
+            file: { path: string; name: string; line?: number },
+            options: { preview: boolean; readOnly?: boolean },
+        ) => {
+            const input = explorerFileTabInput(file, options, {
+                ownerWorkspaceId: target,
+                scopeWorkspaceId: workspaceId,
+                ownerLabel: targetLabel,
+                chatId,
+            });
+            if (input) open(input);
+        },
+        [target, workspaceId, targetLabel, chatId, open],
+    );
 
     // Per-tab dirty / error state, reported by the views. It lives here rather
     // than in each view because the strip has to show it for tabs that are not
@@ -423,48 +495,107 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     </div>
                 )}
 
-                {tabs.length === 0 ? (
-                    <div
-                        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
-                        data-testid="unified-panel-empty"
-                    >
-                        <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">Nothing open in this panel.</p>
-                        <button
-                            type="button"
-                            data-testid="unified-panel-empty-open"
-                            onClick={toggleMenu}
-                            className={cn(
-                                'rounded border border-[#c8c8c8] px-2.5 py-1 text-xs text-[#1f1f1f] hover:bg-[#e8e8e8]',
-                                'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40',
-                                'dark:border-[#3c3c3c] dark:text-[#cccccc] dark:hover:bg-[#37373d]',
-                            )}
-                        >
-                            Open…
-                        </button>
-                    </div>
-                ) : (
-                    mountedTabs.map(tab => (
+                {/* Views on the left, the file tree pinned to the panel's right
+                    edge — one row spanning everything below the tab strip. */}
+                <div className="flex min-h-0 min-w-0 flex-1" data-testid="unified-panel-content">
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                    {tabs.length === 0 ? (
                         <div
-                            key={tab.id}
-                            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-                            style={{ display: tab.id === activeId ? undefined : 'none' }}
-                            data-testid={`unified-panel-view-${tab.id}`}
-                            data-active={tab.id === activeId ? 'true' : 'false'}
+                            className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
+                            data-testid="unified-panel-empty"
                         >
-                            <UnifiedTabView
-                                tab={tab}
-                                scopeWorkspaceId={workspaceId}
-                                chatId={chatId}
-                                onOpenResource={openResource}
-                                onClose={requestClose}
-                                onDirtyChange={handleDirtyChange}
-                                onErrorChange={handleErrorChange}
-                                onRegisterSave={handleRegisterSave}
-                                onTerminalSessionsChange={handleTerminalSessions}
-                            />
+                            <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">Nothing open in this panel.</p>
+                            <button
+                                type="button"
+                                data-testid="unified-panel-empty-open"
+                                onClick={toggleMenu}
+                                className={cn(
+                                    'rounded border border-[#c8c8c8] px-2.5 py-1 text-xs text-[#1f1f1f] hover:bg-[#e8e8e8]',
+                                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40',
+                                    'dark:border-[#3c3c3c] dark:text-[#cccccc] dark:hover:bg-[#37373d]',
+                                )}
+                            >
+                                Open…
+                            </button>
                         </div>
-                    ))
-                )}
+                    ) : (
+                        mountedTabs.map(tab => (
+                            <div
+                                key={tab.id}
+                                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                                style={{ display: tab.id === activeId ? undefined : 'none' }}
+                                data-testid={`unified-panel-view-${tab.id}`}
+                                data-active={tab.id === activeId ? 'true' : 'false'}
+                            >
+                                <UnifiedTabView
+                                    tab={tab}
+                                    scopeWorkspaceId={workspaceId}
+                                    chatId={chatId}
+                                    onOpenResource={openResource}
+                                    onClose={requestClose}
+                                    onDirtyChange={handleDirtyChange}
+                                    onErrorChange={handleErrorChange}
+                                    onRegisterSave={handleRegisterSave}
+                                    onTerminalSessionsChange={handleTerminalSessions}
+                                />
+                            </div>
+                        ))
+                    )}
+
+                    {/* A tab is selected but its view has not mounted yet (restored
+                        while the panel was collapsed): show nothing rather than the
+                        empty state, which would read as "no tabs". */}
+                    {tabs.length > 0 && active !== null && !mountedIds.has(active.id) && (
+                        <div className="min-h-0 flex-1" data-testid="unified-panel-pending" />
+                    )}
+                    </div>
+
+                    {/* Mounted while the user has the column open, hidden (never
+                        unmounted) when the panel is too narrow to show it, so
+                        widening restores the tree with its expansion intact. */}
+                    {tree.state.open && (
+                        <div
+                            className="flex min-h-0 flex-shrink-0"
+                            style={{ display: treeVisible ? undefined : 'none' }}
+                            data-testid="unified-panel-tree"
+                        >
+                            {/* Right-anchored column: drag left to widen it. */}
+                            <div
+                                className={cn(
+                                    'group relative flex w-1.5 flex-shrink-0 cursor-col-resize items-center justify-center border-l border-[#e0e0e0] dark:border-[#333]',
+                                    'hover:bg-[#007acc]/15 active:bg-[#007acc]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40 transition-colors',
+                                    treeResize.isDragging && 'bg-[#007acc]/20',
+                                )}
+                                onMouseDown={treeResize.handleMouseDown}
+                                onTouchStart={treeResize.handleTouchStart}
+                                data-testid="unified-panel-tree-resize-handle"
+                                role="separator"
+                                aria-orientation="vertical"
+                                aria-label="Resize file tree"
+                                aria-valuemin={UNIFIED_TREE_MIN_WIDTH}
+                                aria-valuemax={maxUnifiedTreeWidth(width)}
+                                aria-valuenow={treeWidth}
+                                tabIndex={0}
+                            />
+                            <div
+                                className="flex min-h-0 flex-shrink-0 flex-col overflow-hidden"
+                                style={{ width: treeWidth }}
+                                data-tree-width={treeWidth}
+                            >
+                                <ExplorerPanel
+                                    workspaceId={target}
+                                    // Same rule as an Explorer tab: only a column
+                                    // pointed at the panel's own workspace may write
+                                    // the explorer deep-link hash, or a group member's
+                                    // file click would navigate out of the group.
+                                    deepLink={target === workspaceId}
+                                    mode="sidebar"
+                                    onOpenFile={openTreeFile}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 <ExplorerCloseTabsDialog
                     open={pendingDirty !== null}
@@ -485,13 +616,6 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                         onCancel={cancelClose}
                         onConfirm={confirmClose}
                     />
-                )}
-
-                {/* A tab is selected but its view has not mounted yet (restored
-                    while the panel was collapsed): show nothing rather than the
-                    empty state, which would read as "no tabs". */}
-                {tabs.length > 0 && active !== null && !mountedIds.has(active.id) && (
-                    <div className="min-h-0 flex-1" data-testid="unified-panel-pending" />
                 )}
             </div>
         </div>
