@@ -14,6 +14,9 @@
  *    Alt+Arrow moves the focused tab one place within its own section, so the
  *    strip is not a drag-only control. Both paths refuse to cross the divider:
  *    ownership is not a gesture (AC-02).
+ *  - **Promotion is a gesture, not a button.** Double-clicking a preview tab
+ *    (or pressing Enter on it) makes it permanent; the strip only reports the
+ *    gesture, the model owns the one-way rule (AC-04).
  *  - **State without color.** Dirty is a dot, errors a warning sign, read-only
  *    a lock, and the active tab carries `aria-selected` plus an underline — the
  *    strip stays readable to anyone who cannot separate the accents.
@@ -101,6 +104,13 @@ export interface UnifiedPanelTabStripProps {
     onClose: (id: string) => void;
     /** Reorder: put `id` where `beforeId` sits, or at the end of its section. */
     onMove: (id: string, beforeId: string | null) => void;
+    /**
+     * Make a preview tab permanent (AC-04). Raised by a double click on the
+     * tab, the strip's half of "double-click to keep open" that the preview
+     * tooltip promises. A no-op for a tab that is already permanent, so the
+     * strip does not have to check.
+     */
+    onPromote?: (id: string) => void;
     /** The trailing "+" — opens the searchable resource menu (AC-03). */
     onOpenMenu?: () => void;
     /**
@@ -121,6 +131,7 @@ export function UnifiedPanelTabStrip({
     onActivate,
     onClose,
     onMove,
+    onPromote,
     onOpenMenu,
     trailing,
     className,
@@ -164,7 +175,10 @@ export function UnifiedPanelTabStrip({
         }
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
+            // Enter is the keyboard's double click here: activating a preview
+            // that is already active would otherwise have no way to keep it.
             onActivate(tab.id);
+            if (tab.preview) onPromote?.(tab.id);
             return;
         }
         const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
@@ -227,6 +241,7 @@ export function UnifiedPanelTabStrip({
                             data-readonly={tab.readOnly || undefined}
                             data-section-start={startsChatSection || undefined}
                             onClick={() => onActivate(tab.id)}
+                            onDoubleClick={() => onPromote?.(tab.id)}
                             onAuxClick={event => {
                                 if (event.button !== 1) return;
                                 event.preventDefault();

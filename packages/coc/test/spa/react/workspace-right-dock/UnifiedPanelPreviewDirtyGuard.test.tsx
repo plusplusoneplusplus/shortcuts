@@ -1,18 +1,14 @@
 /**
- * Preview tabs in the unified panel (AC-03) — VS Code's italic, replaceable
- * slot, driven by the file tree's single click.
+ * The dirty-preview close guard (AC-03 DoD 6) — the safety net for replacing a
+ * preview tab that holds unsaved edits.
  *
- * `unifiedPanelTabsModel.test.ts` pins the rules (one preview per section,
- * reuse in place, dedupe against a permanent tab). What these cases pin is the
- * wiring a user actually touches: that the tree's single click reaches the
- * preview slot while every other entry point does not, that the strip renders
- * the slot as italics *and* says so in words, and that reusing the slot goes
- * through the same unsaved-edits prompt a close does.
- *
- * The tree is stubbed down to two buttons per file — a single click and a
- * permanent open — because the real tree's click handling is the Explorer's
- * own, covered in its suite. The file view is real, with a textarea standing in
- * for Monaco, so the dirty case exercises an actual buffer.
+ * This case is deliberately hard to reach: AC-04 promotes a tab the moment it
+ * first reports dirty, so in the shipped UI a dirty tab is never the preview
+ * slot. The guard still has to be right, because the model, a restore, or a
+ * future entry point could put an edited buffer in the slot — losing it
+ * silently is the one failure a file panel must not have. So this suite stubs
+ * `promoteTab` to a no-op, which is exactly the seam the spec allows, and
+ * drives the guard the way a tree click would.
  *
  * @vitest-environment jsdom
  */
@@ -75,6 +71,15 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
 }));
+
+// The seam: promotion off, so an edited preview stays in the slot and the guard
+// below is reachable. Everything else in the model is the real thing.
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel', async () => {
+    const actual = await vi.importActual<typeof import('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel')>(
+        '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel',
+    );
+    return { ...actual, promoteTab: (state: unknown) => state };
+});
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
@@ -141,93 +146,38 @@ afterEach(() => {
     clearUnifiedTreeState();
 });
 
-describe('unified panel preview tabs (AC-03)', () => {
-    it('opens a single click as one italic tab, and reuses it for the next click', () => {
+describe('unified panel preview slot — dirty close guard (AC-03)', () => {
+    it('runs the unsaved-edits prompt before replacing a dirty preview, and cancel keeps it', async () => {
         renderPanel();
-
         fireEvent.click(screen.getByTestId('tree-click-a'));
-        expect(fileTabs()).toEqual([expect.objectContaining({ label: 'a.ts', preview: true })]);
-        const slotId = fileTabs()[0].id;
+        const editor = await screen.findByTestId('mock-monaco-textarea');
+        fireEvent.change(editor, { target: { value: 'edited' } });
+        await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${fileTabs()[0].id}`)).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('tree-click-b'));
-        const tabs = fileTabs();
-        expect(tabs.length).toBe(1);
-        expect(tabs[0].label).toBe('b.ts');
-        expect(tabs[0].preview).toBe(true);
-        // A new resource, so a new identity — but the same one slot.
-        expect(tabs[0].id).not.toBe(slotId);
+
+        // Nothing has been replaced yet: the prompt is up and a.ts is still the
+        // buffer on screen.
+        expect(screen.getByTestId('explorer-close-tabs-prompt')).toBeTruthy();
+        expect(labels()).toEqual(['a.ts']);
+
+        fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));
+        expect(screen.queryByTestId('explorer-close-tabs-prompt')).toBeNull();
+        expect(labels()).toEqual(['a.ts']);
+        expect((screen.getByTestId('mock-monaco-textarea') as HTMLTextAreaElement).value).toBe('edited');
     });
 
-    it('says "preview" in words, not only in italics', () => {
+    it("opens the queued file once Don't Save resolves the dirty preview", async () => {
         renderPanel();
         fireEvent.click(screen.getByTestId('tree-click-a'));
-        const tab = document.querySelector('[role="tab"][data-kind="file"]')!;
+        const editor = await screen.findByTestId('mock-monaco-textarea');
+        fireEvent.change(editor, { target: { value: 'edited' } });
+        await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${fileTabs()[0].id}`)).toBeTruthy());
 
-        expect(tab.getAttribute('title')).toContain('preview — double-click to keep open');
-        expect(tab.textContent).toContain('preview — double-click to keep open');
-        expect(tab.querySelector('[data-testid^="unified-panel-tab-label-"]')!.className).toContain('italic');
-    });
-
-    it('keeps the preview slot last and leaves permanent tabs alone', () => {
-        renderPanel();
-
-        fireEvent.click(screen.getByTestId('tree-click-a'));
-        fireEvent.click(screen.getByTestId('tree-open-b'));
-        fireEvent.click(screen.getByTestId('tree-open-c'));
-
-        expect(labels()).toEqual(['b.ts', 'c.ts', 'a.ts']);
-        expect(fileTabs().filter(tab => tab.preview).map(tab => tab.label)).toEqual(['a.ts']);
-    });
-
-    it('focuses an existing permanent tab instead of previewing the same file twice', () => {
-        renderPanel();
-
-        fireEvent.click(screen.getByTestId('tree-open-a'));
         fireEvent.click(screen.getByTestId('tree-click-b'));
-        fireEvent.click(screen.getByTestId('tree-click-a'));
+        fireEvent.click(screen.getByTestId('explorer-close-dont-save-btn'));
 
-        // a.ts is selected and still permanent; the preview slot still holds b.
-        expect(labels()).toEqual(['a.ts', 'b.ts']);
-        expect(fileTabs()[0].preview).toBe(false);
-        expect(document.querySelector('[role="tab"][data-active]')?.textContent).toContain('a.ts');
-        expect(fileTabs()[1].preview).toBe(true);
+        await waitFor(() => expect(labels()).toEqual(['b.ts']));
+        expect(fileTabs()[0].preview).toBe(true);
     });
-
-    it('does not touch the preview slot when a source link opens a file', () => {
-        renderPanel();
-        fireEvent.click(screen.getByTestId('tree-click-a'));
-
-        act(() => {
-            openUnifiedPanelTab(WS, {
-                kind: 'file',
-                ownerWorkspaceId: WS,
-                chatId: CHAT,
-                resourceId: 'src/linked.ts',
-                label: 'linked.ts',
-                readOnly: true,
-            });
-        });
-
-        // The link's tab is permanent and lands before the preview, which is
-        // still the one replaceable slot.
-        expect(labels()).toEqual(['linked.ts', 'a.ts']);
-        expect(fileTabs().filter(tab => tab.preview).map(tab => tab.label)).toEqual(['a.ts']);
-    });
-
-    it('files the preview under the chat when one is selected, and the workspace otherwise', () => {
-        const withChat = renderPanel(CHAT);
-        fireEvent.click(screen.getByTestId('tree-click-a'));
-        expect(fileTabs()[0].id).toContain(CHAT);
-        withChat.unmount();
-
-        clearUnifiedPanelState();
-        renderPanel(null);
-        fireEvent.click(screen.getByTestId('tree-click-a'));
-        expect(fileTabs()[0].id).toContain('@workspace');
-    });
-
-    // The dirty-preview guard moved to `UnifiedPanelPreviewDirtyGuard.test.tsx`:
-    // once AC-04 promotes a tab on its first edit, a dirty preview is no longer
-    // reachable through the UI, so that suite stubs promotion out to reach the
-    // safety net the guard exists to be.
 });

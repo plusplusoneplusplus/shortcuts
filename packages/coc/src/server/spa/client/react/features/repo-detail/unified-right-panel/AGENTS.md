@@ -140,6 +140,21 @@ Two rules keep the slot honest:
 and is one-way. Promotion frees the slot, so the next single click opens a new
 preview beside the promoted tab.
 
+Four gestures reach it, all meaning "I am keeping this file":
+
+| Gesture | Where it is wired |
+| --- | --- |
+| Double click the tree row (or Ctrl/Cmd+Enter, or the row menu's **Open**) | `ExplorerPanel` sends `preview: false`; `openTreeFile` routes it to `openTab`, whose merge drops the bit in place |
+| Double click the tab, or Enter on a focused preview tab | `UnifiedPanelTabStrip`'s `onPromote` |
+| First edit | `handleDirtyChange` promotes on the `false → true` transition |
+| Drag or Alt+Arrow the tab | `moveTab` promotes what it moves, so both reorder paths agree |
+
+The tree's double click arrives as click, click, dblclick. The two clicks are the
+same preview open, which the model answers with the identical state reference, so
+nothing remounts before the promotion lands. `ExplorerPanel` needs `onFilePin`
+wherever a permanent tab has somewhere to live — its own strip *or* a host that
+takes the opens — not only when the explorer-tabs flag is on.
+
 ## Permissions ride on one bit
 
 `tab.readOnly` moves only on an explicit `openTab` — the entry point decides, and
@@ -227,6 +242,11 @@ the diff, source-link, note-link, and canvas cases; the flag-off/flag-on swap is
 pinned in `test/spa/react/repos/RepoGroupView.dock.test.tsx`.
 
 Traps that have bitten this directory:
+
+- **A dirty preview is unreachable through the UI**, because the first edit
+  promotes the tab. `UnifiedPanelPreviewDirtyGuard.test.tsx` stubs `promoteTab`
+  to a no-op so the reuse guard is still exercised; do not "fix" that suite by
+  deleting it, and do not try to set the case up through the editor.
 
 - Several suites mock `react/utils/config` with an **explicit export list**, so a
   new `is…Enabled` reaching RepoDetail/RepoGroupView breaks them with "No <name>

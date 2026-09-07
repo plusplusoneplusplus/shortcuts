@@ -55,6 +55,8 @@ beforeEach(() => {
     clearExplorerTreeCache();
     localStorage.clear();
     location.hash = '';
+    // jsdom has no layout, so the tree's focus-follow scroll needs a stub.
+    Element.prototype.scrollIntoView = vi.fn();
     treeSpy.mockResolvedValue({ entries: ROOT });
 });
 
@@ -153,5 +155,77 @@ describe('ExplorerPanel — sidebar mode (the unified panel tree column)', () =>
         await waitFor(() => expect(screen.queryByTestId('tree-node-src/app.ts')).toBeNull());
         expect(screen.getByTestId('tree-node-readme.md')).toBeTruthy();
         expect(onOpenFile).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * AC-04's tree half: the gestures that ask the host for a permanent tab rather
+ * than the replaceable preview slot. The panel does not know what a preview is
+ * — it only reports `preview: false`, and the host promotes.
+ */
+describe('ExplorerPanel — permanent-open gestures (AC-04)', () => {
+    it('hands a double click to the host as a permanent open', async () => {
+        const onOpenFile = vi.fn();
+        await renderPanel({ workspaceId: WS, mode: 'sidebar', onOpenFile });
+
+        // What a browser actually sends: click, click, dblclick. The two clicks
+        // ask for the same preview twice, which the host treats as a focus.
+        const row = screen.getByTestId('tree-node-readme.md');
+        fireEvent.click(row);
+        fireEvent.click(row);
+        fireEvent.doubleClick(row);
+
+        expect(onOpenFile).toHaveBeenCalledTimes(3);
+        expect(onOpenFile.mock.calls.map(([, options]) => options.preview)).toEqual([true, true, false]);
+        expect(onOpenFile).toHaveBeenLastCalledWith(
+            expect.objectContaining({ path: 'readme.md' }),
+            expect.objectContaining({ preview: false }),
+        );
+    });
+
+    it('offers a permanent open in the file context menu, above the preview one', async () => {
+        const onOpenFile = vi.fn();
+        await renderPanel({ workspaceId: WS, mode: 'sidebar', onOpenFile });
+
+        fireEvent.contextMenu(screen.getByTestId('tree-node-readme.md'));
+        const items = Array.from(document.querySelectorAll('[role="menuitem"]'));
+        const labels = items.map(node => (node.textContent ?? '').trim());
+        const permanent = labels.findIndex(label => /Open$/.test(label));
+        const previewItem = labels.findIndex(label => label.includes('Open Preview'));
+        expect(permanent).toBeGreaterThanOrEqual(0);
+        expect(previewItem).toBeGreaterThan(permanent);
+
+        fireEvent.click(items[permanent]);
+        expect(onOpenFile).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'readme.md' }),
+            expect.objectContaining({ preview: false }),
+        );
+    });
+
+    it('opens permanently on Ctrl/Cmd+Enter and previews on plain Enter', async () => {
+        const onOpenFile = vi.fn();
+        await renderPanel({ workspaceId: WS, mode: 'sidebar', onOpenFile });
+        const tree = screen.getByTestId('file-tree-scroll');
+
+        // Focus the first row, then walk down to the file.
+        fireEvent.keyDown(tree, { key: 'ArrowDown' });
+        fireEvent.keyDown(tree, { key: 'ArrowDown' });
+        fireEvent.keyDown(tree, { key: 'Enter' });
+        expect(onOpenFile).toHaveBeenLastCalledWith(
+            expect.objectContaining({ path: 'readme.md' }),
+            expect.objectContaining({ preview: true }),
+        );
+
+        fireEvent.keyDown(tree, { key: 'Enter', ctrlKey: true });
+        expect(onOpenFile).toHaveBeenLastCalledWith(
+            expect.objectContaining({ path: 'readme.md' }),
+            expect.objectContaining({ preview: false }),
+        );
+
+        fireEvent.keyDown(tree, { key: 'Enter', metaKey: true });
+        expect(onOpenFile).toHaveBeenLastCalledWith(
+            expect.objectContaining({ path: 'readme.md' }),
+            expect.objectContaining({ preview: false }),
+        );
     });
 });

@@ -548,6 +548,13 @@ export function visibleTabIds(state: UnifiedPanelState, chatId: string | null): 
  * rejected rather than silently re-homed: ownership is not a drag gesture.
  * Passing `beforeId: null` moves the tab to the end of its section — or to
  * just before the preview tab, which keeps the preview slot last.
+ *
+ * Reordering a preview tab **promotes it** (AC-04): arranging a tab is a
+ * statement that you mean to keep it, and a preview that stayed a preview after
+ * being dragged would be evicted by the next single click, throwing away the
+ * arrangement. Promotion happens here rather than in the strip so drag and
+ * Alt+Arrow agree by construction, and it also releases the "preview is last"
+ * rule for this move — the tab is permanent by the time it is re-inserted.
  */
 export function moveTab(state: UnifiedPanelState, id: string, beforeId: string | null): UnifiedPanelState {
     const tab = findTab(state, id);
@@ -559,18 +566,20 @@ export function moveTab(state: UnifiedPanelState, id: string, beforeId: string |
     if (from < 0) return state;
 
     const without = list.filter(entry => entry.id !== id);
+    // The moved tab is permanent once it lands, whatever it was before.
+    const { preview: _preview, ...moved } = tab;
     if (beforeId === null) {
-        // "To the end" for a permanent tab means *before* the preview slot, not
-        // after it: the preview is always the section's last tab, so a drag or
-        // an Alt+Arrow to the far right stops one place short of it (AC-03).
-        return withList(state, scopeKey, scope, tab.preview === true
-            ? [...without, tab]
-            : insertPermanent(without, tab));
+        // "To the end" means *before* the preview slot, not after it: the
+        // preview is always its section's last tab, so a drag or an Alt+Arrow to
+        // the far right stops one place short of it (AC-03). A promoted tab
+        // reads that rule against the *other* tabs, since it is no longer the
+        // slot itself.
+        return withList(state, scopeKey, scope, insertPermanent(without, moved));
     }
     const to = without.findIndex(entry => entry.id === beforeId);
     // `beforeId` outside this section means a cross-section drag; ignore it.
     if (to < 0) return state;
-    return withList(state, scopeKey, scope, [...without.slice(0, to), tab, ...without.slice(to)]);
+    return withList(state, scopeKey, scope, [...without.slice(0, to), moved, ...without.slice(to)]);
 }
 
 // ---------------------------------------------------------------------------

@@ -441,9 +441,38 @@ describe('unifiedPanelTabsModel — preview tabs', () => {
         state = moveTab(state, oneId, null);
         expect(sectionLabels(state)).toEqual(['two.ts', 'one.ts', 'src/prev.ts']);
 
-        // The preview itself may still be dragged to the end of its section.
-        state = moveTab(state, previewTab(state, null)!.id, null);
+        // The preview itself may still be dragged to the end of its section —
+        // where the drag promotes it (AC-04), so the slot empties out.
+        state = moveTab(state, state.chatTabs[WORKSPACE_SCOPE_KEY]![2].id, null);
         expect(sectionLabels(state)).toEqual(['two.ts', 'one.ts', 'src/prev.ts']);
+        expect(previewTab(state, null)).toBeNull();
+    });
+
+    it('promotes a preview tab that is dragged to a new position', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, { kind: 'file', resourceId: 'src/one.ts', label: 'one.ts' });
+        state = open(state, { kind: 'file', resourceId: 'src/two.ts', label: 'two.ts' });
+        state = preview(state, 'src/prev.ts');
+        const previewId = previewTab(state, null)!.id;
+        const oneId = state.chatTabs[WORKSPACE_SCOPE_KEY]![0].id;
+
+        state = moveTab(state, previewId, oneId);
+
+        // Moved, permanent, and the section now has no preview slot at all — so
+        // the next single click opens a new one rather than evicting this tab.
+        expect(sectionLabels(state)).toEqual(['src/prev.ts', 'one.ts', 'two.ts']);
+        expect(findTab(state, previewId)?.preview).toBeUndefined();
+        expect(previewTab(state, null)).toBeNull();
+        state = preview(state, 'src/next.ts');
+        expect(sectionLabels(state)).toEqual(['src/prev.ts', 'one.ts', 'two.ts', 'src/next.ts']);
+    });
+
+    it('leaves a rejected cross-section drag of a preview unpromoted', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, { kind: 'terminal', resourceId: 'sess-1', label: 'bash' });
+        state = preview(state, 'src/a.ts', { chatId: CHAT_1 });
+        const previewId = previewTab(state, CHAT_1)!.id;
+
+        expect(moveTab(state, previewId, state.workspaceTabs[0].id)).toBe(state);
+        expect(previewTab(state, CHAT_1)?.id).toBe(previewId);
     });
 
     it('promotes a preview in place, keeping identity and position', () => {

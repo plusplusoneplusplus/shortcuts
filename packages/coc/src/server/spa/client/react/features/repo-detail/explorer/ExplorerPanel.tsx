@@ -796,6 +796,16 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode }
                 onClick: () => handleFindInFolder(entry.path),
             });
         } else {
+            // "Open" is the permanent-open affordance a keyboard user reaches
+            // for: Enter on a tree row previews, and the context menu (Menu key
+            // or Shift+F10) is how that preview is made to stay (AC-04).
+            items.push({
+                label: 'Open',
+                icon: '📄',
+                onClick: () => {
+                    openFileInEditor({ path: entry.path, name: entry.name }, { preview: false });
+                },
+            });
             items.push({
                 label: 'Open Preview',
                 icon: '👁️',
@@ -1333,7 +1343,10 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile, mode }
                             onSelect={handleSelect}
                             onToggle={handleToggle}
                             onFileOpen={handleFileOpen}
-                            onFilePin={tabsEnabled ? handleFilePin : undefined}
+                            // Pinning needs somewhere for a permanent tab to
+                            // live: this panel's own strip, or a host that
+                            // takes the opens (navigator/sidebar mode).
+                            onFilePin={tabsEnabled || onOpenFile ? handleFilePin : undefined}
                             onChildrenLoaded={handleChildrenLoaded}
                             onContextMenu={handleTreeContextMenu}
                             filterQuery={searchQuery}

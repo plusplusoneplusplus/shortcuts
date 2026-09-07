@@ -1,6 +1,7 @@
 /**
  * FileTree — recursive, lazy-loaded tree sidebar for the explorer panel.
- * Supports keyboard navigation (arrow keys, Enter/Space) and substring filtering.
+ * Supports keyboard navigation (arrow keys, Enter/Space for a preview open,
+ * Ctrl/Cmd+Enter for a permanent one) and substring filtering.
  */
 
 import { useState, useCallback, useMemo, type Ref } from 'react';
@@ -17,7 +18,7 @@ export interface FileTreeProps {
     onSelect: (path: string, isDirectory: boolean) => void;
     onToggle: (path: string) => void;
     onFileOpen?: (entry: TreeEntry) => void;
-    /** Double click on a file row; see TreeNodeProps.onFilePin. */
+    /** Double click or Ctrl/Cmd+Enter on a file row; see TreeNodeProps.onFilePin. */
     onFilePin?: (entry: TreeEntry) => void;
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
     onContextMenu?: (e: React.MouseEvent, entry: TreeEntry) => void;
@@ -132,12 +133,18 @@ export function FileTree({
                 const node = visibleNodes[focusedIndex];
                 if (node) {
                     onSelect(node.path, node.type === 'dir');
-                    if (node.type === 'file') onFileOpen?.(node);
+                    // Plain Enter is the keyboard's single click — a preview.
+                    // Ctrl/Cmd+Enter is its double click, the permanent open, so
+                    // keeping a file never requires a mouse (AC-04).
+                    if (node.type === 'file') {
+                        if ((e.ctrlKey || e.metaKey) && onFilePin) onFilePin(node);
+                        else onFileOpen?.(node);
+                    }
                 }
                 break;
             }
         }
-    }, [visibleNodes, focusedIndex, expandedPaths, onToggle, onSelect, onFileOpen]);
+    }, [visibleNodes, focusedIndex, expandedPaths, onToggle, onSelect, onFileOpen, onFilePin]);
 
     // Build a set of focused paths for efficient lookup
     const focusedPath = focusedIndex >= 0 && focusedIndex < visibleNodes.length

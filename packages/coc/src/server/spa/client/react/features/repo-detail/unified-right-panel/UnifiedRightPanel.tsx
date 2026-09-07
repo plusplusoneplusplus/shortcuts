@@ -112,7 +112,7 @@ export interface UnifiedRightPanelProps {
 export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }: UnifiedRightPanelProps) {
     const { isOpen, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const {
-        tabs, activeId, active, open, openPreview, previewToReplace, activate, close, move,
+        tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
     } = useUnifiedPanelTabs(workspaceId, chatId);
 
     // Views mounted so far, by tab id. A tab enters this set when it first
@@ -248,8 +248,16 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         [],
     );
     const handleDirtyChange = useCallback(
-        (id: string, isDirty: boolean) => setFlag(setDirtyIds, id, isDirty),
-        [setFlag],
+        (id: string, isDirty: boolean) => {
+            setFlag(setDirtyIds, id, isDirty);
+            // Typing into a preview keeps it (AC-04). The edit is the strongest
+            // possible statement that this file is not a glance, and a preview
+            // holding unsaved work would be one tree click from a close prompt.
+            // `promote` is a no-op for a tab that is already permanent, so this
+            // costs a lookup on every later dirty report and nothing else.
+            if (isDirty) promote(id);
+        },
+        [setFlag, promote],
     );
     const handleErrorChange = useCallback(
         (id: string, hasError: boolean) => setFlag(setErrorIds, id, hasError),
@@ -564,6 +572,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     onActivate={activate}
                     onClose={requestClose}
                     onMove={move}
+                    onPromote={promote}
                     onOpenMenu={toggleMenu}
                     trailing={toolbar === null ? treeToggle('strip') : undefined}
                 />

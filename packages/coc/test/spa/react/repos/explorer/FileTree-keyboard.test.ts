@@ -89,7 +89,11 @@ describe('FileTree keyboard navigation', () => {
         });
 
         it('calls onFileOpen on Enter/Space for file nodes', () => {
-            expect(source).toContain("if (node.type === 'file') onFileOpen?.(node)");
+            expect(source).toContain('onFileOpen?.(node)');
+        });
+
+        it('calls onFilePin instead on Ctrl/Cmd+Enter — the permanent open', () => {
+            expect(source).toContain('(e.ctrlKey || e.metaKey) && onFilePin');
         });
     });
 
