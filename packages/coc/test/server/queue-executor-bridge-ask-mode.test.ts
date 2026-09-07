@@ -611,7 +611,7 @@ describe('READ_ONLY_SYSTEM_MESSAGE constant', () => {
 // Tests — Plan-Folder Auto-Folder Location Block in System Message
 // ============================================================================
 
-describe('ask mode system message — auto-folder location block', () => {
+describe('ask mode plan save-location guidance', () => {
     let store: ReturnType<typeof createMockProcessStore>;
 
     beforeEach(() => {
@@ -636,7 +636,7 @@ describe('ask mode system message — auto-folder location block', () => {
         expect(callArgs.systemMessage?.content ?? '').not.toContain('<chosen-folder>');
     });
 
-    it('should include auto-folder location block when task has workingDirectory in ask mode', async () => {
+    it('should nest the plan destination in the ask directive when workingDirectory is set', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task: QueuedTask = {
             id: 'task-wd',
@@ -652,12 +652,13 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
-        expect(callArgs.systemMessage?.content).toContain('<chosen-folder>');
-        expect(callArgs.systemMessage?.content).toContain('<descriptive-name>.plan.md');
+        expect(callArgs.prompt).toContain('<coc-read-only-mode>');
+        expect(callArgs.prompt).toContain('<chosen-folder>');
+        expect(callArgs.prompt).toContain('<descriptive-name>.plan.md');
+        expect(callArgs.systemMessage?.content ?? '').not.toContain('<chosen-folder>');
     });
 
-    it('should include auto-folder location block for legacy plan mode when workingDirectory is set', async () => {
+    it('should nest the plan destination for legacy plan mode when workingDirectory is set', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task: QueuedTask = {
             id: 'task-plan-wd',
@@ -673,11 +674,12 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(callArgs.prompt).toContain(READ_ONLY_DIRECTIVE);
-        expect(callArgs.systemMessage?.content).toContain('<chosen-folder>');
+        expect(callArgs.prompt).toContain('<coc-read-only-mode>');
+        expect(callArgs.prompt).toContain('<chosen-folder>');
+        expect(callArgs.systemMessage?.content ?? '').not.toContain('<chosen-folder>');
     });
 
-    it('should include the auto-folder block in autopilot mode too — the block is mode-invariant', async () => {
+    it('should give autopilot no plan destination at all', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const task: QueuedTask = {
             id: 'task-auto-wd',
@@ -693,9 +695,10 @@ describe('ask mode system message — auto-folder location block', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        // The save-location block is inert in autopilot, but gating it on the
-        // mode would put a mode-dependent byte back into the cached prefix.
-        expect(callArgs.systemMessage?.content).toContain('<chosen-folder>');
+        // The destination is an ask-mode exception, so autopilot receives
+        // neither it nor the read-only rules it belongs to.
+        expect(callArgs.systemMessage?.content ?? '').not.toContain('<chosen-folder>');
+        expect(callArgs.prompt).not.toContain('<chosen-folder>');
         expect(callArgs.systemMessage?.content ?? '').not.toContain(READ_ONLY_DIRECTIVE);
         expect(callArgs.prompt).not.toContain(READ_ONLY_DIRECTIVE);
     });

@@ -39,7 +39,7 @@ import { CompactionSummaryDisclosure } from './CompactionSummaryDisclosure';
 import { InjectedBlockDisclosure } from './InjectedBlockDisclosure';
 import { SkillPills } from './SkillPills';
 import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
-import { extractInjectedBlocks } from './injectedBlocks';
+import { extractInjectedBlocks, projectChatModeContextForDisplay } from './injectedBlocks';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
 import { REWIND_NO_ANCHOR_TOOLTIP, resolveRewindCapability } from '../hooks/rewindCapability';
@@ -1128,6 +1128,17 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         () => isUser ? extractInjectedBlocks(turn.content || '') : { text: '' },
         [isUser, turn.content],
     );
+    // Prefer the marker the executor recorded: it is the directive actually
+    // sent, so it carries the live plan destination and shows up even on a
+    // re-injection the route could not predict. The block extracted from the
+    // stored content stays as the fallback for older turns, for autopilot
+    // transitions, and for the window before the marker lands.
+    const chatModeBlock = useMemo(
+        () => isUser
+            ? projectChatModeContextForDisplay(turn.chatModeContext) ?? injectedBlocks.chatMode
+            : undefined,
+        [isUser, turn.chatModeContext, injectedBlocks.chatMode],
+    );
     const parsedUserContent = useMemo(
         () => isUser ? parseAttachedSessionContextBlocks(injectedBlocks.text) : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], remainingContent: '' },
         [isUser, injectedBlocks.text],
@@ -1739,9 +1750,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             ⚠ Failed to load images · Retry
                         </button>
                     )}
-                    {isUser && injectedBlocks.chatMode && (
+                    {isUser && chatModeBlock && (
                         <InjectedBlockDisclosure
-                            block={injectedBlocks.chatMode}
+                            block={chatModeBlock}
                             label="Chat mode"
                             testIdPrefix="chat-mode-block"
                         />

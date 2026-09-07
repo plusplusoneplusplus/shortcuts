@@ -12,7 +12,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { AutoFolderContext } from '@plusplusoneplusplus/forge';
 import type { MemoryV2Addon } from '../../../src/server/executors/memory-v2-addon';
 import { GLOBAL_SYSTEM_PROMPT_TAG } from '../../../src/server/executors/system-message-builder';
 import {
@@ -33,10 +32,6 @@ function memoryAddon(suffix?: string): MemoryV2Addon {
         excludedBuiltinTools: [],
         dispose: () => {},
     } as unknown as MemoryV2Addon;
-}
-
-function autoFolder(): AutoFolderContext {
-    return { tasksRoot: '/data/ws/notes/Plans', existingFolders: ['refactoring'] } as AutoFolderContext;
 }
 
 function input(overrides: Partial<ChatTurnSystemMessageInput> = {}): ChatTurnSystemMessageInput {
@@ -89,24 +84,30 @@ describe('buildChatTurnSystemMessage', () => {
         expect(result!.content).not.toContain('coc-read-only-mode');
     });
 
-    it('places the auto-folder block after tool guidance and the note block last', async () => {
+    it('places the note block after tool guidance', async () => {
         const result = await buildChatTurnSystemMessage(input({
             toolGuidance: 'TOOL-GUIDANCE',
-            autoFolderContext: autoFolder(),
             notePath: 'Notes/a.md',
         }));
 
         const content = result!.content;
-        expect(content.indexOf('notes/Plans')).toBeGreaterThan(content.indexOf('TOOL-GUIDANCE'));
-        expect(content.indexOf('Notes/a.md')).toBeGreaterThan(content.indexOf('notes/Plans'));
+        expect(content.indexOf('Notes/a.md')).toBeGreaterThan(content.indexOf('TOOL-GUIDANCE'));
     });
 
-    it('suppresses the auto-folder block when the caller passes undefined (grilling / non-ask follow-up)', async () => {
-        const withFolder = await buildChatTurnSystemMessage(input({ autoFolderContext: autoFolder() }));
-        const withoutFolder = await buildChatTurnSystemMessage(input({ autoFolderContext: undefined }));
+    it('accepts no plan-folder input and never advertises a plan destination', async () => {
+        // The destination is workspace state that changes when a folder is
+        // created or renamed; keeping it out of the (cached) system prefix is
+        // the whole point of moving it onto the ask-mode user directive.
+        expect(Object.keys(input())).not.toContain('autoFolderContext');
 
-        expect(withFolder!.content).toContain('notes/Plans');
-        expect(withoutFolder!.content).not.toContain('notes/Plans');
+        const result = await buildChatTurnSystemMessage(input({
+            toolGuidance: 'TOOL-GUIDANCE',
+            notePath: 'Notes/a.md',
+        }));
+
+        expect(result!.content).not.toContain('notes/Plans');
+        expect(result!.content).not.toContain('Save location:');
+        expect(result!.content).not.toContain('Existing folder options:');
     });
 
     it('omits the global prompt block when the admin setting is unset or blank', async () => {
@@ -131,7 +132,6 @@ describe('first-turn and follow-up parity', () => {
             globalSystemPrompt: 'OPERATOR-RULE',
             memoryV2: memoryAddon('MEMORY-BLOCK'),
             toolGuidance: 'TOOL-GUIDANCE',
-            autoFolderContext: autoFolder(),
             notePath: 'Notes/a.md',
         });
 
@@ -207,17 +207,17 @@ describe('Codex ask_user discovery block', () => {
         }
     });
 
-    it('lands with the tool-guidance section, before the auto-folder block', async () => {
+    it('lands with the tool-guidance section, before the note block', async () => {
         const result = await buildChatTurnSystemMessage(input({
             provider: 'codex',
             toolGuidance: 'TOOL-GUIDANCE',
             askUserAvailable: true,
-            autoFolderContext: autoFolder(),
+            notePath: 'Notes/a.md',
         }));
 
         const content = result!.content;
         expect(content.indexOf(MARKER)).toBeGreaterThan(content.indexOf('TOOL-GUIDANCE'));
-        expect(content.indexOf(MARKER)).toBeLessThan(content.indexOf('notes/Plans'));
+        expect(content.indexOf(MARKER)).toBeLessThan(content.indexOf('Notes/a.md'));
     });
 
     it('exposes the same block from the helper regardless of caller', () => {
@@ -266,7 +266,6 @@ describe('mode invariance', () => {
                 provider: 'claude',
                 globalSystemPrompt: 'OPERATOR-RULE',
                 toolGuidance: 'TOOL-GUIDANCE',
-                autoFolderContext: autoFolder(),
             });
 
             // `ChatTurnSystemMessageInput` has no `mode` field at all — that is

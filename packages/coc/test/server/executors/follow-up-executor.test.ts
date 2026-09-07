@@ -1337,7 +1337,7 @@ describe('FollowUpExecutor', () => {
         expect(final?.metadata?.systemPrompt).toBeDefined();
     });
 
-    it('appends the auto-folder block for Copilot autopilot follow-ups too — the block is mode-invariant', async () => {
+    it('keeps the system message free of the plan destination on autopilot follow-ups', async () => {
         const proc = makeProcess({
             id: 'proc-autopilot-source-prompt',
             workingDirectory: '/fake/ws',
@@ -1350,10 +1350,11 @@ describe('FollowUpExecutor', () => {
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
-        // Gating the save-location block on the mode would put a mode-dependent
-        // byte back into the conversation's cached prefix.
-        expect(callArg.systemMessage.content).toContain('<chosen-folder>');
+        // The destination is workspace state, not prefix state: it rides the
+        // ask directive, and autopilot has no ask directive to ride.
+        expect(callArg.systemMessage.content).not.toContain('<chosen-folder>');
         expect(callArg.systemMessage.content).not.toContain('<coc-read-only-mode>');
+        expect(callArg.prompt).not.toContain('<chosen-folder>');
     });
 
     // -------------------------------------------------------------------------
@@ -1978,31 +1979,43 @@ describe('FollowUpExecutor plan save-location block', () => {
         });
         await store.addProcess(proc);
         await makeExecutor(store).executeFollowUp(id, 'another question', undefined, 'ask');
-        return (sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any).systemMessage?.content ?? '';
+        const call = sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any;
+        return { prompt: (call.prompt ?? '') as string, system: (call.systemMessage?.content ?? '') as string };
     }
 
     it('is suppressed for a note-chat follow-up', async () => {
-        const content = await runFollowUp('proc-fu-note', { notePath: 'my-note.md' });
-        expect(content).not.toContain('Save location');
-        expect(content).not.toContain('.plan.md');
+        const { prompt, system } = await runFollowUp('proc-fu-note', { notePath: 'my-note.md' });
+        expect(prompt).not.toContain('Save location');
+        expect(prompt).not.toContain('.plan.md');
+        expect(system).not.toContain('Save location');
     });
 
     it('is suppressed for a commit-chat follow-up', async () => {
-        const content = await runFollowUp('proc-fu-commit', { commitChat: { commitHash: 'abc123' } });
-        expect(content).not.toContain('Save location');
-        expect(content).not.toContain('.plan.md');
+        const { prompt } = await runFollowUp('proc-fu-commit', { commitChat: { commitHash: 'abc123' } });
+        expect(prompt).not.toContain('Save location');
+        expect(prompt).not.toContain('.plan.md');
     });
 
     it('is suppressed for a PR-chat follow-up', async () => {
-        const content = await runFollowUp('proc-fu-pr', { pullRequestChat: { prId: '42' } });
-        expect(content).not.toContain('Save location');
-        expect(content).not.toContain('.plan.md');
+        const { prompt } = await runFollowUp('proc-fu-pr', { pullRequestChat: { prId: '42' } });
+        expect(prompt).not.toContain('Save location');
+        expect(prompt).not.toContain('.plan.md');
     });
 
-    it('is still present for a plain ask follow-up', async () => {
-        const content = await runFollowUp('proc-fu-plain', {});
-        expect(content).toContain('Save location');
-        expect(content).toContain('.plan.md');
+    it('is suppressed for a Ralph grilling follow-up', async () => {
+        const { prompt } = await runFollowUp('proc-fu-grill', { ralph: { phase: 'grilling' } });
+        expect(prompt).not.toContain('Save location');
+        expect(prompt).not.toContain('.plan.md');
+    });
+
+    it('rides the user turn on a plain ask follow-up, never the system message', async () => {
+        const { prompt, system } = await runFollowUp('proc-fu-plain', {});
+        expect(prompt).toContain('Save location');
+        expect(prompt).toContain('.plan.md');
+        expect(prompt).toContain('If the user asks you to save a plan:');
+        expect(prompt.indexOf('Save location'))
+            .toBeLessThan(prompt.indexOf('</coc-read-only-mode>'));
+        expect(system).not.toContain('Save location');
     });
 });
 
@@ -2314,5 +2327,147 @@ describe('FollowUpExecutor chat-mode directive injection', () => {
         await makeExecutor(store).executeFollowUp('proc-mode-legacy', 'hello again', undefined, 'ask');
 
         expect(sentPrompt(0)).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+    });
+});
+
+// ============================================================================
+// Plan-destination drift on follow-up turns
+// ============================================================================
+
+describe('FollowUpExecutor plan-destination drift', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let dataDir: string;
+
+    const dirent = (name: string) => ({ name, isDirectory: () => true }) as unknown as import('fs').Dirent;
+
+    /** Point the mocked readdir at a folder listing for the next turn. */
+    function folders(...names: string[]): void {
+        vi.mocked(fs.promises.readdir).mockResolvedValue(names.map(dirent) as never);
+    }
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
+        mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-plan-drift-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    async function seed(id: string, metadata: Record<string, unknown> = {}): Promise<void> {
+        await store.addProcess(makeProcess({
+            id,
+            sdkSessionId: `sdk-${id}`,
+            workingDirectory: path.join(dataDir, 'repo'),
+            metadata: { type: 'chat', mode: 'ask', workspaceId: 'ws-id', ...metadata } as any,
+            conversationTurns: [
+                { role: 'user', content: 'Hello', timestamp: new Date('2026-01-01T00:00:00Z'), turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'Hi', timestamp: new Date('2026-01-01T00:00:01Z'), turnIndex: 1, timeline: [] },
+            ],
+        }));
+    }
+
+    /** Run one ask follow-up and return the prompt it sent. */
+    async function turn(id: string, message: string): Promise<string> {
+        await makeExecutor(store, undefined, dataDir).executeFollowUp(id, message, undefined, 'ask');
+        return (sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any).prompt as string;
+    }
+
+    it('injects once, then stays silent while the folder list holds', async () => {
+        await seed('proc-drift-stable');
+        folders('right-panel', 'chat-retry');
+
+        const first = await turn('proc-drift-stable', 'first');
+        expect(first).toContain('Existing folder options: chat-retry, right-panel');
+
+        const second = await turn('proc-drift-stable', 'second');
+        expect(second).not.toContain('<coc-chat-mode>');
+    });
+
+    it('stays silent when the same folders come back in a different order', async () => {
+        await seed('proc-drift-reorder');
+        folders('right-panel', 'chat-retry');
+        await turn('proc-drift-reorder', 'first');
+
+        folders('chat-retry', 'right-panel');
+        expect(await turn('proc-drift-reorder', 'second')).not.toContain('<coc-chat-mode>');
+    });
+
+    it('re-injects once with the current list when a folder appears', async () => {
+        await seed('proc-drift-added');
+        folders('right-panel');
+        await turn('proc-drift-added', 'first');
+
+        folders('right-panel', 'sse-unification');
+        const second = await turn('proc-drift-added', 'second');
+        expect(second).toContain('Existing folder options: right-panel, sse-unification');
+
+        const third = await turn('proc-drift-added', 'third');
+        expect(third).not.toContain('<coc-chat-mode>');
+    });
+
+    it('re-injects once when a folder disappears', async () => {
+        await seed('proc-drift-removed');
+        folders('right-panel', 'chat-retry');
+        await turn('proc-drift-removed', 'first');
+
+        folders('right-panel');
+        expect(await turn('proc-drift-removed', 'second')).toContain('Existing folder options: right-panel');
+        expect(await turn('proc-drift-removed', 'third')).not.toContain('<coc-chat-mode>');
+    });
+
+    it('leaves the system message untouched when only the folder list changed', async () => {
+        await seed('proc-drift-system');
+        folders('right-panel');
+        await turn('proc-drift-system', 'first');
+        const firstSystem = (sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any).systemMessage?.content;
+
+        folders('right-panel', 'chat-retry');
+        await turn('proc-drift-system', 'second');
+        const secondSystem = (sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any).systemMessage?.content;
+
+        expect(secondSystem).toBe(firstSystem);
+        expect(secondSystem ?? '').not.toContain('Existing folder options');
+    });
+
+    it('records the directive on the user turn it actually rode', async () => {
+        await seed('proc-drift-marker');
+        folders('right-panel');
+        await turn('proc-drift-marker', 'first');
+
+        const recorded = store.processes.get('proc-drift-marker')?.conversationTurns?.[0].chatModeContext ?? '';
+        expect(recorded).toContain('Existing folder options: right-panel');
+        expect(recorded).toContain('<coc-read-only-mode>');
+    });
+
+    it('does not resolve a destination for a Ralph grilling follow-up', async () => {
+        await seed('proc-drift-grill', { ralph: { phase: 'grilling' } });
+        folders('right-panel');
+
+        const prompt = await turn('proc-drift-grill', 'first');
+        expect(prompt).toContain('<coc-read-only-mode>');
+        expect(prompt).not.toContain('Save location');
+    });
+
+    it('performs no folder I/O for an autopilot follow-up', async () => {
+        await seed('proc-drift-autopilot', { mode: 'autopilot' });
+        vi.mocked(fs.promises.readdir).mockClear();
+
+        await makeExecutor(store, undefined, dataDir)
+            .executeFollowUp('proc-drift-autopilot', 'do it', undefined, 'autopilot');
+
+        expect(vi.mocked(fs.promises.readdir)).not.toHaveBeenCalled();
+    });
+
+    it('performs no folder I/O for an artifact-bound ask follow-up', async () => {
+        await seed('proc-drift-note', { notePath: 'Plans/x.md' });
+        vi.mocked(fs.promises.readdir).mockClear();
+
+        await turn('proc-drift-note', 'first');
+
+        expect(vi.mocked(fs.promises.readdir)).not.toHaveBeenCalled();
     });
 });

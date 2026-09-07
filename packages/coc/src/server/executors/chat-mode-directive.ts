@@ -26,8 +26,8 @@
  * the safety valves.
  */
 
-import { READ_ONLY_SYSTEM_MESSAGE, loadInstructions } from '@plusplusoneplusplus/forge';
-import type { ConversationTurn, ProcessCompactionState, ProcessStore } from '@plusplusoneplusplus/forge';
+import { READ_ONLY_SYSTEM_MESSAGE, buildAutoFolderLocationBlock, loadInstructions, toForwardSlashes } from '@plusplusoneplusplus/forge';
+import type { AutoFolderContext, ConversationTurn, ProcessCompactionState, ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ChatMode, ChatPayload, LegacyChatMode } from '../tasks/task-types';
 import {
     hasClassifyDiffContext,
@@ -51,6 +51,25 @@ import { tagBlock } from './prompt-tags';
 export const CHAT_MODE_DIRECTIVE_TAG = 'coc-chat-mode';
 
 /**
+ * Tag wrapping the read-only rules inside the mode directive. Owned by the
+ * SDK's {@link READ_ONLY_SYSTEM_MESSAGE} constant; named here because the plan
+ * save guidance is spliced in just before the closing tag.
+ */
+export const READ_ONLY_TAG = 'coc-read-only-mode';
+
+/**
+ * Sentence introducing the plan save guidance nested inside the read-only
+ * section.
+ *
+ * Load-bearing in two directions: it tells the model the destination applies
+ * only to an explicit "save a plan" request (it is not a standing instruction
+ * to produce a plan for every question), and it is the literal marker
+ * {@link stripPlanSaveGuidance} splits on when a stored directive has to be
+ * compared against one resolved without folder context.
+ */
+export const PLAN_SAVE_GUIDANCE_INTRO = 'If the user asks you to save a plan:';
+
+/**
  * Note delivered on the first non-ask turn of a chat that previously ran in
  * ask mode. Without it the model still has the read-only block sitting in its
  * conversation history and keeps refusing to edit.
@@ -69,6 +88,16 @@ export interface ModeDirectiveInput {
      * already loaded. The shared `instructions.md` stays in the system prompt.
      */
     modeInstructions?: string;
+    /**
+     * Where a plan belongs when the user asks for one, resolved to the
+     * workspace's `notes/Plans` root. Rendered *inside* the read-only section
+     * because it is the exception that section already carves out; `undefined`
+     * (no working directory, an artifact-bound chat, a Ralph grilling turn)
+     * renders the read-only rules alone.
+     *
+     * Ask mode only — the directive drops it in every other mode.
+     */
+    planSaveContext?: AutoFolderContext;
 }
 
 /**
@@ -78,7 +107,7 @@ export interface ModeDirectiveInput {
  * fresh autopilot chat with no mode instructions.
  */
 export function buildChatModeDirective(input: ModeDirectiveInput): string | undefined {
-    const prose = buildChatModeProse(input.mode, input.previousMode);
+    const prose = buildChatModeProse(input.mode, input.previousMode, input.planSaveContext);
     const modeInstructions = input.modeInstructions?.trim() || undefined;
 
     const parts = [prose, modeInstructions].filter((part): part is string => !!part);
@@ -87,18 +116,72 @@ export function buildChatModeDirective(input: ModeDirectiveInput): string | unde
 }
 
 /**
- * The mode prose half of the directive: the one fixed sentence-block this
- * turn's mode calls for, untagged, or `undefined` when the mode says nothing.
+ * The mode prose half of the directive: the read-only section this turn's mode
+ * calls for, untagged, or `undefined` when the mode says nothing.
  *
- * Exactly one of two known constants, which is what makes a stored directive
- * splittable back into (prose, instructions) — see {@link parseChatModeMarker}.
+ * Either a complete `<coc-read-only-mode>` section (optionally carrying the
+ * nested plan save guidance) or the fixed autopilot transition note, which is
+ * what makes a stored directive splittable back into
+ * (prose, instructions) — see {@link parseChatModeMarker}.
  */
-function buildChatModeProse(rawMode: ChatMode, rawPreviousMode: ChatMode | undefined): string | undefined {
+function buildChatModeProse(
+    rawMode: ChatMode,
+    rawPreviousMode: ChatMode | undefined,
+    planSaveContext?: AutoFolderContext,
+): string | undefined {
     const mode = normalizeChatModeOrDefault(rawMode);
     const previousMode = normalizeChatMode(rawPreviousMode);
-    if (mode === 'ask') return READ_ONLY_SYSTEM_MESSAGE.trim();
+    if (mode === 'ask') return buildReadOnlySection(planSaveContext);
     if (previousMode === 'ask') return MODE_SWITCHED_TO_AUTOPILOT_NOTE;
     return undefined;
+}
+
+/**
+ * The read-only section, with the plan destination nested inside it when one
+ * applies.
+ *
+ * The guidance goes *inside* `</coc-read-only-mode>` rather than after it
+ * because it explains the plan-file exception those rules already name; a
+ * sibling block reads as a second, competing instruction. The SDK's shared
+ * constant stays workspace-agnostic — the workspace data is spliced in here.
+ */
+function buildReadOnlySection(planSaveContext?: AutoFolderContext): string {
+    const base = READ_ONLY_SYSTEM_MESSAGE.trim();
+    if (!planSaveContext) return base;
+
+    const close = `</${READ_ONLY_TAG}>`;
+    const closeIndex = base.lastIndexOf(close);
+    // Defensive: a constant that no longer carries the tag still yields valid
+    // read-only rules, just without the (unsplittable) nested guidance.
+    if (closeIndex < 0) return base;
+
+    const head = base.slice(0, closeIndex).replace(/\s+$/, '');
+    const location = buildAutoFolderLocationBlock(
+        toForwardSlashes(planSaveContext.tasksRoot),
+        // Directory enumeration order is not meaningful, so a copy is sorted
+        // with plain code-unit ordering: the same folders must render the same
+        // bytes on every platform, or drift detection re-injects for nothing.
+        [...planSaveContext.existingFolders].sort(),
+    );
+    return `${head}\n\n${PLAN_SAVE_GUIDANCE_INTRO}\n${location}\n${close}`;
+}
+
+/**
+ * Undo {@link buildReadOnlySection}'s splice, yielding the read-only rules a
+ * caller with no folder context would have produced.
+ *
+ * Lets the display side — which never resolves folders — compare a stored
+ * directive against its own expectation without reading "I did not resolve
+ * plan context" as "the plan context was removed".
+ */
+function stripPlanSaveGuidance(section: string): string {
+    const marker = `\n\n${PLAN_SAVE_GUIDANCE_INTRO}\n`;
+    const start = section.indexOf(marker);
+    if (start < 0) return section;
+    const close = `</${READ_ONLY_TAG}>`;
+    const closeIndex = section.lastIndexOf(close);
+    if (closeIndex < start) return section;
+    return `${section.slice(0, start)}\n${close}`;
 }
 
 /**
@@ -156,6 +239,19 @@ export interface ChatModeInjectionCheck {
      * value as "no instructions".
      */
     checkInstructionDrift?: boolean;
+    /**
+     * Plan save destination resolved for this turn, or `undefined` when the
+     * turn is not eligible for one. Only meaningful together with
+     * {@link ChatModeInjectionCheck.checkPlanContextDrift}.
+     */
+    planSaveContext?: AutoFolderContext;
+    /**
+     * Whether `planSaveContext` is authoritative. `false` (the display side,
+     * which never touches the filesystem) means "unknown", so the comparison
+     * runs against the plan-guidance-stripped read-only rules instead of
+     * reading the absent value as "the destination was removed".
+     */
+    checkPlanContextDrift?: boolean;
     /** The process's persisted turns (the current user turn may or may not be present yet). */
     turns: ConversationTurn[] | undefined;
     /** `metadata.compaction` — the lifecycle of the most recent `/compact` run. */
@@ -194,6 +290,12 @@ export interface ChatModeInjectionCheck {
  *     re-injection is sent to the model but not disclosed in the transcript.
  *     Every other signal is evaluated identically on both sides, so the
  *     transcript and the prompt agree on which turns carried the block.
+ *  6. **Plan-destination drift** — the resolved `notes/Plans` root or its
+ *     folder listing differs from the copy last injected, or the turn's
+ *     eligibility for the guidance flipped. Folders are created and renamed
+ *     mid-chat. Prompt side only, for the same reason as signal 5: the display
+ *     side cannot read the filesystem, so it compares the read-only rules with
+ *     the guidance stripped back out.
  *
  * Compaction detection mirrors `shouldInjectRepoGroupContext`: the
  * display-only result turn `/compact` appends (the only kind of `displayOnly`
@@ -209,7 +311,11 @@ export interface ChatModeInjectionCheck {
  * `Bash`. Deliberate — see the file header.
  */
 export function shouldInjectChatModeDirective(check: ChatModeInjectionCheck): boolean {
-    const expectedProse = buildChatModeProse(check.mode, check.previousMode);
+    const expectedProse = buildChatModeProse(
+        check.mode,
+        check.previousMode,
+        check.checkPlanContextDrift ? check.planSaveContext : undefined,
+    );
     const expectedInstructions = check.checkInstructionDrift ? check.modeInstructions?.trim() || undefined : undefined;
 
     // Nothing this turn could say. The display side lands here for every
@@ -229,7 +335,10 @@ export function shouldInjectChatModeDirective(check: ChatModeInjectionCheck): bo
     if (lastInjectedIndex === -1) return true;
 
     const last = parseChatModeMarker(turns[lastInjectedIndex].chatModeContext ?? '');
-    if (last.prose !== expectedProse) return true;
+    // Folder-blind callers compare against the stripped prose so an
+    // unresolved destination never looks like a removed one.
+    const lastProse = check.checkPlanContextDrift ? last.prose : last.proseBase;
+    if (lastProse !== expectedProse) return true;
     if (check.checkInstructionDrift && last.instructions !== expectedInstructions) return true;
 
     for (let i = lastInjectedIndex + 1; i < turns.length; i++) {
@@ -281,26 +390,53 @@ export async function persistChatModeContextOnUserTurn(
     }
 }
 
+/** The three independently-compared pieces of a stored directive. */
+export interface ParsedChatModeMarker {
+    /** The leading prose verbatim, including any nested plan save guidance. */
+    prose?: string;
+    /** The same prose with the plan save guidance removed, for folder-blind callers. */
+    proseBase?: string;
+    /** Everything after the prose: the repo's mode-specific instructions. */
+    instructions?: string;
+}
+
 /**
- * Split a stored `chatModeContext` marker back into the two halves
+ * Split a stored `chatModeContext` marker back into the halves
  * {@link buildChatModeDirective} joined.
  *
- * The prose half is always one of two known constants, so the split is exact
- * rather than a guess at where the repo instructions begin. A marker written by
- * the display side carries no instructions; one written by the prompt side may.
+ * The read-only half is no longer a fixed constant — it carries workspace
+ * folder data — so it is located by its own `<coc-read-only-mode>` wrapper
+ * rather than by string equality. The autopilot note is still a constant. Both
+ * splits are exact rather than a guess at where the repo instructions begin.
+ *
+ * A marker whose read-only section never closes is malformed: it yields no
+ * prose, so the caller re-injects rather than trusting an unparseable record.
  */
-function parseChatModeMarker(marker: string): { prose?: string; instructions?: string } {
+export function parseChatModeMarker(marker: string): ParsedChatModeMarker {
     const open = `<${CHAT_MODE_DIRECTIVE_TAG}>\n`;
     const close = `\n</${CHAT_MODE_DIRECTIVE_TAG}>`;
     let body = marker;
     if (body.startsWith(open)) body = body.slice(open.length);
     if (body.endsWith(close)) body = body.slice(0, -close.length);
 
-    for (const prose of [READ_ONLY_SYSTEM_MESSAGE.trim(), MODE_SWITCHED_TO_AUTOPILOT_NOTE]) {
-        if (body === prose) return { prose };
-        if (body.startsWith(`${prose}\n\n`)) {
-            return { prose, instructions: body.slice(prose.length + 2) || undefined };
-        }
+    const readOnlyOpen = `<${READ_ONLY_TAG}>`;
+    const readOnlyClose = `</${READ_ONLY_TAG}>`;
+    if (body.startsWith(readOnlyOpen)) {
+        const end = body.indexOf(readOnlyClose);
+        if (end < 0) return { instructions: body || undefined };
+        const section = body.slice(0, end + readOnlyClose.length);
+        const rest = body.slice(end + readOnlyClose.length).replace(/^\n+/, '');
+        return {
+            prose: section,
+            proseBase: stripPlanSaveGuidance(section),
+            instructions: rest || undefined,
+        };
+    }
+
+    const note = MODE_SWITCHED_TO_AUTOPILOT_NOTE;
+    if (body === note) return { prose: note, proseBase: note };
+    if (body.startsWith(`${note}\n\n`)) {
+        return { prose: note, proseBase: note, instructions: body.slice(note.length + 2) || undefined };
     }
     return { instructions: body || undefined };
 }

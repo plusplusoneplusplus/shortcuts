@@ -109,3 +109,39 @@ export function suppressesAutoFolder(input: SuppressesAutoFolderInput): boolean 
 
     return false;
 }
+
+/**
+ * Whether this chat is in a Ralph grilling phase, read from the payload
+ * (first turn) or the denormalized `metadata.ralph` projection (follow-ups).
+ *
+ * Grilling owns its own output contract — a `.goal.md` file for general Ralph,
+ * a Work Item content version for Goal items — so it must never also receive
+ * the generic `.plan.md` destination.
+ */
+export function isRalphGrillingContext(input: SuppressesAutoFolderInput): boolean {
+    const sources: unknown[] = [];
+    if (isNonEmptyRecord(input.payload)) sources.push((input.payload as { context?: unknown }).context);
+    if (isNonEmptyRecord(input.metadata)) sources.push((input.metadata as { ralph?: unknown }).ralph);
+
+    for (const source of sources) {
+        if (!isNonEmptyRecord(source)) continue;
+        const record = source as Record<string, unknown>;
+        if (record.phase === 'grilling') return true;
+        if (isNonEmptyRecord(record.workItemGoalGrilling)) return true;
+        const ralph = record.ralph;
+        if (isNonEmptyRecord(ralph) && (ralph as Record<string, unknown>).phase === 'grilling') return true;
+    }
+    return false;
+}
+
+/**
+ * Whether this turn must not receive the generic plan save destination.
+ *
+ * The union of the two independent exclusions: artifact-bound chats (see
+ * {@link suppressesAutoFolder}) and Ralph grilling
+ * ({@link isRalphGrillingContext}). Shared by the first-turn and follow-up
+ * paths so the two cannot drift apart on eligibility.
+ */
+export function suppressesPlanSaveGuidance(input: SuppressesAutoFolderInput): boolean {
+    return suppressesAutoFolder(input) || isRalphGrillingContext(input);
+}

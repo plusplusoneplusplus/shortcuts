@@ -57,7 +57,7 @@ import { createFixedQueueRuntimeConfig } from '../queue/queue-runtime-config';
 import type { QueueRuntimeConfig } from '../queue/queue-runtime-config';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
-import { resolveAutoFolderContext, suppressesAutoFolder } from './auto-folder-utils';
+import { resolveAutoFolderContext, suppressesAutoFolder, suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
@@ -557,22 +557,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected async buildFirstTurnSystemMessage(input: {
         task: QueuedTask;
         workingDirectory: string | undefined;
-        autoFolderContext: AutoFolderContext | undefined;
         memoryV2: MemoryV2Addon;
         toolGuidance: string;
         /** Whether `ask_user` survived the turn's tool filtering — see `askUserSurvivedFiltering`. */
         askUserAvailable: boolean;
     }): Promise<SystemMessageConfig | undefined> {
         const payload = input.task.payload as unknown as ChatPayload;
-        // During grilling, the user-message directive owns the output contract
-        // (Notes goal file for general Ralph, Work Item versioning for Goal items).
-        // Suppress the generic auto-folder system block so the model does not
-        // receive a contradictory `.plan.md` save target. Artifact-bound chats
-        // (PR chats route through here) drop the block outright - see
-        // `suppressesAutoFolder`.
-        const autoFolderSuppressed =
-            payload.context?.ralph?.phase === 'grilling'
-            || suppressesAutoFolder({ payload: input.task.payload });
         return buildChatTurnSystemMessage({
             workingDirectory: input.workingDirectory,
             provider: payload.provider ?? this.provider,
@@ -588,7 +578,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             memoryV2: input.memoryV2,
             toolGuidance: input.toolGuidance,
             askUserAvailable: input.askUserAvailable,
-            autoFolderContext: autoFolderSuppressed ? undefined : input.autoFolderContext,
             notePath: payload.context?.noteChat?.notePath,
         });
     }
@@ -601,7 +590,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
 
-        const autoFolderContext = workingDirectory
+        // Resolved for the two consumers that still need it: the Ralph grilling
+        // directive's `.goal.md` destination and the ask directive's `.plan.md`
+        // destination. Artifact-bound chats want neither, so they skip the
+        // mkdir + readdir entirely.
+        const autoFolderContext = workingDirectory && !suppressesAutoFolder({ payload: task.payload })
             ? await this.buildAutoFolderContext(workingDirectory, payload.workspaceId, mode)
             : undefined;
 
@@ -644,7 +637,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const systemMessage = await this.buildFirstTurnSystemMessage({
             task,
             workingDirectory,
-            autoFolderContext,
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
             askUserAvailable: this.askUserSurvivedFiltering(ctx.tools),
@@ -663,9 +655,17 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // injects — there is no session that could already hold the block — and
         // records it, so the first follow-up can tell the model already has it
         // (see `shouldInjectChatModeDirective`).
+        //
+        // The plan destination rides inside the read-only section: it explains
+        // the plan-file exception those rules already carve out. Grilling turns
+        // and artifact-bound chats resolve to `undefined` so the model never
+        // holds two competing save targets.
         const modeDirective = buildChatModeDirective({
             mode,
             modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
+            planSaveContext: suppressesPlanSaveGuidance({ payload: task.payload })
+                ? undefined
+                : autoFolderContext,
         });
         await persistChatModeContextOnUserTurn(this.store, processId, modeDirective);
         const effectivePrompt = prependChatModeDirective(grilledPrompt, modeDirective);

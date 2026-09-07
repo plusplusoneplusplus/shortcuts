@@ -158,3 +158,113 @@ describe('ConversationTurnBubble — injected block disclosures', () => {
         expect(container.querySelector('.raw-content-view')?.textContent).toBe(content);
     });
 });
+
+// ============================================================================
+// Chat mode disclosure sourced from the recorded directive
+// ============================================================================
+
+const RECORDED_ASK_DIRECTIVE = [
+    '<coc-chat-mode>',
+    '<coc-read-only-mode>',
+    'You are in read-only mode.',
+    '',
+    'If the user asks you to save a plan:',
+    '- Save location: `/data/repos/ws-a/notes/Plans/<chosen-folder>/<descriptive-name>.plan.md`',
+    '- Existing folder options: right-panel',
+    '- Pick the most relevant folder or create a new one (kebab-case, ≤3 words); do not save to the root directory directly.',
+    '</coc-read-only-mode>',
+    '',
+    'PRIVATE-REPO-INSTRUCTIONS',
+    '</coc-chat-mode>',
+].join('\n');
+
+const PROJECTED_ASK_DIRECTIVE = RECORDED_ASK_DIRECTIVE
+    .replace('</coc-read-only-mode>\n\nPRIVATE-REPO-INSTRUCTIONS\n', '</coc-read-only-mode>\n');
+
+describe('ConversationTurnBubble — chat mode disclosure source', () => {
+    it('shows the recorded directive, including the plan destination, over the stored prefix', () => {
+        const content = `${CHAT_MODE_BLOCK}\n\nExplain the change.`;
+        const { getByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({ content, chatModeContext: RECORDED_ASK_DIRECTIVE })} />,
+        );
+
+        fireEvent.click(getByTestId('chat-mode-block-toggle'));
+        const body = getByTestId('chat-mode-block-body');
+        expect(body.textContent).toContain('.plan.md');
+        expect(body.textContent).toContain('Existing folder options: right-panel');
+        expect(body.textContent).toBe(PROJECTED_ASK_DIRECTIVE);
+    });
+
+    it('never reveals the repo mode instructions the directive carried', () => {
+        const { getByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({ chatModeContext: RECORDED_ASK_DIRECTIVE })} />,
+        );
+
+        fireEvent.click(getByTestId('chat-mode-block-toggle'));
+        expect(getByTestId('chat-mode-block-body').textContent).not.toContain('PRIVATE-REPO-INSTRUCTIONS');
+    });
+
+    it('renders a single disclosure when both sources are present', () => {
+        const content = `${CHAT_MODE_BLOCK}\n\nExplain the change.`;
+        const { getAllByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({ content, chatModeContext: RECORDED_ASK_DIRECTIVE })} />,
+        );
+
+        expect(getAllByTestId('chat-mode-block-toggle')).toHaveLength(1);
+    });
+
+    it('discloses a drift-only re-injection the stored content never recorded', () => {
+        // Folder drift re-sends the directive on a turn whose stored prefix has
+        // no mode block, because the route could not predict it.
+        const { getByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({
+                content: 'Explain the change.',
+                chatModeContext: RECORDED_ASK_DIRECTIVE,
+            })} />,
+        );
+
+        fireEvent.click(getByTestId('chat-mode-block-toggle'));
+        expect(getByTestId('chat-mode-block-body').textContent).toContain('Existing folder options: right-panel');
+    });
+
+    it('falls back to the stored prefix for a turn with no recorded directive yet', () => {
+        const content = `${CHAT_MODE_BLOCK}\n\nExplain the change.`;
+        const { getByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+
+        fireEvent.click(getByTestId('chat-mode-block-toggle'));
+        expect(getByTestId('chat-mode-block-body').textContent).toBe(CHAT_MODE_BLOCK);
+    });
+
+    it('falls back to the stored prefix for an autopilot transition marker', () => {
+        const transition = '<coc-chat-mode>\nThis chat has been switched to autopilot mode.\n</coc-chat-mode>';
+        const content = `${transition}\n\nNow fix it.`;
+        const { getByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({
+                content,
+                chatModeContext: `${transition.slice(0, -'\n</coc-chat-mode>'.length)}\n\nPRIVATE-REPO-INSTRUCTIONS\n</coc-chat-mode>`,
+            })} />,
+        );
+
+        fireEvent.click(getByTestId('chat-mode-block-toggle'));
+        const body = getByTestId('chat-mode-block-body');
+        expect(body.textContent).toBe(transition);
+        expect(body.textContent).not.toContain('PRIVATE-REPO-INSTRUCTIONS');
+    });
+
+    it('shows no disclosure on a turn that carried neither', () => {
+        const { queryByTestId } = render(<ConversationTurnBubble turn={makeTurn()} />);
+
+        expect(queryByTestId('chat-mode-block-toggle')).toBeNull();
+    });
+
+    it('leaves the user message text untouched by the recorded directive', () => {
+        const { getByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({
+                content: 'Explain the change.',
+                chatModeContext: RECORDED_ASK_DIRECTIVE,
+            })} />,
+        );
+
+        expect(getByTestId('user-plain-text').textContent).toBe('Explain the change.');
+    });
+});

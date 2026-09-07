@@ -56,11 +56,6 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
 
         const processId = toQueueProcessId(task.id);
-        // Same save-location block the ask path resolves, for the same reason:
-        // the block is mode-invariant, so both first-turn builders must produce it.
-        const autoFolderContext: AutoFolderContext | undefined = workingDirectory
-            ? await this.buildAutoFolderContext(workingDirectory, payload.workspaceId)
-            : undefined;
         const cronDeps = this.buildCronToolDeps(processId);
 
         // Autopilot explicitly opts out of Memory V2 — it operates in full-access
@@ -103,7 +98,6 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         const systemMessage = await this.buildFirstTurnSystemMessage({
             task,
             workingDirectory,
-            autoFolderContext,
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
             askUserAvailable: this.askUserSurvivedFiltering(ctx.tools),

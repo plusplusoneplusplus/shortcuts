@@ -213,8 +213,10 @@ describe('ChatBaseExecutor provider routing', () => {
             expect(call.systemMessage?.content).toContain('Base CoC repo instruction');
             expect(call.systemMessage?.content).not.toContain('Ask-only CoC repo instruction');
             expect(call.systemMessage?.content).not.toContain('<coc-read-only-mode>');
-            expect(call.systemMessage?.content).toContain('<chosen-folder>');
-            expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
+            // The plan destination rides the user turn with the read-only rules.
+            expect(call.systemMessage?.content).not.toContain('<chosen-folder>');
+            expect(call.prompt).toContain('<chosen-folder>');
+            expect(call.prompt).toContain('<coc-read-only-mode>');
             expect(call.prompt).toContain('Ask-only CoC repo instruction');
             expect(call.prompt).not.toContain('Base CoC repo instruction');
         } finally {
@@ -503,7 +505,7 @@ describe('ChatExecutor system message content', () => {
         sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
     });
 
-    it('injects auto-folder block when task has workingDirectory', async () => {
+    it('injects the plan destination into the user turn when the task has a workingDirectory', async () => {
         const executor = new ChatExecutor(store, makeOptions(store));
         const task: QueuedTask = {
             id: 'task-wd',
@@ -519,8 +521,8 @@ describe('ChatExecutor system message content', () => {
         await executor.execute(task, 'Hi');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
-        expect(call.systemMessage?.content).toContain('<chosen-folder>');
+        expect(call.prompt).toContain('<chosen-folder>');
+        expect(call.systemMessage?.content).not.toContain('<chosen-folder>');
     });
 
     it('does NOT inject auto-folder block when task has no workingDirectory', async () => {
@@ -1403,20 +1405,53 @@ describe('ChatExecutor plan save-location block', () => {
 
         await executor.execute(task, 'Explain this');
 
-        const systemContent = sdkMocks.mockSendMessage.mock.calls[0][0].systemMessage?.content ?? '';
-        expect(systemContent).not.toContain('Save location');
-        expect(systemContent).not.toContain('.plan.md');
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).not.toContain('Save location');
+        expect(call.prompt).not.toContain('.plan.md');
+        // …but the read-only rules themselves still apply.
+        expect(call.prompt).toContain('<coc-read-only-mode>');
+        expect(call.systemMessage?.content ?? '').not.toContain('Save location');
     });
 
-    it('is still present for a plain ask chat', async () => {
+    it('is omitted for a Ralph grilling chat, which owns its own goal-file target', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeAskTask('task-grilling', { ralph: { phase: 'grilling' } });
+
+        await executor.execute(task, 'Explain this');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).not.toContain('.plan.md');
+        expect(call.prompt).toContain('.goal.md');
+        expect(call.prompt).toContain('<coc-read-only-mode>');
+    });
+
+    it('nests the destination inside the read-only section of the user turn', async () => {
         const executor = new ChatExecutor(store, makeOptions(store));
         const task = makeAskTask('task-plain-ask');
 
         await executor.execute(task, 'Explain this');
 
-        const systemContent = sdkMocks.mockSendMessage.mock.calls[0][0].systemMessage?.content ?? '';
-        expect(systemContent).toContain('Save location');
-        expect(systemContent).toContain('.plan.md');
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const prompt: string = call.prompt;
+        expect(prompt).toContain('Save location');
+        expect(prompt).toContain('.plan.md');
+        expect(prompt).toContain('If the user asks you to save a plan:');
+
+        // Order: <coc-chat-mode> … <coc-read-only-mode> … guidance … both closes.
+        const modeOpen = prompt.indexOf('<coc-chat-mode>');
+        const readOnlyOpen = prompt.indexOf('<coc-read-only-mode>');
+        const guidance = prompt.indexOf('If the user asks you to save a plan:');
+        const readOnlyClose = prompt.indexOf('</coc-read-only-mode>');
+        const modeClose = prompt.indexOf('</coc-chat-mode>');
+        expect(modeOpen).toBeGreaterThanOrEqual(0);
+        expect(readOnlyOpen).toBeGreaterThan(modeOpen);
+        expect(guidance).toBeGreaterThan(readOnlyOpen);
+        expect(readOnlyClose).toBeGreaterThan(guidance);
+        expect(modeClose).toBeGreaterThan(readOnlyClose);
+
+        // And never in the (cached, mode-invariant) system prefix.
+        expect(sdkMocks.mockSendMessage.mock.calls[0][0].systemMessage?.content ?? '')
+            .not.toContain('Save location');
     });
 });
 
@@ -1784,10 +1819,10 @@ describe('ChatExecutor legacy plan auto-folder path (notes/Plans)', () => {
         await executor.execute(task, 'Plan something');
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        const sysContent: string = call.systemMessage?.content ?? '';
-        expect(sysContent).toContain('notes');
-        expect(sysContent).toContain('Plans');
-        expect(sysContent).not.toContain('/tasks/');
+        const prompt: string = call.prompt;
+        expect(prompt).toContain('notes');
+        expect(prompt).toContain('Plans');
+        expect(prompt).not.toContain('/tasks/');
     });
 
     it('creates notes/Plans directory via mkdir during legacy plan mode', async () => {
@@ -1830,11 +1865,11 @@ describe('ChatExecutor legacy plan auto-folder path (notes/Plans)', () => {
             expectedPath,
             { recursive: true },
         );
-        // notes/Plans path should appear in system message
+        // notes/Plans path should appear in the ask-mode user directive
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        const sysContent: string = call.systemMessage?.content ?? '';
-        expect(sysContent).toContain('notes');
-        expect(sysContent).toContain('Plans');
+        const prompt: string = call.prompt;
+        expect(prompt).toContain('notes');
+        expect(prompt).toContain('Plans');
     });
 });
 

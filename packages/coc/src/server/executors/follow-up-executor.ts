@@ -50,7 +50,7 @@ import {
     resolveSelectedSkillReferences,
 } from './prompt-builder';
 import { readNoteContent } from './note-chat-executor';
-import { suppressesAutoFolder } from './auto-folder-utils';
+import { suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import {
@@ -311,13 +311,18 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             });
         }
 
-        let autoFolderContextForFollowUp: AutoFolderContext | undefined;
+        let planSaveContext: AutoFolderContext | undefined;
         const wsId = (process.metadata?.workspaceId as string) ?? (workingDirectory ? await this.resolveWorkspaceIdForPathFn(workingDirectory) : undefined);
-        // Artifact-bound chats (note, commit, PR) never receive the plan
-        // save-location block, so skip the mkdir + readdir that builds it.
-        const autoFolderSuppressed = suppressesAutoFolder({ metadata: process.metadata });
-        if (workingDirectory && !autoFolderSuppressed) {
-            autoFolderContextForFollowUp = await this.buildAutoFolderContext(
+        // The plan destination rides the ask-mode user directive, so resolve it
+        // only for the turns that could carry one: ask mode, a working
+        // directory, and neither an artifact-bound chat nor a Ralph grilling
+        // session (both own their own output contract). Every other turn skips
+        // the mkdir + readdir.
+        const planSaveEligible = currentMode === 'ask'
+            && !!workingDirectory
+            && !suppressesPlanSaveGuidance({ metadata: process.metadata });
+        if (workingDirectory && planSaveEligible) {
+            planSaveContext = await this.buildAutoFolderContext(
                 workingDirectory,
                 wsId,
                 'ask',
@@ -452,10 +457,6 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 memoryV2: chatCtx.memoryV2,
                 toolGuidance: chatCtx.toolGuidance,
                 askUserAvailable: this.askUserSurvivedFiltering(filteredTools),
-                // Unconditional on mode: the block is a save-location
-                // directive (inert in autopilot), and gating it on the mode
-                // would put a mode-dependent byte back into the prefix.
-                autoFolderContext: autoFolderSuppressed ? undefined : autoFolderContextForFollowUp,
                 notePath,
             });
 
@@ -492,11 +493,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 // load the instructions file, so a drift-only re-injection is
                 // sent but not disclosed.
                 checkInstructionDrift: true,
+                planSaveContext,
+                // Same split for the plan destination: only this side reads the
+                // filesystem, so only this side can tell a renamed folder from
+                // an unresolved one.
+                checkPlanContextDrift: true,
                 turns: process.conversationTurns,
                 compaction: process.metadata?.compaction,
                 canResumeSession,
             })
-                ? buildChatModeDirective({ mode: currentMode, previousMode, modeInstructions })
+                ? buildChatModeDirective({ mode: currentMode, previousMode, modeInstructions, planSaveContext })
                 : undefined;
             const followUpMessage = appendRepoGroupContext(
                 prependChatModeDirective(
