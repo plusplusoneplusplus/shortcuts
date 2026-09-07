@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useEditTurn, type UseEditTurnOptions } from '../../../src/server/spa/client/react/features/chat/hooks/useEditTurn';
 import type { ChatAttachment } from '../../../src/server/spa/client/react/types/attachments';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
@@ -21,12 +22,25 @@ const IMAGE_ATTACHMENT: ChatAttachment = {
     category: 'image',
 };
 
-/** A CocApiError-shaped rejection: the SPA reads `body.code` / `body.error`. */
+/**
+ * A rejection shaped exactly like the one the typed client produces.
+ *
+ * This matters: the server answers through `handleAPIError`, so the wire body is
+ * `{ error: { code, message } }` and `createApiError` lifts the code to a
+ * top-level `code` field. An earlier version of this helper invented a flat
+ * `body.code`, which no route ever returns — the 409 assertion below passed
+ * against a shape that could not occur, while the real 409 fell through to the
+ * server's raw wording.
+ */
 function apiError(status: number, code: string, message: string) {
-    const err = new Error(message) as Error & { status: number; body: unknown };
-    err.status = status;
-    err.body = { error: message, code };
-    return err;
+    return new CocApiError({
+        status,
+        statusText: '',
+        url: `/api/processes/proc-1/turns/0/rewind`,
+        message,
+        code,
+        body: { error: { code, message } },
+    });
 }
 
 function setup(overrides: Partial<UseEditTurnOptions> = {}) {

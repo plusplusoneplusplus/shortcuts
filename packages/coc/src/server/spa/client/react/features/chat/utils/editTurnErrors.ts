@@ -1,11 +1,26 @@
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 
-/** Pull the typed `code` out of an API error body, when the error carries one. */
+/**
+ * Pull the typed `code` out of an API error, when the error carries one.
+ *
+ * `CocApiError` already lifts the code to a top-level field, and that is where
+ * it actually shows up: the server answers through `handleAPIError`, whose body
+ * is `{ error: { code, message } }`, so a bare `body.code` is never populated
+ * for these routes. Both nestings are still read as a fallback for error shapes
+ * that never went through the typed client.
+ */
 function extractErrorCode(err: unknown): string | null {
-    const body = (err as { body?: unknown } | null)?.body;
+    const e = err as { code?: unknown; body?: unknown } | null;
+    if (typeof e?.code === 'string') return e.code;
+    const body = e?.body;
     if (body && typeof body === 'object') {
-        const code = (body as Record<string, unknown>).code;
-        if (typeof code === 'string') return code;
+        const record = body as Record<string, unknown>;
+        const nested = record.error;
+        if (nested && typeof nested === 'object') {
+            const code = (nested as Record<string, unknown>).code;
+            if (typeof code === 'string') return code;
+        }
+        if (typeof record.code === 'string') return record.code;
     }
     return null;
 }
