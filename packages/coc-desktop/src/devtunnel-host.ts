@@ -19,6 +19,12 @@
  *      Online transition. Retry cancels a pending backoff and attempts now. Stop
  *      and app quit cancel timers and terminate/reap the whole tunnel process
  *      tree.
+ *   5. While Online, re-hosts the tunnel on a fixed interval (default 6 hours,
+ *      overridable with `COC_DEVTUNNEL_RESTART_INTERVAL_HOURS`). Dev Tunnel host
+ *      connections expire after long uptime — the child stays alive but stops
+ *      serving — so this mirrors the shell serve-loop, which re-hosts the tunnel
+ *      on every iteration. The restart is silent: no failure notification, just
+ *      `online → starting → online`.
  *
  * The manager only ever owns the `devtunnel host` child — it holds no reference
  * to the CoC server handle, so stopping the tunnel or quitting Desktop can never
@@ -40,6 +46,8 @@ export const DEVTUNNEL_URL_TIMEOUT_DEFAULT_SEC = 30;
 export const DEVTUNNEL_BACKOFF_BASE_MS = 2_000;
 /** Exponential-backoff ceiling for reconnects (30s), per AC-03. */
 export const DEVTUNNEL_BACKOFF_CAP_MS = 30_000;
+/** Default periodic re-host interval while Online: 6 hours. */
+export const DEVTUNNEL_RESTART_INTERVAL_DEFAULT_MS = 6 * 60 * 60 * 1_000;
 /** Cap on captured host output kept in memory / surfaced as bounded detail. */
 const MAX_OUTPUT_CHARS = 64 * 1024;
 /** Cap on user-facing / persisted detail so nothing unbounded leaks (AC-04). */
@@ -76,6 +84,21 @@ export function resolveUrlTimeoutMs(env: NodeJS.ProcessEnv = process.env): numbe
         return Number(raw) * 1_000;
     }
     return DEVTUNNEL_URL_TIMEOUT_DEFAULT_SEC * 1_000;
+}
+
+/**
+ * Resolve the periodic re-host interval in milliseconds.
+ * `COC_DEVTUNNEL_RESTART_INTERVAL_HOURS` overrides it with a positive integer
+ * number of hours; anything else — including `0` — falls back to the 6-hour
+ * default. There is deliberately no off switch: a host left up indefinitely is
+ * the failure mode this exists to prevent.
+ */
+export function resolveRestartIntervalMs(env: NodeJS.ProcessEnv = process.env): number {
+    const raw = env.COC_DEVTUNNEL_RESTART_INTERVAL_HOURS?.trim();
+    if (raw && /^[1-9][0-9]*$/.test(raw)) {
+        return Number(raw) * 60 * 60 * 1_000;
+    }
+    return DEVTUNNEL_RESTART_INTERVAL_DEFAULT_MS;
 }
 
 /**
@@ -272,7 +295,7 @@ export function defaultDevTunnelHostSpawner(cliPath: string, tunnelId: string): 
 }
 
 /** The reason an attempt was initiated — governs notification vs. modal UX (AC-04). */
-type AttemptTrigger = 'manual' | 'launch' | 'reconnect';
+type AttemptTrigger = 'manual' | 'launch' | 'reconnect' | 'restart';
 
 /** Injectable seams for {@link DevTunnelHostManager}. */
 export interface DevTunnelHostManagerDeps {
@@ -288,6 +311,8 @@ export interface DevTunnelHostManagerDeps {
     onFailureNotification?: (error: DevTunnelHostErrorInfo) => void;
     /** Override the URL-readiness timeout (else `resolveUrlTimeoutMs(env)`). */
     urlTimeoutMs?: number;
+    /** Override the periodic re-host interval (else `resolveRestartIntervalMs(env)`). */
+    restartIntervalMs?: number;
     env?: NodeJS.ProcessEnv;
     setTimer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
@@ -320,6 +345,7 @@ export class DevTunnelHostManager {
     private readonly _onStateChange?: (state: DevTunnelHostState) => void;
     private readonly _onFailureNotification?: (error: DevTunnelHostErrorInfo) => void;
     private readonly _urlTimeoutMs: number;
+    private readonly _restartIntervalMs: number;
     private readonly _setTimer: (fn: () => void, ms: number) => Timer;
     private readonly _clearTimer: (timer: Timer) => void;
     private readonly _log: (message: string) => void;
@@ -337,6 +363,7 @@ export class DevTunnelHostManager {
     private _attemptPort = 0;
     private _urlTimer: Timer | undefined;
     private _backoffTimer: Timer | undefined;
+    private _restartTimer: Timer | undefined;
     private _settleResolve: ((state: DevTunnelHostState) => void) | undefined;
 
     /** True while inside an auto-reconnect episode (post-online unexpected exit). */
@@ -350,6 +377,7 @@ export class DevTunnelHostManager {
         this._onStateChange = deps.onStateChange;
         this._onFailureNotification = deps.onFailureNotification;
         this._urlTimeoutMs = deps.urlTimeoutMs ?? resolveUrlTimeoutMs(deps.env);
+        this._restartIntervalMs = deps.restartIntervalMs ?? resolveRestartIntervalMs(deps.env);
         this._setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
         this._clearTimer = deps.clearTimer ?? ((t) => clearTimeout(t));
         this._log = deps.log ?? ((message) => process.stderr.write(`${message}\n`));
@@ -376,6 +404,8 @@ export class DevTunnelHostManager {
         this._desired = 'running';
         this._endEpisode();
         this._clearBackoffTimer();
+        // `_beginAttempt` clears `_restartTimer` — but only when it really starts an
+        // attempt, so a duplicate Start while Online keeps its pending restart.
         return this._beginAttempt(opts.trigger ?? 'manual');
     }
 
@@ -387,6 +417,7 @@ export class DevTunnelHostManager {
     async retry(): Promise<DevTunnelHostState> {
         this._clearBackoffTimer();
         this._desired = 'running';
+        // `_beginAttempt` clears `_restartTimer` when it starts an attempt.
         return this._beginAttempt('manual');
     }
 
@@ -398,6 +429,7 @@ export class DevTunnelHostManager {
         const wasRunning = this._desired === 'running';
         this._teardownChild();
         this._clearBackoffTimer();
+        this._clearRestartTimer();
         this._endEpisode();
         this._reconnectAttempts = 0;
         this._tunnelId = params.tunnelId;
@@ -422,6 +454,7 @@ export class DevTunnelHostManager {
         this._desired = 'stopped';
         this._endEpisode();
         this._clearBackoffTimer();
+        this._clearRestartTimer();
         this._teardownChild();
         this._reconnectAttempts = 0;
         this._emitOff();
@@ -438,6 +471,7 @@ export class DevTunnelHostManager {
         this._desired = 'stopped';
         this._endEpisode();
         this._clearBackoffTimer();
+        this._clearRestartTimer();
         this._teardownChild();
         this._reconnectAttempts = 0;
         this._phase = 'idle';
@@ -448,9 +482,12 @@ export class DevTunnelHostManager {
 
     private _beginAttempt(trigger: AttemptTrigger): Promise<DevTunnelHostState> {
         // Duplicate-start prevention: only ever one attempt / host child in flight.
+        // Guarding the clear on `idle` matters: a duplicate Start while Online is a
+        // no-op and must not silently drop the pending periodic restart.
         if (this._phase !== 'idle') {
             return Promise.resolve(this.state);
         }
+        this._clearRestartTimer();
         return this._attempt(trigger);
     }
 
@@ -521,6 +558,7 @@ export class DevTunnelHostManager {
         this._phase = 'online';
         this._reconnectAttempts = 0;
         this._endEpisode();
+        this._scheduleRestart();
         this._emit({ status: 'online', publicUrl: url });
         this._resolveSettle();
     }
@@ -543,6 +581,7 @@ export class DevTunnelHostManager {
         }
         this._child = undefined;
         this._clearUrlTimer();
+        this._clearRestartTimer();
 
         if (this._desired === 'stopped') {
             // Expected stop/quit — status was already set to off.
@@ -574,6 +613,12 @@ export class DevTunnelHostManager {
         if (this._episodeActive) {
             // Within an ongoing auto-reconnect episode → keep escalating quietly.
             this._scheduleReconnect();
+        } else if (this._attemptTrigger === 'restart') {
+            // A periodic re-host that fails is the same "was working, now isn't"
+            // case as a post-online exit: notify once, then keep retrying with
+            // backoff rather than leaving a previously-Online tunnel stuck failed.
+            this._openEpisode(error);
+            this._scheduleReconnect();
         } else if (this._attemptTrigger !== 'manual') {
             // App-initiated (launch) one-shot failure → a single notification.
             this._fireFailureNotification(error);
@@ -587,11 +632,16 @@ export class DevTunnelHostManager {
     private _beginEpisodeReconnect(error: DevTunnelHostErrorInfo): void {
         this._emit({ status: 'failed', error });
         if (!this._episodeActive) {
-            this._episodeActive = true;
-            this._reconnectAttempts = 0;
-            this._fireFailureNotification(error);
+            this._openEpisode(error);
         }
         this._scheduleReconnect();
+    }
+
+    /** Open a reconnect episode: reset the backoff and notify exactly once. */
+    private _openEpisode(error: DevTunnelHostErrorInfo): void {
+        this._episodeActive = true;
+        this._reconnectAttempts = 0;
+        this._fireFailureNotification(error);
     }
 
     /** Read the current run intent without control-flow narrowing (it mutates). */
@@ -612,6 +662,34 @@ export class DevTunnelHostManager {
             }
             void this._beginAttempt('reconnect');
         }, delay);
+    }
+
+    /**
+     * (Re)arm the periodic re-host clock. Called on every Online transition, so
+     * the interval is measured from the moment the tunnel actually came up.
+     */
+    private _scheduleRestart(): void {
+        this._clearRestartTimer();
+        this._restartTimer = this._setTimer(() => {
+            this._restartTimer = undefined;
+            this._onRestartDue();
+        }, this._restartIntervalMs);
+    }
+
+    /**
+     * Tear the aged host down and re-host from scratch — including the AC-02
+     * binding reconcile, so a drifted port binding self-heals. Silent by design:
+     * the observable sequence is `online → starting → online`. If we are no
+     * longer Online the reconnect-backoff path already owns the situation, so we
+     * skip without rescheduling.
+     */
+    private _onRestartDue(): void {
+        if (this._phase !== 'online' || !this._wantsRunning()) {
+            return;
+        }
+        // Detach-then-kill: the resulting exit is stale, so it opens no episode.
+        this._teardownChild();
+        void this._beginAttempt('restart');
     }
 
     private _fireFailureNotification(error: DevTunnelHostErrorInfo): void {
@@ -658,6 +736,13 @@ export class DevTunnelHostManager {
         if (this._backoffTimer) {
             this._clearTimer(this._backoffTimer);
             this._backoffTimer = undefined;
+        }
+    }
+
+    private _clearRestartTimer(): void {
+        if (this._restartTimer) {
+            this._clearTimer(this._restartTimer);
+            this._restartTimer = undefined;
         }
     }
 
