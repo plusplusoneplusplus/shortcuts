@@ -115,7 +115,7 @@ export class TaskQueueManager extends EventEmitter {
      * @returns The next item, or undefined if queue is empty
      */
     dequeue(): QueueItem | undefined {
-        this.clearExpiredTimedPauses();
+        this.sweepExpiries();
         if (this.queue.length === 0) {
             return undefined;
         }
@@ -149,7 +149,7 @@ export class TaskQueueManager extends EventEmitter {
      * @returns The next eligible item, or undefined if none available
      */
     peek(): QueueItem | undefined {
-        this.clearExpiredTimedPauses();
+        this.sweepExpiries();
         for (const item of this.queue) {
             if (isPauseMarker(item)) {
                 return item;
@@ -176,6 +176,7 @@ export class TaskQueueManager extends EventEmitter {
      * Get all tasks (queued + running + history)
      */
     getAll(): QueuedTask[] {
+        this.sweepExpiries();
         return [
             ...this.queue.filter((item): item is QueuedTask => !isPauseMarker(item)),
             ...Array.from(this.running.values()),
@@ -187,6 +188,7 @@ export class TaskQueueManager extends EventEmitter {
      * Get all queue items in order, including pause markers.
      */
     getQueueItems(): Array<QueueItem> {
+        this.sweepExpiries();
         return [...this.queue];
     }
 
@@ -209,6 +211,7 @@ export class TaskQueueManager extends EventEmitter {
      * Get all queued tasks (waiting for execution, excluding pause markers)
      */
     getQueued(): QueuedTask[] {
+        this.sweepExpiries();
         return this.queue.filter((item): item is QueuedTask => !isPauseMarker(item));
     }
 
@@ -258,7 +261,7 @@ export class TaskQueueManager extends EventEmitter {
      * Get queue statistics
      */
     getStats(): QueueStats {
-        this.clearExpiredTimedPauses();
+        this.sweepExpiries();
         const taskCount = this.queue.filter(t => !isPauseMarker(t)).length;
         const stats: QueueStats = {
             queued: taskCount,
@@ -852,7 +855,7 @@ export class TaskQueueManager extends EventEmitter {
      * Check if queue is paused
      */
     isPaused(): boolean {
-        this.clearExpiredTimedPauses();
+        this.sweepExpiries();
         return this.paused;
     }
 
@@ -898,7 +901,7 @@ export class TaskQueueManager extends EventEmitter {
      * Check if autopilot is paused.
      */
     isAutopilotPaused(): boolean {
-        this.clearExpiredTimedPauses();
+        this.sweepExpiries();
         return this.autopilotPaused;
     }
 
@@ -1263,6 +1266,32 @@ export class TaskQueueManager extends EventEmitter {
         if (this.autopilotPaused && this.autopilotPausedUntil !== undefined && this.autopilotPausedUntil <= now) {
             this.resumeAutopilot();
         }
+    }
+
+    /**
+     * Clear timed freezes whose expiry has passed. The task is unfrozen in
+     * place, so it keeps its queue position. No timers are involved — this is
+     * swept lazily from the read paths below.
+     */
+    private clearExpiredFreezes(now = Date.now()): void {
+        for (const item of this.queue) {
+            if (isPauseMarker(item)) continue;
+            const task = item as QueuedTask;
+            if (!task.frozen || task.frozenUntil === undefined) continue;
+            if (task.frozenUntil > now) continue;
+            task.frozen = false;
+            task.frozenUntil = undefined;
+            this.emitChange('unfrozen', task);
+        }
+    }
+
+    /**
+     * Lazy sweep of everything that expires on a wall-clock deadline: timed
+     * queue/autopilot pauses and timed per-task freezes.
+     */
+    private sweepExpiries(now = Date.now()): void {
+        this.clearExpiredTimedPauses(now);
+        this.clearExpiredFreezes(now);
     }
 
     /**

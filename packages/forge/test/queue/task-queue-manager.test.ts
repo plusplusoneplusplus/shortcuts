@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     TaskQueueManager,
     createTaskQueueManager,
@@ -2018,6 +2018,130 @@ describe('TaskQueueManager', () => {
             expect(listener).toHaveBeenCalledTimes(1);
             expect(listener.mock.calls[0][0].type).toBe('unfrozen');
             expect(listener.mock.calls[0][0].taskId).toBe(id);
+        });
+    });
+
+    describe('timed freeze expiry', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('keeps a task hidden until its freeze expires, then restores it in place', () => {
+            const now = Date.now();
+            vi.useFakeTimers();
+            vi.setSystemTime(now);
+
+            const idA = manager.enqueue(createTestTask({ displayName: 'A' }));
+            const idB = manager.enqueue(createTestTask({ displayName: 'B' }));
+            manager.freezeTask(idA, 1);
+
+            expect(manager.peek()!.id).toBe(idB);
+
+            vi.setSystemTime(now + 61 * 60 * 1000);
+
+            expect(manager.peek()!.id).toBe(idA);
+            // A keeps its original position ahead of B.
+            expect(manager.getQueued().map(t => t.id)).toEqual([idA, idB]);
+        });
+
+        it('clears frozen and frozenUntil on the first peek after expiry', () => {
+            const now = Date.now();
+            vi.useFakeTimers();
+            vi.setSystemTime(now);
+
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id, 1);
+
+            vi.setSystemTime(now + 60 * 60 * 1000);
+
+            expect(manager.peek()!.id).toBe(id);
+            const task = manager.getTask(id)!;
+            expect(task.frozen).toBe(false);
+            expect(task.frozenUntil).toBeUndefined();
+        });
+
+        it('dequeues a task whose freeze has expired', () => {
+            const now = Date.now();
+            vi.useFakeTimers();
+            vi.setSystemTime(now);
+
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id, 2);
+            expect(manager.dequeue()).toBeUndefined();
+
+            vi.setSystemTime(now + 3 * 60 * 60 * 1000);
+            expect(manager.dequeue()!.id).toBe(id);
+        });
+
+        it('leaves an indefinite freeze alone no matter how much time passes', () => {
+            const now = Date.now();
+            vi.useFakeTimers();
+            vi.setSystemTime(now);
+
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id);
+
+            vi.setSystemTime(now + 365 * 24 * 60 * 60 * 1000);
+
+            expect(manager.peek()).toBeUndefined();
+            expect(manager.getTask(id)!.frozen).toBe(true);
+        });
+
+        it('emits an unfrozen change event when a freeze expires', () => {
+            const now = Date.now();
+            vi.useFakeTimers();
+            vi.setSystemTime(now);
+
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id, 1);
+
+            const listener = vi.fn();
+            manager.on('change', listener);
+
+            vi.setSystemTime(now + 61 * 60 * 1000);
+            manager.peek();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener.mock.calls[0][0].type).toBe('unfrozen');
+            expect(listener.mock.calls[0][0].taskId).toBe(id);
+
+            // A second sweep does not re-emit.
+            listener.mockClear();
+            manager.peek();
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it('sweeps expired freezes when the queue is listed for the API', () => {
+            const now = Date.now();
+            vi.useFakeTimers();
+            vi.setSystemTime(now);
+
+            const id = manager.enqueue(createTestTask());
+            manager.freezeTask(id, 1);
+            expect((manager.getQueueItems()[0] as QueuedTask).frozen).toBe(true);
+
+            vi.setSystemTime(now + 61 * 60 * 1000);
+
+            expect((manager.getQueueItems()[0] as QueuedTask).frozen).toBe(false);
+            expect(manager.getQueued()[0].frozen).toBe(false);
+            expect(manager.getAll()[0].frozenUntil).toBeUndefined();
+        });
+
+        it('treats a freeze restored with an already-past expiry as runnable', () => {
+            const fresh = createTaskQueueManager();
+            const restored: QueuedTask = {
+                ...createTestTask(),
+                id: 'restored-1',
+                status: 'queued',
+                createdAt: Date.now() - 10_000,
+                retryCount: 0,
+                frozen: true,
+                frozenUntil: Date.now() - 1000,
+            } as unknown as QueuedTask;
+            fresh.restoreQueueItems([restored]);
+
+            expect(fresh.peek()!.id).toBe('restored-1');
+            expect(fresh.getTask('restored-1')!.frozen).toBe(false);
         });
     });
 
