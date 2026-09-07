@@ -41,6 +41,16 @@ export type {
     NativeContentSearchResult,
 } from './content-search';
 
+export {
+    loadNativeDangerousCommandGuard,
+    nativeDangerousCommandGuardStatus,
+    tryMatchDangerousCommand,
+} from './dangerous-command';
+export type {
+    NativeDangerousCommandGuardAddon,
+    NativeDangerousCommandVerdict,
+} from './dangerous-command';
+
 export { loadNativeGit, nativeGitStatus } from './git';
 export type {
     NativeGitAddon,

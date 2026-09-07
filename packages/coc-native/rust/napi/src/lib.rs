@@ -14,6 +14,7 @@
 #![cfg_attr(test, allow(dead_code))]
 
 mod content_search;
+mod dangerous_command;
 mod file_index;
 mod git;
 mod notes_index;
