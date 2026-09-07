@@ -11,8 +11,12 @@
 //! produced, because a differential that applied the rewrite to both sides
 //! could not see it.
 
+use std::collections::HashSet;
+use std::ffi::OsString;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::RwLock;
+use std::time::{Duration, Instant};
 
 use coc_native_core::git::diff::{diff_no_index, rewrite_no_index_headers};
 use coc_native_core::git::{run_git_global, GitCommandOptions, GitErrorKind};
@@ -22,10 +26,11 @@ const BEFORE_LABEL: &str = "a/src/main.rs";
 const AFTER_LABEL: &str = "b/src/main.rs";
 const ABSENT: &str = "/dev/null";
 
-/// Serialises the temp-directory cleanup test against every test that creates
-/// one. Nothing else in the crate uses the `codex-file-diff-` prefix, so a
-/// write lock here is exclusive over every directory the assertion counts,
-/// while the ordinary tests share a read lock and still run in parallel.
+/// Serialises the temp-directory cleanup test against every test in this crate
+/// that creates one: the ordinary tests share a read lock and still run in
+/// parallel. It says nothing about other processes — the system temp root is
+/// shared machine-wide — which is why the assertion below waits out entries
+/// that drain rather than demanding the directory be untouched.
 static TEMP_DIRS: RwLock<()> = RwLock::new(());
 
 fn options() -> GitCommandOptions {
@@ -285,7 +290,7 @@ fn a_failure_still_reads_as_git_diff_failed() {
 #[test]
 fn removes_its_temp_directory_on_success_and_on_failure() {
     let _guard = TEMP_DIRS.write().unwrap();
-    let before = count_temp_dirs();
+    let before: HashSet<OsString> = temp_dir_names().into_iter().collect();
 
     diff_no_index("one\n", "two\n", BEFORE_LABEL, AFTER_LABEL, &options()).expect("diff");
     diff_no_index("same\n", "same\n", BEFORE_LABEL, AFTER_LABEL, &options()).expect("diff");
@@ -293,16 +298,32 @@ fn removes_its_temp_directory_on_success_and_on_failure() {
     capped.max_buffer_bytes = 8;
     diff_no_index("one\n", "two\n", BEFORE_LABEL, AFTER_LABEL, &capped).expect_err("capped");
 
-    assert_eq!(count_temp_dirs(), before, "every temp directory should be gone");
+    // What is being asserted is that this code cleans up after itself, not that
+    // the shared temp root is unchanged: another process can have a directory of
+    // its own in flight across either snapshot. A directory these calls leaked
+    // never goes away, so wait the new ones out and fail on what is still there.
+    let mut leaked: Vec<PathBuf> = temp_dir_names()
+        .into_iter()
+        .filter(|name| !before.contains(name))
+        .map(|name| std::env::temp_dir().join(name))
+        .collect();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !leaked.is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+        leaked.retain(|path| path.exists());
+    }
+
+    assert!(leaked.is_empty(), "temp directories left behind: {leaked:?}");
 }
 
-/// How many `codex-file-diff-*` directories exist under the system temp dir.
-fn count_temp_dirs() -> usize {
+/// The names of the `codex-file-diff-*` directories under the system temp dir.
+fn temp_dir_names() -> Vec<OsString> {
     let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
-        return 0;
+        return Vec::new();
     };
     entries
         .filter_map(Result::ok)
         .filter(|entry| entry.file_name().to_string_lossy().starts_with("codex-file-diff-"))
-        .count()
+        .map(|entry| entry.file_name())
+        .collect()
 }

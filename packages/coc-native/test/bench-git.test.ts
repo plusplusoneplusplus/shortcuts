@@ -18,7 +18,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { removeDir } from './helpers';
+import { diffTempDirs, leakedDiffTempDirs, removeDir } from './helpers';
 
 // @ts-expect-error — a .mjs benchmark script with no type declarations.
 import {
@@ -397,11 +397,10 @@ describe('against a real repository', () => {
         // The legacy half is measured over 25 iterations; a baseline that
         // skipped its `finally` would do less work than the code it stands for
         // and would fill the temp directory doing it.
-        const tempDirs = () => fs.readdirSync(os.tmpdir()).filter(e => e.startsWith('codex-file-diff-'));
-        const before = tempDirs();
+        const before = diffTempDirs();
         await caseById('no-index-diff').legacy(repo);
         await caseById('no-index-diff').native(repo, git);
-        expect(tempDirs()).toEqual(before);
+        expect(await leakedDiffTempDirs(before)).toEqual([]);
     });
 
     it('legacyRewriteNoIndexHeaders rewrites only the first of each header', async () => {

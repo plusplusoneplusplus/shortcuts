@@ -135,6 +135,32 @@ describe('Git Ops Tracking', () => {
 
     const base = () => `http://127.0.0.1:${port}`;
 
+    /**
+     * The git op endpoints answer 202 immediately and settle the job in the background,
+     * so poll `/ops/:jobId` until the job leaves `running` instead of guessing a sleep.
+     */
+    async function waitForJob(
+        workspaceId: string,
+        jobId: string,
+        timeoutMs = 5000,
+    ): Promise<{ res: Awaited<ReturnType<typeof request>>; job: any }> {
+        const deadline = Date.now() + timeoutMs;
+        for (;;) {
+            const res = await request(`${base()}/api/workspaces/${workspaceId}/git/ops/${jobId}`);
+            if (res.status === 200) {
+                const job = res.json();
+                if (job && job.status !== 'running') { return { res, job }; }
+            }
+            if (Date.now() >= deadline) {
+                throw new Error(
+                    `Timed out after ${timeoutMs}ms waiting for job ${jobId} in ${workspaceId} to settle; `
+                    + `last response: ${res.status} ${res.body}`,
+                );
+            }
+            await new Promise(resolve => setTimeout(resolve, 15));
+        }
+    }
+
     beforeAll(async () => {
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-ops-tracking-test-'));
         store = createMockProcessStore();
@@ -184,9 +210,9 @@ describe('Git Ops Tracking', () => {
             expect(typeof data.jobId).toBe('string');
             expect(data.jobId.length).toBeGreaterThan(0);
 
-            // Clean up: resolve the slow pull
+            // Clean up: resolve the slow pull and let the job settle
             resolveJob({ success: true });
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await waitForJob(WORKSPACE_ID, data.jobId);
         });
 
         it('GET /ops/:jobId returns status=running while pull is in progress', async () => {
@@ -210,7 +236,7 @@ describe('Git Ops Tracking', () => {
 
             // Clean up
             resolveJob({ success: true });
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await waitForJob(WORKSPACE_ID, jobId);
         });
 
         it('GET /ops/:jobId returns status=success after pull completes', async () => {
@@ -222,11 +248,8 @@ describe('Git Ops Tracking', () => {
             });
             const { jobId } = startRes.json();
 
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            const jobRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
+            const { res: jobRes, job } = await waitForJob(WORKSPACE_ID, jobId);
             expect(jobRes.status).toBe(200);
-            const job = jobRes.json();
             expect(job.status).toBe('success');
             expect(job.finishedAt).toBeDefined();
         });
@@ -243,11 +266,8 @@ describe('Git Ops Tracking', () => {
             });
             const { jobId } = startRes.json();
 
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            const jobRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
+            const { res: jobRes, job } = await waitForJob(WORKSPACE_ID, jobId);
             expect(jobRes.status).toBe(200);
-            const job = jobRes.json();
             expect(job.status).toBe('failed');
             expect(job.error).toBe('merge conflict during pull');
             expect(job.finishedAt).toBeDefined();
@@ -264,7 +284,7 @@ describe('Git Ops Tracking', () => {
             });
             const { jobId } = pullRes.json();
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await waitForJob(WORKSPACE_ID, jobId);
 
             const latestRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/latest`);
             expect(latestRes.status).toBe(200);
@@ -288,7 +308,7 @@ describe('Git Ops Tracking', () => {
             });
             const { jobId } = rebaseRes.json();
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await waitForJob(WORKSPACE_ID, jobId);
 
             const latestRes = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/latest?op=rebase-autosquash`,
@@ -318,10 +338,7 @@ describe('Git Ops Tracking', () => {
             });
             const { jobId } = startRes.json();
 
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
-            const job = res.json();
+            const { job } = await waitForJob(WORKSPACE_ID, jobId);
             expect(job.id).toBe(jobId);
             expect(job.workspaceId).toBe(WORKSPACE_ID);
             expect(job.op).toBe('pull');
@@ -342,7 +359,7 @@ describe('Git Ops Tracking', () => {
             const data = res.json();
             expect(typeof data.jobId).toBe('string');
 
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForJob(WORKSPACE_B_ID, data.jobId);
         });
 
         it('stores failed status when rebase-autosquash throws an unhandled error', async () => {
@@ -353,10 +370,7 @@ describe('Git Ops Tracking', () => {
             });
             const { jobId } = startRes.json();
 
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            const jobRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
-            const job = jobRes.json();
+            const { job } = await waitForJob(WORKSPACE_ID, jobId);
             expect(job.status).toBe('failed');
             expect(job.error).toBe('unexpected failure');
         });
@@ -366,12 +380,12 @@ describe('Git Ops Tracking', () => {
         it('ops from workspace A are not visible in workspace B ops latest', async () => {
             mockPull.mockResolvedValue({ success: true });
 
-            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+            const pullRes = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
                 method: 'POST',
                 body: JSON.stringify({}),
             });
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await waitForJob(WORKSPACE_ID, pullRes.json().jobId);
 
             // Workspace B should not show workspace A's ops
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_B_ID}/git/ops/latest?op=pull`);
