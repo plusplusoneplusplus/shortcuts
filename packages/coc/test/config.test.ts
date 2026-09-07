@@ -177,6 +177,28 @@ timeout: 300
             expect(Object.keys(resolved.sources)).not.toContain(`features.${legacyKey}`);
         });
 
+        it('loads a config still carrying the removed features.unifiedRightPanel key', () => {
+            // The unified right panel became the only right panel, so the flag that
+            // used to gate it was deleted rather than migrated. A config written
+            // while the flag existed — including one that set it to false — must
+            // still load, and must not resurrect the key as a resolved setting.
+            const configPath = path.join(tmpDir, 'stale-unified-right-panel.yaml');
+            fs.writeFileSync(configPath, [
+                'features:',
+                '  unifiedRightPanel: false',
+                '  splitWorkspacePanel: true',
+            ].join('\n') + '\n');
+
+            const result = loadConfigFile(configPath);
+            expect(result).toBeDefined();
+            expect(result!.features!.splitWorkspacePanel).toBe(true);
+
+            const resolved = getResolvedConfigWithSource(configPath);
+            expect(resolved.resolved.features.splitWorkspacePanel).toBe(true);
+            expect(resolved.resolved.features).not.toHaveProperty('unifiedRightPanel');
+            expect(Object.keys(resolved.sources)).not.toContain('features.unifiedRightPanel');
+        });
+
         it('should throw for invalid YAML', () => {
             const configPath = path.join(tmpDir, 'invalid.yaml');
             fs.writeFileSync(configPath, '{{invalid yaml content]]');
@@ -1089,7 +1111,6 @@ timeout: 300
                 '  scopeSwitcher: true',
                 '  pinnedScopes: true',
                 '  splitWorkspacePanel: true',
-                '  unifiedRightPanel: true',
                 '  schedulesInScheduledSlide: true',
                 '  chatFolders: true',
                 '  canvasHostApis: true',
@@ -1338,7 +1359,6 @@ timeout: 300
                     "scopeSwitcher": true,
                     "sessionContextAttachments": true,
                     "splitWorkspacePanel": true,
-                    "unifiedRightPanel": false,
                   },
                   "forEach": {
                     "enabled": false,
@@ -1531,7 +1551,6 @@ timeout: 300
                   "features.scopeSwitcher": "default",
                   "features.sessionContextAttachments": "default",
                   "features.splitWorkspacePanel": "default",
-                  "features.unifiedRightPanel": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "idleTimeout": "file",

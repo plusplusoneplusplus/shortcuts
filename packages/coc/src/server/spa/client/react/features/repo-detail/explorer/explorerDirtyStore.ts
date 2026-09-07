@@ -14,7 +14,7 @@
  * synchronously.
  *
  * Multiple ExplorerPanel instances can be mounted for the same workspace at once
- * (the RepoDetail explorer sub-tab AND the WorkspaceRightDock), so dirtiness is
+ * (the RepoDetail explorer sub-tab AND the unified right panel), so dirtiness is
  * tracked as a *set of instance ids* per workspace rather than a single boolean:
  * a workspace is dirty while any of its editor instances is dirty, and one
  * instance reporting clean never clobbers another that is still dirty.

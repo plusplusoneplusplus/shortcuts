@@ -84,7 +84,7 @@ afterEach(() => {
 
 describe('ExplorerPanel — editor tabs on a mobile layout (AC-06)', () => {
     it('moves from the tree to the tabbed editor when a file is opened', async () => {
-        render(<ExplorerPanel workspaceId="ws-mobile" />);
+        render(<ExplorerPanel workspaceId="ws-mobile" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
         // Nothing open: the tree owns the screen and the editor area is hidden.
         expect(screen.getByTestId('explorer-sidebar')).not.toHaveStyle({ display: 'none' });
@@ -99,7 +99,7 @@ describe('ExplorerPanel — editor tabs on a mobile layout (AC-06)', () => {
     });
 
     it('keeps every tab open when Files goes back to the tree, and returns to the same active tab', async () => {
-        render(<ExplorerPanel workspaceId="ws-mobile" />);
+        render(<ExplorerPanel workspaceId="ws-mobile" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
         fireEvent.doubleClick(screen.getByTestId('tree-node-a.ts'));
         fireEvent.doubleClick(screen.getByTestId('tree-node-b.ts'));
@@ -121,7 +121,7 @@ describe('ExplorerPanel — editor tabs on a mobile layout (AC-06)', () => {
     });
 
     it('leaves the buffer without its own close control, so closing goes through the strip', async () => {
-        render(<ExplorerPanel workspaceId="ws-mobile" />);
+        render(<ExplorerPanel workspaceId="ws-mobile" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tree-node-a.ts'));
         await waitFor(() => expect(screen.getByTestId('mock-preview-a.ts')).toBeInTheDocument());

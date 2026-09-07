@@ -50,7 +50,7 @@ beforeEach(() => {
 });
 
 async function renderPanel(props: { workspaceId: string; deepLink?: boolean }) {
-    render(<ExplorerPanel {...props} />);
+    render(<ExplorerPanel mode="editor" {...props} />);
     await waitFor(() => expect(screen.getByTestId('explorer-panel')).toBeInTheDocument());
 }
 

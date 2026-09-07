@@ -1,11 +1,13 @@
 /**
- * RepoGroupView's right dock (AC-05).
+ * RepoGroupView's right panel.
  *
- * A repo group gets the same Terminal / Explorer / Notes dock a repo gets, gated
- * on `splitWorkspacePanel` + desktop. The dock's state scopes to the GROUP; its
- * terminal and explorer point at a member repo picked in the dock header, listed
- * from `GET /api/repo-groups/:id`. The real dock is rendered here (only its three
- * heavy leaf views are stubbed) so the picker assertions are genuine.
+ * A repo group gets the same unified right panel a repo gets, gated on
+ * `splitWorkspacePanel` + desktop and nothing else — there is no longer a second
+ * dock to swap against. The panel's state scopes to the GROUP; its terminal and
+ * file tree point at a member repo picked from the open menu's repo select,
+ * listed from `GET /api/repo-groups/:id`, while notes stay on the group. The real
+ * panel is rendered here (only its heavy leaf views are stubbed) so the target
+ * assertions are genuine.
  *
  * @vitest-environment jsdom
  */
@@ -71,8 +73,8 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView'
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
-    ExplorerPanel: ({ workspaceId }: { workspaceId: string }) => (
-        <div data-testid="mock-explorer">explorer:{workspaceId}</div>
+    ExplorerPanel: ({ workspaceId, deepLink }: { workspaceId: string; deepLink?: boolean }) => (
+        <div data-testid="mock-explorer" data-deeplink={String(deepLink === true)}>explorer:{workspaceId}</div>
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
@@ -82,8 +84,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
 }));
 
 import { RepoGroupView, repoGroupDockTargets, REPO_GROUP_ROOT_TARGET_LABEL } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
-import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
-import { applyRuntimeConfigPatch } from '../../../../src/server/spa/client/react/utils/config';
+import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
@@ -104,7 +105,6 @@ beforeEach(() => {
     mockSplitPanelEnabled = true;
     mockRemoteGroupWorkspaces = [];
     mockSelectedTaskIdByRepo = {};
-    applyRuntimeConfigPatch({ unifiedRightPanelEnabled: undefined });
     mockAppState = {
         activeRepoSubTab: 'chats',
         selectedNotePath: null,
@@ -112,8 +112,23 @@ beforeEach(() => {
     };
 });
 
+/**
+ * The target select lives in the panel's open menu now, so every picker
+ * assertion has to open the menu first. Rendering the panel open is the caller's
+ * job (the open bit is read from storage at mount).
+ */
+function openMenu(): void {
+    act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
+}
+
 function picker(): HTMLSelectElement {
-    return screen.getByTestId('workspace-dock-target-picker') as HTMLSelectElement;
+    return screen.getByTestId('unified-panel-open-menu-repo') as HTMLSelectElement;
+}
+
+/** Render the group with its panel already open, the way a returning user sees it. */
+function renderOpen() {
+    localStorage.setItem(workspaceDockOpenStorageKey(GROUP_ID), '1');
+    return render(<RepoGroupView workspaceId={GROUP_ID} />);
 }
 
 describe('repoGroupDockTargets', () => {
@@ -137,21 +152,13 @@ describe('repoGroupDockTargets', () => {
     });
 });
 
-describe('RepoGroupView right dock (AC-05)', () => {
-    // The unified panel takes over this same slot behind its own flag. Both
-    // directions are pinned here: off means today's dock, exactly, and on means
-    // one panel rather than two right-side columns.
-    it('keeps the classic dock while `unifiedRightPanel` is off', () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.getByTestId('workspace-right-dock')).toBeTruthy();
-        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
-    });
-
-    it('swaps in the unified panel — and only it — when the flag is on', () => {
-        applyRuntimeConfigPatch({ unifiedRightPanelEnabled: true });
+describe('RepoGroupView right panel', () => {
+    // The unified panel owns this slot outright: `dockAvailable` is the whole
+    // gate, so there is no second component that a config could bring back.
+    it('renders the unified panel on desktop, and nothing else in the slot', async () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('unified-right-panel')).toBeTruthy();
-        expect(screen.queryByTestId('workspace-right-dock')).toBeNull();
+        await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));
     });
 
     // The group's selected chat is what owns the panel's chat-scoped tabs, so a
@@ -160,9 +167,7 @@ describe('RepoGroupView right dock (AC-05)', () => {
     // chat list never hands it up — so this pins the read.
     it('scopes the unified panel to the group\'s selected chat', () => {
         mockSelectedTaskIdByRepo = { [GROUP_ID]: 'chat-7' };
-        applyRuntimeConfigPatch({ unifiedRightPanelEnabled: true });
-        localStorage.setItem(workspaceDockOpenStorageKey(GROUP_ID), '1');
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        renderOpen();
 
         act(() => { openUnifiedPanelTab(GROUP_ID, {
             kind: 'file', ownerWorkspaceId: 'r1', chatId: 'chat-7', resourceId: 'src/app.ts', label: 'app.ts',
@@ -174,9 +179,7 @@ describe('RepoGroupView right dock (AC-05)', () => {
     });
 
     it('leaves the panel unscoped when the group has no selected chat', () => {
-        applyRuntimeConfigPatch({ unifiedRightPanelEnabled: true });
-        localStorage.setItem(workspaceDockOpenStorageKey(GROUP_ID), '1');
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        renderOpen();
 
         // Filed under chat-7 while nothing is selected: invisible here.
         act(() => { openUnifiedPanelTab(GROUP_ID, {
@@ -186,53 +189,74 @@ describe('RepoGroupView right dock (AC-05)', () => {
         expect(screen.queryAllByRole('tab', { hidden: true })).toHaveLength(0);
     });
 
-    it('renders the dock on desktop with the flag on', async () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.getByTestId('workspace-right-dock')).toBeTruthy();
-        await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));
-    });
-
-    it('omits the dock on mobile', () => {
+    it('omits the panel on mobile', () => {
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('workspace-right-dock')).toBeNull();
+        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
         expect(mockGetRepoGroup).not.toHaveBeenCalled();
     });
 
-    it('omits the dock when the split-workspace flag is off', () => {
+    it('omits the panel when the split-workspace flag is off', () => {
         mockSplitPanelEnabled = false;
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('workspace-right-dock')).toBeNull();
+        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
         expect(mockGetRepoGroup).not.toHaveBeenCalled();
     });
 
     it('lists the group root plus every member and defaults to the first member', async () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        renderOpen();
         // Wait on the resolved target, not just the picker: the members land one
         // render before the effect that moves the target off the group root, so a
         // slow runner can observe all three options with the root still selected.
+        openMenu();
         await waitFor(() => expect(picker().value).toBe('r1'));
 
         expect(Array.from(picker().options).map(o => o.text))
             .toEqual([REPO_GROUP_ROOT_TARGET_LABEL, 'shortcuts', 'docs']);
     });
 
-    it('points terminal and explorer at the picked member, notes at the group', async () => {
-        // The open flag is read at mount (its toggle lives in the TopBar, not here).
-        localStorage.setItem(workspaceDockOpenStorageKey(GROUP_ID), '1');
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
+    it('opens a terminal against the picked member and notes against the group', async () => {
+        renderOpen();
+        openMenu();
         await waitFor(() => expect(picker().value).toBe('r1'));
 
-        expect(screen.getByTestId('mock-terminal').textContent).toBe('terminal:r1');
-        expect(screen.getByTestId('mock-explorer').textContent).toBe('explorer:r1');
-        expect(screen.getByTestId('mock-notes').textContent).toBe(`notes:${GROUP_ID}`);
+        act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-terminal')); });
+        expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
+            kind: 'terminal', ownerWorkspaceId: 'r1', chatId: null, resourceId: 'terminal',
+        })}`)).toBeTruthy();
 
-        act(() => {
-            fireEvent.change(picker(), { target: { value: 'r2' } });
-        });
-        expect(screen.getByTestId('mock-terminal').textContent).toBe('terminal:r2');
+        // Retarget, then open again: the second terminal is owned by r2, so the
+        // two members' terminals coexist rather than one replacing the other.
+        openMenu();
+        act(() => { fireEvent.change(picker(), { target: { value: 'r2' } }); });
+        act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-terminal')); });
+        expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
+            kind: 'terminal', ownerWorkspaceId: 'r2', chatId: null, resourceId: 'terminal',
+        })}`)).toBeTruthy();
+
+        // Notes are group-level whatever the target is.
+        openMenu();
+        act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-notes')); });
+        expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
+            kind: 'notes', ownerWorkspaceId: GROUP_ID, chatId: null, resourceId: 'notes',
+        })}`)).toBeTruthy();
+    });
+
+    it('points the file-tree column at the picked member, without a deep link', async () => {
+        renderOpen();
+        openMenu();
+        await waitFor(() => expect(picker().value).toBe('r1'));
+
+        // The menu's Explorer entry toggles the tree column rather than opening a tab.
+        act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-explorer')); });
+        expect(screen.getByTestId('mock-explorer').textContent).toBe('explorer:r1');
+        // A group member's tree must never write the explorer deep-link hash, or
+        // a file click would navigate out of the group.
+        expect(screen.getByTestId('mock-explorer').dataset.deeplink).toBe('false');
+
+        openMenu();
+        act(() => { fireEvent.change(picker(), { target: { value: 'r2' } }); });
         expect(screen.getByTestId('mock-explorer').textContent).toBe('explorer:r2');
-        expect(screen.getByTestId('mock-notes').textContent).toBe(`notes:${GROUP_ID}`);
     });
 
     it('lists a stale member as disabled and never defaults to it', async () => {
@@ -244,12 +268,18 @@ describe('RepoGroupView right dock (AC-05)', () => {
                 { workspaceId: 'r2', stale: false, name: 'docs', rootPath: '/r/r2' },
             ],
         });
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        renderOpen();
+        openMenu();
         await waitFor(() => expect(picker().value).toBe('r2'));
 
+        // The panel's select keeps every member selectable and marks the
+        // unavailable one in its label instead; picking it gates the actions
+        // rather than the option.
         const stale = Array.from(picker().options).find(o => o.value === 'r1')!;
-        expect(stale.disabled).toBe(true);
-        expect(stale.text).toBe('shortcuts (path missing)');
+        expect(stale.text).toBe('shortcuts (path missing) (unavailable)');
+
+        act(() => { fireEvent.change(picker(), { target: { value: 'r1' } }); });
+        expect((screen.getByTestId('unified-panel-open-terminal') as HTMLButtonElement).disabled).toBe(true);
     });
 
     it('reads a remote group from its own server base URL', async () => {
@@ -259,10 +289,11 @@ describe('RepoGroupView right dock (AC-05)', () => {
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, 'http://remote:3000'));
     });
 
-    it('shows no picker when the group detail request fails', async () => {
+    it('shows no repo picker when the group detail request fails', async () => {
         mockGetRepoGroup.mockRejectedValue(new Error('offline'));
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        renderOpen();
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalled());
-        expect(screen.queryByTestId('workspace-dock-target-picker')).toBeNull();
+        openMenu();
+        expect(screen.queryByTestId('unified-panel-open-menu-repo')).toBeNull();
     });
 });

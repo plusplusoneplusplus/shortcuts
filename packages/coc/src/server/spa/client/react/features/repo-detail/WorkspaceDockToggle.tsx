@@ -1,50 +1,20 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { cn } from '../../ui';
-import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 
 /**
- * Light-weight open/close plumbing for the workspace right dock (Terminal /
- * Explorer / Notes), split out from `WorkspaceRightDock` so consumers that only
- * need the toggle — notably the global TopBar — don't transitively pull in the
- * heavy TerminalView / ExplorerPanel (xterm / Monaco) dependency graph.
+ * Light-weight open/close plumbing, sizing constants and storage keys for the
+ * workspace right panel, kept apart from `UnifiedRightPanel` so consumers that
+ * only need the toggle — notably the global TopBar — don't transitively pull in
+ * the heavy TerminalView / ExplorerPanel (xterm / Monaco) dependency graph.
  *
  * The open flag is backed by a cross-tree store so the toggle (RepoDetail's chrome
- * header, or the TopBar in the remote-first shell) and the dock body (RepoDetail)
+ * header, or the TopBar in the remote-first shell) and the panel body (RepoDetail)
  * stay in sync across separate component subtrees. See `useDockOpen`.
  */
-
-export type WorkspaceDockView = 'terminal' | 'explorer' | 'notes';
-
-/** Every view the dock knows how to render, in header-tab order. */
-export const ALL_WORKSPACE_DOCK_VIEWS: readonly WorkspaceDockView[] = ['terminal', 'explorer', 'notes'];
-
-/**
- * The dock views available for a workspace, in header-tab order.
- *
- * A repo-group workspace has no single repository root — its cwd is the
- * synthetic `~/.coc/repos/group-<name>` directory — so a file tree there would
- * be meaningless. Groups therefore get `Terminal | Notes`; a concrete repo keeps
- * `Terminal | Explorer | Notes`.
- *
- * The dock calls this with its resolved *target* (the workspace the Terminal and
- * Explorer are pointed at), not its scope. In a repo group the target is usually
- * a member repo, so picking one brings Explorer back; picking "Group root" falls
- * back to `Terminal | Notes` through this same rule.
- */
-export function dockViewsForWorkspace(workspaceId: string): readonly WorkspaceDockView[] {
-    return isRepoGroupWorkspaceId(workspaceId)
-        ? ['terminal', 'notes']
-        : ALL_WORKSPACE_DOCK_VIEWS;
-}
 
 /** localStorage key for whether the dock is open, per workspace. */
 export function workspaceDockOpenStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:dock-open`;
-}
-
-/** localStorage key for the active dock view (terminal|explorer|notes), per workspace. */
-export function workspaceDockViewStorageKey(workspaceId: string): string {
-    return `split-workspace:${workspaceId}:dock-view`;
 }
 
 /** localStorage key for the dock's width, per workspace. */
@@ -162,7 +132,7 @@ export function useDockOpen(storageKey: string): [boolean, () => void] {
 
 /**
  * Lightweight controller for just the dock's open/close flag — for a toggle that
- * lives apart from the dock body (the global TopBar in the remote-first shell). It
+ * lives apart from the panel (the global TopBar in the remote-first shell). It
  * shares the same cross-tree store as `useWorkspaceDock`, so toggling here opens
  * the body rendered by RepoDetail, without pulling in the view/width machinery.
  */
@@ -185,7 +155,7 @@ export function DockToggleIcon() {
 /**
  * The dock open/close toggle for shells whose header lives outside RepoDetail —
  * i.e. the remote-first shell's global TopBar (placed next to "+ New"). Shares the
- * cross-tree open store with the dock body via `useWorkspaceDockToggle`, styled to
+ * cross-tree open store with the panel via `useWorkspaceDockToggle`, styled to
  * sit in the TopBar action cluster. RepoDetail's classic chrome header renders its
  * own equivalent button inline; both use the `workspace-dock-toggle` test id, and
  * only one is on screen at a time (chromeless XOR classic).

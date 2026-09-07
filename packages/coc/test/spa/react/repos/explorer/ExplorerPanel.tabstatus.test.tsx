@@ -52,7 +52,7 @@ const SRC_ENTRIES: TreeEntry[] = [{ name: 'index.ts', type: 'file', path: 'src/i
 const LIB_ENTRIES: TreeEntry[] = [{ name: 'index.ts', type: 'file', path: 'lib/index.ts' }];
 
 async function renderPanel(wsId = 'ws-status') {
-    render(<ExplorerPanel workspaceId={wsId} />);
+    render(<ExplorerPanel workspaceId={wsId} mode="editor" />);
     await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
 }
 

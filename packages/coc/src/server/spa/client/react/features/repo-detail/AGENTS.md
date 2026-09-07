@@ -49,46 +49,48 @@ own server. `/chat/launch-terminal` deliberately stays on the local-origin
 store is still fed by the LOCAL websocket only, so remote-sourced rows can be
 overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fix.
 
-## Workspace right dock
+## Workspace right panel
 
-`WorkspaceRightDock.tsx` hosts three views — Terminal, Explorer, and a compact
-read-only Notes panel — as underline tabs in one 35px header row. The dock body
-renders from `RepoDetail.tsx` for a repo and `repos/RepoGroupView.tsx` for a repo
-group; both gate on `splitWorkspacePanel` + desktop.
+`unified-right-panel/UnifiedRightPanel.tsx` is the workspace's one right-side
+surface: a single Cursor-style tab strip over Terminal, Notes, files, notes,
+canvases, and chat diffs, plus a file-tree column pinned to its right edge.
+`RepoDetail.tsx` renders it for a repo and `repos/RepoGroupView.tsx` for a repo
+group; both gate on `dockAvailable` (`splitWorkspacePanel` + desktop) and wrap
+their subtree in `UnifiedPanelHostProvider` under the same gate. There is no
+second panel and no flag to switch between panels. The panel's own contract —
+tab identity, entry-point seams, keep-alive, the close guards — is in
+`unified-right-panel/AGENTS.md`.
 
-**Scope vs. target.** `workspaceId` is the dock's *scope*: it owns the
-`split-workspace:<id>:dock-{open,view,width,target}` keys, and it is what
-`DockNotesPanel` is keyed on. The *target* is the workspace `TerminalView` and
-`ExplorerPanel` are keyed on and pointed at. They are the same value unless the
-caller passes `targets?: readonly DockTarget[]` (`{ workspaceId, label, disabled?,
-deprioritized? }`) to both `useWorkspaceDock` and `WorkspaceRightDock`; that
-renders a `<select>` picker (`workspace-dock-target-picker`) in the header row and
-lets the user re-point the content while the panel's open/view/width stay put.
-Omitting `targets` is a strict no-op.
+`useWorkspaceDock.ts` holds the state around the panel rather than inside it:
+whether it is open, how wide it is, and which workspace its contents point at.
+It has no DOM. Call it once per workspace view and hand the returned
+`WorkspaceDockController` to the panel. Storage keys, `DockTarget`, the width
+constants, and the cross-tree open store live in `WorkspaceDockToggle.tsx`.
+
+**Scope vs. target.** `workspaceId` is the panel's *scope*: it owns the
+`split-workspace:<id>:dock-{open,width,target}` keys, the unified tab set, and
+the workspace `DockNotesPanel` is keyed on. The *target* is the workspace new
+terminals and file resources open against. They are the same value unless the
+caller passes `targets?: readonly DockTarget[]` (`{ workspaceId, label,
+disabled?, deprioritized? }`) to both `useWorkspaceDock` and the panel; that adds
+a repo picker to the panel's `+` menu (`UnifiedPanelOpenMenu`) and lets the user
+re-point new content while the panel's open state, tabs, and width stay put.
+Omitting `targets` is a strict no-op. Changing the target never retargets an
+already-open tab.
 
 `RepoGroupView` supplies the only targets today: `getRepoGroup(groupId, baseUrl)`
 mapped to the group root (`deprioritized` — it holds only `group.json`) plus every
 member repo, with a stale member listed `disabled` and its reason in the label.
-While that request is in flight `targets` is `undefined`, so the dock is
+While that request is in flight `targets` is `undefined`, so the panel is
 scope-only rather than showing an empty picker.
 
-Which views the dock offers comes from `dockViewsForWorkspace(target)` in
-`WorkspaceDockToggle.tsx` — the *target*, not the scope. A repo-group root has no
-single repository root, so it gets `terminal|notes` and never mounts
-`ExplorerPanel` (no Monaco load); a concrete repo gets `terminal|explorer|notes`.
-Memoize that array on the target string: `useDockView`'s effect depends on it and
-a fresh array every render loops forever (shows up as a hang, not a fast failure).
+What the `+` menu offers depends on the *target*, not the scope. A repo-group
+root has no single repository root, so `unifiedPanelOpenMenuModel` hides its
+Explorer entry (`isRepoGroupWorkspaceId`); a concrete repo gets it. The entry
+toggles the file-tree column — the tree is panel chrome, never a tab.
 
-Every available view stays mounted once the dock has been opened, with the
-inactive ones hidden via `display:none`, so the PTY session, explorer tree, and
-selected note survive a view switch, a dock close, or a sub-tab change. A target
-switch deliberately remounts Terminal and Explorer — the same teardown a workspace
-switch already causes — and rehydrates through `explorerStateStore` and pinned
-terminal sessions rather than a per-target mount map.
-
-Only a dock whose target *is* its scope owns the explorer route:
-`WorkspaceRightDock` passes `deepLink={target === workspaceId}` to
-`ExplorerPanel`. Selecting a file otherwise writes
+Only a panel whose target *is* its scope owns the explorer route: the tree column
+gets `deepLink={target === workspaceId}`. Selecting a file otherwise writes
 `#repos/<target>/explorer/<path>`, which `resolveReposRoute` reads as
 `SET_SELECTED_REPO` — inside a repo group that navigates straight out of the
 group on the first click. With `deepLink={false}` the selection stays local and
@@ -99,17 +101,15 @@ Target switches go through `confirmDiscardExplorerEditsOnSwitch` (from
 drop a dirty Monaco buffer; declining leaves the selection and localStorage
 untouched.
 
-Persisted values are validated on read. The view (`workspaceDockViewStorageKey`)
-falls back to the first available one — a stored `explorer` must not strand a
-group root on a hidden tab. The target (`workspaceDockTargetStorageKey`) falls
-back to the first enabled non-`deprioritized` option, then the first enabled one,
-then the scope. Only explicit `setView` / `setTarget` calls write; mount and
-workspace switches never persist.
+Persisted values are validated on read. The target
+(`workspaceDockTargetStorageKey`) falls back to the first enabled
+non-`deprioritized` option, then the first enabled one, then the scope. Only an
+explicit `setTarget` writes; mount and workspace switches never persist.
 
-The open/close toggle lives outside the body and shares a cross-tree store: the
+The open/close toggle lives outside the panel and shares a cross-tree store: the
 classic shell renders it in `RepoDetail`'s header, while the remote-first shell's
 `layout/TopBar.tsx` renders `WorkspaceDockToggleButton` for a concrete clone *or*
-a `group-*` selection under the virtual header. My Work / My Life have no dock.
+a `group-*` selection under the virtual header. My Work / My Life have no panel.
 
 `../notes/dock/DockNotesPanel.tsx` is the Notes view: search + new-note row, a
 recency-ordered flat list (`dock/dockNotes.ts` holds the pure list/query/naming
@@ -118,19 +118,8 @@ is deliberately read-only — the full Notes tab can be mounted at the same time
 and sharing dirty state between two editable surfaces is out of scope.
 "Insert into chat" reaches the composer through `../chat/composerInsert.ts`, a
 window-event bridge (`ChatDetail` and `NewChatArea` subscribe via
-`useComposerInsertListener`) because the dock is a sibling column with no React
+`useComposerInsertListener`) because the panel is a sibling column with no React
 path to the composer.
-
-## Unified right panel
-
-`unified-right-panel/` is the flag-gated (`features.unifiedRightPanel`, default
-off) replacement for the dock: one resource-tabbed panel holding Terminal,
-Explorer, Notes, files, notes, canvases, and chat diffs. Both hosts render it in
-the *same slot* as `WorkspaceRightDock`, under the same gate, and it reuses
-`useWorkspaceDock` for open/width/target rather than growing a parallel
-controller. With the flag off nothing in that directory mounts. Its contract —
-scope vs. owner vs. target, tab identity, the entry-point seams, keep-alive, and
-the close guards — is in `unified-right-panel/AGENTS.md`.
 
 ## Explorer lazy-load state
 
@@ -139,7 +128,7 @@ undefined && !loadError` — instead of tracking a `loading` flag. `childrenMap`
 lives in `useSyncExternalStore` (`explorerTreeCache`), so a successful fetch
 re-renders and runs the effect cleanup in the same microtask, before the promise
 settles a tracked flag; deriving it also keeps the two mounted Explorer panels
-(RepoDetail tab + right dock) in agreement. A failed listing sets `loadError` and
+(RepoDetail's Explorer sub-tab + the right panel's tree column) in agreement. A failed listing sets `loadError` and
 renders a `⚠` retry affordance; clicking it clears the error and re-fires the
 effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
@@ -230,17 +219,16 @@ edge.
 end to end against the real tree cache (`--environment jsdom`);
 `TreeNode.test.ts` is a source-mirror test and must be updated alongside edits.
 
-`test/spa/react/workspace-right-dock/` covers the dock: `WorkspaceRightDock.test.tsx`
-(tabs, keep-alive, persistence, resize, group-vs-repo view sets),
-`WorkspaceDockTarget.test.tsx` (the target picker — default/fallback/persistence,
-the dirty-edit guard, what follows the picker and what does not),
-`WorkspaceDockMergedHeader.test.tsx` (single-row header, incl. picker + portaled
-terminal toolbar), `DockNotesPanel.test.tsx`, `dockNotes.test.ts`, and
-`composerInsert.test.tsx`. The heavy views (TerminalView, ExplorerPanel,
-DockNotesPanel) are mocked by source path there so xterm/Monaco never load.
+`test/spa/react/workspace-right-dock/` covers the panel and its controller:
+`useWorkspaceDock.test.tsx` (open/width/resize plus the target rules — default,
+fallback, persistence, the dirty-edit guard, and what follows the picker and what
+does not), the `Unified*` / `unified*` suites for the panel itself, plus
+`DockNotesPanel.test.tsx`, `dockNotes.test.ts`, and `composerInsert.test.tsx`.
+The heavy views (TerminalView, ExplorerPanel, DockNotesPanel) are mocked by
+source path there so xterm/Monaco never load.
 
 The group side lives in `test/spa/react/repos/RepoGroupView.dock.test.tsx`
-(flag/breakpoint gating, target mapping, remote base URL, fetch failure) and
+(breakpoint gating, target mapping, remote base URL, fetch failure) and
 `test/spa/react/TopBar.repo-group.test.tsx` (the TopBar toggle for `group-*`).
 
 `QuickOpen.behavior.test.tsx` asserts the one-fetch-per-open contract against a

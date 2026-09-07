@@ -17,7 +17,7 @@
  *
  * On desktop (behind `splitWorkspacePanel`) the group also gets the workspace
  * right dock. The dock's own state scopes to the group, while its Terminal and
- * Explorer point at a target picked in the dock header: the group root, or any
+ * Explorer point at a target picked in the panel's open menu: the group root, or any
  * live member repo. Notes stays on the group. Members come from
  * `GET /api/repo-groups/:id`; stale ones are listed but not selectable.
  *
@@ -30,7 +30,6 @@ import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
-import { useUnifiedRightPanelEnabled } from '../hooks/feature-flags/useUnifiedRightPanelEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { UnifiedPanelHostProvider } from '../features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
@@ -42,7 +41,7 @@ import type { RepoGroupMember } from './repoGroupService';
 import { RepoGroupGitTab } from './RepoGroupGitTab';
 import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
 import { useRepoGroupMembers } from './useRepoGroupMembers';
-import { WorkspaceRightDock, useWorkspaceDock, type DockTarget } from '../features/repo-detail/WorkspaceRightDock';
+import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWorkspaceDock';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 
@@ -160,8 +159,6 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         [dockAvailable, members, workspaceId]
     );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
-    // Same slot, one panel, when `unifiedRightPanel` is on (AC-01).
-    const unifiedRightPanelEnabled = useUnifiedRightPanelEnabled();
     // The group's selected chat owns the panel's chat-scoped tabs. `RepoChatTab`
     // below runs against the group workspace id, so that is the key its
     // selection is filed under; the per-repo entry only, never the global
@@ -172,8 +169,8 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // See RepoDetail: publishes the panel to chat entry points below, scoped to
     // the group id (the panel's store key) and the chat it is showing.
     const unifiedPanelHost = useMemo(
-        () => (dockAvailable && unifiedRightPanelEnabled ? { workspaceId, chatId: panelChatId } : null),
-        [dockAvailable, unifiedRightPanelEnabled, workspaceId, panelChatId],
+        () => (dockAvailable ? { workspaceId, chatId: panelChatId } : null),
+        [dockAvailable, workspaceId, panelChatId],
     );
 
     return (
@@ -208,9 +205,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                         />
                     </div>
                 </div>
-                {dockAvailable && (unifiedRightPanelEnabled
-                    ? <UnifiedRightPanel workspaceId={workspaceId} chatId={panelChatId} dock={dock} targets={dockTargets} />
-                    : <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={dockTargets} />)}
+                {dockAvailable && <UnifiedRightPanel workspaceId={workspaceId} chatId={panelChatId} dock={dock} targets={dockTargets} />}
             </div>
         </div>
         </UnifiedPanelHostProvider>

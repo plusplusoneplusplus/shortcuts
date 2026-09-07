@@ -1,19 +1,17 @@
 /**
- * UnifiedRightPanel — the single right-side surface behind the
- * `unifiedRightPanel` flag (AC-01).
+ * UnifiedRightPanel — the workspace's one and only right-side surface.
  *
- * One column, one tab strip, one visible view. Where the flag-off desktop has a
- * workspace dock plus whatever column a chat source link / canvas / diff opened
- * beside it, this panel is the only right-side column: selecting a tab swaps its
- * content in place. The tab session itself (ownership, identity, order,
- * persistence) lives in `useUnifiedPanelTabs`; this component is the shell
- * around it.
+ * One column, one tab strip, one visible view: every terminal, file, note,
+ * canvas and diff a workspace opens on the right lands here as a tab, and
+ * selecting one swaps its content in place. The tab session itself
+ * (ownership, identity, order, persistence) lives in `useUnifiedPanelTabs`;
+ * this component is the shell around it.
  *
  * Three things the shell is responsible for and the model is not:
  *
  *  - **Keep-alive.** A view is mounted the first time its tab becomes active and
- *    then stays mounted, hidden with `display:none` — the same pattern
- *    `WorkspaceRightDock` uses. That is what keeps a PTY, a scrollback, and an
+ *    then stays mounted, hidden with `display:none`. That is what keeps a
+ *    PTY, a scrollback, and an
  *    unsaved buffer alive across tab switches and a collapse. The flip side is
  *    just as load-bearing: a view is NOT mounted merely because its tab was
  *    restored from localStorage, so a reload never spawns a terminal the user
@@ -24,8 +22,23 @@
  *    "Open…" action rather than auto-creating anything.
  *  - **Width.** One workspace-scoped width, clamped so the central chat keeps at
  *    least `DOCK_MIN_CHAT_WIDTH`. It comes from the existing
- *    `useWorkspaceDock` controller, so the flag-on and flag-off panels share the
- *    same open/width persistence and the same header toggle.
+ *    `useWorkspaceDock` controller, which also owns the header toggle's open
+ *    bit — the panel does not persist a width of its own.
+ *  - **The toolbar row.** Directly under the strip, and only while a file tab
+ *    is active: breadcrumbs for that file plus the file-tree toggle. Other
+ *    kinds keep rendering their own toolbars inside their own views, and when
+ *    this row is absent the toggle moves into the strip beside "+", so there is
+ *    always exactly one visible way to reach the tree.
+ *  - **The preview slot.** A single click in the tree opens into the section's
+ *    one replaceable, italic preview tab; every other entry point — `+`, a chat
+ *    source link, a note link, a double click — opens a permanent tab. The
+ *    rules live in `unifiedPanelTabsModel`; what the shell adds is the guard,
+ *    because reusing the slot destroys a buffer exactly as a close does.
+ *  - **The file-tree column.** A collapsible tree pinned to the panel's right
+ *    edge, beside whatever the active tab is showing — a terminal, a canvas, or
+ *    the empty state. It is panel-level (`unifiedPanelTree`), not a tab and not
+ *    per-tab, and it has its own drag: the tree gives up width before the view
+ *    does, and a panel too narrow for both hides it without closing it.
  *
  * Closing is guarded rather than immediate where a close would destroy something
  * (AC-05). A terminal tab with live sessions asks before ending them; a file tab
@@ -42,13 +55,28 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
+import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
-import type { WorkspaceDockController } from '../WorkspaceRightDock';
+import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
+import { ExplorerPanel, getAncestorPaths } from '../explorer/ExplorerPanel';
+import { useExplorerExpandedPaths, useExplorerSelectedPath } from '../explorer/explorerStateStore';
+import { explorerFileTabInput } from './unifiedExplorerFiles';
+import {
+    UNIFIED_TREE_MIN_WIDTH,
+    clampUnifiedTreeWidth,
+    isUnifiedTreeVisible,
+    maxUnifiedTreeWidth,
+    useUnifiedPanelTree,
+} from './unifiedPanelTree';
 import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
+import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
+import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
+import { breadcrumbFolderPath, unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
+import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import {
     liveTerminalSessionIds,
@@ -61,7 +89,7 @@ import {
     dirtyCloseLabel,
     needsDirtyCloseConfirm,
 } from './unifiedDirtyClose';
-import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import type { OpenUnifiedPreviewTabInput, OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 export interface UnifiedRightPanelProps {
     /**
@@ -82,7 +110,9 @@ export interface UnifiedRightPanelProps {
 
 export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }: UnifiedRightPanelProps) {
     const { isOpen, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
-    const { tabs, activeId, active, open, activate, close, move } = useUnifiedPanelTabs(workspaceId, chatId);
+    const {
+        tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
+    } = useUnifiedPanelTabs(workspaceId, chatId);
 
     // Views mounted so far, by tab id. A tab enters this set when it first
     // becomes active and stays until it is closed — that is the keep-alive that
@@ -112,17 +142,112 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     // New workspace resources open against the dock's current target, and carry
     // a repo label when that is not the panel's own workspace (a group member or
     // a remote clone) so two same-named tabs stay tellable apart.
-    const openWorkspaceResource = useCallback((kind: 'terminal' | 'explorer' | 'notes') => {
+    const openWorkspaceResource = useCallback((kind: 'terminal' | 'notes') => {
         const owner = kind === 'notes' ? workspaceId : target;
         open({
             kind,
             ownerWorkspaceId: owner,
             chatId,
             resourceId: kind,
-            label: kind === 'terminal' ? 'Terminal' : kind === 'explorer' ? 'Explorer' : 'Notes',
+            label: kind === 'terminal' ? 'Terminal' : 'Notes',
             ...(owner === workspaceId || !targetLabel ? {} : { repoLabel: targetLabel }),
         });
     }, [open, workspaceId, target, targetLabel, chatId]);
+
+    // ------------------------------------------------------------------
+    // The file-tree column (AC-01)
+    // ------------------------------------------------------------------
+
+    // Panel-level, not per-tab: the column stays put across tab switches, chat
+    // switches, a collapse, and a reload, and it renders beside every kind of
+    // view — including the empty state, which is why closing the last tab with
+    // the tree open leaves the panel showing a tree next to "Nothing open".
+    const tree = useUnifiedPanelTree(workspaceId);
+
+    // Bring an older persisted layout up to the current codec, once per panel
+    // scope. It runs in an effect rather than in the store's read because it
+    // writes: an `explorer` tab from the previous version restores as "open the
+    // tree column" instead of as a tab. Reads already tolerate the old payload,
+    // so the first render is correct either way.
+    useEffect(() => {
+        migrateUnifiedPanelState(workspaceId);
+    }, [workspaceId]);
+    const treeVisible = isUnifiedTreeVisible(tree.state, width);
+
+    // The column's drag. It is deliberately given no `storageKey`: the width
+    // lives in the tree store, which the toggle in the toolbar shares, and two
+    // localStorage owners for one number would drift. So the drag runs
+    // uncommitted and the result is written back when it ends.
+    const treeResize = useResizablePanel({
+        initialWidth: tree.state.width,
+        minWidth: UNIFIED_TREE_MIN_WIDTH,
+        maxWidth: maxUnifiedTreeWidth(width),
+        direction: 'right',
+    });
+    const treeDragged = useRef(false);
+    useEffect(() => {
+        if (treeResize.isDragging) {
+            treeDragged.current = true;
+            return;
+        }
+        if (!treeDragged.current) return;
+        treeDragged.current = false;
+        tree.setWidth(treeResize.width);
+    }, [treeResize.isDragging, treeResize.width, tree]);
+
+    // What the column actually renders at: the live drag width, clamped against
+    // the panel's current width so the active view keeps its minimum. A panel
+    // dragged narrow shrinks the tree first, and below the point where both fit
+    // `treeVisible` hides it without touching the user's open bit.
+    const treeWidth = clampUnifiedTreeWidth(treeResize.width, width);
+
+    // A file picked in the tree opens a panel tab; that flow needs the close
+    // guard's dirty state, so `openTreeFile` is defined with it further down.
+
+    // ------------------------------------------------------------------
+    // The toolbar row (AC-02)
+    // ------------------------------------------------------------------
+
+    // Breadcrumbs exist for file tabs only; every other kind brings its own
+    // toolbar. A null here is what removes the row entirely — and what moves the
+    // tree toggle into the strip.
+    const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active, target), [active, target]);
+
+    // Breadcrumb clicks drive the tree column through the Explorer's own
+    // per-workspace state, the same store the column reads — so a click reveals
+    // the folder without a second selection model and without touching tabs.
+    const [, setTreeSelectedPath] = useExplorerSelectedPath(target);
+    const [, setTreeExpandedPaths] = useExplorerExpandedPaths(target);
+    const revealTreeFolder = useCallback((segmentIndex: number) => {
+        const folder = breadcrumbFolderPath(toolbar?.segments ?? [], segmentIndex);
+        if (folder === null) {
+            // The root crumb: clear the selection, leave the expansion alone.
+            setTreeSelectedPath(null);
+            return;
+        }
+        setTreeSelectedPath(folder);
+        // Expand the folder AND its ancestors: a row nobody can see is not a
+        // reveal, and the tree lazy-loads each level as it renders.
+        setTreeExpandedPaths(prev => new Set([...prev, ...getAncestorPaths(folder), folder]));
+    }, [toolbar, setTreeSelectedPath, setTreeExpandedPaths]);
+
+    // What the tree column should track (AC-06). The toolbar model already
+    // decides whether the active file's path resolves inside the tree on screen,
+    // so tracking reuses that answer rather than restating the rule: a file tab
+    // the tree can show reveals it, a file tab it cannot (another clone, a
+    // trusted absolute path) drops the highlight, and any other kind — or no
+    // tabs at all — leaves the tree exactly where it is.
+    const trackedTreeFile = useMemo<string | null | undefined>(() => {
+        if (toolbar === null) return undefined;
+        return toolbar.interactive ? toolbar.path : null;
+    }, [toolbar]);
+
+    const treeToggle = useCallback(
+        (placement: 'toolbar' | 'strip') => (
+            <UnifiedPanelTreeToggle open={tree.state.open} onToggle={tree.toggleOpen} placement={placement} />
+        ),
+        [tree.state.open, tree.toggleOpen],
+    );
 
     // Per-tab dirty / error state, reported by the views. It lives here rather
     // than in each view because the strip has to show it for tabs that are not
@@ -142,8 +267,16 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         [],
     );
     const handleDirtyChange = useCallback(
-        (id: string, isDirty: boolean) => setFlag(setDirtyIds, id, isDirty),
-        [setFlag],
+        (id: string, isDirty: boolean) => {
+            setFlag(setDirtyIds, id, isDirty);
+            // Typing into a preview keeps it (AC-04). The edit is the strongest
+            // possible statement that this file is not a glance, and a preview
+            // holding unsaved work would be one tree click from a close prompt.
+            // `promote` is a no-op for a tab that is already permanent, so this
+            // costs a lookup on every later dirty report and nothing else.
+            if (isDirty) promote(id);
+        },
+        [setFlag, promote],
     );
     const handleErrorChange = useCallback(
         (id: string, hasError: boolean) => setFlag(setErrorIds, id, hasError),
@@ -179,6 +312,11 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         [],
     );
 
+    // A preview replacement that is waiting on the unsaved-edits prompt: the
+    // outgoing buffer has to be saved or discarded before the slot can be
+    // reused, and the new file must still open once it is.
+    const pendingPreviewOpen = useRef<{ tabId: string; input: OpenUnifiedPreviewTabInput } | null>(null);
+
     const closeTab = useCallback((id: string) => {
         close(id);
         setMountedIds(prev => {
@@ -194,6 +332,14 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             return next;
         });
         saveHandlers.current.delete(id);
+        // The tree click that was blocked on this tab's unsaved edits now gets
+        // its open, in the freed slot. Both go through the same functional
+        // setter, so the close and the open compose in one tick.
+        const queued = pendingPreviewOpen.current;
+        if (queued !== null && queued.tabId === id) {
+            pendingPreviewOpen.current = null;
+            openPreview(queued.input);
+        }
         // No flag clearing here on purpose: closing unmounts the view, and the
         // views report clean/ready from their own unmount cleanup, so a second
         // reset would be dead code. Verified by removing the cleanup's effect in
@@ -237,6 +383,44 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         closeTab(id);
     }, [tabs, terminalSessions, dirtyIds, closeTab]);
 
+    // A file picked in the tree opens against the dock's target, exactly as an
+    // Explorer navigator tab's selection does — same descriptor builder, so the
+    // tree column and the `+` menu file the same kind of tab.
+    const openTreeFile = useCallback(
+        (
+            file: { path: string; name: string; line?: number },
+            options: { preview: boolean; readOnly?: boolean },
+        ) => {
+            const input = explorerFileTabInput(file, options, {
+                ownerWorkspaceId: target,
+                scopeWorkspaceId: workspaceId,
+                ownerLabel: targetLabel,
+                chatId,
+            });
+            if (input === null) return;
+            // A double click (or any other permanent entry point) opens a normal
+            // tab; only the tree's single click takes the preview slot (AC-03).
+            if (!options.preview) {
+                open(input);
+                return;
+            }
+            const { kind: _kind, ...previewInput } = input;
+            // Reusing the slot destroys the outgoing buffer, so it goes through
+            // the same unsaved-edits guard a close does. In practice an edit has
+            // already promoted the tab (AC-04), so this is a safety net: cancel
+            // or a failed save leaves the old buffer, and the queued open is
+            // dropped with the prompt.
+            const outgoing = previewToReplace(previewInput);
+            if (outgoing !== null && dirtyIds.has(outgoing.id)) {
+                pendingPreviewOpen.current = { tabId: outgoing.id, input: previewInput };
+                requestClose(outgoing.id);
+                return;
+            }
+            openPreview(previewInput);
+        },
+        [target, workspaceId, targetLabel, chatId, open, openPreview, previewToReplace, dirtyIds, requestClose],
+    );
+
     const cancelClose = useCallback(() => {
         setPendingClose(null);
         setCloseError(null);
@@ -270,8 +454,13 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         if (!tabs.some(tab => tab.id === pendingClose.tabId)) cancelClose();
     }, [tabs, pendingClose, cancelClose]);
 
-    /** Cancel: the tab, its buffer, and its unsaved edits are all left alone. */
+    /**
+     * Cancel: the tab, its buffer, and its unsaved edits are all left alone —
+     * and so is the preview slot, so a cancelled replacement leaves the old
+     * file showing rather than opening the new one anyway.
+     */
     const cancelDirtyClose = useCallback(() => {
+        pendingPreviewOpen.current = null;
         setPendingDirty(null);
         setDirtyError(null);
         setDirtySaving(false);
@@ -402,7 +591,9 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     onActivate={activate}
                     onClose={requestClose}
                     onMove={move}
+                    onPromote={promote}
                     onOpenMenu={toggleMenu}
+                    trailing={toolbar === null ? treeToggle('strip') : undefined}
                 />
 
                 {menuOpen && (
@@ -416,6 +607,13 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                             onOpenResource={openResource}
                             onOpenWorkspaceResource={kind => {
                                 setMenuOpen(false);
+                                // The menu keeps its Explorer entry, but the
+                                // Explorer is a column now: the action toggles
+                                // the tree instead of opening a tab (AC-05).
+                                if (kind === 'explorer') {
+                                    tree.toggleOpen();
+                                    return;
+                                }
                                 openWorkspaceResource(kind);
                             }}
                             onClose={closeMenu}
@@ -423,48 +621,113 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     </div>
                 )}
 
-                {tabs.length === 0 ? (
-                    <div
-                        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
-                        data-testid="unified-panel-empty"
-                    >
-                        <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">Nothing open in this panel.</p>
-                        <button
-                            type="button"
-                            data-testid="unified-panel-empty-open"
-                            onClick={toggleMenu}
-                            className={cn(
-                                'rounded border border-[#c8c8c8] px-2.5 py-1 text-xs text-[#1f1f1f] hover:bg-[#e8e8e8]',
-                                'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40',
-                                'dark:border-[#3c3c3c] dark:text-[#cccccc] dark:hover:bg-[#37373d]',
-                            )}
-                        >
-                            Open…
-                        </button>
-                    </div>
-                ) : (
-                    mountedTabs.map(tab => (
+                {/* Views on the left, the file tree pinned to the panel's right
+                    edge — one row spanning everything below the tab strip. */}
+                <div className="flex min-h-0 min-w-0 flex-1" data-testid="unified-panel-content">
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                    {toolbar !== null && (
+                        <UnifiedPanelToolbar
+                            breadcrumbs={toolbar}
+                            onNavigate={revealTreeFolder}
+                            trailing={treeToggle('toolbar')}
+                        />
+                    )}
+                    {tabs.length === 0 ? (
                         <div
-                            key={tab.id}
-                            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-                            style={{ display: tab.id === activeId ? undefined : 'none' }}
-                            data-testid={`unified-panel-view-${tab.id}`}
-                            data-active={tab.id === activeId ? 'true' : 'false'}
+                            className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
+                            data-testid="unified-panel-empty"
                         >
-                            <UnifiedTabView
-                                tab={tab}
-                                scopeWorkspaceId={workspaceId}
-                                chatId={chatId}
-                                onOpenResource={openResource}
-                                onClose={requestClose}
-                                onDirtyChange={handleDirtyChange}
-                                onErrorChange={handleErrorChange}
-                                onRegisterSave={handleRegisterSave}
-                                onTerminalSessionsChange={handleTerminalSessions}
-                            />
+                            <p className="text-xs text-[#616161] dark:text-[#9d9d9d]">Nothing open in this panel.</p>
+                            <button
+                                type="button"
+                                data-testid="unified-panel-empty-open"
+                                onClick={toggleMenu}
+                                className={cn(
+                                    'rounded border border-[#c8c8c8] px-2.5 py-1 text-xs text-[#1f1f1f] hover:bg-[#e8e8e8]',
+                                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40',
+                                    'dark:border-[#3c3c3c] dark:text-[#cccccc] dark:hover:bg-[#37373d]',
+                                )}
+                            >
+                                Open…
+                            </button>
                         </div>
-                    ))
-                )}
+                    ) : (
+                        mountedTabs.map(tab => (
+                            <div
+                                key={tab.id}
+                                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                                style={{ display: tab.id === activeId ? undefined : 'none' }}
+                                data-testid={`unified-panel-view-${tab.id}`}
+                                data-active={tab.id === activeId ? 'true' : 'false'}
+                            >
+                                <UnifiedTabView
+                                    tab={tab}
+                                    scopeWorkspaceId={workspaceId}
+                                    onClose={requestClose}
+                                    onDirtyChange={handleDirtyChange}
+                                    onErrorChange={handleErrorChange}
+                                    onRegisterSave={handleRegisterSave}
+                                    onTerminalSessionsChange={handleTerminalSessions}
+                                />
+                            </div>
+                        ))
+                    )}
+
+                    {/* A tab is selected but its view has not mounted yet (restored
+                        while the panel was collapsed): show nothing rather than the
+                        empty state, which would read as "no tabs". */}
+                    {tabs.length > 0 && active !== null && !mountedIds.has(active.id) && (
+                        <div className="min-h-0 flex-1" data-testid="unified-panel-pending" />
+                    )}
+                    </div>
+
+                    {/* Mounted while the user has the column open, hidden (never
+                        unmounted) when the panel is too narrow to show it, so
+                        widening restores the tree with its expansion intact. */}
+                    {tree.state.open && (
+                        <div
+                            className="flex min-h-0 flex-shrink-0"
+                            style={{ display: treeVisible ? undefined : 'none' }}
+                            data-testid="unified-panel-tree"
+                        >
+                            {/* Right-anchored column: drag left to widen it. */}
+                            <div
+                                className={cn(
+                                    'group relative flex w-1.5 flex-shrink-0 cursor-col-resize items-center justify-center border-l border-[#e0e0e0] dark:border-[#333]',
+                                    'hover:bg-[#007acc]/15 active:bg-[#007acc]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40 transition-colors',
+                                    treeResize.isDragging && 'bg-[#007acc]/20',
+                                )}
+                                onMouseDown={treeResize.handleMouseDown}
+                                onTouchStart={treeResize.handleTouchStart}
+                                data-testid="unified-panel-tree-resize-handle"
+                                role="separator"
+                                aria-orientation="vertical"
+                                aria-label="Resize file tree"
+                                aria-valuemin={UNIFIED_TREE_MIN_WIDTH}
+                                aria-valuemax={maxUnifiedTreeWidth(width)}
+                                aria-valuenow={treeWidth}
+                                tabIndex={0}
+                            />
+                            <div
+                                className="flex min-h-0 flex-shrink-0 flex-col overflow-hidden"
+                                style={{ width: treeWidth }}
+                                data-tree-width={treeWidth}
+                            >
+                                <ExplorerPanel
+                                    workspaceId={target}
+                                    // Same rule as an Explorer tab: only a column
+                                    // pointed at the panel's own workspace may write
+                                    // the explorer deep-link hash, or a group member's
+                                    // file click would navigate out of the group.
+                                    deepLink={target === workspaceId}
+                                    mode="sidebar"
+                                    activeFilePath={trackedTreeFile}
+                                    onOpenFile={openTreeFile}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 <ExplorerCloseTabsDialog
                     open={pendingDirty !== null}
@@ -485,13 +748,6 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                         onCancel={cancelClose}
                         onConfirm={confirmClose}
                     />
-                )}
-
-                {/* A tab is selected but its view has not mounted yet (restored
-                    while the panel was collapsed): show nothing rather than the
-                    empty state, which would read as "no tabs". */}
-                {tabs.length > 0 && active !== null && !mountedIds.has(active.id) && (
-                    <div className="min-h-0 flex-1" data-testid="unified-panel-pending" />
                 )}
             </div>
         </div>

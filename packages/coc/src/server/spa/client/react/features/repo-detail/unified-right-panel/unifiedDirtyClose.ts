@@ -18,7 +18,7 @@
  *  - It does NOT decide what "Save" does. The buffer registers its own save
  *    function with the panel (`PreviewPane`'s `onRegisterSave`), and a write
  *    that fails leaves the tab open and dirty — the panel owns that outcome,
- *    exactly as `ExplorerPanel` does for the flag-off editor tabs.
+ *    exactly as `ExplorerPanel` does for its own editor tabs.
  */
 
 import { TRUSTED_PATH_PREFIX } from '../explorer/ExactOpen';

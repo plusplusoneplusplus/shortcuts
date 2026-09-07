@@ -3,7 +3,7 @@
  * File Explorer's UI state (expanded tree nodes + selected/open preview file).
  *
  * ExplorerPanel is mounted with `key={ws.id}` at both mount sites (RepoDetail,
- * WorkspaceRightDock), so every workspace switch fully remounts it and wipes all
+ * unified right panel), so every workspace switch fully remounts it and wipes all
  * local `useState`. To make the explorer's state survive a switch (and a page
  * reload), the persisted pieces live here instead — keyed per workspace under the
  * existing `split-workspace:<wsId>:*` localStorage convention (see

@@ -291,7 +291,7 @@ describe('ExplorerPanel — the search editor buffer', () => {
     });
 
     async function openSearchResults() {
-        render(<ExplorerPanel workspaceId={WS} />);
+        render(<ExplorerPanel workspaceId={WS} mode="editor" />);
         await act(async () => { await vi.advanceTimersByTimeAsync(0); });
         await act(async () => { screen.getByTestId('explorer-view-search').click(); });
         fireEvent.change(screen.getByTestId('content-search-input'), { target: { value: 'needle' } });

@@ -5,7 +5,7 @@
  * Purely presentational: it renders the tab session `useUnifiedPanelTabs` owns
  * and reports what the user did. The one thing it decides for itself is where
  * the section divider goes, which it reads off each tab's kind rather than
- * being told — workspace-owned tabs (terminal, explorer, notes, notes
+ * being told — workspace-owned tabs (terminal, notes, notes
  * documents) come first, then the selected chat's tabs, and the boundary is
  * simply where that flips.
  *
@@ -14,6 +14,9 @@
  *    Alt+Arrow moves the focused tab one place within its own section, so the
  *    strip is not a drag-only control. Both paths refuse to cross the divider:
  *    ownership is not a gesture (AC-02).
+ *  - **Promotion is a gesture, not a button.** Double-clicking a preview tab
+ *    (or pressing Enter on it) makes it permanent; the strip only reports the
+ *    gesture, the model owns the one-way rule (AC-04).
  *  - **State without color.** Dirty is a dot, errors a warning sign, read-only
  *    a lock, and the active tab carries `aria-selected` plus an underline — the
  *    strip stays readable to anyone who cannot separate the accents.
@@ -23,13 +26,19 @@
  *    no matter how many tabs are open.
  */
 
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
 import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 
-/** The tooltip a tab shows on hover: the full label plus its repo, if any. */
+/**
+ * The tooltip a tab shows on hover: the full label, its repo if any, and — for
+ * the preview slot — what the italics mean. Italics alone say "temporary" only
+ * to someone who already knows the convention, so the words are always there
+ * too, in the tooltip and in the tab's screen-reader text (AC-03).
+ */
 export function unifiedTabTooltip(tab: UnifiedPanelTab): string {
-    return tab.repoLabel ? `${tab.label} — ${tab.repoLabel}` : tab.label;
+    const withRepo = tab.repoLabel ? `${tab.label} — ${tab.repoLabel}` : tab.label;
+    return tab.preview ? `${withRepo} (preview — double-click to keep open)` : withRepo;
 }
 
 const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
@@ -37,11 +46,6 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="3,4 6,8 3,12" />
             <line x1="8" y1="12" x2="13" y2="12" />
-        </svg>
-    ),
-    explorer: (
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
-            <path d="M2 4.2h4l1.2 1.6H14v6.9H2z" />
         </svg>
     ),
     notes: (
@@ -95,8 +99,22 @@ export interface UnifiedPanelTabStripProps {
     onClose: (id: string) => void;
     /** Reorder: put `id` where `beforeId` sits, or at the end of its section. */
     onMove: (id: string, beforeId: string | null) => void;
+    /**
+     * Make a preview tab permanent (AC-04). Raised by a double click on the
+     * tab, the strip's half of "double-click to keep open" that the preview
+     * tooltip promises. A no-op for a tab that is already permanent, so the
+     * strip does not have to check.
+     */
+    onPromote?: (id: string) => void;
     /** The trailing "+" — opens the searchable resource menu (AC-03). */
     onOpenMenu?: () => void;
+    /**
+     * The file-tree toggle, parked beside the "+" whenever the panel's own
+     * toolbar row is not rendered (a non-file tab, or no tabs at all) so the
+     * tree is always one click away. It is the strip's only guest — nothing
+     * else portals in here, because the strip is the panel's one tab row.
+     */
+    trailing?: ReactNode;
     className?: string;
 }
 
@@ -108,7 +126,9 @@ export function UnifiedPanelTabStrip({
     onActivate,
     onClose,
     onMove,
+    onPromote,
     onOpenMenu,
+    trailing,
     className,
 }: UnifiedPanelTabStripProps) {
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
@@ -150,7 +170,10 @@ export function UnifiedPanelTabStrip({
         }
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
+            // Enter is the keyboard's double click here: activating a preview
+            // that is already active would otherwise have no way to keep it.
             onActivate(tab.id);
+            if (tab.preview) onPromote?.(tab.id);
             return;
         }
         const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
@@ -209,9 +232,11 @@ export function UnifiedPanelTabStrip({
                             data-scope={scopeForKind(tab.kind)}
                             data-active={isActive || undefined}
                             data-dirty={isDirty || undefined}
+                            data-preview={tab.preview || undefined}
                             data-readonly={tab.readOnly || undefined}
                             data-section-start={startsChatSection || undefined}
                             onClick={() => onActivate(tab.id)}
+                            onDoubleClick={() => onPromote?.(tab.id)}
                             onAuxClick={event => {
                                 if (event.button !== 1) return;
                                 event.preventDefault();
@@ -259,7 +284,12 @@ export function UnifiedPanelTabStrip({
                             {hasError && (
                                 <span aria-hidden="true" className="flex-shrink-0" data-testid={`unified-panel-tab-error-${tab.id}`}>⚠</span>
                             )}
-                            <span className="truncate" data-testid={`unified-panel-tab-label-${tab.id}`}>{tab.label}</span>
+                            <span
+                                className={cn('truncate', tab.preview && 'italic')}
+                                data-testid={`unified-panel-tab-label-${tab.id}`}
+                            >
+                                {tab.label}
+                            </span>
                             {tab.repoLabel && (
                                 <span
                                     className="max-w-[64px] flex-shrink truncate text-[10px] opacity-70"
@@ -269,6 +299,7 @@ export function UnifiedPanelTabStrip({
                                 </span>
                             )}
                             <span className="sr-only">
+                                {tab.preview ? ' (preview — double-click to keep open)' : ''}
                                 {tab.readOnly ? ' (read-only)' : ''}
                                 {isDirty ? ' (unsaved changes)' : ''}
                                 {hasError ? ' (unavailable)' : ''}
@@ -307,7 +338,7 @@ export function UnifiedPanelTabStrip({
                 })}
             </div>
 
-            {/* Outside the scrolling row, so it stays reachable at any tab count. */}
+            {/* Outside the scrolling row, so they stay reachable at any tab count. */}
             {onOpenMenu && (
                 <button
                     type="button"
@@ -325,6 +356,8 @@ export function UnifiedPanelTabStrip({
                     +
                 </button>
             )}
+
+            {trailing}
         </div>
     );
 }

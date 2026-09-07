@@ -73,7 +73,7 @@ function releaseCtrl(): void {
 
 /** Open a.ts, b.ts, c.ts as pinned tabs — MRU ends up [c, b, a]. */
 async function openThreeTabs(): Promise<void> {
-    render(<ExplorerPanel workspaceId="ws-keys" />);
+    render(<ExplorerPanel workspaceId="ws-keys" mode="editor" />);
     await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
     fireEvent.doubleClick(screen.getByTestId('tree-node-a.ts'));
     fireEvent.doubleClick(screen.getByTestId('tree-node-b.ts'));
@@ -170,7 +170,7 @@ describe('ExplorerPanel — Ctrl+Tab MRU cycling', () => {
     });
 
     it('does nothing with a single tab open', async () => {
-        render(<ExplorerPanel workspaceId="ws-keys" />);
+        render(<ExplorerPanel workspaceId="ws-keys" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
         fireEvent.doubleClick(screen.getByTestId('tree-node-a.ts'));
         await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts']));
@@ -223,7 +223,7 @@ describe('ExplorerPanel — scoped Ctrl/Cmd+W', () => {
     });
 
     it('does nothing when no tab is open', async () => {
-        render(<ExplorerPanel workspaceId="ws-keys" />);
+        render(<ExplorerPanel workspaceId="ws-keys" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
         screen.getByTestId('explorer-view-tree').focus();
 
@@ -240,7 +240,7 @@ describe('ExplorerPanel — tab keys with the flag off', () => {
     });
 
     it('ignores Ctrl+W and Ctrl+Tab entirely', async () => {
-        render(<ExplorerPanel workspaceId="ws-keys" />);
+        render(<ExplorerPanel workspaceId="ws-keys" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tree-node-a.ts'));
         await waitFor(() => expect(screen.getByTestId('mock-preview-a.ts')).toBeInTheDocument());

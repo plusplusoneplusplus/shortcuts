@@ -30,9 +30,14 @@ import {
     closeTab,
     findTab,
     moveTab,
+    openPreviewTab,
     openTab,
+    previewTab,
+    previewTabToReplace,
+    promoteTab,
     visibleTabIds,
     visibleTabs,
+    type OpenUnifiedPreviewTabInput,
     type OpenUnifiedTabInput,
     type UnifiedPanelState,
     type UnifiedPanelTab,
@@ -48,8 +53,19 @@ export interface UnifiedPanelTabsApi {
     /** The active tab object, or null when the panel is empty. */
     active: UnifiedPanelTab | null;
 
+    /** The section's replaceable preview tab, or null. See `previewTab`. */
+    preview: UnifiedPanelTab | null;
+
     /** Open a resource, or focus its existing tab. See `openTab`. */
     open(input: OpenUnifiedTabInput): void;
+    /**
+     * Open a file into this section's single preview slot — the file tree's
+     * single click. See `openPreviewTab`; the caller resolves an outgoing dirty
+     * preview first, exactly as it does before a close.
+     */
+    openPreview(input: OpenUnifiedPreviewTabInput): void;
+    /** Make a preview tab permanent, in place. One-way. See `promoteTab`. */
+    promote(id: string): void;
     /** Show an already-visible tab. A no-op for a tab this chat cannot see. */
     activate(id: string): void;
     /**
@@ -61,6 +77,12 @@ export interface UnifiedPanelTabsApi {
     move(id: string, beforeId: string | null): void;
     /** Close every tab visible in this chat. */
     closeAllVisible(): void;
+
+    /**
+     * The preview tab `openPreview(input)` would evict, or null. Ask before
+     * opening so an outgoing dirty buffer gets the unsaved-edits prompt first.
+     */
+    previewToReplace(input: OpenUnifiedPreviewTabInput): UnifiedPanelTab | null;
 
     /** Look up a tab anywhere in the layout, regardless of scope. */
     find(id: string): UnifiedPanelTab | null;
@@ -88,6 +110,14 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
         setState(prev => openTab(prev, input));
     }, [setState]);
 
+    const openPreview = useCallback((input: OpenUnifiedPreviewTabInput) => {
+        setState(prev => openPreviewTab(prev, input));
+    }, [setState]);
+
+    const promote = useCallback((id: string) => {
+        setState(prev => promoteTab(prev, id));
+    }, [setState]);
+
     const activate = useCallback((id: string) => {
         setState(prev => activateTab(prev, latestChat.current, id));
     }, [setState]);
@@ -105,15 +135,24 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
             .reduce((acc, id) => closeTab(acc, id), prev));
     }, [setState]);
 
+    const previewToReplace = useCallback(
+        (input: OpenUnifiedPreviewTabInput) => previewTabToReplace(latest.current, latestChat.current, input),
+        [],
+    );
+
     const find = useCallback((id: string) => findTab(latest.current, id), []);
     const visibleIds = useCallback(() => visibleTabIds(latest.current, latestChat.current), []);
 
     const tabs = useMemo(() => visibleTabs(state, chatId), [state, chatId]);
     const activeId = useMemo(() => activeTabId(state, chatId), [state, chatId]);
     const active = useMemo(() => activeTab(state, chatId), [state, chatId]);
+    const preview = useMemo(() => previewTab(state, chatId), [state, chatId]);
 
     return useMemo(() => ({
-        state, tabs, activeId, active,
-        open, activate, close, move, closeAllVisible, find, visibleIds,
-    }), [state, tabs, activeId, active, open, activate, close, move, closeAllVisible, find, visibleIds]);
+        state, tabs, activeId, active, preview,
+        open, openPreview, promote, activate, close, move, closeAllVisible,
+        previewToReplace, find, visibleIds,
+    }), [state, tabs, activeId, active, preview,
+        open, openPreview, promote, activate, close, move, closeAllVisible,
+        previewToReplace, find, visibleIds]);
 }

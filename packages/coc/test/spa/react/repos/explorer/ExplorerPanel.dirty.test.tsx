@@ -59,7 +59,7 @@ beforeEach(() => {
 describe('ExplorerPanel — dirty reporting into the switch-guard store (AC-03)', () => {
     it('marks the workspace dirty when the preview reports unsaved edits, and clean again', async () => {
         seedOpenFile('ws-1');
-        render(<ExplorerPanel workspaceId="ws-1" />);
+        render(<ExplorerPanel workspaceId="ws-1" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('mock-preview')).toBeInTheDocument());
         expect(isExplorerDirty('ws-1')).toBe(false);
 
@@ -72,7 +72,7 @@ describe('ExplorerPanel — dirty reporting into the switch-guard store (AC-03)'
 
     it('tracks dirtiness per workspace', async () => {
         seedOpenFile('ws-1');
-        render(<ExplorerPanel workspaceId="ws-1" />);
+        render(<ExplorerPanel workspaceId="ws-1" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('mock-preview')).toBeInTheDocument());
 
         fireEvent.click(screen.getByTestId('make-dirty'));
@@ -82,7 +82,7 @@ describe('ExplorerPanel — dirty reporting into the switch-guard store (AC-03)'
 
     it('clears the workspace dirty flag when the panel unmounts (switch discards the buffer)', async () => {
         seedOpenFile('ws-1');
-        const view = render(<ExplorerPanel workspaceId="ws-1" />);
+        const view = render(<ExplorerPanel workspaceId="ws-1" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('mock-preview')).toBeInTheDocument());
 
         fireEvent.click(screen.getByTestId('make-dirty'));

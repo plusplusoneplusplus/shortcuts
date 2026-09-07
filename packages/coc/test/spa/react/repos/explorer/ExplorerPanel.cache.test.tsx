@@ -48,14 +48,14 @@ beforeEach(() => {
 
 describe('ExplorerPanel — in-memory tree cache (AC-02)', () => {
     it('fetches the root listing once on first mount', async () => {
-        render(<ExplorerPanel workspaceId="ws-1" />);
+        render(<ExplorerPanel workspaceId="ws-1" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('explorer-panel')).toBeInTheDocument());
         expect(treeSpy).toHaveBeenCalledTimes(1);
         expect(treeSpy).toHaveBeenCalledWith('ws-1', { path: '/', depth: 2 });
     });
 
     it('does not re-fetch the root listing when switching back to a workspace', async () => {
-        const first = render(<ExplorerPanel workspaceId="ws-1" />);
+        const first = render(<ExplorerPanel workspaceId="ws-1" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('explorer-panel')).toBeInTheDocument());
         expect(treeSpy).toHaveBeenCalledTimes(1);
 
@@ -64,19 +64,19 @@ describe('ExplorerPanel — in-memory tree cache (AC-02)', () => {
 
         // Switch back to the same workspace: the cached root renders immediately
         // (no loading spinner) and no new tree-listing request is issued.
-        render(<ExplorerPanel workspaceId="ws-1" />);
+        render(<ExplorerPanel workspaceId="ws-1" mode="editor" />);
         expect(screen.getByTestId('explorer-panel')).toBeInTheDocument();
         expect(screen.queryByTestId('explorer-loading')).not.toBeInTheDocument();
         expect(treeSpy).toHaveBeenCalledTimes(1);
     });
 
     it('fetches independently for a different workspace', async () => {
-        const first = render(<ExplorerPanel workspaceId="ws-1" />);
+        const first = render(<ExplorerPanel workspaceId="ws-1" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('explorer-panel')).toBeInTheDocument());
         expect(treeSpy).toHaveBeenCalledTimes(1);
         first.unmount();
 
-        render(<ExplorerPanel workspaceId="ws-2" />);
+        render(<ExplorerPanel workspaceId="ws-2" mode="editor" />);
         await waitFor(() => expect(treeSpy).toHaveBeenCalledWith('ws-2', { path: '/', depth: 2 }));
         expect(treeSpy).toHaveBeenCalledTimes(2);
     });

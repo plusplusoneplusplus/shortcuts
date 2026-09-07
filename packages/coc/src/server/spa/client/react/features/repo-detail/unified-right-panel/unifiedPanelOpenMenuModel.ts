@@ -11,10 +11,10 @@
  * Three rules this module encodes:
  *
  *  1. **Unavailable is hidden, unusable is disabled with a reason.** A repo
- *     group's own root has no file tree, so Explorer is not listed at all
- *     (`dockViewsForWorkspace`). A target that is offline or invalid still
- *     lists Terminal/Explorer, disabled, saying why — a missing item and a
- *     blocked item are different messages to the user.
+ *     group's own root has no file tree, so Explorer is not listed at all. A
+ *     target that is offline or invalid still lists Terminal/Explorer,
+ *     disabled, saying why — a missing item and a blocked item are different
+ *     messages to the user.
  *  2. **Canvas needs a chat.** With no chat selected the action stays visible
  *     and disabled: creating an unowned canvas is not an option we offer.
  *  3. **Disabled entries are skipped by the keyboard**, not merely ignored on
@@ -26,7 +26,7 @@
  * decided by testable code rather than by the click handler.
  */
 
-import { dockViewsForWorkspace } from '../WorkspaceDockToggle';
+import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** The non-search entries the menu offers. */
@@ -56,13 +56,15 @@ export interface OpenMenuActionsInput {
 /**
  * The action rows for a target + chat selection, in menu order.
  *
- * Explorer is omitted (not disabled) when the target has no single file tree,
- * matching the dock's own `dockViewsForWorkspace` rule. Notes stays enabled
- * even for an unavailable target: notes belong to the panel's workspace, not to
- * the repo the terminal points at.
+ * Explorer is omitted (not disabled) when the target has no single file tree: a
+ * repo group's own root is the synthetic `~/.coc/repos/group-<name>` directory,
+ * so a tree there would be meaningless. Selecting it toggles the panel's
+ * file-tree column rather than opening a tab — the entry keeps its position and
+ * label, but the Explorer is no longer a tab kind. Notes stays enabled even for
+ * an unavailable target: notes belong to the panel's workspace, not to the repo
+ * the terminal points at.
  */
 export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
-    const views = dockViewsForWorkspace(input.targetWorkspaceId);
     const blocked = input.targetUnavailable === true;
     const reason = input.targetUnavailableReason ?? 'This repository is unavailable.';
     // Terminal and Explorer act on the target repo, so they are the two the
@@ -72,7 +74,7 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
     const actions: OpenMenuAction[] = [
         { id: 'terminal', label: 'New Terminal', ...repoGate },
     ];
-    if (views.includes('explorer')) {
+    if (!isRepoGroupWorkspaceId(input.targetWorkspaceId)) {
         actions.push({ id: 'explorer', label: 'Explorer', ...repoGate });
     }
     actions.push({ id: 'notes', label: 'Notes' });

@@ -129,7 +129,7 @@ function hasFinePointerDevice(): boolean {
  * workspace with no collapse history keeps a clean localStorage. Re-syncs when
  * the key changes (workspace switch).
  *
- * Exported so the workspace right dock (`WorkspaceRightDock`) can reuse the exact
+ * Exported so the workspace right panel (`UnifiedRightPanel`) can reuse the exact
  * same persisted-boolean semantics for its open/closed flag (AC-06).
  */
 export function useCollapsedState(storageKey: string): [boolean, () => void] {

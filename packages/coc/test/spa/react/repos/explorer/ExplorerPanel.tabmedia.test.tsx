@@ -82,7 +82,7 @@ function panelFor(tabId: string): HTMLElement {
 }
 
 async function renderPanel(wsId = 'ws-media') {
-    render(<ExplorerPanel workspaceId={wsId} />);
+    render(<ExplorerPanel workspaceId={wsId} mode="editor" />);
     await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
 }
 

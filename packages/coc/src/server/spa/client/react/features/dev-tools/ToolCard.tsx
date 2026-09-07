@@ -3,7 +3,7 @@
  *
  * The header is a button that toggles expansion; the body mounts only while
  * expanded so a collapsed tool costs nothing. Styling mirrors the dashboard's
- * existing light/dark chrome pairs (see WorkspaceRightDock).
+ * existing light/dark chrome pairs (see UnifiedRightPanel).
  *
  * Each body is wrapped in an ErrorBoundary with a compact inline fallback, so
  * one tool blowing up degrades to a one-line message in its own card instead of

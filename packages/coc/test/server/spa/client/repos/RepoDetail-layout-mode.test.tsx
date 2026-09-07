@@ -131,8 +131,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/cloneRegistry', async 
 vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
     Button: (props: any) => <button {...props} />,
-    // Used by the WorkspaceRightDock segmented Terminal|Explorer switcher, which
-    // RepoDetail now imports (behind the split flag).
+    // Used by RepoDetail's own sub-tab chrome.
     SegmentedControl: ({ options, value, onChange, ...rest }: any) => (
         <div data-testid={rest['data-testid']}>
             {options?.map((o: any) => (
@@ -170,9 +169,6 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isPullRequestsEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
     isSplitWorkspacePanelEnabled: () => mockSplitWorkspacePanelEnabled,
-    // The unified right panel is off in these cases: they pin the classic
-    // layout, which the flag must leave exactly as it is.
-    isUnifiedRightPanelEnabled: () => false,
     isSchedulesInScheduledSlideEnabled: () => false,
     getScratchpadLayout: () => 'horizontal',
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',

@@ -35,6 +35,19 @@ import {
 import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
 import { setExplorerInstanceDirty } from './explorerDirtyStore';
 
+/**
+ * How much of the Explorer this mount renders.
+ *
+ * - `editor` — the whole thing: tree, resize handle, editor area and (behind
+ *   `features.explorerEditorTabs`) its own tab strip. The Explorer sub-tab.
+ * - `navigator` — tree only; every file open is handed to `onOpenFile` so the
+ *   host's tab strip is the only place a file appears.
+ * - `sidebar` — `navigator` minus the internal breadcrumb row, because the host
+ *   renders one breadcrumb row of its own above the whole panel. This is the
+ *   unified right panel's file-tree column.
+ */
+export type ExplorerPanelMode = 'editor' | 'navigator' | 'sidebar';
+
 export interface ExplorerPanelProps {
     workspaceId: string;
     /**
@@ -49,17 +62,34 @@ export interface ExplorerPanelProps {
      */
     deepLink?: boolean;
     /**
-     * Navigator mode. When given, this Explorer does not own an editor at all:
-     * every file open is handed to this callback and the editor area (and its
-     * tab strip) is not rendered, so a host that already has its own resource
-     * tabs — the unified right panel — does not end up showing two nested tab
-     * rows for the same files. Omitted, the Explorer keeps its own editor
-     * exactly as before.
+     * Where a file open goes in `navigator` and `sidebar` mode: this Explorer
+     * owns no editor there, so every open is handed to this callback and the
+     * host's tab strip is the only place a file appears. An `editor` mount
+     * shows the file itself and leaves this unset.
      */
     onOpenFile?: (
         file: { path: string; name: string; line?: number },
         options: { preview: boolean; readOnly?: boolean },
     ) => void;
+    /**
+     * Which parts of the Explorer to render. Every mount states it: `sidebar`
+     * and `navigator` both hand their opens to the host and differ only in
+     * whether the breadcrumb row is this panel's or the host's, so nothing
+     * about `onOpenFile` can tell them apart.
+     */
+    mode: ExplorerPanelMode;
+    /**
+     * The file the *host* is currently showing, for a tree that follows the
+     * host's active tab (the unified right panel's column). Three values:
+     *
+     *  - a repo-relative path — highlight it, expand its ancestors (lazy-loading
+     *    each level) and centre its row;
+     *  - `null` — the host has a file open that has no row in this tree (another
+     *    clone, or a `__trusted__:` absolute path): drop the highlight and leave
+     *    the scroll position alone;
+     *  - omitted — this host does not track; the tree keeps whatever it shows.
+     */
+    activeFilePath?: string | null;
 }
 
 /** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
@@ -199,9 +229,17 @@ export function isNarrowSidebar(width: number, isMobile: boolean): boolean {
     return !isMobile && width < NARROW_SIDEBAR_WIDTH;
 }
 
-export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: ExplorerPanelProps) {
+export function ExplorerPanel({
+    workspaceId,
+    deepLink = true,
+    onOpenFile,
+    mode: panelMode,
+    activeFilePath,
+}: ExplorerPanelProps) {
     // Navigator mode: the host owns the editor, so this panel is only a tree.
-    const navigatorMode = onOpenFile !== undefined;
+    // `sidebar` is navigator plus "the host owns the breadcrumbs too".
+    const navigatorMode = panelMode !== 'editor';
+    const sidebarMode = panelMode === 'sidebar';
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
@@ -763,6 +801,16 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
                 onClick: () => handleFindInFolder(entry.path),
             });
         } else {
+            // "Open" is the permanent-open affordance a keyboard user reaches
+            // for: Enter on a tree row previews, and the context menu (Menu key
+            // or Shift+F10) is how that preview is made to stay (AC-04).
+            items.push({
+                label: 'Open',
+                icon: '📄',
+                onClick: () => {
+                    openFileInEditor({ path: entry.path, name: entry.name }, { preview: false });
+                },
+            });
             items.push({
                 label: 'Open Preview',
                 icon: '👁️',
@@ -822,12 +870,12 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
      * Distinct from `explorerApi.reveal`, which reveals a path in the OS file
      * manager; this is purely client-side tree navigation.
      */
-    const handleRevealOpenFile = useCallback(async () => {
-        const target = openFilePath;
+    const revealPath = useCallback(async (target: string | null, options?: { silent?: boolean }) => {
         // A trusted absolute path is outside the repo tree — it has no row to reveal.
         if (!target || target.startsWith(TRUSTED_PATH_PREFIX)) return;
+        const silent = options?.silent === true;
 
-        setError(null);
+        if (!silent) setError(null);
         const ancestors = getAncestorPaths(target);
         const known = new Set(childrenMap.keys());
         const toExpand: string[] = [];
@@ -842,7 +890,9 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
                     handleChildrenLoaded(dir, data.entries);
                     known.add(dir);
                 } catch (err) {
-                    setError(errorMessage(err));
+                    // A background reveal must not turn a lazy-load failure into a
+                    // panel-wide error: the tree stays usable, just un-highlighted.
+                    if (!silent) setError(errorMessage(err));
                     failedAt = dir;
                     break;
                 }
@@ -853,9 +903,44 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
         if (toExpand.length > 0) {
             setExpandedPaths(prev => new Set([...prev, ...toExpand]));
         }
+        if (failedAt !== null && silent) {
+            // The row cannot be reached, so leave the selection and the scroll
+            // position exactly where the user left them.
+            return;
+        }
         setSelectedPath(target);
         setRevealTarget(failedAt ?? target);
-    }, [openFilePath, childrenMap, workspaceId, handleChildrenLoaded]);
+    }, [childrenMap, workspaceId, handleChildrenLoaded]);
+
+    /** The toolbar's "Reveal open file" button — the editor's own file. */
+    const handleRevealOpenFile = useCallback(async () => {
+        await revealPath(openFilePath);
+    }, [revealPath, openFilePath]);
+
+    /**
+     * Track the host's active file (AC-06). `activeFilePath` is a tri-state: a
+     * path to reveal, `null` for "the host has a file open that this tree cannot
+     * show" (a different clone, a trusted absolute path) which clears the
+     * highlight without moving the scroll, and `undefined` for "not tracking" —
+     * a terminal/canvas/note/diff tab leaves the last file highlighted where it
+     * is. Guarded on the *value* changing rather than on the render, so the tree
+     * only re-centres when the host's active file actually moves and an ordinary
+     * scroll or expansion is never yanked back.
+     */
+    const trackedFileRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (activeFilePath === undefined) return;
+        // Keyed by workspace as well as path: retargeting the column to another
+        // clone is a new tree, so the same path there is a different row.
+        const key = `${workspaceId}\u0000${activeFilePath ?? ''}`;
+        if (key === trackedFileRef.current) return;
+        trackedFileRef.current = key;
+        if (activeFilePath === null) {
+            setSelectedPath(null);
+            return;
+        }
+        void revealPath(activeFilePath, { silent: true });
+    }, [activeFilePath, workspaceId, revealPath, setSelectedPath]);
 
     // Centre the revealed row once the expansion above has rendered. Runs against
     // the tree's own scroll container so nothing outside the sidebar moves.
@@ -1172,6 +1257,10 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
                 style={showMobilePreview ? { display: 'none' } : { width: undefined }}
                 data-testid="explorer-sidebar"
                 data-navigator={navigatorMode ? 'true' : undefined}
+                data-explorer-mode={panelMode}
+                // A bare <aside> is an unlabelled complementary region. As a
+                // column beside the host's tabs it needs a name of its own.
+                aria-label={sidebarMode ? 'File tree' : undefined}
             >
                 {/* The persisted sidebar width only means something beside an
                     editor; in navigator mode the tree IS the panel and takes
@@ -1266,10 +1355,15 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
                     />
                 ) : (
                     <>
-                        <Breadcrumbs
-                            segments={breadcrumbSegments}
-                            onNavigate={handleBreadcrumbNavigate}
-                        />
+                        {/* Sidebar mode: the host renders one breadcrumb row
+                            above the whole panel, so a second one inside the
+                            tree column would say the same thing twice. */}
+                        {!sidebarMode && (
+                            <Breadcrumbs
+                                segments={breadcrumbSegments}
+                                onNavigate={handleBreadcrumbNavigate}
+                            />
+                        )}
                         <SearchBar
                             value={searchInput}
                             onChange={onSearchChange}
@@ -1291,7 +1385,10 @@ export function ExplorerPanel({ workspaceId, deepLink = true, onOpenFile }: Expl
                             onSelect={handleSelect}
                             onToggle={handleToggle}
                             onFileOpen={handleFileOpen}
-                            onFilePin={tabsEnabled ? handleFilePin : undefined}
+                            // Pinning needs somewhere for a permanent tab to
+                            // live: this panel's own strip, or a host that
+                            // takes the opens (navigator/sidebar mode).
+                            onFilePin={tabsEnabled || onOpenFile ? handleFilePin : undefined}
                             onChildrenLoaded={handleChildrenLoaded}
                             onContextMenu={handleTreeContextMenu}
                             filterQuery={searchQuery}

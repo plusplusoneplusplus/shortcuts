@@ -81,7 +81,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
-import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
+import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
 const CHAT = 'chat-1';
@@ -90,9 +90,6 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
-        view: 'terminal',
-        setView: vi.fn(),
-        views: ['terminal', 'explorer', 'notes'],
         target: WS,
         setTarget: vi.fn(),
         targets: [],
@@ -208,8 +205,8 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         await screen.findByTestId('explorer-close-tabs-error');
         // The tab survives, and the strip still shows it as unsaved — the write
         // failed, so the buffer is exactly as dirty as it was. (PreviewPane
-        // swaps in its own error/retry state, as it does for the flag-off
-        // Explorer tabs; the panel does not second-guess that.)
+        // swaps in its own error/retry state, as it does for the Explorer's
+        // own tabs; the panel does not second-guess that.)
         expect(screen.getByTestId(`unified-panel-tab-${tabId}`)).toBeTruthy();
         expect(screen.getByTestId(`unified-panel-tab-dirty-${tabId}`)).toBeTruthy();
 
