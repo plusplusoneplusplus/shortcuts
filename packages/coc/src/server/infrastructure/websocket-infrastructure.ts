@@ -97,6 +97,10 @@ export function createWebSocketInfrastructure(
     const mapQueued = (t: any) => ({
         id: t.id, repoId: t.repoId, type: t.type, priority: t.priority,
         status: t.status, displayName: t.displayName, createdAt: t.createdAt,
+        // Freeze state has to ride along: this payload replaces the SPA's queue
+        // wholesale on every change, so anything omitted here makes the frozen
+        // badge and the Unfreeze menu item vanish until the next HTTP refetch.
+        frozen: t.frozen, frozenUntil: t.frozenUntil,
         workingDirectory: (t.payload as any)?.workingDirectory,
         payload: {
             kind: (t.payload as any)?.kind,
