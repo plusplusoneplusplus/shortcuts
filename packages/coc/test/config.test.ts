@@ -1089,6 +1089,7 @@ timeout: 300
                 '  scopeSwitcher: true',
                 '  pinnedScopes: true',
                 '  splitWorkspacePanel: true',
+                '  unifiedRightPanel: true',
                 '  schedulesInScheduledSlide: true',
                 '  chatFolders: true',
                 '  canvasHostApis: true',
@@ -1337,6 +1338,7 @@ timeout: 300
                     "scopeSwitcher": true,
                     "sessionContextAttachments": true,
                     "splitWorkspacePanel": true,
+                    "unifiedRightPanel": false,
                   },
                   "forEach": {
                     "enabled": false,
@@ -1529,6 +1531,7 @@ timeout: 300
                   "features.scopeSwitcher": "default",
                   "features.sessionContextAttachments": "default",
                   "features.splitWorkspacePanel": "default",
+                  "features.unifiedRightPanel": "default",
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "idleTimeout": "file",
