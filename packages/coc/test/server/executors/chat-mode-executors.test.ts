@@ -357,6 +357,36 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
                 .toBe(DEFAULT_AI_IDLE_TIMEOUT_MS);
         });
 
+        it('sends no dangerous-command guard while the admin flag is off', async () => {
+            // Ship-dark contract: with the flag off the turn carries no new key
+            // at all, so it is byte-identical to what it sent before the guard.
+            const executor = makeExecutor(store);
+            await executor.execute(makeTask('task-guard-off'), 'Hello');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.dangerousCommandGuard).toBeUndefined();
+        });
+
+        it(`${expectedAgentMode === 'interactive' ? 'gates' : 'does not gate'} shell calls once the flag is on`, async () => {
+            const executor = makeExecutor(store, {
+                queueConfig: createFixedQueueRuntimeConfig({
+                    config: { dangerousCommandGuard: { enabled: true } },
+                }),
+            });
+            await executor.execute(makeTask('task-guard-on'), 'Hello');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            if (expectedAgentMode === 'interactive') {
+                // Ask mode: guard on, with a live approval channel — a dashboard
+                // chat's first turn is opened by someone who is watching it.
+                expect(call.dangerousCommandGuard?.enabled).toBe(true);
+                expect(typeof call.dangerousCommandGuard?.requestApproval).toBe('function');
+            } else {
+                // Autopilot is explicitly user-authorized and never gated.
+                expect(call.dangerousCommandGuard).toBeUndefined();
+            }
+        });
+
         it('opts into warm-client keep-alive (keepWarm: true)', async () => {
             // Interactive chat-process turns (ask, autopilot) request keepWarm so
             // the SDK service retains the provider client for this process's next

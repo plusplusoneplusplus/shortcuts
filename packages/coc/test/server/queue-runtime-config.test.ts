@@ -249,6 +249,7 @@ describe('QueueRuntimeConfig — restart boundary', () => {
         // into the queue.
         expect(Object.keys(queueConfig).sort()).toEqual([
             'getAskUser',
+            'getDangerousCommandGuard',
             'getDefaultIdleTimeoutMs',
             'getDefaultTimeoutMs',
             'getFollowUpSuggestions',

@@ -481,6 +481,55 @@ describe('FollowUpExecutor', () => {
         expect(callArg.idleTimeoutMs).toBe(45_000);
     });
 
+    it('gates an interactive ask follow-up once the guard flag is on', async () => {
+        const proc = makeProcess({ id: 'proc-guard-on', sdkSessionId: 'sdk-guard-on' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            queueConfig: createFixedQueueRuntimeConfig({
+                config: { dangerousCommandGuard: { enabled: true } },
+            }),
+        });
+        await executor.executeFollowUp('proc-guard-on', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.dangerousCommandGuard.enabled).toBe(true);
+        expect(typeof callArg.dangerousCommandGuard.requestApproval).toBe('function');
+    });
+
+    it('gives a cron-triggered follow-up no approval channel, so a match is denied outright', async () => {
+        // AC-06: the interactivity signal is the same `turnSource` check
+        // `ask_user` already uses. No channel → the SDK guard denies and tells
+        // the model the turn was not interactive.
+        const proc = makeProcess({ id: 'proc-guard-cron', sdkSessionId: 'sdk-guard-cron' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            queueConfig: createFixedQueueRuntimeConfig({
+                config: { dangerousCommandGuard: { enabled: true } },
+            }),
+        });
+        await executor.executeFollowUp(
+            'proc-guard-cron', 'msg', undefined, undefined, undefined, undefined, undefined, undefined,
+            { source: 'cron' as const, cronId: 'cron_guard' },
+        );
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.dangerousCommandGuard.enabled).toBe(true);
+        expect(callArg.dangerousCommandGuard.requestApproval).toBeUndefined();
+    });
+
+    it('sends no dangerous-command guard on a follow-up while the flag is off', async () => {
+        const proc = makeProcess({ id: 'proc-guard-off', sdkSessionId: 'sdk-guard-off' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-guard-off', 'msg');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.dangerousCommandGuard).toBeUndefined();
+    });
+
     it('falls back to the 1-hour idle default when idleTimeout is unset', async () => {
         const proc = makeProcess({ id: 'proc-idle-default', sdkSessionId: 'sdk-idle-default' });
         await store.addProcess(proc);

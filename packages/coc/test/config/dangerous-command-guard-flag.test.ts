@@ -12,6 +12,11 @@ import { describe, it, expect } from 'vitest';
 import { ADMIN_SETTING_DEFINITIONS, buildRuntimeFeatureFlags } from '../../src/config/admin-setting-definitions';
 import { DEFAULT_CONFIG, mergeConfig } from '../../src/config';
 import { buildRuntimeFeatures } from '../../src/server/config/runtime-config-handler';
+import {
+    DEFAULT_QUEUE_RUNTIME_CONFIG,
+    createFixedQueueRuntimeConfig,
+    createQueueRuntimeConfig,
+} from '../../src/server/queue/queue-runtime-config';
 
 const KEY = 'dangerousCommandGuard.enabled';
 const FLAG = 'dangerousCommandGuardEnabled';
@@ -37,5 +42,18 @@ describe('dangerousCommandGuard.enabled', () => {
         const resolved = mergeConfig({}, { dangerousCommandGuard: { enabled: true } });
         expect(resolved.dangerousCommandGuard.enabled).toBe(true);
         expect(buildRuntimeFeatures(resolved)[FLAG]).toBe(true);
+    });
+
+    it('reaches the executors off the queue config port, live and defaulted off', () => {
+        expect(DEFAULT_QUEUE_RUNTIME_CONFIG.getDangerousCommandGuard().enabled).toBe(false);
+        expect(createFixedQueueRuntimeConfig({ config: {} }).getDangerousCommandGuard().enabled).toBe(false);
+
+        // `live` means the getter re-reads the source, so flipping the flag
+        // takes effect on the next turn without a restart.
+        const source = { config: mergeConfig({}, {}) };
+        const queueConfig = createQueueRuntimeConfig(source);
+        expect(queueConfig.getDangerousCommandGuard().enabled).toBe(false);
+        source.config = mergeConfig({}, { dangerousCommandGuard: { enabled: true } });
+        expect(queueConfig.getDangerousCommandGuard().enabled).toBe(true);
     });
 });
