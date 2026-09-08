@@ -67,14 +67,15 @@ test.describe('Mobile Repos', () => {
     test('mobile: add repo button visible on mobile', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('#add-repo-btn')).toBeVisible();
+        await expect(page.locator('[data-testid="scope-list-add-btn"]')).toBeVisible();
     });
 
     test('mobile: add repo dialog opens full-screen', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
-        await page.click('#add-repo-btn');
-        await page.locator('[data-testid="add-single-repo-item"]').dispatchEvent('click');
+        // Mobile add actions live in the scope list's `+` sheet.
+        await page.click('[data-testid="scope-list-add-btn"]');
+        await page.locator('[data-testid="remote-add-repo-option"]').dispatchEvent('click');
 
         const overlay = page.locator('#add-repo-overlay');
         await expect(overlay).toBeVisible();

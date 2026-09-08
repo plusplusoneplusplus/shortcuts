@@ -15,6 +15,7 @@ import { useApp } from '../../contexts/AppContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
+import { useMobileWorkspacePane } from '../repo-detail/mobileWorkspacePane';
 import { ChatListPane } from './ChatListPane';
 import { ChatDetailPane } from './ChatDetailPane';
 import { ScheduleMainPane, parseScheduleMainPaneRoute, isSchedulesRoute } from '../schedules/ScheduleMainPane';
@@ -208,7 +209,22 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         maxWidth: 600,
         storageKey: activityLeftPanelWidthStorageKey,
     });
-    const [mobileShowDetail, setMobileShowDetail] = useState(false);
+    // On the mobile split-workspace path the shell owns the full-screen detail
+    // push, so every existing `setMobileShowDetail` call site has to drive the
+    // shell instead of this component's own branch. Wrapping the setter keeps
+    // that to one place: outside the mobile Workspace panel the context is null
+    // and this is exactly the plain `useState` it has always been (AC-02).
+    const mobileWorkspacePane = useMobileWorkspacePane();
+    const [ownMobileShowDetail, setOwnMobileShowDetail] = useState(false);
+    const mobileShowDetail = mobileWorkspacePane ? mobileWorkspacePane.detailOpen : ownMobileShowDetail;
+    const setMobileWorkspaceDetailOpen = mobileWorkspacePane?.setDetailOpen;
+    const setMobileShowDetail = useCallback(
+        (open: boolean) => {
+            setOwnMobileShowDetail(open);
+            setMobileWorkspaceDetailOpen?.(open);
+        },
+        [setMobileWorkspaceDetailOpen],
+    );
     const [listCollapsed, setListCollapsed] = useState<boolean>(() => {
         return loadActivityListCollapsed(activityListCollapsedStorageKey);
     });

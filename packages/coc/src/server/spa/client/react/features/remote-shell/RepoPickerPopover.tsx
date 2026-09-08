@@ -109,6 +109,12 @@ export interface PickerRowProps {
     active?: boolean;
     /** Optional `data-remote-key` used by the group picker. */
     remoteKey?: string;
+    /**
+     * Extra classes on the row button. The mobile scope list uses it to keep the
+     * shared `.repo-item` hook (an entry you tap to open a workspace) and to hold
+     * the 44px touch target.
+     */
+    className?: string;
     onClick?: () => void;
     /**
      * Optional trailing row-level menu affordance (e.g. the `⋯` button that opens
@@ -135,6 +141,7 @@ export function PickerRow({
     remoteKey,
     onClick,
     rowMenu,
+    className,
 }: PickerRowProps) {
     const stateClass = offline
         ? 'opacity-50 cursor-not-allowed text-[#848484] dark:text-[#666]'
@@ -150,7 +157,7 @@ export function PickerRow({
             disabled={offline}
             aria-disabled={offline}
             onClick={onClick}
-            className={'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors ' + stateClass}
+            className={'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors ' + stateClass + (className ? ' ' + className : '')}
         >
             {colorDot && (
                 <span className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: colorDot }} aria-hidden />

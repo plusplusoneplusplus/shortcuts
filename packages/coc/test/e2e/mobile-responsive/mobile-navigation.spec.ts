@@ -1,5 +1,10 @@
 /**
- * Mobile Navigation Tests — verify bottom nav and tab navigation at 375×812.
+ * Mobile Navigation Tests — verify the scope bar and tab navigation at 375×812.
+ *
+ * On the Repos tab `MobileScopeBar` owns the row below the TopBar; the admin
+ * destinations BottomNav used to show (Skills / Memory / Usage / Servers / Logs)
+ * live in its `⋯` sheet. Every one of those destinations routes into the
+ * fullscreen admin dialog, so the sheet is where they are reachable from.
  */
 import { expect, test } from '../fixtures/server-fixture';
 import { seedWorkspace } from '../fixtures/seed';
@@ -7,31 +12,40 @@ import { MOBILE } from './viewports';
 
 test.use({ viewport: MOBILE, hasTouch: true });
 
+/** Open the scope bar's `⋯` sheet from a freshly loaded Repos tab. */
+async function openMoreSheet(page: any, serverUrl: string) {
+    await page.goto(`${serverUrl}/#repos`);
+    await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
+    await page.locator('[data-testid="mobile-scope-more-btn"]').tap();
+    const sheet = page.locator('[data-testid="mobile-scope-more-sheet"]');
+    await expect(sheet).toBeVisible({ timeout: 5000 });
+    return sheet;
+}
+
 test.describe('Mobile Navigation', () => {
-    test('mobile: bottom nav visible with 4 tabs', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
+    test('mobile: the repos tab shows the scope bar, not the bottom nav', async ({ page, serverUrl }) => {
+        await page.goto(`${serverUrl}/#repos`);
 
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
-
-        const tabs = bottomNav.locator('button');
-        await expect(tabs).toHaveCount(5);
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="bottom-nav"]')).toHaveCount(0);
     });
 
-    test('mobile: bottom nav tabs have correct labels', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
+    test('mobile: the more sheet lists 5 destinations', async ({ page, serverUrl }) => {
+        const sheet = await openMoreSheet(page, serverUrl);
+        await expect(sheet.locator('button[data-tab]')).toHaveCount(5);
+    });
 
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
+    test('mobile: more-sheet destinations have correct labels', async ({ page, serverUrl }) => {
+        const sheet = await openMoreSheet(page, serverUrl);
 
         for (const label of ['Skills', 'Memory', 'Usage', 'Servers', 'Logs']) {
-            await expect(bottomNav.locator('button', { hasText: new RegExp(label, 'i') })).toBeVisible();
+            await expect(sheet.locator('button', { hasText: new RegExp(label, 'i') })).toBeVisible();
         }
     });
 
     test('mobile: TopBar tab bar is hidden', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await expect(page.locator('[data-testid="bottom-nav"]')).toBeVisible({ timeout: 10000 });
+        await page.goto(`${serverUrl}/#repos`);
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
 
         // Desktop tab bar should be hidden on mobile
         const tabBar = page.locator('#tab-bar');
@@ -40,69 +54,42 @@ test.describe('Mobile Navigation', () => {
         }
     });
 
-    test('mobile: tapping bottom nav Skills switches view', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
-        await bottomNav.locator('button', { hasText: /Skills/i }).tap();
+    test('mobile: tapping Skills in the more sheet switches view', async ({ page, serverUrl }) => {
+        const sheet = await openMoreSheet(page, serverUrl);
+        await sheet.locator('button[data-tab="skills"]').tap();
 
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
         expect(page.url()).toContain('#skills');
     });
 
-    test('mobile: tapping bottom nav Memory switches view', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
+    test('mobile: tapping Memory in the more sheet switches view', async ({ page, serverUrl }) => {
+        const sheet = await openMoreSheet(page, serverUrl);
+        await sheet.locator('button[data-tab="memory"]').tap();
 
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
-        await bottomNav.locator('button', { hasText: /Memory/i }).tap();
-
-        await expect(page.locator('#view-memory')).toBeVisible();
+        await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
     });
 
-    test('mobile: navigating to repos view via hash', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
+    test('mobile: navigating back to the repos view via hash', async ({ page, serverUrl }) => {
+        const sheet = await openMoreSheet(page, serverUrl);
+        await sheet.locator('button[data-tab="memory"]').tap();
+        await expect(page.locator('#view-memory')).toBeVisible({ timeout: 10000 });
 
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
-
-        // First go to memory via bottom nav
-        await bottomNav.locator('button', { hasText: /Memory/i }).tap();
-        await expect(page.locator('#view-memory')).toBeVisible();
-
-        // Navigate to repos via hash — BottomNav does not have a Repos button
-        // since repos is the default/home view accessed via the CoC header link
+        // Repos is the default/home view; there is no Repos entry in the sheet.
         await page.goto(`${page.url().split('#')[0]}#repos`);
         await expect(page.locator('#view-repos')).toBeVisible();
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
     });
 
-    test('mobile: bottom nav highlights active tab', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
-
-        // Navigate to Skills
-        await bottomNav.locator('button', { hasText: /Skills/i }).tap();
+    test('mobile: closing an admin destination returns to the repos tab and its scope bar', async ({ page, serverUrl }) => {
+        const sheet = await openMoreSheet(page, serverUrl);
+        await sheet.locator('button[data-tab="skills"]').tap();
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 
-        // The active button should have distinct styling (aria-current or active class)
-        const skillsBtn = bottomNav.locator('button[data-tab="skills"]');
-        const memoryBtn = bottomNav.locator('button[data-tab="memory"]');
-
-        // skills button should exist (suppress unused-var lint)
-        await expect(skillsBtn).toBeVisible();
-
-        // Skills and Memory are admin tool views, which render inside the admin
-        // dialog — fullscreen on mobile, so it covers the bottom nav. Close it
-        // before tapping the next entry.
+        // Skills / Memory / Usage / … are admin tool views, rendered inside the
+        // admin dialog — fullscreen on mobile.
         await page.keyboard.press('Escape');
         await expect(page.locator('#admin-dialog')).toHaveCount(0);
-
-        // Tap Memory
-        await memoryBtn.tap();
-        await expect(page.locator('#view-memory')).toBeVisible();
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
     });
 
     test('mobile: TopBar shows header', async ({ page, serverUrl }) => {
@@ -115,8 +102,8 @@ test.describe('Mobile Navigation', () => {
     });
 
     test('mobile: no desktop tab bar visible', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-        await expect(page.locator('[data-testid="bottom-nav"]')).toBeVisible({ timeout: 10000 });
+        await page.goto(`${serverUrl}/#repos`);
+        await expect(page.locator('[data-testid="mobile-scope-bar"]')).toBeVisible({ timeout: 10000 });
 
         // Tab bar buttons should be hidden at mobile width
         const tabBarButtons = page.locator('#tab-bar button');
@@ -125,19 +112,6 @@ test.describe('Mobile Navigation', () => {
             for (let i = 0; i < await tabBarButtons.count(); i++) {
                 await expect(tabBarButtons.nth(i)).toBeHidden();
             }
-        }
-    });
-
-    test('mobile: tapping bottom nav Skills switches to Skills view', async ({ page, serverUrl }) => {
-        await page.goto(serverUrl);
-
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
-
-        const skillsBtn = bottomNav.locator('button[data-tab="skills"]');
-        if (await skillsBtn.count() > 0) {
-            await skillsBtn.tap();
-            await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
         }
     });
 
@@ -153,18 +127,17 @@ test.describe('Mobile Navigation', () => {
         await expect(page.locator('#view-admin .ar-sidebar')).toBeHidden();
     });
 
-    test('mobile: bottom nav hides when a repo is selected', async ({ page, serverUrl }) => {
+    test('mobile: scope bar hides when a repo is selected', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-mobile-hide-1', 'mobile-hide-repo', '/tmp/mobile-hide-repo');
-        await page.goto(serverUrl);
+        await page.goto(`${serverUrl}/#repos`);
 
-        const bottomNav = page.locator('[data-testid="bottom-nav"]');
-        await expect(bottomNav).toBeVisible({ timeout: 10000 });
+        const scopeBar = page.locator('[data-testid="mobile-scope-bar"]');
+        await expect(scopeBar).toBeVisible({ timeout: 10000 });
 
-        // Select a repo — BottomNav returns null when selectedRepoId is truthy
+        // Select a repo — the workspace's own MobileTabBar takes the row.
         await expect(page.locator('.repo-item')).toHaveCount(1, { timeout: 10000 });
         await page.locator('.repo-item').first().tap();
 
-        // BottomNav should be removed from the DOM
-        await expect(bottomNav).toHaveCount(0, { timeout: 10000 });
+        await expect(scopeBar).toHaveCount(0, { timeout: 10000 });
     });
 });

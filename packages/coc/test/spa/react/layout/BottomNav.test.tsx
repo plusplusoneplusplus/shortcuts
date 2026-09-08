@@ -26,7 +26,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 // ── Mock AppContext ────────────────────────────────────────────────────
 
 const mockDispatch = vi.fn();
-let mockActiveTab = 'repos';
+let mockActiveTab = 'skills';
 let mockSelectedRepoId: string | null = null;
 let mockActiveRepoSubTab = 'info';
 
@@ -47,7 +47,8 @@ describe('BottomNav', () => {
 
     beforeEach(() => {
         mockDispatch.mockClear();
-        mockActiveTab = 'repos';
+        // Off the repos tab: there `MobileScopeBar` takes this row instead.
+        mockActiveTab = 'skills';
         mockSelectedRepoId = null;
         mockActiveRepoSubTab = 'info';
         mockServersEnabled = false;
@@ -64,6 +65,13 @@ describe('BottomNav', () => {
         expect(screen.getByTestId('bottom-nav')).toBeTruthy();
         const buttons = screen.getAllByRole('button');
         expect(buttons).toHaveLength(4); // skills, memory, stats, logs (servers disabled by default)
+    });
+
+    it('hides on the repos tab, where MobileScopeBar owns the row', () => {
+        viewportCleanup = mockViewport(375);
+        mockActiveTab = 'repos';
+        const { container } = render(<BottomNav />);
+        expect(container.innerHTML).toBe('');
     });
 
     it('hidden on desktop viewport', () => {

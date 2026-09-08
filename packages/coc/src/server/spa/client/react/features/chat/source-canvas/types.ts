@@ -6,6 +6,8 @@
  * info that travels separately for scroll + highlight (never folded into the
  * fetched path).
  */
+import type { FileBlob } from '../../../shared/file-viewer/types';
+
 export interface SourceCanvasFileRef {
     /**
      * The bare file path to resolve + fetch — never includes a `:line` suffix.
@@ -40,10 +42,8 @@ export type SourceCanvasContentStatus = 'loading' | 'success' | 'error';
  * `SourceCanvasPanel` and `SourceCanvasDock` take it as a prop, so the shape —
  * including the empty-string (never `undefined`) defaults — is fixed.
  */
-export interface SourceCanvasContentState {
+export interface SourceCanvasContentState extends FileBlob {
     status: SourceCanvasContentStatus;
-    /** Loaded file text (success). */
-    content: string;
     /** Server-reported language hint, for syntax highlighting (success). */
     language: string;
     /** The path actually fetched/attempted — for the header + error message. */
@@ -63,6 +63,8 @@ export interface SourceCanvasContentState {
 export const SOURCE_CANVAS_LOADING: SourceCanvasContentState = {
     status: 'loading',
     content: '',
+    encoding: 'utf-8',
+    mimeType: 'text/plain',
     language: '',
     resolvedPath: '',
     error: '',

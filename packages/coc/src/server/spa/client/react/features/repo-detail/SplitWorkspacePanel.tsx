@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { cn } from '../../ui';
+import { cn, SegmentedControl } from '../../ui';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
+import {
+    MobileWorkspacePaneProvider,
+    useMobileWorkspacePaneState,
+    type MobileWorkspacePane,
+} from './mobileWorkspacePane';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeftColWidth';
 import { useHoverPeek } from '../chat/hooks/useHoverPeek';
@@ -27,8 +32,10 @@ import {
  * collapsed body stays mounted (hidden) so its scroll/selection survive a
  * collapse round-trip.
  *
- * At narrow (mobile) widths it collapses to a single scrolling column and drops
- * the dividers, deferring to each tab's existing single-column behavior (AC-07).
+ * At narrow (mobile) widths it drops the dividers and shows ONE pane at a time:
+ * a `Chats | Git` segmented control picks the list, and selecting an item pushes
+ * the shared detail full-screen over it with a back control. Hidden panes stay
+ * mounted (display:none), same keep-alive convention as the desktop branch.
  */
 export interface SplitWorkspacePanelProps {
     /** Scopes the persisted layout keys so each workspace keeps its own sizes. */
@@ -47,8 +54,9 @@ export interface SplitWorkspacePanelProps {
      * Optional content rendered inside the git section header, right of the
      * chevron+label toggle. Used to hoist the git toolbar (branch pill / sync /
      * refresh) onto the 22px header row so it costs no extra vertical space.
-     * Stays visible while the section is collapsed. Desktop layout only — the
-     * narrow single-column fallback ignores it.
+     * Stays visible while the section is collapsed. On mobile it is mounted as
+     * the single compact toolbar row above the git list, so the git list renders
+     * its header in compact (hoisted) form there too.
      */
     gitHeaderExtra?: ReactNode;
     /**
@@ -96,6 +104,13 @@ const CHAT_SPLIT_INITIAL_HEIGHT = 320;
 const LEFT_COLUMN_MIN_WIDTH = 240;
 const LEFT_COLUMN_MAX_WIDTH = 640;
 const LEFT_COLUMN_INITIAL_WIDTH = 360;
+
+/**
+ * Label for the chat segment of the mobile switcher. The desktop section header
+ * reads "CHAT" (it labels one half of a split); the mobile control is a tab over
+ * a list of conversations, so it reads "Chats".
+ */
+const MOBILE_CHAT_SEGMENT_LABEL = 'Chats';
 
 /** Fraction of the left column height that the Git section occupies by default (~1/3). */
 const GIT_DEFAULT_FRACTION = 1 / 3;
@@ -267,6 +282,11 @@ export function SplitWorkspacePanel({
         storageKey: splitWorkspaceWidthStorageKey(workspaceId),
     });
 
+    // Mobile-only segment + detail-push state. Always created (hooks cannot be
+    // conditional); only provided to the tree on the mobile branch, so every
+    // desktop consumer of `useMobileWorkspacePane` still sees `null`.
+    const mobilePane = useMobileWorkspacePaneState(workspaceId);
+
     const [chatCollapsed, toggleChat] = useCollapsedState(splitWorkspaceChatCollapsedStorageKey(workspaceId));
     const [gitCollapsed, toggleGit] = useCollapsedState(splitWorkspaceGitCollapsedStorageKey(workspaceId));
 
@@ -322,20 +342,90 @@ export function SplitWorkspacePanel({
     // is on screen.
     usePublishWorkspaceLeftColWidth(leftCollapsed ? LEFT_RAIL_WIDTH : leftColumn.width, isMobile);
 
-    // Narrow / mobile fallback: single scrolling column, no split, no dividers.
-    // Each reused tab keeps its own single-column behavior; we just stack the
-    // slots so the split + detail never render side-by-side on a small screen.
+    // Narrow / mobile: one pane at a time. The segmented control picks the list
+    // (chat or git); selecting an item inside it pushes the shared detail
+    // full-screen over the list, with a back control that pops it. No pane is
+    // ever unmounted — the inactive ones are display:none, so scroll position,
+    // in-flight requests and selection survive every switch (AC-01, AC-02).
     if (isMobile) {
+        const detailOpen = mobilePane.detailOpen;
+        const showChat = !detailOpen && mobilePane.pane === 'chat';
+        const showGit = !detailOpen && mobilePane.pane === 'git';
         return (
-            <div
-                className="split-workspace-panel flex flex-col h-full w-full overflow-y-auto"
-                data-testid="split-workspace-panel"
-                data-narrow="true"
-            >
-                <div className="min-h-0" data-testid="split-workspace-chat">{chatList}</div>
-                <div className="min-h-0" data-testid="split-workspace-git">{gitList}</div>
-                <div className="min-h-0" data-testid="split-workspace-detail">{detail}</div>
-            </div>
+            <MobileWorkspacePaneProvider value={mobilePane}>
+                <div
+                    className="split-workspace-panel flex flex-col h-full w-full overflow-hidden"
+                    data-testid="split-workspace-panel"
+                    data-narrow="true"
+                    data-mobile-pane={mobilePane.pane}
+                    data-mobile-detail={detailOpen ? 'true' : 'false'}
+                >
+                    {detailOpen ? (
+                        <div
+                            className="flex h-11 flex-shrink-0 items-center border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] px-2 dark:bg-[#252526]"
+                            data-testid="split-workspace-mobile-detail-bar"
+                        >
+                            <button
+                                type="button"
+                                className="touch-target flex items-center gap-1 rounded px-2 text-sm text-[#0078d4] dark:text-[#3794ff]"
+                                onClick={() => mobilePane.setDetailOpen(false)}
+                                aria-label={`Back to ${mobilePane.pane === 'git' ? gitLabel : MOBILE_CHAT_SEGMENT_LABEL} list`}
+                                data-testid="split-workspace-mobile-back"
+                            >
+                                ← Back
+                            </button>
+                        </div>
+                    ) : (
+                        <div
+                            className="flex-shrink-0 border-b border-[#e0e0e0] p-1 dark:border-[#3c3c3c]"
+                            data-testid="split-workspace-mobile-switcher"
+                        >
+                            <SegmentedControl<MobileWorkspacePane>
+                                size="touch"
+                                className="w-full"
+                                value={mobilePane.pane}
+                                onChange={mobilePane.setPane}
+                                options={[
+                                    { value: 'chat', label: MOBILE_CHAT_SEGMENT_LABEL, testId: 'split-workspace-mobile-pane-chat' },
+                                    { value: 'git', label: gitLabel, testId: 'split-workspace-mobile-pane-git' },
+                                ]}
+                                aria-label="Workspace pane"
+                            />
+                        </div>
+                    )}
+                    <div
+                        className={cn('flex flex-col flex-1 min-h-0 overflow-hidden', !showChat && 'hidden')}
+                        data-testid="split-workspace-chat"
+                    >
+                        {chatList}
+                    </div>
+                    <div
+                        className={cn('flex flex-col flex-1 min-h-0 overflow-hidden', !showGit && 'hidden')}
+                        data-testid="split-workspace-git"
+                    >
+                        {/* Mounting the header portal target here is what makes
+                            `headerToolbarContainer` non-null, so `RepoGitTab`
+                            hoists its toolbar and renders the COMPACT header
+                            instead of the full inline branch/Pull/sync block
+                            (AC-04). One toolbar row, not two. */}
+                        {gitHeaderExtra && (
+                            <div
+                                className="flex min-h-[44px] flex-shrink-0 items-center border-b border-[#e0e0e0] px-2 dark:border-[#3c3c3c]"
+                                data-testid="split-workspace-git-header-extra"
+                            >
+                                {gitHeaderExtra}
+                            </div>
+                        )}
+                        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">{gitList}</div>
+                    </div>
+                    <div
+                        className={cn('flex flex-col flex-1 min-h-0 overflow-hidden', !detailOpen && 'hidden')}
+                        data-testid="split-workspace-detail"
+                    >
+                        {detail}
+                    </div>
+                </div>
+            </MobileWorkspacePaneProvider>
         );
     }
 

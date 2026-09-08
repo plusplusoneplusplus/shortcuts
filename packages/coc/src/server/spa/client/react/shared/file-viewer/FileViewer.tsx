@@ -43,8 +43,6 @@ export function FileViewer({
     highlightRange, revealLine, markdown = 'off', codeTestId,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
-        // The `preview-*` test ids are historical — the Explorer preview pane is
-        // still the only host that fetches non-text blobs.
         return blob.mimeType.startsWith('image/') ? (
             <div className="flex items-center justify-center p-4 h-full" data-testid="preview-image">
                 <img

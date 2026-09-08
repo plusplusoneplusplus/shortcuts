@@ -28,6 +28,7 @@ import { createPortal } from 'react-dom';
 import type { GitPatchApplyResponse } from '@plusplusoneplusplus/coc-client';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
+import { useMobileWorkspacePane } from '../repo-detail/mobileWorkspacePane';
 import { useCocClient } from '../../repos/cloneRouting';
 import { lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { Spinner } from '../../ui';
@@ -149,6 +150,33 @@ export function RepoGitTab({ workspaceId, repositorySelector, layout, detailCont
     });
     selectionRef.current = selection;
     hydrateRef.current = selection.hydrateFromInitialLoad;
+
+    // Mobile Workspace panel (AC-02): this tab has no `mobileShowDetail` of its
+    // own — a selection IS its detail view — so the shell's full-screen push is
+    // driven straight off `selection.view`. The two effects are a closed loop:
+    // selecting a commit pushes the detail, and popping the detail (back button)
+    // clears the selection, so re-tapping the same commit selects afresh and
+    // pushes again. Outside the mobile Workspace panel the context is null and
+    // both effects are inert, leaving every other layout untouched.
+    const mobileWorkspacePane = useMobileWorkspacePane();
+    const setMobileWorkspaceDetailOpen = mobileWorkspacePane?.setDetailOpen;
+    const mobileWorkspaceDetailOpen = mobileWorkspacePane?.detailOpen ?? false;
+    const gitView = selection.view;
+    const clearSelection = selection.clearSelection;
+    useEffect(() => {
+        if (!setMobileWorkspaceDetailOpen || !gitView) return;
+        setMobileWorkspaceDetailOpen(true);
+    }, [setMobileWorkspaceDetailOpen, gitView]);
+    const wasMobileWorkspaceDetailOpenRef = useRef(mobileWorkspaceDetailOpen);
+    useEffect(() => {
+        const wasOpen = wasMobileWorkspaceDetailOpenRef.current;
+        wasMobileWorkspaceDetailOpenRef.current = mobileWorkspaceDetailOpen;
+        // Only a genuine open→closed transition means "the user hit Back". A
+        // plain `!detailOpen` test would fire in the same commit as the effect
+        // above and wipe the selection that just opened the detail.
+        if (!setMobileWorkspaceDetailOpen || mobileWorkspaceDetailOpen || !wasOpen) return;
+        clearSelection();
+    }, [setMobileWorkspaceDetailOpen, mobileWorkspaceDetailOpen, clearSelection]);
 
     const sourceWorkspace = useMemo(
         () => state.workspaces.find((w: any) => w.id === workspaceId),

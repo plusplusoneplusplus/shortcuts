@@ -256,11 +256,37 @@ describe('RepoGroupView', () => {
         expect(screen.queryByTestId('repo-group-header')).toBeNull();
     });
 
-    it('keeps the inline header on mobile even in the remote-first shell', () => {
+    it('renders the mobile tab bar (with a back affordance) instead of the inline header', () => {
+        // A group used to render `VirtualWorkspaceInlineHeader` on mobile, which
+        // has no back affordance — a user who landed on a group was stuck there.
         mockRemoteShellEnabled = true;
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.getByTestId('repo-group-header')).toBeTruthy();
+        expect(screen.queryByTestId('repo-group-header')).toBeNull();
+        expect(screen.getByTestId('repo-group-mobile-header')).toBeTruthy();
+        expect(screen.getByTestId('repo-group-name-back')).toBeTruthy();
+    });
+
+    it('clears the selection and returns to the scope list from the back button', () => {
+        mockBreakpoint = 'mobile';
+        location.hash = '#repos/' + GROUP_ID;
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+
+        fireEvent.click(screen.getByTestId('repo-group-name-back'));
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: null });
+        expect(location.hash).toBe('');
+    });
+
+    it('offers the group\'s four tabs on mobile, three pinned and Settings behind the more menu', () => {
+        mockBreakpoint = 'mobile';
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+
+        const bar = screen.getByTestId('mobile-tab-bar');
+        expect([...bar.querySelectorAll('button[data-tab]')].map(b => b.getAttribute('data-tab')))
+            .toEqual(['chats', 'git', 'notes', 'more']);
+
+        fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
+        expect(screen.getByTestId('mobile-tab-more-item-settings')).toBeTruthy();
     });
 
     it('docks the status footer inside both the Workspace and Notes tabs', () => {

@@ -23,6 +23,7 @@ const mockGetRepoGroup = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockDispatch }),
+    useAppOptional: () => ({ state: mockAppState, dispatch: mockDispatch }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
     useReposOptional: () => ({ remoteGroupWorkspaces: mockRemoteGroupWorkspaces }),
@@ -189,11 +190,13 @@ describe('RepoGroupView right panel', () => {
         expect(screen.queryAllByRole('tab', { hidden: true })).toHaveLength(0);
     });
 
+    // Mobile has no right panel — but it does mount the merged Workspace panel,
+    // whose git half is hosted against a member repo, so the members read still
+    // happens there. Only the panel is gone.
     it('omits the panel on mobile', () => {
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('unified-right-panel')).toBeNull();
-        expect(mockGetRepoGroup).not.toHaveBeenCalled();
     });
 
     it('omits the panel when the split-workspace flag is off', () => {

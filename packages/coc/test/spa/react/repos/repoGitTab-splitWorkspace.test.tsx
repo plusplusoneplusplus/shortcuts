@@ -68,7 +68,16 @@ vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/Workt
     WorktreeList: () => <div data-testid="stub-worktree-list" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitList', () => ({
-    CommitList: () => <div data-testid="stub-commit-list" />,
+    // Exposes just enough to drive and observe selection: a button that selects
+    // a commit, and the currently-selected hash reflected back into the DOM.
+    CommitList: ({ onSelect, selectedHash }: { onSelect?: (c: unknown) => void; selectedHash?: string }) => (
+        <div data-testid="stub-commit-list" data-selected={selectedHash ?? 'none'}>
+            <button
+                data-testid="stub-commit-select"
+                onClick={() => onSelect?.({ hash: 'abc123', subject: 'a commit', author: 'a', date: '', refs: [] })}
+            >select commit</button>
+        </div>
+    ),
     isTouchOnly: () => false,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', () => ({
@@ -81,6 +90,10 @@ vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', (
 }));
 
 import { RepoGitTab } from '../../../../src/server/spa/client/react/features/git/RepoGitTab';
+import {
+    MobileWorkspacePaneProvider,
+    useMobileWorkspacePaneState,
+} from '../../../../src/server/spa/client/react/features/repo-detail/mobileWorkspacePane';
 
 /** Wait past the initial load so the tab renders its panes rather than the spinner. */
 async function renderTab(props: Record<string, unknown>) {
@@ -218,5 +231,68 @@ describe('RepoGitTab — split-workspace layout', () => {
         unmount();
         await renderTab({});
         expect(screen.getByTestId('repo-git-tab')).toBeTruthy();
+    });
+});
+
+/**
+ * AC-02 — on the mobile Workspace panel the shell owns the full-screen detail
+ * push. RepoGitTab has no `mobileShowDetail` of its own, so it drives the shell
+ * straight off its selection: picking a commit pushes the detail, and popping
+ * the detail (Back) clears the selection so the same commit can be re-picked.
+ */
+describe('RepoGitTab — mobile Workspace detail push', () => {
+    function Harness() {
+        const pane = useMobileWorkspacePaneState('ws-1');
+        return (
+            <MobileWorkspacePaneProvider value={pane}>
+                <div data-testid="harness" data-detail-open={pane.detailOpen ? 'true' : 'false'} />
+                <button data-testid="harness-back" onClick={() => pane.setDetailOpen(false)}>back</button>
+                <RepoGitTab workspaceId="ws-1" layout="split-workspace" />
+            </MobileWorkspacePaneProvider>
+        );
+    }
+
+    async function renderHarness() {
+        const result = render(<Harness />);
+        await waitFor(() => expect(screen.queryByTestId('git-tab-loading')).toBeNull());
+        return result;
+    }
+
+    it('starts on the list, with the detail not pushed', async () => {
+        await renderHarness();
+        expect(screen.getByTestId('harness').getAttribute('data-detail-open')).toBe('false');
+    });
+
+    it('pushes the shell detail when a commit is selected', async () => {
+        await renderHarness();
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await waitFor(() =>
+            expect(screen.getByTestId('harness').getAttribute('data-detail-open')).toBe('true'));
+        expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected')).toBe('abc123');
+    });
+
+    it('clears the selection when the shell pops the detail, so the same commit re-opens', async () => {
+        await renderHarness();
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await waitFor(() =>
+            expect(screen.getByTestId('harness').getAttribute('data-detail-open')).toBe('true'));
+
+        fireEvent.click(screen.getByTestId('harness-back'));
+        await waitFor(() =>
+            expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected')).toBe('none'));
+        expect(screen.getByTestId('harness').getAttribute('data-detail-open')).toBe('false');
+
+        // Re-tapping the same commit pushes the detail again rather than being
+        // swallowed by a stale selection.
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await waitFor(() =>
+            expect(screen.getByTestId('harness').getAttribute('data-detail-open')).toBe('true'));
+    });
+
+    it('leaves the selection alone outside the mobile Workspace panel', async () => {
+        await renderTab({ layout: 'split-workspace' });
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await waitFor(() =>
+            expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected')).toBe('abc123'));
     });
 });

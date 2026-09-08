@@ -10,8 +10,8 @@
  * silently showing nothing. Nothing resolvable means a `null` key, which tells
  * `useFileContent` to issue no request and sit in `loading`.
  *
- * Returns raw text + a server language hint; rendering (markdown vs
- * syntax-highlighted source, line jump/highlight) is layered on top in AC-04/05.
+ * Preserves text/image encoding and MIME type for the shared file viewer,
+ * along with the server language hint and workspace attribution.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
@@ -20,7 +20,7 @@ import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
 import type { FileBlob } from '../../../shared/file-viewer/types';
 import { resolveSourceCanvasTarget, isSourceCanvasResolveError } from './resolve';
-import { extractContent, type PreviewResponse } from './previewResponse';
+import { toFileBlob, type PreviewResponse } from './previewResponse';
 import { SOURCE_CANVAS_LOADING as LOADING } from './types';
 import type { SourceCanvasContentState, SourceCanvasFileRef } from './types';
 
@@ -78,12 +78,7 @@ export function useSourceCanvasContent(
                 resolvedWorkspaceId: typeof r.resolvedWorkspaceId === 'string' ? r.resolvedWorkspaceId : target.wsId,
             });
         }
-        return {
-            content: extractContent(r),
-            encoding: 'utf-8',
-            mimeType: 'text/plain',
-            language: typeof r.language === 'string' ? r.language : '',
-        };
+        return toFileBlob(r);
     }, [target?.wsId, target?.path, key]);
 
     const { blob, status, error } = useFileContent({ key, read });
@@ -102,6 +97,8 @@ export function useSourceCanvasContent(
         return {
             status: 'success',
             content: blob.content,
+            encoding: blob.encoding,
+            mimeType: blob.mimeType,
             language: blob.language || '',
             resolvedPath: owned?.resolvedPath ?? resolved.path,
             resolvedWorkspaceId,

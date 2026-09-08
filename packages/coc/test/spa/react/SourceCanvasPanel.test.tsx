@@ -69,6 +69,7 @@ vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/Source
     ),
 }));
 
+import { SOURCE_CANVAS_LOADING } from '../../../src/server/spa/client/react/features/chat/source-canvas/types';
 import { SourceCanvasPanel } from '../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasPanel';
 
 beforeEach(() => {
@@ -91,6 +92,43 @@ function selectTextWithin(el: Element): void {
 
 describe('SourceCanvasPanel', () => {
     const fileRef = { fullPath: '/home/u/proj/src/foo.ts', line: 42 };
+
+    it('renders a screenshot as an image and switches back to source for text files', () => {
+        const fileName = 'missing-pr-chip-dashboard.png';
+        const imageContent = {
+            ...SOURCE_CANVAS_LOADING,
+            status: 'success' as const,
+            content: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XkAAAAASUVORK5CYII=',
+            encoding: 'base64' as const,
+            mimeType: 'image/png',
+            resolvedPath: `/tmp/${fileName}`,
+        };
+        const { getByRole, getByTestId, queryByTestId, queryByRole, rerender } = render(
+            <SourceCanvasPanel
+                fileRef={{ fullPath: imageContent.resolvedPath, line: 42 }}
+                wsId="ws1"
+                content={imageContent}
+                onClose={() => {}}
+            />,
+        );
+
+        expect(getByRole('img', { name: fileName }).getAttribute('src')).toBe(
+            `data:image/png;base64,${imageContent.content}`,
+        );
+        expect(queryByTestId('source-canvas-source')).toBeNull();
+        expect(queryByTestId('mock-monaco-editor')).toBeNull();
+
+        rerender(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                content={{ ...SOURCE_CANVAS_LOADING, status: 'success', content: 'const n = 1;' }}
+                onClose={() => {}}
+            />,
+        );
+        expect(queryByRole('img')).toBeNull();
+        expect(getByTestId('mock-monaco-editor').getAttribute('data-value')).toBe('const n = 1;');
+    });
 
     it('renders the file name and full path in the header', () => {
         const { getByTestId } = render(
@@ -259,6 +297,7 @@ describe('SourceCanvasPanel', () => {
                 sourceFiles={sourceFiles}
                 onNavigate={onNavigate}
                 content={{
+                    ...SOURCE_CANVAS_LOADING,
                     status: 'error',
                     content: '',
                     language: '',
@@ -309,6 +348,7 @@ describe('SourceCanvasPanel', () => {
                 wsId="group-ml"
                 workspaceRootPath="/home/u/.coc/repos/group-ml"
                 content={{
+                    ...SOURCE_CANVAS_LOADING,
                     status: 'success',
                     content: 'int main() {}',
                     language: 'cpp',
@@ -346,6 +386,7 @@ describe('SourceCanvasPanel', () => {
 
     const groupFileRef = { fullPath: 'vllm/v1/engine/core.py', wsId: 'group-ml' };
     const successContent = (resolvedWorkspaceId: string, resolvedPath: string) => ({
+        ...SOURCE_CANVAS_LOADING,
         status: 'success' as const,
         content: 'x = 1\n',
         language: 'python',
@@ -391,6 +432,7 @@ describe('SourceCanvasPanel', () => {
                 fileRef={groupFileRef}
                 wsId="group-ml"
                 content={{
+                    ...SOURCE_CANVAS_LOADING,
                     status: 'loading',
                     content: '',
                     language: '',
@@ -646,7 +688,7 @@ describe('SourceCanvasPanel', () => {
             <SourceCanvasPanel
                 fileRef={fileRef}
                 wsId="ws1"
-                content={{ status: 'loading', content: '', language: '', resolvedPath: '', error: '' }}
+                content={SOURCE_CANVAS_LOADING}
                 onClose={() => {}}
             />,
         );
@@ -659,6 +701,7 @@ describe('SourceCanvasPanel', () => {
                 fileRef={fileRef}
                 wsId="ws1"
                 content={{
+                    ...SOURCE_CANVAS_LOADING,
                     status: 'error',
                     content: '',
                     language: '',
@@ -682,6 +725,7 @@ describe('SourceCanvasPanel', () => {
                 fileRef={fileRef}
                 wsId="ws1"
                 content={{
+                    ...SOURCE_CANVAS_LOADING,
                     status: 'success',
                     content: 'const x = 1;\n',
                     language: 'typescript',
@@ -740,7 +784,7 @@ describe('SourceCanvasPanel', () => {
             <SourceCanvasPanel
                 fileRef={{ fullPath: '/home/u/proj/src/foo.ts', kind: 'code' }}
                 wsId="ws1"
-                content={{ status: 'loading', content: '', language: '', resolvedPath: '', error: '' }}
+                content={SOURCE_CANVAS_LOADING}
                 onClose={() => {}}
             />,
         );
@@ -753,6 +797,7 @@ describe('SourceCanvasPanel', () => {
                 fileRef={{ fullPath: '/home/u/proj/src/foo.ts', kind: 'code' }}
                 wsId="ws1"
                 content={{
+                    ...SOURCE_CANVAS_LOADING,
                     status: 'success',
                     content: 'const x = 1;\n',
                     language: 'typescript',
