@@ -29,17 +29,13 @@ import {
 import { systemMessageBuilder } from './system-message-builder';
 import { readEffectiveDisabledLlmTools, readRepoPreferences } from '../preferences-handler';
 import { getRepoDataPath } from '../paths';
+import { shapeNotesTree } from '../notes/notes-tree';
+import type { TreeNode } from '../notes/notes-tree';
+import { loadNativeNotesFs } from '@plusplusoneplusplus/coc-native';
 
 // ============================================================================
 // Tree compaction helpers
 // ============================================================================
-
-interface TreeNode {
-    name: string;
-    path: string;
-    type: 'notebook' | 'section' | 'page';
-    children?: TreeNode[];
-}
 
 interface CompactTreeNode {
     name: string;
@@ -68,44 +64,6 @@ function compactTree(nodes: TreeNode[]): CompactTreeNode[] {
                 children: compactTree(n.children ?? []),
             };
         });
-}
-
-/**
- * Build the notes tree for a workspace by scanning the notes directory.
- * Mirrors `buildTree` in notes-read-handler.ts but usable from the executor.
- */
-async function buildTree(dir: string, basePath: string): Promise<TreeNode[]> {
-    let entries: fs.Dirent[];
-    try {
-        entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
-        return [];
-    }
-
-    const relevant = entries
-        .filter(e => {
-            if (e.isDirectory()) return !e.name.startsWith('.');
-            return e.name.endsWith('.md');
-        })
-        .sort((a, b) => {
-            const aDir = a.isDirectory() ? 0 : 1;
-            const bDir = b.isDirectory() ? 0 : 1;
-            if (aDir !== bDir) return aDir - bDir;
-            return a.name.localeCompare(b.name);
-        });
-
-    const nodes: TreeNode[] = [];
-    for (const entry of relevant) {
-        const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-            const children = await buildTree(path.join(dir, entry.name), entryPath);
-            const type = basePath ? 'section' : 'notebook';
-            nodes.push({ name: entry.name, path: entryPath, type, children });
-        } else {
-            nodes.push({ name: entry.name, path: entryPath, type: 'page' });
-        }
-    }
-    return nodes;
 }
 
 // ============================================================================
@@ -197,7 +155,8 @@ export class NoteCreateExecutor extends ChatBaseExecutor {
         const notesRoot = getRepoDataPath(effectiveDataDir, wsId ?? '', 'notes');
         await fs.promises.mkdir(notesRoot, { recursive: true });
 
-        const tree = await buildTree(notesRoot, '');
+        const scan = await loadNativeNotesFs().notesTree(notesRoot, { isDefaultRoot: true });
+        const tree = shapeNotesTree(scan, { applyExplicitOrder: false });
         const compacted = compactTree(tree);
 
         const structuredPrompt = this.buildNoteCreatePrompt(userPrompt, compacted);
