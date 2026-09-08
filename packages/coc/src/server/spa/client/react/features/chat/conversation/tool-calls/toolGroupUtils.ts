@@ -542,6 +542,118 @@ function getFileEditStats(fileMap: Map<string, FileEditStats>, filePath: string)
     return entry;
 }
 
+/** Minimal tool-call shape `collectFileEdits` reads. */
+export interface FileEditToolCall {
+    toolName: string;
+    args?: unknown;
+}
+
+/**
+ * Per-file edit/create statistics for an ordered list of captured tool calls.
+ *
+ * Extracted from `filterWhisperChunks` so the same detection — supported
+ * edit/create/apply_patch tools, Codex-normalized structured changes, and the
+ * shell-command deletion pass — can be replayed over a whole chat's records and
+ * not only over one collapsed group. Order in, order out: the returned list is
+ * sorted by path, exactly as the whisper popover has always shown it.
+ */
+export function collectFileEdits(toolCalls: readonly FileEditToolCall[]): FileEdit[] {
+    const fileMap = new Map<string, FileEditStats>();
+    for (const tc of toolCalls) {
+        const toolName = normalizeToolName(tc.toolName);
+        if (toolName === 'edit' && isRecord(tc.args)) {
+            const pathArg = tc.args.path;
+            const filePathArg = tc.args.filePath;
+            const filePath = typeof pathArg === 'string' ? pathArg : (typeof filePathArg === 'string' ? filePathArg : '');
+            if (filePath) {
+                const entry = getFileEditStats(fileMap, filePath);
+                entry.hasEdit = true;
+                const oldArg = tc.args.old_str ?? tc.args.old_string;
+                const newArg = tc.args.new_str ?? tc.args.new_string;
+                const oldStr = typeof oldArg === 'string' ? oldArg : '';
+                const newStr = typeof newArg === 'string' ? newArg : '';
+                if (oldStr) entry.deletions += oldStr.split('\n').length;
+                if (newStr) entry.insertions += newStr.split('\n').length;
+                const net = computeNetDiff(oldStr, newStr);
+                entry.netInsertions += net.insertions;
+                entry.netDeletions += net.deletions;
+            }
+        } else if (toolName === 'create' && isRecord(tc.args)) {
+            const pathArg = tc.args.path;
+            const filePathArg = tc.args.filePath;
+            const filePath = typeof pathArg === 'string' ? pathArg : (typeof filePathArg === 'string' ? filePathArg : '');
+            if (filePath) {
+                const entry = getFileEditStats(fileMap, filePath);
+                entry.hasCreate = true;
+                const fileText = typeof tc.args.file_text === 'string' ? tc.args.file_text : '';
+                const lineCount = fileText ? fileText.split('\n').length : 0;
+                entry.insertions += lineCount;
+                entry.netInsertions += lineCount;
+            }
+        } else if (toolName === 'apply_patch') {
+            const patchText = getApplyPatchText(tc.args);
+            const patchChanges = patchText ? parseApplyPatchFileChanges(patchText) : [];
+            if (patchChanges.length > 0) {
+                for (const change of patchChanges) {
+                    const entry = getFileEditStats(fileMap, change.path);
+                    entry.insertions += change.insertions;
+                    entry.deletions += change.deletions;
+                    entry.netInsertions += change.insertions;
+                    entry.netDeletions += change.deletions;
+                    if (change.isCreate) {
+                        entry.hasCreate = true;
+                    } else {
+                        entry.hasEdit = true;
+                    }
+                }
+            } else {
+                for (const change of getCodexFileChanges(tc.args)) {
+                    const entry = getFileEditStats(fileMap, change.path);
+                    if (change.kind === 'add') {
+                        entry.hasCreate = true;
+                    } else {
+                        entry.hasEdit = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Detect file deletions from shell commands
+    const deletedPaths = new Set<string>();
+    if (fileMap.size > 0) {
+        const trackedPaths = [...fileMap.keys()];
+        for (const tc of toolCalls) {
+            const toolName = normalizeToolName(tc.toolName);
+            if ((toolName === 'powershell' || toolName === 'shell' || toolName === 'bash') && isRecord(tc.args)) {
+                const raw = tc.args.command ?? tc.args.cmd;
+                const cmd = typeof raw === 'string' ? raw : '';
+                if (!cmd) continue;
+                const extracted = extractDeletedPathsFromCommand(cmd);
+                for (const dp of extracted) {
+                    for (const tp of trackedPaths) {
+                        if (isDeletePathMatch(dp, tp)) {
+                            deletedPaths.add(tp);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return [...fileMap.entries()]
+        .map(([path, e]) => ({
+            path,
+            insertions: e.insertions,
+            deletions: e.deletions,
+            netInsertions: e.netInsertions,
+            netDeletions: e.netDeletions,
+            isCreate: e.hasCreate && !e.hasEdit,
+            isDeleted: deletedPaths.has(path),
+        }))
+        .sort((a, b) => a.path.localeCompare(b.path));
+}
+
 /**
  * Summary of the "preceding" chunks that Whisper mode collapses.
  */
@@ -764,100 +876,7 @@ export function filterWhisperChunks(
         }
     }
 
-    // Count file edits/creates
-    const fileMap = new Map<string, FileEditStats>();
-    for (const tc of allToolCalls) {
-        const toolName = normalizeToolName(tc.toolName);
-        if (toolName === 'edit' && isRecord(tc.args)) {
-            const pathArg = tc.args.path;
-            const filePathArg = tc.args.filePath;
-            const filePath = typeof pathArg === 'string' ? pathArg : (typeof filePathArg === 'string' ? filePathArg : '');
-            if (filePath) {
-                const entry = getFileEditStats(fileMap, filePath);
-                entry.hasEdit = true;
-                const oldArg = tc.args.old_str ?? tc.args.old_string;
-                const newArg = tc.args.new_str ?? tc.args.new_string;
-                const oldStr = typeof oldArg === 'string' ? oldArg : '';
-                const newStr = typeof newArg === 'string' ? newArg : '';
-                if (oldStr) entry.deletions += oldStr.split('\n').length;
-                if (newStr) entry.insertions += newStr.split('\n').length;
-                const net = computeNetDiff(oldStr, newStr);
-                entry.netInsertions += net.insertions;
-                entry.netDeletions += net.deletions;
-            }
-        } else if (toolName === 'create' && isRecord(tc.args)) {
-            const pathArg = tc.args.path;
-            const filePathArg = tc.args.filePath;
-            const filePath = typeof pathArg === 'string' ? pathArg : (typeof filePathArg === 'string' ? filePathArg : '');
-            if (filePath) {
-                const entry = getFileEditStats(fileMap, filePath);
-                entry.hasCreate = true;
-                const fileText = typeof tc.args.file_text === 'string' ? tc.args.file_text : '';
-                const lineCount = fileText ? fileText.split('\n').length : 0;
-                entry.insertions += lineCount;
-                entry.netInsertions += lineCount;
-            }
-        } else if (toolName === 'apply_patch') {
-            const patchText = getApplyPatchText(tc.args);
-            const patchChanges = patchText ? parseApplyPatchFileChanges(patchText) : [];
-            if (patchChanges.length > 0) {
-                for (const change of patchChanges) {
-                    const entry = getFileEditStats(fileMap, change.path);
-                    entry.insertions += change.insertions;
-                    entry.deletions += change.deletions;
-                    entry.netInsertions += change.insertions;
-                    entry.netDeletions += change.deletions;
-                    if (change.isCreate) {
-                        entry.hasCreate = true;
-                    } else {
-                        entry.hasEdit = true;
-                    }
-                }
-            } else {
-                for (const change of getCodexFileChanges(tc.args)) {
-                    const entry = getFileEditStats(fileMap, change.path);
-                    if (change.kind === 'add') {
-                        entry.hasCreate = true;
-                    } else {
-                        entry.hasEdit = true;
-                    }
-                }
-            }
-        }
-    }
-
-    // Detect file deletions from shell commands
-    const deletedPaths = new Set<string>();
-    if (fileMap.size > 0) {
-        const trackedPaths = [...fileMap.keys()];
-        for (const tc of allToolCalls) {
-            const toolName = normalizeToolName(tc.toolName);
-            if ((toolName === 'powershell' || toolName === 'shell' || toolName === 'bash') && tc.args) {
-                const cmd = (tc.args.command || tc.args.cmd || '') as string;
-                if (!cmd) continue;
-                const extracted = extractDeletedPathsFromCommand(cmd);
-                for (const dp of extracted) {
-                    for (const tp of trackedPaths) {
-                        if (isDeletePathMatch(dp, tp)) {
-                            deletedPaths.add(tp);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    const fileEdits: FileEdit[] = [...fileMap.entries()]
-        .map(([path, e]) => ({
-            path,
-            insertions: e.insertions,
-            deletions: e.deletions,
-            netInsertions: e.netInsertions,
-            netDeletions: e.netDeletions,
-            isCreate: e.hasCreate && !e.hasEdit,
-            isDeleted: deletedPaths.has(path),
-        }))
-        .sort((a, b) => a.path.localeCompare(b.path));
+    const fileEdits = collectFileEdits(allToolCalls);
 
     const deletedFileCount = fileEdits.filter(f => f.isDeleted).length;
 
