@@ -64,7 +64,14 @@ export { buildBranchRangeSkillPrompt } from './repoGitTab/gitPrompts';
 const GIT_CHANGED_DEBOUNCE_MS = 500;
 
 interface RepoGitTabProps {
+    /** The workspace whose git data this panel reads and writes. */
     workspaceId: string;
+    /**
+     * The workspace that owns the PAGE this panel lives on. A repo group passes
+     * its own `group-<slug>` id here and the member as `workspaceId`, so commit
+     * links keep the group selected. Defaults to `workspaceId`.
+     */
+    routeWorkspaceId?: string;
     /** Repo-group selector hosted beside the branch, including during load/error states. */
     repositorySelector?: ReactNode;
     /**
@@ -93,7 +100,7 @@ interface RepoGitTabProps {
     headerToolbarContainer?: HTMLElement | null;
 }
 
-export function RepoGitTab({ workspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps) {
+export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -145,6 +152,7 @@ export function RepoGitTab({ workspaceId, repositorySelector, layout, detailCont
 
     const selection = useRepoGitSelection({
         workspaceId,
+        routeWorkspaceId,
         commits: data.commits,
         loading: data.loading,
     });

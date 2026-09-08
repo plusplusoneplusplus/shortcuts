@@ -275,10 +275,31 @@ actions), labeled with the registered workspace name (id fallback while loading)
 to isolate panel state. `RepoGroupGitMemberPicker` is a native dropdown passed
 through `RepoGitTab.repositorySelector` into `GitPanelHeader`; the selector also
 stays available during loading and errors. Options include Git status from
-`useRepoGroupMemberGitInfo`; stale members are disabled with a reason. Selection
-persists per group in `AppContext.repoGroupGitMemberState` and localStorage,
-falling back to the first healthy member. Git calls use the selected member's
-clone-routed workspace id.
+`useRepoGroupMemberGitInfo`; stale members are disabled with a reason. Git calls
+use the selected member's clone-routed workspace id.
+
+**The group owns the page, the member owns the data.** `RepoGitTab` takes
+`routeWorkspaceId` (the group) alongside `workspaceId` (the member), so its URLs
+read `#repos/<groupId>/git/member/<memberId>[/<sha|branch-range>[/<file>]]` and
+the group stays the selected workspace while you browse a member's history.
+`layout/gitRoute.ts` is the single parser/builder for that shape (and the plain
+`#repos/<repoId>/git/...` form); the `member` marker is structural only for
+`group-` ids, so a member id is never read as a SHA. `dashboardRoutes` publishes
+the whole route in one `SET_GIT_ROUTE` action — page owner, data member,
+revision and file — into `AppContext.gitRouteScope` + the existing
+`selectedGitCommitHash` / `selectedGitFilePath` fields, and records the full
+member path as the GROUP's remembered route suffix.
+
+A member in the URL always beats the remembered preference. The host waits for
+membership, then: validates an explicit member (persisting it into
+`repoGroupGitMemberState`), or resolves a bare `/git` entry — and any older
+`/git/<sha>` link — against that preference and `history.replaceState`s the
+explicit form (dispatching the matching route effect by hand, since
+`replaceState` emits no `hashchange`). An explicit member that is stale or no
+longer in the group renders `repo-group-git-unavailable-member`: the group stays
+open with a usable picker and no git request is made against another repo.
+Changing member is a navigation to that member's history route, so the previous
+commit/file is cleared before the keyed panel mounts.
 
 ### Group settings
 

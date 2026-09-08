@@ -238,8 +238,10 @@ describe('useRepoGitSelection', () => {
 
         expect(result.current.view).toEqual({ type: 'commit', commit: a });
         expect(location.hash).toBe(`#repos/${WS}/git/${a.hash}`);
-        expect(appDispatch).toHaveBeenCalledWith({ type: 'SET_GIT_COMMIT_HASH', hash: a.hash });
-        expect(appDispatch).toHaveBeenCalledWith({ type: 'CLEAR_GIT_FILE_PATH' });
+        expect(appDispatch).toHaveBeenCalledWith({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: WS, workspaceId: WS,
+            commitHash: a.hash, filePath: null,
+        });
     });
 
     it('encodes the file path in branch-range and commit file links', () => {
@@ -365,6 +367,172 @@ describe('useRepoGitSelection', () => {
             await act(async () => { await result.current.lookupCommit('fix typo'); });
             expect(clientFor(WS).git.getCommit).not.toHaveBeenCalled();
         });
+    });
+});
+
+/**
+ * A repo GROUP hosts one member's git panel. The group owns the PAGE (so it
+ * stays selected) and the member owns the DATA (so every request still targets
+ * the right clone). These pin that split at the controller level.
+ */
+describe('useRepoGitSelection — hosted by a repo group', () => {
+    const GROUP = 'group-frontend';
+    const MEMBER = 'repo-b';
+
+    function setupGroup(commits: GitCommitItem[] = [], loading = false) {
+        return renderHook(() => useRepoGitSelection({
+            workspaceId: MEMBER, routeWorkspaceId: GROUP, commits, loading,
+        }));
+    }
+
+    function lastRouteDispatch() {
+        const calls = appDispatch.mock.calls.filter(c => c[0]?.type === 'SET_GIT_ROUTE');
+        return calls.at(-1)?.[0];
+    }
+
+    it('keeps the group in the URL and names the member when a commit is selected', () => {
+        const a = commit('aaaaaaaaaaaa');
+        const { result } = setupGroup([a]);
+        act(() => result.current.selectCommit(a));
+
+        expect(location.hash).toBe(`#repos/${GROUP}/git/member/${MEMBER}/${a.hash}`);
+        expect(lastRouteDispatch()).toEqual({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: GROUP, workspaceId: MEMBER,
+            commitHash: a.hash, filePath: null,
+        });
+    });
+
+    it('keeps the group scope on every other URL-writing path', () => {
+        const { result } = setupGroup();
+        const base = `#repos/${GROUP}/git/member/${MEMBER}`;
+
+        act(() => result.current.selectCommitFile('aaaaaaaaaaaa', 'src/a b.ts'));
+        expect(location.hash).toBe(`${base}/aaaaaaaaaaaa/${encodeURIComponent('src/a b.ts')}`);
+
+        act(() => result.current.navigateToCommitFile('aaaaaaaaaaaa', 'src/a.ts', 'last'));
+        expect(location.hash).toBe(`${base}/aaaaaaaaaaaa/${encodeURIComponent('src/a.ts')}`);
+        expect(result.current.hunkTarget).toBe('last');
+
+        act(() => result.current.selectBranchRange());
+        expect(location.hash).toBe(`${base}/branch-range`);
+
+        act(() => result.current.selectBranchFile('src/a.ts'));
+        expect(location.hash).toBe(`${base}/branch-range/${encodeURIComponent('src/a.ts')}`);
+
+        act(() => result.current.navigateToBranchFile('src/a.ts', 'first'));
+        expect(location.hash).toBe(`${base}/branch-range/${encodeURIComponent('src/a.ts')}`);
+    });
+
+    it('routes the SHA lookup to the member client and never to the group', async () => {
+        const remote = commit('ffffffffffff');
+        clientFor(MEMBER).git.getCommit.mockResolvedValue(remote);
+        const { result } = setupGroup([]);
+
+        await act(async () => { await result.current.lookupCommit('ffffffffffff'); });
+
+        expect(clientFor(MEMBER).git.getCommit).toHaveBeenCalledWith(MEMBER, 'ffffffffffff');
+        expect(clients.has(GROUP)).toBe(false);
+        expect(location.hash).toBe(`#repos/${GROUP}/git/member/${MEMBER}/${remote.hash}`);
+    });
+
+    it('ignores a routed selection that belongs to another page or member', () => {
+        const a = commit('aaaaaaaaaaaa');
+        appState = {
+            ...appState,
+            gitRouteScope: { routeWorkspaceId: GROUP, workspaceId: 'repo-a' },
+            selectedGitCommitHash: a.hash,
+        };
+        const { result } = setupGroup([a]);
+        act(() => result.current.hydrateFromInitialLoad([a]));
+
+        expect(result.current.view).toBeNull();
+        expect(result.current.initialCommitHash).toBeNull();
+    });
+
+    it('consumes a routed selection scoped to this exact group and member', () => {
+        const a = commit('aaaaaaaaaaaa');
+        appState = {
+            ...appState,
+            gitRouteScope: { routeWorkspaceId: GROUP, workspaceId: MEMBER },
+            selectedGitCommitHash: a.hash,
+        };
+        const { result } = setupGroup([a]);
+        act(() => result.current.hydrateFromInitialLoad([a]));
+
+        expect(result.current.view).toEqual({ type: 'commit', commit: a });
+    });
+});
+
+describe('useRepoGitSelection — routed navigation', () => {
+    const a = commit('aaaaaaaaaaaa');
+
+    function setupRouted(initial: Record<string, unknown>) {
+        appState = { ...appState, gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS }, ...initial };
+        const view = renderHook(() => useRepoGitSelection({ workspaceId: WS, commits: [a], loading: false }));
+        act(() => view.result.current.hydrateFromInitialLoad([a]));
+        return view;
+    }
+
+    function routeTo(rerender: () => void, patch: Record<string, unknown>) {
+        appState = { ...appState, ...patch };
+        act(() => rerender());
+    }
+
+    it('follows a same-SHA file change', () => {
+        const { result, rerender } = setupRouted({ selectedGitCommitHash: a.hash, selectedGitFilePath: 'src/a.ts' });
+        expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/a.ts' });
+
+        routeTo(rerender, { selectedGitFilePath: 'src/b.ts' });
+        expect(result.current.view).toEqual({ type: 'commit-file', hash: a.hash, filePath: 'src/b.ts' });
+    });
+
+    it('follows commit → branch range → branch file', () => {
+        const { result, rerender } = setupRouted({ selectedGitCommitHash: a.hash, selectedGitFilePath: null });
+        routeTo(rerender, { selectedGitCommitHash: 'branch-range', selectedGitFilePath: null });
+        expect(result.current.view).toEqual({ type: 'branch-range' });
+
+        routeTo(rerender, { selectedGitCommitHash: 'branch-range', selectedGitFilePath: 'src/a.ts' });
+        expect(result.current.view).toEqual({ type: 'branch-file', filePath: 'src/a.ts' });
+    });
+
+    it('clears the detail and the lookup state on the way back to history', async () => {
+        clientFor(WS).git.getCommit.mockRejectedValue(new Error('nope'));
+        const { result, rerender } = setupRouted({ selectedGitCommitHash: 'ffffffffffff', selectedGitFilePath: null });
+        await waitFor(() => expect(result.current.commitLookupError).toBe('Commit not found'));
+
+        routeTo(rerender, { selectedGitCommitHash: null, selectedGitFilePath: null });
+        expect(result.current.view).toBeNull();
+        expect(result.current.openedCommit).toBeNull();
+        expect(result.current.commitLookupError).toBeNull();
+    });
+
+    it('keeps the file when a deep-linked commit file needs a direct lookup', async () => {
+        const remote = commit('ffffffffffff');
+        clientFor(WS).git.getCommit.mockResolvedValue(remote);
+        const { result } = setupRouted({ selectedGitCommitHash: remote.hash, selectedGitFilePath: 'src/a.ts' });
+
+        await waitFor(() => expect(result.current.openedCommit).toEqual(remote));
+        expect(result.current.view).toEqual({ type: 'commit-file', hash: remote.hash, filePath: 'src/a.ts' });
+    });
+
+    it('discards a lookup that lands after the member has changed', async () => {
+        const remote = commit('ffffffffffff');
+        let settle: (value: unknown) => void = () => {};
+        clientFor(WS).git.getCommit.mockReturnValue(new Promise(resolve => { settle = resolve; }));
+        appState = { ...appState, gitRouteScope: { routeWorkspaceId: WS, workspaceId: WS }, selectedGitCommitHash: remote.hash };
+
+        const { result, rerender } = renderHook(
+            ({ id }: { id: string }) => useRepoGitSelection({ workspaceId: id, commits: [], loading: false }),
+            { initialProps: { id: WS } },
+        );
+        act(() => result.current.hydrateFromInitialLoad([]));
+
+        // The user switches member before the request comes back.
+        act(() => rerender({ id: OTHER_WS }));
+        await act(async () => { settle(remote); });
+
+        expect(result.current.openedCommit).toBeNull();
+        expect(result.current.view).toBeNull();
     });
 });
 

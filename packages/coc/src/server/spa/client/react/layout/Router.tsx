@@ -161,6 +161,10 @@ export function Router() {
         queueState.selectedTaskId,
         queueState.selectedTaskIdByRepo,
         state.activeTab,
+        // The Git suffix a group writes depends on its scope + remembered member,
+        // not just the selection fields.
+        state.gitRouteScope,
+        state.repoGroupGitMemberState,
         state.selectedGitCommitHash,
         state.selectedGitFilePath,
         state.selectedNotePath,

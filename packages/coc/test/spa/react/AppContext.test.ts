@@ -1148,6 +1148,64 @@ describe('AppContext reducer', () => {
         });
     });
 
+    // ── SET_GIT_ROUTE ──────────────────────────────────────────────
+    describe('SET_GIT_ROUTE', () => {
+        it('publishes the page owner, the data member, the revision and the file at once', () => {
+            const result = appReducer(makeState(), {
+                type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b',
+                commitHash: 'abc1234', filePath: 'src/a.ts',
+            });
+            expect(result.gitRouteScope).toEqual({ routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b' });
+            expect(result.selectedGitCommitHash).toBe('abc1234');
+            expect(result.selectedGitFilePath).toBe('src/a.ts');
+        });
+
+        it('cannot leave a new member holding the previous member’s commit', () => {
+            const state = makeState({
+                gitRouteScope: { routeWorkspaceId: 'group-frontend', workspaceId: 'repo-a' },
+                selectedGitCommitHash: 'abc1234',
+                selectedGitFilePath: 'src/a.ts',
+            });
+            const result = appReducer(state, {
+                type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b',
+                commitHash: null, filePath: null,
+            });
+            expect(result.gitRouteScope).toEqual({ routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b' });
+            expect(result.selectedGitCommitHash).toBeNull();
+            expect(result.selectedGitFilePath).toBeNull();
+        });
+
+        it('records an unresolved member for a bare group entry', () => {
+            const result = appReducer(makeState(), {
+                type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: null,
+                commitHash: null, filePath: null,
+            });
+            expect(result.gitRouteScope).toEqual({ routeWorkspaceId: 'group-frontend', workspaceId: null });
+        });
+
+        it('leaves the remembered member preference and route memory alone', () => {
+            const state = makeState({
+                repoGroupGitMemberState: { 'group-frontend': 'repo-a' },
+                repoRouteState: { 'group-frontend': '/git/member/repo-a' },
+            });
+            const result = appReducer(state, {
+                type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b',
+                commitHash: 'abc', filePath: null,
+            });
+            expect(result.repoGroupGitMemberState).toEqual({ 'group-frontend': 'repo-a' });
+            expect(result.repoRouteState).toEqual({ 'group-frontend': '/git/member/repo-a' });
+        });
+
+        it('does not affect the selected repo', () => {
+            const state = makeState({ selectedRepoId: 'group-frontend' });
+            const result = appReducer(state, {
+                type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b',
+                commitHash: 'abc', filePath: null,
+            });
+            expect(result.selectedRepoId).toBe('group-frontend');
+        });
+    });
+
     // ── SET_GIT_COMMIT_HASH ────────────────────────────────────────
     describe('SET_GIT_COMMIT_HASH', () => {
         it('sets selectedGitCommitHash to a string', () => {

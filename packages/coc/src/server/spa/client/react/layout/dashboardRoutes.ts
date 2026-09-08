@@ -36,6 +36,7 @@ import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client
 import { isNativeCliProviderAvailable, isNativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
+import { buildGitRouteSuffix, parseGitRoute } from './gitRoute';
 import { resolveRepoGroupSection } from '../repos/repoGroupSettingsSections';
 import type { AppAction, AppContextState } from '../contexts/AppContext';
 import type { QueueAction, QueueContextState } from '../contexts/QueueContext';
@@ -142,23 +143,18 @@ export function parseWorkflowsRunDeepLink(hash: string): { workflowName: string;
     return null;
 }
 
+/**
+ * The commit a Git deep-link addresses, group `member/` segments included.
+ * Delegates to {@link parseGitRoute} so there is one positional parser.
+ */
 export function parseGitCommitDeepLink(hash: string): string | null {
-    const parts = hashSegments(hash);
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'git' && parts[3]) {
-        return decodeSegment(parts[3]);
-    }
-    return null;
+    return parseGitRoute(hash)?.commitHash ?? null;
 }
 
 export function parseGitFileDeepLink(hash: string): { commitHash: string; filePath: string } | null {
-    const parts = hashSegments(hash);
-    if (parts[0] === 'repos' && parts[1] && parts[2] === 'git' && parts[3] && parts[4]) {
-        return {
-            commitHash: decodeSegment(parts[3]),
-            filePath: decodeSegment(parts[4]),
-        };
-    }
-    return null;
+    const route = parseGitRoute(hash);
+    if (!route?.commitHash || !route.filePath) return null;
+    return { commitHash: route.commitHash, filePath: route.filePath };
 }
 
 /** Build a pop-out URL for git commit review. */
@@ -434,7 +430,33 @@ export function buildWorkspaceSubTabSuffix(
     if (tab === 'settings' && isRepoGroupWorkspaceId(workspaceId)) {
         return '/settings/' + encodeSegment(resolveRepoGroupSection(state.settingsSection));
     }
+    if (tab === 'git' && isRepoGroupWorkspaceId(workspaceId)) {
+        return buildRepoGroupGitSuffix(workspaceId, state);
+    }
     return buildRepoSubTabSuffix(tab, state, selectedTaskId);
+}
+
+/**
+ * The `/git…` suffix for a repo GROUP.
+ *
+ * A group's Git tab hosts one member, so the hash must name it. The commit/file
+ * only travels along when the current Git selection belongs to THIS group and
+ * THIS member — otherwise a tab click would hand one group's SHA to another
+ * group's repo. With no matching scope the group falls back to its remembered
+ * member (history only), or to a bare `/git` entry the host resolves itself.
+ */
+function buildRepoGroupGitSuffix(groupId: string, state: AppContextState): string {
+    const scope = state.gitRouteScope;
+    const scoped = !!scope && scope.routeWorkspaceId === groupId && !!scope.workspaceId;
+    const memberId = scoped
+        ? scope!.workspaceId
+        : (state.repoGroupGitMemberState?.[groupId] ?? null);
+    return buildGitRouteSuffix({
+        routeWorkspaceId: groupId,
+        workspaceId: memberId,
+        commitHash: scoped ? state.selectedGitCommitHash : null,
+        filePath: scoped ? state.selectedGitFilePath : null,
+    });
 }
 
 // ── Work-items deep-links ─────────────────────────────────────────────
@@ -734,17 +756,24 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
     } else if (parts[2] === 'tasks') {
         effects.push({ kind: 'queue', action: { type: 'SELECT_QUEUE_TASK', id: null, repoId } });
     }
-    // Git commit deep-link handling
-    if (parts[2] === 'git' && parts[3]) {
-        effects.push({ kind: 'app', action: { type: 'SET_GIT_COMMIT_HASH', hash: decodeSegment(parts[3]) } });
-        if (parts[4]) {
-            effects.push({ kind: 'app', action: { type: 'SET_GIT_FILE_PATH', filePath: decodeSegment(parts[4]) } });
-        } else {
-            effects.push({ kind: 'app', action: { type: 'CLEAR_GIT_FILE_PATH' } });
+    // Git deep-link handling. One atomic dispatch publishes the page owner, the
+    // data member (null for a group entry the host still has to resolve) and the
+    // selection, so a newly routed member can never briefly show the previous
+    // member's commit.
+    if (parts[2] === 'git') {
+        const gitRoute = parseGitRoute(hash);
+        if (gitRoute) {
+            effects.push({
+                kind: 'app',
+                action: {
+                    type: 'SET_GIT_ROUTE',
+                    routeWorkspaceId: gitRoute.routeWorkspaceId,
+                    workspaceId: gitRoute.workspaceId,
+                    commitHash: gitRoute.commitHash,
+                    filePath: gitRoute.filePath,
+                },
+            });
         }
-    } else if (parts[2] === 'git') {
-        effects.push({ kind: 'app', action: { type: 'SET_GIT_COMMIT_HASH', hash: null } });
-        effects.push({ kind: 'app', action: { type: 'CLEAR_GIT_FILE_PATH' } });
     }
     // Wiki deep-link: #repos/{id}/wiki/{wikiId} and deeper paths
     if (parts[2] === 'wiki' && parts[3]) {
