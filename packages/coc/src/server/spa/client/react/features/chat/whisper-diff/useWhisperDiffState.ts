@@ -60,6 +60,18 @@ export interface WhisperDiffState {
     focusPath?: string;
     /** No-diff explanation, shown when the All-files view is empty. */
     error: string;
+    /**
+     * Stable identity of "the same open", when the caller has one.
+     *
+     * The panel's file selection is reset whenever the state identity changes,
+     * which is right for a whisper group (a frozen context — a new identity means
+     * a different group) and wrong for a live one. A chat's whole-chat Changes
+     * source is rebuilt on every streamed turn, so its context identity changes
+     * while the thing the user is looking at does not. A caller that owns such a
+     * source passes its own stable key here and the panel keeps the selection
+     * across the rebuild; `undefined` keeps the old reset-per-context behaviour.
+     */
+    selectionKey?: string;
 }
 
 const EMPTY_VIEW: CombinedWhisperDiffView = {
@@ -78,8 +90,19 @@ const IDLE: WhisperDiffState = {
     error: '',
 };
 
+export interface UseWhisperDiffStateOptions {
+    /**
+     * Stable id of the source being viewed, for callers whose context is rebuilt
+     * in place (see `WhisperDiffState.selectionKey`). The entry point's focus
+     * target is folded in here, because two opens of one source that land on
+     * different files are still two different opens.
+     */
+    selectionKey?: string;
+}
+
 export function useWhisperDiffState(
     ctx: WhisperDiffOpenContext | null,
+    options: UseWhisperDiffStateOptions = {},
 ): WhisperDiffState {
     // Pure + synchronous. Memoized on the held context so the returned state has
     // a stable identity per open — the panel keys its selection-reset effect on
@@ -88,6 +111,7 @@ export function useWhisperDiffState(
     // is a stable reference across unrelated re-renders; only a fresh `open()`
     // changes it. Nothing here calls setState, so recomputing on a new ctx is
     // safe (no render loop) even if a caller passes a freshly-built context.
+    const { selectionKey } = options;
     return useMemo<WhisperDiffState>(() => {
         if (!ctx) return IDLE;
         const built = buildWhisperCombinedDiff(ctx.toolCalls, ctx.files);
@@ -107,6 +131,9 @@ export function useWhisperDiffState(
             files: ctx.files,
             focusPath: ctx.focusPath,
             error: hasDiff ? '' : 'No diff is available for these files.',
+            ...(selectionKey === undefined
+                ? {}
+                : { selectionKey: `${selectionKey}\n${ctx.focusPath ?? ''}` }),
         };
-    }, [ctx]);
+    }, [ctx, selectionKey]);
 }

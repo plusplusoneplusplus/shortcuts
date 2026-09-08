@@ -37,7 +37,13 @@ export function UnifiedDiffTab({ sourceId, label, onClose, onErrorChange }: Unif
     const source = useUnifiedDiffSource(sourceId);
     // Hooks stay unconditional: `useWhisperDiffState` is pure and synchronous,
     // and returns its idle state for a null context.
-    const state = useWhisperDiffState(source?.ctx ?? null);
+    //
+    // The tab's own `sourceId` is the selection key: it is exactly as stable as
+    // the thing the tab points at. A whisper group is content-addressed, so a
+    // different group is a different id and the panel resets as before; a chat's
+    // Changes source keeps one id while its context is rebuilt on every streamed
+    // edit, so the file the user picked survives the update.
+    const state = useWhisperDiffState(source?.ctx ?? null, { selectionKey: sourceId });
 
     const expired = source === null;
     useEffect(() => {

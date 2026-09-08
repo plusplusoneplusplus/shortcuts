@@ -20,6 +20,10 @@
  *     tab is filed under `chat-changes-<chatId>` instead, so later edits refresh
  *     the tab the user already has open.
  *
+ * The registry key is `(panel scope workspace, chat id)`; the *diff source* id
+ * is the chat alone, because a chat id is globally unique — one chat is one
+ * transcript and one set of changes however many panels host it.
+ *
  * The key is `(panel scope workspace, chat id)`. The scope — not the clone the
  * edited files live in — is what isolates a chat's changes across repos, repo
  * groups, and remote clones: two panels showing different workspaces never read
@@ -29,7 +33,7 @@
 
 import { useCallback, useSyncExternalStore } from 'react';
 import type { WhisperDiffOpenContext } from '../../chat/conversation/tool-calls/WhisperCollapsedGroup';
-import { registerUnifiedDiffSource } from './unifiedDiffSources';
+import { getUnifiedDiffSource, registerUnifiedDiffSource } from './unifiedDiffSources';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** What a chat publishes: the replayable context plus its display routing. */
@@ -74,9 +78,32 @@ export function publishUnifiedChatChanges(
             return false;
         }
         entries.set(key, changes);
+        refreshOpenChangesSource(chatId, changes);
     }
     listeners.get(key)?.forEach(listener => listener());
     return true;
+}
+
+/**
+ * Push a new publish into an already-open Changes tab.
+ *
+ * The menu registers the diff source when the entry is clicked. Without this,
+ * that snapshot would be all the tab ever showed: later edits would update the
+ * menu's entry while the open tab kept rendering the chat as it was when it was
+ * opened. Only an *existing* source is refreshed — publishing must never mint a
+ * source for a tab the user has not opened, or closed.
+ *
+ * A withdrawal (`null`) deliberately leaves the source alone: switching chats
+ * un-hosts the publisher, and blanking the registry there would expire a tab
+ * that is simply not on screen.
+ */
+function refreshOpenChangesSource(chatId: string, changes: UnifiedChatChanges): void {
+    const sourceId = chatChangesSourceId(chatId);
+    if (getUnifiedDiffSource(sourceId) === null) return;
+    registerUnifiedDiffSource(changes.ctx, {
+        workspaceRootPath: changes.workspaceRootPath,
+        sourceId,
+    });
 }
 
 /** The published changes for a chat, or null when it has none. */

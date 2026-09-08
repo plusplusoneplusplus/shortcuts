@@ -161,6 +161,99 @@ describe('the tab a Changes entry opens', () => {
     });
 });
 
+describe('an already-open Changes tab (AC-03)', () => {
+    // The menu registers the source when the entry is clicked. Later edits reach
+    // the open tab only because publishing refreshes the source it is already
+    // rendering — otherwise the tab would freeze at the moment it was opened.
+    it('refreshes the open source as further edits arrive', () => {
+        publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf(['src/a.ts']), workspaceRootPath: '/root' });
+        const input = chatChangesTabInput({
+            changes: getUnifiedChatChanges('ws-1', 'chat-1')!,
+            ownerWorkspaceId: 'ws-1',
+            chatId: 'chat-1',
+        });
+        expect(getUnifiedDiffSource(input.resourceId)?.ctx.files).toHaveLength(1);
+
+        publishUnifiedChatChanges('ws-1', 'chat-1', {
+            ctx: ctxOf(['src/a.ts', 'src/b.ts']),
+            workspaceRootPath: '/root',
+        });
+        const refreshed = getUnifiedDiffSource(input.resourceId);
+        expect(refreshed?.ctx.files.map(f => f.path)).toEqual(['src/a.ts', 'src/b.ts']);
+        expect(refreshed?.workspaceRootPath).toBe('/root');
+    });
+
+    it('does not mint a source for a tab that was never opened', () => {
+        publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf(), workspaceRootPath: '/root' });
+        publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf(['src/a.ts', 'src/b.ts']), workspaceRootPath: '/root' });
+        expect(getUnifiedDiffSource(chatChangesSourceId('chat-1'))).toBeNull();
+    });
+
+    it('keeps the stored record when the republished content is identical', () => {
+        publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf(), workspaceRootPath: '/root' });
+        const input = chatChangesTabInput({
+            changes: getUnifiedChatChanges('ws-1', 'chat-1')!,
+            ownerWorkspaceId: 'ws-1',
+            chatId: 'chat-1',
+        });
+        const stored = getUnifiedDiffSource(input.resourceId);
+        // A re-render rebuilds an equal context; the tab must not lose the user's
+        // file selection over it.
+        publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf(), workspaceRootPath: '/root' });
+        expect(getUnifiedDiffSource(input.resourceId)).toBe(stored);
+    });
+
+    it('leaves the open source alone when the chat withdraws', () => {
+        publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf(), workspaceRootPath: '/root' });
+        const input = chatChangesTabInput({
+            changes: getUnifiedChatChanges('ws-1', 'chat-1')!,
+            ownerWorkspaceId: 'ws-1',
+            chatId: 'chat-1',
+        });
+        // Switching chats un-hosts the publisher; a tab that is simply off-screen
+        // must not expire.
+        publishUnifiedChatChanges('ws-1', 'chat-1', null);
+        expect(getUnifiedChatChanges('ws-1', 'chat-1')).toBeNull();
+        expect(getUnifiedDiffSource(input.resourceId)?.ctx.files).toHaveLength(1);
+    });
+
+    it('a background chat\'s publish cannot repoint another chat\'s open tab', () => {
+        publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf(['src/a.ts']), workspaceRootPath: '/root' });
+        const input = chatChangesTabInput({
+            changes: getUnifiedChatChanges('ws-1', 'chat-1')!,
+            ownerWorkspaceId: 'ws-1',
+            chatId: 'chat-1',
+        });
+        publishUnifiedChatChanges('ws-1', 'chat-2', { ctx: ctxOf(['other/z.ts']), workspaceRootPath: '/root' });
+        expect(getUnifiedDiffSource(input.resourceId)?.ctx.files.map(f => f.path)).toEqual(['src/a.ts']);
+        // Two chats, two sources — the second one is registered only once its
+        // own tab is opened.
+        expect(getUnifiedDiffSource(chatChangesSourceId('chat-2'))).toBeNull();
+    });
+
+    it('is chat-scoped, not panel-scoped: one chat has one Changes source', () => {
+        // The registry of published entries is keyed by (panel scope, chat), but
+        // the diff source is keyed by the chat alone. A chat id is globally
+        // unique, so the same chat hosted by two panels is the same transcript
+        // and the same changes — splitting it per scope would only duplicate the
+        // identical source under two ids.
+        publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf(['src/a.ts']), workspaceRootPath: '/root' });
+        const input = chatChangesTabInput({
+            changes: getUnifiedChatChanges('ws-1', 'chat-1')!,
+            ownerWorkspaceId: 'ws-1',
+            chatId: 'chat-1',
+        });
+        expect(input.resourceId).toBe(chatChangesSourceId('chat-1'));
+        publishUnifiedChatChanges('group-scope', 'chat-1', {
+            ctx: ctxOf(['src/a.ts', 'src/b.ts']),
+            workspaceRootPath: '/root',
+        });
+        expect(getUnifiedDiffSource(input.resourceId)?.ctx.files).toHaveLength(2);
+        // The published entries themselves stay separate per scope.
+        expect(getUnifiedChatChanges('ws-1', 'chat-1')!.ctx.files).toHaveLength(1);
+    });
+});
+
 describe('registerUnifiedDiffSource with an explicit id', () => {
     it('leaves the content-addressed path untouched', () => {
         const ctx = ctxOf();
