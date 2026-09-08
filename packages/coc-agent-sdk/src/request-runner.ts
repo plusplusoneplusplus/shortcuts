@@ -96,6 +96,48 @@ export class RequestRunner {
         private readonly defaultIdleTimeoutMs: number = 3_600_000,
     ) {}
 
+    private async configureDirectoryPolicy(
+        session: CopilotSession,
+        options: SendMessageOptions,
+    ): Promise<void> {
+        const resolveDirectory = (directory: string) => (
+            path.resolve(options.workingDirectory ?? process.cwd(), directory)
+        );
+        const accessibleDirectories = [...new Set([
+            ...(options.additionalDirectories ?? []),
+            ...(options.readOnlyDirectories ?? []),
+        ].map(resolveDirectory))];
+        if (accessibleDirectories.length === 0) return;
+
+        for (const directory of accessibleDirectories) {
+            const added = await session.rpc.permissions.paths.add({ path: directory });
+            if (!added.success) {
+                throw new Error(`Failed to apply directory access policy: could not allow "${directory}"`);
+            }
+        }
+
+        if (!options.readOnlyDirectories?.length) return;
+        const updated = await session.rpc.options.update({
+            sandboxConfig: {
+                enabled: true,
+                addCurrentWorkingDirectory: true,
+                userPolicy: {
+                    filesystem: {
+                        readwritePaths: [
+                            ...(options.additionalDirectories ?? []).map(resolveDirectory),
+                            path.join(os.homedir(), '.coc'),
+                            os.tmpdir(),
+                        ],
+                        readonlyPaths: options.readOnlyDirectories.map(resolveDirectory),
+                    },
+                },
+            },
+        });
+        if (!updated.success) {
+            throw new Error('Failed to apply directory access policy: Copilot sandbox update was rejected');
+        }
+    }
+
     /**
      * Send a message to Copilot via the SDK.
      * Creates a new session for each request (session-per-request pattern).
@@ -138,19 +180,7 @@ export class RequestRunner {
             );
             const toolCallsMap = new Map<string, ToolCall>();
 
-            const sessionOptions: SessionConfig & {
-                additionalDirectories?: string[];
-                sandboxConfig?: {
-                    enabled: boolean;
-                    addCurrentWorkingDirectory: boolean;
-                    userPolicy: {
-                        filesystem: {
-                            readwritePaths: string[];
-                            readonlyPaths: string[];
-                        };
-                    };
-                };
-            } = {
+            const sessionOptions: SessionConfig = {
                 onPermissionRequest: (request: PermissionRequest, invocation: { sessionId: string }) => {
                     const sessionLog = createSessionLogger(invocation.sessionId);
                     sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as ExtendedSdkRequest).resource, operation: (request as ExtendedSdkRequest).operation }, 'Permission request');
@@ -189,30 +219,6 @@ export class RequestRunner {
                     return handlerResult;
                 },
             };
-            const accessibleDirectories = [
-                ...(options.additionalDirectories ?? []),
-                ...(options.readOnlyDirectories ?? []),
-            ];
-            if (accessibleDirectories.length > 0) {
-                sessionOptions.additionalDirectories = [...new Set(accessibleDirectories)];
-            }
-            if (options.readOnlyDirectories?.length) {
-                sessionOptions.sandboxConfig = {
-                    enabled: true,
-                    addCurrentWorkingDirectory: true,
-                    userPolicy: {
-                        filesystem: {
-                            readwritePaths: [
-                                ...(options.additionalDirectories ?? []),
-                                path.join(os.homedir(), '.coc'),
-                                os.tmpdir(),
-                            ],
-                            readonlyPaths: options.readOnlyDirectories,
-                        },
-                    },
-                };
-            }
-
             const switchModelAfterSessionCreate = !!(options.model && options.reasoningEffort);
 
             if (options.model && !switchModelAfterSessionCreate) sessionOptions.model = options.model;
@@ -296,6 +302,7 @@ export class RequestRunner {
             }
 
             const sessionLog = createSessionLogger(session.sessionId);
+            await this.configureDirectoryPolicy(session, options);
             options.onSessionCreated?.(session.sessionId);
 
             if (options.onMcpOAuthRequired && typeof session.on === 'function') {
