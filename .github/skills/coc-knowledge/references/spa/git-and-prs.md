@@ -196,14 +196,25 @@ each turn; separate turns remain distinct because providers may restart tool-cal
 on each assistant turn.
 
 `remoteUrl` is three-valued, and the distinction is load-bearing: `undefined` means the
-chat's remote identity is **not known yet** (the dashboard workspace list is still
-loading), `null` means the workspace is known to have **no** remote. `ChatDetail` derives
-it with `resolveWorkspaceRemoteUrl(appState.workspaces, workspaceId)`, and
-`usePrChatStatusItems` holds `chatOriginId` empty (fetching nothing, rendering nothing)
-while it is `undefined`. Collapsing the two cases resolves the origin to
-`local_<workspaceId>` — an origin no PR data lives under — so the bindings lookup queries
-the wrong scope, `unionAssociations` drops the chat's own detected PRs as foreign, and
-`detectedPrsNeedingBinding` writes nothing.
+chat's remote identity is **not known yet**, `null` means the workspace is known to have
+**no** remote. `usePrChatStatusItems` holds `chatOriginId` empty (fetching nothing,
+rendering nothing) while it is `undefined`. Collapsing the two cases resolves the origin
+to `local_<workspaceId>` — an origin no PR data lives under — so the bindings lookup
+queries the wrong scope, `unionAssociations` drops the chat's own detected PRs as foreign,
+and `detectedPrsNeedingBinding` writes nothing.
+
+`ChatDetail` derives it with `useWorkspaceRemoteUrl(appState.workspaces, reposCtx?.repos,
+workspaceId)` (`repos/useWorkspaceRemoteUrl.ts`), which consults three sources in order,
+each only when the previous is still unknown: the local workspace list
+(`resolveWorkspaceRemoteUrl`), the repos list (`resolveRepoListRemoteUrl` — a row whose
+`gitInfoLoading` is set stays unknown), and finally a one-shot `workspaces.gitInfo` probe
+routed through `getCocClientForWorkspace`, memoized per workspace for the session. The
+repos-list and probe steps are what make the PR banner work on a **remote** workspace:
+`appState.workspaces` only ever holds the local server's workspaces
+(`WORKSPACES_LOADED` is dispatched from `listWorkspaces()`; the aggregated remote rows
+live in `repos` alone), so a chat owned by a remote clone is absent from it. The probe
+only fires once the local list has loaded and still lacks the id, so local chats add no
+extra request during the pre-load window.
 
 The workspace id itself is not guaranteed to arrive as a prop: `buildChatPopOutUrl`
 omits `?workspace=` when the caller has none, and the notification bell floats chats with
