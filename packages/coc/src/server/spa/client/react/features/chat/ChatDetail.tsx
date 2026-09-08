@@ -16,7 +16,7 @@ import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatSt
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
-import { resolveWorkspaceRemoteUrl } from '../../repos/originScope';
+import { useWorkspaceRemoteUrl } from '../../repos/useWorkspaceRemoteUrl';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import type { ChatHeaderMetadata } from './conversation/ChatMetadataButton';
@@ -467,13 +467,19 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         const workspace = appState.workspaces.find((ws: any) => ws.id === effectiveWorkspaceId);
         return typeof workspace?.rootPath === 'string' ? workspace.rootPath : '';
     }, [appState.workspaces, effectiveWorkspaceId]);
-    // `undefined` while the workspace list has not loaded (remote identity
-    // UNKNOWN), `null` once it has loaded and this workspace has no remote.
-    // Origin-scoped consumers must not treat the pre-load window as "no remote":
-    // that resolves to `local_<workspaceId>`, an origin no PR data lives under.
-    const workspaceRemoteUrl = useMemo(
-        () => resolveWorkspaceRemoteUrl(appState.workspaces, effectiveWorkspaceId),
-        [appState.workspaces, effectiveWorkspaceId],
+    // Repo list (local + aggregated REMOTE clones). Read here rather than at the
+    // implement-targets block below because the remote-URL resolver needs it too.
+    const reposCtx = useReposOptional();
+    // `undefined` while the remote identity is UNKNOWN, `null` once it is known
+    // this workspace has no remote. Origin-scoped consumers must not treat the
+    // unknown window as "no remote": that resolves to `local_<workspaceId>`, an
+    // origin no PR data lives under. `appState.workspaces` holds only the LOCAL
+    // server's workspaces, so a chat owned by a remote clone resolves through the
+    // repos list / a git-info probe instead — see `useWorkspaceRemoteUrl`.
+    const workspaceRemoteUrl = useWorkspaceRemoteUrl(
+        appState.workspaces,
+        reposCtx?.repos,
+        effectiveWorkspaceId,
     );
 
     // ── Implement-plan target repos (AC-02/AC-06) ──────────────────────────
@@ -482,7 +488,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // remote-server availability (no new flag): when remote shell is OFF, or we
     // are outside a ReposProvider (pop-out window), the card keeps its local-only
     // UI by receiving no extra targets.
-    const reposCtx = useReposOptional();
     const workspaceName = useMemo(() => {
         const workspace = appState.workspaces.find((ws: any) => ws.id === effectiveWorkspaceId);
         return typeof workspace?.name === 'string' ? workspace.name : undefined;
