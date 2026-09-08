@@ -354,6 +354,14 @@ the open one — hence `registerUnifiedDiffSource(ctx, { sourceId })`, which mov
 the content hash to the record's `contentKey` so an unchanged re-register still
 keeps the stored context identity (and with it the user's file selection).
 
+`chatChangesCombinedView.test.tsx` is the end-to-end case for this path: a chat's
+turns go through `buildChatChangesContext` and `chatChangesTabInput` into a
+rendered `UnifiedDiffTab`, pinning that repeated edits and a later reversion
+replay as successive hunks, that a record captured in both `toolCalls` and
+`timeline` replays once, that deleted and non-reconstructable files land under
+"Not shown", and that repeated opens (and a close then reopen) land on the one
+tab.
+
 ## Tests
 
 `test/spa/react/workspace-right-dock/unified*`, `quickOpenRouting.test.ts` and
