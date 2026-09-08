@@ -354,7 +354,30 @@ the open one — hence `registerUnifiedDiffSource(ctx, { sourceId })`, which mov
 the content hash to the record's `contentKey` so an unchanged re-register still
 keeps the stored context identity (and with it the user's file selection).
 
-`chatChangesCombinedView.test.tsx` is the end-to-end case for this path: a chat's
+### Surviving a reload
+
+The descriptor persists; the source registry does not. So the registry records
+*resolution*, not just content: a missing key means the chat's transcript has not
+loaded yet, a `null` value means it loaded and changed nothing, and
+`withdrawUnifiedChatChanges` (a chat switch, unmount) puts a key back to missing.
+`ChatDetail` publishes only once its `loading` flag clears, which is what makes
+the absence meaningful. `getUnifiedChatChanges` still answers `null` for both
+shapes, so the menu's gate is unchanged.
+
+A restored `UnifiedDiffTab` whose `sourceId` is `chatChangesSourceId(tab.chatId)`
+reads that entry directly: unresolved renders loading, resolved-with-nothing
+renders the panel's ordinary empty diff, and resolved-with-changes renders the
+diff *and claims the source id* for it. Claiming from the mounted tab is the
+whole design — publishing itself still never mints a source
+(`refreshOpenChangesSource` only refreshes an existing one), so a tab the user
+never opened or has closed has no component to bring it back. Everything else
+keeps expiring: a whisper group's source is content-addressed and has no
+publisher, so a restored group tab still shows "no longer available".
+
+`chatChangesRehydration.test.tsx` covers that window end to end (loading → the
+chat's diff, the empty case, the whisper-group regression, and a closed tab that
+a publish does not recreate), and `chatChangesCombinedView.test.tsx` is the
+end-to-end case for this path: a chat's
 turns go through `buildChatChangesContext` and `chatChangesTabInput` into a
 rendered `UnifiedDiffTab`, pinning that repeated edits and a later reversion
 replay as successive hunks, that a record captured in both `toolCalls` and

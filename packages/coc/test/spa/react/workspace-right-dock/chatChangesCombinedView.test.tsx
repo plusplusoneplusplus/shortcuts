@@ -112,7 +112,15 @@ function openChangesTab(turns: ClientConversationTurn[] = CHAT_TURNS) {
 
 function renderChangesTab(turns: ClientConversationTurn[] = CHAT_TURNS) {
     const input = openChangesTab(turns);
-    render(<UnifiedDiffTab sourceId={input.resourceId} label={input.label} onClose={() => {}} />);
+    render(
+        <UnifiedDiffTab
+            sourceId={input.resourceId}
+            label={input.label}
+            scopeWorkspaceId={OWNER}
+            chatId={CHAT_ID}
+            onClose={() => {}}
+        />,
+    );
     return input;
 }
 

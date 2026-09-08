@@ -52,7 +52,7 @@ import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/u
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
-import { publishUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
+import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
 import { buildChatChangesContext } from './conversation/tool-calls/chatChangesModel';
 import { sourceLinkTabInput } from '../repo-detail/unified-right-panel/unifiedSourceLinks';
 import { noteTabInput } from '../repo-detail/unified-right-panel/unifiedNoteTabs';
@@ -654,8 +654,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             })),
         [turns, unifiedPanelHost, workspaceId, taskId],
     );
+    //
+    // Gated on `loading` too, because publishing is what marks the chat
+    // *resolved*: a `null` publish means "this transcript holds no file change",
+    // and a restored Changes tab renders the empty diff for it. Saying that
+    // while the history is still being fetched would flash the empty state over
+    // a tab that is about to show a diff, so an unloaded chat publishes nothing
+    // at all and the tab shows loading instead.
     useEffect(() => {
-        if (unifiedPanelHost === null) return;
+        if (unifiedPanelHost === null || loading) return;
         publishUnifiedChatChanges(
             unifiedPanelHost.workspaceId,
             taskId,
@@ -663,7 +670,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 ? null
                 : { ctx: chatChangesContext, workspaceRootPath },
         );
-    }, [unifiedPanelHost, taskId, chatChangesContext, workspaceRootPath]);
+    }, [unifiedPanelHost, taskId, chatChangesContext, workspaceRootPath, loading]);
     // Withdrawal is its own effect keyed on the entry's identity alone. Folding
     // it into the publish above would tear the entry down and rebuild it on
     // every streamed turn, and a `chat-changes-<id>` tab would see its source
@@ -673,7 +680,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     useEffect(() => {
         if (chatChangesScopeId === null) return;
         return () => {
-            publishUnifiedChatChanges(chatChangesScopeId, taskId, null);
+            // Withdraw, not publish-nothing: an un-hosted chat is unknown again,
+            // never "a chat with no changes".
+            withdrawUnifiedChatChanges(chatChangesScopeId, taskId);
         };
     }, [chatChangesScopeId, taskId]);
 

@@ -20,6 +20,15 @@
  *     tab is filed under `chat-changes-<chatId>` instead, so later edits refresh
  *     the tab the user already has open.
  *
+ *  3. **A restored tab has to know the difference between "not yet" and
+ *     "nothing".** The registry therefore records *resolution*, not just
+ *     content: a key that is absent means the chat's transcript has not loaded
+ *     yet, and a key holding `null` means it loaded and recorded no file change.
+ *     A Changes tab restored from localStorage after a reload shows loading for
+ *     the first and the empty diff for the second, instead of claiming the diff
+ *     expired. `withdrawUnifiedChatChanges` is the separate un-host path — a
+ *     chat switch drops the key entirely, back to "unknown".
+ *
  * The registry key is `(panel scope workspace, chat id)`; the *diff source* id
  * is the chat alone, because a chat id is globally unique — one chat is one
  * transcript and one set of changes however many panels host it.
@@ -44,7 +53,11 @@ export interface UnifiedChatChanges {
     workspaceRootPath?: string | null;
 }
 
-const entries = new Map<string, UnifiedChatChanges>();
+/**
+ * Resolved chats. A missing key is an unresolved chat (no transcript loaded);
+ * a `null` value is a chat that resolved with no file changes at all.
+ */
+const entries = new Map<string, UnifiedChatChanges | null>();
 const listeners = new Map<string, Set<() => void>>();
 
 function entryKey(scopeWorkspaceId: string, chatId: string): string {
@@ -57,10 +70,16 @@ export function chatChangesSourceId(chatId: string): string {
 }
 
 /**
- * Record (or clear, with `null`) a chat's changes and wake whoever is showing
- * them. Returns whether the registry moved, so a re-render that recomputes an
- * equal context does not notify — the popover's action list and the open tab
- * both key on this value.
+ * Record a *resolved* chat's changes and wake whoever is showing them. `null`
+ * means the transcript is loaded and holds no file change — which hides the
+ * menu entry exactly as before, and additionally tells a restored Changes tab
+ * to render the empty diff rather than sit on a spinner. Callers must not
+ * publish while the transcript is still loading; that absence is what the tab
+ * reads as "loading".
+ *
+ * Returns whether the registry moved, so a re-render that recomputes an equal
+ * context does not notify — the popover's action list and the open tab both key
+ * on this value.
  */
 export function publishUnifiedChatChanges(
     scopeWorkspaceId: string,
@@ -70,8 +89,8 @@ export function publishUnifiedChatChanges(
     const key = entryKey(scopeWorkspaceId, chatId);
     const current = entries.get(key) ?? null;
     if (changes === null) {
-        if (current === null) return false;
-        entries.delete(key);
+        if (entries.has(key) && current === null) return false;
+        entries.set(key, null);
     } else {
         if (current !== null && current.ctx === changes.ctx
             && (current.workspaceRootPath ?? null) === (changes.workspaceRootPath ?? null)) {
@@ -80,6 +99,23 @@ export function publishUnifiedChatChanges(
         entries.set(key, changes);
         refreshOpenChangesSource(chatId, changes);
     }
+    listeners.get(key)?.forEach(listener => listener());
+    return true;
+}
+
+/**
+ * Forget a chat entirely — the panel stopped hosting it (a chat switch, the
+ * panel closing, unmount), so nothing can speak for its transcript any more.
+ * Back to unresolved rather than to "no changes": a Changes tab that is merely
+ * off-screen must not be told the chat has nothing in it.
+ */
+export function withdrawUnifiedChatChanges(
+    scopeWorkspaceId: string,
+    chatId: string,
+): boolean {
+    const key = entryKey(scopeWorkspaceId, chatId);
+    if (!entries.has(key)) return false;
+    entries.delete(key);
     listeners.get(key)?.forEach(listener => listener());
     return true;
 }
@@ -96,6 +132,10 @@ export function publishUnifiedChatChanges(
  * A withdrawal (`null`) deliberately leaves the source alone: switching chats
  * un-hosts the publisher, and blanking the registry there would expire a tab
  * that is simply not on screen.
+ *
+ * After a reload the registry is empty and nothing is refreshed here at all;
+ * the restored tab itself claims its source from the published entry
+ * (`UnifiedDiffTab`), which keeps "a tab exists" the precondition for minting.
  */
 function refreshOpenChangesSource(chatId: string, changes: UnifiedChatChanges): void {
     const sourceId = chatChangesSourceId(chatId);
@@ -106,13 +146,26 @@ function refreshOpenChangesSource(chatId: string, changes: UnifiedChatChanges): 
     });
 }
 
-/** The published changes for a chat, or null when it has none. */
+/** The published changes for a chat, or null when it has none (or none yet). */
 export function getUnifiedChatChanges(
     scopeWorkspaceId: string,
     chatId: string | null,
 ): UnifiedChatChanges | null {
-    if (chatId === null) return null;
-    return entries.get(entryKey(scopeWorkspaceId, chatId)) ?? null;
+    return getUnifiedChatChangesEntry(scopeWorkspaceId, chatId) ?? null;
+}
+
+/**
+ * The raw registry entry, which distinguishes the two shapes of "no changes":
+ * `undefined` — nothing has spoken for this chat yet (its transcript is still
+ * loading, or no panel hosts it) — versus `null`, a loaded transcript with no
+ * file change in it.
+ */
+export function getUnifiedChatChangesEntry(
+    scopeWorkspaceId: string,
+    chatId: string | null,
+): UnifiedChatChanges | null | undefined {
+    if (chatId === null) return undefined;
+    return entries.get(entryKey(scopeWorkspaceId, chatId));
 }
 
 /** Drop every published entry (test isolation). */
@@ -131,6 +184,19 @@ export function useUnifiedChatChanges(
     scopeWorkspaceId: string,
     chatId: string | null,
 ): UnifiedChatChanges | null {
+    return useUnifiedChatChangesEntry(scopeWorkspaceId, chatId) ?? null;
+}
+
+/**
+ * The reactive form of `getUnifiedChatChangesEntry` — for a view that has to
+ * tell an unresolved chat from a resolved one with nothing in it. A restored
+ * Changes tab is the caller: `undefined` is its loading state, `null` its empty
+ * one.
+ */
+export function useUnifiedChatChangesEntry(
+    scopeWorkspaceId: string,
+    chatId: string | null,
+): UnifiedChatChanges | null | undefined {
     const key = chatId === null ? null : entryKey(scopeWorkspaceId, chatId);
     return useSyncExternalStore(
         useCallback(listener => {
@@ -146,8 +212,8 @@ export function useUnifiedChatChanges(
                 if (set!.size === 0) listeners.delete(key);
             };
         }, [key]),
-        useCallback(() => (key === null ? null : entries.get(key) ?? null), [key]),
-        () => null,
+        useCallback(() => (key === null ? undefined : entries.get(key)), [key]),
+        () => undefined,
     );
 }
 

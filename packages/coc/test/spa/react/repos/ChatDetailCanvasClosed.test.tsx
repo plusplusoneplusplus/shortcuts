@@ -31,7 +31,7 @@ import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/reac
 import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { clearUnifiedDiffSources, getUnifiedDiffSource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
 import { clearUnifiedCanvasEvents } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
-import { clearUnifiedChatChanges, getUnifiedChatChanges } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
+import { clearUnifiedChatChanges, getUnifiedChatChanges, getUnifiedChatChangesEntry } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
 import { closeTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 
@@ -57,6 +57,9 @@ const { mockState } = vi.hoisted(() => ({
         richTextSetValueCalls: [] as Array<[string, number?]>,
         // Captured SSE options so a test can fire onCanvasUpdated.
         sseOpts: null as any,
+        // When set, every fetch waits on it — lets a test hold the chat in its
+        // loading state and observe what the UI does meanwhile.
+        holdFetch: null as Promise<void> | null,
         // Per-pid canvas descriptors served by the fetch handler for
         // `client.canvases.list`.
         canvasesByPid: {} as Record<string, Array<{ id: string; title?: string; type?: string }>>,
@@ -431,7 +434,9 @@ beforeEach(() => {
     mockState.canvasesByPid = {};
     mockState.sourceFiles = [];
     mockState.sseOpts = null;
+    mockState.holdFetch = null;
     fetchMock = vi.fn(async (url: string) => {
+        if (mockState.holdFetch) await mockState.holdFetch;
         const urlStr = typeof url === 'string' ? url : '';
         if (urlStr.includes('/canvases')) {
             const pid = new URL(urlStr, 'http://x').searchParams.get('processId') ?? '';
@@ -1295,7 +1300,40 @@ describe('ChatDetail — publishing the chat’s own Changes to the panel (AC-03
 
         unmount();
 
+        // Withdrawn, not resolved-with-nothing: nothing speaks for the chat any
+        // more, so a Changes tab of its own would go back to loading rather than
+        // claim the chat changed no files.
+        expect(getUnifiedChatChangesEntry(WS_ID, 'task-A')).toBeUndefined();
         expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+    });
+
+    it('holds the entry unresolved until the transcript has loaded', async () => {
+        // A reload restores the Changes tab before the history arrives. Until
+        // then nothing has spoken for the chat, and the tab must show loading —
+        // publishing "no changes" here would flash an empty diff over a chat
+        // that is about to show one.
+        let release!: () => void;
+        mockState.holdFetch = new Promise<void>(resolve => { release = resolve; });
+        render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        expect(getUnifiedChatChangesEntry(WS_ID, 'task-A')).toBeUndefined();
+
+        mockState.holdFetch = null;
+        await act(async () => {
+            release();
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+
+        // The load replaced the streamed turns with the server's history, which
+        // holds no edits — resolved with nothing, which is not "unknown".
+        await waitFor(() => expect(getUnifiedChatChangesEntry(WS_ID, 'task-A')).toBeNull());
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+
+        // ...and a later edit still publishes normally.
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
     });
 
     it('rebuilds the entry from restored history on a fresh mount, with no extra request', async () => {

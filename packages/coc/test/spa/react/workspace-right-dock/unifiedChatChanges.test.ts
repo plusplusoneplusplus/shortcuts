@@ -14,7 +14,9 @@ import {
     chatChangesTabInput,
     clearUnifiedChatChanges,
     getUnifiedChatChanges,
+    getUnifiedChatChangesEntry,
     publishUnifiedChatChanges,
+    withdrawUnifiedChatChanges,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
 import {
     clearUnifiedDiffSources,
@@ -73,12 +75,31 @@ describe('publishing a chat\'s changes', () => {
         expect(getUnifiedChatChanges('ws-2', 'chat-1')).toBeNull();
     });
 
-    it('withdraws an entry when a chat republishes nothing', () => {
+    it('drops the entry when a chat republishes nothing', () => {
         publishUnifiedChatChanges('ws-1', 'chat-1', { ctx: ctxOf() });
         expect(publishUnifiedChatChanges('ws-1', 'chat-1', null)).toBe(true);
         expect(getUnifiedChatChanges('ws-1', 'chat-1')).toBeNull();
-        // A second withdrawal is not a change, so nothing is woken for it.
+        // Publishing the same nothing twice is not a change, so nothing is woken.
         expect(publishUnifiedChatChanges('ws-1', 'chat-1', null)).toBe(false);
+    });
+
+    it('separates "no changes" from "nothing has spoken for this chat"', () => {
+        // A restored Changes tab reads these two apart: the first is an empty
+        // diff, the second is still loading. `getUnifiedChatChanges` — what the
+        // `+` menu asks — answers null for both, so the entry stays hidden
+        // either way.
+        expect(getUnifiedChatChangesEntry('ws-1', 'chat-1')).toBeUndefined();
+
+        publishUnifiedChatChanges('ws-1', 'chat-1', null);
+        expect(getUnifiedChatChangesEntry('ws-1', 'chat-1')).toBeNull();
+        expect(getUnifiedChatChanges('ws-1', 'chat-1')).toBeNull();
+
+        // Un-hosting the chat is not the same statement — it goes back to unknown.
+        expect(withdrawUnifiedChatChanges('ws-1', 'chat-1')).toBe(true);
+        expect(getUnifiedChatChangesEntry('ws-1', 'chat-1')).toBeUndefined();
+        // A second withdrawal moves nothing.
+        expect(withdrawUnifiedChatChanges('ws-1', 'chat-1')).toBe(false);
+        expect(getUnifiedChatChangesEntry('ws-1', null)).toBeUndefined();
     });
 
     it('reports no movement when the same context object is republished', () => {
@@ -212,7 +233,7 @@ describe('an already-open Changes tab (AC-03)', () => {
         });
         // Switching chats un-hosts the publisher; a tab that is simply off-screen
         // must not expire.
-        publishUnifiedChatChanges('ws-1', 'chat-1', null);
+        withdrawUnifiedChatChanges('ws-1', 'chat-1');
         expect(getUnifiedChatChanges('ws-1', 'chat-1')).toBeNull();
         expect(getUnifiedDiffSource(input.resourceId)?.ctx.files).toHaveLength(1);
     });
