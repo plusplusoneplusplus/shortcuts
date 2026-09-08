@@ -61,8 +61,13 @@ describe('ExplorerPanel — Exact Open (Ctrl+O) integration', () => {
     });
 
     describe('Ctrl+O keyboard shortcut', () => {
-        it('handles Ctrl+O key combination', () => {
-            expect(panelSource).toContain("e.key === 'o'");
+        // The key literals moved into `quickOpenRouting.quickOpenShortcut` when
+        // the unified right panel became a second owner of Ctrl+O: matching the
+        // keys in two places is how the two owners drifted apart. See
+        // `ExplorerPanel.quickopen.test.ts` for the same rule on Ctrl+P.
+        it('delegates key matching to the shared router', () => {
+            expect(panelSource).toContain("from '../unified-right-panel/quickOpenRouting'");
+            expect(panelSource).toContain('quickOpenShortcut(e)');
         });
 
         it('checks for ctrlKey modifier', () => {

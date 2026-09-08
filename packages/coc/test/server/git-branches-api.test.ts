@@ -168,6 +168,32 @@ describe('Git Branches API endpoints', () => {
 
     const base = () => `http://127.0.0.1:${port}`;
 
+    /**
+     * Wait for a background git op to reach a terminal state.
+     *
+     * `GitOperationRunner.start` returns the job ID before `run()` settles, so a
+     * fixed sleep races the runner on a loaded CI machine: the assertion reads
+     * `running`, and the leftover job then trips the 409 "already running" guard
+     * in the *next* test, whose POST comes back without a jobId. Poll instead.
+     */
+    const waitForGitOp = async (workspaceId: string, jobId: string, timeoutMs = 10_000) => {
+        const deadline = Date.now() + timeoutMs;
+        for (;;) {
+            const res = await request(`${base()}/api/workspaces/${workspaceId}/git/ops/${jobId}`);
+            if (res.status === 200) {
+                const job = res.json();
+                if (job.status !== 'running') return job;
+            }
+            if (Date.now() >= deadline) {
+                throw new Error(
+                    `git op ${jobId} did not settle within ${timeoutMs}ms `
+                    + `(last response ${res.status}: ${res.body})`,
+                );
+            }
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+    };
+
     const MOCK_LOCAL_RESULT = {
         branches: [
             { name: 'main', isCurrent: true, isRemote: false, lastCommitSubject: 'init', lastCommitDate: '2025-01-01' },
@@ -748,32 +774,31 @@ describe('Git Branches API endpoints', () => {
             const data = res.json();
             expect(data.jobId).toBeDefined();
             expect(typeof data.jobId).toBe('string');
-            // Wait for background pull to finish before next test
-            await new Promise(resolve => setTimeout(resolve, 200));
+            // Let the pull settle so the next test's pull isn't rejected as already running.
+            await waitForGitOp(WORKSPACE_ID, data.jobId);
         });
 
         it('should pass rebase=true when specified', async () => {
             mockPull.mockResolvedValue({ success: true });
 
-            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
                 method: 'POST',
                 body: JSON.stringify({ rebase: true }),
             });
 
-            // Wait for background pull to complete
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, res.json().jobId);
             expect(mockPull).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
         });
 
         it('should delegate current-branch-only pulls to the scoped service method', async () => {
             mockPullCurrentBranch.mockResolvedValue({ success: true });
 
-            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/pull`, {
                 method: 'POST',
                 body: JSON.stringify({ rebase: true, currentBranchOnly: true }),
             });
 
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, res.json().jobId);
             expect(mockPullCurrentBranch).toHaveBeenCalledWith(WORKSPACE_ROOT, true);
             expect(mockPull).not.toHaveBeenCalled();
         });
@@ -789,8 +814,8 @@ describe('Git Branches API endpoints', () => {
             expect(res.status).toBe(202);
             const data = res.json();
             expect(data.jobId).toBeDefined();
-            // Wait for background pull to finish before next test
-            await new Promise(resolve => setTimeout(resolve, 200));
+            // Let the pull settle so the next test's pull isn't rejected as already running.
+            await waitForGitOp(WORKSPACE_ID, data.jobId);
         });
 
         it('should return 409 when a pull is already running', async () => {
@@ -834,8 +859,7 @@ describe('Git Branches API endpoints', () => {
             });
             const { jobId } = pullRes.json();
 
-            // Wait for background pull to complete
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, jobId);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/latest?op=pull`);
             expect(res.status).toBe(200);
@@ -865,8 +889,7 @@ describe('Git Branches API endpoints', () => {
             });
             const { jobId } = pullRes.json();
 
-            // Wait for background pull to complete
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, jobId);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
             expect(res.status).toBe(200);
@@ -885,8 +908,7 @@ describe('Git Branches API endpoints', () => {
             });
             const { jobId } = pullRes.json();
 
-            // Wait for background pull to complete
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, jobId);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
             expect(res.status).toBe(200);
@@ -1179,19 +1201,18 @@ describe('Git Branches API endpoints', () => {
             const data = res.json();
             expect(data.jobId).toBeDefined();
             expect(typeof data.jobId).toBe('string');
-            // Wait for background job to finish before next test
-            await new Promise(resolve => setTimeout(resolve, 200));
+            // Let the job settle so the next test isn't rejected as already running.
+            await waitForGitOp(WORKSPACE_ID, data.jobId);
         });
 
         it('should call rebaseAutosquash with the workspace root path', async () => {
             mockRebaseAutosquash.mockResolvedValue({ success: true });
 
-            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-autosquash`, {
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/rebase-autosquash`, {
                 method: 'POST',
             });
 
-            // Wait for background job to complete
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, res.json().jobId);
             expect(mockRebaseAutosquash).toHaveBeenCalledWith(WORKSPACE_ROOT);
         });
 
@@ -1219,8 +1240,7 @@ describe('Git Branches API endpoints', () => {
             });
             const { jobId } = startRes.json();
 
-            // Wait for background job to complete
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, jobId);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/ops/${jobId}`);
             expect(res.status).toBe(200);
@@ -1270,7 +1290,7 @@ describe('Git Branches API endpoints', () => {
             const data = res.json();
             expect(data.jobId).toBeDefined();
             expect(typeof data.jobId).toBe('string');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, data.jobId);
         });
     });
 
@@ -1317,7 +1337,7 @@ describe('Git Branches API endpoints', () => {
             const data = res.json();
             expect(data.jobId).toBeDefined();
             expect(typeof data.jobId).toBe('string');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, data.jobId);
         });
     });
 
@@ -1427,7 +1447,7 @@ describe('Git Branches API endpoints', () => {
             const data = res.json();
             expect(data.jobId).toBeDefined();
             expect(typeof data.jobId).toBe('string');
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await waitForGitOp(WORKSPACE_ID, data.jobId);
         });
 
         it('should return 400 when hash is missing', async () => {

@@ -55,8 +55,28 @@ describe('ExplorerPanel — Quick Open (Ctrl+P) integration', () => {
     });
 
     describe('Ctrl+P keyboard shortcut', () => {
-        it('handles Ctrl+P key combination', () => {
-            expect(panelSource).toContain("e.key === 'p'");
+        // The key literals moved into `quickOpenRouting.quickOpenShortcut` when
+        // the unified right panel became a second owner of Ctrl+P: matching the
+        // keys in two places is how the two owners drifted apart. What this
+        // panel must still do is ask the router which shortcut was pressed.
+        it('delegates key matching to the shared router', () => {
+            expect(panelSource).toContain("from '../unified-right-panel/quickOpenRouting'");
+            expect(panelSource).toContain('quickOpenShortcut(e)');
+        });
+
+        // The regression: a navigator/sidebar mount is somebody else's file-tree
+        // column, and its host owns Ctrl+P on its behalf. While these mounts also
+        // registered a document listener, one keypress opened two dialogs.
+        it('takes the shortcut only in editor mode', () => {
+            expect(panelSource).toContain('navigatorMode ? null : quickOpenShortcut(e)');
+        });
+
+        // And the other half of the routing input: only the Explorer sub-tab
+        // announces itself, so the panel can tell "a real Explorer tab is
+        // mounted" from "my own column is open".
+        it('registers its focus probe with the router', () => {
+            expect(panelSource).toContain('registerExplorerQuickOpen(');
+            expect(panelSource).toMatch(/if \(navigatorMode\) return;\s*\n\s*return registerExplorerQuickOpen/);
         });
 
         it('checks for ctrlKey modifier', () => {

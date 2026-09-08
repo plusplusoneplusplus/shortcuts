@@ -34,6 +34,7 @@ import {
 } from './explorerStateStore';
 import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
 import { setExplorerInstanceDirty } from './explorerDirtyStore';
+import { quickOpenShortcut, registerExplorerQuickOpen } from '../unified-right-panel/quickOpenRouting';
 
 /**
  * How much of the Explorer this mount renders.
@@ -1105,19 +1106,35 @@ export function ExplorerPanel({
         };
     }, [searchQuery, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    /**
+     * Announce this mount to the Ctrl+P router. Only the Explorer *sub-tab*
+     * registers: a navigator/sidebar mount is somebody else's column, and its
+     * host owns the shortcut on its behalf — registering it here is what used
+     * to stack two Quick Open dialogs on one keypress.
+     */
+    useEffect(() => {
+        if (navigatorMode) return;
+        return registerExplorerQuickOpen(() => {
+            const root = rootRef.current;
+            const focused = document.activeElement;
+            if (!root || !focused || focused === document.body) return false;
+            return root.contains(focused);
+        });
+    }, [navigatorMode]);
+
     // Keyboard shortcut: '/' to focus search, Escape to clear, Ctrl+P for Quick Open, Ctrl+O for Exact Open
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            // Ctrl+P / Cmd+P → Quick Open
-            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+            // Quick Open / Exact Open. The unified right panel listens in the
+            // capture phase and stops the event when it wins the routing
+            // decision, so reaching this listener already means the Explorer
+            // sub-tab is the owner — no second check needed here. Navigator and
+            // sidebar mounts never take it at all.
+            const shortcut = navigatorMode ? null : quickOpenShortcut(e);
+            if (shortcut !== null) {
                 e.preventDefault();
-                setQuickOpenVisible(true);
-                return;
-            }
-            // Ctrl+O / Cmd+O → Exact Open
-            if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
-                e.preventDefault();
-                setExactOpenVisible(true);
+                if (shortcut === 'quick') setQuickOpenVisible(true);
+                else setExactOpenVisible(true);
                 return;
             }
             if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA' && !(document.activeElement as HTMLElement)?.isContentEditable) {
@@ -1130,7 +1147,7 @@ export function ExplorerPanel({
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [searchInput, onSearchClear]);
+    }, [searchInput, onSearchClear, navigatorMode]);
 
     // A search tab's text lives in memory only, so a page reload restores the
     // tab with nothing behind it. Close those once, on mount, rather than
