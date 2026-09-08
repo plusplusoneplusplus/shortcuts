@@ -7,6 +7,10 @@
  * reversion, a file whose diff text cannot be rebuilt, deletion records, and the
  * two identity rules — one tool appearing in both `toolCalls` and `timeline` is
  * replayed once, while the same id reused in a different turn stays distinct.
+ *
+ * Fixtures are cross-platform: every case that carries a path has a Linux/macOS
+ * form and a Windows form, including a chat that records the same file both
+ * ways.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -110,6 +114,43 @@ describe('buildChatChangesContext', () => {
         expect(ctx?.files.map(f => f.path)).toContain('src/opaque.ts');
     });
 
+    it('reports a completed edit recorded with a Windows path form', () => {
+        const turns = [turn([editCall('a', 'src\\a.ts', 'one', 'two')])];
+        const ctx = buildChatChangesContext(turns, SOURCE);
+        // The path is canonicalized to forward slashes, which is the form every
+        // downstream matcher (diff reconstruction, deletion detection) uses.
+        expect(ctx?.files.map(f => f.path)).toEqual(['src/a.ts']);
+        // The raw tool args are handed through untouched — reconstruction
+        // normalizes both sides itself.
+        expect((ctx?.toolCalls[0].args as { path: string }).path).toBe('src\\a.ts');
+        expect(chatHasChanges(turns, SOURCE)).toBe(true);
+    });
+
+    it('reports a create recorded with a Windows path form', () => {
+        const turns = [turn([call({
+            id: 'a',
+            toolName: 'create',
+            args: { path: 'src\\win\\new.ts', file_text: 'hi\n' },
+        })])];
+        const ctx = buildChatChangesContext(turns, SOURCE);
+        expect(ctx?.files.map(f => f.path)).toEqual(['src/win/new.ts']);
+        expect(ctx?.files[0].isCreate).toBe(true);
+    });
+
+    it('keeps one file one file when a chat records both path forms', () => {
+        // A chat can genuinely see both: a Windows-native tool reports
+        // `src\a.ts`, a later repo-relative one reports `src/a.ts`. They are the
+        // same file, so they collapse into a single entry whose stats add up.
+        const turns = [
+            turn([editCall('a', 'src\\a.ts', 'one', 'two')]),
+            turn([editCall('b', 'src/a.ts', 'two', 'three')]),
+        ];
+        const ctx = buildChatChangesContext(turns, SOURCE);
+        expect(ctx?.files.map(f => f.path)).toEqual(['src/a.ts']);
+        expect(ctx?.toolCalls).toHaveLength(2);
+        expect(ctx?.files[0].netInsertions).toBe(2);
+    });
+
     it('marks a file a later shell command removed as deleted', () => {
         const turns = [
             turn([call({ id: 'a', toolName: 'create', args: { path: 'src/tmp.ts', file_text: 'x\n' } })]),
@@ -117,6 +158,40 @@ describe('buildChatChangesContext', () => {
         ];
         const ctx = buildChatChangesContext(turns, SOURCE);
         expect(ctx?.files.find(f => f.path === 'src/tmp.ts')?.isDeleted).toBe(true);
+    });
+
+    it('marks a Windows-path file removed by Remove-Item as deleted', () => {
+        const turns = [
+            turn([call({ id: 'a', toolName: 'create', args: { path: 'src\\tmp.ts', file_text: 'x\n' } })]),
+            turn([call({ id: 'b', toolName: 'powershell', args: { command: 'Remove-Item -Force src\\tmp.ts' } })]),
+        ];
+        const ctx = buildChatChangesContext(turns, SOURCE);
+        expect(ctx?.files.map(f => f.path)).toEqual(['src/tmp.ts']);
+        expect(ctx?.files[0].isDeleted).toBe(true);
+    });
+
+    it('marks a Windows-path file removed by del as deleted', () => {
+        const turns = [
+            turn([call({ id: 'a', toolName: 'create', args: { path: 'src\\tmp.ts', file_text: 'x\n' } })]),
+            turn([call({ id: 'b', toolName: 'shell', args: { command: 'del /f src\\tmp.ts' } })]),
+        ];
+        expect(buildChatChangesContext(turns, SOURCE)?.files[0].isDeleted).toBe(true);
+    });
+
+    it('matches a Windows delete command against a POSIX-recorded file, and back', () => {
+        // The two forms cross: the file is tracked as POSIX and deleted with a
+        // backslash path, or tracked with a backslash path and deleted as POSIX.
+        const crossed = [
+            turn([call({ id: 'a', toolName: 'create', args: { path: 'src/tmp.ts', file_text: 'x\n' } })]),
+            turn([call({ id: 'b', toolName: 'powershell', args: { command: 'Remove-Item src\\tmp.ts' } })]),
+        ];
+        expect(buildChatChangesContext(crossed, SOURCE)?.files[0].isDeleted).toBe(true);
+
+        const reversed = [
+            turn([call({ id: 'a', toolName: 'create', args: { path: 'src\\tmp.ts', file_text: 'x\n' } })]),
+            turn([call({ id: 'b', toolName: 'bash', args: { command: 'rm -f src/tmp.ts' } })]),
+        ];
+        expect(buildChatChangesContext(reversed, SOURCE)?.files[0].isDeleted).toBe(true);
     });
 });
 

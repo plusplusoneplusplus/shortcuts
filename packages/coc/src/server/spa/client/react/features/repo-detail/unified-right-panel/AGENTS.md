@@ -346,6 +346,14 @@ registry keyed by `(panel scope workspace, chat id)`, the same shape
 The scope key is what isolates chats across repos, repo groups, and remote
 clones.
 
+One more thing that model owns: **path form**. Tool args carry whatever the
+agent's platform produced, so a chat can record `src\a.ts` from a Windows run and
+`src/a.ts` from a POSIX one — sometimes both, for the same file. `collectFileEdits`
+canonicalizes its map key to forward slashes (`normalizeFileEditPath`), so one
+file stays one row in the list, one dropdown item and one diff section. The raw
+args are left alone; every reconstruction and the shell-delete pass already
+normalize both sides before comparing, so nothing downstream had to change.
+
 The tab is an ordinary `diff` tab over the existing `WhisperDiffPanel`, with one
 difference: its `resourceId` is the fixed `chat-changes-<chatId>` rather than
 `whisperDiffSourceId`'s content hash. A whole-chat context grows as the chat
@@ -383,7 +391,11 @@ rendered `UnifiedDiffTab`, pinning that repeated edits and a later reversion
 replay as successive hunks, that a record captured in both `toolCalls` and
 `timeline` replays once, that deleted and non-reconstructable files land under
 "Not shown", and that repeated opens (and a close then reopen) land on the one
-tab.
+tab. Its fixture is cross-platform — two of its files are recorded with Windows
+backslash paths, one edited and one removed by `Remove-Item` — and
+`chatChangesModel.test.ts` plus `test/spa/processes/toolGroupUtils.test.ts` pin
+the same forms at the unit level, including a chat that records one file both
+ways.
 
 ## Tests
 

@@ -525,7 +525,25 @@ interface FileEditStats {
     hasEdit: boolean;
 }
 
-function getFileEditStats(fileMap: Map<string, FileEditStats>, filePath: string): FileEditStats {
+/**
+ * Canonical key for one changed file.
+ *
+ * Tool args carry whatever path form the agent's platform produced, so the same
+ * file can arrive as `src\a.ts` from a Windows run and `src/a.ts` from a POSIX
+ * one — and within a single chat it can arrive both ways, when a tool reports a
+ * native path and a later one a repo-relative POSIX path. Keying on the raw
+ * string would split that into two entries: two dropdown items, two sections,
+ * two rows in the popover, all for one file. Forward slashes are the form every
+ * consumer already matches on (`buildWhisperFileDiff`/`buildWhisperCombinedDiff`
+ * normalize both sides before comparing, and the deletion pass normalizes too),
+ * so canonicalizing here merges the forms without changing what they match.
+ */
+export function normalizeFileEditPath(filePath: string): string {
+    return filePath.replace(/\\/g, '/').trim();
+}
+
+function getFileEditStats(fileMap: Map<string, FileEditStats>, rawPath: string): FileEditStats {
+    const filePath = normalizeFileEditPath(rawPath);
     const existing = fileMap.get(filePath);
     if (existing) {
         return existing;

@@ -10,6 +10,10 @@
  * that arrives twice, files whose content is unavailable or deleted, and tab
  * reuse across repeated opens and a close.
  *
+ * The fixture is cross-platform: alongside the POSIX-path files it carries two
+ * files a Windows run recorded with backslash paths — one edited, one removed
+ * with `Remove-Item` — and every list assertion below covers them the same way.
+ *
  * The heavy `UnifiedDiffViewer` is stubbed to its raw diff text so an assertion
  * can read the reconstructed hunks directly.
  */
@@ -81,7 +85,10 @@ function createCall(id: string, path: string, text: string): ClientToolCall {
  *  - `src/app.ts` is created, edited, then edited back (three chronological steps);
  *  - `src/helper.ts` is edited once but recorded in both `toolCalls` and `timeline`;
  *  - `src/gone.ts` is created and later removed by a shell command;
- *  - `src/codex.ts` changes through a Codex structured patch with no line content.
+ *  - `src/codex.ts` changes through a Codex structured patch with no line content;
+ *  - `src\win\panel.ts` is created and edited with Windows-form paths;
+ *  - `src\win\scratch.ts` is created with a Windows-form path and removed by
+ *    `Remove-Item`.
  */
 const HELPER_EDIT = editCall('h1', 'src/helper.ts', 'old helper', 'new helper');
 
@@ -97,6 +104,15 @@ const CHAT_TURNS: ClientConversationTurn[] = [
     assistantTurn([
         editCall('e2', 'src/app.ts', 'beta', 'alpha'),
         call({ id: 's1', toolName: 'bash', args: { command: 'rm -f src/gone.ts' } }),
+    ]),
+    // The same chat continued from a Windows clone: native backslash paths for
+    // a created-then-edited file and for a scratch file removed by PowerShell.
+    { role: 'user', content: 'now the windows side', timeline: [] } as ClientConversationTurn,
+    assistantTurn([
+        createCall('w1', 'src\\win\\panel.ts', 'winA\n'),
+        editCall('w2', 'src\\win\\panel.ts', 'winA', 'winB'),
+        createCall('w3', 'src\\win\\scratch.ts', 'junk\n'),
+        call({ id: 'w4', toolName: 'powershell', args: { command: 'Remove-Item -Force src\\win\\scratch.ts' } }),
     ]),
 ];
 
@@ -142,10 +158,10 @@ describe('AC-02 — the combined Changes view over a whole chat', () => {
         renderChangesTab();
         expect(
             screen.getAllByTestId('whisper-diff-file-section').map(el => el.getAttribute('data-path')),
-        ).toEqual(['src/app.ts', 'src/helper.ts']);
-        // The header counts every changed file, including the two that cannot
+        ).toEqual(['src/app.ts', 'src/helper.ts', 'src/win/panel.ts']);
+        // The header counts every changed file, including the three that cannot
         // render a body.
-        expect(screen.getByTestId('whisper-diff-totals')).toHaveTextContent('4 files');
+        expect(screen.getByTestId('whisper-diff-totals')).toHaveTextContent('6 files');
     });
 
     it('replays repeated edits and a later reversion as chronological steps', () => {
@@ -171,8 +187,15 @@ describe('AC-02 — the combined Changes view over a whole chat', () => {
         renderChangesTab();
         const notShown = screen.getByTestId('whisper-diff-not-shown');
         const items = screen.getAllByTestId('whisper-diff-not-shown-item');
-        expect(items.map(el => el.getAttribute('data-path'))).toEqual(['src/gone.ts', 'src/codex.ts']);
+        // Deleted files first, then the non-reconstructable ones; the Windows
+        // scratch file reaches this list through `Remove-Item`.
+        expect(items.map(el => el.getAttribute('data-path'))).toEqual([
+            'src/gone.ts',
+            'src/win/scratch.ts',
+            'src/codex.ts',
+        ]);
         expect(notShown).toHaveTextContent('src/gone.ts — deleted');
+        expect(notShown).toHaveTextContent('src/win/scratch.ts — deleted');
         expect(notShown).toHaveTextContent('src/codex.ts — no diff available');
     });
 
@@ -183,7 +206,15 @@ describe('AC-02 — the combined Changes view over a whole chat', () => {
         // same way a single group's does — the leading `null` is "All files".
         expect(
             screen.getAllByTestId('whisper-diff-file-option').map(el => el.getAttribute('data-path')),
-        ).toEqual([null, 'src/app.ts', 'src/codex.ts', 'src/gone.ts', 'src/helper.ts']);
+        ).toEqual([
+            null,
+            'src/app.ts',
+            'src/codex.ts',
+            'src/gone.ts',
+            'src/helper.ts',
+            'src/win/panel.ts',
+            'src/win/scratch.ts',
+        ]);
     });
 
     it('narrows to a single file when one is picked', () => {
@@ -205,7 +236,43 @@ describe('AC-02 — the combined Changes view over a whole chat', () => {
         renderChangesTab(grown);
         expect(
             screen.getAllByTestId('whisper-diff-file-section').map(el => el.getAttribute('data-path')),
-        ).toEqual(['src/app.ts', 'src/helper.ts', 'src/later.ts']);
+        ).toEqual(['src/app.ts', 'src/helper.ts', 'src/later.ts', 'src/win/panel.ts']);
+    });
+
+    it('narrows to a Windows-recorded file, reconstructed from its backslash args', () => {
+        renderChangesTab();
+        fireEvent.click(screen.getByTestId('whisper-diff-file-select'));
+        const option = screen
+            .getAllByTestId('whisper-diff-file-option')
+            .find(el => el.getAttribute('data-path') === 'src/win/panel.ts');
+        fireEvent.click(option!);
+        expect(screen.getByTestId('whisper-diff-path')).toHaveTextContent('src/win/panel.ts');
+        const body = screen.getByTestId('whisper-diff-body').textContent ?? '';
+        expect(body).toContain('+winA');
+        expect(body).toContain('+winB');
+    });
+
+    it('shows one file, not two, when the chat records it in both path forms', () => {
+        // A Windows-native tool reports `src\\both.ts` and a later repo-relative
+        // one reports `src/both.ts`. `collectFileEdits` canonicalizes the key, so
+        // the list, the dropdown and the section stay singular.
+        const mixed = [
+            assistantTurn([createCall('m1', 'src\\both.ts', 'one\n')]),
+            assistantTurn([editCall('m2', 'src/both.ts', 'one', 'two')]),
+        ];
+        renderChangesTab(mixed);
+        expect(
+            screen.getAllByTestId('whisper-diff-file-section').map(el => el.getAttribute('data-path')),
+        ).toEqual(['src/both.ts']);
+        expect(screen.getByTestId('whisper-diff-totals')).toHaveTextContent('1 file');
+        fireEvent.click(screen.getByTestId('whisper-diff-file-select'));
+        expect(
+            screen.getAllByTestId('whisper-diff-file-option').map(el => el.getAttribute('data-path')),
+        ).toEqual([null, 'src/both.ts']);
+        // Both operations replay into the one section, in order.
+        const diff = sectionByPath('src/both.ts').querySelector('pre')?.textContent ?? '';
+        expect(diff.match(/^@@/gm)?.length).toBe(2);
+        expect(diff.indexOf('+one')).toBeLessThan(diff.indexOf('+two'));
     });
 });
 

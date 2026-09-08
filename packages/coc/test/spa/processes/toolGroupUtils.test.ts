@@ -9,6 +9,7 @@ import {
     extractDeletedPathsFromCommand,
     isDeletePathMatch,
     getShellGroupSemanticLabel,
+    collectFileEdits,
 } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk, FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
 
@@ -2353,6 +2354,66 @@ describe('isDeletePathMatch', () => {
     it('returns false for empty paths', () => {
         expect(isDeletePathMatch('', 'src/file.ts')).toBe(false);
         expect(isDeletePathMatch('src/file.ts', '')).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// collectFileEdits — cross-platform path forms
+// ---------------------------------------------------------------------------
+
+describe('collectFileEdits — path forms', () => {
+    it('canonicalizes a Windows path to forward slashes', () => {
+        const edits = collectFileEdits([
+            { toolName: 'edit', args: { path: 'src\\win\\a.ts', old_str: 'one', new_str: 'two' } },
+        ]);
+        expect(edits.map(e => e.path)).toEqual(['src/win/a.ts']);
+    });
+
+    it('keeps one file one file when both path forms appear', () => {
+        // Regression guard: keying the map on the raw tool-arg path split the
+        // same file into two entries — two dropdown items, two diff sections.
+        const edits = collectFileEdits([
+            { toolName: 'create', args: { path: 'src\\a.ts', file_text: 'one\n' } },
+            { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'one', new_str: 'two' } },
+        ]);
+        expect(edits).toHaveLength(1);
+        expect(edits[0].path).toBe('src/a.ts');
+        // A create followed by an edit is no longer a pure create.
+        expect(edits[0].isCreate).toBe(false);
+        expect(edits[0].netInsertions).toBe(3);
+    });
+
+    it('keeps distinct files distinct across path forms', () => {
+        const edits = collectFileEdits([
+            { toolName: 'edit', args: { path: 'src\\a.ts', old_str: 'one', new_str: 'two' } },
+            { toolName: 'edit', args: { path: 'src/b.ts', old_str: 'one', new_str: 'two' } },
+        ]);
+        expect(edits.map(e => e.path)).toEqual(['src/a.ts', 'src/b.ts']);
+    });
+
+    it('marks a Windows-path file deleted by Remove-Item or del', () => {
+        for (const command of ['Remove-Item -Force src\\tmp.ts', 'del /f src\\tmp.ts']) {
+            const edits = collectFileEdits([
+                { toolName: 'create', args: { path: 'src\\tmp.ts', file_text: 'x\n' } },
+                { toolName: 'powershell', args: { command } },
+            ]);
+            expect(edits[0].path).toBe('src/tmp.ts');
+            expect(edits[0].isDeleted).toBe(true);
+        }
+    });
+
+    it('matches a delete command whose path form differs from the tracked one', () => {
+        const posixTracked = collectFileEdits([
+            { toolName: 'create', args: { path: 'src/tmp.ts', file_text: 'x\n' } },
+            { toolName: 'powershell', args: { command: 'Remove-Item src\\tmp.ts' } },
+        ]);
+        expect(posixTracked[0].isDeleted).toBe(true);
+
+        const windowsTracked = collectFileEdits([
+            { toolName: 'create', args: { path: 'src\\tmp.ts', file_text: 'x\n' } },
+            { toolName: 'bash', args: { command: 'rm -f src/tmp.ts' } },
+        ]);
+        expect(windowsTracked[0].isDeleted).toBe(true);
     });
 });
 
