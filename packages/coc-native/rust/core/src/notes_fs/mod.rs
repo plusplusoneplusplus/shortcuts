@@ -7,6 +7,7 @@
 //! a file lives here so there is exactly one implementation of it.
 
 pub mod content;
+pub mod entry;
 pub mod order;
 pub mod path_safety;
 pub mod timestamp;
@@ -15,6 +16,10 @@ pub mod tree;
 pub use content::{
     read_note, resolve_content_path, write_note, ContentError, ContentOptions, NoteContent,
     WriteOutcome,
+};
+pub use entry::{
+    create_entry, delete_entry, rename_entry, write_order, CreateKind, CreatedEntry, DeleteOutcome,
+    EntryError, EntryKind, EntryOptions, IoStage, RenameOutcome,
 };
 pub use order::{
     order_file_path, read_order_file, remove_from_order, serialize_order, update_order_on_rename,
