@@ -36,8 +36,7 @@ import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
 import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { CompactionSummaryDisclosure } from './CompactionSummaryDisclosure';
-import { InjectedBlockDisclosure } from './InjectedBlockDisclosure';
-import { SkillPills } from './SkillPills';
+import { InjectedBlockChips } from './InjectedBlockChips';
 import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
 import { extractInjectedBlocks, projectChatModeContextForDisplay } from './injectedBlocks';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
@@ -1751,9 +1750,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             <span>{turn.turnSource.source === 'cron' ? 'cron' : 'wakeup'}</span>
                         </span>
                     )}
-                    {isUser && !showRaw && (
-                        <SkillPills names={injectedBlocks.selectedSkillNames ?? []} />
-                    )}
                     {isUser && !showRaw && parsedUserContent.attachedContexts.map((context, index) => (
                         <AttachedContextBlockCard
                             key={`${context.kind}:${context.sourceWorkspaceId}:${context.kind === 'ralph-session' ? context.sourceRalphSessionId : context.sourceProcessId}:${index}`}
@@ -1803,25 +1799,12 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             ⚠ Failed to load images · Retry
                         </button>
                     )}
-                    {isUser && chatModeBlock && (
-                        <InjectedBlockDisclosure
-                            block={chatModeBlock}
-                            label="Chat mode"
-                            testIdPrefix="chat-mode-block"
-                        />
-                    )}
-                    {isUser && injectedBlocks.chatStyle && (
-                        <InjectedBlockDisclosure
-                            block={injectedBlocks.chatStyle}
-                            label="Chat style"
-                            testIdPrefix="chat-style-block"
-                        />
-                    )}
-                    {isUser && injectedBlocks.selectedSkills && (
-                        <InjectedBlockDisclosure
-                            block={injectedBlocks.selectedSkills}
-                            label="Selected skills"
-                            testIdPrefix="selected-skills-block"
+                    {isUser && !showRaw && (
+                        <InjectedBlockChips
+                            chatMode={chatModeBlock}
+                            chatStyle={injectedBlocks.chatStyle}
+                            selectedSkills={injectedBlocks.selectedSkills}
+                            skillNames={injectedBlocks.selectedSkillNames}
                         />
                     )}
                     {isUser && turn.repoGroupContext && (

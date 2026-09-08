@@ -48,7 +48,30 @@ function makeTurn(overrides: Partial<ClientConversationTurn> = {}): ClientConver
     };
 }
 
-describe('ConversationTurnBubble — injected block disclosures', () => {
+const SELECTED_SKILLS_BLOCK = [
+    '<selected_skills>',
+    'The user explicitly selected these skills: impl, submit-commits-as-pr.',
+    'Load the selected skill instructions from these SKILL.md files before proceeding:',
+    '- impl: /skills/impl/SKILL.md',
+    '- submit-commits-as-pr: /skills/submit-commits-as-pr/SKILL.md',
+    'Apply the selected skill(s) to the request that follows.',
+    '</selected_skills>',
+].join('\n');
+
+function skillsBlockFor(names: string[]): string {
+    return [
+        '<selected_skills>',
+        `The user explicitly selected these skills: ${names.join(', ')}.`,
+        '</selected_skills>',
+    ].join('\n');
+}
+
+function chipLabels(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll('[data-testid="injected-block-chip"]'))
+        .map(chip => chip.textContent);
+}
+
+describe('ConversationTurnBubble — injected block chips', () => {
     it('strips leading injected blocks from the user bubble while preserving the message', () => {
         const content = `${CHAT_STYLE_BLOCK}\n\n${CHAT_MODE_BLOCK}\n\nKeep **my words** intact.`;
         const { getByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
@@ -59,84 +82,133 @@ describe('ConversationTurnBubble — injected block disclosures', () => {
         expect(message.textContent).not.toContain('<coc-chat-mode>');
     });
 
-    it('renders no injected-block toggle when the prefix has no supported block', () => {
+    it('renders nothing at all when the turn carries no injected block', () => {
         const { queryByTestId } = render(<ConversationTurnBubble turn={makeTurn()} />);
 
-        expect(queryByTestId('chat-mode-block-disclosure')).toBeNull();
-        expect(queryByTestId('chat-style-block-disclosure')).toBeNull();
+        expect(queryByTestId('injected-block-chips')).toBeNull();
+        expect(queryByTestId('injected-block-panel')).toBeNull();
     });
 
-    it('renders each present block collapsed by default', () => {
-        const content = `${CHAT_MODE_BLOCK}\n\n${CHAT_STYLE_BLOCK}\n\nExplain the change.`;
-        const { getByTestId, queryByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+    it('renders one labelled chip per present block, and none for absent ones', () => {
+        const content = `${CHAT_MODE_BLOCK}\n\n${CHAT_STYLE_BLOCK}\n\n${SELECTED_SKILLS_BLOCK}\n\nExplain the change.`;
+        const { container, queryByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
 
-        expect(getByTestId('chat-mode-block-toggle').textContent).toContain('Chat mode');
-        expect(getByTestId('chat-mode-block-toggle').getAttribute('aria-expanded')).toBe('false');
-        expect(getByTestId('chat-style-block-toggle').textContent).toContain('Chat style');
-        expect(getByTestId('chat-style-block-toggle').getAttribute('aria-expanded')).toBe('false');
-        expect(queryByTestId('chat-mode-block-body')).toBeNull();
-        expect(queryByTestId('chat-style-block-body')).toBeNull();
+        expect(chipLabels(container)).toEqual(['Ask', 'Structured', 'impl', 'submit-commits-as-pr']);
+        expect(queryByTestId('injected-block-panel')).toBeNull();
     });
 
-    it('expands to the verbatim block and collapses again', () => {
+    it('renders only the chips whose blocks the turn actually carried', () => {
         const content = `${CHAT_STYLE_BLOCK}\n\nExplain the change.`;
-        const { getByTestId, queryByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
-        const toggle = getByTestId('chat-style-block-toggle');
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
 
-        expect(queryByTestId('chat-mode-block-toggle')).toBeNull();
-        fireEvent.click(toggle);
-        expect(toggle.textContent).toContain('Hide chat style');
-        expect(toggle.getAttribute('aria-expanded')).toBe('true');
-        expect(getByTestId('chat-style-block-body').textContent).toBe(CHAT_STYLE_BLOCK);
-
-        fireEvent.click(toggle);
-        expect(toggle.textContent).toContain('Chat style');
-        expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        expect(queryByTestId('chat-style-block-body')).toBeNull();
+        expect(chipLabels(container)).toEqual(['Structured']);
     });
 
-    it('expands chat mode and chat style independently', () => {
+    it('colour-codes each chip kind so the three block types are distinguishable', () => {
+        const content = `${CHAT_MODE_BLOCK}\n\n${CHAT_STYLE_BLOCK}\n\n${SELECTED_SKILLS_BLOCK}\n\nExplain.`;
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+
+        const kinds = Array.from(container.querySelectorAll('[data-testid="injected-block-chip"]'))
+            .map(chip => chip.getAttribute('data-chip-kind'));
+        expect(kinds).toEqual(['mode', 'style', 'skill', 'skill']);
+
+        const classes = Array.from(container.querySelectorAll('[data-testid="injected-block-chip"]'))
+            .map(chip => chip.className);
+        expect(new Set(classes).size).toBe(3);
+    });
+
+    it('reveals the verbatim block when a chip is clicked, and closes on a second click', () => {
+        const content = `${CHAT_STYLE_BLOCK}\n\nExplain the change.`;
+        const { container, getByTestId, queryByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({ content })} />,
+        );
+        const chip = container.querySelector('[data-chip-id="chat-style"]') as HTMLButtonElement;
+
+        expect(chip.getAttribute('aria-expanded')).toBe('false');
+        fireEvent.click(chip);
+        expect(chip.getAttribute('aria-expanded')).toBe('true');
+        expect(getByTestId('injected-block-body').textContent).toBe(CHAT_STYLE_BLOCK);
+
+        fireEvent.click(chip);
+        expect(chip.getAttribute('aria-expanded')).toBe('false');
+        expect(queryByTestId('injected-block-panel')).toBeNull();
+    });
+
+    it('switches the single panel when a different chip is clicked', () => {
         const content = `${CHAT_MODE_BLOCK}\n\n${CHAT_STYLE_BLOCK}\n\nExplain the change.`;
-        const { getByTestId, queryByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+        const { container, getAllByTestId, getByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({ content })} />,
+        );
+        const mode = container.querySelector('[data-chip-id="chat-mode"]') as HTMLButtonElement;
+        const style = container.querySelector('[data-chip-id="chat-style"]') as HTMLButtonElement;
 
-        fireEvent.click(getByTestId('chat-mode-block-toggle'));
-        expect(getByTestId('chat-mode-block-toggle').textContent).toContain('Hide chat mode');
-        expect(getByTestId('chat-mode-block-toggle').getAttribute('aria-expanded')).toBe('true');
-        expect(getByTestId('chat-mode-block-body').textContent).toBe(CHAT_MODE_BLOCK);
-        expect(queryByTestId('chat-style-block-body')).toBeNull();
+        fireEvent.click(mode);
+        expect(getByTestId('injected-block-body').textContent).toBe(CHAT_MODE_BLOCK);
 
-        fireEvent.click(getByTestId('chat-style-block-toggle'));
-        expect(getByTestId('chat-mode-block-body').textContent).toBe(CHAT_MODE_BLOCK);
-        expect(getByTestId('chat-style-block-body').textContent).toBe(CHAT_STYLE_BLOCK);
-
-        fireEvent.click(getByTestId('chat-mode-block-toggle'));
-        expect(queryByTestId('chat-mode-block-body')).toBeNull();
-        expect(getByTestId('chat-style-block-body').textContent).toBe(CHAT_STYLE_BLOCK);
+        fireEvent.click(style);
+        expect(getAllByTestId('injected-block-panel')).toHaveLength(1);
+        expect(getByTestId('injected-block-body').textContent).toBe(CHAT_STYLE_BLOCK);
+        expect(mode.getAttribute('aria-expanded')).toBe('false');
+        expect(style.getAttribute('aria-expanded')).toBe('true');
     });
 
-    it('renders chat mode, chat style, and repo group context in stable order', () => {
+    it('offers a copy button as the panel\'s only affordance', () => {
+        const content = `${CHAT_STYLE_BLOCK}\n\nExplain.`;
+        const { container, getByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+
+        fireEvent.click(container.querySelector('[data-chip-id="chat-style"]') as HTMLButtonElement);
+        const panel = getByTestId('injected-block-panel');
+        expect(panel.querySelectorAll('button')).toHaveLength(1);
+        expect(getByTestId('injected-block-copy')).toBeTruthy();
+    });
+
+    it('shows any skill chip the verbatim skills block', () => {
+        const content = `${SELECTED_SKILLS_BLOCK}\n\nOpen a PR.`;
+        const { container, getByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+
+        fireEvent.click(container.querySelector('[data-chip-id="skill:impl"]') as HTMLButtonElement);
+        expect(getByTestId('injected-block-body').textContent).toBe(SELECTED_SKILLS_BLOCK);
+    });
+
+    it('folds skills past the fourth behind a +N chip that expands the row', () => {
+        const names = ['one', 'two', 'three', 'four', 'five', 'six'];
+        const content = `${skillsBlockFor(names)}\n\nGo.`;
+        const { container, getByTestId, queryByTestId } = render(
+            <ConversationTurnBubble turn={makeTurn({ content })} />,
+        );
+
+        expect(chipLabels(container)).toEqual(['one', 'two', 'three', 'four']);
+        expect(getByTestId('injected-block-chips-more').textContent).toBe('+2');
+
+        fireEvent.click(getByTestId('injected-block-chips-more'));
+        expect(chipLabels(container)).toEqual(names);
+        expect(queryByTestId('injected-block-chips-more')).toBeNull();
+    });
+
+    it('shows no +N chip at exactly four skills', () => {
+        const content = `${skillsBlockFor(['one', 'two', 'three', 'four'])}\n\nGo.`;
+        const { queryByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+
+        expect(queryByTestId('injected-block-chips-more')).toBeNull();
+    });
+
+    it('renders the chip row above the repo group context disclosure', () => {
         const content = `${CHAT_STYLE_BLOCK}\n\n${CHAT_MODE_BLOCK}\n\nExplain the change.`;
         const { getByTestId } = render(
             <ConversationTurnBubble turn={makeTurn({ content, repoGroupContext: REPO_GROUP_CONTEXT })} />,
         );
 
-        const disclosures = Array.from(
-            getByTestId('chat-mode-block-disclosure').parentElement!.querySelectorAll('[data-testid$="-disclosure"]'),
-        ).map(element => element.getAttribute('data-testid'));
-        expect(disclosures).toEqual([
-            'chat-mode-block-disclosure',
-            'chat-style-block-disclosure',
-            'repo-group-context-disclosure',
-        ]);
+        const chips = getByTestId('injected-block-chips');
+        const repoGroup = getByTestId('repo-group-context-disclosure');
+        expect(chips.compareDocumentPosition(repoGroup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    it('renders disclosures when the user content contains only injected blocks', () => {
+    it('renders chips when the user content contains only injected blocks', () => {
         const content = `${CHAT_MODE_BLOCK}\n\n${CHAT_STYLE_BLOCK}`;
-        const { getByTestId, queryByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+        const { container, queryByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
 
         expect(queryByTestId('user-plain-text')).toBeNull();
-        expect(getByTestId('chat-mode-block-toggle')).toBeTruthy();
-        expect(getByTestId('chat-style-block-toggle')).toBeTruthy();
+        expect(chipLabels(container)).toEqual(['Ask', 'Structured']);
     });
 
     it('does not strip supported tags from assistant turns', () => {
@@ -147,20 +219,21 @@ describe('ConversationTurnBubble — injected block disclosures', () => {
 
         expect(getByTestId('markdown-view').textContent).toContain('<coc-chat-mode>');
         expect(getByTestId('markdown-view').textContent).toContain('Assistant response.');
-        expect(queryByTestId('chat-mode-block-toggle')).toBeNull();
+        expect(queryByTestId('injected-block-chips')).toBeNull();
     });
 
-    it('keeps the complete original user content in raw view', () => {
+    it('hides the chips and keeps the complete original user content in raw view', () => {
         const content = `${CHAT_MODE_BLOCK}\n\nExplain the change.`;
-        const { container } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
+        const { container, queryByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
 
         fireEvent.click(container.querySelector('.bubble-raw-btn') as HTMLButtonElement);
         expect(container.querySelector('.raw-content-view')?.textContent).toBe(content);
+        expect(queryByTestId('injected-block-chips')).toBeNull();
     });
 });
 
 // ============================================================================
-// Chat mode disclosure sourced from the recorded directive
+// Chat mode chip sourced from the recorded directive
 // ============================================================================
 
 const RECORDED_ASK_DIRECTIVE = [
@@ -181,15 +254,15 @@ const RECORDED_ASK_DIRECTIVE = [
 const PROJECTED_ASK_DIRECTIVE = RECORDED_ASK_DIRECTIVE
     .replace('</coc-read-only-mode>\n\nPRIVATE-REPO-INSTRUCTIONS\n', '</coc-read-only-mode>\n');
 
-describe('ConversationTurnBubble — chat mode disclosure source', () => {
+describe('ConversationTurnBubble — chat mode chip source', () => {
     it('shows the recorded directive, including the plan destination, over the stored prefix', () => {
         const content = `${CHAT_MODE_BLOCK}\n\nExplain the change.`;
         const { getByTestId } = render(
             <ConversationTurnBubble turn={makeTurn({ content, chatModeContext: RECORDED_ASK_DIRECTIVE })} />,
         );
 
-        fireEvent.click(getByTestId('chat-mode-block-toggle'));
-        const body = getByTestId('chat-mode-block-body');
+        fireEvent.click(getByTestId('injected-block-chip'));
+        const body = getByTestId('injected-block-body');
         expect(body.textContent).toContain('.plan.md');
         expect(body.textContent).toContain('Existing folder options: right-panel');
         expect(body.textContent).toBe(PROJECTED_ASK_DIRECTIVE);
@@ -200,20 +273,20 @@ describe('ConversationTurnBubble — chat mode disclosure source', () => {
             <ConversationTurnBubble turn={makeTurn({ chatModeContext: RECORDED_ASK_DIRECTIVE })} />,
         );
 
-        fireEvent.click(getByTestId('chat-mode-block-toggle'));
-        expect(getByTestId('chat-mode-block-body').textContent).not.toContain('PRIVATE-REPO-INSTRUCTIONS');
+        fireEvent.click(getByTestId('injected-block-chip'));
+        expect(getByTestId('injected-block-body').textContent).not.toContain('PRIVATE-REPO-INSTRUCTIONS');
     });
 
-    it('renders a single disclosure when both sources are present', () => {
+    it('renders a single chip when both sources are present', () => {
         const content = `${CHAT_MODE_BLOCK}\n\nExplain the change.`;
         const { getAllByTestId } = render(
             <ConversationTurnBubble turn={makeTurn({ content, chatModeContext: RECORDED_ASK_DIRECTIVE })} />,
         );
 
-        expect(getAllByTestId('chat-mode-block-toggle')).toHaveLength(1);
+        expect(getAllByTestId('injected-block-chip')).toHaveLength(1);
     });
 
-    it('discloses a drift-only re-injection the stored content never recorded', () => {
+    it('shows a drift-only re-injection the stored content never recorded', () => {
         // Folder drift re-sends the directive on a turn whose stored prefix has
         // no mode block, because the route could not predict it.
         const { getByTestId } = render(
@@ -223,16 +296,16 @@ describe('ConversationTurnBubble — chat mode disclosure source', () => {
             })} />,
         );
 
-        fireEvent.click(getByTestId('chat-mode-block-toggle'));
-        expect(getByTestId('chat-mode-block-body').textContent).toContain('Existing folder options: right-panel');
+        fireEvent.click(getByTestId('injected-block-chip'));
+        expect(getByTestId('injected-block-body').textContent).toContain('Existing folder options: right-panel');
     });
 
     it('falls back to the stored prefix for a turn with no recorded directive yet', () => {
         const content = `${CHAT_MODE_BLOCK}\n\nExplain the change.`;
         const { getByTestId } = render(<ConversationTurnBubble turn={makeTurn({ content })} />);
 
-        fireEvent.click(getByTestId('chat-mode-block-toggle'));
-        expect(getByTestId('chat-mode-block-body').textContent).toBe(CHAT_MODE_BLOCK);
+        fireEvent.click(getByTestId('injected-block-chip'));
+        expect(getByTestId('injected-block-body').textContent).toBe(CHAT_MODE_BLOCK);
     });
 
     it('falls back to the stored prefix for an autopilot transition marker', () => {
@@ -245,16 +318,16 @@ describe('ConversationTurnBubble — chat mode disclosure source', () => {
             })} />,
         );
 
-        fireEvent.click(getByTestId('chat-mode-block-toggle'));
-        const body = getByTestId('chat-mode-block-body');
+        fireEvent.click(getByTestId('injected-block-chip'));
+        const body = getByTestId('injected-block-body');
         expect(body.textContent).toBe(transition);
         expect(body.textContent).not.toContain('PRIVATE-REPO-INSTRUCTIONS');
     });
 
-    it('shows no disclosure on a turn that carried neither', () => {
+    it('shows no chip on a turn that carried neither', () => {
         const { queryByTestId } = render(<ConversationTurnBubble turn={makeTurn()} />);
 
-        expect(queryByTestId('chat-mode-block-toggle')).toBeNull();
+        expect(queryByTestId('injected-block-chips')).toBeNull();
     });
 
     it('leaves the user message text untouched by the recorded directive', () => {

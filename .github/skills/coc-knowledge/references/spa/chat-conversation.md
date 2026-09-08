@@ -21,17 +21,24 @@ in-bubble card, with no extra persisted display state.
 
 For rendered user-message text, `extractInjectedBlocks` removes complete leading
 `<coc-chat-mode>`, `<chat-style>` and `<selected_skills>` prefixes in any order and any
-subset, each tag consumed at most once. Each extracted block hangs under the bubble as an
-independent collapsed `InjectedBlockDisclosure`, ordered Chat mode, Chat style, then
-Selected skills. The `<pre>` body preserves the block verbatim. Parsing is client-only;
-raw view, copy, rewind/edit, search, export, persisted content, and model input use the
+subset, each tag consumed at most once. The extracted blocks hang under the bubble as one
+`InjectedBlockChips` row, ordered mode, style, then one chip per selected skill. Chips are
+colour-coded by kind (mode green, style amber, skill blue) and labelled by value — the mode
+chip reads `Ask`/`Autopilot` off the directive's own markers, the style chip off the
+`Selected style: ...` line. A chip is only rendered for a block the turn actually carried,
+and the whole row disappears when there is none. Past four skills the row folds behind a
+`+N` chip that expands it. Clicking a chip opens a single panel below the row: a minimal
+scrollable (`max-h-[16rem]`) monospace `<pre>` holding the block verbatim, plus a copy
+button — no header, path, or title. Clicking the same chip closes it; clicking another
+switches the panel, so at most one is open. Parsing is client-only; raw view (which hides
+the row), copy, rewind/edit, search, export, persisted content, and model input use the
 original turn content. Assistant turns are not parsed; non-leading supported tags and
 every other tag name stay in the displayed message text.
 
 `parseSelectedSkillNames` recovers the skill names from the block's
 `The user explicitly selected these skills: ...` sentence (split on `,`, trimmed, deduped;
-`[]` on an absent or reworded sentence). `SkillPills` renders them as outline pills above
-the message body, hidden in raw view. The parser mirrors `prependSelectedSkillsDirective`
+`[]` on an absent or reworded sentence, which falls back to a single generic
+`Selected skills` chip). The parser mirrors `prependSelectedSkillsDirective`
 in `server/executors/prompt-builder.ts`; there is no structured per-turn record of the
 selected skills yet.
 
