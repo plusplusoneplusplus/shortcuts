@@ -4,9 +4,12 @@
  * `onOpenMenu` seam.
  *
  * One popover, one cursor: file search results and resource actions (File via
- * search, New Terminal, Explorer, Notes, Canvas) share a single arrow-navigable
- * list built by `unifiedPanelOpenMenuModel`. There is no URL/browser input and
- * no blank "Diff" item — diffs arrive through existing diff links.
+ * search, New Terminal, Explorer, Notes, Canvas, Changes) share a single
+ * arrow-navigable list built by `unifiedPanelOpenMenuModel`. There is no
+ * URL/browser input and no blank "Diff" item — diffs arrive through existing
+ * diff links, except for Changes, which is listed only when the selected chat
+ * has recorded a file change and opens that chat's whole-chat diff in one
+ * reused tab.
  *
  * What this component owns beyond rendering:
  *
@@ -24,8 +27,8 @@
  *    search (with Retry) are all rendered; an unavailable target disables the
  *    repo-bound actions with the reason rather than silently dropping them.
  *
- * Selection is handed back as an `OpenUnifiedTabInput` (files, canvases) or a
- * workspace-resource action (terminal, explorer, notes) — `explorer` toggles
+ * Selection is handed back as an `OpenUnifiedTabInput` (files, canvases,
+ * changes) or a workspace-resource action (terminal, explorer, notes) — `explorer` toggles
  * the panel's file-tree column rather than opening a tab; the panel owns the tab
  * session, so this component never touches it directly.
  */
@@ -48,6 +51,7 @@ import {
     type OpenMenuFileResult,
     type OpenMenuItem,
 } from './unifiedPanelOpenMenuModel';
+import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** Results requested and rendered per query, matching QuickOpen. */
@@ -101,13 +105,19 @@ export function UnifiedPanelOpenMenu({
     const targetOption = targetOptions.find(option => option.workspaceId === target);
     const targetUnavailable = targetOption?.disabled === true;
 
+    // The selected chat's own recorded edits, published by its transcript. Read
+    // live rather than fetched: the entry has to appear the moment the first
+    // edit of a streaming turn completes, with the menu already open.
+    const chatChanges = useUnifiedChatChanges(workspaceId, chatId);
+
     const actions = useMemo(() => openMenuActions({
         targetWorkspaceId: target,
         chatId,
+        chatHasChanges: chatChanges !== null,
         ...(targetUnavailable
             ? { targetUnavailable, targetUnavailableReason: `${targetOption?.label ?? 'This repository'} is unavailable.` }
             : {}),
-    }), [target, chatId, targetUnavailable, targetOption?.label]);
+    }), [target, chatId, chatChanges, targetUnavailable, targetOption?.label]);
 
     const items = useMemo(
         () => buildOpenMenuItems({ actions, files, canvases, query }),
@@ -255,9 +265,25 @@ export function UnifiedPanelOpenMenu({
             void createCanvas();
             return;
         }
+        if (item.action.id === 'changes') {
+            // The entry only exists with a context and a chat, but both are
+            // read again here: the publish could have been withdrawn between
+            // the render and the click.
+            if (chatChanges === null || chatId === null) return;
+            onOpenResource(chatChangesTabInput({
+                changes: chatChanges,
+                // The edits are against the clone the transcript recorded, not
+                // whichever repo the picker happens to point at.
+                ownerWorkspaceId: chatChanges.ctx.workspaceId ?? workspaceId,
+                chatId,
+                ...(targetOption?.label ? { repoLabel: targetOption.label } : {}),
+            }));
+            onClose();
+            return;
+        }
         onOpenWorkspaceResource(item.action.id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, workspaceId, createCanvas]);
+    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, workspaceId, createCanvas, chatChanges, chatId, targetOption?.label]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -426,6 +452,7 @@ const ACTION_ICONS: Record<string, string> = {
     explorer: '🗂',
     notes: '🗒',
     canvas: '🎨',
+    changes: '±',
 };
 
 function resourceName(path: string): string {

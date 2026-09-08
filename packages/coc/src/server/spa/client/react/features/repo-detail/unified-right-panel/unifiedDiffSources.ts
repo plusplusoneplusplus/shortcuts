@@ -46,6 +46,13 @@ export interface UnifiedDiffSource {
     ctx: WhisperDiffOpenContext;
     /** Root of the workspace the paths are relative to, for the panel header. */
     workspaceRootPath?: string | null;
+    /**
+     * `whisperDiffSourceId(ctx)` for the stored context. Equal to the map key
+     * for a content-addressed source; for a caller-supplied id (a chat's
+     * Changes tab, whose id must outlive its content) it is what tells a
+     * re-registration of the same content from one that actually grew.
+     */
+    contentKey?: string;
 }
 
 const sources = new Map<string, UnifiedDiffSource>();
@@ -121,22 +128,30 @@ export function whisperDiffTabLabel(ctx: WhisperDiffOpenContext): string {
  * An identical re-registration keeps the stored record, so the view's context
  * identity — and with it the user's file selection — survives a re-render of
  * whatever dispatched the open.
+ *
+ * `options.sourceId` overrides the content-derived id. A chat's whole-chat
+ * Changes source needs a fixed id — its content grows as the chat edits more
+ * files, and a re-hash would open a second tab instead of refreshing the one
+ * the user has — so the content hash moves to `contentKey`, which is what the
+ * unchanged check compares.
  */
 export function registerUnifiedDiffSource(
     ctx: WhisperDiffOpenContext,
-    options: { workspaceRootPath?: string | null } = {},
+    options: { workspaceRootPath?: string | null; sourceId?: string } = {},
 ): string {
-    const id = whisperDiffSourceId(ctx);
+    const contentKey = whisperDiffSourceId(ctx);
+    const id = options.sourceId ?? contentKey;
     const rootPath = options.workspaceRootPath ?? null;
     const existing = sources.get(id);
     const unchanged =
         existing !== undefined &&
+        (existing.contentKey ?? id) === contentKey &&
         existing.ctx.focusPath === ctx.focusPath &&
         (existing.workspaceRootPath ?? null) === rootPath;
 
     const record: UnifiedDiffSource = unchanged
         ? (existing as UnifiedDiffSource)
-        : { ctx, workspaceRootPath: rootPath };
+        : { ctx, workspaceRootPath: rootPath, contentKey };
 
     // Delete before set so the map's insertion order stays a recency order for
     // the cap below.

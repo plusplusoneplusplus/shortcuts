@@ -44,7 +44,7 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 | `UnifiedPanelTreeToggle.tsx` | The single open/close control for the tree column, rendered in whichever of the two hosts is available. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. |
-| `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
+| `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
 
 ## Views are reused, never re-implemented
@@ -316,6 +316,7 @@ surface untouched.
 | Canvas embed | `shared/CanvasEmbed.tsx` "Open in panel" | The only entry point that needed a new affordance. Gated on `useUnifiedPanelHostForChat`; the chat id arrives through `ChatRenderContext.chatId` because the embed is portaled. |
 | AI canvas create/update | `ChatDetail` `onCanvasUpdated` | See below. |
 | `+` menu | the panel itself | Reuses QuickOpen's search behavior: nothing before the first keystroke, debounce, abort the previous request. |
+| Chat-wide **Changes** | the `+` menu, via `unifiedChatChanges.ts` | See below. |
 
 `dir` refs, the chat header's explorer toggle, and conversation-candidate
 navigation stay on the docked source canvas by design.
@@ -333,6 +334,25 @@ the title; revision is the ordering, and a non-advancing event is dropped.
 `useChatSSE` captures its callbacks when it opens the EventSource and does not
 re-subscribe when they change, so this handler reads the host and workspace list
 through refs. **Any future SSE-driven entry point must do the same.**
+
+## The chat's own Changes (`unifiedChatChanges.ts`)
+
+The `+` menu lists **Changes** after New Canvas, but only when the selected chat
+has recorded a completed file edit — so the answer has to exist *before* anything
+is opened. The chat publishes its whole-chat `WhisperDiffOpenContext` (built by
+`chat/conversation/tool-calls/chatChangesModel.ts`) into a `useSyncExternalStore`
+registry keyed by `(panel scope workspace, chat id)`, the same shape
+`unifiedCanvasEvents` uses; the menu reads it back and hides the entry on `null`.
+The scope key is what isolates chats across repos, repo groups, and remote
+clones.
+
+The tab is an ordinary `diff` tab over the existing `WhisperDiffPanel`, with one
+difference: its `resourceId` is the fixed `chat-changes-<chatId>` rather than
+`whisperDiffSourceId`'s content hash. A whole-chat context grows as the chat
+edits more files, and a re-hash would open a *second* tab instead of refreshing
+the open one — hence `registerUnifiedDiffSource(ctx, { sourceId })`, which moves
+the content hash to the record's `contentKey` so an unchanged re-register still
+keeps the stored context identity (and with it the user's file selection).
 
 ## Tests
 

@@ -61,6 +61,34 @@ describe('openMenuActions', () => {
         expect(byId.notes.disabled).toBeUndefined();
         expect(byId.canvas.disabled).toBeUndefined();
     });
+
+    it('lists Changes right after New Canvas for a chat that changed files', () => {
+        const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1', chatHasChanges: true });
+        expect(ids(actions)).toEqual(['terminal', 'explorer', 'notes', 'canvas', 'changes']);
+        expect(actions.find(action => action.id === 'changes')?.disabled).toBeUndefined();
+    });
+
+    it('hides Changes for a chat that changed nothing', () => {
+        expect(ids(openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1' }))).not.toContain('changes');
+        expect(ids(openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1', chatHasChanges: false })))
+            .not.toContain('changes');
+    });
+
+    it('hides Changes when no chat is selected, even if something was published', () => {
+        const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: null, chatHasChanges: true });
+        expect(ids(actions)).not.toContain('changes');
+    });
+
+    it('keeps Changes usable on an unavailable target — the diff is replayed, not read', () => {
+        const actions = openMenuActions({
+            targetWorkspaceId: REPO,
+            chatId: 'chat-1',
+            chatHasChanges: true,
+            targetUnavailable: true,
+            targetUnavailableReason: 'api is offline.',
+        });
+        expect(actions.find(action => action.id === 'changes')?.disabled).toBeUndefined();
+    });
 });
 
 describe('buildOpenMenuItems', () => {
