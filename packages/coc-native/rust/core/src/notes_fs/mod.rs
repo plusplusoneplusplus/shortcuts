@@ -6,8 +6,13 @@
 //! route parsing, and the SQLite chat-binding cascade. Everything that touches
 //! a file lives here so there is exactly one implementation of it.
 
+pub mod order;
 pub mod path_safety;
 
+pub use order::{
+    order_file_path, read_order_file, remove_from_order, serialize_order, update_order_on_rename,
+    write_order_file, ORDER_FILE_NAME,
+};
 pub use path_safety::{
     canonicalize_potential_path, has_symlink_below_root, is_same_or_within_directory,
     normalize_relative_notes_path, resolve_lexically, resolve_safe_notes_path, CanonicalizeError,
