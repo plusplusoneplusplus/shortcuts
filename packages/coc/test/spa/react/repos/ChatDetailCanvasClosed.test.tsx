@@ -31,6 +31,7 @@ import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/reac
 import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { clearUnifiedDiffSources, getUnifiedDiffSource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
 import { clearUnifiedCanvasEvents } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
+import { clearUnifiedChatChanges, getUnifiedChatChanges } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
 import { closeTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 
@@ -1151,5 +1152,186 @@ describe('ChatDetail — pop out replaces the right panel', () => {
         });
         await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
         expect(screen.queryByTestId('canvas-poppedout-rail')).toBeNull();
+    });
+});
+
+// ── chat-changes-publish ────────────────────────────────────────────────────
+
+describe('ChatDetail — publishing the chat’s own Changes to the panel (AC-03)', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+        clearUnifiedChatChanges();
+    });
+    afterEach(() => {
+        clearUnifiedChatChanges();
+    });
+
+    /** A completed `edit` record — the minimum that makes a chat "have changes". */
+    function editTurn(turnIndex: number, id: string, path: string, status?: string): any {
+        return {
+            turnIndex,
+            role: 'assistant',
+            content: '',
+            toolCalls: [{
+                id,
+                toolName: 'edit',
+                args: { path, old_str: 'before\n', new_str: 'after\n' },
+                ...(status === undefined ? {} : { status }),
+            }],
+        };
+    }
+
+    /** Drive the chat's turns the way the stream does. */
+    function streamTurns(turns: any[]) {
+        act(() => {
+            mockState.sseOpts.setTurnsAndRef(turns);
+        });
+    }
+
+    /**
+     * The chat under a panel whose SCOPE may differ from the chat's own
+     * workspace — a repo group's panel is keyed by the group id while the edited
+     * files belong to a member clone.
+     */
+    function hostedChat(taskId: string, opts: { scopeId?: string; hostChatId?: string | null; workspaceId?: string } = {}) {
+        const scopeId = opts.scopeId ?? WS_ID;
+        const hostChatId = opts.hostChatId === undefined ? taskId : opts.hostChatId;
+        return (
+            <Wrap>
+                <UnifiedPanelHostProvider host={{ workspaceId: scopeId, chatId: hostChatId }}>
+                    <ChatDetail taskId={taskId} workspaceId={opts.workspaceId ?? WS_ID} />
+                </UnifiedPanelHostProvider>
+            </Wrap>
+        );
+    }
+
+    it('publishes the chat’s changes after the first completed edit', async () => {
+        renderHostedChat('task-A');
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+
+        // No edits yet → nothing published, so the `+` menu hides the entry.
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+        const published = getUnifiedChatChanges(WS_ID, 'task-A')!;
+        expect(published.ctx.files.map(f => f.path)).toEqual(['a.ts']);
+        // The clone the paths belong to, not the panel's scope.
+        expect(published.ctx.workspaceId).toBe(WS_ID);
+    });
+
+    it('updates the published context as later edits stream in', async () => {
+        renderHostedChat('task-A');
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+        const first = getUnifiedChatChanges(WS_ID, 'task-A')!;
+
+        // A second turn edits another file: one entry, both files, in order.
+        streamTurns([editTurn(0, 'call-1', 'a.ts'), editTurn(1, 'call-2', 'b.ts')]);
+        await waitFor(() => {
+            expect(getUnifiedChatChanges(WS_ID, 'task-A')!.ctx.files.map(f => f.path)).toEqual(['a.ts', 'b.ts']);
+        });
+        // A fresh context object, so an open tab re-renders rather than sticking
+        // to the stale one.
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')!.ctx).not.toBe(first.ctx);
+    });
+
+    it('ignores an edit that has not completed', async () => {
+        renderHostedChat('task-A');
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+
+        streamTurns([editTurn(0, 'call-1', 'a.ts', 'running')]);
+        streamTurns([editTurn(0, 'call-1', 'a.ts', 'error')]);
+        // Give the effect a chance to publish something wrong.
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+
+        // …and the same call, once completed, does publish.
+        streamTurns([editTurn(0, 'call-1', 'a.ts', 'completed')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+    });
+
+    it('publishes nothing while the panel is showing another chat', async () => {
+        // A background chat must not repoint the visible menu at its own changes.
+        render(hostedChat('task-A', { hostChatId: 'task-B' }));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+        expect(getUnifiedChatChanges(WS_ID, 'task-B')).toBeNull();
+    });
+
+    it('publishes nothing with no panel hosting the chat', async () => {
+        renderChat('task-A');
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+    });
+
+    it('withdraws the entry when the panel switches to another chat', async () => {
+        const { rerender } = render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+
+        rerender(hostedChat('task-B'));
+
+        // B has no edits of its own, and A's entry does not linger behind it.
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull());
+        expect(getUnifiedChatChanges(WS_ID, 'task-B')).toBeNull();
+    });
+
+    it('withdraws the entry on unmount', async () => {
+        const { unmount } = render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+
+        unmount();
+
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+    });
+
+    it('rebuilds the entry from restored history on a fresh mount, with no extra request', async () => {
+        const { unmount } = render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+        unmount();
+        cleanup();
+
+        // Reload: same chat, history restored into the conversation snapshot.
+        const callsBefore = fetchMock.mock.calls.length;
+        render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => {
+            expect(getUnifiedChatChanges(WS_ID, 'task-A')!.ctx.files.map(f => f.path)).toEqual(['a.ts']);
+        });
+        // Reconstruction is pure — no changes-specific endpoint exists to call.
+        const changesRequests = fetchMock.mock.calls
+            .slice(callsBefore)
+            .map(call => String(call[0]))
+            .filter(url => url.includes('changes'));
+        expect(changesRequests).toEqual([]);
+    });
+
+    it('keys the entry by the panel’s scope while the context keeps the owning clone', async () => {
+        // A repo group: the panel is scoped to the group, the chat's files live
+        // in a member clone. Another scope's menu must not see this entry.
+        render(hostedChat('task-A', { scopeId: 'group-1', workspaceId: 'ws-member' }));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => expect(getUnifiedChatChanges('group-1', 'task-A')).not.toBeNull());
+        expect(getUnifiedChatChanges('group-1', 'task-A')!.ctx.workspaceId).toBe('ws-member');
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
     });
 });

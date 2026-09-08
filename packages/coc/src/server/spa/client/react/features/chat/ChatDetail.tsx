@@ -52,6 +52,8 @@ import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/u
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
+import { publishUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
+import { buildChatChangesContext } from './conversation/tool-calls/chatChangesModel';
 import { sourceLinkTabInput } from '../repo-detail/unified-right-panel/unifiedSourceLinks';
 import { noteTabInput } from '../repo-detail/unified-right-panel/unifiedNoteTabs';
 import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
@@ -630,6 +632,50 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         window.addEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
         return () => window.removeEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
     }, [openWhisperDiff, unifiedPanelHost, workspaceId, taskId, workspaceRootPath]);
+
+    // The panel's `+` menu lists "Changes" only for a chat that recorded a file
+    // edit, and the entry has to be there before anything is opened — so this
+    // chat pushes its whole-transcript diff context into the registry the menu
+    // reads. Rebuilt from `turns`, which means the entry appears as soon as the
+    // first edit of a streaming turn completes, an already-open Changes tab
+    // refreshes as later edits land, and a reload rebuilds it from the restored
+    // history with no extra request.
+    //
+    // Gated on `unifiedPanelHost`: only the chat the panel is actually showing
+    // publishes, so a background chat can never repoint the visible menu, and
+    // the scope key keeps repos, repo groups and remote clones apart. The clone
+    // the edited paths belong to travels inside the context as `workspaceId`.
+    const chatChangesContext = useMemo(
+        () => (unifiedPanelHost === null
+            ? null
+            : buildChatChangesContext(turns, {
+                ownerWorkspaceId: workspaceId ?? unifiedPanelHost.workspaceId,
+                chatId: taskId,
+            })),
+        [turns, unifiedPanelHost, workspaceId, taskId],
+    );
+    useEffect(() => {
+        if (unifiedPanelHost === null) return;
+        publishUnifiedChatChanges(
+            unifiedPanelHost.workspaceId,
+            taskId,
+            chatChangesContext === null
+                ? null
+                : { ctx: chatChangesContext, workspaceRootPath },
+        );
+    }, [unifiedPanelHost, taskId, chatChangesContext, workspaceRootPath]);
+    // Withdrawal is its own effect keyed on the entry's identity alone. Folding
+    // it into the publish above would tear the entry down and rebuild it on
+    // every streamed turn, and a `chat-changes-<id>` tab would see its source
+    // disappear mid-stream; here the entry is only dropped when this chat stops
+    // being the published one — a chat switch, the panel closing, or unmount.
+    const chatChangesScopeId = unifiedPanelHost?.workspaceId ?? null;
+    useEffect(() => {
+        if (chatChangesScopeId === null) return;
+        return () => {
+            publishUnifiedChatChanges(chatChangesScopeId, taskId, null);
+        };
+    }, [chatChangesScopeId, taskId]);
 
     // Chat AI-response file-path links (feature flag default ON) dispatch
     // `coc-open-source-canvas` to open the docked source-file canvas. The bare
