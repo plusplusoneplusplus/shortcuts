@@ -10,5 +10,6 @@
 pub mod content_search;
 pub mod dangerous_command;
 pub mod git;
+pub mod notes_fs;
 pub mod notes_index;
 pub mod repo_index;
