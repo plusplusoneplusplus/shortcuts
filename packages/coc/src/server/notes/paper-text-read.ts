@@ -16,7 +16,7 @@ import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { readRepoPreferences } from '../preferences-handler';
 import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
-import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
+import { loadNativeNotesFs, isNativeNotesPathError } from '@plusplusoneplusplus/coc-native';
 import { PAPERS_DIR } from './paper-ingest-handler';
 
 /** Default budget of paper-text characters forwarded to the model for grounding. */
@@ -80,8 +80,8 @@ export async function readPaperText(args: ReadPaperTextArgs): Promise<string | n
         if (resolved.isDefault) {
             absPath = path.join(resolved.absolutePath, ...rel.split('/'));
         } else {
-            const safe = await resolveSafeNotesPath(resolved.absolutePath, rel);
-            if (isNotesPathSafetyError(safe)) return null;
+            const safe = await loadNativeNotesFs().resolveSafeNotesPath(resolved.absolutePath, rel);
+            if (isNativeNotesPathError(safe)) return null;
             absPath = safe.absolutePath;
         }
 

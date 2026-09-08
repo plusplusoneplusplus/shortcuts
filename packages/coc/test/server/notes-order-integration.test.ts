@@ -14,7 +14,7 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/types';
-import { ORDER_FILE_NAME } from '../../src/server/notes/notes-order';
+import { ORDER_FILE_NAME } from '../../src/server/notes/notes-constants';
 
 // ── HTTP helpers ───────────────────────────────────────────────────────
 

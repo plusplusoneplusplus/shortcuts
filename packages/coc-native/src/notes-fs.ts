@@ -63,7 +63,9 @@ export type NativeNotesDeleteResult = Bindings.NotesDeleteResult;
  * rewriting eight call sites to `try`/`catch` would have been a second change
  * riding along with the port.
  */
-export type NativeNotesSafePathResult = Bindings.NotesSafePathResult;
+export type NativeNotesSafePathResult =
+    | { absolutePath: string; relativePath: string; error?: undefined; statusCode?: undefined }
+    | { absolutePath?: undefined; relativePath?: undefined; error: string; statusCode: number };
 
 /** The exact addon slice required by the Notes routes. */
 export interface NativeNotesFsAddon {
@@ -74,7 +76,17 @@ export interface NativeNotesFsAddon {
     renameNotesEntry: typeof Bindings.renameNotesEntry;
     deleteNotesEntry: typeof Bindings.deleteNotesEntry;
     writeNotesOrder: typeof Bindings.writeNotesOrder;
-    resolveSafeNotesPath: typeof Bindings.resolveSafeNotesPath;
+    /**
+     * Re-typed rather than aliased: the generator emits every field of a
+     * `#[napi(object)]` union as optional, which would force a non-null
+     * assertion at each of the eight call sites. The two arms are mutually
+     * exclusive in the core, so the boundary states that here once.
+     */
+    resolveSafeNotesPath: (
+        root: string,
+        path: string,
+        options?: NativeNotesSafePathOptions | null,
+    ) => Promise<NativeNotesSafePathResult>;
 }
 
 /**
@@ -174,6 +186,6 @@ export function toNotesFsError(error: unknown): NotesFsError {
 /** Whether a safe-path result is the refusal arm of the union. */
 export function isNativeNotesPathError(
     result: NativeNotesSafePathResult,
-): result is NativeNotesSafePathResult & { error: string; statusCode: number } {
+): result is Extract<NativeNotesSafePathResult, { error: string }> {
     return typeof result.error === 'string';
 }

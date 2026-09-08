@@ -22,7 +22,7 @@ import * as path from 'path';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { encodeRootPath } from './notes-root-resolver';
 import type { ResolvedNotesRoot } from './notes-root-resolver';
-import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
+import { loadNativeNotesFs, isNativeNotesPathError } from '@plusplusoneplusplus/coc-native';
 
 /** Directory under the workspace data dir holding all managed sidecars. */
 const SIDECAR_DIR_NAME = 'notes-comments';
@@ -72,12 +72,12 @@ async function resolveManagedSidecar(
         encodeRootPath(bucket),
         `${relativeNotePath}${suffix}`,
     );
-    const safeSidecarPath = await resolveSafeNotesPath(
+    const safeSidecarPath = await loadNativeNotesFs().resolveSafeNotesPath(
         wsDataDir,
         sidecarRelativePath,
         { rejectSymlinks: true },
     );
-    if (isNotesPathSafetyError(safeSidecarPath)) {
+    if (isNativeNotesPathError(safeSidecarPath)) {
         return safeSidecarPath;
     }
     return safeSidecarPath.absolutePath;
@@ -107,8 +107,8 @@ export async function resolveNoteSidecarPath(
     if (!root.isDefault) {
         // Repo-folder root: the note lives in the user's repo; containment is
         // enforced against the selected root.
-        const safeNotePath = await resolveSafeNotesPath(root.absolutePath, notePath);
-        if (isNotesPathSafetyError(safeNotePath)) {
+        const safeNotePath = await loadNativeNotesFs().resolveSafeNotesPath(root.absolutePath, notePath);
+        if (isNativeNotesPathError(safeNotePath)) {
             return safeNotePath;
         }
         return resolveManagedSidecar(wsDataDir, root.rootId, safeNotePath.relativePath, suffix);

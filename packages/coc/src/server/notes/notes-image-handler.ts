@@ -18,7 +18,7 @@ import { serveStaticFile } from '../shared/router';
 import type { Route } from '../types';
 import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
 import type { ResolvedNotesRoot } from './notes-root-resolver';
-import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
+import { loadNativeNotesFs, isNativeNotesPathError } from '@plusplusoneplusplus/coc-native';
 import { readRepoPreferences } from '../preferences-handler';
 
 // ============================================================================
@@ -153,8 +153,8 @@ export function registerNotesImageRoutes(
             const imgDirName = getImageDirName(resolved);
             const safeImageDir = resolved.isDefault
                 ? undefined
-                : await resolveSafeNotesPath(resolved.absolutePath, imgDirName);
-            if (safeImageDir && isNotesPathSafetyError(safeImageDir)) {
+                : await loadNativeNotesFs().resolveSafeNotesPath(resolved.absolutePath, imgDirName);
+            if (safeImageDir && isNativeNotesPathError(safeImageDir)) {
                 return sendError(res, safeImageDir.statusCode, safeImageDir.error);
             }
             const attachmentsDir = safeImageDir?.absolutePath ?? path.join(resolved.absolutePath, imgDirName);
@@ -208,12 +208,12 @@ export function registerNotesImageRoutes(
             let resolvedPath: string;
             if (resolved.isDefault) {
                 if (cachedPaperPdf) {
-                    const safePaperPath = await resolveSafeNotesPath(
+                    const safePaperPath = await loadNativeNotesFs().resolveSafeNotesPath(
                         notesRoot,
                         imagePath,
                         { rejectSymlinks: true },
                     );
-                    if (isNotesPathSafetyError(safePaperPath)) {
+                    if (isNativeNotesPathError(safePaperPath)) {
                         return sendError(res, safePaperPath.statusCode, safePaperPath.error);
                     }
                     resolvedPath = safePaperPath.absolutePath;
@@ -227,8 +227,8 @@ export function registerNotesImageRoutes(
                     return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory or be a cached paper PDF`);
                 }
             } else {
-                const safePath = await resolveSafeNotesPath(notesRoot, imagePath);
-                if (isNotesPathSafetyError(safePath)) {
+                const safePath = await loadNativeNotesFs().resolveSafeNotesPath(notesRoot, imagePath);
+                if (isNativeNotesPathError(safePath)) {
                     return sendError(res, safePath.statusCode, safePath.error);
                 }
                 const imagePrefix = `${imgDirName}/`;
@@ -238,11 +238,11 @@ export function registerNotesImageRoutes(
                 if (cachedPaperPdf) {
                     resolvedPath = safePath.absolutePath;
                 } else {
-                    const safeImagePath = await resolveSafeNotesPath(
+                    const safeImagePath = await loadNativeNotesFs().resolveSafeNotesPath(
                         imgDir,
                         safePath.relativePath.slice(imagePrefix.length),
                     );
-                    if (isNotesPathSafetyError(safeImagePath)) {
+                    if (isNativeNotesPathError(safeImagePath)) {
                         return sendError(res, safeImagePath.statusCode, safeImagePath.error);
                     }
                     resolvedPath = safeImagePath.absolutePath;

@@ -922,6 +922,35 @@ describe('Notes Handler', () => {
             expect(body.truncated).toBe(true);
         });
 
+        it('makes an autosaved note searchable immediately, without the watcher', async () => {
+            // Write-through: PUT /notes/content updates the live index inside the
+            // native core, so the note is findable on the very next search rather
+            // than after the fs.watch debounce. The watcher case above is the
+            // other half of the contract and must keep working.
+            const srv = await startServer();
+            createNoteFiles({ 'seed.md': 'seed content' });
+            await registerWorkspace(srv, workspaceDir);
+
+            // Build the index before the write, so the write has a live snapshot
+            // to update rather than one that is built fresh afterwards.
+            const seeded = await request(`${srv.url}/api/workspaces/${wsId}/notes/search?q=seed%20content`);
+            expect(seeded.status).toBe(200);
+
+            const saved = await putJSON(`${srv.url}/api/workspaces/${wsId}/notes/content`, {
+                path: 'autosaved.md',
+                content: 'written through to the index',
+            });
+            expect(saved.status).toBe(200);
+
+            const found = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/search?q=written%20through%20to%20the%20index`,
+            );
+            expect(found.status).toBe(200);
+            expect(JSON.parse(found.body).results).toEqual([
+                expect.objectContaining({ path: 'autosaved.md' }),
+            ]);
+        });
+
         it('should refresh search results after an external file change', async () => {
             const srv = await startServer();
             createNoteFiles({
