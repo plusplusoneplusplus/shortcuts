@@ -15,6 +15,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use super::index_sync;
 use super::order::{order_file_path, remove_from_order, update_order_on_rename, write_order_file};
 use super::path_safety::{
     is_same_or_within_directory, lexical_relative, resolve_lexically, resolve_safe_notes_path,
@@ -309,6 +310,7 @@ pub fn create_entry(
                     .map_err(|error| EntryError::Io(IoStage::Create, error))?;
             }
             fs::write(&resolved, "").map_err(|error| EntryError::Io(IoStage::Create, error))?;
+            index_sync::file_changed(notes_root, &resolved);
         }
     }
 
@@ -383,6 +385,14 @@ pub fn rename_entry(
         }
     };
     rename().map_err(|error| EntryError::Io(IoStage::Rename, error))?;
+
+    // Both ends move in one batch, so the index never shows the note under two
+    // paths — the removal and the insertion land in the same snapshot swap.
+    if old_metadata.is_file() {
+        index_sync::changed(notes_root, &[&resolved_old, &resolved_new], &[]);
+    } else {
+        index_sync::changed(notes_root, &[], &[&resolved_old, &resolved_new]);
+    }
 
     Ok(RenameOutcome {
         kind: fs::metadata(&resolved_new).ok().map(|meta| {
@@ -491,6 +501,12 @@ pub fn delete_entry(
         remove_from_order(&parent, &file_name_of(&resolved))
     };
     remove().map_err(|error| EntryError::Io(IoStage::Delete, error))?;
+
+    if kind == EntryKind::Dir {
+        index_sync::directory_changed(notes_root, &resolved);
+    } else {
+        index_sync::file_changed(notes_root, &resolved);
+    }
 
     Ok(DeleteOutcome { kind, rel: relative_note_path(notes_root, &resolved) })
 }

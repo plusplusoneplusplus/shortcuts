@@ -16,6 +16,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use super::index_sync;
 use super::path_safety::{
     is_absolute_request, is_same_or_within_directory, lexical_relative, resolve_lexically,
     resolve_safe_notes_path, PathSafetyError, SafePathOptions, PATH_SAFETY_STATUS_CODE,
@@ -181,6 +182,7 @@ pub fn write_note(
     fs::rename(&temp_path, &resolved).map_err(ContentError::Io)?;
 
     let metadata = fs::metadata(&resolved).map_err(ContentError::Io)?;
+    index_sync::file_changed(notes_root, &resolved);
     Ok(WriteOutcome::Written { mtime_ms: modified_millis(&metadata) })
 }
 

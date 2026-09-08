@@ -8,6 +8,7 @@
 
 pub mod content;
 pub mod entry;
+pub mod index_sync;
 pub mod order;
 pub mod path_safety;
 pub mod timestamp;
@@ -20,6 +21,10 @@ pub use content::{
 pub use entry::{
     create_entry, delete_entry, rename_entry, write_order, CreateKind, CreatedEntry, DeleteOutcome,
     EntryError, EntryKind, EntryOptions, IoStage, RenameOutcome,
+};
+pub use index_sync::{
+    changed as index_changed, directory_changed as index_directory_changed,
+    file_changed as index_file_changed,
 };
 pub use order::{
     order_file_path, read_order_file, remove_from_order, serialize_order, update_order_on_rename,
