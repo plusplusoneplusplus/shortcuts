@@ -8,6 +8,8 @@
 
 pub mod order;
 pub mod path_safety;
+pub mod timestamp;
+pub mod tree;
 
 pub use order::{
     order_file_path, read_order_file, remove_from_order, serialize_order, update_order_on_rename,
@@ -19,3 +21,5 @@ pub use path_safety::{
     PathSafetyError, PathSafetyResult, ResolvedSafeNotesPath, SafePathOptions,
     PATH_SAFETY_STATUS_CODE,
 };
+pub use timestamp::{format_iso_instant, unix_millis};
+pub use tree::{scan_notes_tree, NotesTree, TreeEntry, TreeEntryKind, TreeOptions};
