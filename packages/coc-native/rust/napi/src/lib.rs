@@ -17,4 +17,5 @@ mod content_search;
 mod dangerous_command;
 mod file_index;
 mod git;
+mod notes_fs;
 mod notes_index;

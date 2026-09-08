@@ -83,3 +83,26 @@ export type {
     NativeNotesSearchResponse,
     NativeNotesSearchResult,
 } from './notes-index';
+
+export {
+    isNativeNotesPathError,
+    loadNativeNotesFs,
+    nativeNotesFsStatus,
+    NotesFsError,
+    toNotesFsError,
+} from './notes-fs';
+export type {
+    NativeNotesContentOptions,
+    NativeNotesCreatedEntry,
+    NativeNotesDeleteResult,
+    NativeNotesEntryOptions,
+    NativeNotesFileContent,
+    NativeNotesFsAddon,
+    NativeNotesRenameResult,
+    NativeNotesSafePathOptions,
+    NativeNotesSafePathResult,
+    NativeNotesTreeEntry,
+    NativeNotesTreeOptions,
+    NativeNotesTreeResult,
+    NativeNotesWriteResult,
+} from './notes-fs';
