@@ -22,6 +22,26 @@ pub fn unix_millis(time: SystemTime) -> i64 {
     }
 }
 
+/// Milliseconds since the Unix epoch **with the sub-millisecond remainder**,
+/// the way Node fills `stat.mtimeMs` — a double built from the seconds and the
+/// nanosecond part. The autosave conflict rule rounds this value, so throwing
+/// the fraction away here would flip the comparison on filesystems with
+/// nanosecond timestamps.
+pub fn unix_millis_f64(time: SystemTime) -> f64 {
+    match time.duration_since(UNIX_EPOCH) {
+        Ok(delta) => delta.as_secs() as f64 * 1000.0 + delta.subsec_nanos() as f64 / 1e6,
+        Err(err) => {
+            let delta = err.duration();
+            -(delta.as_secs() as f64 * 1000.0 + delta.subsec_nanos() as f64 / 1e6)
+        }
+    }
+}
+
+/// `Math.round`: halves go toward positive infinity, not away from zero.
+pub fn js_round(value: f64) -> f64 {
+    (value + 0.5).floor()
+}
+
 /// Render epoch milliseconds the way `toISOString` does.
 pub fn format_iso_instant(millis: i64) -> String {
     let days = millis.div_euclid(MS_PER_DAY);

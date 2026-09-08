@@ -114,6 +114,54 @@ pub fn is_same_or_within_directory(candidate: &Path, root: &Path) -> bool {
     root_components.iter().zip(candidate_components.iter()).all(|(a, b)| a == b)
 }
 
+/// `path.relative(from, to)`, lexically. Used to hand a path that was built by
+/// string concatenation (the autosave `.tmp` sibling) back to
+/// [`resolve_safe_notes_path`], which only accepts root-relative input; a
+/// result that climbs out with `..` is exactly what that check must reject.
+pub fn lexical_relative(from: &Path, to: &Path) -> PathBuf {
+    let from_components: Vec<OsString> =
+        resolve_lexically(from).components().map(|c| c.as_os_str().to_os_string()).collect();
+    let to_components: Vec<OsString> =
+        resolve_lexically(to).components().map(|c| c.as_os_str().to_os_string()).collect();
+
+    let mut shared = 0;
+    while shared < from_components.len()
+        && shared < to_components.len()
+        && comparison_segment(&from_components[shared])
+            == comparison_segment(&to_components[shared])
+    {
+        shared += 1;
+    }
+
+    let mut relative = PathBuf::new();
+    for _ in shared..from_components.len() {
+        relative.push("..");
+    }
+    for component in &to_components[shared..] {
+        relative.push(component);
+    }
+    relative
+}
+
+/// `path.isAbsolute` as Node reads it, applied to the raw client string.
+///
+/// Rust's `Path::is_absolute` is stricter on Windows — it wants a drive prefix,
+/// so it calls `\notes\a.md` relative where Node calls it absolute. The
+/// content routes branch on this, and the two answers must agree.
+pub fn is_absolute_request(requested: &str) -> bool {
+    if cfg!(windows) {
+        let bytes = requested.as_bytes();
+        if matches!(bytes.first(), Some(b'/') | Some(b'\\')) {
+            return true;
+        }
+        return bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\');
+    }
+    requested.starts_with('/')
+}
+
 /// The forward-slash path of `target` relative to `root`, for a `target` already
 /// known to be inside it.
 fn relative_forward_slash(root: &Path, target: &Path) -> String {
