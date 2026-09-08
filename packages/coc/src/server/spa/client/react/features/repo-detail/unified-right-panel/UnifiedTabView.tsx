@@ -127,7 +127,10 @@ export function UnifiedTabView({
             return (
                 <UnifiedCanvasTab
                     workspaceId={tab.ownerWorkspaceId}
+                    scopeWorkspaceId={scopeWorkspaceId}
                     canvasId={tab.resourceId}
+                    chatId={tab.chatId}
+                    {...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {})}
                     onClose={close}
                     onDirtyChange={handleDirty}
                     onRegisterSave={handleRegisterSave}

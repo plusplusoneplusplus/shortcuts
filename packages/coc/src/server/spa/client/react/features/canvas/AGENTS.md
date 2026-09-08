@@ -1,8 +1,16 @@
 # features/canvas
 
-The chat-linked canvas side panel: an AI-and-user co-edited document that also
+The chat-linked canvas editor: an AI-and-user co-edited document that also
 renders as code, an SVG, an Excalidraw scene, a sandboxed extension UI, or a
 live Kusto query.
+
+`CanvasPanel` has exactly three hosts — a `canvas` tab in the unified right
+panel (`UnifiedCanvasTab`, the primary one), the standalone pop-out window
+(`layout/PopOutCanvasShell.tsx`), and the inline embed's expanded view. The chat
+detail view is **not** one of them: it owns no canvas column, rail, or width.
+Chat-directed props (`onAskAi`, `onSendToAi`) come from the tab's owning chat via
+`unified-right-panel/unifiedChatCanvasActions.ts`; a host that cannot reach a
+chat omits them, which hides those actions.
 
 `CanvasPanel.tsx` is a **composition root only** — public props, the
 workspace-routed client, fullscreen chrome, layout. Behavior lives in kernels
@@ -19,7 +27,8 @@ component; do not grow `CanvasPanel.tsx` back.
 | `hooks/useCanvasVersions.ts` | Version stepper + restore-as-latest (writes a NEW revision, never rewrites history). |
 | `hooks/useCanvasComments.ts` | Selection anchoring, comment CRUD, batch send-to-AI via the host's `onSendToAi` follow-up path. |
 | `hooks/useCanvasExport.ts` | Copy / download / save-to-Notes / export-as-HTML. Browser primitives (`copyText`, `downloadBlob`) are injectable via `deps`. |
-| `hooks/useCreateKustoCanvas.ts` | AC-07 blank Kusto canvas creation with best-effort cluster/database prefill. |
+| `hooks/useCreateKustoCanvas.ts` | AC-07 blank Kusto canvas creation with best-effort cluster/database prefill. Reports the new id through `onCanvasCreated`, which the panel tab turns into a sibling tab under the same conversation. |
+| `canvasPopOut.ts` | Opens (or focuses) the standalone window for one canvas: `coc-canvas-<id>`, URL routed at the canvas's OWNING workspace, live handles tracked so a repeat click focuses instead of duplicating. |
 | `components/` | `CanvasPanelHeader` (title switcher, badges, version stepper, export menu, chrome), `CanvasPanelBanners`, `CanvasBodyRenderer`, `CanvasSelectionToolbar`, `CanvasCommentsPanel`, `icons.tsx`. |
 | `ExtensionCanvasView.tsx`, `KustoView.tsx`, `KustoChart.tsx`, `SvgCanvasView.tsx` | Per-type interactive views mounted by `CanvasBodyRenderer`. |
 | `extension-runtime.ts` | Pure string builders for the in-iframe runtime of a **JSX-authored** extension: the root element, the sequential library loader (classic `<script src>` / `<link>` at absolute URLs), and the runner that executes the compiled `ui.js` and calls `window.CanvasExtension.mount(rootEl, CanvasHost)`. Shared verbatim by the live view and the offline export — the export just omits `assetBase` because its bundles are already inlined. Every failure (load error, missing global, absent `CanvasExtension`, throwing `mount`) paints an in-frame banner **and** posts `extension-error` to the host. No DOM, no fetch, Node-safe. |
@@ -72,8 +81,8 @@ component; do not grow `CanvasPanel.tsx` back.
 - **Header actions gate on canvas type, not just on flags.** Export entries key
   off `canvas.type`, and "New Kusto query" needs `kustoEnabled && kind.isKusto`
   — a feature flag alone would park it on every canvas. Creating a Kusto canvas
-  is therefore reachable only from an existing one; there is no global
-  new-canvas surface in the SPA.
+  is therefore reachable only from an existing one; the right panel's `+` menu is
+  the only other place a canvas is created.
 
 ## Tests
 
@@ -82,7 +91,9 @@ full-panel regression suite (every canvas type, banners, export, AC-07 Kusto);
 `CanvasPanel-remote-workspace.test.tsx` pins clone routing; per-kernel suites
 (`useCanvasRecord`, `useCanvasVersions`, `useCanvasComments`, `useCanvasExport`)
 use `renderHook`; `CanvasPanelComponents.test.tsx` and
-`canvas-panel-model.test.ts` cover the presentational and pure layers.
+`canvas-panel-model.test.ts` cover the presentational and pure layers, and
+`canvasPopOut.test.ts` pins window naming, focus-instead-of-duplicate, and the
+blocked-popup answer.
 
 Monaco, `ExtensionCanvasView`, `@excalidraw/excalidraw`, and the HTML-export
 orchestrator must be mocked in these tests — they cannot load under Node.
