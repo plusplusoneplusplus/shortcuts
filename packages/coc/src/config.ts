@@ -744,6 +744,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'ultra-ralph',
     'classify-diff',
     'dream',
+    'long-running-reliability',
 ];
 
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {

@@ -53,11 +53,12 @@ import { coerceChatStyle } from './executors/chat-style-prompt';
 import { buildRuntimeFeatures } from './config/runtime-config-handler';
 import { RuntimeConfigService } from '../config/runtime-config-service';
 import { createQueueRuntimeConfig } from './queue/queue-runtime-config';
-import { autoUpdateBundledSkills, autoInstallDefaultSkills, autoInstallMyWorkSkills, DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
+import { autoInstallMyWorkSkills, DEFAULT_SKILLS_SETTINGS } from '@plusplusoneplusplus/forge';
 import { createStubStore } from './processes/in-memory-process-store';
 import { createCLIAIInvoker } from '../ai-invoker';
 import { shortenHostname } from './core/hostname-utils';
 import { gitInfoCache } from './git/git-info-cache';
+import { synchronizeBundledSkillsAtStartup } from './skills/startup-skill-sync';
 import { NotesGitTimerManager } from './notes/git/notes-git-timer-manager';
 import { migrateWorkspaceRegistryIfNeeded } from './storage/startup-workspace-migration';
 import { migrateProcessHistoryIfNeeded } from './storage/startup-process-migration';
@@ -578,72 +579,18 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // association back, so the i menu can name the commit they belong to.
     backfillCommitChatMetadataIfNeeded(store);
 
-    // Auto-update stale globally-installed bundled skills (non-blocking on errors)
-    if (resolvedConfig.skills.autoUpdate) {
-        const globalSkillsDir = path.join(dataDir, 'skills');
-        autoUpdateBundledSkills(globalSkillsDir).then(result => {
-            if (result.updated.length > 0) {
-                for (const u of result.updated) {
-                    process.stderr.write(`[skills] Auto-updated "${u.name}" ${u.previousVersion} → ${u.newVersion}\n`);
-                }
-            }
-            for (const e of result.errors) {
-                process.stderr.write(`[skills] Failed to update "${e.name}": ${e.error}\n`);
-            }
-        }).catch(() => { /* best-effort — never block startup */ });
-    }
-
-    // Auto-install default bundled skills into the global skills dir (non-blocking on errors).
-    // When cron feature is disabled, strip the `cron` skill so its prompt suffix doesn't
-    // leak into sessions where the underlying tools aren't wired.
+    // Update and install before provider mirrors so a fresh default skill is
+    // available to every enabled provider during the same startup.
     const defaultSkillsToInstall = cronEnabled
         ? resolvedConfig.skills.defaultSkills
         : resolvedConfig.skills.defaultSkills.filter(name => name !== 'cron');
-    if (defaultSkillsToInstall.length > 0) {
-        const globalSkillsDir = path.join(dataDir, 'skills');
-        autoInstallDefaultSkills(globalSkillsDir, defaultSkillsToInstall).then(result => {
-            for (const name of result.installed) {
-                process.stderr.write(`[skills] Auto-installed default skill "${name}"\n`);
-            }
-            for (const e of result.errors) {
-                process.stderr.write(`[skills] Failed to install default skill "${e.name}": ${e.error}\n`);
-            }
-        }).catch(() => { /* best-effort — never block startup */ });
-    }
-
-    // Mirror installed bundled skills to Codex when Codex is enabled (non-blocking on errors).
-    // This happens once on server startup to ensure Codex has access to all globally installed
-    // bundled skills without needing to read from ~/.coc/skills directly.
-    if (resolvedConfig.codex?.enabled) {
-        const globalSkillsDir = path.join(dataDir, 'skills');
-        import('./skills/codex-skill-mirror').then(({ syncInstalledSkillsToCodex }) => {
-            return syncInstalledSkillsToCodex(globalSkillsDir);
-        }).then(result => {
-            if (result.synced.length > 0) {
-                process.stderr.write(`[skills] Synced ${result.synced.length} skill(s) to Codex\n`);
-            }
-            for (const e of result.errors) {
-                process.stderr.write(`[skills] Failed to sync "${e.name}" to Codex: ${e.error}\n`);
-            }
-        }).catch(() => { /* best-effort — never block startup */ });
-    }
-
-    // Mirror installed bundled skills to Claude Code when the Claude provider is enabled
-    // (non-blocking on errors). Copies each skill's SKILL.md to ~/.claude/commands/<name>.md
-    // so Claude Code discovers them as slash commands on next startup.
-    if (resolvedConfig.claude?.enabled) {
-        const globalSkillsDir = path.join(dataDir, 'skills');
-        import('./skills/claude-skill-mirror').then(({ syncInstalledSkillsToClaude }) => {
-            return syncInstalledSkillsToClaude(globalSkillsDir);
-        }).then(result => {
-            if (result.synced.length > 0) {
-                process.stderr.write(`[skills] Synced ${result.synced.length} skill(s) to Claude\n`);
-            }
-            for (const e of result.errors) {
-                process.stderr.write(`[skills] Failed to sync "${e.name}" to Claude: ${e.error}\n`);
-            }
-        }).catch(() => { /* best-effort — never block startup */ });
-    }
+    void synchronizeBundledSkillsAtStartup({
+        globalSkillsDir: path.join(dataDir, 'skills'),
+        defaultSkills: defaultSkillsToInstall,
+        autoUpdate: resolvedConfig.skills.autoUpdate,
+        codexEnabled: resolvedConfig.codex?.enabled === true,
+        claudeEnabled: resolvedConfig.claude?.enabled === true,
+    }).catch(() => { /* best-effort — never block startup */ });
 
     const globalWorkspace = await ensureGlobalWorkspace(dataDir, store);
     bridge.registerRepoId(globalWorkspace.id, globalWorkspace.rootPath);

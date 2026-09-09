@@ -174,5 +174,39 @@ describe('CLI', () => {
             expect(optionNames).toContain('--server-url');
             expect(optionNames).toContain('--output');
         });
+
+        it('should have reliability-watchdog start, status, and stop commands', () => {
+            const program = createProgram();
+            const watchdog = program.commands.find(c => c.name() === 'reliability-watchdog');
+            expect(watchdog).toBeDefined();
+            expect(watchdog!.commands.map(c => c.name())).toEqual(
+                expect.arrayContaining(['start', 'status', 'stop']),
+            );
+
+            const start = watchdog!.commands.find(c => c.name() === 'start')!;
+            const optionNames = start.options.map(o => o.long || o.short);
+            for (const option of [
+                '--workspace-id',
+                '--process-id',
+                '--worktree',
+                '--ledger',
+                '--prompt-file',
+                '--mode',
+                '--ralph-session-id',
+                '--complete-marker',
+                '--blocked-marker',
+                '--server-url',
+                '--data-dir',
+                '--state-dir',
+                '--poll-interval',
+                '--idle-polls',
+                '--cooldown',
+                '--ttl',
+                '--max-resumes',
+                '--heartbeat-interval',
+            ]) {
+                expect(optionNames).toContain(option);
+            }
+        });
     });
 });
