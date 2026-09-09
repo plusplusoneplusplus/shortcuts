@@ -17,6 +17,11 @@ import { PreviewPane } from '../../../../../src/server/spa/client/react/features
 import { TRUSTED_PATH_PREFIX } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExactOpen';
 import { resetLanguageDocumentStoresForTests } from '../../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import { MAX_FILE_VIEW_SIZE } from '../../../../../src/server/spa/client/react/shared/file-viewer/useFileContent';
+import {
+    SHADOW_LANGUAGE_PREFIX,
+    registerShadowLanguages,
+    resetShadowLanguagesForTests,
+} from '../../../../../src/server/spa/client/react/features/language-servers/shadowLanguage';
 import { FakeClient, readyState } from '../../language-servers/fakeLanguageTransport';
 
 const mockExplorerApi = vi.hoisted(() => ({
@@ -40,6 +45,8 @@ vi.mock('../../../../../src/server/spa/client/react/features/language-servers/la
 // to the host and takes the registration back down on unmount.
 const monacoStub = vi.hoisted(() => {
     const registered: { kind: string; languageId: string; provider: any; disposed: boolean }[] = [];
+    const shadowLanguages: string[] = [];
+    const clearedMarkers: { owner: string; count: number }[] = [];
     const record = (kind: string, languageId: string, provider: any) => {
         const entry = { kind, languageId, provider, disposed: false };
         registered.push(entry);
@@ -47,7 +54,13 @@ const monacoStub = vi.hoisted(() => {
     };
     return {
         registered,
-        reset: () => { registered.length = 0; },
+        shadowLanguages,
+        clearedMarkers,
+        reset: () => {
+            registered.length = 0;
+            shadowLanguages.length = 0;
+            clearedMarkers.length = 0;
+        },
         live: () => registered.filter(entry => !entry.disposed),
         provider: (kind: string) => {
             const entry = [...registered].reverse().find(item => item.kind === kind && !item.disposed);
@@ -61,12 +74,25 @@ const monacoStub = vi.hoisted(() => {
                 registerReferenceProvider: (id: string, p: any) => record('references', id, p),
                 registerCompletionItemProvider: (id: string, p: any) => record('completion', id, p),
                 registerSignatureHelpProvider: (id: string, p: any) => record('signatureHelp', id, p),
+                // Reached through `registerShadowLanguages`, which the real
+                // `monaco-setup` module cannot run under jsdom.
+                register: ({ id }: { id: string }) => { shadowLanguages.push(id); },
+                setLanguageConfiguration: () => undefined,
+                setMonarchTokensProvider: () => undefined,
             },
             Uri: { parse: (value: string) => ({ toString: () => value }) },
+            editor: {
+                setModelLanguage: (model: any, languageId: string) => { model.languageId = languageId; },
+                setModelMarkers: (_model: any, owner: string, markers: unknown[]) => {
+                    clearedMarkers.push({ owner, count: markers.length });
+                },
+            },
         },
         model: {
+            languageId: 'typescript',
             uri: { toString: () => 'coc-file://ws-1/src/a.ts' },
             getWordUntilPosition: () => ({ startColumn: 1, endColumn: 5 }),
+            getLanguageId(): string { return this.languageId; },
         },
     };
 });
@@ -117,6 +143,14 @@ beforeEach(() => {
     vi.clearAllMocks();
     resetLanguageDocumentStoresForTests();
     monacoStub.reset();
+    monacoStub.model.languageId = 'typescript';
+    // `monaco-setup` does this at import time in the browser; jsdom cannot load
+    // it, so the same registration is made against the stub.
+    resetShadowLanguagesForTests();
+    registerShadowLanguages(monacoStub.namespace as any, {
+        typescript: { conf: {}, language: {} },
+        javascript: { conf: {}, language: {} },
+    });
     transport.client = new FakeClient();
     mockExplorerApi.readBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
     mockExplorerApi.readTrustedBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
@@ -128,7 +162,7 @@ afterEach(() => {
 });
 
 describe('PreviewPane — language providers (AC-03)', () => {
-    it('registers the selected features under the file’s Monaco language', async () => {
+    it('registers the selected features under the document’s shadow language', async () => {
         renderPane();
         const attachment = await attachmentFor('src/a.ts');
         attachWith(attachment);
@@ -136,7 +170,44 @@ describe('PreviewPane — language providers (AC-03)', () => {
         await waitFor(() => expect(monacoStub.live().length).toBeGreaterThan(0));
         const kinds = monacoStub.live().map(entry => entry.kind).sort();
         expect(kinds).toEqual(['completion', 'definition', 'hover', 'references', 'signatureHelp']);
-        expect(new Set(monacoStub.live().map(entry => entry.languageId))).toEqual(new Set(['typescript']));
+        // Registering under `typescript` would put these next to Monaco's own
+        // worker, and every answer would arrive twice.
+        expect(new Set(monacoStub.live().map(entry => entry.languageId)))
+            .toEqual(new Set([`${SHADOW_LANGUAGE_PREFIX}typescript`]));
+    });
+
+    it('moves the model off Monaco’s TypeScript id and clears the worker’s markers', async () => {
+        renderPane();
+        const attachment = await attachmentFor('src/a.ts');
+        attachWith(attachment);
+
+        await waitFor(() => expect(monacoStub.live().length).toBeGreaterThan(0));
+        expect(monacoStub.model.getLanguageId()).toBe(`${SHADOW_LANGUAGE_PREFIX}typescript`);
+        expect(monacoStub.clearedMarkers).toContainEqual({ owner: 'typescript', count: 0 });
+    });
+
+    it('leaves a file with no built-in provider on its own language', async () => {
+        monacoStub.model.languageId = 'python';
+        renderPane({ filePath: 'src/a.py', fileName: 'a.py' });
+        const attachment = await attachmentFor('src/a.py');
+        attachWith(attachment);
+
+        await waitFor(() => expect(monacoStub.live().length).toBeGreaterThan(0));
+        expect(monacoStub.model.getLanguageId()).toBe('python');
+        expect(monacoStub.clearedMarkers).toEqual([]);
+    });
+
+    it('gives the model its base language back when the pane goes away', async () => {
+        const { unmount } = renderPane();
+        const attachment = await attachmentFor('src/a.ts');
+        attachWith(attachment);
+        await waitFor(() => expect(monacoStub.live().length).toBeGreaterThan(0));
+
+        await act(async () => { unmount(); });
+
+        // The model can outlive this pane; leaving it on a private id would
+        // strand it with no providers at all.
+        expect(monacoStub.model.getLanguageId()).toBe('typescript');
     });
 
     it('answers a hover out of this document’s buffer', async () => {

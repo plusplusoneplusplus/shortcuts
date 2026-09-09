@@ -12,8 +12,9 @@
  * workspace, read whole, reachable on the workspace's own host. A trusted
  * absolute path, a truncated oversize file and a binary blob all stay ordinary
  * viewers with no document behind them. Once that decision is made and the
- * editor has a model, this is also where the Monaco language providers are
- * registered over the document — one registration per model, disposed with it.
+ * editor has a model, this is also where the model is moved onto its shadow
+ * language and the Monaco language providers are registered over the document —
+ * one registration per model, disposed with it.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -29,6 +30,7 @@ import {
     type MonacoLike,
     type ProviderModel,
 } from '../../language-servers/languageProviders';
+import { applyShadowLanguage, type ShadowMonaco } from '../../language-servers/shadowLanguage';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
@@ -145,13 +147,21 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
     // runtime Monaco dependency, so this boundary is where the two meet.
     const handleModelMount = useCallback(({ monaco, model }: EditorModelMountContext) => {
         if (!languageView) return;
+        // Before registering anything, move the model off `typescript` /
+        // `javascript` so Monaco's bundled worker stops answering for it. The
+        // providers below then register under whichever id the model ended up
+        // carrying, which is also the id nothing else provides for.
+        const shadow = applyShadowLanguage(monaco as unknown as ShadowMonaco, model);
         const registration = registerLanguageProviders({
             monaco: monaco as unknown as MonacoLike,
             model: model as unknown as ProviderModel,
             view: languageView,
-            languageId: monacoLanguageId,
+            languageId: shadow?.languageId ?? monacoLanguageId,
         });
-        return () => registration.dispose();
+        return () => {
+            registration.dispose();
+            shadow?.revert();
+        };
     }, [languageView, monacoLanguageId]);
 
     // One editor change feeds two consumers: the render buffer, and the

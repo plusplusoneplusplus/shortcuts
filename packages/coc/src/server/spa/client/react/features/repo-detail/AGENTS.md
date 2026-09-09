@@ -213,6 +213,25 @@ column, which would indent the whole surface. Horizontal padding across the view
 is `px-2` — the query bar, filter fields, status lines and results share one left
 edge.
 
+## Language support in the preview
+
+`PreviewPane` decides whether a blob is a *live repo document* — a real file in
+this workspace, read whole, not a trusted absolute path — and only then opens a
+language document and registers Monaco providers over its model
+(`features/language-servers/`).
+
+An LSP-managed model is moved onto a private shadow language id
+(`coc-lsp-typescript`, `coc-lsp-javascript`) before the providers are
+registered. Monaco registers providers per language and its bundled TypeScript
+worker claims `typescript`/`javascript` globally, so a model left there would
+answer every hover, completion and diagnostic twice. The shadow ids are
+registered once in `explorer/monaco-setup.ts`, which copies the base language's
+Monarch tokenizer and configuration; that is the only module that reads them, so
+`shadowLanguage.ts` itself stays free of a runtime Monaco dependency. Reach for
+the global `typescriptDefaults` switches only if you want every Monaco instance
+in the page to lose its built-in support — chat source canvases and diffs
+included. The model is put back on its base language when the pane goes away.
+
 ## Tests
 
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour
