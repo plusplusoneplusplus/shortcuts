@@ -242,6 +242,42 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(compact?.description).toBe('Compact the conversation to free context');
         expect(compact?.args).toBe('[instructions]');
     });
+
+    it('META_SKILL_ITEMS includes delegate with description and [provider] <task> args', () => {
+        const delegate = META_SKILL_ITEMS.find(s => s.name === 'delegate');
+        expect(delegate).toBeDefined();
+        expect(delegate?.description).toBe('Delegate a task to a new conversation');
+        expect(delegate?.args).toBe('[provider] <task>');
+        expect(delegate?.kind).toBe('builtin');
+    });
+
+    it('shows a single /delegate row when the delegate skill is also installed', () => {
+        const merged = mergeSkillsWithMeta(
+            [{ name: 'delegate', description: 'Delegate a job from the current chat' }],
+            META_SKILL_ITEMS,
+        );
+        const rows = merged.filter(s => s.name === 'delegate');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].args).toBe('[provider] <task>');
+        expect(rows[0].kind).toBe('builtin');
+    });
+
+    it('filters to /delegate when the user types "del"', () => {
+        render(
+            <SlashCommandMenu
+                skills={META_SKILL_ITEMS}
+                filter="del"
+                onSelect={() => {}}
+                onDismiss={() => {}}
+                visible={true}
+                highlightIndex={0}
+            />,
+        );
+        const rows = document.querySelectorAll('[data-menu-item]');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toContain('/delegate');
+        expect(rows[0].textContent).toContain('[provider] <task>');
+    });
 });
 
 describe('getMetaSkillItems', () => {
@@ -260,6 +296,11 @@ describe('getMetaSkillItems', () => {
     it('always includes compact regardless of the cron flag', () => {
         expect(getMetaSkillItems(true).find(s => s.name === 'compact')).toBeDefined();
         expect(getMetaSkillItems(false).find(s => s.name === 'compact')).toBeDefined();
+    });
+
+    it('always includes delegate regardless of the cron flag', () => {
+        expect(getMetaSkillItems(true).find(s => s.name === 'delegate')).toBeDefined();
+        expect(getMetaSkillItems(false).find(s => s.name === 'delegate')).toBeDefined();
     });
 });
 

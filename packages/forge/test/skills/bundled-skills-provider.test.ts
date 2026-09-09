@@ -130,16 +130,26 @@ describe('SKILL.md metadata', () => {
             description: entry!.description,
             metadata: {
                 author: 'Yiheng Tao',
-                version: '0.0.1',
+                version: '0.0.2',
             },
         });
-        expect(fmMatch![2].trim()).toBe([
-            '# Delegate',
-            '',
-            'Based on this conversation, delegate the requested job to a new conversation with the relevant context, constraints, and expected outcome.',
-            '',
-            'Note: `autopilot` conversations share one execution queue, so delegated autopilot jobs run sequentially, not in parallel. Use `ask` mode if the job must run right away or the current chat is waiting on its result.',
-        ].join('\n'));
+
+        // The body is the agent's contract for the `/delegate [provider] <task>`
+        // command, so pin the parts the command depends on rather than the whole text.
+        const body = fmMatch![2];
+        expect(body).toContain('# Delegate');
+        expect(body).toContain('/delegate [provider] <task>');
+        for (const provider of ['copilot', 'codex', 'claude', 'opencode']) {
+            expect(body).toContain(`\`${provider}\``);
+        }
+        expect(body).toContain('send_to_conversation');
+        // A new conversation, never a follow-up into an existing one.
+        expect(body).toContain('without');
+        expect(body).toContain('processId');
+        // Omitting the provider must preserve the tool's inheritance.
+        expect(body).toMatch(/Omit `provider`/);
+        // Ask mode and the current workspace are the child defaults.
+        expect(body).toMatch(/`mode` defaults to `ask`/);
 
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegate-resolve-'));
         try {

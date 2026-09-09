@@ -9,7 +9,7 @@
  */
 
 /** Built-in meta-commands (not skills). */
-export const META_COMMANDS = ['model', 'cron', 'compact'] as const;
+export const META_COMMANDS = ['model', 'cron', 'compact', 'delegate'] as const;
 export type MetaCommand = (typeof META_COMMANDS)[number];
 
 /**

@@ -21,6 +21,7 @@ const skillsWithMeta: SkillItem[] = [
     ...skills,
     { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
     { name: 'model', description: 'Switch AI model' },
+    { name: 'delegate', description: 'Delegate a task to a new conversation', args: '[provider] <task>' },
 ];
 
 /** Trigger the menu by simulating typing "/im" at position 3 */
@@ -202,6 +203,63 @@ describe('useSlashCommands', () => {
             expect(result.current.activeCommandHint).toBe('[interval] <prompt>');
             act(() => { result.current.handleInputChange('/cron 5m', 8); });
             expect(result.current.activeCommandHint).toBeNull();
+        });
+
+        it('returns args when input is exactly /delegate', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/delegate', 9); });
+            expect(result.current.activeCommandHint).toBe('[provider] <task>');
+        });
+
+        it('returns args when input is /delegate with trailing space', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/delegate ', 10); });
+            expect(result.current.activeCommandHint).toBe('[provider] <task>');
+        });
+
+        it('clears once /delegate has argument text, and restores when deleted', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/delegate claude', 16); });
+            expect(result.current.activeCommandHint).toBeNull();
+            act(() => { result.current.handleInputChange('/delegate ', 10); });
+            expect(result.current.activeCommandHint).toBe('[provider] <task>');
+        });
+
+        it('is null when skills list has no delegate entry', () => {
+            const { result } = renderHook(() => useSlashCommands(skills));
+            act(() => { result.current.handleInputChange('/delegate', 9); });
+            expect(result.current.activeCommandHint).toBeNull();
+        });
+
+        // Regression: the hint used to be matched with an unanchored /cron
+        // pattern, so a command name ending in a hinted name would show it too.
+        it('is null for a longer command that merely ends in a hinted name', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            act(() => { result.current.handleInputChange('/sub-delegate', 13); });
+            expect(result.current.activeCommandHint).toBeNull();
+        });
+    });
+
+    describe('parseAndExtract', () => {
+        it('activates the delegate skill and keeps the task text as the prompt', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            const parsed = result.current.parseAndExtract('/delegate claude Review the plan');
+            expect(parsed.metaCommands).toContain('delegate');
+            expect(parsed.skills).toContain('delegate');
+            expect(parsed.prompt).toBe('claude Review the plan');
+        });
+
+        it('does not duplicate the delegate skill when it is also a known skill', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            const parsed = result.current.parseAndExtract('/delegate Review the plan');
+            expect(parsed.skills.filter(s => s === 'delegate')).toHaveLength(1);
+        });
+
+        it('leaves a bare /delegate with no task as an empty prompt', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
+            const parsed = result.current.parseAndExtract('/delegate');
+            expect(parsed.skills).toContain('delegate');
+            expect(parsed.prompt).toBe('');
         });
     });
 
