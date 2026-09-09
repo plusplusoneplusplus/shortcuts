@@ -87,6 +87,11 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
 }));
+// `PreviewPane` opens a language document for every live repo file; this suite
+// is about panel behaviour, not language support.
+vi.mock('../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
+    async () => await import('../language-servers/inertTransportMock'));
+
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';

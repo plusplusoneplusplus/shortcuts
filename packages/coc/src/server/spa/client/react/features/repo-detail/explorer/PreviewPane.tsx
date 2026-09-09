@@ -6,12 +6,22 @@
  * transport, keeps trusted-path read-only forcing, and owns the
  * dirty/status/save callback contract with `ExplorerPanel`. Fetching, retry,
  * truncation and the edit buffer all live in `useFileContent`.
+ *
+ * It is also the first host of language support (AC-02). This is where the
+ * decision is made that a blob is a *live repo document*: a real file in this
+ * workspace, read whole, reachable on the workspace's own host. A trusted
+ * absolute path, a truncated oversize file and a binary blob all stay ordinary
+ * viewers with no document behind them.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { editor as monacoEditor } from 'monaco-editor';
 import { Spinner, Button } from '../../../ui';
 import { FileViewer } from '../../../shared/file-viewer/FileViewer';
+import { getMonacoLanguage } from '../../../shared/file-viewer/MonacoFileEditor';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
+import { toContentChanges } from '../../language-servers/monacoBridge';
+import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
@@ -80,14 +90,63 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
     }, [onNotFound]);
 
     const {
-        displayBlob, loading, error, status, retry,
-        isDirty, isSaving, onChange: handleEditorChange, save: handleSave,
+        blob, displayBlob, isOversized, loading, error, status, retry,
+        isDirty, isSaving, editedContent, onChange: recordEdit, save: writeFile,
     } = useFileContent({
         key: `${isTrusted ? 'trusted' : repoId}:${actualPath}`,
         read,
         write,
         onError: handleNotFound,
     });
+
+    // What the file holds on disk, as far as this pane knows. It starts as the
+    // blob that was read and moves forward only when a write succeeds, because
+    // `useFileContent` keeps serving the original `blob` after a save. Feeding
+    // the stale original to the document store would let a clean buffer be
+    // reset to pre-save text.
+    const diskText = blob?.encoding === 'utf-8' ? blob.content : '';
+    const [savedText, setSavedText] = useState<string | null>(null);
+    useEffect(() => { setSavedText(null); }, [blob]);
+
+    // A live repo document, or not. A trusted absolute path belongs to no
+    // workspace, an oversize file is shown truncated and must never be sent as
+    // if it were complete, and a binary blob has no text to synchronize.
+    const languageEnabled = !isTrusted && !loading && !error
+        && blob?.encoding === 'utf-8' && !isOversized;
+
+    const languageDocument = useLanguageDocument({
+        workspaceId: repoId,
+        path: actualPath,
+        enabled: languageEnabled,
+        text: savedText ?? diskText,
+        fallbackLanguageId: getMonacoLanguage(fileName),
+    });
+    const { handleChange: recordLanguageEdit, markSaved } = languageDocument;
+
+    // One editor change feeds two consumers: the render buffer, and the
+    // document that the language server sees. Monaco's change list is converted
+    // here rather than in the viewer, so the shared viewer stays free of LSP.
+    const handleEditorChange = useCallback((
+        value: string,
+        changes?: readonly monacoEditor.IModelContentChange[],
+    ) => {
+        recordEdit(value);
+        // No change list (a full model reset, or a host that only reports text)
+        // means a full-text update, which is what `undefined` asks the store for.
+        recordLanguageEdit(value, changes && changes.length > 0 ? toContentChanges(changes) : undefined);
+    }, [recordEdit, recordLanguageEdit]);
+
+    // `didSave` goes out only after the write actually succeeded — a failed
+    // save leaves the buffer dirty and the server's copy unchanged.
+    const handleSave = useCallback(async (): Promise<boolean> => {
+        const written = editedContent;
+        const ok = await writeFile();
+        if (ok) {
+            setSavedText(written);
+            markSaved(written);
+        }
+        return ok;
+    }, [editedContent, writeFile, markSaved]);
 
     // Surface unsaved-edits state to the owner so a workspace switch can prompt
     // before discarding the buffer (AC-03). Report the current value whenever it
@@ -172,6 +231,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
                     onChange={handleEditorChange}
                     onSave={effectiveReadOnly ? undefined : handleSave}
                     revealLine={revealLine}
+                    markers={languageEnabled ? languageDocument.markers : undefined}
                     codeTestId="monaco-container"
                 />
             ) : null}

@@ -4,12 +4,24 @@
  * Provides syntax highlighting, theme syncing, and Ctrl+S save keybinding.
  * Also serves as a read-only viewer (`readOnly`, no `onChange`/`onSave`), with
  * optional line reveal and whole-line range highlighting.
+ *
+ * It also carries the two hooks a language-server host needs, and no more: the
+ * raw Monaco change list alongside the new text, and a marker list to publish.
+ * Both are deliberately expressed in Monaco's own vocabulary — this module
+ * knows nothing about LSP, documents or workspaces, so the conversion and the
+ * decision to enable language support stay with the host (AC-02).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor as monacoEditor } from 'monaco-editor';
 import { useTheme } from '../../layout/ThemeProvider';
+// A constant, from a module with no runtime Monaco or React dependency: the
+// marker owner has to be the same string here and in the layer that builds the
+// markers, so it lives in exactly one place.
+import { LANGUAGE_MARKER_OWNER } from '../../features/language-servers/monacoBridge';
+
+export { LANGUAGE_MARKER_OWNER };
 
 /** One-based inclusive line range to highlight (`end === start` for one line). */
 export interface EditorHighlightRange {
@@ -20,9 +32,21 @@ export interface EditorHighlightRange {
 export interface MonacoFileEditorProps {
     value: string;
     language: string | null;
-    /** Omitted by read-only viewers, which have nothing to do with edits. */
-    onChange?: (value: string) => void;
+    /**
+     * Omitted by read-only viewers, which have nothing to do with edits.
+     *
+     * `changes` is Monaco's own change list for the event, in the order Monaco
+     * produced it. Hosts that only mirror text ignore it.
+     */
+    onChange?: (value: string, changes: readonly monacoEditor.IModelContentChange[]) => void;
     onSave?: () => void;
+    /**
+     * Diagnostics to publish under `LANGUAGE_MARKER_OWNER`. `undefined` means
+     * this host does not manage markers at all, and the editor leaves the
+     * model's markers untouched — that is what keeps a viewer with no language
+     * support from clearing anyone else's squiggles.
+     */
+    markers?: readonly monacoEditor.IMarkerData[];
     /** When true the editor is non-editable and the save keybinding is suppressed. */
     readOnly?: boolean;
     /**
@@ -166,10 +190,11 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
 };
 
 export function MonacoFileEditor({
-    value, language, onChange, onSave, readOnly, revealLine, highlightRange,
+    value, language, onChange, onSave, readOnly, revealLine, highlightRange, markers,
 }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+    const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
     const decorationsRef = useRef<monacoEditor.IEditorDecorationsCollection | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -213,11 +238,28 @@ export function MonacoFileEditor({
         }
     }, [highlightStart, highlightEnd]);
 
+    // Markers are published against the model, not the editor, so a second view
+    // of the same file sees them too. Republishing an empty list is how a
+    // cleared diagnostic set is removed; skipping the call entirely when the
+    // host passes no markers is how a non-language viewer stays out of it.
+    const ownsMarkersRef = useRef(false);
+    const applyMarkers = useCallback(() => {
+        const editor = editorRef.current;
+        const monaco = monacoRef.current;
+        if (!editor || !monaco || markers === undefined) return;
+        const model = editor.getModel();
+        if (!model) return;
+        ownsMarkersRef.current = true;
+        monaco.editor.setModelMarkers(model, LANGUAGE_MARKER_OWNER, [...markers]);
+    }, [markers]);
+
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
+        monacoRef.current = monaco;
 
         if (revealLine !== undefined) revealEditorLine(editor, revealLine);
         applyHighlight(editor);
+        applyMarkers();
 
         if (onSave && !readOnly) {
             editor.addAction({
@@ -227,7 +269,7 @@ export function MonacoFileEditor({
                 run: () => onSave(),
             });
         }
-    }, [onSave, readOnly, revealLine, applyHighlight]);
+    }, [onSave, readOnly, revealLine, applyHighlight, applyMarkers]);
 
     // A later reveal (a second search hit in the same already-open file) has no
     // mount to piggyback on, so apply it here too. `value` is a dependency
@@ -248,8 +290,29 @@ export function MonacoFileEditor({
         applyHighlight(editor);
     }, [applyHighlight, value]);
 
-    const handleChange = useCallback((newValue: string | undefined) => {
-        onChange?.(newValue ?? '');
+    // A later marker set (diagnostics arriving after the editor mounted) has no
+    // mount to piggyback on. `value` is a dependency because the model is
+    // replaced when the content arrives, and markers set on the old model would
+    // be lost with it.
+    useEffect(() => {
+        applyMarkers();
+    }, [applyMarkers, value]);
+
+    // Leaving markers behind would strand squiggles on a model another view may
+    // still be showing, so a host that owns markers clears them on the way out.
+    useEffect(() => () => {
+        const editor = editorRef.current;
+        const monaco = monacoRef.current;
+        if (!editor || !monaco || !ownsMarkersRef.current) return;
+        const model = editor.getModel();
+        if (model) monaco.editor.setModelMarkers(model, LANGUAGE_MARKER_OWNER, []);
+    }, []);
+
+    const handleChange = useCallback((
+        newValue: string | undefined,
+        event?: monacoEditor.IModelContentChangedEvent,
+    ) => {
+        onChange?.(newValue ?? '', event?.changes ?? []);
     }, [onChange]);
 
     const monacoTheme = resolveIsDark(theme) ? 'vs-dark' : 'vs';

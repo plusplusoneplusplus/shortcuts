@@ -145,7 +145,7 @@ describe('MonacoFileEditor — optional onChange', () => {
         await flushMount();
 
         editorStub.lastOnChange?.('edited');
-        expect(onChange).toHaveBeenCalledWith('edited');
+        expect(onChange).toHaveBeenCalledWith('edited', []);
     });
 
     it('registers no save action when read-only', async () => {

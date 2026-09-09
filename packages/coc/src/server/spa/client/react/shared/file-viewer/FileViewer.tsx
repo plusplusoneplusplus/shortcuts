@@ -4,6 +4,7 @@
  * or Monaco. Every capability is opt-in by prop, so a host renders exactly what
  * it rendered before moving here. Loading/error chrome stays with the host.
  */
+import type { editor as monacoEditor } from 'monaco-editor';
 import { MarkdownFileView, isMarkdownFile } from './MarkdownFileView';
 import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
 import type { FileBlob, LineRange } from './types';
@@ -16,8 +17,15 @@ export interface FileViewerProps {
     /** Optional server-reported language hint (helps detect markdown). */
     language?: string;
     readOnly?: boolean;
-    onChange?: (value: string) => void;
+    /** `changes` is Monaco's own change list; hosts that mirror text ignore it. */
+    onChange?: (value: string, changes: readonly monacoEditor.IModelContentChange[]) => void;
     onSave?: () => void;
+    /**
+     * Diagnostics for the Monaco branch, forwarded verbatim. Only a host that
+     * has decided this blob is a live repo document passes them; the markdown,
+     * image and binary branches have no editor to publish into.
+     */
+    markers?: readonly monacoEditor.IMarkerData[];
     /** Line range to highlight + centre (from a `:line` / `:start-end` ref). */
     highlightRange?: LineRange | null;
     /** One-based line to scroll into view only (from a content-search hit). */
@@ -40,7 +48,7 @@ export function formatFileSize(bytes: number): string {
 
 export function FileViewer({
     blob, fileName, language, readOnly, onChange, onSave,
-    highlightRange, revealLine, markdown = 'off', codeTestId,
+    highlightRange, revealLine, markdown = 'off', codeTestId, markers,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
         return blob.mimeType.startsWith('image/') ? (
@@ -79,6 +87,7 @@ export function FileViewer({
                 onSave={onSave}
                 highlightRange={highlightRange ?? null}
                 revealLine={revealLine}
+                markers={markers}
             />
         </div>
     );
