@@ -16,6 +16,8 @@ and transport code stays generic.
   specificity, then id), LSP language-id resolution, and project-root discovery
   from root markers.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
+- `client-requests.ts` — the client half of the protocol: built-in answers to
+  the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
   registered from `src/server/routes/index.ts`.
 - `repository.ts` — per-workspace persistence of `language-servers.json` under
@@ -74,6 +76,22 @@ and transport code stays generic.
   settles on `failed` until `restart()` clears the budget. Process `exit` and
   `error` handlers are bound per child, so a previous process's late exit never
   disposes its successor's connection.
+- `client-requests.ts` — `LanguageServerClientRequests` answers
+  `workspace/configuration` (resolved from the definition's `settings` by dotted
+  section path), `workspace/workspaceFolders`, `client/registerCapability`,
+  `client/unregisterCapability`, and `window/workDoneProgress/create`. The
+  session installs them on every connection before the caller's own handlers,
+  so a caller's `onRequest` for the same method still wins, and any other
+  method still gets `-32601`. Registrations are per connection: `reset()` runs
+  before each handshake and on every stop, so a restarted server never inherits
+  the previous process's registrations. They surface as
+  `getDynamicRegistrations()` and in the state's `dynamicRegistrations`.
+- `DEFAULT_CLIENT_CAPABILITIES` is what `initialize` advertises when a caller
+  passes no `clientCapabilities`. It lists exactly what the runtime honors —
+  the handlers above, document synchronization, and hover, definition,
+  references, completion, signature help, and diagnostics. Do not advertise a
+  capability nothing implements: a server will then send requests nobody
+  answers.
 - `onNotification`, `onRequest`, and `onReady` handlers are re-registered on
   every new connection, so a caller subscribes once and keeps receiving
   diagnostics across restarts. `onReady` is where the document layer replays
@@ -183,8 +201,9 @@ and transport code stays generic.
   deterministic non-TypeScript server speaking real LSP framing over stdio.
   The connection and session suites spawn it, which proves the runtime carries
   no TypeScript-specific routing. It answers `getInit` with the received
-  `initialize` params and its working directory, and dies on `crash` for
-  restart-backoff tests. Add generic protocol coverage there, not against
+  `initialize` params and its working directory, answers `ask` by sending an
+  arbitrary server-to-client request and returning the client's reply or error,
+  and dies on `crash` for restart-backoff tests. Add generic protocol coverage there, not against
   a real `tsserver`. The bridge suite drives a real WebSocket against a real
   manager and that fixture, so it covers upgrade scoping, URI refusal, and
   cancellation end to end. `infrastructure.test.ts` starts a real

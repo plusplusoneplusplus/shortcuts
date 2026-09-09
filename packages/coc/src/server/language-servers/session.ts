@@ -15,6 +15,8 @@ import { spawn } from 'child_process';
 import type { ChildProcessWithoutNullStreams } from 'child_process';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
+import { LanguageServerClientRequests, DEFAULT_CLIENT_CAPABILITIES } from './client-requests';
+import type { DynamicRegistration } from './client-requests';
 import { LanguageServerConnection, LanguageServerRequestError } from './connection';
 import type { ServerNotificationHandler, ServerRequestHandler, SendRequestOptions } from './connection';
 import type { JsonValue, LanguageServerDefinition } from './types';
@@ -38,6 +40,8 @@ export interface LanguageServerSessionState {
     serverVersion?: string;
     /** Negotiated capabilities, available once the status is `ready`. */
     capabilities?: Record<string, unknown>;
+    /** Capabilities the running server registered after initialization. */
+    dynamicRegistrations?: DynamicRegistration[];
     /** Restarts already attempted since the last successful start. */
     restarts: number;
 }
@@ -46,7 +50,7 @@ export interface LanguageServerSessionOptions {
     definition: LanguageServerDefinition;
     /** Project root for the server, normally from `resolveServerRoot`. */
     rootPath: string;
-    /** Client capabilities sent in `initialize`. Defaults to an empty object. */
+    /** Client capabilities sent in `initialize`. Defaults to `DEFAULT_CLIENT_CAPABILITIES`. */
     clientCapabilities?: JsonValue;
     /** Bound on the initialize handshake. Defaults to 20 seconds. */
     startTimeoutMs?: number;
@@ -75,6 +79,7 @@ export class LanguageServerSession {
     private readonly readyHandlers = new Set<(connection: LanguageServerConnection) => void>();
     private readonly notificationHandlers = new Map<string, Set<ServerNotificationHandler>>();
     private readonly requestHandlers = new Map<string, ServerRequestHandler>();
+    private readonly clientRequests: LanguageServerClientRequests;
     private child?: ChildProcessWithoutNullStreams;
     private connection?: LanguageServerConnection;
     private starting?: Promise<void>;
@@ -89,6 +94,11 @@ export class LanguageServerSession {
     constructor(options: LanguageServerSessionOptions) {
         this.options = options;
         this.definition = options.definition;
+        this.clientRequests = new LanguageServerClientRequests({
+            settings: this.definition.settings,
+            workspaceFolders: () => [this.workspaceFolder()],
+            onRegistrationsChanged: (registrations) => this.setState({ dynamicRegistrations: registrations }),
+        });
         this.state = {
             status: 'disabled',
             definitionId: this.definition.id,
@@ -100,6 +110,11 @@ export class LanguageServerSession {
     /** Current user-facing state. Safe to send to the browser. */
     getState(): LanguageServerSessionState {
         return { ...this.state };
+    }
+
+    /** Capabilities the running server registered dynamically. */
+    getDynamicRegistrations(): DynamicRegistration[] {
+        return this.clientRequests.getRegistrations();
     }
 
     get status(): LanguageServerStatus {
@@ -256,7 +271,8 @@ export class LanguageServerSession {
         if (child) {
             child.kill();
         }
-        this.setState({ status: 'disabled', detail, capabilities: undefined });
+        this.clientRequests.reset();
+        this.setState({ status: 'disabled', detail, capabilities: undefined, dynamicRegistrations: [] });
     }
 
     /** Releases the process and every listener. The session cannot be restarted. */
@@ -304,6 +320,12 @@ export class LanguageServerSession {
             maxMessageBytes: this.options.maxMessageBytes,
             onError: (error) => this.report(error),
         });
+        // Built-in answers go on first; a caller's own handler for the same
+        // method is installed after and wins.
+        this.clientRequests.reset();
+        for (const [method, handler] of this.clientRequests.handlers()) {
+            connection.onRequest(method, handler);
+        }
         for (const [method, handler] of this.requestHandlers) {
             connection.onRequest(method, handler);
         }
@@ -327,6 +349,7 @@ export class LanguageServerSession {
                 status: 'ready',
                 detail: undefined,
                 capabilities: result?.capabilities ?? {},
+                dynamicRegistrations: this.clientRequests.getRegistrations(),
                 serverName: result?.serverInfo?.name,
                 serverVersion: result?.serverInfo?.version,
                 restarts: 0,
@@ -354,15 +377,20 @@ export class LanguageServerSession {
     }
 
     private initializeParams(): Record<string, unknown> {
-        const rootUri = pathToFileURL(path.resolve(this.options.rootPath)).href;
+        const folder = this.workspaceFolder();
         return {
             processId: process.pid,
             clientInfo: { name: 'CoC' },
-            rootUri,
-            workspaceFolders: [{ uri: rootUri, name: path.basename(this.options.rootPath) }],
-            capabilities: this.options.clientCapabilities ?? {},
+            rootUri: folder.uri,
+            workspaceFolders: [folder],
+            capabilities: this.options.clientCapabilities ?? DEFAULT_CLIENT_CAPABILITIES,
             initializationOptions: this.definition.initializationOptions,
         };
+    }
+
+    private workspaceFolder(): { uri: string; name: string } {
+        const rootPath = path.resolve(this.options.rootPath);
+        return { uri: pathToFileURL(rootPath).href, name: path.basename(rootPath) };
     }
 
     private handleProcessError(child: ChildProcessWithoutNullStreams, error: NodeJS.ErrnoException): void {
@@ -385,8 +413,14 @@ export class LanguageServerSession {
         this.connection?.dispose('Language server exited');
         this.connection = undefined;
         const how = signal ? `signal ${signal}` : `exit code ${code}`;
+        this.clientRequests.reset();
         if (this.references === 0) {
-            this.setState({ status: 'disabled', detail: `Language server stopped (${how})`, capabilities: undefined });
+            this.setState({
+                status: 'disabled',
+                detail: `Language server stopped (${how})`,
+                capabilities: undefined,
+                dynamicRegistrations: [],
+            });
             return;
         }
         this.scheduleRestart(how);
@@ -403,6 +437,7 @@ export class LanguageServerSession {
                 status: 'failed',
                 detail: this.describeFailure(`Language server exited (${how}) and did not recover`),
                 capabilities: undefined,
+            dynamicRegistrations: [],
             });
             return;
         }
@@ -413,6 +448,7 @@ export class LanguageServerSession {
             status: 'reconnecting',
             detail: `Language server exited (${how}); restarting`,
             capabilities: undefined,
+            dynamicRegistrations: [],
             restarts: this.restarts,
         });
         this.clearRestartTimer();
@@ -458,6 +494,7 @@ export class LanguageServerSession {
         this.child = undefined;
         this.connection?.dispose('Language server could not start');
         this.connection = undefined;
+        this.clientRequests.reset();
         const code = (error as NodeJS.ErrnoException | undefined)?.code;
         const missing = code === 'ENOENT';
         this.setState({
@@ -466,6 +503,7 @@ export class LanguageServerSession {
                 ? `Executable not found: ${this.definition.command}`
                 : this.describeFailure('Language server could not start', error),
             capabilities: undefined,
+            dynamicRegistrations: [],
         });
     }
 

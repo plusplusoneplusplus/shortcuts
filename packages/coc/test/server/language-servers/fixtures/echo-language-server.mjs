@@ -14,6 +14,7 @@
  *   slow                  -> never replies, for timeout and cancellation tests
  *   fail                  -> replies with a JSON-RPC error
  *   askClient             -> sends a server-to-client request and returns its result
+ *   ask                   -> sends `params.method` to the client and returns its result
  *   shutdown              -> null
  * Notifications:
  *   textDocument/didOpen  -> publishes one diagnostic naming the document
@@ -43,7 +44,7 @@ function handle(message) {
         const pending = clientReplies.get(message.id);
         if (pending) {
             clientReplies.delete(message.id);
-            pending(message.result ?? null);
+            pending(message);
         }
         return;
     }
@@ -82,9 +83,20 @@ function handle(message) {
         case 'fail':
             send({ jsonrpc: '2.0', id, error: { code: -32603, message: 'echo server failed on purpose' } });
             return;
+        case 'ask': {
+            // Generic server-to-client request, so a test can drive any client
+            // method (workspace/configuration, client/registerCapability, ...)
+            // through a real process instead of a stub connection.
+            const requestId = `s${nextServerRequestId++}`;
+            clientReplies.set(requestId, (reply) =>
+                send({ jsonrpc: '2.0', id, result: { value: reply.result ?? null, error: reply.error ?? null } }),
+            );
+            send({ jsonrpc: '2.0', id: requestId, method: params?.method ?? 'unknown', params: params?.params ?? null });
+            return;
+        }
         case 'askClient': {
             const requestId = `s${nextServerRequestId++}`;
-            clientReplies.set(requestId, (result) => send({ jsonrpc: '2.0', id, result }));
+            clientReplies.set(requestId, (reply) => send({ jsonrpc: '2.0', id, result: reply.result ?? null }));
             send({ jsonrpc: '2.0', id: requestId, method: 'window/showMessageRequest', params: params ?? null });
             return;
         }

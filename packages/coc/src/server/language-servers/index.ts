@@ -59,6 +59,12 @@ export type {
     ServerRequestHandler,
 } from './connection';
 export { LanguageServerConnection, LanguageServerRequestError } from './connection';
+export type { ClientRequestOptions, DynamicRegistration, WorkspaceFolder } from './client-requests';
+export {
+    DEFAULT_CLIENT_CAPABILITIES,
+    LanguageServerClientRequests,
+    resolveConfigurationSection,
+} from './client-requests';
 export type {
     LanguageServerSessionOptions,
     LanguageServerSessionState,
