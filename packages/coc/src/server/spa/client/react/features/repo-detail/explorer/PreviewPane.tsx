@@ -7,21 +7,28 @@
  * dirty/status/save callback contract with `ExplorerPanel`. Fetching, retry,
  * truncation and the edit buffer all live in `useFileContent`.
  *
- * It is also the first host of language support (AC-02). This is where the
+ * It is also the first host of language support (AC-02/AC-03). This is where the
  * decision is made that a blob is a *live repo document*: a real file in this
  * workspace, read whole, reachable on the workspace's own host. A trusted
  * absolute path, a truncated oversize file and a binary blob all stay ordinary
- * viewers with no document behind them.
+ * viewers with no document behind them. Once that decision is made and the
+ * editor has a model, this is also where the Monaco language providers are
+ * registered over the document — one registration per model, disposed with it.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { editor as monacoEditor } from 'monaco-editor';
 import { Spinner, Button } from '../../../ui';
 import { FileViewer } from '../../../shared/file-viewer/FileViewer';
-import { getMonacoLanguage } from '../../../shared/file-viewer/MonacoFileEditor';
+import { getMonacoLanguage, type EditorModelMountContext } from '../../../shared/file-viewer/MonacoFileEditor';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
 import { toContentChanges } from '../../language-servers/monacoBridge';
 import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
+import {
+    registerLanguageProviders,
+    type MonacoLike,
+    type ProviderModel,
+} from '../../language-servers/languageProviders';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
@@ -121,7 +128,31 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
         text: savedText ?? diskText,
         fallbackLanguageId: getMonacoLanguage(fileName),
     });
-    const { handleChange: recordLanguageEdit, markSaved } = languageDocument;
+    const { handleChange: recordLanguageEdit, markSaved, view: languageView } = languageDocument;
+
+    // The Monaco language the editor will actually use for this file, so the
+    // providers are registered under the same id the model carries.
+    const monacoLanguageId = getMonacoLanguage(fileName);
+
+    // The moment the feature stops being plumbing: with a model in hand and a
+    // document behind it, hover/definition/references/completion/signature help
+    // become real. The registration is torn down by the editor when the model
+    // goes away, and rebuilt when the document is replaced, because a provider
+    // outliving its buffer would answer out of a closed document.
+    //
+    // Both casts narrow the real Monaco namespace to the structural slice the
+    // provider module describes; `languageProviders.ts` deliberately carries no
+    // runtime Monaco dependency, so this boundary is where the two meet.
+    const handleModelMount = useCallback(({ monaco, model }: EditorModelMountContext) => {
+        if (!languageView) return;
+        const registration = registerLanguageProviders({
+            monaco: monaco as unknown as MonacoLike,
+            model: model as unknown as ProviderModel,
+            view: languageView,
+            languageId: monacoLanguageId,
+        });
+        return () => registration.dispose();
+    }, [languageView, monacoLanguageId]);
 
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted
@@ -232,6 +263,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
                     onSave={effectiveReadOnly ? undefined : handleSave}
                     revealLine={revealLine}
                     markers={languageEnabled ? languageDocument.markers : undefined}
+                    onModelMount={languageEnabled && languageView ? handleModelMount : undefined}
                     codeTestId="monaco-container"
                 />
             ) : null}

@@ -5,11 +5,13 @@
  * Also serves as a read-only viewer (`readOnly`, no `onChange`/`onSave`), with
  * optional line reveal and whole-line range highlighting.
  *
- * It also carries the two hooks a language-server host needs, and no more: the
- * raw Monaco change list alongside the new text, and a marker list to publish.
- * Both are deliberately expressed in Monaco's own vocabulary — this module
+ * It also carries the three hooks a language-server host needs, and no more:
+ * the raw Monaco change list alongside the new text, a marker list to publish,
+ * and `onModelMount`, which hands the live `monaco` namespace and text model up
+ * to the host so it can register providers against exactly this model. All
+ * three are deliberately expressed in Monaco's own vocabulary — this module
  * knows nothing about LSP, documents or workspaces, so the conversion and the
- * decision to enable language support stay with the host (AC-02).
+ * decision to enable language support stay with the host (AC-02/AC-03).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,6 +24,15 @@ import { useTheme } from '../../layout/ThemeProvider';
 import { LANGUAGE_MARKER_OWNER } from '../../features/language-servers/monacoBridge';
 
 export { LANGUAGE_MARKER_OWNER };
+
+/** The `monaco` namespace `@monaco-editor/react` hands to `onMount`. */
+export type MonacoNamespace = Parameters<OnMount>[1];
+
+/** What a host is given when a model becomes available in this editor. */
+export interface EditorModelMountContext {
+    monaco: MonacoNamespace;
+    model: monacoEditor.ITextModel;
+}
 
 /** One-based inclusive line range to highlight (`end === start` for one line). */
 export interface EditorHighlightRange {
@@ -47,6 +58,14 @@ export interface MonacoFileEditorProps {
      * support from clearing anyone else's squiggles.
      */
     markers?: readonly monacoEditor.IMarkerData[];
+    /**
+     * Called once a text model exists, and again whenever Monaco replaces it.
+     * The returned cleanup runs when that model goes away — when it is swapped,
+     * when the callback changes, or on unmount. This is the seam a language
+     * host uses to register providers for one model and dispose them with it;
+     * the editor itself never learns what was registered.
+     */
+    onModelMount?: (context: EditorModelMountContext) => (() => void) | void;
     /** When true the editor is non-editable and the save keybinding is suppressed. */
     readOnly?: boolean;
     /**
@@ -190,7 +209,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
 };
 
 export function MonacoFileEditor({
-    value, language, onChange, onSave, readOnly, revealLine, highlightRange, markers,
+    value, language, onChange, onSave, readOnly, revealLine, highlightRange, markers, onModelMount,
 }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
@@ -198,6 +217,16 @@ export function MonacoFileEditor({
     const decorationsRef = useRef<monacoEditor.IEditorDecorationsCollection | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+    // The mounted editor, as state rather than a ref, because the model-mount
+    // effect below has to run once it exists.
+    const [mounted, setMounted] = useState<{
+        editor: monacoEditor.IStandaloneCodeEditor;
+        monaco: MonacoNamespace;
+    } | null>(null);
+    // Bumped whenever Monaco swaps the model out from under us, so the host's
+    // registration is torn down with the model it was made for.
+    const [modelGeneration, setModelGeneration] = useState(0);
+    const modelListenerRef = useRef<{ dispose(): void } | null>(null);
 
     // Measure the wrapper element and track resizes so Monaco gets explicit
     // pixel dimensions instead of relying on CSS 100% (which causes runaway
@@ -256,6 +285,12 @@ export function MonacoFileEditor({
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
         monacoRef.current = monaco;
+        setMounted({ editor, monaco });
+        if (typeof editor.onDidChangeModel === 'function') {
+            modelListenerRef.current = editor.onDidChangeModel(() => {
+                setModelGeneration(generation => generation + 1);
+            });
+        }
 
         if (revealLine !== undefined) revealEditorLine(editor, revealLine);
         applyHighlight(editor);
@@ -297,6 +332,22 @@ export function MonacoFileEditor({
     useEffect(() => {
         applyMarkers();
     }, [applyMarkers, value]);
+
+    // Hand the model up to the host, and take the registration back down with
+    // it. `modelGeneration` is a dependency so a model swap re-registers against
+    // the new model instead of leaving providers pointed at a disposed one.
+    useEffect(() => {
+        if (!mounted || !onModelMount) return;
+        const model = mounted.editor.getModel();
+        if (!model) return;
+        const cleanup = onModelMount({ monaco: mounted.monaco, model });
+        return () => { cleanup?.(); };
+    }, [mounted, modelGeneration, onModelMount]);
+
+    useEffect(() => () => {
+        modelListenerRef.current?.dispose();
+        modelListenerRef.current = null;
+    }, []);
 
     // Leaving markers behind would strand squiggles on a model another view may
     // still be showing, so a host that owns markers clears them on the way out.

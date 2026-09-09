@@ -6,7 +6,7 @@
  */
 import type { editor as monacoEditor } from 'monaco-editor';
 import { MarkdownFileView, isMarkdownFile } from './MarkdownFileView';
-import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
+import { MonacoFileEditor, getMonacoLanguage, type EditorModelMountContext } from './MonacoFileEditor';
 import type { FileBlob, LineRange } from './types';
 
 export interface FileViewerProps {
@@ -26,6 +26,13 @@ export interface FileViewerProps {
      * image and binary branches have no editor to publish into.
      */
     markers?: readonly monacoEditor.IMarkerData[];
+    /**
+     * Handed the live `monaco` namespace and text model for the Monaco branch,
+     * so a host that has decided this blob is a live repo document can register
+     * language providers against exactly that model. The other branches have no
+     * editor, so they never call it.
+     */
+    onModelMount?: (context: EditorModelMountContext) => (() => void) | void;
     /** Line range to highlight + centre (from a `:line` / `:start-end` ref). */
     highlightRange?: LineRange | null;
     /** One-based line to scroll into view only (from a content-search hit). */
@@ -48,7 +55,7 @@ export function formatFileSize(bytes: number): string {
 
 export function FileViewer({
     blob, fileName, language, readOnly, onChange, onSave,
-    highlightRange, revealLine, markdown = 'off', codeTestId, markers,
+    highlightRange, revealLine, markdown = 'off', codeTestId, markers, onModelMount,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
         return blob.mimeType.startsWith('image/') ? (
@@ -88,6 +95,7 @@ export function FileViewer({
                 highlightRange={highlightRange ?? null}
                 revealLine={revealLine}
                 markers={markers}
+                onModelMount={onModelMount}
             />
         </div>
     );
