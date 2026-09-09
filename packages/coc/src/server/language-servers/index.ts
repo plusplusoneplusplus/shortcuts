@@ -74,6 +74,11 @@ export type {
     SessionClosedEvent,
 } from './manager';
 export { LanguageServerManager } from './manager';
+export {
+    disposeLanguageServersForWorkspace,
+    getActiveLanguageServerManager,
+    setActiveLanguageServerManager,
+} from './active';
 export type { DocumentResolution, ResolvedDocument, UriMappingFailure } from './uri-mapping';
 export {
     BROWSER_URI_SCHEME,

@@ -13,6 +13,7 @@ import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { ScheduleManager } from '../schedule/schedule-manager';
 import type { TerminalWebSocketServer } from '../terminal/index';
+import type { LanguageServerWebSocketServer } from '../language-servers/ws-bridge';
 
 // ============================================================================
 // Factory
@@ -34,10 +35,11 @@ export function createWebSocketInfrastructure(
     registry: RepoQueueRegistry,
     scheduleManager: ScheduleManager,
     terminalWsServer?: TerminalWebSocketServer,
+    languageServerWsServer?: LanguageServerWebSocketServer,
 ): ProcessWebSocketServer {
     const wsServer = new ProcessWebSocketServer();
     wsServer.attachConnectionHandler();
-    attachWebSocketUpgradeHandler(server, wsServer, terminalWsServer);
+    attachWebSocketUpgradeHandler(server, wsServer, terminalWsServer, languageServerWsServer);
 
     wsServer.onGitChanged((workspaceId) => {
         gitInfoCache.invalidate(workspaceId);

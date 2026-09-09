@@ -28,6 +28,7 @@ import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry } from '.
 import { withToolParameterMetadata } from '../llm-tools/llm-tool-parameter-schemas';
 import { detectEnDevEligibility } from '../endev/endev-detector';
 import { resolveHostCopyPath } from '../host-copy-path';
+import { disposeLanguageServersForWorkspace } from '../language-servers/active';
 import { detectWslWorkspace } from '../wsl-workspace';
 import { isNativeWslEnvironment } from '../endev/endev-detector';
 import { skillCache } from '../skills/skill-handler';
@@ -391,6 +392,9 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!removed) {
                 return handleAPIError(res, notFound('Workspace'));
             }
+            // Language servers are child processes rooted in the workspace
+            // directory; a removed workspace must not leave one running.
+            await disposeLanguageServersForWorkspace(id);
             ctx.getWsServer?.()?.broadcastProcessEvent({
                 type: 'workspace-topology-changed',
                 action: 'removed',

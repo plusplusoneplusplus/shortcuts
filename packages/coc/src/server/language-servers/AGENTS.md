@@ -133,9 +133,28 @@ and transport code stays generic.
   are session-wide rather than per attachment. A manager-initiated close detaches
   every affected attachment with the manager's reason, which is the client's cue
   to re-attach and replay its buffers.
-- Not wired into server startup yet: nothing constructs the manager or passes the
-  bridge to `attachWebSocketUpgradeHandler` in production, and server-to-client
-  requests such as `workspace/configuration` are still answered `-32601`.
+- Server-to-client requests such as `workspace/configuration` and
+  `client/registerCapability` are still answered `-32601`; `tsserver` behaves
+  better once they are handled.
+
+## Composition
+
+- `src/server/infrastructure/language-server-infrastructure.ts` —
+  `createLanguageServerInfrastructure(store, dataDir)` builds the manager and
+  the bridge and returns `dispose()`. `createExecutionServer` calls it before
+  `createWebSocketInfrastructure`, which passes the bridge as the fourth
+  argument of `attachWebSocketUpgradeHandler`, and the close handler awaits
+  `dispose()` after the terminal teardown. It is composed unconditionally:
+  nothing spawns until a browser attaches a document in a workspace whose
+  configuration is enabled, and that configuration ships disabled.
+- `dispose()` closes sockets first, then the manager, so a client cannot issue a
+  request into a session that is going away.
+- `active.ts` publishes the running manager for the few call sites outside the
+  bridge. `DELETE /api/workspaces/:id` awaits
+  `disposeLanguageServersForWorkspace(id)` before broadcasting the topology
+  change, so a removed workspace never leaves a process rooted in its directory.
+  The unregister returned by `setActiveLanguageServerManager` is identity
+  checked — a late call from a disposed manager must not clear a newer one.
 
 ## Clients
 
@@ -168,7 +187,10 @@ and transport code stays generic.
   restart-backoff tests. Add generic protocol coverage there, not against
   a real `tsserver`. The bridge suite drives a real WebSocket against a real
   manager and that fixture, so it covers upgrade scoping, URI refusal, and
-  cancellation end to end.
+  cancellation end to end. `infrastructure.test.ts` starts a real
+  `createExecutionServer` and checks the production wiring: the served
+  `/ws/language-server` path, workspace deletion detaching documents, and
+  shutdown unpublishing the manager.
 - `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
   from `packages/coc`.
 - `npm run test:run` from `packages/coc-client`.
