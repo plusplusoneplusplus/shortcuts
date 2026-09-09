@@ -79,6 +79,28 @@ and transport code stays generic.
   diagnostics across restarts. `onReady` is where the document layer replays
   open buffers before resuming queries. `sendRequest` starts the server on
   demand.
+- `manager.ts` — `LanguageServerManager` owns every live session on this host.
+  `acquire({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
+  resolves the definition with `selectDefinitionForFile`, the root with
+  `resolveServerRoot`, and returns a handle carrying the session, the LSP
+  language id, and a `release` function. A failure carries a reason of
+  `disabled`, `no-definition`, or `capacity` so the editor can show a concise
+  status instead of an error.
+- Sessions are keyed on workspace, browser editing session, definition id, and
+  resolved root. Two browser windows on the same file therefore get two
+  processes and cannot see each other's buffers or diagnostics, and a monorepo
+  gets one process per project root.
+- `maxSessions` (default 12) bounds live sessions. Reaching it evicts the least
+  recently used unreferenced session; when every session is still referenced the
+  acquire fails with `capacity` rather than dropping a buffer someone owns.
+- A config change replaces only the sessions whose definition changed or
+  disappeared, compared by a fingerprint of command, args, initialization
+  options, settings, and language ids. `onSessionClosed` reports every
+  manager-initiated close (`config-changed`, `evicted`, `workspace-removed`,
+  `shutdown`) so the document layer knows to replay into a fresh session.
+- `disposeWorkspace`, `disposeEditingSession`, and `dispose` release processes,
+  timers, and the config subscription. After `dispose` every `acquire` is
+  refused.
 
 ## Clients
 

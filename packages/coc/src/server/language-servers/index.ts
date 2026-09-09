@@ -65,3 +65,12 @@ export type {
     LanguageServerStatus,
 } from './session';
 export { LanguageServerSession } from './session';
+export type {
+    AcquireRequest,
+    AcquireResult,
+    LanguageServerHandle,
+    LanguageServerManagerOptions,
+    LanguageServerUnavailableReason,
+    SessionClosedEvent,
+} from './manager';
+export { LanguageServerManager } from './manager';
