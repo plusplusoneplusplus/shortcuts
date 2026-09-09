@@ -418,27 +418,30 @@ describe('getFileMentionContext', () => {
     }
 
     it('opens on an @-prefixed path token', () => {
-        expect(at('@src/fo|')).toEqual({ active: true, prefix: 'src/fo', startIndex: 0, hasSigil: true });
+        expect(at('@src/fo|')).toEqual({ active: true, prefix: 'src/fo', startIndex: 0 });
     });
 
     it('opens on a bare @ at the start of the input', () => {
-        expect(at('@|')).toEqual({ active: true, prefix: '', startIndex: 0, hasSigil: true });
+        expect(at('@|')).toEqual({ active: true, prefix: '', startIndex: 0 });
     });
 
     it('opens on an @ preceded by whitespace', () => {
-        expect(at('look at @sr|')).toEqual({ active: true, prefix: 'sr', startIndex: 8, hasSigil: true });
+        expect(at('look at @sr|')).toEqual({ active: true, prefix: 'sr', startIndex: 8 });
     });
 
     it('does not open on an @ that follows a non-whitespace character', () => {
         expect(at('abc@|')).toBeNull();
     });
 
-    it('opens trigger-lessly on a token containing a slash', () => {
-        expect(at('packages/coc|')).toEqual({ active: true, prefix: 'packages/coc', startIndex: 0, hasSigil: false });
+    it('does not open on a bare token containing a slash', () => {
+        expect(at('packages/coc|')).toBeNull();
+        // The report that motivated requiring the sigil: a two-letter fragment
+        // with a slash used to fuzzy-match half the repo group.
+        expect(at('a/bd|')).toBeNull();
     });
 
-    it('opens trigger-lessly on a token ending in an extension', () => {
-        expect(at('foo.ts|')).toEqual({ active: true, prefix: 'foo.ts', startIndex: 0, hasSigil: false });
+    it('does not open on a bare token ending in an extension', () => {
+        expect(at('foo.ts|')).toBeNull();
     });
 
     it('does not open on a bare prose word', () => {
@@ -450,11 +453,11 @@ describe('getFileMentionContext', () => {
     });
 
     it('does not open when the caret is mid-token', () => {
-        expect(at('src/foo.t|s')).toBeNull();
+        expect(at('@src/foo.t|s')).toBeNull();
     });
 
     it('opens when the caret is at the token end but text follows after a space', () => {
-        expect(at('src/foo| bar')).toEqual({ active: true, prefix: 'src/foo', startIndex: 0, hasSigil: false });
+        expect(at('@src/foo| bar')).toEqual({ active: true, prefix: 'src/foo', startIndex: 0 });
     });
 
     it('leaves slash-command and repo-mention tokens alone', () => {

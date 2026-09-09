@@ -18,14 +18,14 @@ export interface RichTextSegment {
 /** A backtick span with no newline and at least one character inside. */
 const CODE_SPAN = /`([^`\n]+)`/g;
 
-/** Trailing `.ext`, the same shape `getFileMentionContext` treats as a file. */
+/** Trailing `.ext` that makes a whitespace-free token look like a file name. */
 const FILE_EXTENSION_SUFFIX = /\.[A-Za-z0-9_]+$/;
 
 /**
  * Whether a code span's contents look like a file path rather than prose or an
  * inline code snippet. Deliberately narrow: only whitespace-free tokens that
- * contain a `/` or end in an extension, mirroring the trigger-less rule in
- * {@link getFileMentionContext}, so ordinary `` `npm test` `` stays unstyled.
+ * contain a `/` or end in an extension, so ordinary `` `npm test` `` stays
+ * unstyled.
  */
 export function isFilePathCodeSpan(inner: string): boolean {
     if (!inner || /\s/.test(inner)) return false;
