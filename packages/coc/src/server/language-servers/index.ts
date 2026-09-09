@@ -30,3 +30,4 @@ export {
     resolveLanguageServerDefinitions,
     writeLanguageServerConfig,
 } from './repository';
+export { registerLanguageServerRoutes } from './routes';

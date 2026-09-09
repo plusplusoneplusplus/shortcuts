@@ -16,6 +16,8 @@ and transport code stays generic.
   specificity, then id), LSP language-id resolution, and project-root discovery
   from root markers.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
+- `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
+  registered from `src/server/routes/index.ts`.
 - `repository.ts` — per-workspace persistence of `language-servers.json` under
   `getRepoDataPath`, plus `resolveLanguageServerDefinitions` for the definitions
   a workspace may actually start.
@@ -32,6 +34,9 @@ and transport code stays generic.
 - Selection must not depend on input order.
 - Only configuration is persisted. Buffers, diagnostics, and connections stay in
   memory.
+- Responses expose `effective` (presets layered with overrides) and `startable`
+  (what may actually run). Warning file paths and other host details stay out of
+  browser payloads.
 - A write validates everything first; one field-level error aborts the whole
   write so the last valid configuration stays on disk. A corrupt file on read
   falls back to disabled rather than starting an unconfigured server.
