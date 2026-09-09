@@ -59,3 +59,9 @@ export type {
     ServerRequestHandler,
 } from './connection';
 export { LanguageServerConnection, LanguageServerRequestError } from './connection';
+export type {
+    LanguageServerSessionOptions,
+    LanguageServerSessionState,
+    LanguageServerStatus,
+} from './session';
+export { LanguageServerSession } from './session';

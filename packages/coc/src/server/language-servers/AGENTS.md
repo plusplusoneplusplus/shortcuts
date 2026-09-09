@@ -60,6 +60,25 @@ and transport code stays generic.
   listener; the stream ending does the same.
 - Failures arrive as `LanguageServerRequestError` with a `failure` of `timeout`,
   `cancelled`, `closed`, `server-error`, or `write-failed`.
+- `session.ts` — `LanguageServerSession` owns one process: it spawns
+  `definition.command` with `definition.args` and `shell: false` in the resolved
+  `rootPath`, runs `initialize`/`initialized`/`shutdown`/`exit`, and wraps a
+  `LanguageServerConnection`. `getState()` reports the concise status set —
+  `disabled`, `unavailable`, `starting`, `ready`, `reconnecting`, `failed` —
+  plus the server name, version, and negotiated capabilities. `disabled` covers
+  both a config-disabled definition and one stopped because nothing needs it.
+  A missing executable is `unavailable`, not `failed`.
+- `attach()` returns a release function. The process stops
+  `idleTimeoutMs` after the last reference releases; an unexpected exit while
+  references remain restarts with doubling backoff up to `maxRestarts`, then
+  settles on `failed` until `restart()` clears the budget. Process `exit` and
+  `error` handlers are bound per child, so a previous process's late exit never
+  disposes its successor's connection.
+- `onNotification`, `onRequest`, and `onReady` handlers are re-registered on
+  every new connection, so a caller subscribes once and keeps receiving
+  diagnostics across restarts. `onReady` is where the document layer replays
+  open buffers before resuming queries. `sendRequest` starts the server on
+  demand.
 
 ## Clients
 
@@ -86,8 +105,10 @@ and transport code stays generic.
 - `node scripts/run-vitest.mjs test/server/language-servers` from `packages/coc`.
   `test/server/language-servers/fixtures/echo-language-server.mjs` is a
   deterministic non-TypeScript server speaking real LSP framing over stdio.
-  The connection suite spawns it, which proves the runtime carries no
-  TypeScript-specific routing. Add generic protocol coverage there, not against
+  The connection and session suites spawn it, which proves the runtime carries
+  no TypeScript-specific routing. It answers `getInit` with the received
+  `initialize` params and its working directory, and dies on `crash` for
+  restart-backoff tests. Add generic protocol coverage there, not against
   a real `tsserver`.
 - `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
   from `packages/coc`.

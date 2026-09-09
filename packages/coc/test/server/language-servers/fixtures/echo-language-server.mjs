@@ -10,6 +10,7 @@
  * Supported requests:
  *   initialize            -> capabilities, plus the received initializationOptions
  *   echo                  -> returns the params unchanged
+ *   getInit               -> the received initialize params plus process.cwd()
  *   slow                  -> never replies, for timeout and cancellation tests
  *   fail                  -> replies with a JSON-RPC error
  *   askClient             -> sends a server-to-client request and returns its result
@@ -18,6 +19,7 @@
  *   textDocument/didOpen  -> publishes one diagnostic naming the document
  *   $/cancelRequest       -> replies to the cancelled `slow` request with -32800
  *   exit                  -> terminates the process
+ *   crash                 -> dies with a non-zero code, for restart tests
  */
 
 import process from 'node:process';
@@ -25,6 +27,7 @@ import process from 'node:process';
 const SEPARATOR = '\r\n\r\n';
 let buffer = Buffer.alloc(0);
 let nextServerRequestId = 1;
+let lastInitializeParams = null;
 const cancellable = new Map();
 const clientReplies = new Map();
 
@@ -46,6 +49,7 @@ function handle(message) {
     }
     switch (method) {
         case 'initialize':
+            lastInitializeParams = params ?? null;
             send({
                 jsonrpc: '2.0',
                 id,
@@ -63,6 +67,11 @@ function handle(message) {
             return;
         case 'initialized':
         case 'workspace/didChangeConfiguration':
+            return;
+        case 'getInit':
+            // Lets a test inspect exactly what the client sent in `initialize`,
+            // plus the working directory the process was spawned in.
+            send({ jsonrpc: '2.0', id, result: { params: lastInitializeParams, cwd: process.cwd() } });
             return;
         case 'echo':
             send({ jsonrpc: '2.0', id, result: params ?? null });
@@ -84,6 +93,10 @@ function handle(message) {
             return;
         case 'exit':
             process.exit(0);
+            return;
+        case 'crash':
+            // Simulates an unexpected death, for restart-backoff tests.
+            process.exit(3);
             return;
         case '$/cancelRequest': {
             const target = params?.id;
