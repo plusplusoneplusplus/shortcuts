@@ -16,6 +16,9 @@ and transport code stays generic.
   specificity, then id), LSP language-id resolution, and project-root discovery
   from root markers.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
+- `repository.ts` — per-workspace persistence of `language-servers.json` under
+  `getRepoDataPath`, plus `resolveLanguageServerDefinitions` for the definitions
+  a workspace may actually start.
 
 ## Rules
 
@@ -27,6 +30,11 @@ and transport code stays generic.
 - A workspace definition sharing a preset id overrides that preset and keeps
   `builtIn: true`, so presets can be repointed but not deleted.
 - Selection must not depend on input order.
+- Only configuration is persisted. Buffers, diagnostics, and connections stay in
+  memory.
+- A write validates everything first; one field-level error aborts the whole
+  write so the last valid configuration stays on disk. A corrupt file on read
+  falls back to disabled rather than starting an unconfigured server.
 
 ## Tests
 
