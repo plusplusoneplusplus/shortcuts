@@ -16,6 +16,10 @@ and transport code stays generic.
   specificity, then id), LSP language-id resolution, and project-root discovery
   from root markers.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
+- `adapters.ts` — `prepareDefinitionForRoot`, the one language-neutral hook the
+  manager calls before starting a session.
+- `typescript-adapter.ts` — TypeScript's answer to that hook: which
+  `typescript-language-server` runs and which TypeScript library it drives.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -119,6 +123,32 @@ and transport code stays generic.
 - `disposeWorkspace`, `disposeEditingSession`, and `dispose` release processes,
   timers, and the config subscription. After `dispose` every `acquire` is
   refused.
+
+## Runtime preparation (`adapters.ts`, `typescript-adapter.ts`)
+
+- The manager calls `prepareDefinitionForRoot(definition, rootPath, deps)` once
+  per session it creates. An adapter may rewrite `command`, `args`, and
+  `initializationOptions`, and returns a `runtimeLabel` plus a `commandLabel`.
+  Nothing else in the runtime branches on a language.
+- An adapter claims a definition only when it is a built-in preset that still
+  points at its own command. Repointing a preset in workspace settings is an
+  explicit choice, and preparation must not undo it.
+- `typescript-adapter.ts` walks up from the project root for
+  `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
+  copy packaged with CoC, then leaves the configured executable for `PATH`. The
+  server is run as `node <cli.mjs> --stdio` rather than through a
+  `node_modules/.bin` shim, because that shim is a shell script on POSIX and a
+  `.cmd` file on Windows and the definition contract forbids a shell.
+- TypeScript itself is resolved the same way: a workspace `typescript` at least
+  `MIN_WORKSPACE_TYPESCRIPT_VERSION` wins and is passed as
+  `initializationOptions.tsserver.path`; an older one is rejected with a note
+  and the packaged version is used instead. A `tsserver.path` already in the
+  configuration is never overwritten.
+- Resolved paths are host paths. They go into the definition the session
+  spawns, never into a browser payload. What the browser sees is
+  `state.runtime` (`Server: workspace · TypeScript 5.9.3: workspace`), and
+  `commandLabel` is what a missing-executable status names, so an absolute
+  fallback path cannot leak through `Executable not found`.
 
 ## Browser bridge (`uri-mapping.ts`, `ws-bridge.ts`)
 

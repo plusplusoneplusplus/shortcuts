@@ -42,6 +42,11 @@ export interface LanguageServerSessionState {
     capabilities?: Record<string, unknown>;
     /** Capabilities the running server registered after initialization. */
     dynamicRegistrations?: DynamicRegistration[];
+    /**
+     * Which executable and toolchain this session resolved, e.g. the workspace
+     * TypeScript versus the packaged one. Short text only, never a host path.
+     */
+    runtime?: string;
     /** Restarts already attempted since the last successful start. */
     restarts: number;
 }
@@ -50,6 +55,16 @@ export interface LanguageServerSessionOptions {
     definition: LanguageServerDefinition;
     /** Project root for the server, normally from `resolveServerRoot`. */
     rootPath: string;
+    /**
+     * Summary of the resolved runtime, surfaced in the state so a user can see
+     * which toolchain answered. Must not contain host paths.
+     */
+    runtimeLabel?: string;
+    /**
+     * Name to use for the executable in user-facing text. An adapter resolves
+     * `command` to an absolute host path, which must not reach the browser.
+     */
+    commandLabel?: string;
     /** Client capabilities sent in `initialize`. Defaults to `DEFAULT_CLIENT_CAPABILITIES`. */
     clientCapabilities?: JsonValue;
     /** Bound on the initialize handshake. Defaults to 20 seconds. */
@@ -104,6 +119,7 @@ export class LanguageServerSession {
             definitionId: this.definition.id,
             displayName: this.definition.displayName,
             restarts: 0,
+            runtime: options.runtimeLabel,
         };
     }
 
@@ -500,7 +516,7 @@ export class LanguageServerSession {
         this.setState({
             status: missing ? 'unavailable' : 'failed',
             detail: missing
-                ? `Executable not found: ${this.definition.command}`
+                ? `Executable not found: ${this.options.commandLabel ?? this.definition.command}`
                 : this.describeFailure('Language server could not start', error),
             capabilities: undefined,
             dynamicRegistrations: [],

@@ -30,6 +30,14 @@ export {
     resolveLanguageServerDefinitions,
     writeLanguageServerConfig,
 } from './repository';
+export type { PreparedDefinition, PrepareDefinitionDeps } from './adapters';
+export { prepareDefinitionForRoot } from './adapters';
+export type { TypeScriptRuntime, TypeScriptRuntimeDeps, TypeScriptRuntimeOrigin } from './typescript-adapter';
+export {
+    MIN_WORKSPACE_TYPESCRIPT_VERSION,
+    applyTypeScriptRuntime,
+    resolveTypeScriptRuntime,
+} from './typescript-adapter';
 export { registerLanguageServerRoutes } from './routes';
 export type {
     JsonRpcErrorBody,

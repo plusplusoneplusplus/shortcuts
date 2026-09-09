@@ -145,6 +145,27 @@ describe('LanguageServerSession startup', () => {
         expect(session.getState().detail).toContain('coc-language-server-that-does-not-exist');
     });
 
+    it('names the executable by its label, so a resolved host path stays off the status', async () => {
+        const { session } = createSession(
+            fixtureDefinition({
+                command: path.join(path.sep, 'opt', 'coc-private', 'missing-language-server'),
+                args: [],
+            }),
+            { startTimeoutMs: 2_000, commandLabel: 'typescript-language-server' },
+        );
+        await expect(session.start()).rejects.toThrow();
+        await waitFor(() => session.status !== 'starting');
+        expect(session.status).toBe('unavailable');
+        expect(session.getState().detail).toBe('Executable not found: typescript-language-server');
+    });
+
+    it('reports the resolved runtime in the state from the first status onwards', () => {
+        const { session } = createSession(fixtureDefinition(), {
+            runtimeLabel: 'Server: workspace \u00b7 TypeScript 5.9.2: workspace',
+        });
+        expect(session.getState().runtime).toBe('Server: workspace \u00b7 TypeScript 5.9.2: workspace');
+    });
+
     it('fails when the process starts but never answers initialize', async () => {
         // A process that reads stdin forever and writes nothing back.
         const { session } = createSession(

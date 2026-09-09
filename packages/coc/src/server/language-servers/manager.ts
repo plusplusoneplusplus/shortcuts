@@ -14,6 +14,8 @@
 import { LanguageServerSession } from './session';
 import type { LanguageServerSessionOptions, LanguageServerSessionState } from './session';
 import { onLanguageServerConfigChanged, resolveLanguageServerDefinitions } from './repository';
+import { prepareDefinitionForRoot } from './adapters';
+import type { PrepareDefinitionDeps } from './adapters';
 import { resolveLanguageId, resolveServerRoot, selectDefinitionForFile } from './selection';
 import type { JsonValue, LanguageServerDefinition } from './types';
 
@@ -72,6 +74,11 @@ export interface LanguageServerManagerOptions {
     exists?: (candidate: string) => boolean;
     /** Injectable for tests: builds the session for a resolved definition. */
     createSession?: (options: LanguageServerSessionOptions) => LanguageServerSession;
+    /**
+     * Injectable for tests: filesystem seams the per-language adapters use to
+     * resolve an executable and a toolchain for a project root.
+     */
+    prepareDeps?: PrepareDefinitionDeps;
 }
 
 const DEFAULT_MAX_SESSIONS = 12;
@@ -207,9 +214,15 @@ export class LanguageServerManager {
         definition: LanguageServerDefinition,
         rootPath: string,
     ): SessionEntry {
+        const prepared = prepareDefinitionForRoot(definition, rootPath, {
+            exists: this.options.exists,
+            ...this.options.prepareDeps,
+        });
         const sessionOptions: LanguageServerSessionOptions = {
-            definition,
+            definition: prepared.definition,
             rootPath,
+            runtimeLabel: prepared.runtimeLabel,
+            commandLabel: prepared.commandLabel,
             clientCapabilities: this.options.clientCapabilities,
             startTimeoutMs: this.options.startTimeoutMs,
             requestTimeoutMs: this.options.requestTimeoutMs,

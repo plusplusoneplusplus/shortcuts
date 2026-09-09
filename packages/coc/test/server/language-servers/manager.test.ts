@@ -19,6 +19,8 @@ import type { SessionClosedEvent } from '../../../src/server/language-servers/ma
 import { LanguageServerSession } from '../../../src/server/language-servers/session';
 import type { LanguageServerSessionOptions } from '../../../src/server/language-servers/session';
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
+import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
+import { TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 
 const FIXTURE_SERVER = path.join(__dirname, 'fixtures', 'echo-language-server.mjs');
@@ -65,7 +67,12 @@ interface Harness {
 
 function createHarness(
     definitions: LanguageServerDefinition[] = [echoDefinition()],
-    options: { maxSessions?: number; enabled?: boolean; exists?: (candidate: string) => boolean } = {},
+    options: {
+        maxSessions?: number;
+        enabled?: boolean;
+        exists?: (candidate: string) => boolean;
+        prepareDeps?: PrepareDefinitionDeps;
+    } = {},
 ): Harness {
     const dataDir = tempDir('coc-lsp-manager-data-');
     const workspaceRoot = tempDir('coc-lsp-manager-repo-');
@@ -84,6 +91,7 @@ function createHarness(
         dataDir,
         maxSessions: options.maxSessions,
         exists: options.exists,
+        prepareDeps: options.prepareDeps,
         createSession: (sessionOptions) => {
             created.push(sessionOptions);
             const session = new LanguageServerSession(sessionOptions);
@@ -428,5 +436,62 @@ describe('LanguageServerManager live process', () => {
 
         await harness.manager.dispose();
         expect(result.handle.session.isDisposed).toBe(true);
+    });
+});
+
+describe('LanguageServerManager runtime preparation', () => {
+    const nodePath = path.join(path.sep, 'usr', 'bin', 'node');
+
+    /** A fake host where the workspace has both the server and TypeScript. */
+    function typescriptDeps(workspaceRoot: string): PrepareDefinitionDeps {
+        const root = path.resolve(workspaceRoot);
+        const cli = path.join(root, 'node_modules', 'typescript-language-server', 'lib', 'cli.mjs');
+        const manifest = path.join(root, 'node_modules', 'typescript', 'package.json');
+        const tsserver = path.join(root, 'node_modules', 'typescript', 'lib', 'tsserver.js');
+        const present = new Set([cli, manifest, tsserver]);
+        return {
+            exists: (candidate) => present.has(candidate),
+            readJson: (file) => (file === manifest ? { version: '5.9.2' } : undefined),
+            resolveBundled: () => undefined,
+            nodePath,
+        };
+    }
+
+    it('hands the session the resolved TypeScript runtime instead of the bare command', () => {
+        const workspaceRoot = tempDir('coc-lsp-ts-repo-');
+        const harness = createHarness([{ ...TYPESCRIPT_PRESET, enabled: true }], {
+            prepareDeps: typescriptDeps(workspaceRoot),
+        });
+        const result = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/index.ts',
+        });
+
+        expect(result.ok).toBe(true);
+        const sessionOptions = harness.created[0];
+        expect(sessionOptions.definition.command).toBe(nodePath);
+        expect(sessionOptions.definition.args[0]).toContain('typescript-language-server');
+        expect(sessionOptions.definition.initializationOptions).toEqual({
+            tsserver: { path: path.join(path.resolve(workspaceRoot), 'node_modules', 'typescript', 'lib', 'tsserver.js') },
+        });
+        expect(sessionOptions.runtimeLabel).toBe('Server: workspace \u00b7 TypeScript 5.9.2: workspace');
+        expect(sessionOptions.commandLabel).toBe('typescript-language-server');
+        // The state a browser may see names the toolchain, never a host path.
+        const state = harness.manager.listStates()[0];
+        expect(state.runtime).toBe('Server: workspace \u00b7 TypeScript 5.9.2: workspace');
+        expect(JSON.stringify(state)).not.toContain('node_modules');
+    });
+
+    it('leaves a non-TypeScript definition exactly as configured', () => {
+        const harness = createHarness();
+        acquireTxt(harness, 'browser-1');
+
+        const sessionOptions = harness.created[0];
+        expect(sessionOptions.definition.command).toBe(process.execPath);
+        expect(sessionOptions.definition.args).toEqual([FIXTURE_SERVER]);
+        expect(sessionOptions.runtimeLabel).toBeUndefined();
+        expect(sessionOptions.commandLabel).toBeUndefined();
     });
 });
