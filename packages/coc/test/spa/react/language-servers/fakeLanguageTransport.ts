@@ -24,11 +24,22 @@ export interface SentNotification {
     params: Record<string, unknown>;
 }
 
+export interface SentRequest {
+    method: string;
+    params: unknown;
+    /** The provider layer's cancellation signal, when it passed one. */
+    signal?: AbortSignal;
+}
+
+/** A scripted answer. Throw to make the request fail. */
+export type RequestResponder = (params: unknown, signal?: AbortSignal) => unknown;
+
 
 /** One host attachment, shared by every view of the same path. */
 export class FakeAttachment {
     readonly notifications: SentNotification[] = [];
-    readonly requests: { method: string; params: unknown }[] = [];
+    readonly requests: SentRequest[] = [];
+    private readonly responders = new Map<string, RequestResponder>();
     refCount = 0;
     released = false;
 
@@ -56,9 +67,13 @@ export class FakeAttachment {
             onUnavailable: (listener) => add(self.unavailableListeners, listener),
             onNotification: (listener) => add(self.notificationListeners, listener),
             onStatus: (listener) => add(self.statusListeners, listener),
-            sendRequest: async <T,>(method: string, params?: unknown) => {
-                self.requests.push({ method, params });
-                return undefined as T;
+            sendRequest: async <T,>(method: string, params?: unknown, options?: { signal?: AbortSignal }) => {
+                self.requests.push({ method, params, signal: options?.signal });
+                const responder = self.responders.get(method);
+                if (!responder) {
+                    return undefined as T;
+                }
+                return (await responder(params, options?.signal)) as T;
             },
             sendNotification: (method: string, params?: unknown) => {
                 if (!self.info) {
@@ -77,6 +92,15 @@ export class FakeAttachment {
                 }
             },
         };
+    }
+
+    /** Scripts the answer to one request method. */
+    respond(method: string, responder: RequestResponder): void {
+        this.responders.set(method, responder);
+    }
+
+    lastRequest(method: string): SentRequest | undefined {
+        return [...this.requests].reverse().find((entry) => entry.method === method);
     }
 
     /** The host reports a live session; this is the replay signal. */
