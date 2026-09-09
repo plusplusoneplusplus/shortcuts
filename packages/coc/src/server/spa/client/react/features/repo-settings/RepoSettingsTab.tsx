@@ -29,6 +29,7 @@ import { RepoPreferencesSection } from './RepoPreferencesSection';
 import { LlmToolsPanel } from './LlmToolsPanel';
 import { NotesSettingsSection } from './NotesSettingsSection';
 import { SyncSettingsSection } from './SyncSettingsSection';
+import { LanguageServersPanel } from '../language-servers/LanguageServersPanel';
 import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import {
     SectionCard,
@@ -59,6 +60,7 @@ const NAV_GROUPS: SettingsNavGroup<ActiveSection>[] = [
             { id: 'preferences', label: 'Preferences',  title: 'Preferences',  description: 'Default models, execution settings, and skills' },
             { id: 'tasks',       label: 'Plans Folder', title: 'Plans Folder', description: 'Configure where AI-generated plans are stored' },
             { id: 'notes',       label: 'Notes',        title: 'Notes',        description: 'Notebook auto-commit and git settings' },
+            { id: 'language-servers', label: 'Language Servers', title: 'Language Servers', description: 'Language support for the explorer editor' },
         ],
     },
     {
@@ -548,6 +550,11 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
                     {activeSection === 'tasks' && (
                         <SectionCard>
                             <TasksSettingsSection workspaceId={workspaceId} />
+                        </SectionCard>
+                    )}
+                    {activeSection === 'language-servers' && (
+                        <SectionCard>
+                            <LanguageServersPanel workspaceId={workspaceId} />
                         </SectionCard>
                     )}
                     {activeSection === 'notes' && !isVirtualWorkspace && (

@@ -53,6 +53,13 @@ and transport code stays generic.
 - `src/server/spa/client/react/features/language-servers/languageServersApi.ts`
   — routes every call through `getCocClientForWorkspace`, so configuration is
   read and written on the host that owns the files.
+- `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
+  — the repo Settings tab's `language-servers` section: master enable toggle,
+  the `effective` list with a per-definition enable checkbox, and an editor for
+  custom definitions. Enabling or editing a preset writes an override keyed on
+  its id; only stored non-preset definitions can be removed. A rejected write
+  keeps the editor open, attaches `errors[].field` messages to their inputs, and
+  restores the echoed last-valid config.
 
 ## Tests
 
