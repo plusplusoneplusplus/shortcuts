@@ -41,6 +41,26 @@ and transport code stays generic.
   write so the last valid configuration stays on disk. A corrupt file on read
   falls back to disabled rather than starting an unconfigured server.
 
+## Runtime transport
+
+- `jsonrpc.ts` — LSP `Content-Length` framing. `encodeMessage` writes the header
+  in ASCII and the body in UTF-8, declaring the byte length. `LspMessageReader`
+  buffers *bytes*, not strings, so a multi-byte character split across chunks
+  decodes correctly. It ignores unknown headers, tolerates header casing,
+  resynchronizes past an unusable header block, and refuses a declared length
+  above `maxMessageBytes` instead of buffering it.
+- `connection.ts` — `LanguageServerConnection` takes any readable/writable pair,
+  so the same class serves a spawned stdio process today and a container relay
+  later. It owns request-id correlation, per-request timeouts, `$/cancelRequest`
+  on timeout or `AbortSignal`, notification fan-out, and answering
+  server-to-client requests (unhandled methods get `-32601`, a throwing handler
+  gets `-32603`). A reply whose request already settled is dropped, which is how
+  stale results from a superseded query never reach a caller. `dispose` rejects
+  everything in flight with a `closed` failure and detaches every stream
+  listener; the stream ending does the same.
+- Failures arrive as `LanguageServerRequestError` with a `failure` of `timeout`,
+  `cancelled`, `closed`, `server-error`, or `write-failed`.
+
 ## Clients
 
 - `packages/coc-client/src/domains/language-servers.ts` — `LanguageServersClient`
@@ -64,6 +84,11 @@ and transport code stays generic.
 ## Tests
 
 - `node scripts/run-vitest.mjs test/server/language-servers` from `packages/coc`.
+  `test/server/language-servers/fixtures/echo-language-server.mjs` is a
+  deterministic non-TypeScript server speaking real LSP framing over stdio.
+  The connection suite spawns it, which proves the runtime carries no
+  TypeScript-specific routing. Add generic protocol coverage there, not against
+  a real `tsserver`.
 - `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
   from `packages/coc`.
 - `npm run test:run` from `packages/coc-client`.

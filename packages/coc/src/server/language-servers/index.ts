@@ -31,3 +31,31 @@ export {
     writeLanguageServerConfig,
 } from './repository';
 export { registerLanguageServerRoutes } from './routes';
+export type {
+    JsonRpcErrorBody,
+    JsonRpcId,
+    JsonRpcMessage,
+    JsonRpcNotification,
+    JsonRpcRequest,
+    JsonRpcResponse,
+    JsonRpcValue,
+    LspFramingErrorReason,
+    LspMessageReaderOptions,
+} from './jsonrpc';
+export {
+    JSON_RPC_ERROR_CODES,
+    LspFramingError,
+    LspMessageReader,
+    encodeMessage,
+    isNotification,
+    isRequest,
+    isResponse,
+} from './jsonrpc';
+export type {
+    LanguageServerConnectionOptions,
+    LanguageServerRequestFailure,
+    SendRequestOptions,
+    ServerNotificationHandler,
+    ServerRequestHandler,
+} from './connection';
+export { LanguageServerConnection, LanguageServerRequestError } from './connection';
