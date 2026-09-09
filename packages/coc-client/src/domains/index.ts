@@ -8,6 +8,7 @@ export { ExplorerClient } from './explorer';
 export { ForEachClient } from './for-each';
 export { GitClient } from './git';
 export { HealthClient } from './health';
+export { LanguageServersClient, parseLanguageServerRejection } from './language-servers';
 export { MemoryClient, MemoryV2Client } from './memory';
 export { NativeCliSessionsClient } from './native-cli-sessions';
 export { NativeCopilotSessionsClient } from './native-copilot-sessions';

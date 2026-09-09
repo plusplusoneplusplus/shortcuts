@@ -1,4 +1,4 @@
-import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, CronsClient, MapReduceClient, MemoryClient, MemoryV2Client, MyWorkClient, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, CronsClient, LanguageServersClient, MapReduceClient, MemoryClient, MemoryV2Client, MyWorkClient, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -14,6 +14,7 @@ export class CocClient {
   readonly forEach: ForEachClient;
   readonly git: GitClient;
   readonly health: HealthClient;
+  readonly languageServers: LanguageServersClient;
   readonly memory: MemoryClient;
   readonly memoryV2: MemoryV2Client;
   readonly nativeCliSessions: NativeCliSessionsClient;
@@ -59,6 +60,7 @@ export class CocClient {
     this.forEach = new ForEachClient(this.transport);
     this.git = new GitClient(this.transport);
     this.health = new HealthClient(this.transport);
+    this.languageServers = new LanguageServersClient(this.transport);
     this.memory = new MemoryClient(this.transport);
     this.memoryV2 = new MemoryV2Client(this.transport);
     this.nativeCliSessions = new NativeCliSessionsClient(this.transport);

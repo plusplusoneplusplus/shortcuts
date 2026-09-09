@@ -41,6 +41,22 @@ and transport code stays generic.
   write so the last valid configuration stays on disk. A corrupt file on read
   falls back to disabled rather than starting an unconfigured server.
 
+## Clients
+
+- `packages/coc-client/src/domains/language-servers.ts` — `LanguageServersClient`
+  (`get`/`replace`/`update`, exposed as `client.languageServers`) plus
+  `parseLanguageServerRejection`, which unpacks a `400` into `errors[].field`
+  and the echoed last-valid `config`. The contract mirror lives in
+  `packages/coc-client/src/contracts/language-servers.ts`; `packages/coc`
+  typechecks against coc-client's built `dist`, so a contract change needs
+  `npm run build` in `packages/coc-client`.
+- `src/server/spa/client/react/features/language-servers/languageServersApi.ts`
+  — routes every call through `getCocClientForWorkspace`, so configuration is
+  read and written on the host that owns the files.
+
 ## Tests
 
-`node scripts/run-vitest.mjs test/server/language-servers` from `packages/coc`.
+- `node scripts/run-vitest.mjs test/server/language-servers` from `packages/coc`.
+- `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
+  from `packages/coc`.
+- `npm run test:run` from `packages/coc-client`.
