@@ -30,7 +30,7 @@ describe('repo-group-workspace', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-repo-group-'));
-        store = new FileProcessStore(tmpDir);
+        store = new FileProcessStore({ dataDir: tmpDir });
         repoA = await registerRepo('ws-v2-aaa', 'Repo A');
         repoB = await registerRepo('ws-v2-bbb', 'Repo B');
     });

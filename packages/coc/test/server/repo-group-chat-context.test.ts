@@ -42,7 +42,7 @@ describe('repo-group-chat-context', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-repo-group-ctx-'));
-        store = new FileProcessStore(tmpDir);
+        store = new FileProcessStore({ dataDir: tmpDir });
         repoA = await registerRepo('ws-v2-aaa', 'Repo A');
         repoB = await registerRepo('ws-v2-bbb', 'Repo B');
     });
@@ -218,7 +218,6 @@ describe('repo-group-chat-context', () => {
             readOnly: { 'ws-v2-nested': true },
         });
         await expect(resolveRepoGroupChatContext(store, tmpDir, ws.id))
-            .rejects.toThrow(/overlap/i);
             .rejects.toThrow(/overlap/i);
     });
 

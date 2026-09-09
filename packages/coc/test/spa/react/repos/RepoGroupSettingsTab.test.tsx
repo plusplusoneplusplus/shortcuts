@@ -183,13 +183,13 @@ describe('RepoGroupSettingsTab', () => {
 
     it('ticks a member read-only and PATCHes just that flag', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
-        await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-r2')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-r1')).toBeTruthy());
 
-        fireEvent.click(screen.getByTestId('repo-group-member-read-only-r2'));
+        fireEvent.click(screen.getByTestId('repo-group-member-read-only-r1'));
 
         await waitFor(() => expect(mockUpdateRepoGroup)
-            .toHaveBeenCalledWith(GROUP_ID, { readOnly: { r2: true } }, undefined));
-        expect((screen.getByTestId('repo-group-member-read-only-r2') as HTMLInputElement).checked).toBe(true);
+            .toHaveBeenCalledWith(GROUP_ID, { readOnly: { r1: true } }, undefined));
+        expect((screen.getByTestId('repo-group-member-read-only-r1') as HTMLInputElement).checked).toBe(true);
     });
 
     it('shows a loaded flag as ticked and clears it with an explicit false', async () => {
@@ -216,7 +216,7 @@ describe('RepoGroupSettingsTab', () => {
 
         fireEvent.click(screen.getByTestId('repo-group-member-read-only-r1'));
 
-        await waitFor(() => expect(screen.getByTestId('repo-group-member-description-error-r1').textContent)
+        await waitFor(() => expect(screen.getByTestId('repo-group-member-read-only-error-r1').textContent)
             .toContain('readOnly must be a boolean'));
         expect((screen.getByTestId('repo-group-member-read-only-r1') as HTMLInputElement).checked).toBe(false);
     });
