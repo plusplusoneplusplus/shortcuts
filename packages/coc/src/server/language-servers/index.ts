@@ -74,3 +74,20 @@ export type {
     SessionClosedEvent,
 } from './manager';
 export { LanguageServerManager } from './manager';
+export type { DocumentResolution, ResolvedDocument, UriMappingFailure } from './uri-mapping';
+export {
+    BROWSER_URI_SCHEME,
+    browserDocumentUri,
+    isInsideRoot,
+    parseBrowserDocumentUri,
+    resolveWorkspaceDocument,
+    toBrowserUri,
+    toServerUri,
+    translateUris,
+} from './uri-mapping';
+export type {
+    LanguageServerClientMessage,
+    LanguageServerServerMessage,
+    WorkspaceLookup,
+} from './ws-bridge';
+export { LanguageServerWebSocketServer } from './ws-bridge';

@@ -544,9 +544,10 @@ export function toCommentSummary(comment: MarkdownComment): MarkdownCommentSumma
  * Standalone upgrade dispatcher that routes incoming WebSocket upgrades
  * to the correct server based on the request URL pathname.
  *
- * - `/ws`          → processWs (ProcessWebSocketServer)
- * - `/ws/terminal` → terminalWs (TerminalWebSocketServer), if provided
- * - anything else  → socket.destroy()
+ * - `/ws`                 → processWs (ProcessWebSocketServer)
+ * - `/ws/terminal`        → terminalWs (TerminalWebSocketServer), if provided
+ * - `/ws/language-server` → languageServerWs (LanguageServerWebSocketServer), if provided
+ * - anything else         → socket.destroy()
  *
  * Cross-origin policy (mirrors the REST CORS layer via {@link isLoopbackOrigin}):
  * a browser always sends an `Origin` on a WS upgrade. When present, it MUST be a
@@ -559,6 +560,7 @@ export function attachWebSocketUpgradeHandler(
     server: http.Server,
     processWs: ProcessWebSocketServer,
     terminalWs?: { handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): void },
+    languageServerWs?: { handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): void },
 ): void {
     server.on('upgrade', (req, socket: Duplex, head: Buffer) => {
         if (!isWebSocketOriginAllowed(req.headers['origin'])) {
@@ -573,6 +575,8 @@ export function attachWebSocketUpgradeHandler(
             processWs.handleUpgrade(req, socket, head);
         } else if (url.pathname === '/ws/terminal' && terminalWs) {
             terminalWs.handleUpgrade(req, socket, head);
+        } else if (url.pathname === '/ws/language-server' && languageServerWs) {
+            languageServerWs.handleUpgrade(req, socket, head);
         } else {
             socket.destroy();
         }

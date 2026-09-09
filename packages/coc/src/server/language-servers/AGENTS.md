@@ -102,6 +102,41 @@ and transport code stays generic.
   timers, and the config subscription. After `dispose` every `acquire` is
   refused.
 
+## Browser bridge (`uri-mapping.ts`, `ws-bridge.ts`)
+
+- `uri-mapping.ts` translates between browser and host document identity. The
+  browser addresses a file as `coc-file://<workspaceId>/<relative/path>`; the
+  bridge maps it to the owning host's `file://` URI and back. `toServerUri`
+  refuses a URI with another scheme, another workspace, or a path that escapes
+  the workspace root, so the mapping is also the access check. `toBrowserUri`
+  leaves an out-of-workspace dependency or a non-`file:` scheme untouched, which
+  is how the client can tell a live repo document from an external target.
+  `translateUris` deep-copies a payload, rewriting only LSP URI keys (`uri`,
+  `targetUri`, `newUri`, `oldUri`, `rootUri`, `documentUri`, `externalUri`), and
+  rejects the whole payload when one URI cannot be mapped.
+- `ws-bridge.ts` — `LanguageServerWebSocketServer(workspaces, manager)` serves
+  `/ws/language-server`. `workspaceId` and `editingSessionId` come from the
+  upgrade URL and are validated against the workspace list before any process is
+  touched; the origin check is the shared one in
+  `src/server/streaming/websocket.ts`, which routes the path to this server.
+- Client messages: `lsp-attach`, `lsp-detach`, `lsp-request`, `lsp-cancel`,
+  `lsp-notify`, `ping`. Server messages: `lsp-welcome`, `lsp-attached`,
+  `lsp-unavailable`, `lsp-response`, `lsp-notification`, `lsp-status`,
+  `lsp-detached`, `lsp-error`, `pong`. This shape is the transport contract a
+  container relay implements, so the editor client does not change when the
+  server moves off this host.
+- An attachment is one document on one socket; it holds one manager reference
+  and its own in-flight request map, so `lsp-cancel` and a closed socket both
+  abort cleanly. Server notifications are subscribed once per session key per
+  socket (`textDocument/publishDiagnostics`, `window/showMessage`,
+  `window/logMessage`, `$/progress`) and carry `sessionKey`, since diagnostics
+  are session-wide rather than per attachment. A manager-initiated close detaches
+  every affected attachment with the manager's reason, which is the client's cue
+  to re-attach and replay its buffers.
+- Not wired into server startup yet: nothing constructs the manager or passes the
+  bridge to `attachWebSocketUpgradeHandler` in production, and server-to-client
+  requests such as `workspace/configuration` are still answered `-32601`.
+
 ## Clients
 
 - `packages/coc-client/src/domains/language-servers.ts` — `LanguageServersClient`
@@ -131,7 +166,9 @@ and transport code stays generic.
   no TypeScript-specific routing. It answers `getInit` with the received
   `initialize` params and its working directory, and dies on `crash` for
   restart-backoff tests. Add generic protocol coverage there, not against
-  a real `tsserver`.
+  a real `tsserver`. The bridge suite drives a real WebSocket against a real
+  manager and that fixture, so it covers upgrade scoping, URI refusal, and
+  cancellation end to end.
 - `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
   from `packages/coc`.
 - `npm run test:run` from `packages/coc-client`.
