@@ -130,7 +130,7 @@ Quota and model-catalog lookups spawn the `@openai/codex` CLI shipped as a depen
 
 ### Model catalog and reasoning levels
 
-`mapCatalogModel` keeps only `visibility: 'list'` models and normalizes `supported_reasoning_levels` against `REASONING_LEVEL_ORDER` — a hardcoded low→high list mirroring `ModelReasoningEffort` in `@openai/codex-sdk`'s `index.d.ts` (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, `persistent`). The intersection both sorts the catalog's arbitrary order and drops unknown levels, so a level the SDK adds is invisible in the UI until the list is extended — check it on every `@openai/codex-sdk` bump. `default_reasoning_level` is advertised only when it survives that filter.
+`mapCatalogModel` keeps only `visibility: 'list'` models and normalizes `supported_reasoning_levels` against `REASONING_LEVEL_ORDER` — a hardcoded low→high list mirroring `ModelReasoningEffort` in the Codex SDK's published TypeScript declaration (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, `persistent`). The intersection both sorts the catalog's arbitrary order and drops unknown levels, so a level the SDK adds is invisible in the UI until the list is extended — check it on every `@openai/codex-sdk` bump. `default_reasoning_level` is advertised only when it survives that filter.
 
 ### Compaction
 
@@ -228,7 +228,7 @@ Detection is content-based: `evaluateClaudeImageFile` sniffs magic numbers, so a
 
 ### Additional directories
 
-`resolveAdditionalDirectories` widens filesystem scope via the SDK's `additionalDirectories` option, always granting `~/.coc` and `os.tmpdir()` so out-of-repo skill files and temp artifacts stay readable beyond the per-request `workingDirectory`/`cwd`. Caller-supplied `SendMessageOptions.additionalDirectories` are merged; all entries are resolved absolute and de-duplicated (case-insensitively on Windows).
+External directory policy widens filesystem scope beyond the per-request `workingDirectory`/`cwd`. After Copilot creates or resumes the session, `RequestRunner` adds writable and protected external roots through `session.rpc.permissions.paths.add`; when `SendMessageOptions.readOnlyDirectories` is present, it also applies sandbox `readonlyPaths` through `session.rpc.options.update` before sending the prompt. Rejected or unsupported RPC updates fail the turn, and sandbox bypass requests are denied. Claude maps all external roots to the SDK's `additionalDirectories`, enables a required sandbox with `filesystem.denyWrite` for protected roots, preserves writes to the working directory, writable members, `~/.coc`, and the temp directory, and forbids unsandboxed commands. Codex and OpenCode reject protected turns before session creation because their current adapters cannot express mixed access safely. Without protected roots, provider sandbox behavior is unchanged.
 
 ### AskUserQuestion suppression
 

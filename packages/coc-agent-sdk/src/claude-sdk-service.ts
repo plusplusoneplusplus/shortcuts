@@ -402,6 +402,15 @@ interface ClaudeQueryOptions {
         effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
         /** Extra absolute directories Claude may access beyond `cwd`. */
         additionalDirectories?: string[];
+        sandbox?: {
+            enabled?: boolean;
+            failIfUnavailable?: boolean;
+            allowUnsandboxedCommands?: boolean;
+            filesystem?: {
+                allowWrite?: string[];
+                denyWrite?: string[];
+            };
+        };
         /**
          * Unified system-prompt option (claude-agent-sdk >= 0.1). A plain
          * string fully replaces the system prompt; the preset object keeps
@@ -1220,6 +1229,17 @@ export class ClaudeSDKService implements ISDKService {
                     ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
                     ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
                     additionalDirectories: this.resolveAdditionalDirectories(options),
+                    ...(options.readOnlyDirectories?.length ? {
+                        sandbox: {
+                            enabled: true,
+                            failIfUnavailable: true,
+                            allowUnsandboxedCommands: false,
+                            filesystem: {
+                                allowWrite: this.resolveWritableDirectories(options),
+                                denyWrite: options.readOnlyDirectories,
+                            },
+                        },
+                    } : {}),
                     ...(model ? { model } : {}),
                     ...(effort ? { effort } : {}),
                     ...systemPromptOptions,
@@ -2150,6 +2170,7 @@ export class ClaudeSDKService implements ISDKService {
     private resolveAdditionalDirectories(options: SendMessageOptions): string[] {
         const candidates = [
             ...(options.additionalDirectories ?? []),
+            ...(options.readOnlyDirectories ?? []),
             path.join(os.homedir(), '.coc'),
             os.tmpdir(),
         ];
@@ -2165,6 +2186,25 @@ export class ClaudeSDKService implements ISDKService {
             result.push(resolved);
         }
         return result;
+    }
+
+    private resolveWritableDirectories(options: SendMessageOptions): string[] {
+        const candidates = [
+            ...(options.additionalDirectories ?? []),
+            ...(options.workingDirectory ? [options.workingDirectory] : []),
+            path.join(os.homedir(), '.coc'),
+            os.tmpdir(),
+        ];
+        const seen = new Set<string>();
+        return candidates.flatMap(candidate => {
+            const resolved = path.resolve(candidate);
+            const key = process.platform === 'win32' || process.platform === 'darwin'
+                ? resolved.toLowerCase()
+                : resolved;
+            if (seen.has(key)) return [];
+            seen.add(key);
+            return [resolved];
+        });
     }
 
     private resolveClaudePermissionOptions(

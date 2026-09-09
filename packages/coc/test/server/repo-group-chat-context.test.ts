@@ -25,6 +25,7 @@ import {
     shouldInjectRepoGroupContext,
 } from '../../src/server/workspaces/repo-group-chat-context';
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
+import { repoGroupRootsOverlap } from '../../src/server/workspaces/repo-group-access-policy';
 
 describe('repo-group-chat-context', () => {
     let tmpDir: string;
@@ -41,27 +42,58 @@ describe('repo-group-chat-context', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-repo-group-ctx-'));
-        store = new FileProcessStore(tmpDir);
+        store = new FileProcessStore({ dataDir: tmpDir });
         repoA = await registerRepo('ws-v2-aaa', 'Repo A');
         repoB = await registerRepo('ws-v2-bbb', 'Repo B');
+    });
+
+    describe('repoGroupRootsOverlap', () => {
+        it('handles Windows drive and UNC roots case-insensitively', () => {
+            expect(repoGroupRootsOverlap(
+                'C:\\src\\Storage-XStore',
+                'c:\\SRC\\Storage-XStore\\src',
+                'win32',
+            )).toBe(true);
+            expect(repoGroupRootsOverlap(
+                '\\\\wsl$\\Ubuntu\\home\\user\\repo',
+                '\\\\WSL$\\UBUNTU\\home\\user\\repo\\src',
+                'win32',
+            )).toBe(true);
+            expect(repoGroupRootsOverlap(
+                '\\\\server\\share',
+                '\\\\server\\share\\protected',
+                'win32',
+            )).toBe(true);
+            expect(repoGroupRootsOverlap(
+                'C:\\src\\repo-a',
+                'C:\\src\\repo-b',
+                'win32',
+            )).toBe(false);
+        });
+
+        it('uses path boundaries for POSIX roots', () => {
+            expect(repoGroupRootsOverlap('/work/repo', '/work/repo/src', 'linux')).toBe(true);
+            expect(repoGroupRootsOverlap('/work/repo', '/work/repository', 'linux')).toBe(false);
+        });
     });
 
     afterEach(() => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('builds the tagged member listing and matching additionalDirectories', async () => {
+    it('builds policy-labelled member rows and writable directories', async () => {
         const ws = await createRepoGroup(tmpDir, store, { name: 'My Team', members: ['ws-v2-aaa', 'ws-v2-bbb'] });
 
         const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
 
         expect(ctx).toBeDefined();
         expect(ctx!.additionalDirectories).toEqual([repoA, repoB]);
+        expect(ctx!.readOnlyDirectories).toEqual([]);
         expect(ctx!.promptBlock).toBe(
             `<${REPO_GROUP_CONTEXT_TAG}>\n` +
             'Repo group "My Team" members:\n' +
-            `- Repo A: ${repoA}\n` +
-            `- Repo B: ${repoB}\n` +
+            `- Repo A [read-write]: ${repoA}\n` +
+            `- Repo B [read-write]: ${repoB}\n` +
             `</${REPO_GROUP_CONTEXT_TAG}>`,
         );
     });
@@ -71,7 +103,7 @@ describe('repo-group-chat-context', () => {
         const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
         const body = ctx!.promptBlock;
         expect(body).not.toMatch(/origin|branch/i);
-        expect(body).toContain(`- Repo A: ${repoA}`);
+        expect(body).toContain(`- Repo A [read-write]: ${repoA}`);
     });
 
     it('appends the membership description to the member line', async () => {
@@ -86,8 +118,8 @@ describe('repo-group-chat-context', () => {
         expect(ctx!.promptBlock).toBe(
             `<${REPO_GROUP_CONTEXT_TAG}>\n` +
             'Repo group "My Team" members:\n' +
-            `- Repo A: ${repoA} — the API server\n` +
-            `- Repo B: ${repoB} — the web client\n` +
+            `- Repo A [read-write]: ${repoA} — the API server\n` +
+            `- Repo B [read-write]: ${repoB} — the web client\n` +
             `</${REPO_GROUP_CONTEXT_TAG}>`,
         );
     });
@@ -101,9 +133,9 @@ describe('repo-group-chat-context', () => {
 
         const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
 
-        expect(ctx!.promptBlock).toContain(`- Repo A: ${repoA}\n`);
-        expect(ctx!.promptBlock).not.toContain(`- Repo A: ${repoA} —`);
-        expect(ctx!.promptBlock).toContain(`- Repo B: ${repoB} — the web client`);
+        expect(ctx!.promptBlock).toContain(`- Repo A [read-write]: ${repoA}\n`);
+        expect(ctx!.promptBlock).not.toContain(`- Repo A [read-write]: ${repoA} —`);
+        expect(ctx!.promptBlock).toContain(`- Repo B [read-write]: ${repoB} — the web client`);
     });
 
     it('produces a byte-identical block to the no-descriptions form when every description is blank', async () => {
@@ -121,8 +153,8 @@ describe('repo-group-chat-context', () => {
         expect(plainCtx!.promptBlock).toBe(
             `<${REPO_GROUP_CONTEXT_TAG}>\n` +
             'Repo group "Same" members:\n' +
-            `- Repo A: ${repoA}\n` +
-            `- Repo B: ${repoB}\n` +
+            `- Repo A [read-write]: ${repoA}\n` +
+            `- Repo B [read-write]: ${repoB}\n` +
             `</${REPO_GROUP_CONTEXT_TAG}>`,
         );
     });
@@ -145,108 +177,48 @@ describe('repo-group-chat-context', () => {
         ).toBe(true);
     });
 
-    it('marks a read-only member and appends the instruction line', async () => {
+    it('separates read-only members and policy changes drift the prompt block', async () => {
         const ws = await createRepoGroup(tmpDir, store, {
-            name: 'My Team',
+            name: 'Policy',
             members: ['ws-v2-aaa', 'ws-v2-bbb'],
-            descriptions: { 'ws-v2-aaa': 'the API server' },
-            readOnly: { 'ws-v2-aaa': true },
         });
-
-        const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
-
-        expect(ctx!.promptBlock).toBe(
-            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
-            'Repo group "My Team" members:\n' +
-            `- Repo A: ${repoA} [read-only] — the API server\n` +
-            `- Repo B: ${repoB}\n` +
-            'Repos marked [read-only] must not be modified: do not edit, create, delete, or commit files under those paths. Read and search them freely.\n' +
-            `</${REPO_GROUP_CONTEXT_TAG}>`,
-        );
-        // The flag is a prompt hint only — a read-only repo stays readable.
-        expect(ctx!.additionalDirectories).toEqual([repoA, repoB]);
-    });
-
-    it('marks a read-only member that has no description', async () => {
-        const ws = await createRepoGroup(tmpDir, store, {
-            name: 'My Team',
-            members: ['ws-v2-aaa', 'ws-v2-bbb'],
+        const before = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+        await updateRepoGroup(tmpDir, store, ws.id, {
             readOnly: { 'ws-v2-bbb': true },
         });
 
-        const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
-
-        expect(ctx!.promptBlock).toBe(
-            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
-            'Repo group "My Team" members:\n' +
-            `- Repo A: ${repoA}\n` +
-            `- Repo B: ${repoB} [read-only]\n` +
-            'Repos marked [read-only] must not be modified: do not edit, create, delete, or commit files under those paths. Read and search them freely.\n' +
-            `</${REPO_GROUP_CONTEXT_TAG}>`,
-        );
-        expect(ctx!.additionalDirectories).toEqual([repoA, repoB]);
-    });
-
-    it('marks every member when the whole group is read-only', async () => {
-        const ws = await createRepoGroup(tmpDir, store, {
-            name: 'Vendored',
-            members: ['ws-v2-aaa', 'ws-v2-bbb'],
-            readOnly: { 'ws-v2-aaa': true, 'ws-v2-bbb': true },
-        });
-
-        const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
-
-        expect(ctx!.promptBlock).toBe(
-            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
-            'Repo group "Vendored" members:\n' +
-            `- Repo A: ${repoA} [read-only]\n` +
-            `- Repo B: ${repoB} [read-only]\n` +
-            'Repos marked [read-only] must not be modified: do not edit, create, delete, or commit files under those paths. Read and search them freely.\n' +
-            `</${REPO_GROUP_CONTEXT_TAG}>`,
-        );
-        expect(ctx!.additionalDirectories).toEqual([repoA, repoB]);
-    });
-
-    it('renders no marker and no instruction line when no member is read-only', async () => {
-        const plain = await createRepoGroup(tmpDir, store, { name: 'Same', members: ['ws-v2-aaa', 'ws-v2-bbb'] });
-        const cleared = await createRepoGroup(tmpDir, store, {
-            name: 'Same',
-            members: ['ws-v2-aaa', 'ws-v2-bbb'],
-            readOnly: { 'ws-v2-aaa': false, 'ws-v2-bbb': false },
-        });
-
-        const plainCtx = await resolveRepoGroupChatContext(store, tmpDir, plain.id);
-        const clearedCtx = await resolveRepoGroupChatContext(store, tmpDir, cleared.id);
-
-        // Byte-identical to the pre-flag rendering, so existing live sessions
-        // never see drift and never spuriously re-inject.
-        expect(plainCtx!.promptBlock).toBe(
-            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
-            'Repo group "Same" members:\n' +
-            `- Repo A: ${repoA}\n` +
-            `- Repo B: ${repoB}\n` +
-            `</${REPO_GROUP_CONTEXT_TAG}>`,
-        );
-        expect(clearedCtx!.promptBlock).toBe(plainCtx!.promptBlock);
-        expect(plainCtx!.promptBlock).not.toContain('read-only');
-    });
-
-    it('a read-only flag change drifts the block so it is re-injected', async () => {
-        const ws = await createRepoGroup(tmpDir, store, { name: 'G', members: ['ws-v2-aaa'] });
-        const before = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
-
-        await updateRepoGroup(tmpDir, store, ws.id, { readOnly: { 'ws-v2-aaa': true } });
         const after = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
 
+        expect(after!.additionalDirectories).toEqual([repoA]);
+        expect(after!.readOnlyDirectories).toEqual([repoB]);
+        expect(after!.promptBlock).toContain(`- Repo A [read-write]: ${repoA}`);
+        expect(after!.promptBlock).toContain(`- Repo B [read-only]: ${repoB}`);
         expect(after!.promptBlock).not.toBe(before!.promptBlock);
-        expect(
-            shouldInjectRepoGroupContext({
-                context: after,
-                turns: [{ role: 'user', content: 'hi', timestamp: new Date(), repoGroupContext: before!.promptBlock }] as unknown as ConversationTurn[],
-                compaction: undefined,
-                canResumeSession: true,
-            }),
-        ).toBe(true);
+        expect(shouldInjectRepoGroupContext({
+            context: after,
+            turns: [{ role: 'user', content: 'hi', timestamp: new Date(), repoGroupContext: before!.promptBlock }] as unknown as ConversationTurn[],
+            compaction: undefined,
+            canResumeSession: true,
+        })).toBe(true);
+    });
+
+    it('rejects overlapping read-only and read-write member roots', async () => {
+        const nestedRoot = path.join(repoA, 'nested');
+        fs.mkdirSync(nestedRoot, { recursive: true });
+        await store.registerWorkspace({
+            id: 'ws-v2-nested',
+            name: 'Nested',
+            rootPath: nestedRoot,
+        });
+        const ws = await createRepoGroup(tmpDir, store, {
+            name: 'Conflict',
+            members: ['ws-v2-aaa', 'ws-v2-nested'],
+        });
+        await updateRepoGroup(tmpDir, store, ws.id, {
+            readOnly: { 'ws-v2-nested': true },
+        });
+        await expect(resolveRepoGroupChatContext(store, tmpDir, ws.id))
+            .rejects.toThrow(/overlap/i);
     });
 
     it('skips a member whose workspace was removed', async () => {
@@ -256,6 +228,7 @@ describe('repo-group-chat-context', () => {
         const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
 
         expect(ctx!.additionalDirectories).toEqual([repoA]);
+        expect(ctx!.readOnlyDirectories).toEqual([]);
         expect(ctx!.promptBlock).not.toContain('Repo B');
     });
 
@@ -266,6 +239,7 @@ describe('repo-group-chat-context', () => {
         const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
 
         expect(ctx!.additionalDirectories).toEqual([repoA]);
+        expect(ctx!.readOnlyDirectories).toEqual([]);
         expect(ctx!.promptBlock).not.toContain('Repo B');
     });
 
@@ -296,10 +270,12 @@ describe('shouldInjectRepoGroupContext', () => {
     const CONTEXT = {
         promptBlock: '<repo_group_context>\nRepo group "G" members:\n- A: /a\n</repo_group_context>',
         additionalDirectories: ['/a'],
+        readOnlyDirectories: [],
     };
     const DRIFTED = {
         promptBlock: '<repo_group_context>\nRepo group "G" members:\n- A: /a\n- B: /b\n</repo_group_context>',
         additionalDirectories: ['/a', '/b'],
+        readOnlyDirectories: [],
     };
 
     /** A turn at `turnIndex`, one minute apart so timestamp ordering is stable. */

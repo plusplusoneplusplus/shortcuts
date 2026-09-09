@@ -201,8 +201,8 @@ describe('Repo Group Handler', () => {
             expect(body.id).toBe(workspace.id);
             expect(body.name).toBe('Platform');
             expect(body.members).toEqual([
-                { workspaceId: repoA.id, stale: false, name: 'Repo A', rootPath: repoA.rootPath },
-                { workspaceId: repoB.id, stale: false, name: 'Repo B', rootPath: repoB.rootPath },
+                { workspaceId: repoA.id, stale: false, name: 'Repo A', rootPath: repoA.rootPath, readOnly: false },
+                { workspaceId: repoB.id, stale: false, name: 'Repo B', rootPath: repoB.rootPath, readOnly: false },
             ]);
         });
 
@@ -214,8 +214,8 @@ describe('Repo Group Handler', () => {
             const res = await request(`${baseUrl}/api/repo-groups/${workspace.id}`);
             const body = JSON.parse(res.body);
             expect(body.members).toEqual([
-                { workspaceId: repoA.id, stale: true, staleReason: 'workspace-removed' },
-                { workspaceId: repoB.id, stale: true, staleReason: 'path-missing', name: 'Repo B', rootPath: repoB.rootPath },
+                { workspaceId: repoA.id, stale: true, staleReason: 'workspace-removed', readOnly: false },
+                { workspaceId: repoB.id, stale: true, staleReason: 'path-missing', name: 'Repo B', rootPath: repoB.rootPath, readOnly: false },
             ]);
         });
 
@@ -297,8 +297,8 @@ describe('Repo Group Handler', () => {
             });
             expect(res.status).toBe(201);
             expect(JSON.parse(res.body).members).toEqual([
-                { workspaceId: repoA.id, stale: false, name: 'Repo A', rootPath: repoA.rootPath, description: 'the API server' },
-                { workspaceId: repoB.id, stale: false, name: 'Repo B', rootPath: repoB.rootPath },
+                { workspaceId: repoA.id, stale: false, name: 'Repo A', rootPath: repoA.rootPath, description: 'the API server', readOnly: false },
+                { workspaceId: repoB.id, stale: false, name: 'Repo B', rootPath: repoB.rootPath, readOnly: false },
             ]);
             expect(readFile('group-platform').descriptions).toEqual({ [repoA.id]: 'the API server' });
 
@@ -401,86 +401,60 @@ describe('Repo Group Handler', () => {
             expect((await store.getWorkspaces()).every(w => !w.id.startsWith('group-'))).toBe(true);
         });
     });
-    // ------------------------------------------------------------------
-    // Per-member read-only flag (POST / GET / PATCH)
-    // ------------------------------------------------------------------
-
-    describe('member read-only flag', () => {
-        function readFile(groupId: string) {
-            return JSON.parse(fs.readFileSync(
-                path.join(dataDir, 'repos', groupId, 'group.json'), 'utf-8'));
-        }
-
-        it('persists a read-only flag supplied at create time and returns it per member', async () => {
-            const res = await postJSON(`${baseUrl}/api/repo-groups`, {
-                name: 'Guarded',
-                members: [repoA.id, repoB.id],
-                readOnly: { [repoA.id]: true },
-            });
-            expect(res.status).toBe(201);
-            expect(JSON.parse(res.body).members).toEqual([
-                { workspaceId: repoA.id, stale: false, name: 'Repo A', rootPath: repoA.rootPath, readOnly: true },
-                { workspaceId: repoB.id, stale: false, name: 'Repo B', rootPath: repoB.rootPath },
-            ]);
-            expect(readFile('group-guarded').readOnly).toEqual({ [repoA.id]: true });
-
-            const get = await request(`${baseUrl}/api/repo-groups/group-guarded`);
-            const members = JSON.parse(get.body).members;
-            expect(members[0].readOnly).toBe(true);
-            expect(members[1].readOnly).toBeUndefined();
-        });
-
-        it('PATCH sets a flag and a second PATCH with false clears it', async () => {
+    describe('read-only member policy', () => {
+        it('returns readOnly false by default and patches one member at a time', async () => {
             const { workspace } = await createGroup();
+            const initial = JSON.parse((await request(
+                `${baseUrl}/api/repo-groups/${workspace.id}`,
+            )).body);
+            expect(initial.members.map((member: any) => member.readOnly)).toEqual([false, false]);
 
-            const on = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
-                readOnly: { [repoA.id]: true },
-            });
-            expect(on.status).toBe(200);
-            expect(JSON.parse(on.body).members.map((m: any) => m.readOnly)).toEqual([true, undefined]);
-            expect(readFile(workspace.id).readOnly).toEqual({ [repoA.id]: true });
+            const protectedResponse = await patchJSON(
+                `${baseUrl}/api/repo-groups/${workspace.id}`,
+                { readOnly: { [repoB.id]: true } },
+            );
+            expect(protectedResponse.status).toBe(200);
+            expect(JSON.parse(protectedResponse.body).members.map((member: any) => member.readOnly))
+                .toEqual([false, true]);
 
-            const off = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
-                readOnly: { [repoA.id]: false },
-            });
-            expect(off.status).toBe(200);
-            expect(readFile(workspace.id).readOnly).toBeUndefined();
+            const file = JSON.parse(fs.readFileSync(
+                path.join(dataDir, 'repos', workspace.id, 'group.json'),
+                'utf-8',
+            ));
+            expect(file.readOnlyMembers).toEqual([repoB.id]);
         });
 
-        it('drops the read-only flag of a member removed by the same PATCH', async () => {
+        it('preserves descriptions and membership during a policy-only patch', async () => {
             const { workspace } = await createGroup();
             await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
-                readOnly: { [repoA.id]: true, [repoB.id]: true },
+                descriptions: { [repoA.id]: 'implementation target' },
             });
-            await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, { members: [repoB.id] });
-            expect(readFile(workspace.id).readOnly).toEqual({ [repoB.id]: true });
-        });
 
-        it('rejects a non-object or non-boolean readOnly payload with 400', async () => {
-            const { workspace } = await createGroup();
-            for (const bad of [[], 'nope', 42, { [repoA.id]: 'yes' }, { [repoA.id]: 1 }]) {
-                const res = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, { readOnly: bad });
-                expect(res.status).toBe(400);
-                expect(JSON.parse(res.body).error).toContain('object of workspace ID to boolean');
-            }
-            expect(readFile(workspace.id).readOnly).toBeUndefined();
-        });
-
-        it('rejects a read-only flag keyed by a non-member workspace with 400', async () => {
-            const { workspace } = await createGroup('Solo', [repoA.id]);
-            const res = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+            const response = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
                 readOnly: { [repoB.id]: true },
             });
-            expect(res.status).toBe(400);
-            expect(JSON.parse(res.body).error).toContain('not a member of this repo group');
+
+            const body = JSON.parse(response.body);
+            expect(body.members.map((member: any) => member.workspaceId)).toEqual([repoA.id, repoB.id]);
+            expect(body.members[0].description).toBe('implementation target');
         });
 
-        it('rejects a create-time read-only flag for a non-member with 400', async () => {
-            const res = await postJSON(`${baseUrl}/api/repo-groups`, {
-                name: 'Solo', members: [repoA.id], readOnly: { [repoB.id]: true },
+        it('rejects malformed policy maps and non-member keys', async () => {
+            const { workspace } = await createGroup();
+            for (const readOnly of [[], 'nope', 42, { [repoA.id]: 'yes' }]) {
+                const response = await patchJSON(
+                    `${baseUrl}/api/repo-groups/${workspace.id}`,
+                    { readOnly },
+                );
+                expect(response.status).toBe(400);
+                expect(JSON.parse(response.body).error).toContain('workspace ID to boolean');
+            }
+
+            const unknown = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                readOnly: { unknown: true },
             });
-            expect(res.status).toBe(400);
-            expect((await store.getWorkspaces()).every(w => !w.id.startsWith('group-'))).toBe(true);
+            expect(unknown.status).toBe(400);
+            expect(JSON.parse(unknown.body).error).toContain('not a member');
         });
     });
 

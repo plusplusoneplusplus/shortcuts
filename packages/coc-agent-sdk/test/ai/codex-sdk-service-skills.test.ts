@@ -119,6 +119,24 @@ describe('CodexSDKService skills', () => {
         );
     });
 
+    it('fails before starting a thread when protected roots require mixed access', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        const result = await svc.sendMessage({
+            prompt: 'compare',
+            additionalDirectories: ['/writable'],
+            skillDirectories: ['/reference/.github/skills'],
+            readOnlyDirectories: ['/reference'],
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('cannot enforce mixed read-only');
+        expect(codexMock.startThread).not.toHaveBeenCalled();
+    });
+
     it('uses full-access Codex sandbox options for plan mode', async () => {
         svc = new CodexSDKService();
         const codexMock = makeCodexSdkMock();

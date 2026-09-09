@@ -13,9 +13,8 @@
  *
  * The read-only checkbox saves the same way, minus the editing step: ticking it
  * PATCHes immediately, the box flips before the request resolves, and a failure
- * flips it back with the server's message under the row. It is a prompt hint —
- * the server marks the repo `[read-only]` in the context block it injects into
- * group chats — not an enforced permission.
+ * flips it back with the server's message under the row. Provider tools enforce
+ * the saved policy for every group-chat turn.
  *
  * The component never refetches: `members` is the loaded snapshot, and locally
  * saved descriptions and flags are held as overrides on top of it, so a save
@@ -59,6 +58,8 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
     // Read-only flags written since the snapshot, same override role as `saved`.
     const [savedReadOnly, setSavedReadOnly] = useState<Record<string, boolean>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [savingReadOnly, setSavingReadOnly] = useState<Set<string>>(new Set());
+    const [readOnlyErrors, setReadOnlyErrors] = useState<Record<string, string>>({});
     // Escape reverts and blurs the field; the blur handler must not then treat
     // the (already dropped) draft as a save.
     const skipBlur = useRef<Set<string>>(new Set());
@@ -79,26 +80,6 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
             return rest;
         });
     }, []);
-
-    // Optimistic: flip the box now, PATCH, and flip back on failure. `false` is
-    // sent rather than omitted — that is how the server clears the entry.
-    const toggleReadOnly = useCallback(async (member: RepoGroupMember) => {
-        const memberId = member.workspaceId;
-        const previous = isReadOnly(member);
-        const next = !previous;
-
-        setSavedReadOnly(prev => ({ ...prev, [memberId]: next }));
-        clearError(memberId);
-        try {
-            await updateRepoGroup(workspaceId, { readOnly: { [memberId]: next } }, baseUrl);
-        } catch (err: unknown) {
-            setSavedReadOnly(prev => ({ ...prev, [memberId]: previous }));
-            setErrors(prev => ({
-                ...prev,
-                [memberId]: getRepositoryApiErrorMessage(err, 'Failed to save read-only flag'),
-            }));
-        }
-    }, [isReadOnly, clearError, workspaceId, baseUrl]);
 
     const dropDraft = useCallback((memberId: string) => {
         setDrafts(prev => {
@@ -131,6 +112,35 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
         }
     }, [drafts, dropDraft, committed, clearError, workspaceId, baseUrl]);
 
+    const toggleReadOnly = useCallback(async (member: RepoGroupMember) => {
+        const memberId = member.workspaceId;
+        const previous = isReadOnly(member);
+        const next = !previous;
+        setSavedReadOnly(current => ({ ...current, [memberId]: next }));
+        setSavingReadOnly(current => new Set(current).add(memberId));
+        setReadOnlyErrors(current => {
+            if (!(memberId in current)) return current;
+            const rest = { ...current };
+            delete rest[memberId];
+            return rest;
+        });
+        try {
+            await updateRepoGroup(workspaceId, { readOnly: { [memberId]: next } }, baseUrl);
+        } catch (err: unknown) {
+            setSavedReadOnly(current => ({ ...current, [memberId]: previous }));
+            setReadOnlyErrors(current => ({
+                ...current,
+                [memberId]: getRepositoryApiErrorMessage(err, 'Failed to save read-only policy'),
+            }));
+        } finally {
+            setSavingReadOnly(current => {
+                const nextSaving = new Set(current);
+                nextSaving.delete(memberId);
+                return nextSaving;
+            });
+        }
+    }, [baseUrl, isReadOnly, workspaceId]);
+
     if (members.length === 0) {
         return (
             <div className="text-xs text-[#848484] px-3 py-2" data-testid="repo-group-members-empty">
@@ -146,6 +156,7 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                 const value = drafts[memberId] ?? committed(member);
                 const readOnly = isReadOnly(member);
                 const error = errors[memberId];
+                const readOnlyError = readOnlyErrors[memberId];
                 return (
                     <div
                         key={memberId}
@@ -170,7 +181,7 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                             {readOnly && (
                                 <span
                                     data-testid={`repo-group-read-only-badge-${memberId}`}
-                                    title="Marked read-only: the agent is told not to modify this repo"
+                                    title="Provider tools enforce this repo as read-only"
                                     className="px-1 rounded text-[10px] font-semibold bg-[#eef2ff] text-[#3538cd] dark:bg-[#3538cd]/20 dark:text-[#a5b4fc]"
                                 >
                                     read-only
@@ -180,56 +191,65 @@ export function RepoGroupMemberList({ workspaceId, baseUrl, members }: RepoGroup
                                 <span className="text-[#848484] truncate">{member.rootPath}</span>
                             )}
                         </div>
-                        <input
-                            type="text"
-                            value={value}
-                            maxLength={REPO_GROUP_DESCRIPTION_MAX_LENGTH}
-                            placeholder={REPO_GROUP_DESCRIPTION_PLACEHOLDER}
-                            aria-label={`Description for ${member.name || memberId}`}
-                            data-testid={`repo-group-member-description-${memberId}`}
-                            onChange={e => setDrafts(prev => ({ ...prev, [memberId]: e.target.value }))}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    // The blur below must not commit a second
-                                    // time: this render's `drafts` is still the
-                                    // pre-commit one, so it would re-PATCH.
-                                    skipBlur.current.add(memberId);
-                                    void commit(member);
-                                    (e.target as HTMLInputElement).blur();
-                                } else if (e.key === 'Escape') {
-                                    e.preventDefault();
-                                    skipBlur.current.add(memberId);
-                                    dropDraft(memberId);
-                                    (e.target as HTMLInputElement).blur();
-                                }
-                            }}
-                            onBlur={() => {
-                                if (skipBlur.current.delete(memberId)) return;
-                                void commit(member);
-                            }}
-                            className="px-1.5 py-0.5 rounded border border-transparent bg-transparent text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#a0a0a0] dark:placeholder:text-[#6a6a6a] outline-none hover:border-[#e0e0e0] dark:hover:border-[#3c3c3c] focus:border-[#0078d4] focus:bg-white dark:focus:bg-[#1e1e1e]"
-                        />
-                        <label
-                            className="flex items-center gap-1.5 px-1.5 text-[11px] text-[#616161] dark:text-[#999] cursor-pointer w-fit"
-                            htmlFor={`repo-group-member-read-only-${memberId}`}
-                        >
+                        <div className="flex items-center gap-3">
                             <input
-                                type="checkbox"
-                                id={`repo-group-member-read-only-${memberId}`}
-                                checked={readOnly}
-                                aria-label={`Read-only for ${member.name || memberId}`}
-                                data-testid={`repo-group-member-read-only-${memberId}`}
-                                onChange={() => { void toggleReadOnly(member); }}
+                                type="text"
+                                value={value}
+                                maxLength={REPO_GROUP_DESCRIPTION_MAX_LENGTH}
+                                placeholder={REPO_GROUP_DESCRIPTION_PLACEHOLDER}
+                                aria-label={`Description for ${member.name || memberId}`}
+                                data-testid={`repo-group-member-description-${memberId}`}
+                                onChange={e => setDrafts(prev => ({ ...prev, [memberId]: e.target.value }))}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        skipBlur.current.add(memberId);
+                                        void commit(member);
+                                        (e.target as HTMLInputElement).blur();
+                                    } else if (e.key === 'Escape') {
+                                        e.preventDefault();
+                                        skipBlur.current.add(memberId);
+                                        dropDraft(memberId);
+                                        (e.target as HTMLInputElement).blur();
+                                    }
+                                }}
+                                onBlur={() => {
+                                    if (skipBlur.current.delete(memberId)) return;
+                                    void commit(member);
+                                }}
+                                className="min-w-0 flex-1 px-1.5 py-0.5 rounded border border-transparent bg-transparent text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#a0a0a0] dark:placeholder:text-[#6a6a6a] outline-none hover:border-[#e0e0e0] dark:hover:border-[#3c3c3c] focus:border-[#0078d4] focus:bg-white dark:focus:bg-[#1e1e1e]"
                             />
-                            {REPO_GROUP_READ_ONLY_LABEL}
-                        </label>
+                            <label
+                                className="flex shrink-0 items-center gap-1.5 text-[11px] text-[#616161] dark:text-[#999]"
+                                htmlFor={`repo-group-member-read-only-${memberId}`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    role="switch"
+                                    id={`repo-group-member-read-only-${memberId}`}
+                                    checked={readOnly}
+                                    disabled={savingReadOnly.has(memberId)}
+                                    aria-label={`Read-only ${member.name || memberId}`}
+                                    data-testid={`repo-group-member-read-only-${memberId}`}
+                                    onChange={() => void toggleReadOnly(member)}
+                                />
+                                {REPO_GROUP_READ_ONLY_LABEL}
+                            </label>
+                        </div>
                         {error && (
                             <div
                                 className="text-[11px] text-red-700 dark:text-red-400 px-1.5"
                                 data-testid={`repo-group-member-description-error-${memberId}`}
                             >
                                 {error}
+                            </div>
+                        )}
+                        {readOnlyError && (
+                            <div
+                                className="text-[11px] text-red-700 dark:text-red-400 px-1.5"
+                                data-testid={`repo-group-member-read-only-error-${memberId}`}
+                            >
+                                {readOnlyError}
                             </div>
                         )}
                     </div>

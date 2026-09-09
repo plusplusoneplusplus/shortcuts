@@ -2149,6 +2149,39 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(dirs.filter((d) => d === cocDir)).toHaveLength(1);
     });
 
+    it('enforces protected roots through the Claude filesystem sandbox', async () => {
+        queryFn.mockReturnValueOnce(makeMessages([
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        await svc.sendMessage({
+            prompt: 'compare',
+            workingDirectory: '/group',
+            additionalDirectories: ['/writable'],
+            readOnlyDirectories: ['/reference'],
+        });
+
+        const options = queryFn.mock.calls[0][0].options;
+        expect(options.additionalDirectories).toEqual(expect.arrayContaining([
+            path.resolve('/writable'),
+            path.resolve('/reference'),
+        ]));
+        expect(options.sandbox).toEqual({
+            enabled: true,
+            failIfUnavailable: true,
+            allowUnsandboxedCommands: false,
+            filesystem: {
+                allowWrite: [
+                    path.resolve('/writable'),
+                    path.resolve('/group'),
+                    path.join(os.homedir(), '.coc'),
+                    path.resolve(os.tmpdir()),
+                ],
+                denyWrite: ['/reference'],
+            },
+        });
+    });
+
     it('creates new Claude sessions with the caller-visible sessionId', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },

@@ -75,7 +75,7 @@ function isBooleanMap(value: unknown): value is Record<string, boolean> {
         typeof value === 'object' &&
         value !== null &&
         !Array.isArray(value) &&
-        Object.values(value as Record<string, unknown>).every((v) => typeof v === 'boolean')
+        Object.values(value as Record<string, unknown>).every((entry) => typeof entry === 'boolean')
     );
 }
 

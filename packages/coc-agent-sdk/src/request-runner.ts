@@ -38,6 +38,8 @@ import {
     type DangerousCommandGuardOptions,
 } from './dangerous-command-guard';
 import { resolveWorkspaceExecutionContext, translatePathForExecution } from './platform/workspace-execution';
+import * as os from 'os';
+import * as path from 'path';
 
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 
@@ -93,6 +95,48 @@ export class RequestRunner {
         private readonly defaultTimeoutMs: number = DEFAULT_AI_TIMEOUT_MS,
         private readonly defaultIdleTimeoutMs: number = 3_600_000,
     ) {}
+
+    private async configureDirectoryPolicy(
+        session: CopilotSession,
+        options: SendMessageOptions,
+    ): Promise<void> {
+        const resolveDirectory = (directory: string) => (
+            path.resolve(options.workingDirectory ?? process.cwd(), directory)
+        );
+        const accessibleDirectories = [...new Set([
+            ...(options.additionalDirectories ?? []),
+            ...(options.readOnlyDirectories ?? []),
+        ].map(resolveDirectory))];
+        if (accessibleDirectories.length === 0) return;
+
+        for (const directory of accessibleDirectories) {
+            const added = await session.rpc.permissions.paths.add({ path: directory });
+            if (!added.success) {
+                throw new Error(`Failed to apply directory access policy: could not allow "${directory}"`);
+            }
+        }
+
+        if (!options.readOnlyDirectories?.length) return;
+        const updated = await session.rpc.options.update({
+            sandboxConfig: {
+                enabled: true,
+                addCurrentWorkingDirectory: true,
+                userPolicy: {
+                    filesystem: {
+                        readwritePaths: [
+                            ...(options.additionalDirectories ?? []).map(resolveDirectory),
+                            path.join(os.homedir(), '.coc'),
+                            os.tmpdir(),
+                        ],
+                        readonlyPaths: options.readOnlyDirectories.map(resolveDirectory),
+                    },
+                },
+            },
+        });
+        if (!updated.success) {
+            throw new Error('Failed to apply directory access policy: Copilot sandbox update was rejected');
+        }
+    }
 
     /**
      * Send a message to Copilot via the SDK.
@@ -159,7 +203,10 @@ export class RequestRunner {
                             }
                         }
                     };
-                    const handlerResult = effectiveHandler(request, invocation);
+                    const handlerResult = options.readOnlyDirectories?.length
+                        && (request as PermissionRequest & { requestSandboxBypass?: boolean }).requestSandboxBypass
+                        ? { kind: 'reject' as const }
+                        : effectiveHandler(request, invocation);
                     if (handlerResult && typeof (handlerResult as Promise<PermissionRequestResult>).then === 'function') {
                         return (handlerResult as Promise<PermissionRequestResult>).then(r => {
                             createSessionLogger(invocation.sessionId).debug({ kind: r.kind, requestKind: request.kind }, 'Permission result');
@@ -172,7 +219,6 @@ export class RequestRunner {
                     return handlerResult;
                 },
             };
-
             const switchModelAfterSessionCreate = !!(options.model && options.reasoningEffort);
 
             if (options.model && !switchModelAfterSessionCreate) sessionOptions.model = options.model;
@@ -256,6 +302,7 @@ export class RequestRunner {
             }
 
             const sessionLog = createSessionLogger(session.sessionId);
+            await this.configureDirectoryPolicy(session, options);
             options.onSessionCreated?.(session.sessionId);
 
             if (options.onMcpOAuthRequired && typeof session.on === 'function') {

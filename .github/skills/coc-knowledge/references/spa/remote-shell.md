@@ -288,7 +288,9 @@ item, **Repos**, with no filter or group heading. `RepoGroupMemberList` sits dir
 the section body: one row per member (name, `rootPath`, stale badge) with an
 inline-editable description. Editing is type / Enter-or-blur to save, Escape to cancel;
 the save is optimistic and rolls back with a per-row error message when
-`PATCH /api/repo-groups/:id` (`{ descriptions: { [id]: next } }`) fails. Membership
+`PATCH /api/repo-groups/:id` patches descriptions and the per-member Read-only switch.
+The switch is optimistic with row-local rollback, routes to the group's owning server, and
+explains that Codex and OpenCode cannot run groups containing protected members. Membership
 itself stays in `RepoGroupDialog`, which edits the same descriptions.
 
 A group's root has no Git repository, MCP config, per-repo preferences, or `SettingsSection` sub-route.

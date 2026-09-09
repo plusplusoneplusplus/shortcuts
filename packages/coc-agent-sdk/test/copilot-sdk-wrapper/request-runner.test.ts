@@ -10,6 +10,8 @@ import { SessionManager } from '../../src/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
 const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 import { loadEffectiveMcpConfig } from '../../src/mcp-config-loader';
+import * as os from 'os';
+import * as path from 'path';
 
 
 
@@ -78,6 +80,169 @@ describe('RequestRunner.send() — availability', () => {
 // ============================================================================
 
 describe('RequestRunner.send() — non-streaming path', () => {
+    it('applies writable external roots through the public session RPC without enabling a sandbox', async () => {
+        const { runner, mockSession } = makeRunner();
+        const addPath = vi.fn().mockResolvedValue({ success: true });
+        const updateOptions = vi.fn();
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: addPath } },
+            options: { update: updateOptions },
+        };
+
+        const result = await runner.send({
+            prompt: 'compare',
+            workingDirectory: '/group',
+            additionalDirectories: ['/writable'],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(result.success).toBe(true);
+        expect(addPath).toHaveBeenCalledWith({ path: '/writable' });
+        expect(updateOptions).not.toHaveBeenCalled();
+    });
+
+    it('applies protected roots through the public session RPC before sending', async () => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        const addPath = vi.fn().mockResolvedValue({ success: true });
+        const updateOptions = vi.fn().mockResolvedValue({ success: true });
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: addPath } },
+            options: { update: updateOptions },
+        };
+
+        await runner.send({
+            prompt: 'compare',
+            workingDirectory: '/group',
+            additionalDirectories: ['/writable'],
+            readOnlyDirectories: ['/reference'],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(mockClient.createSession).toHaveBeenCalledWith(
+            expect.not.objectContaining({
+                sandboxConfig: expect.anything(),
+                additionalDirectories: expect.anything(),
+            }),
+        );
+        expect(addPath.mock.calls).toEqual([
+            [{ path: '/writable' }],
+            [{ path: '/reference' }],
+        ]);
+        expect(updateOptions).toHaveBeenCalledWith({
+            sandboxConfig: {
+                enabled: true,
+                addCurrentWorkingDirectory: true,
+                userPolicy: {
+                    filesystem: {
+                        readwritePaths: [
+                            '/writable',
+                            path.join(os.homedir(), '.coc'),
+                            os.tmpdir(),
+                        ],
+                        readonlyPaths: ['/reference'],
+                    },
+                },
+            },
+        });
+        expect(updateOptions.mock.invocationCallOrder[0])
+            .toBeLessThan(mockSession.sendAndWait.mock.invocationCallOrder[0]);
+    });
+
+    it('applies protected sandbox policy when resuming a session', async () => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        const updateOptions = vi.fn().mockResolvedValue({ success: true });
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: vi.fn().mockResolvedValue({ success: true }) } },
+            options: { update: updateOptions },
+        };
+
+        await runner.send({
+            prompt: 'follow up',
+            sessionId: 'existing-session',
+            additionalDirectories: ['/writable'],
+            readOnlyDirectories: ['/reference'],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(mockClient.resumeSession).toHaveBeenCalledWith('existing-session', expect.anything());
+        expect(updateOptions).toHaveBeenCalledWith(expect.objectContaining({
+            sandboxConfig: expect.objectContaining({ enabled: true }),
+        }));
+    });
+
+    it('fails closed before sending when the runtime cannot apply sandbox policy', async () => {
+        const { runner, mockSession } = makeRunner();
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: vi.fn().mockResolvedValue({ success: true }) } },
+            options: { update: vi.fn().mockResolvedValue({ success: false }) },
+        };
+
+        const result = await runner.send({
+            prompt: 'compare',
+            readOnlyDirectories: ['/reference'],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('directory access policy');
+        expect(mockSession.sendAndWait).not.toHaveBeenCalled();
+    });
+
+    it('resolves relative policy roots from the session working directory', async () => {
+        const { runner, mockSession } = makeRunner();
+        const addPath = vi.fn().mockResolvedValue({ success: true });
+        const updateOptions = vi.fn().mockResolvedValue({ success: true });
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: addPath } },
+            options: { update: updateOptions },
+        };
+
+        await runner.send({
+            prompt: 'compare',
+            workingDirectory: '/session-root',
+            additionalDirectories: ['writable'],
+            readOnlyDirectories: ['reference'],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(addPath.mock.calls).toEqual([
+            [{ path: '/session-root/writable' }],
+            [{ path: '/session-root/reference' }],
+        ]);
+        expect(updateOptions).toHaveBeenCalledWith(expect.objectContaining({
+            sandboxConfig: expect.objectContaining({
+                userPolicy: {
+                    filesystem: expect.objectContaining({
+                        readonlyPaths: ['/session-root/reference'],
+                    }),
+                },
+            }),
+        }));
+    });
+
+    it('rejects sandbox bypass requests before the caller permission handler', async () => {
+        const approve = vi.fn().mockReturnValue({ kind: 'approve-once' });
+        const { runner, mockClient, mockSession } = makeRunner();
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: vi.fn().mockResolvedValue({ success: true }) } },
+            options: { update: vi.fn().mockResolvedValue({ success: true }) },
+        };
+        const result = await runner.send({
+            prompt: 'compare',
+            readOnlyDirectories: ['/reference'],
+            onPermissionRequest: approve,
+            loadDefaultMcpConfig: false,
+        });
+        expect(result.success).toBe(true);
+        const sessionConfig = mockClient.createSession.mock.calls[0][0];
+
+        expect(sessionConfig.onPermissionRequest(
+            { kind: 'shell', requestSandboxBypass: true },
+            { sessionId: 'session-1' },
+        )).toEqual({ kind: 'reject' });
+        expect(approve).not.toHaveBeenCalled();
+    });
+
     it('returns successful result with response text', async () => {
         const mockSession = createMockSession({ sendAndWaitResponse: { data: { content: 'hello' } } });
         const mockClient = {
