@@ -326,6 +326,145 @@ describe('WhisperDiffPanel — entry points + re-focus (AC-03)', () => {
     });
 });
 
+describe('WhisperDiffPanel — live source: selection across a rebuilt context (AC-03)', () => {
+    // A chat's whole-chat Changes source hands the panel a NEW state object on
+    // every streamed edit while pointing at the same tab. `selectionKey` is what
+    // separates "the context grew" from "a different group was opened".
+    const KEY = 'chat-changes-task-1\n';
+
+    it('keeps the picked file when the context is rebuilt under the same key', () => {
+        const { rerender } = render(
+            <WhisperDiffPanel state={multiFileState({ selectionKey: KEY })} workspaceRootPath="/home/u/proj" onClose={() => {}} />,
+        );
+        openMenu();
+        fireEvent.click(optionByPath('/home/u/proj/src/a.ts'));
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('a.ts');
+
+        // A further edit lands: a brand-new state object, same source.
+        const C = section('/home/u/proj/src/c.ts', 'diff --git a/src/c.ts b/src/c.ts\n+C');
+        rerender(
+            <WhisperDiffPanel
+                state={makeState({
+                    selectionKey: KEY,
+                    view: combinedView({ sections: [A, B, C], fileCount: 3, totalInsertions: 9, totalDeletions: 2 }),
+                    files: [A.file, B.file, C.file],
+                })}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('a.ts');
+        expect(screen.getByTestId('whisper-diff-viewer')).toHaveTextContent('+A');
+        // The new file is available in the dropdown without disturbing the view.
+        openMenu();
+        expect(optionByPath('/home/u/proj/src/c.ts')).toBeInTheDocument();
+    });
+
+    it('does not steal focus when the context is rebuilt', () => {
+        const { rerender } = render(
+            <WhisperDiffPanel state={multiFileState({ selectionKey: KEY })} workspaceRootPath="/home/u/proj" onClose={() => {}} />,
+        );
+        const close = screen.getByTestId('whisper-diff-close-btn');
+        close.focus();
+        expect(document.activeElement).toBe(close);
+        rerender(<WhisperDiffPanel state={multiFileState({ selectionKey: KEY })} workspaceRootPath="/home/u/proj" onClose={() => {}} />);
+        expect(document.activeElement).toBe(screen.getByTestId('whisper-diff-close-btn'));
+    });
+
+    it('still resets when the key itself changes (a different source)', () => {
+        const { rerender } = render(
+            <WhisperDiffPanel state={multiFileState({ selectionKey: KEY })} workspaceRootPath="/home/u/proj" onClose={() => {}} />,
+        );
+        openMenu();
+        fireEvent.click(optionByPath('/home/u/proj/src/a.ts'));
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('a.ts');
+        rerender(
+            <WhisperDiffPanel
+                state={multiFileState({ selectionKey: 'chat-changes-task-2\n' })}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All files');
+    });
+
+    it('still honours a re-focus on the same source (key folds in focusPath)', () => {
+        const { rerender } = render(
+            <WhisperDiffPanel state={multiFileState({ selectionKey: `${KEY}/home/u/proj/src/a.ts` })} workspaceRootPath="/home/u/proj" onClose={() => {}} />,
+        );
+        rerender(
+            <WhisperDiffPanel
+                state={multiFileState({
+                    selectionKey: `${KEY}/home/u/proj/src/sub/b.ts`,
+                    focusPath: '/home/u/proj/src/sub/b.ts',
+                })}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('b.ts');
+    });
+
+    it('falls back to All files when the selected path leaves the rebuilt context', () => {
+        const { rerender } = render(
+            <WhisperDiffPanel state={multiFileState({ selectionKey: KEY })} workspaceRootPath="/home/u/proj" onClose={() => {}} />,
+        );
+        openMenu();
+        fireEvent.click(optionByPath('/home/u/proj/src/a.ts'));
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('a.ts');
+        rerender(
+            <WhisperDiffPanel
+                state={makeState({
+                    selectionKey: KEY,
+                    view: combinedView({ sections: [B], fileCount: 1, totalInsertions: 3, totalDeletions: 0 }),
+                    files: [B.file],
+                })}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All files');
+    });
+
+    it('keeps a still-listed file selected after it stops being reconstructable', () => {
+        const { rerender } = render(
+            <WhisperDiffPanel state={multiFileState({ selectionKey: KEY })} workspaceRootPath="/home/u/proj" onClose={() => {}} />,
+        );
+        openMenu();
+        fireEvent.click(optionByPath('/home/u/proj/src/a.ts'));
+        rerender(
+            <WhisperDiffPanel
+                state={makeState({
+                    selectionKey: KEY,
+                    view: combinedView({
+                        sections: [B],
+                        nonReconstructableFiles: [A.file],
+                        fileCount: 2,
+                    }),
+                    files: [A.file, B.file],
+                })}
+                workspaceRootPath="/home/u/proj"
+                onClose={() => {}}
+            />,
+        );
+        // The header still names the file; the body falls back to the stack,
+        // where it is listed under "Not shown".
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('a.ts');
+        expect(screen.getByTestId('whisper-diff-not-shown')).toHaveTextContent('src/a.ts');
+    });
+
+    it('resets on a new context identity when no key is supplied (group behaviour)', () => {
+        const { rerender } = render(
+            <WhisperDiffPanel state={multiFileState()} workspaceRootPath="/home/u/proj" onClose={() => {}} />,
+        );
+        openMenu();
+        fireEvent.click(optionByPath('/home/u/proj/src/a.ts'));
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('a.ts');
+        rerender(<WhisperDiffPanel state={multiFileState()} workspaceRootPath="/home/u/proj" onClose={() => {}} />);
+        expect(screen.getByTestId('whisper-diff-filename')).toHaveTextContent('All files');
+    });
+});
+
 describe('WhisperDiffPanel — read-only contract', () => {
     it('exposes no copy / reveal / comment / save affordances in either mode', () => {
         render(<WhisperDiffPanel state={multiFileState()} onClose={() => {}} />);

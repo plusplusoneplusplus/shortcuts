@@ -1,69 +1,18 @@
 /**
- * Helpers for `.order.json` custom sort order in notes directories.
+ * Sibling ordering for notes directories.
  *
  * Each notes directory may contain a `.order.json` file with the shape:
  *   { "order": ["name-a", "section-b", "page.md"] }
  *
  * Items listed in `.order.json` are shown first (in the specified order).
- * Items NOT listed fall back to alphabetical sort, appended after the explicitly-ordered items.
+ * Items NOT listed fall back to alphabetical sort, appended after the
+ * explicitly-ordered items.
+ *
+ * Reading and writing that file is the native core's job. What stays here is
+ * the sort itself, because the fallback order is `localeCompare` — ICU
+ * collation is what the SPA has always shown, and a Rust reimplementation of
+ * it would drift.
  */
-
-import * as fs from 'fs';
-import * as path from 'path';
-
-export const ORDER_FILE_NAME = '.order.json';
-
-interface OrderFile {
-    order: string[];
-}
-
-// ── Persistence ──────────────────────────────────────────────────────────────
-
-/** Read the ordered name list from a directory's `.order.json`. Returns `[]` when absent or malformed. */
-export async function readOrderFile(dir: string): Promise<string[]> {
-    try {
-        const raw = await fs.promises.readFile(path.join(dir, ORDER_FILE_NAME), 'utf-8');
-        const parsed: OrderFile = JSON.parse(raw);
-        if (Array.isArray(parsed.order)) return parsed.order;
-    } catch {
-        // File missing or malformed — fall through
-    }
-    return [];
-}
-
-/** Persist a name list to a directory's `.order.json`. */
-export async function writeOrderFile(dir: string, order: string[]): Promise<void> {
-    await fs.promises.writeFile(
-        path.join(dir, ORDER_FILE_NAME),
-        JSON.stringify({ order }, null, 2),
-        'utf-8',
-    );
-}
-
-/**
- * Remove an entry from a directory's `.order.json` (called on delete).
- * No-ops if the file is absent or the name is not listed.
- */
-export async function removeFromOrder(dir: string, name: string): Promise<void> {
-    const order = await readOrderFile(dir);
-    const filtered = order.filter(n => n !== name);
-    if (filtered.length !== order.length) {
-        await writeOrderFile(dir, filtered);
-    }
-}
-
-/**
- * Rename an entry within a directory's `.order.json` (called on rename within same parent).
- * No-ops if the file is absent or the old name is not listed.
- */
-export async function updateOrderOnRename(dir: string, oldName: string, newName: string): Promise<void> {
-    const order = await readOrderFile(dir);
-    const idx = order.indexOf(oldName);
-    if (idx !== -1) {
-        order[idx] = newName;
-        await writeOrderFile(dir, order);
-    }
-}
 
 // ── Sorting ──────────────────────────────────────────────────────────────────
 

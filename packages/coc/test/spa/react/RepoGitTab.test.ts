@@ -639,7 +639,7 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain('export function RepoGitTab({ workspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps)');
+            expect(source).toContain('export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps)');
         });
 
         it('derives isSplitWorkspace from the layout prop', () => {
@@ -991,8 +991,8 @@ describe('RepoGitTab', () => {
             expect(source).toContain('state.selectedGitCommitHash');
         });
 
-        it('uses startsWith to match initial commit hash against loaded commits', () => {
-            expect(source).toContain('c.hash.startsWith(initialCommitHash)');
+        it('uses startsWith to match the routed commit hash against loaded commits', () => {
+            expect(source).toContain('loaded.find(c => c.hash.startsWith(commitHash))');
         });
 
         it('shows empty right panel when deep-link hash not found (user must click to select)', () => {
@@ -1003,173 +1003,124 @@ describe('RepoGitTab', () => {
             expect(source).not.toContain('const first = loaded.length > 0 ? loaded[0] : null');
         });
 
-        it('handleSelect updates location.hash with commit URL', () => {
-            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + suffix");
-            expect(source).toContain('setHash(commit.hash)');
+        it('builds every selection URL through the shared group-aware route builder', () => {
+            expect(source).toContain('location.hash = buildGitRouteHash({');
+            expect(source).toContain('routeWorkspaceId: pageWorkspaceId, workspaceId, commitHash, filePath,');
+            // No hand-rolled `#repos/<id>/git/...` concatenation is left behind.
+            expect(source).not.toContain("'#repos/' + encodeURIComponent(workspaceId) + '/git/'");
         });
 
-        it('handleSelect dispatches SET_GIT_COMMIT_HASH action', () => {
-            expect(source).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash })");
+        it('handleSelect publishes the commit route with no file', () => {
+            expect(source).toContain('publishRoute(commit.hash, null)');
         });
 
-        it('handleSelect dispatches CLEAR_GIT_FILE_PATH to reset file selection', () => {
-            expect(source).toContain("dispatch({ type: 'CLEAR_GIT_FILE_PATH' })");
+        it('publishes the page owner, member, revision and file in ONE dispatch', () => {
+            expect(source).toContain("type: 'SET_GIT_ROUTE',");
+            expect(source).toContain('routeWorkspaceId: pageWorkspaceId,');
         });
 
-        it('handleSelect includes workspaceId and dispatch as dependencies', () => {
-            expect(source).toContain('[setHash, dispatch]');
+        it('handleSelect depends only on the route publisher', () => {
+            expect(source).toContain('}, [publishRoute]);');
         });
 
         it('reads selectedGitFilePath from context state', () => {
             expect(source).toContain('state.selectedGitFilePath');
         });
 
-        it('restores commit-file view when both initialCommitHash and initialFilePath are set', () => {
-            expect(source).toContain('target && initialFilePath');
-            expect(source).toContain("setView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath })");
+        it('restores commit-file view when the route carries both a hash and a file', () => {
+            expect(source).toContain("{ type: 'commit-file', hash: target.hash, filePath }");
         });
 
-        it('handleCommitFileSelect updates location.hash with file path URL', () => {
-            expect(source).toContain("setHash(hash + '/' + encodeURIComponent(filePath))");
+        it('handleCommitFileSelect publishes the hash and the file together', () => {
+            const handleBlock = source.match(/const selectCommitFile = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            expect(handleBlock).toBeTruthy();
+            expect(handleBlock![0]).toContain('publishRoute(hash, filePath)');
         });
 
-        it('handleCommitFileSelect dispatches SET_GIT_FILE_PATH', () => {
-            expect(source).toContain("dispatch({ type: 'SET_GIT_FILE_PATH', filePath })");
-        });
-
-        it('handleCommitFileSelect includes workspaceId and dispatch as dependencies', () => {
+        it('handleCommitFileSelect depends on the route publisher', () => {
             const handleBlock = source.match(/const selectCommit = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
             expect(handleBlock).toBeTruthy();
-            expect(handleBlock![0]).toContain('setHash');
-            expect(handleBlock![0]).toContain('dispatch');
+            expect(handleBlock![0]).toContain('publishRoute');
         });
 
         it('defines handleBranchRangeSelect callback', () => {
             expect(source).toContain('const selectBranchRange = useCallback');
         });
 
-        it('handleBranchRangeSelect updates location.hash with branch-range URL', () => {
-            expect(source).toContain("setHash('branch-range')");
-        });
-
-        it('handleBranchRangeSelect dispatches SET_GIT_COMMIT_HASH with branch-range', () => {
-            expect(source).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' })");
-        });
-
-        it('handleBranchRangeSelect dispatches CLEAR_GIT_FILE_PATH', () => {
-            // handleBranchRangeSelect should clear file path when selecting the branch overview
+        it('handleBranchRangeSelect publishes the branch-range sentinel with no file', () => {
             const block = source.match(/const selectBranchRange = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain("dispatch({ type: 'CLEAR_GIT_FILE_PATH' })");
+            expect(block![0]).toContain('publishRoute(BRANCH_RANGE_DEEP_LINK, null)');
         });
 
-        it('handleFileSelect updates location.hash with branch-range file URL', () => {
-            expect(source).toContain("setHash('branch-range/' + encodeURIComponent(filePath))");
-        });
-
-        it('handleFileSelect dispatches SET_GIT_COMMIT_HASH with branch-range', () => {
+        it('handleFileSelect publishes the branch-range sentinel with the file', () => {
             const block = source.match(/const selectBranchFile = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' })");
+            expect(block![0]).toContain('publishRoute(BRANCH_RANGE_DEEP_LINK, filePath)');
         });
 
-        it('handleFileSelect dispatches SET_GIT_FILE_PATH', () => {
-            const block = source.match(/const selectBranchFile = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
-            expect(block).toBeTruthy();
-            expect(block![0]).toContain("dispatch({ type: 'SET_GIT_FILE_PATH', filePath })");
-        });
-
-        it('restores branch-range view when initialCommitHash is branch-range', () => {
-            expect(source).toContain('initialCommitHash === BRANCH_RANGE_DEEP_LINK');
-            expect(source).toContain("setView({ type: 'branch-range' })");
-        });
-
-        it('restores branch-file view when initialCommitHash is branch-range with file path', () => {
-            expect(source).toContain("{ type: 'branch-file', filePath: initialFilePath }");
+        it('restores branch-range view for the branch-range sentinel', () => {
+            expect(source).toContain('commitHash === BRANCH_RANGE_DEEP_LINK');
+            expect(source).toContain("setView(filePath ? { type: 'branch-file', filePath } : { type: 'branch-range' })");
         });
 
         it('uses handleBranchRangeSelect for onBranchRangeSelect prop', () => {
             expect(source).toContain('onBranchRangeSelect={props.onBranchRangeSelect}');
         });
 
-        describe('post-mount deep-link navigation', () => {
-            it('declares consumedDeepLinkRef initialized to initialCommitHash', () => {
-                expect(source).toContain('const consumedDeepLinkRef = useRef<string | null>(initialCommitHash)');
+        describe('post-mount routed navigation', () => {
+            const effect = () => {
+                const match = source.match(/Routed navigation after mount[\s\S]*?\}, \[[\s\S]*?\]\);/);
+                expect(match).toBeTruthy();
+                return match![0];
+            };
+
+            it('seeds the consumed-route ref with the mount-time route', () => {
+                expect(source).toContain('const consumedRouteRef = useRef<string>(');
+                expect(source).toContain('gitRouteIdentity(pageWorkspaceId, workspaceId, routeCommitHash, routeFilePath),');
             });
 
-            it('has a useEffect that watches state.selectedGitCommitHash', () => {
-                // The effect should depend on state.selectedGitCommitHash
-                const effectPattern = /useEffect\(\(\) => \{[^}]*state\.selectedGitCommitHash[\s\S]*?\}, \[state\.selectedGitCommitHash/;
-                expect(source).toMatch(effectPattern);
+            it('keys the consumed route on page owner, member, revision AND file', () => {
+                expect(source).toContain("[routeWorkspaceId, workspaceId, commitHash ?? '', filePath ?? ''].join(");
             });
 
-            it('skips navigation when hash is null', () => {
-                // The effect checks for falsy hash
-                expect(source).toContain('if (!hash || hash === BRANCH_RANGE_DEEP_LINK || loading) return');
+            it('skips a route that belongs to another page or member', () => {
+                expect(effect()).toContain('if (loading || !routeIsOurs) return;');
+                expect(source).toContain("|| (scope.routeWorkspaceId === pageWorkspaceId && scope.workspaceId === workspaceId)");
             });
 
-            it('skips navigation when hash equals branch-range', () => {
-                expect(source).toContain('hash === BRANCH_RANGE_DEEP_LINK');
+            it('skips a route it has already consumed (no infinite loop)', () => {
+                expect(effect()).toContain('if (identity === consumedRouteRef.current) return;');
             });
 
-            it('skips navigation while loading', () => {
-                // loading is checked in the guard
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
-                expect(effectBlock).toBeTruthy();
-                expect(effectBlock![0]).toContain('loading');
+            it('reacts to store transitions, not to a store that has not caught up', () => {
+                expect(effect()).toContain('if (identity === storeRouteRef.current) return;');
+                expect(effect()).toContain('storeRouteRef.current = identity;');
             });
 
-            it('skips navigation when hash matches consumedDeepLinkRef (no infinite loop)', () => {
-                expect(source).toContain('if (hash === consumedDeepLinkRef.current) return');
+            it('records the route it consumes', () => {
+                expect(effect()).toContain('consumedRouteRef.current = identity;');
             });
 
-            it('updates consumedDeepLinkRef when consuming a new deep-link', () => {
-                expect(source).toContain('consumedDeepLinkRef.current = hash');
+            it('re-uses one resolver for both hydration and later navigation', () => {
+                expect(effect()).toContain('applyRoute(routeCommitHash, routeFilePath, commitsRef.current);');
+                expect(source).toContain('applyRoute(commitHash, filePath, loaded);');
             });
 
-            it('finds target commit using startsWith matching', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
-                expect(effectBlock).toBeTruthy();
-                expect(effectBlock![0]).toContain('commits.find(c => c.hash.startsWith(hash))');
-            });
-
-            it('sets commit-file right panel view when filePath is present', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
-                expect(effectBlock).toBeTruthy();
-                expect(effectBlock![0]).toContain("{ type: 'commit-file', hash: target.hash, filePath }");
-            });
-
-            it('sets commit right panel view when no filePath', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
-                expect(effectBlock).toBeTruthy();
-                expect(effectBlock![0]).toContain("{ type: 'commit', commit: target }");
-            });
-
-            it('includes loading and commits in the dependency array', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[([^\]]*)\]/);
-                expect(effectBlock).toBeTruthy();
-                const deps = effectBlock![1];
+            it('depends on loading and the whole route, but not the commit array', () => {
+                const deps = source.match(/Routed navigation after mount[\s\S]*?\}, \[([\s\S]*?)\]\);/)![1];
                 expect(deps).toContain('loading');
-                expect(deps).toContain('commits');
+                expect(deps).toContain('routeCommitHash');
+                expect(deps).toContain('routeFilePath');
+                expect(deps).toContain('workspaceId');
+                // A refreshed commit page must not re-apply a consumed route.
+                expect(deps).not.toContain('commits,');
+                expect(effect()).toContain('commitsRef.current');
             });
 
-            it('includes state.selectedGitFilePath in the dependency array', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[([^\]]*)\]/);
-                expect(effectBlock).toBeTruthy();
-                expect(effectBlock![1]).toContain('state.selectedGitFilePath');
-            });
-
-            it('does not dispatch SET_GIT_COMMIT_HASH (avoids desync with URL state)', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
-                expect(effectBlock).toBeTruthy();
-                // The effect should NOT dispatch — it only updates the right panel view
-                expect(effectBlock![0]).not.toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH'");
-            });
-
-            it('does not clear the hash from state after consuming', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
-                expect(effectBlock).toBeTruthy();
-                expect(effectBlock![0]).not.toContain('dispatch({ type: \'SET_GIT_COMMIT_HASH\', hash: null');
+            it('does not write the route back while consuming it', () => {
+                expect(effect()).not.toContain('publishRoute(');
+                expect(effect()).not.toContain('location.hash =');
             });
         });
     });
@@ -2355,11 +2306,11 @@ describe('RepoGitTab', () => {
             expect(source).toContain('onClick={() => props.onSelect(openedCommit)');
         });
 
-        it('deep-link effect attempts lookup via getCommit when commit not in list', () => {
-            const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
+        it('a routed commit that is not in the loaded page falls back to getCommit', () => {
+            const effectBlock = source.match(/Turn one routed selection into a detail view[\s\S]*?\}, \[openCommitBySha\]\);/);
             expect(effectBlock).toBeTruthy();
             expect(effectBlock![0]).toContain('isGitCommitLookupEnabled()');
-            expect(effectBlock![0]).toContain('openCommitBySha(hash)');
+            expect(effectBlock![0]).toContain('openCommitBySha(commitHash, { filePath })');
             expect(source).toContain('getCommit(workspaceId');
         });
 

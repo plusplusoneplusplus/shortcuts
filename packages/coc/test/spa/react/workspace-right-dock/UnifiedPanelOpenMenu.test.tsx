@@ -10,7 +10,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const searchFiles = vi.fn();
 const listCanvases = vi.fn();
@@ -31,6 +31,13 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
 }));
 
 import { UnifiedPanelOpenMenu } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelOpenMenu';
+import {
+    chatChangesSourceId,
+    clearUnifiedChatChanges,
+    publishUnifiedChatChanges,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
+import { clearUnifiedDiffSources, getUnifiedDiffSource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
+import type { WhisperDiffOpenContext } from '../../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
 
 const WS = 'ws-1';
 
@@ -64,6 +71,8 @@ beforeEach(() => {
     searchFiles.mockReset().mockResolvedValue({ results: [] });
     listCanvases.mockReset().mockResolvedValue([]);
     createCanvas.mockReset();
+    clearUnifiedChatChanges();
+    clearUnifiedDiffSources();
 });
 
 afterEach(() => {
@@ -295,5 +304,103 @@ describe('repo picker', () => {
         });
         fireEvent.change(screen.getByTestId('unified-panel-open-menu-repo'), { target: { value: 'ws-member' } });
         expect(onSelectTarget).toHaveBeenCalledWith('ws-member');
+    });
+});
+
+
+/** A whole-chat changes context, as `ChatDetail` would publish one. */
+function changesCtx(paths: readonly string[] = ['src/a.ts'], workspaceId = WS): WhisperDiffOpenContext {
+    return {
+        files: paths.map(path => ({
+            path,
+            insertions: 2,
+            deletions: 1,
+            netInsertions: 2,
+            netDeletions: 1,
+            isCreate: false,
+            isDeleted: false,
+        })),
+        toolCalls: paths.map(path => ({ toolName: 'edit', args: { path, oldString: 'a', newString: 'b' } })),
+        commits: [],
+        workspaceId,
+    };
+}
+
+describe('the chat\'s Changes entry', () => {
+    it('is absent for a chat that has changed nothing', () => {
+        renderMenu();
+        expect(screen.queryByTestId('unified-panel-open-changes')).toBeNull();
+    });
+
+    it('is absent with no chat selected, even when another chat published changes', () => {
+        publishUnifiedChatChanges(WS, 'chat-1', { ctx: changesCtx() });
+        renderMenu({ chatId: null });
+        expect(screen.queryByTestId('unified-panel-open-changes')).toBeNull();
+    });
+
+    it('is absent when the changes belong to a different chat or panel scope', () => {
+        publishUnifiedChatChanges(WS, 'chat-other', { ctx: changesCtx() });
+        publishUnifiedChatChanges('group-x', 'chat-1', { ctx: changesCtx() });
+        renderMenu({ chatId: 'chat-1' });
+        expect(screen.queryByTestId('unified-panel-open-changes')).toBeNull();
+    });
+
+    it('is listed after New Canvas once the chat has changes', () => {
+        publishUnifiedChatChanges(WS, 'chat-1', { ctx: changesCtx() });
+        renderMenu();
+        const rows = [...screen.getByTestId('unified-panel-open-menu-list').children];
+        const labels = rows.map(row => row.getAttribute('data-testid'));
+        expect(labels).toEqual([
+            'unified-panel-open-terminal',
+            'unified-panel-open-explorer',
+            'unified-panel-open-notes',
+            'unified-panel-open-canvas',
+            'unified-panel-open-changes',
+        ]);
+    });
+
+    it('appears while the menu is open, as soon as the first edit completes', async () => {
+        renderMenu();
+        expect(screen.queryByTestId('unified-panel-open-changes')).toBeNull();
+        await act(async () => {
+            publishUnifiedChatChanges(WS, 'chat-1', { ctx: changesCtx() });
+        });
+        expect(screen.getByTestId('unified-panel-open-changes')).toBeTruthy();
+    });
+
+    it('disappears again if the chat withdraws its changes', async () => {
+        publishUnifiedChatChanges(WS, 'chat-1', { ctx: changesCtx() });
+        renderMenu();
+        expect(screen.getByTestId('unified-panel-open-changes')).toBeTruthy();
+        await act(async () => {
+            publishUnifiedChatChanges(WS, 'chat-1', null);
+        });
+        expect(screen.queryByTestId('unified-panel-open-changes')).toBeNull();
+    });
+
+    it('opens one chat-owned Changes tab on the edited clone and closes the menu', () => {
+        publishUnifiedChatChanges(WS, 'chat-1', { ctx: changesCtx(['src/a.ts'], 'ws-member'), workspaceRootPath: '/repo' });
+        const { onOpenResource, onClose } = renderMenu();
+        fireEvent.click(screen.getByTestId('unified-panel-open-changes'));
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'diff',
+            label: 'Changes',
+            chatId: 'chat-1',
+            ownerWorkspaceId: 'ws-member',
+            resourceId: chatChangesSourceId('chat-1'),
+        }));
+        expect(onClose).toHaveBeenCalled();
+        // The viewer's source is registered on the way, root path included.
+        expect(getUnifiedDiffSource(chatChangesSourceId('chat-1'))?.workspaceRootPath).toBe('/repo');
+    });
+
+    it('is reachable from the search box and activates on Enter alone', async () => {
+        publishUnifiedChatChanges(WS, 'chat-1', { ctx: changesCtx() });
+        const { onOpenResource } = renderMenu();
+        await search('chang');
+        const input = screen.getByTestId('unified-panel-open-menu-search');
+        // The only matching row, so the cursor is already on it.
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({ label: 'Changes' }));
     });
 });

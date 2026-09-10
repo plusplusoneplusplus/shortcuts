@@ -99,19 +99,55 @@ describe('resolveDashboardRoute — repo sub-routes', () => {
             { kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'git' } },
             { kind: 'app', action: { type: 'SET_SELECTED_WORKFLOW', name: null } },
             { kind: 'app', action: { type: 'SET_WORKFLOW_RUN_PROCESS', processId: null } },
-            { kind: 'app', action: { type: 'SET_GIT_COMMIT_HASH', hash: null } },
-            { kind: 'app', action: { type: 'CLEAR_GIT_FILE_PATH' } },
+            { kind: 'app', action: { type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws1', workspaceId: 'ws1', commitHash: null, filePath: null } },
         ]);
     });
 
-    it('#repos/ws1/git/{commit}/{file} selects commit + file', () => {
+    it('#repos/ws1/git/{commit}/{file} selects commit + file in one dispatch', () => {
         const r = resolveDashboardRoute('#repos/ws1/git/abc123/src.ts', makeCtx());
         expect(appActions({ effects: r.effects })).toEqual(
             expect.arrayContaining([
-                { type: 'SET_GIT_COMMIT_HASH', hash: 'abc123' },
-                { type: 'SET_GIT_FILE_PATH', filePath: 'src.ts' },
+                {
+                    type: 'SET_GIT_ROUTE', routeWorkspaceId: 'ws1', workspaceId: 'ws1',
+                    commitHash: 'abc123', filePath: 'src.ts',
+                },
             ]),
         );
+    });
+
+    it('a group Git route keeps the GROUP as the page and names the member', () => {
+        const r = resolveDashboardRoute('#repos/group-frontend/git/member/repo-b/abc123/src.ts', makeCtx());
+        expect(appActions({ effects: r.effects })).toEqual(
+            expect.arrayContaining([
+                { type: 'SET_SELECTED_REPO', id: 'group-frontend' },
+                {
+                    type: 'RECORD_REPO_ROUTE_SUFFIX', repoId: 'group-frontend',
+                    suffix: '/git/member/repo-b/abc123/src.ts',
+                },
+                {
+                    type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: 'repo-b',
+                    commitHash: 'abc123', filePath: 'src.ts',
+                },
+            ]),
+        );
+        // The member never leaks into the selected repo — the group owns the page.
+        expect(appActions({ effects: r.effects })).not.toContainEqual({ type: 'SET_SELECTED_REPO', id: 'repo-b' });
+    });
+
+    it('a bare group Git entry leaves the member unresolved for the host', () => {
+        const r = resolveDashboardRoute('#repos/group-frontend/git', makeCtx());
+        expect(appActions({ effects: r.effects })).toContainEqual({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: null,
+            commitHash: null, filePath: null,
+        });
+    });
+
+    it('an older group commit link carries the SHA with no member', () => {
+        const r = resolveDashboardRoute('#repos/group-frontend/git/abc123', makeCtx());
+        expect(appActions({ effects: r.effects })).toContainEqual({
+            type: 'SET_GIT_ROUTE', routeWorkspaceId: 'group-frontend', workspaceId: null,
+            commitHash: 'abc123', filePath: null,
+        });
     });
 
     it('bare #repos/ws1 expands to the remembered suffix and canonicalizes (replaceState)', () => {

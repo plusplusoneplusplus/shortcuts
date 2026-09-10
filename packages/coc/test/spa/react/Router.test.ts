@@ -320,6 +320,57 @@ describe('buildWorkspaceSubTabSuffix', () => {
         expect(buildWorkspaceSubTabSuffix('group-frontend', 'notes', state)).toBe('/notes/Notebook/Page.md');
         expect(buildWorkspaceSubTabSuffix('group-frontend', 'chats', state, 'queue_1')).toBe('/chats/queue_1');
     });
+
+    describe('the Git tab of a repo group', () => {
+        const GROUP = 'group-frontend';
+        const OTHER_GROUP = 'group-backend';
+
+        function gitState(overrides: Partial<AppContextState> = {}): AppContextState {
+            return stateWith({
+                repoGroupGitMemberState: {},
+                gitRouteScope: null,
+                ...overrides,
+            });
+        }
+
+        it('carries the member and the detail when the selection is this group’s', () => {
+            expect(buildWorkspaceSubTabSuffix(GROUP, 'git', gitState({
+                gitRouteScope: { routeWorkspaceId: GROUP, workspaceId: 'repo-b' },
+                selectedGitCommitHash: 'abc123',
+                selectedGitFilePath: 'src/a b.ts',
+            }))).toBe('/git/member/repo-b/abc123/src%2Fa%20b.ts');
+        });
+
+        it('drops a detail that belongs to another group', () => {
+            expect(buildWorkspaceSubTabSuffix(GROUP, 'git', gitState({
+                repoGroupGitMemberState: { [GROUP]: 'repo-a' },
+                gitRouteScope: { routeWorkspaceId: OTHER_GROUP, workspaceId: 'repo-b' },
+                selectedGitCommitHash: 'abc123',
+            }))).toBe('/git/member/repo-a');
+        });
+
+        it('drops a detail that belongs to a plain repo', () => {
+            expect(buildWorkspaceSubTabSuffix(GROUP, 'git', gitState({
+                repoGroupGitMemberState: { [GROUP]: 'repo-a' },
+                gitRouteScope: { routeWorkspaceId: 'repo-x', workspaceId: 'repo-x' },
+                selectedGitCommitHash: 'abc123',
+                selectedGitFilePath: 'src/a.ts',
+            }))).toBe('/git/member/repo-a');
+        });
+
+        it('falls back to a bare group entry when no member is known yet', () => {
+            expect(buildWorkspaceSubTabSuffix(GROUP, 'git', gitState())).toBe('/git');
+        });
+
+        it('leaves a plain repo’s Git suffix exactly as it was', () => {
+            const state = gitState({
+                gitRouteScope: { routeWorkspaceId: GROUP, workspaceId: 'repo-b' },
+                selectedGitCommitHash: 'abc123',
+                selectedGitFilePath: 'src/a.ts',
+            });
+            expect(buildWorkspaceSubTabSuffix('repo-1', 'git', state)).toBe('/git/abc123/src%2Fa.ts');
+        });
+    });
 });
 
 describe('process deep-link parsing', () => {

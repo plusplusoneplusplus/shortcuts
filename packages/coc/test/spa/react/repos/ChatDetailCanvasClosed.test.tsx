@@ -1,10 +1,14 @@
 /**
- * Integration tests for the persisted per-chat agent-canvas "closed" state.
+ * Integration tests for ChatDetail's right-hand surfaces after the chat-owned AI
+ * canvas column was removed.
  *
- * These exercise the AC-02 wiring in ChatDetail: a deliberate close persists to
- * localStorage (keyed per conversation), switching away and back keeps a closed
- * canvas collapsed, reopening / a fresh AI canvas edit clears the flag, and the
- * transient source-canvas mutual-exclusion collapse does NOT persist.
+ * The AI canvas is now purely a tab in the shared right panel, so these cover:
+ * that no canvas rail, resize handle, or canvas column renders in the chat under
+ * any entry point or retired preference; that the shared panel's canvas tab is
+ * still reachable and still what an AI update opens; that source-file / note /
+ * folder / whisper-diff views keep their own per-chat restore behaviour,
+ * independent of any canvas preference; and that the chat publishes the composer
+ * actions ("Ask AI", "Send comments") a canvas tab calls back into.
  *
  * Canvas rendering is enabled here (the main ChatDetail.test.tsx disables it),
  * so this lives in its own file with its own mock set: a stubbed CanvasPanel, a
@@ -22,15 +26,14 @@ import { QueueProvider } from '../../../../src/server/spa/client/react/contexts/
 import { ToastProvider } from '../../../../src/server/spa/client/react/contexts/ToastContext';
 import { NotificationProvider } from '../../../../src/server/spa/client/react/contexts/NotificationContext';
 import { TaskProvider } from '../../../../src/server/spa/client/react/contexts/TaskContext';
-import {
-    canvasClosedStorageKey,
-    readCanvasClosed,
-} from '../../../../src/server/spa/client/react/features/chat/canvasClosedPreference';
 import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { clearUnifiedDiffSources, getUnifiedDiffSource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
 import { clearUnifiedCanvasEvents } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
+import { clearUnifiedChatCanvasActions, getUnifiedChatCanvasActions } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatCanvasActions';
+import { UnifiedTabView } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTabView';
+import { clearUnifiedChatChanges, getUnifiedChatChanges, getUnifiedChatChangesEntry } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
 import { closeTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 
@@ -56,6 +59,9 @@ const { mockState } = vi.hoisted(() => ({
         richTextSetValueCalls: [] as Array<[string, number?]>,
         // Captured SSE options so a test can fire onCanvasUpdated.
         sseOpts: null as any,
+        // When set, every fetch waits on it — lets a test hold the chat in its
+        // loading state and observe what the UI does meanwhile.
+        holdFetch: null as Promise<void> | null,
         // Per-pid canvas descriptors served by the fetch handler for
         // `client.canvases.list`.
         canvasesByPid: {} as Record<string, Array<{ id: string; title?: string; type?: string }>>,
@@ -430,7 +436,9 @@ beforeEach(() => {
     mockState.canvasesByPid = {};
     mockState.sourceFiles = [];
     mockState.sseOpts = null;
+    mockState.holdFetch = null;
     fetchMock = vi.fn(async (url: string) => {
+        if (mockState.holdFetch) await mockState.holdFetch;
         const urlStr = typeof url === 'string' ? url : '';
         if (urlStr.includes('/canvases')) {
             const pid = new URL(urlStr, 'http://x').searchParams.get('processId') ?? '';
@@ -486,28 +494,111 @@ function renderHostedChat(taskId: string, hostChatId: string | null = taskId) {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
-    it('auto-opens a chat canvas on first visit', async () => {
+describe('ChatDetail — no chat-owned AI canvas column', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+        clearUnifiedCanvasEvents();
+    });
+
+    /** Every artifact of the retired chat-side canvas surface. */
+    function expectNoChatCanvasSurface() {
+        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+        expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
+        expect(screen.queryByTestId('canvas-poppedout-rail')).toBeNull();
+        expect(screen.queryByTestId('canvas-panel-resize-handle')).toBeNull();
+        expect(screen.queryByLabelText('Open canvas')).toBeNull();
+        expect(screen.queryByLabelText('Resize canvas panel')).toBeNull();
+    }
+
+    /** The retired per-chat "closed" flag, written by an older build. */
+    function writeLegacyClosedFlag(taskId: string) {
+        localStorage.setItem(`coc.canvasPanel.closed.${WS_ID}.${encodeURIComponent(pidFor(taskId))}`, '1');
+    }
+
+    it('renders no canvas rail or column for a chat with a linked canvas', async () => {
         mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
         renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        await screen.findByTestId('chat-explorer-toggle-btn');
+        await waitFor(() => expectNoChatCanvasSurface());
+    });
+
+    it('renders nothing canvas-shaped while discovery is outstanding, nor once it lands', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        let release = () => {};
+        mockState.holdFetch = new Promise<void>(resolve => { release = resolve; });
+
+        renderChat('task-A');
+        expectNoChatCanvasSurface();
+
+        // Delayed discovery: the response lands well after first paint.
+        mockState.holdFetch = null;
+        act(() => { release(); });
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+        await waitFor(() => expectNoChatCanvasSurface());
+    });
+
+    it('ignores an old saved closed preference on first mount and after switching back', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        writeLegacyClosedFlag('task-A');
+
+        const { rerender } = renderChat('task-A');
+        await screen.findByTestId('chat-explorer-toggle-btn');
+        await waitFor(() => expectNoChatCanvasSurface());
+
+        rerenderChat(rerender, 'task-B');
+        rerenderChat(rerender, 'task-A');
+        await waitFor(() => expectNoChatCanvasSurface());
+
+        // Nothing rewrites the retired key either — it is simply inert.
+        expect(localStorage.getItem(`coc.canvasPanel.closed.${WS_ID}.${encodeURIComponent(pidFor('task-A'))}`)).toBe('1');
+    });
+
+    it('ignores an old saved chat-canvas width preference, however extreme', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        localStorage.setItem(`coc.canvasPanel.width.${WS_ID}`, '4000');
+
+        renderChat('task-A');
+        await screen.findByTestId('chat-explorer-toggle-btn');
+        await waitFor(() => expectNoChatCanvasSurface());
+    });
+
+    it('keeps the shared panel canvas tab reachable with the old closed preference set', async () => {
+        writeLegacyClosedFlag('task-A');
+        renderHostedChat('task-A');
+
+        act(() => {
+            mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A', title: 'Plan', revision: 1, editor: 'ai' });
+        });
+
+        // The editor is REACHABLE, not merely the rail absent: the tab the update
+        // filed renders CanvasPanel for that canvas.
+        await waitFor(() => expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1));
+        const tab = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        render(
+            <Wrap>
+                <UnifiedTabView tab={tab} scopeWorkspaceId={WS_ID} onClose={vi.fn()} />
+            </Wrap>,
+        );
+        const panels = await screen.findAllByTestId('canvas-panel-mock');
+        expect(panels.some(el => el.getAttribute('data-canvas-id') === 'canvas-A')).toBe(true);
         expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
     });
 
-    it('passes the linked canvas list into the panel and switches active canvas from the panel', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [
-            { id: 'canvas-A1', title: 'First Canvas', type: 'markdown' },
-            { id: 'canvas-A2', title: 'Second Canvas', type: 'code' },
-        ];
+    it('renders no canvas column across repeated chat switches or a fresh mount', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        mockState.canvasesByPid[pidFor('task-B')] = [{ id: 'canvas-B' }];
+        const first = renderChat('task-A');
+        for (const id of ['task-B', 'task-A', 'task-B', 'task-A']) {
+            rerenderChat(first.rerender, id);
+            await waitFor(() => expectNoChatCanvasSurface());
+        }
+        first.unmount();
 
         renderChat('task-A');
-
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A1'));
-        expect(screen.getByTestId('canvas-available-count').getAttribute('data-count')).toBe('2');
-
-        fireEvent.click(screen.getByTestId('canvas-switch-second'));
-
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
+        await screen.findByTestId('chat-explorer-toggle-btn');
+        await waitFor(() => expectNoChatCanvasSurface());
     });
 
     it('opens the read-only file-tree dock (kind: dir) from the persistent header explorer toggle, and closes it on re-toggle', async () => {
@@ -525,93 +616,6 @@ describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
         // Toggle OFF → the dock closes again.
         fireEvent.click(screen.getByTestId('chat-explorer-toggle-btn'));
         await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
-    });
-
-    it('(a) keeps a deliberately-closed canvas collapsed after switching away and back', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        mockState.canvasesByPid[pidFor('task-B')] = [];
-        const { rerender } = renderChat('task-A');
-
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        // Deliberate close → collapsed rail + persisted flag.
-        fireEvent.click(screen.getByTestId('canvas-close'));
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(true);
-
-        // Switch to B, then back to A.
-        rerenderChat(rerender, 'task-B');
-        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
-        rerenderChat(rerender, 'task-A');
-
-        // A settles into the collapsed rail — NOT the expanded panel.
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
-        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
-    });
-
-    it('(b) reopening clears persistence and auto-opens on the next switch-back', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        mockState.canvasesByPid[pidFor('task-B')] = [];
-        const { rerender } = renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-close'));
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
-        expect(localStorage.getItem(canvasClosedStorageKey(WS_ID, pidFor('task-A'))!)).not.toBeNull();
-
-        // Reopen via the collapsed-rail « button.
-        fireEvent.click(screen.getByTestId('canvas-reopen'));
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
-
-        // Switch away and back — now auto-opens.
-        rerenderChat(rerender, 'task-B');
-        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
-        rerenderChat(rerender, 'task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-        expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
-    });
-
-    it('(c) a fresh AI canvas edit auto-opens a closed chat and clears persistence', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-close'));
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(true);
-
-        // SSE delivers an AI canvas update for this chat.
-        act(() => {
-            mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A', title: 'A', revision: 2, editor: 'ai' });
-        });
-
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-        expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
-    });
-
-    it('(d) opening a source-file canvas collapses the agent canvas WITHOUT persisting closed', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        mockState.canvasesByPid[pidFor('task-B')] = [];
-        const { rerender } = renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        // Open the docked source-file canvas — mutual exclusion collapses the
-        // agent canvas, but this is transient and must NOT persist.
-        act(() => {
-            window.dispatchEvent(new CustomEvent('coc-open-source-canvas', { detail: { filePath: '/x.ts' } }));
-        });
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
-
-        // Switch away and back — the SAME source canvas is RESTORED (the open
-        // canvas is now remembered per-chat) and the close flag was never persisted.
-        rerenderChat(rerender, 'task-B');
-        await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
-        rerenderChat(rerender, 'task-A');
-        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
     });
 
     it('replaces the active source canvas from its conversation candidates and preserves the selected workspace', async () => {
@@ -639,20 +643,6 @@ describe('ChatDetail — persisted canvas closed state (AC-02)', () => {
             expect(dock.getAttribute('data-line')).toBe('21');
             expect(dock.getAttribute('data-end-line')).toBe('24');
         });
-    });
-
-    it('keeps a closed chat collapsed across a full reload (fresh mount)', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        const first = renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-        fireEvent.click(screen.getByTestId('canvas-close'));
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
-        first.unmount();
-
-        // Fresh mount (simulated reload) reads the persisted flag → stays collapsed.
-        renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
-        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
     });
 });
 
@@ -806,7 +796,7 @@ describe('ChatDetail — AI canvas updates with the unified right panel (AC-06)'
         });
     }
 
-    it('activates the canvas as a panel tab instead of the chat\u2019s own canvas column', async () => {
+    it('activates the canvas as a panel tab, with no canvas column in the chat', async () => {
         renderHostedChat('task-A');
         fireCanvasUpdate('canvas-A2', 1);
 
@@ -821,8 +811,9 @@ describe('ChatDetail — AI canvas updates with the unified right panel (AC-06)'
         // Active, not merely present — the goal asks for activation on every
         // create and update.
         expect(state.activeByScope['task-A']).toBe(tab.id);
-        // One right-side surface: the docked agent canvas must stay shut.
+        // One right-side surface: the chat itself grows no canvas column.
         expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+        expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
     });
 
     it('recreates a dismissed tab on a later update, without duplicating it', async () => {
@@ -844,27 +835,45 @@ describe('ChatDetail — AI canvas updates with the unified right panel (AC-06)'
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1);
     });
 
+    it('opens a tab per canvas, so two linked canvases stay separately reachable', async () => {
+        renderHostedChat('task-A');
+        fireCanvasUpdate('canvas-A1', 1);
+        fireCanvasUpdate('canvas-A2', 1);
+
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.resourceId)).toEqual(['canvas-A1', 'canvas-A2']);
+        });
+        const first = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        act(() => { updateUnifiedPanelState(WS_ID, prev => closeTab(prev, first.id)); });
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A').map(t => t.resourceId)).toEqual(['canvas-A2']);
+    });
+
     it('leaves the visible panel alone for a chat it is not showing', async () => {
-        // A background chat's AI edit must not repoint the panel, so it keeps
-        // its own docked canvas instead of filing an invisible tab.
+        // A background chat's AI edit must not repoint the panel — and must not
+        // grow a canvas column in the background chat either.
         renderHostedChat('task-A', 'task-B');
         fireCanvasUpdate('canvas-A2', 1);
 
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-B')).toEqual([]);
+        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+        expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
     });
 
-    it('keeps the chat\u2019s own canvas column with no panel hosting it at all', async () => {
+    it('opens nothing with no panel hosting the chat at all', async () => {
         renderChat('task-A');
         fireCanvasUpdate('canvas-A2', 1);
 
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
+        expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
     });
 });
 
-describe('ChatDetail — restore open canvas on chat switch', () => {
+describe('ChatDetail — restore the open side view on chat switch', () => {
     function openSourceCanvas(detail: Record<string, unknown>) {
         act(() => {
             window.dispatchEvent(new CustomEvent('coc-open-source-canvas', { detail }));
@@ -879,8 +888,8 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
         });
     }
 
-    // (a) Each canvas surface returns exactly as it was after switching away and
-    // back — the core restore behaviour for source / note / folder canvases.
+    // (a) Each view returns exactly as it was after switching away and back —
+    // the core restore behaviour for source / note / folder canvases.
     it.each([
         { kind: 'code', path: '/x.ts', label: 'source-file' },
         { kind: 'note', path: '/notes/n.md', label: 'note' },
@@ -901,8 +910,23 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
         const dock = screen.getByTestId('source-canvas-dock');
         expect(dock.getAttribute('data-path')).toBe(path);
         expect(dock.getAttribute('data-kind')).toBe(kind);
-        // Session-only memory must never touch the deliberate-close localStorage flag.
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
+    });
+
+    // The retired AI-canvas preferences must not reach these views: a chat whose
+    // old flag says "canvas closed" still restores its source canvas.
+    it('restores a source canvas even with the retired closed preference set', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        localStorage.setItem(`coc.canvasPanel.closed.${WS_ID}.${encodeURIComponent(pidFor('task-A'))}`, '1');
+        const { rerender } = renderChat('task-A');
+
+        openSourceCanvas({ filePath: '/x.ts' });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+
+        rerenderChat(rerender, 'task-B');
+        await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
+        rerenderChat(rerender, 'task-A');
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
     });
 
     // (a) A whisper-diff canvas returns as it was.
@@ -922,54 +946,9 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
         expect(screen.getByTestId('whisper-diff-dock').getAttribute('data-path')).toBe('a.ts');
     });
 
-    // (a) With multiple agent canvases, the EXACT open one (the second) returns —
-    // not the first one discovery would otherwise auto-open.
-    it('restores the exact open agent canvas (not the first linked one)', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A1' }, { id: 'canvas-A2' }];
-        mockState.canvasesByPid[pidFor('task-B')] = [];
-        const { rerender } = renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        // Switch to the second agent canvas (a fresh AI edit targets canvas-A2).
-        act(() => {
-            mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A2', title: 'A2', revision: 1, editor: 'ai' });
-        });
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
-
-        rerenderChat(rerender, 'task-B');
-        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
-
-        rerenderChat(rerender, 'task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-        expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2');
-    });
-
-    // AC-03 silent fallback: a remembered agent canvas that was deleted while
-    // away falls back to the first linked canvas (never a load error).
-    it('silently falls back to the first linked canvas when the remembered one was deleted', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A1' }, { id: 'canvas-A2' }];
-        mockState.canvasesByPid[pidFor('task-B')] = [];
-        const { rerender } = renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        act(() => {
-            mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A2', title: 'A2', revision: 1, editor: 'ai' });
-        });
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
-
-        // canvas-A2 is deleted while we are away.
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A1' }];
-        rerenderChat(rerender, 'task-B');
-        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
-
-        rerenderChat(rerender, 'task-A');
-        // Falls back to the surviving first canvas — not the deleted canvas-A2.
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A1'));
-    });
-
-    // (b) Closing the open canvas clears the chat's memory → switch-back shows
-    // nothing (no source dock, no agent panel) for a chat with no linked canvas.
-    it('clears memory when the open canvas is closed → switch-back shows nothing', async () => {
+    // (b) Closing the open view clears the chat's memory → switch-back shows
+    // nothing, the explicit "nothing open" state.
+    it('clears memory when the open view is closed → switch-back shows nothing', async () => {
         mockState.canvasesByPid[pidFor('task-A')] = [];
         mockState.canvasesByPid[pidFor('task-B')] = [];
         const { rerender } = renderChat('task-A');
@@ -977,47 +956,41 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
         openSourceCanvas({ filePath: '/x.ts' });
         await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
 
-        // Deliberate close clears the per-chat open-canvas memory.
+        // Deliberate close clears the per-chat open-view memory.
         fireEvent.click(screen.getByTestId('source-canvas-close'));
         await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
 
         rerenderChat(rerender, 'task-B');
         rerenderChat(rerender, 'task-A');
         // Nothing is restored — the chat remembers "nothing open".
-        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
-        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+        await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
         expect(screen.queryByTestId('whisper-diff-dock')).toBeNull();
-    });
-
-    // (c) The deliberate-close localStorage flag still beats the restore: a chat
-    // whose agent canvas was closed stays collapsed even though memory exists.
-    it('keeps the deliberate-close flag winning over the remembered canvas', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        mockState.canvasesByPid[pidFor('task-B')] = [];
-        const { rerender } = renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        // Deliberately close the agent canvas (persists the close flag).
-        fireEvent.click(screen.getByTestId('canvas-close'));
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(true);
-
-        rerenderChat(rerender, 'task-B');
-        await waitFor(() => expect(screen.queryByTestId('canvas-panel-mock')).toBeNull());
-        rerenderChat(rerender, 'task-A');
-
-        // Flag wins → collapsed rail, never the expanded panel.
-        await waitFor(() => expect(screen.getByTestId('canvas-collapsed-rail')).toBeTruthy());
         expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
     });
 
-    // (d) The open-canvas memory is held in memory only — opening + restoring a
-    // source canvas must write NOTHING that encodes it to localStorage.
-    it('does not persist the open-canvas memory to localStorage', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
+    // (c) Each chat's memory is its own: B's open view never leaks into A.
+    it('keeps the remembered view isolated per conversation', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [];
         mockState.canvasesByPid[pidFor('task-B')] = [];
         const { rerender } = renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
+
+        rerenderChat(rerender, 'task-B');
+        openSourceCanvas({ filePath: '/only-in-b.ts' });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+
+        rerenderChat(rerender, 'task-A');
+        await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
+
+        rerenderChat(rerender, 'task-B');
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock').getAttribute('data-path')).toBe('/only-in-b.ts'));
+    });
+
+    // (d) The open-view memory is held in memory only — opening + restoring a
+    // source canvas must write NOTHING that encodes it to localStorage.
+    it('does not persist the open-view memory to localStorage', async () => {
+        mockState.canvasesByPid[pidFor('task-A')] = [];
+        mockState.canvasesByPid[pidFor('task-B')] = [];
+        const { rerender } = renderChat('task-A');
 
         openSourceCanvas({ filePath: '/secret-canvas-path.ts' });
         await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
@@ -1027,13 +1000,12 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
         rerenderChat(rerender, 'task-A');
         await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
 
-        // No localStorage value encodes the remembered canvas, and no deliberate-
-        // close flag was set by a mere open/restore.
         const dump = Object.keys(localStorage)
             .map(k => `${k}=${localStorage.getItem(k)}`)
             .join(';');
         expect(dump).not.toContain('/secret-canvas-path.ts');
-        expect(localStorage.getItem(canvasClosedStorageKey(WS_ID, pidFor('task-A'))!)).toBeNull();
+        // The retired per-chat canvas flag is never written any more either.
+        expect(dump).not.toContain('coc.canvasPanel.closed');
     });
 
     it('forwards only the current conversation candidate list after chat switches', async () => {
@@ -1064,92 +1036,257 @@ describe('ChatDetail — restore open canvas on chat switch', () => {
     });
 });
 
-// ── canvas-popout-replaces-panel ────────────────────────────────────────────
+// ── canvas chat actions ─────────────────────────────────────────────────────
 
-describe('ChatDetail — pop out replaces the right panel', () => {
-    /** Fake popout window handle whose `closed` flag a test can flip. */
-    function stubWindowOpen() {
-        const handle = { closed: false, focus: vi.fn() };
-        const openSpy = vi.spyOn(window, 'open').mockReturnValue(handle as unknown as Window);
-        return { handle, openSpy };
+describe('ChatDetail — publishing canvas chat actions for the shared panel', () => {
+    beforeEach(() => {
+        clearUnifiedChatCanvasActions();
+    });
+
+    it('prefills only the owning chat’s composer from Ask AI', async () => {
+        renderChat('task-A');
+        await waitFor(() => expect(getUnifiedChatCanvasActions('task-A')).not.toBeNull());
+        // A second chat mounted in the same workspace publishes separately.
+        renderChat('task-B');
+        await waitFor(() => expect(getUnifiedChatCanvasActions('task-B')).not.toBeNull());
+
+        mockState.richTextSetValueCalls.length = 0;
+        act(() => { getUnifiedChatCanvasActions('task-A')!.askAi('Rewrite this section'); });
+
+        // Prefilled and focused, never sent.
+        expect(mockState.richTextSetValueCalls.at(-1)?.[0]).toBe('Rewrite this section');
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('sends comments through the owning chat’s follow-up path', async () => {
+        renderChat('task-A');
+        await waitFor(() => expect(getUnifiedChatCanvasActions('task-A')).not.toBeNull());
+
+        await act(async () => { await getUnifiedChatCanvasActions('task-A')!.sendToAi('3 comments'); });
+
+        expect(mockState.sendFollowUp).toHaveBeenCalledTimes(1);
+        expect(mockState.sendFollowUp.mock.calls[0][0]).toBe('3 comments');
+        expect(mockState.sendFollowUp.mock.calls[0][1]).toBe('enqueue');
+    });
+
+    it('withdraws its entry on unmount, so an unmounted chat is unavailable', async () => {
+        const { unmount } = renderChat('task-A');
+        await waitFor(() => expect(getUnifiedChatCanvasActions('task-A')).not.toBeNull());
+        unmount();
+        expect(getUnifiedChatCanvasActions('task-A')).toBeNull();
+    });
+});
+
+// ── chat-changes-publish ────────────────────────────────────────────────────
+
+describe('ChatDetail — publishing the chat’s own Changes to the panel (AC-03)', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+        clearUnifiedChatChanges();
+    });
+    afterEach(() => {
+        clearUnifiedChatChanges();
+    });
+
+    /** A completed `edit` record — the minimum that makes a chat "have changes". */
+    function editTurn(turnIndex: number, id: string, path: string, status?: string): any {
+        return {
+            turnIndex,
+            role: 'assistant',
+            content: '',
+            toolCalls: [{
+                id,
+                toolName: 'edit',
+                args: { path, old_str: 'before\n', new_str: 'after\n' },
+                ...(status === undefined ? {} : { status }),
+            }],
+        };
     }
 
-    it('(AC-01) popping out collapses the panel to a distinct "popped out" rail', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        stubWindowOpen();
-        renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-popout'));
-
-        // Panel collapses to the popped-out rail — NOT the manual-close rail.
-        await waitFor(() => expect(screen.getByTestId('canvas-poppedout-rail')).toBeTruthy());
-        expect(screen.queryByTestId('canvas-panel-mock')).toBeNull();
-        expect(screen.queryByTestId('canvas-collapsed-rail')).toBeNull();
-        // Popping out must not persist the deliberate-close flag.
-        expect(readCanvasClosed(WS_ID, pidFor('task-A'))).toBe(false);
-    });
-
-    it('(AC-01/AC-03) opens the popout window with the canvas id and reuses its window name', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        const { openSpy } = stubWindowOpen();
-        renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-popout'));
-
-        expect(openSpy).toHaveBeenCalledOnce();
-        const [url, name] = openSpy.mock.calls[0];
-        expect(url).toContain('canvasId=canvas-A');
-        expect(url).toContain('#popout/canvas');
-        // Reused window name gives focus-existing-instead-of-duplicate for free.
-        expect(name).toBe('coc-canvas-canvas-A');
-    });
-
-    it('(AC-03) focus rail button focuses the existing popout window', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        const { handle } = stubWindowOpen();
-        renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-popout'));
-        await waitFor(() => expect(screen.getByTestId('canvas-poppedout-rail')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-poppedout-focus'));
-        expect(handle.focus).toHaveBeenCalledOnce();
-    });
-
-    it('(AC-02) closing the popout window restores the panel', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A' }];
-        const { handle } = stubWindowOpen();
-        renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('canvas-popout'));
-        await waitFor(() => expect(screen.getByTestId('canvas-poppedout-rail')).toBeTruthy());
-
-        // The user closes the popout window; the close-poll (500ms) picks it up.
-        handle.closed = true;
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock')).toBeTruthy(), { timeout: 2000 });
-        expect(screen.queryByTestId('canvas-poppedout-rail')).toBeNull();
-    });
-
-    it('(AC-03) a different active canvas shows normally while the popout stays pinned', async () => {
-        mockState.canvasesByPid[pidFor('task-A')] = [{ id: 'canvas-A1' }, { id: 'canvas-A2' }];
-        stubWindowOpen();
-        renderChat('task-A');
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A1'));
-
-        // Pop out canvas-A1 → the column collapses to the popped-out rail.
-        fireEvent.click(screen.getByTestId('canvas-popout'));
-        await waitFor(() => expect(screen.getByTestId('canvas-poppedout-rail')).toBeTruthy());
-
-        // A fresh AI edit makes canvas-A2 the active canvas. It is NOT the pinned
-        // popped-out one, so the right panel reopens showing canvas-A2.
+    /** Drive the chat's turns the way the stream does. */
+    function streamTurns(turns: any[]) {
         act(() => {
-            mockState.sseOpts.onCanvasUpdated({ canvasId: 'canvas-A2', title: 'A2', revision: 1, editor: 'ai' });
+            mockState.sseOpts.setTurnsAndRef(turns);
         });
-        await waitFor(() => expect(screen.getByTestId('canvas-panel-mock').getAttribute('data-canvas-id')).toBe('canvas-A2'));
-        expect(screen.queryByTestId('canvas-poppedout-rail')).toBeNull();
+    }
+
+    /**
+     * The chat under a panel whose SCOPE may differ from the chat's own
+     * workspace — a repo group's panel is keyed by the group id while the edited
+     * files belong to a member clone.
+     */
+    function hostedChat(taskId: string, opts: { scopeId?: string; hostChatId?: string | null; workspaceId?: string } = {}) {
+        const scopeId = opts.scopeId ?? WS_ID;
+        const hostChatId = opts.hostChatId === undefined ? taskId : opts.hostChatId;
+        return (
+            <Wrap>
+                <UnifiedPanelHostProvider host={{ workspaceId: scopeId, chatId: hostChatId }}>
+                    <ChatDetail taskId={taskId} workspaceId={opts.workspaceId ?? WS_ID} />
+                </UnifiedPanelHostProvider>
+            </Wrap>
+        );
+    }
+
+    it('publishes the chat’s changes after the first completed edit', async () => {
+        renderHostedChat('task-A');
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+
+        // No edits yet → nothing published, so the `+` menu hides the entry.
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+        const published = getUnifiedChatChanges(WS_ID, 'task-A')!;
+        expect(published.ctx.files.map(f => f.path)).toEqual(['a.ts']);
+        // The clone the paths belong to, not the panel's scope.
+        expect(published.ctx.workspaceId).toBe(WS_ID);
+    });
+
+    it('updates the published context as later edits stream in', async () => {
+        renderHostedChat('task-A');
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+        const first = getUnifiedChatChanges(WS_ID, 'task-A')!;
+
+        // A second turn edits another file: one entry, both files, in order.
+        streamTurns([editTurn(0, 'call-1', 'a.ts'), editTurn(1, 'call-2', 'b.ts')]);
+        await waitFor(() => {
+            expect(getUnifiedChatChanges(WS_ID, 'task-A')!.ctx.files.map(f => f.path)).toEqual(['a.ts', 'b.ts']);
+        });
+        // A fresh context object, so an open tab re-renders rather than sticking
+        // to the stale one.
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')!.ctx).not.toBe(first.ctx);
+    });
+
+    it('ignores an edit that has not completed', async () => {
+        renderHostedChat('task-A');
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+
+        streamTurns([editTurn(0, 'call-1', 'a.ts', 'running')]);
+        streamTurns([editTurn(0, 'call-1', 'a.ts', 'error')]);
+        // Give the effect a chance to publish something wrong.
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+
+        // …and the same call, once completed, does publish.
+        streamTurns([editTurn(0, 'call-1', 'a.ts', 'completed')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+    });
+
+    it('publishes nothing while the panel is showing another chat', async () => {
+        // A background chat must not repoint the visible menu at its own changes.
+        render(hostedChat('task-A', { hostChatId: 'task-B' }));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+        expect(getUnifiedChatChanges(WS_ID, 'task-B')).toBeNull();
+    });
+
+    it('publishes nothing with no panel hosting the chat', async () => {
+        renderChat('task-A');
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+    });
+
+    it('withdraws the entry when the panel switches to another chat', async () => {
+        const { rerender } = render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+
+        rerender(hostedChat('task-B'));
+
+        // B has no edits of its own, and A's entry does not linger behind it.
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull());
+        expect(getUnifiedChatChanges(WS_ID, 'task-B')).toBeNull();
+    });
+
+    it('withdraws the entry on unmount', async () => {
+        const { unmount } = render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+
+        unmount();
+
+        // Withdrawn, not resolved-with-nothing: nothing speaks for the chat any
+        // more, so a Changes tab of its own would go back to loading rather than
+        // claim the chat changed no files.
+        expect(getUnifiedChatChangesEntry(WS_ID, 'task-A')).toBeUndefined();
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+    });
+
+    it('holds the entry unresolved until the transcript has loaded', async () => {
+        // A reload restores the Changes tab before the history arrives. Until
+        // then nothing has spoken for the chat, and the tab must show loading —
+        // publishing "no changes" here would flash an empty diff over a chat
+        // that is about to show one.
+        let release!: () => void;
+        mockState.holdFetch = new Promise<void>(resolve => { release = resolve; });
+        render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        expect(getUnifiedChatChangesEntry(WS_ID, 'task-A')).toBeUndefined();
+
+        mockState.holdFetch = null;
+        await act(async () => {
+            release();
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+
+        // The load replaced the streamed turns with the server's history, which
+        // holds no edits — resolved with nothing, which is not "unknown".
+        await waitFor(() => expect(getUnifiedChatChangesEntry(WS_ID, 'task-A')).toBeNull());
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
+
+        // ...and a later edit still publishes normally.
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+    });
+
+    it('rebuilds the entry from restored history on a fresh mount, with no extra request', async () => {
+        const { unmount } = render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+        await waitFor(() => expect(getUnifiedChatChanges(WS_ID, 'task-A')).not.toBeNull());
+        unmount();
+        cleanup();
+
+        // Reload: same chat, history restored into the conversation snapshot.
+        const callsBefore = fetchMock.mock.calls.length;
+        render(hostedChat('task-A'));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => {
+            expect(getUnifiedChatChanges(WS_ID, 'task-A')!.ctx.files.map(f => f.path)).toEqual(['a.ts']);
+        });
+        // Reconstruction is pure — no changes-specific endpoint exists to call.
+        const changesRequests = fetchMock.mock.calls
+            .slice(callsBefore)
+            .map(call => String(call[0]))
+            .filter(url => url.includes('changes'));
+        expect(changesRequests).toEqual([]);
+    });
+
+    it('keys the entry by the panel’s scope while the context keeps the owning clone', async () => {
+        // A repo group: the panel is scoped to the group, the chat's files live
+        // in a member clone. Another scope's menu must not see this entry.
+        render(hostedChat('task-A', { scopeId: 'group-1', workspaceId: 'ws-member' }));
+        await waitFor(() => expect(mockState.sseOpts).toBeTruthy());
+        streamTurns([editTurn(0, 'call-1', 'a.ts')]);
+
+        await waitFor(() => expect(getUnifiedChatChanges('group-1', 'task-A')).not.toBeNull());
+        expect(getUnifiedChatChanges('group-1', 'task-A')!.ctx.workspaceId).toBe('ws-member');
+        expect(getUnifiedChatChanges(WS_ID, 'task-A')).toBeNull();
     });
 });

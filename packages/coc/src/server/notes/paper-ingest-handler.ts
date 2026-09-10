@@ -23,7 +23,7 @@ import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-uti
 import type { Route } from '../types';
 import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
 import type { ResolvedNotesRoot } from './notes-root-resolver';
-import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
+import { loadNativeNotesFs, isNativeNotesPathError } from '@plusplusoneplusplus/coc-native';
 import { readRepoPreferences } from '../preferences-handler';
 import { recognizeArxivUrl } from './arxiv-url';
 import { extractPdfText } from './pdf-text-extract';
@@ -70,8 +70,8 @@ async function resolvePapersDir(
     if (resolved.isDefault) {
         return path.join(resolved.absolutePath, PAPERS_DIR);
     }
-    const safe = await resolveSafeNotesPath(resolved.absolutePath, PAPERS_DIR);
-    if (isNotesPathSafetyError(safe)) {
+    const safe = await loadNativeNotesFs().resolveSafeNotesPath(resolved.absolutePath, PAPERS_DIR);
+    if (isNativeNotesPathError(safe)) {
         return { error: safe.error, statusCode: safe.statusCode };
     }
     return safe.absolutePath;

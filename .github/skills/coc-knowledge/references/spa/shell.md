@@ -81,8 +81,8 @@ skips the `markPoppedOut` bookkeeping driving the popped-out rails.
 The desktop allow-list is narrow — same-origin `#popout/` hashes plus same-origin PDFs —
 so print preview and OAuth popups get real handles. `window.open(url, name)` name reuse
 focuses an existing window in both hosts. Desktop pop-outs expose no handle to poll, so
-handle-dependent restore (the canvas panel's `handle.closed` watcher) degrades to "stays
-on the rail until clicked".
+handle-dependent focus (`features/canvas/canvasPopOut.ts` tracking live handles) degrades
+there to re-issuing the named open, which focuses the existing window.
 
 Pop-out buttons draw the SVG `PopOutIcon` (`features/canvas/components/icons.tsx`),
 **never a text glyph**: U+29C9 `⧉` is missing from the UI font stack on common Linux
@@ -141,8 +141,9 @@ capability; Insert PDF uploads through the notes image endpoint.
 ## Chat load performance (per-conversation request budget)
 
 The target for a **warm** second open — same session, same workspace, provider already
-seen — is **≤3** round-trips: process detail, `canvases?processId=`, and
-`pull-request-chat-bindings?taskId=`. The persistent `stream?warm=1` SSE EventSource is
+seen — is **≤2** round-trips: process detail and `pull-request-chat-bindings?taskId=`.
+(`canvases?processId=` moved to the right panel's `+` menu, so it is no longer part of
+opening a chat.) The persistent `stream?warm=1` SSE EventSource is
 excluded and opens only for running conversations. There is no aggregation or bootstrap
 endpoint; the wins are client caching, re-keying, deferral, and cache headers.
 
@@ -187,8 +188,7 @@ fetches run after first paint via `utils/runWhenIdle.ts` — `requestIdleCallbac
 `{timeout}` bound so data still loads on a busy page, `setTimeout(cb, 0)` fallback for
 Safari and jsdom, returning a disposer.
 
-`ChatDetail` keeps `setCanvasPanelClosed(readCanvasClosed(...))` synchronous (no
-collapse-rail flash) and defers only `client.canvases.list`. `usePrChatStatusItems` defers
+`usePrChatStatusItems` defers
 only the async binding IIFE (`listChatBindingsForOrigin` + association build + detail
 fan-out), guarding the idle fire with `generationRef` so an A→B switch never fires a stale
 fetch. Both `cancelIdle()` in cleanup.

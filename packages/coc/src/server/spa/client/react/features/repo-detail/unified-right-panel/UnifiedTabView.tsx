@@ -21,7 +21,9 @@
  *  - `diff` — the chat's own read-only `WhisperDiffPanel`, resolved through the
  *    `unifiedDiffSources` registry, because a diff is reconstructed from an
  *    in-memory tool-call group rather than fetched. A tab whose group is gone
- *    shows the expired state (`UnifiedDiffTab`).
+ *    shows the expired state (`UnifiedDiffTab`) — except a chat's own Changes
+ *    tab, which rebuilds itself from the chat, so the scope and the owning chat
+ *    go down with it.
  *  - `note` — the editable `NoteEditor`, wired exactly as the docked source
  *    canvas wires a note link, with the resolution decoded from the descriptor
  *    rather than re-run (`UnifiedNoteTab`).
@@ -125,7 +127,10 @@ export function UnifiedTabView({
             return (
                 <UnifiedCanvasTab
                     workspaceId={tab.ownerWorkspaceId}
+                    scopeWorkspaceId={scopeWorkspaceId}
                     canvasId={tab.resourceId}
+                    chatId={tab.chatId}
+                    {...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {})}
                     onClose={close}
                     onDirtyChange={handleDirty}
                     onRegisterSave={handleRegisterSave}
@@ -149,6 +154,8 @@ export function UnifiedTabView({
                 <UnifiedDiffTab
                     sourceId={tab.resourceId}
                     label={tab.label}
+                    scopeWorkspaceId={scopeWorkspaceId}
+                    chatId={tab.chatId}
                     onClose={close}
                     onErrorChange={handleError}
                 />

@@ -169,6 +169,16 @@ function persistLastCloneByRemote(lastCloneByRemote: Record<string, string>): vo
 
 // ── State ──────────────────────────────────────────────────────────────
 
+/**
+ * Which page a Git selection belongs to and which workspace serves its data.
+ * They are the same id for an ordinary repo; for a repo group the page is the
+ * group and the data is one member.
+ */
+export interface GitRouteScope {
+    routeWorkspaceId: string;
+    workspaceId: string | null;
+}
+
 export interface OnboardingProgress {
     hasRunWorkflow: boolean;
     hasOpenedWiki: boolean;
@@ -222,6 +232,13 @@ export interface AppContextState {
     selectedScheduleId: string | null;
     selectedGitCommitHash: string | null;
     selectedGitFilePath: string | null;
+    /**
+     * Which page owns the current Git selection, and which workspace owns its
+     * data. They differ for a repo group: the group is the page, one member is
+     * the data. Transient (never persisted) — `repoRouteState` remembers routes
+     * and `repoGroupGitMemberState` remembers the validated member preference.
+     */
+    gitRouteScope: GitRouteScope | null;
     selectedPrId: number | string | null;
     selectedPrDetailTab: PrDetailTab | null;
     selectedWorkflowProcessId: string | null;
@@ -310,6 +327,7 @@ const initialState: AppContextState = {
     selectedScheduleId: null,
     selectedGitCommitHash: null,
     selectedGitFilePath: null,
+    gitRouteScope: null,
     selectedPrId: null,
     selectedPrDetailTab: null,
     selectedWorkflowProcessId: null,
@@ -396,6 +414,19 @@ export type AppAction =
     | { type: 'SET_SELECTED_SKILL_TEMPLATE'; id: string | null }
     | { type: 'SET_SELECTED_SCRIPT_TEMPLATE'; id: string | null }
     | { type: 'SET_SELECTED_SCHEDULE'; id: string | null }
+    | {
+        /**
+         * Publish a whole Git route at once — page owner, data member, revision
+         * and file. Atomic on purpose: setting the member and the SHA in two
+         * dispatches would briefly point a newly selected member at the previous
+         * member's commit.
+         */
+        type: 'SET_GIT_ROUTE';
+        routeWorkspaceId: string;
+        workspaceId: string | null;
+        commitHash: string | null;
+        filePath: string | null;
+    }
     | { type: 'SET_GIT_COMMIT_HASH'; hash: string | null }
     | { type: 'SET_GIT_FILE_PATH'; filePath: string }
     | { type: 'CLEAR_GIT_FILE_PATH' }
@@ -690,6 +721,13 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             return { ...state, selectedScriptTemplateId: action.id };
         case 'SET_SELECTED_SCHEDULE':
             return { ...state, selectedScheduleId: action.id };
+        case 'SET_GIT_ROUTE':
+            return {
+                ...state,
+                gitRouteScope: { routeWorkspaceId: action.routeWorkspaceId, workspaceId: action.workspaceId },
+                selectedGitCommitHash: action.commitHash,
+                selectedGitFilePath: action.filePath,
+            };
         case 'SET_GIT_COMMIT_HASH':
             return { ...state, selectedGitCommitHash: action.hash };
         case 'SET_GIT_FILE_PATH':

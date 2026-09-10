@@ -124,10 +124,29 @@ export function WhisperDiffPanel({
     // `state` has a stable identity per open (useWhisperDiffState memoizes on the
     // held context), so this fires exactly once per open — footer, file row, or a
     // fresh group — and never on unrelated re-renders.
+    //
+    // A live source is the exception: a chat's whole-chat Changes context is
+    // rebuilt on every streamed turn, so its identity changes while the user is
+    // still reading the file they picked. Such a source supplies a `selectionKey`
+    // that survives the rebuild, and the reset then fires only when the key
+    // itself changes — a different source, or the same one opened on a different
+    // file.
+    const resetToken = state.selectionKey ?? state;
     useEffect(() => {
         setSelected(focusPath && sectionByPath.has(focusPath) ? focusPath : ALL_FILES);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [state]);
+    }, [resetToken]);
+
+    // A preserved selection can outlive its file: a rebuilt context may no longer
+    // list the path at all. Fall back to All files rather than leaving the header
+    // naming a file that is not in the dropdown. A file that is still listed but
+    // has become non-reconstructable keeps its selection (the body shows the
+    // stack, where it appears under "Not shown"), matching a focus on one.
+    useEffect(() => {
+        if (selected === ALL_FILES) return;
+        if (files.some((f) => f.path === selected)) return;
+        setSelected(ALL_FILES);
+    }, [selected, files]);
 
     const showingAll = selected === ALL_FILES;
     const selectedSection = showingAll ? null : sectionByPath.get(selected) ?? null;

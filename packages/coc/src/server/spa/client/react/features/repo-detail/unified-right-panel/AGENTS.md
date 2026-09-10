@@ -44,14 +44,16 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 | `UnifiedPanelTreeToggle.tsx` | The single open/close control for the tree column, rendered in whichever of the two hosts is available. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. |
-| `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
+| `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
+| `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
 | `unifiedTerminalClose.ts`, `unifiedDirtyClose.ts` | The two close guards. |
 
 ## Views are reused, never re-implemented
 
 There is no second editor, search backend, terminal manager, or canvas store.
 `file` renders the Explorer's own `PreviewPane` (the same buffer controller the
-Explorer sub-tab uses), `canvas` renders `CanvasPanel`, `note` renders
+Explorer sub-tab uses), `canvas` renders `CanvasPanel` (the panel is its ONLY
+host — the chat has no canvas column of its own), `note` renders
 `NoteEditor`, `diff` renders the chat's `WhisperDiffPanel`, and `terminal`
 renders `TerminalView`. The file tree is not among them: it is
 the panel's own column (`ExplorerPanel` in sidebar mode), so no tab mounts a
@@ -313,12 +315,16 @@ surface untouched.
 | Chat source link | `ChatDetail` `coc-open-source-canvas` | Declines relative/group refs and paths outside a known root — `PreviewPane` reads repo-relative blobs, so a tab for those could only render an error. |
 | Note link | same handler, `kind: 'note'` branch | `resourceId` is `<fetchMode>\|<root>\|<path>`: the note root is part of the identity, resolved once at open time because the link is gone by restore time. |
 | Explorer selection | `ExplorerPanel` `onOpenFile` | The tree column (and navigator mode elsewhere): `options.preview` picks the preview slot vs a permanent tab. |
-| Canvas embed | `shared/CanvasEmbed.tsx` "Open in panel" | The only entry point that needed a new affordance. Gated on `useUnifiedPanelHostForChat`; the chat id arrives through `ChatRenderContext.chatId` because the embed is portaled. |
+| Canvas embed | `shared/CanvasEmbed.tsx` "Open in panel" | Gated on `useUnifiedPanelHostForChat`; the chat id arrives through `ChatRenderContext.chatId` because the embed is portaled. |
+| Linked canvas / New Canvas | the `+` menu | Both build through `canvasOpenInput`, so an embed, a menu pick, and an AI event converge on one tab per `(owning clone, canvas id, chat)`. |
 | AI canvas create/update | `ChatDetail` `onCanvasUpdated` | See below. |
 | `+` menu | the panel itself | Reuses QuickOpen's search behavior: nothing before the first keystroke, debounce, abort the previous request. |
+| Chat-wide **Changes** | the `+` menu, via `unifiedChatChanges.ts` | See below. |
 
 `dir` refs, the chat header's explorer toggle, and conversation-candidate
-navigation stay on the docked source canvas by design.
+navigation stay on the docked source canvas by design. AI canvases do not: this
+panel is their only host, so a chat with no panel (a pop-out, an embedded chat)
+keeps inline previews and the standalone canvas window and opens no sidebar.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 
@@ -332,7 +338,88 @@ the title; revision is the ordering, and a non-advancing event is dropped.
 
 `useChatSSE` captures its callbacks when it opens the EventSource and does not
 re-subscribe when they change, so this handler reads the host and workspace list
-through refs. **Any future SSE-driven entry point must do the same.**
+through refs. **Any future SSE-driven entry point must do the same.** With no
+host (a background chat, or a chat with no panel) the event is still *published*
+so a mounted view reconciles, but nothing is opened or activated.
+
+## A canvas tab's chat actions (`unifiedChatCanvasActions.ts`)
+
+`UnifiedCanvasTab` resolves three things `CanvasPanel` cannot get from a tab
+descriptor: the live event, the owning chat's composer actions, and pop-out /
+Kusto-creation chrome.
+
+- **Ask AI / Send comments** go to the chat named by `tab.chatId` — the
+  *originating* conversation, so a pending send never follows a chat switch. A
+  chat that is not mounted publishes nothing, and the tab then omits both props,
+  which is what hides the actions instead of dropping the work silently.
+- **Pop out** goes through `features/canvas/canvasPopOut.ts`, keyed on the
+  canvas's OWNING workspace and named `coc-canvas-<id>`, so a repeat click
+  focuses the live window. A blocked popup leaves the canvas in its tab.
+- **A created Kusto query** opens as its own tab under the same chat and owner;
+  the originating tab keeps its draft. There is no in-tab canvas switcher — the
+  strip is the one control, so `availableCanvases` is deliberately not passed.
+
+## The chat's own Changes (`unifiedChatChanges.ts`)
+
+The `+` menu lists **Changes** after New Canvas, but only when the selected chat
+has recorded a completed file edit — so the answer has to exist *before* anything
+is opened. The chat publishes its whole-chat `WhisperDiffOpenContext` (built by
+`chat/conversation/tool-calls/chatChangesModel.ts`) into a `useSyncExternalStore`
+registry keyed by `(panel scope workspace, chat id)`, the same shape
+`unifiedCanvasEvents` uses; the menu reads it back and hides the entry on `null`.
+The scope key is what isolates chats across repos, repo groups, and remote
+clones.
+
+One more thing that model owns: **path form**. Tool args carry whatever the
+agent's platform produced, so a chat can record `src\a.ts` from a Windows run and
+`src/a.ts` from a POSIX one — sometimes both, for the same file. `collectFileEdits`
+canonicalizes its map key to forward slashes (`normalizeFileEditPath`), so one
+file stays one row in the list, one dropdown item and one diff section. The raw
+args are left alone; every reconstruction and the shell-delete pass already
+normalize both sides before comparing, so nothing downstream had to change.
+
+The tab is an ordinary `diff` tab over the existing `WhisperDiffPanel`, with one
+difference: its `resourceId` is the fixed `chat-changes-<chatId>` rather than
+`whisperDiffSourceId`'s content hash. A whole-chat context grows as the chat
+edits more files, and a re-hash would open a *second* tab instead of refreshing
+the open one — hence `registerUnifiedDiffSource(ctx, { sourceId })`, which moves
+the content hash to the record's `contentKey` so an unchanged re-register still
+keeps the stored context identity (and with it the user's file selection).
+
+### Surviving a reload
+
+The descriptor persists; the source registry does not. So the registry records
+*resolution*, not just content: a missing key means the chat's transcript has not
+loaded yet, a `null` value means it loaded and changed nothing, and
+`withdrawUnifiedChatChanges` (a chat switch, unmount) puts a key back to missing.
+`ChatDetail` publishes only once its `loading` flag clears, which is what makes
+the absence meaningful. `getUnifiedChatChanges` still answers `null` for both
+shapes, so the menu's gate is unchanged.
+
+A restored `UnifiedDiffTab` whose `sourceId` is `chatChangesSourceId(tab.chatId)`
+reads that entry directly: unresolved renders loading, resolved-with-nothing
+renders the panel's ordinary empty diff, and resolved-with-changes renders the
+diff *and claims the source id* for it. Claiming from the mounted tab is the
+whole design — publishing itself still never mints a source
+(`refreshOpenChangesSource` only refreshes an existing one), so a tab the user
+never opened or has closed has no component to bring it back. Everything else
+keeps expiring: a whisper group's source is content-addressed and has no
+publisher, so a restored group tab still shows "no longer available".
+
+`chatChangesRehydration.test.tsx` covers that window end to end (loading → the
+chat's diff, the empty case, the whisper-group regression, and a closed tab that
+a publish does not recreate), and `chatChangesCombinedView.test.tsx` is the
+end-to-end case for this path: a chat's
+turns go through `buildChatChangesContext` and `chatChangesTabInput` into a
+rendered `UnifiedDiffTab`, pinning that repeated edits and a later reversion
+replay as successive hunks, that a record captured in both `toolCalls` and
+`timeline` replays once, that deleted and non-reconstructable files land under
+"Not shown", and that repeated opens (and a close then reopen) land on the one
+tab. Its fixture is cross-platform — two of its files are recorded with Windows
+backslash paths, one edited and one removed by `Remove-Item` — and
+`chatChangesModel.test.ts` plus `test/spa/processes/toolGroupUtils.test.ts` pin
+the same forms at the unit level, including a chat that records one file both
+ways.
 
 ## Tests
 
@@ -343,7 +430,10 @@ close-tab shortcut (`closeTabRouting.test.ts`,
 `UnifiedPanelCloseTabShortcut.test.tsx`), and the canvas
 event relay. Entry-point rerouting is tested where the
 entry point lives — `test/spa/react/repos/ChatDetailCanvasClosed.test.tsx` holds
-the diff, source-link, note-link, and canvas cases.
+the diff, source-link, note-link, and canvas cases, plus the guard that the chat
+grows no canvas column of its own. `UnifiedCanvasTab.test.tsx` and
+`unifiedChatCanvasActions.test.tsx` cover the tab's chat actions, pop-out, and
+created-query routing.
 `test/spa/react/repos/RepoGroupView.dock.test.tsx` and
 `test/spa/react/repos/RepoDetail-workspace-dock.test.ts` pin that both hosts
 render this panel whenever the panel slot is available, and nothing else in it.

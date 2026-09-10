@@ -98,6 +98,12 @@ export interface ContentSearchResult {
   truncated: boolean
 }
 
+/**
+ * Create a notebook, section, or page. `kind` is `notebook`, `section` or
+ * `page`; a page gets `.md` appended when it is missing.
+ */
+export declare function createNotesEntry(root: string, path: string, kind: string, options: NotesEntryOptions): Promise<NotesCreatedEntry>
+
 /** The verdict on one shell command. */
 export interface DangerousCommandVerdict {
   /**
@@ -115,6 +121,9 @@ export interface DangerousCommandVerdict {
    */
   matchedSegment?: string
 }
+
+/** Delete an entry, its comments sidecar, and its place in the parent's order. */
+export declare function deleteNotesEntry(root: string, path: string, options: NotesEntryOptions): Promise<NotesDeleteResult>
 
 /**
  * Run `git -C <repoRoot> <args>` and resolve with its trimmed stdout.
@@ -708,6 +717,52 @@ export declare function gitValidateRef(repoRoot: string, rev: string): Promise<s
  */
 export declare function matchDangerousCommand(command: string): DangerousCommandVerdict
 
+/** Which regime a content read or write runs under. */
+export interface NotesContentOptions {
+  /** The managed default root, with the absolute-path escape hatch. */
+  isDefaultRoot: boolean
+  /**
+   * Directories an absolute path may live under when `isDefaultRoot`.
+   * Computed in Node, which knows the workspace data dir, the home
+   * directory and the workspace root. Ignored for a selected root.
+   */
+  allowedPrefixes?: Array<string>
+}
+
+/** The path a create actually used — for a page, with `.md` appended. */
+export interface NotesCreatedEntry {
+  path: string
+  /** `notebook`, `section` or `page`. */
+  kind: string
+}
+
+/** Everything the delete route needs for the chat-binding cascade. */
+export interface NotesDeleteResult {
+  /** `file` or `dir`. */
+  kind: string
+  rel: string
+}
+
+/** Which regime a create, rename, delete or order write runs under. */
+export interface NotesEntryOptions {
+  /**
+   * Only the managed default root protects system folders and resolves with
+   * plain containment instead of the strict resolver.
+   */
+  isDefaultRoot: boolean
+  /**
+   * Folder names the default root refuses to rename or delete. Passed in so
+   * `SYSTEM_FOLDER_NAMES` stays a single list in TypeScript.
+   */
+  systemFolderNames?: Array<string>
+}
+
+/** A note's text and the mtime the client sends back as its optimistic lock. */
+export interface NotesFileContent {
+  content: string
+  mtimeMs: number
+}
+
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**
@@ -725,6 +780,42 @@ export interface NotesMatch {
   text: string
 }
 
+/** Everything the rename route needs for the chat-binding cascade. */
+export interface NotesRenameResult {
+  /**
+   * `file` or `dir`, absent when the renamed entry could not be stat'd
+   * afterwards. The route then skips the cascade, as it always has.
+   */
+  kind?: string
+  oldRel: string
+  newRel: string
+  /** The destination with `.md` appended when the source was a file. */
+  effectiveNewPath: string
+}
+
+/** The second argument of the TypeScript `resolveSafeNotesPath` helper. */
+export interface NotesSafePathOptions {
+  /** Permit the empty path, meaning the root directory itself. */
+  allowRoot?: boolean
+  /** Reject a path with any symlink between the root and the target. */
+  rejectSymlinks?: boolean
+}
+
+/**
+ * Success fields or `{ error, statusCode }` — the union the TypeScript helper
+ * returned, kept intact because every caller branches rather than catches.
+ */
+export interface NotesSafePathResult {
+  /** Lexical path to use for the filesystem operation, on success. */
+  absolutePath?: string
+  /** Forward-slash path relative to the root, on success. */
+  relativePath?: string
+  /** The 403 body, on refusal. */
+  error?: string
+  /** Always 403 when `error` is set. */
+  statusCode?: number
+}
+
 /** The bounded response from one Notes index search. */
 export interface NotesSearchResponse {
   results: Array<NotesSearchResult>
@@ -737,6 +828,61 @@ export interface NotesSearchResult {
   path: string
   /** Filename match first, followed by content matches in line order. */
   matches: Array<NotesMatch>
+}
+
+/**
+ * Scan a Notes root recursively, unsorted, with each directory's
+ * `.order.json` alongside its children.
+ */
+export declare function notesTree(root: string, options: NotesTreeOptions): Promise<NotesTreeResult>
+
+/**
+ * One entry in the Notes tree, in raw readdir order.
+ *
+ * Nothing here is sorted: sibling order is `localeCompare` plus `applyOrder`,
+ * and both stay in Node so the ICU collation the SPA has always shown does not
+ * drift into a Rust reimplementation.
+ */
+export interface NotesTreeEntry {
+  name: string
+  /** Root-relative path with `/` separators on every platform. */
+  path: string
+  /** `notebook`, `section` or `page`. */
+  kind: string
+  /** ISO-8601 mtime, present only for a page. */
+  lastModifiedAt?: string
+  /** Present, possibly empty, exactly for a directory. */
+  children?: Array<NotesTreeEntry>
+  /** The directory's `.order.json` list. Present exactly for a directory. */
+  explicitOrder?: Array<string>
+}
+
+/** Which regime a tree scan runs under. */
+export interface NotesTreeOptions {
+  /**
+   * The managed default root trusts its own contents. Any other root skips
+   * symlinks and routes even the `.order.json` read through containment.
+   */
+  isDefaultRoot: boolean
+}
+
+/** The scan of one Notes root. */
+export interface NotesTreeResult {
+  entries: Array<NotesTreeEntry>
+  /** The root's own `.order.json` list. */
+  explicitOrder: Array<string>
+}
+
+/** The two ways an autosave can end, as one object. */
+export interface NotesWriteResult {
+  /** `written` or `conflict`. */
+  status: string
+  /** The new mtime, on `written`. */
+  mtimeMs?: number
+  /** The mtime on disk, on `conflict`. */
+  currentMtime?: number
+  /** The content on disk, on `conflict`, so the SPA can offer a merge. */
+  currentContent?: string
 }
 
 /**
@@ -775,6 +921,24 @@ export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: s
  */
 export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
 
+/** Read one note's text and mtime. Rejects with a 404 when it is missing. */
+export declare function readNote(root: string, path: string, options: NotesContentOptions): Promise<NotesFileContent>
+
+/**
+ * Rename or move an entry, carrying its `.comments.json` sidecar and its place
+ * in the parent's `.order.json` with it.
+ */
+export declare function renameNotesEntry(root: string, oldPath: string, newPath: string, options: NotesEntryOptions): Promise<NotesRenameResult>
+
+/**
+ * Resolve a client path under one selected non-default Notes root.
+ *
+ * Resolves with the union rather than rejecting: this is the containment check
+ * every Notes route makes before touching a file, and its callers branch on
+ * the result.
+ */
+export declare function resolveSafeNotesPath(root: string, path: string, options?: NotesSafePathOptions | undefined | null): Promise<NotesSafePathResult>
+
 /**
  * Walk `root` in parallel and resolve with every line matching `query`.
  *
@@ -812,3 +976,16 @@ export interface SearchContentOptions {
   /** Lines of context on each side of a match. Defaults to 1. */
   contextLines?: number
 }
+
+/**
+ * Autosave one note through a `.tmp` sibling and a rename, so no reader ever
+ * observes a half-written file. Resolves with a `conflict` result rather than
+ * rejecting when `expectedMtime` no longer matches disk.
+ */
+export declare function writeNote(root: string, path: string, content: string, expectedMtime: number | undefined | null, options: NotesContentOptions): Promise<NotesWriteResult>
+
+/**
+ * Persist one directory's custom sibling order. An empty `parentPath` means
+ * the root itself.
+ */
+export declare function writeNotesOrder(root: string, parentPath: string, order: Array<string>, options: NotesEntryOptions): Promise<void>

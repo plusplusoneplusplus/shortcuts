@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useComposerInsertListener } from './composerInsert';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
-import type { AIProcess, CanvasSummary } from '@plusplusoneplusplus/coc-client';
+import type { AIProcess } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
@@ -32,7 +32,6 @@ import { useModelCommand, selectPickableModels } from './hooks/useModelCommand';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { getMetaSkillItems, mergeSkillsWithMeta, type SkillItem } from './SlashCommandMenu';
 import { scanTurnsForCreatedFiles, scanTurnsForPlanCanvas } from '../../utils/conversationScan';
-import { runWhenIdle } from '../../utils/runWhenIdle';
 import { toQueueProcessId, isQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { getDraft, setDraft, pruneExpired } from './hooks/useDraftStore';
@@ -41,17 +40,18 @@ import { buildMetadataProcess } from '../../utils/chatUtils';
 import { resolveChatWorkspaceId } from '../../utils/resolveChatWorkspaceId';
 import type { QueuedMessage } from '../../utils/chatUtils';
 import { useChatSSE } from './hooks/useChatSSE';
-import type { RalphGrillPlanningProgress, CanvasUpdatedEvent } from './hooks/useChatSSE';
-import { CanvasPanel } from '../canvas/CanvasPanel';
+import type { RalphGrillPlanningProgress } from './hooks/useChatSSE';
 import { SourceCanvasDock, useConversationSourceFiles, useSourceCanvasState, useSourceCanvasContent, useSourceCanvasTree } from './source-canvas';
-import { readCanvasClosed, writeCanvasClosed } from './canvasClosedPreference';
 import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemory';
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
 import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/unifiedPanelHost';
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
-import { routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
+import { publishUnifiedCanvasEvent, routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
+import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type UnifiedChatCanvasActions } from '../repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
+import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
+import { buildChatChangesContext } from './conversation/tool-calls/chatChangesModel';
 import { sourceLinkTabInput } from '../repo-detail/unified-right-panel/unifiedSourceLinks';
 import { noteTabInput } from '../repo-detail/unified-right-panel/unifiedNoteTabs';
 import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
@@ -86,7 +86,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isCanvasEnabled, isRemoteShellEnabled, getDefaultChatStyle } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isRemoteShellEnabled, getDefaultChatStyle } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -282,21 +282,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [ralphGrillPlanningProgress, setRalphGrillPlanningProgress] = useState<RalphGrillPlanningProgress | null>(null);
     const [pendingAskUserBatch, setPendingAskUserBatch] = useState<import('./hooks/useChatSSE').AskUserBatch | null>(null);
     const [mcpOAuthPrompts, setMcpOAuthPrompts] = useState<import('./hooks/useChatSSE').McpOAuthPromptData[]>([]);
-    const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
-    const [conversationCanvases, setConversationCanvases] = useState<CanvasSummary[]>([]);
-    const [canvasLiveEvent, setCanvasLiveEvent] = useState<CanvasUpdatedEvent | null>(null);
-    const [canvasPanelClosed, setCanvasPanelClosed] = useState(false);
-    // Canvas id currently popped out into its own window (canvas-popout-replaces-
-    // panel). While set AND active, the in-flow canvas column collapses to a
-    // distinct "popped out" rail so the width goes back to the conversation
-    // (AC-01); closing the window restores the panel (AC-02). Pinned to the id it
-    // was opened for, so a different active canvas still shows normally (AC-03).
-    const [poppedOutCanvasId, setPoppedOutCanvasId] = useState<string | null>(null);
-    const popOutWindowRef = useRef<Window | null>(null);
-    const popOutPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    // Session-scoped, per-conversation memory of which canvas surface is open in
-    // each chat (restore-open-canvas-on-chat-switch). Held in memory only — keyed
-    // by `pid = processId ?? bareTaskId`, NEVER persisted to localStorage/disk, so
+    // Session-scoped, per-conversation memory of which side view is open in each
+    // chat (restore-open-canvas-on-chat-switch). Held in memory only — keyed by
+    // `pid = processId ?? bareTaskId`, NEVER persisted to localStorage/disk, so
     // it is intentionally forgotten on a full reload. `openCanvasDescriptorRef`
     // tracks the CURRENT chat's open surface continuously; the map is written only
     // on switch-away (effect cleanup) so the new chat's record can't be clobbered
@@ -457,9 +445,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const scratchpadEnabled = useScratchpadEnabled() && !disableScratchpad;
     const { scratchpadLayout } = useDisplaySettings();
     const bareTaskId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
-    // Conversation identity used to key the agent-canvas "closed" preference in
-    // localStorage — the same `processId ?? bareTaskId` the canvas discovery
-    // effect uses, so the persisted flag is read/written under one identity.
+    // Conversation identity used to key the per-chat open-view memory and the
+    // quick-ask sidenotes: `processId ?? bareTaskId`, so a chat is one identity
+    // whether or not its process has resolved yet.
     const canvasPid = processId ?? bareTaskId;
     const quickAsk = useQuickAskSidenotes(canvasPid ?? undefined, workspaceId);
     const scratchpad = useScratchpadState(scratchpadContainerRef, scratchpadLayout, bareTaskId);
@@ -531,15 +519,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
 
     // ── Docked source-file canvas (right panel) ─────────────────────────────
-    // Mutually exclusive with the scratchpad and the agent canvas: opening it
-    // closes those, and opening either of those closes it (one right panel at
-    // a time). Declared before useChatSSE so the canvas-updated handler below
-    // can close it when a live agent canvas opens.
+    // Mutually exclusive with the scratchpad and the whisper diff: opening it
+    // closes those, and opening either of those closes it (one chat-side view at
+    // a time). AI canvases are not in this set — they are tabs in the shared
+    // right panel and never take width from the conversation.
     const sourceCanvas = useSourceCanvasState({
         onOpen: () => {
             scratchpad.close();
             whisperDiff.close();
-            setCanvasPanelClosed(true);
         },
     });
     const sourceCanvasResize = useResizablePanel({
@@ -553,13 +540,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // ── Transient read-only whisper diff panel (right panel) ────────────────
     // Opened when a user clicks an edited file in a whisper group's changed-file
     // popover (via the `coc-open-whisper-diff` window event). Mutually exclusive
-    // with the scratchpad, source canvas, and agent canvas — opening it closes
-    // those, and opening any of those closes it (one right panel at a time).
+    // with the scratchpad and the source canvas — opening it closes those, and
+    // opening either of those closes it (one chat-side view at a time).
     const whisperDiff = useWhisperDiffPanelState({
         onOpen: () => {
             scratchpad.close();
             sourceCanvas.close();
-            setCanvasPanelClosed(true);
         },
     });
     const whisperDiffState = useWhisperDiffState(whisperDiff.ctx);
@@ -586,8 +572,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // `useChatSSE` captures its callbacks when it opens the EventSource and does
     // not re-subscribe when they change, so the canvas-updated handler reads the
     // host and the workspace list through refs. Without them a stream opened
-    // before the panel mounted (or before the workspaces resolved) would keep
-    // routing AI canvases to the old docked surface for the life of the chat.
+    // before the panel mounted (or before the workspaces resolved) would never
+    // route an AI canvas to its tab for the life of the chat.
     const unifiedPanelHostRef = useRef(unifiedPanelHost);
     unifiedPanelHostRef.current = unifiedPanelHost;
     const resolvableWorkspacesRef = useRef(resolvableWorkspaces);
@@ -630,6 +616,59 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         window.addEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
         return () => window.removeEventListener(WHISPER_DIFF_EVENT, handler as EventListener);
     }, [openWhisperDiff, unifiedPanelHost, workspaceId, taskId, workspaceRootPath]);
+
+    // The panel's `+` menu lists "Changes" only for a chat that recorded a file
+    // edit, and the entry has to be there before anything is opened — so this
+    // chat pushes its whole-transcript diff context into the registry the menu
+    // reads. Rebuilt from `turns`, which means the entry appears as soon as the
+    // first edit of a streaming turn completes, an already-open Changes tab
+    // refreshes as later edits land, and a reload rebuilds it from the restored
+    // history with no extra request.
+    //
+    // Gated on `unifiedPanelHost`: only the chat the panel is actually showing
+    // publishes, so a background chat can never repoint the visible menu, and
+    // the scope key keeps repos, repo groups and remote clones apart. The clone
+    // the edited paths belong to travels inside the context as `workspaceId`.
+    const chatChangesContext = useMemo(
+        () => (unifiedPanelHost === null
+            ? null
+            : buildChatChangesContext(turns, {
+                ownerWorkspaceId: workspaceId ?? unifiedPanelHost.workspaceId,
+                chatId: taskId,
+            })),
+        [turns, unifiedPanelHost, workspaceId, taskId],
+    );
+    //
+    // Gated on `loading` too, because publishing is what marks the chat
+    // *resolved*: a `null` publish means "this transcript holds no file change",
+    // and a restored Changes tab renders the empty diff for it. Saying that
+    // while the history is still being fetched would flash the empty state over
+    // a tab that is about to show a diff, so an unloaded chat publishes nothing
+    // at all and the tab shows loading instead.
+    useEffect(() => {
+        if (unifiedPanelHost === null || loading) return;
+        publishUnifiedChatChanges(
+            unifiedPanelHost.workspaceId,
+            taskId,
+            chatChangesContext === null
+                ? null
+                : { ctx: chatChangesContext, workspaceRootPath },
+        );
+    }, [unifiedPanelHost, taskId, chatChangesContext, workspaceRootPath, loading]);
+    // Withdrawal is its own effect keyed on the entry's identity alone. Folding
+    // it into the publish above would tear the entry down and rebuild it on
+    // every streamed turn, and a `chat-changes-<id>` tab would see its source
+    // disappear mid-stream; here the entry is only dropped when this chat stops
+    // being the published one — a chat switch, the panel closing, or unmount.
+    const chatChangesScopeId = unifiedPanelHost?.workspaceId ?? null;
+    useEffect(() => {
+        if (chatChangesScopeId === null) return;
+        return () => {
+            // Withdraw, not publish-nothing: an un-hosted chat is unknown again,
+            // never "a chat with no changes".
+            withdrawUnifiedChatChanges(chatChangesScopeId, taskId);
+        };
+    }, [chatChangesScopeId, taskId]);
 
     // Chat AI-response file-path links (feature flag default ON) dispatch
     // `coc-open-source-canvas` to open the docked source-file canvas. The bare
@@ -1417,6 +1456,33 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         });
     }, [sendFollowUp, selectedMode, metadataProcess]);
 
+    // A canvas tab in the shared right panel keeps two chat-directed actions:
+    // "Ask AI" prefills this chat's composer with a selection prompt (never
+    // sending), and "Send comments" submits through the normal follow-up path,
+    // so a busy AI receives the batch at the next turn boundary. The tab lives
+    // outside this subtree and may be showing THIS chat while another one is
+    // selected, so the handlers are published under this chat's id instead of
+    // being passed down. The published object is stable and reads the current
+    // closures through a ref — a re-render must not churn the tabs subscribed to
+    // it, and an action fired here always lands in this conversation.
+    const canvasChatActionsRef = useRef({ sendFollowUp, setFollowUpInput });
+    canvasChatActionsRef.current = { sendFollowUp, setFollowUpInput };
+    const canvasChatActions = useMemo<UnifiedChatCanvasActions>(() => ({
+        askAi: (prompt: string) => {
+            canvasChatActionsRef.current.setFollowUpInput(prompt);
+            richTextRef.current?.setValue(prompt, prompt.length);
+            richTextRef.current?.focus();
+        },
+        sendToAi: async (message: string) => {
+            await canvasChatActionsRef.current.sendFollowUp(message, 'enqueue');
+        },
+    }), []);
+    useEffect(() => {
+        if (!taskId) return;
+        publishUnifiedChatCanvasActions(taskId, canvasChatActions);
+        return () => { withdrawUnifiedChatCanvasActions(taskId, canvasChatActions); };
+    }, [taskId, canvasChatActions]);
+
     const { stopStreaming } = useChatSSE({
         taskId,
         task,
@@ -1451,21 +1517,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             setMcpOAuthPrompts(prev => prev.filter(p => p.requestId !== data.requestId));
         },
         onCanvasUpdated: (data) => {
-            // Canvas discovery is shared by both surfaces: the chat's own canvas
-            // list drives its selector regardless of where the canvas is shown.
-            if (workspaceId && canvasPid) {
-                client.canvases.list(workspaceId, { processId: canvasPid })
-                    .then(canvases => setConversationCanvases(canvases))
-                    .catch(() => { /* canvas discovery is best-effort */ });
-            }
-            // AC-06: with a unified panel showing THIS chat, an AI create or
-            // update always activates the canvas's tab there — reopening the
-            // panel and recreating a tab the user closed — and the docked agent
-            // canvas stays shut, so there is no second right-side column. The
-            // host is null for a background chat, so its updates cannot repoint
-            // whatever the visible panel is showing.
+            // An AI create or update activates the canvas's tab in the shared
+            // right panel — reopening the panel and recreating a tab the user
+            // closed. The chat itself never grows a canvas column from this.
+            //
+            // The host is null for a background chat and for a chat with no
+            // panel at all (a pop-out, an embedded chat, a note-side chat). Both
+            // still publish the event, so a view of that canvas mounted
+            // elsewhere reconciles in place — but nothing is opened, and the
+            // visible panel's selection and tab are left alone.
             const host = unifiedPanelHostRef.current;
-            if (host && routeUnifiedCanvasUpdate({
+            if (!host) {
+                if (workspaceId) publishUnifiedCanvasEvent(workspaceId, data);
+                return;
+            }
+            routeUnifiedCanvasUpdate({
                 event: data,
                 // The clone whose canvas API served this canvas, not the panel's
                 // scope — in a repo group those differ.
@@ -1474,15 +1540,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 // The chat that received the event, never the selected one.
                 chatId: taskId,
                 workspaces: resolvableWorkspacesRef.current,
-            })) return;
-            setActiveCanvasId(data.canvasId);
-            setCanvasLiveEvent(data);
-            // A fresh AI canvas edit auto-opens the panel AND clears any
-            // persisted deliberate-close, so future switch-backs auto-open too.
-            setCanvasPanelClosed(false);
-            writeCanvasClosed(workspaceId, canvasPid, false);
-            sourceCanvas.close();
-            whisperDiff.close();
+            });
         },
     });
 
@@ -1492,23 +1550,21 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setRalphGrillPlanningProgress(null);
     }, [taskId]);
 
-    // Keep the live open-canvas descriptor for the CURRENT chat continuously up
-    // to date (restore-open-canvas-on-chat-switch, AC-01). The snapshot effect
-    // below reads this ref on switch-away so the remembered surface survives the
-    // reset. Surfaces are mutually exclusive, so this collapses to one descriptor.
+    // Keep the live open-view descriptor for the CURRENT chat continuously up to
+    // date (restore-open-canvas-on-chat-switch, AC-01). The snapshot effect below
+    // reads this ref on switch-away so the remembered surface survives the reset.
+    // Surfaces are mutually exclusive, so this collapses to one descriptor.
     useEffect(() => {
         openCanvasDescriptorRef.current = deriveOpenCanvasMemory({
-            activeCanvasId,
-            canvasPanelClosed,
             sourceFileRef: sourceCanvas.fileRef,
             whisperDiffCtx: whisperDiff.ctx,
         });
-    }, [activeCanvasId, canvasPanelClosed, sourceCanvas.fileRef, whisperDiff.ctx]);
+    }, [sourceCanvas.fileRef, whisperDiff.ctx]);
 
-    // Snapshot the current chat's open canvas into the session memory map on
+    // Snapshot the current chat's open view into the session memory map on
     // switch-AWAY (effect cleanup), keyed by the OLD pid captured in closure. The
     // cleanup runs in React's destroy phase — before the switch effect below
-    // resets canvas state in its create phase — so the old chat's descriptor is
+    // resets the views in its create phase — so the old chat's descriptor is
     // captured intact and the new chat's record is never clobbered.
     useEffect(() => {
         const pid = canvasPid;
@@ -1518,248 +1574,28 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         };
     }, [canvasPid]);
 
-    // Canvas side panel on chat switch (restore-open-canvas-on-chat-switch,
-    // AC-02): reset the previous chat's surfaces, then restore THIS chat's
-    // remembered open canvas. Restore priority — (1) the persisted deliberate-
-    // close flag wins → stay collapsed; (2) a remembered open canvas of ANY type
-    // → reopen it exactly; (3) no record → today's default (auto-open the first
-    // linked AI agent canvas). Replaces the old unconditional reset that force-
-    // closed every source/note/folder/diff canvas with no restore path.
+    // Source/note/folder and whisper-diff views on chat switch
+    // (restore-open-canvas-on-chat-switch, AC-02): reset the previous chat's
+    // views, then reopen THIS chat's remembered one. A record holding `null` is
+    // the explicit "nothing open" state and stays closed; a chat with no record
+    // at all also opens nothing. AI canvases are not restored here at all — they
+    // are the shared right panel's tabs, restored by its own persistence, so no
+    // retired canvas preference can suppress the views below.
     useEffect(() => {
-        // Clear the previous chat's transient surfaces first; the branches below
-        // reopen the remembered one (if any) in the SAME synchronous commit, so a
-        // restored canvas never flashes closed/empty.
-        setCanvasLiveEvent(null);
-        setActiveCanvasId(null);
-        setConversationCanvases([]);
+        // Clear the previous chat's transient views first; the branch below
+        // reopens the remembered one (if any) in the SAME synchronous commit, so
+        // a restored view never flashes closed/empty.
         sourceCanvas.close();
         whisperDiff.close();
 
-        if (!isCanvasEnabled() || !workspaceId || !canvasPid) {
-            setCanvasPanelClosed(false);
-            return;
-        }
-
-        // (1) Persisted deliberate-close flag — applied synchronously, before the
-        // async discovery resolves `activeCanvasId`, so a closed chat settles
-        // straight into the collapsed rail without flashing the expanded panel.
-        const closed = readCanvasClosed(workspaceId, canvasPid);
-        setCanvasPanelClosed(closed);
-
-        // (2) Restore the remembered open canvas for this chat from session memory.
-        const hasRecord = openCanvasMemoryRef.current.has(canvasPid);
+        if (!canvasPid) return;
         const remembered = openCanvasMemoryRef.current.get(canvasPid) ?? null;
-        if (!closed && remembered) {
-            if (remembered.kind === 'source') {
-                sourceCanvas.open(remembered.fileRef); // onOpen collapses the agent panel
-            } else if (remembered.kind === 'whisper-diff') {
-                whisperDiff.open(remembered.ctx); // onOpen collapses the agent panel
-            } else if (remembered.kind === 'agent') {
-                // The id is validated + applied by discovery below so a DELETED
-                // canvas silently falls back instead of surfacing CanvasPanel's
-                // load error; here we only pre-expand the panel for its arrival.
-                setCanvasPanelClosed(false);
-            }
-        } else if (!closed && hasRecord) {
-            // Remembered "nothing open" (the user closed a source/note/folder/diff
-            // canvas): keep every surface collapsed instead of auto-opening.
-            setCanvasPanelClosed(true);
+        if (remembered?.kind === 'source') {
+            sourceCanvas.open(remembered.fileRef);
+        } else if (remembered?.kind === 'whisper-diff') {
+            whisperDiff.open(remembered.ctx);
         }
-
-        let cancelled = false;
-        // Discovery is non-critical: defer the round-trip to browser idle so the
-        // conversation paints first. It populates the linked agent canvas id for
-        // the collapsed rail / auto-open, and validates a remembered agent canvas.
-        const cancelIdle = runWhenIdle(() => {
-            if (cancelled) return;
-            client.canvases.list(workspaceId, { processId: canvasPid })
-                .then(canvases => {
-                    if (cancelled) return;
-                    setConversationCanvases(canvases);
-                    // Restore a remembered agent canvas ONLY if it still exists — a
-                    // deleted one silently falls back to the first linked canvas
-                    // (or nothing), never CanvasPanel's "Failed to load" error.
-                    if (!closed && remembered?.kind === 'agent') {
-                        const ids = new Set(canvases.map(c => c.id));
-                        setActiveCanvasId(ids.has(remembered.canvasId)
-                            ? remembered.canvasId
-                            : (canvases[0]?.id ?? null));
-                        return;
-                    }
-                    // Otherwise populate the linked agent canvas id: auto-opens a
-                    // fresh chat (no record), or backs the collapsed rail behind a
-                    // remembered source/whisper/"nothing open" (kept collapsed above).
-                    if (canvases.length > 0) {
-                        setActiveCanvasId(prev => prev ?? canvases[0].id);
-                    }
-                })
-                .catch(() => { /* canvas discovery is best-effort */ });
-        });
-        return () => { cancelled = true; cancelIdle(); };
     }, [taskId, workspaceId, canvasPid]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const canvasResize = useResizablePanel({
-        initialWidth: 520,
-        minWidth: 280,
-        maxWidth: 1100,
-        storageKey: workspaceId ? `coc.canvasPanel.width.${encodeURIComponent(workspaceId)}` : undefined,
-        direction: 'right',
-    });
-    const canvasAvailable = !!(activeCanvasId && workspaceId && isCanvasEnabled());
-    const showCanvasPanel = canvasAvailable && !canvasPanelClosed;
-    // When the canvas goes fullscreen it renders as a fixed overlay, so collapse
-    // its in-flow column to reclaim the width for the conversation behind it.
-    const [canvasFullscreen, setCanvasFullscreen] = useState(false);
-
-    const handleCanvasPopOut = useCallback(() => {
-        if (!activeCanvasId || !workspaceId) return;
-        const base = window.location.origin + window.location.pathname;
-        const url = `${base}?workspace=${encodeURIComponent(workspaceId)}&canvasId=${encodeURIComponent(activeCanvasId)}#popout/canvas`;
-        // Reusing the `coc-canvas-<id>` window name focuses an existing popout of
-        // the same canvas instead of spawning a duplicate (AC-03). On Electron the
-        // same-origin open is intercepted into a native window with its own
-        // address bar, which denies the open — so a null handle there still means
-        // "a window opened" (see popOutOpened).
-        const handle = window.open(url, `coc-canvas-${activeCanvasId}`, 'width=900,height=900');
-        if (!popOutOpened(handle)) return; // popup blocked — leave the panel expanded as-is
-        popOutWindowRef.current = handle;
-        setPoppedOutCanvasId(activeCanvasId);
-        if (popOutPollRef.current !== null) clearInterval(popOutPollRef.current);
-        // Desktop gives us no handle to watch, so the panel stays on the
-        // popped-out rail until the user clicks it back — same accepted
-        // degradation as a main-window reload below.
-        if (!handle) return;
-        // Poll the handle for close so the panel comes back when the window is
-        // shut (AC-02). Best-effort: same-origin `handle.closed` is reliable in
-        // the web page. A main-window reload drops this handle, so restoration
-        // may not fire then (accepted).
-        popOutPollRef.current = setInterval(() => {
-            if (handle.closed) {
-                if (popOutPollRef.current !== null) {
-                    clearInterval(popOutPollRef.current);
-                    popOutPollRef.current = null;
-                }
-                popOutWindowRef.current = null;
-                setPoppedOutCanvasId(null);
-            }
-        }, 500);
-    }, [activeCanvasId, workspaceId]);
-
-    // Focus the existing popout window from the "popped out" rail (AC-03).
-    // Without a handle (the desktop shell denies the open and builds the window
-    // itself), re-issue the open: the shared `coc-canvas-<id>` window name makes
-    // that focus the window that is already there rather than spawn a second.
-    const handleFocusPoppedOut = useCallback(() => {
-        if (popOutWindowRef.current) {
-            popOutWindowRef.current.focus();
-        } else {
-            handleCanvasPopOut();
-        }
-    }, [handleCanvasPopOut]);
-
-    // Stop the close-poll when this chat unmounts so it does not leak.
-    useEffect(() => () => {
-        if (popOutPollRef.current !== null) {
-            clearInterval(popOutPollRef.current);
-            popOutPollRef.current = null;
-        }
-    }, []);
-
-    // Whether the active canvas is the one currently living in the popout window.
-    const activeCanvasPoppedOut = poppedOutCanvasId !== null && activeCanvasId === poppedOutCanvasId;
-
-    const canvasColumn = (canvasAvailable && activeCanvasId && workspaceId) ? (
-        activeCanvasPoppedOut ? (
-            /* Popped-out rail — this canvas lives in its own window; the width goes
-               back to the conversation. Distinct from the manual "close" rail so the
-               user reads it as "elsewhere" (AC-01). Closing the window restores the
-               panel (AC-02); clicking here focuses the window (AC-03). */
-            <div
-                className="hidden lg:flex w-9 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#474749] flex-col items-center pt-2"
-                data-testid="canvas-poppedout-rail"
-            >
-                <button
-                    type="button"
-                    className="inline-flex items-center justify-center w-7 h-7 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
-                    onClick={handleFocusPoppedOut}
-                    aria-label="Focus popped-out canvas window"
-                    title="Canvas is open in a separate window — click to focus it"
-                    data-testid="canvas-poppedout-focus"
-                >
-                    ⇱
-                </button>
-                <span className="mt-2 text-[10px] tracking-wide text-[#848484] select-none" style={{ writingMode: 'vertical-rl' }}>
-                    Popped out
-                </span>
-            </div>
-        ) : canvasPanelClosed ? (
-            /* Collapsed rail — reopen affordance so a closed canvas stays reachable */
-            <div
-                className="hidden lg:flex w-9 flex-shrink-0 border-l border-[#e0e0e0] dark:border-[#474749] flex-col items-center pt-2"
-                data-testid="canvas-collapsed-rail"
-            >
-                <button
-                    type="button"
-                    className="inline-flex items-center justify-center w-7 h-7 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
-                    onClick={() => { sourceCanvas.close(); whisperDiff.close(); setCanvasPanelClosed(false); writeCanvasClosed(workspaceId, canvasPid, false); }}
-                    aria-label="Open canvas"
-                    title="Open canvas"
-                    data-testid="canvas-reopen"
-                >
-                    «
-                </button>
-                <span className="mt-2 text-[10px] tracking-wide text-[#848484] select-none" style={{ writingMode: 'vertical-rl' }}>
-                    Canvas
-                </span>
-            </div>
-        ) : (
-        <>
-            {!canvasFullscreen && (
-                <div
-                    className="hidden lg:flex items-center justify-center w-1 cursor-col-resize shrink-0 hover:bg-[#d0d0d0] dark:hover:bg-[#3a3a3c]"
-                    onMouseDown={canvasResize.handleMouseDown}
-                    onTouchStart={canvasResize.handleTouchStart}
-                    role="separator"
-                    aria-label="Resize canvas panel"
-                    data-testid="canvas-panel-resize-handle"
-                />
-            )}
-            <div
-                style={{ width: canvasFullscreen ? 0 : canvasResize.width }}
-                className="hidden lg:block shrink-0 h-full border-l border-[#e0e0e0] dark:border-[#474749]"
-            >
-                <CanvasPanel
-                    workspaceId={workspaceId}
-                    canvasId={activeCanvasId}
-                    liveEvent={canvasLiveEvent}
-                    availableCanvases={conversationCanvases}
-                    onSelectCanvas={setActiveCanvasId}
-                    onCanvasCreated={() => {
-                        // AC-07 — a manually-created Kusto canvas is linked to this
-                        // conversation; refresh the linked list so it appears in the switcher.
-                        if (workspaceId && canvasPid) {
-                            client.canvases.list(workspaceId, { processId: canvasPid })
-                                .then(canvases => setConversationCanvases(canvases))
-                                .catch(() => { /* best-effort */ });
-                        }
-                        setCanvasPanelClosed(false);
-                    }}
-                    onClose={() => { setCanvasPanelClosed(true); writeCanvasClosed(workspaceId, canvasPid, true); }}
-                    onFullscreenChange={setCanvasFullscreen}
-                    onPopOut={handleCanvasPopOut}
-                    onAskAi={(prompt) => {
-                        setFollowUpInput(prompt);
-                        richTextRef.current?.setValue(prompt, prompt.length);
-                        richTextRef.current?.focus();
-                    }}
-                    onSendToAi={async (message) => {
-                        await sendFollowUp(message, 'enqueue');
-                    }}
-                />
-            </div>
-        </>
-        )
-    ) : null;
 
     // Docked source-file canvas: a full-height sibling column on desktop, a
     // full-height BottomSheet on mobile. Mutually exclusive with the agent
@@ -3130,7 +2966,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             )}
             </WhisperSkillDetailDialogProvider>
             </div>{/* /left stack */}
-            {canvasColumn}
             {sourceCanvasColumn}
             {whisperDiffColumn}
             </div>{/* /canvas split row */}

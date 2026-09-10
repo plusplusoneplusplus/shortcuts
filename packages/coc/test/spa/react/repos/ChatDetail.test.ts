@@ -1583,37 +1583,13 @@ describe('ChatDetail', () => {
         });
     });
 
-    describe('canvas discovery defers past first paint (AC-03)', () => {
-        it('imports the runWhenIdle deferral helper', () => {
-            expect(source).toContain("import { runWhenIdle } from '../../utils/runWhenIdle'");
-        });
-
-        it('wraps the canvases.list probe in runWhenIdle so messages paint first', () => {
-            // The discovery effect must schedule the round-trip through runWhenIdle
-            // rather than calling client.canvases.list synchronously on mount.
-            const idleIdx = source.indexOf('const cancelIdle = runWhenIdle(() => {');
-            // Anchor to the deferred probe INSIDE the discovery effect (search from
-            // idleIdx). Live-event handlers (e.g. onCanvasUpdated) legitimately call
-            // client.canvases.list synchronously elsewhere; a naive global indexOf
-            // would match that unrelated call and mask a regression here.
-            const listIdx = source.indexOf('client.canvases.list(workspaceId, { processId: canvasPid })', idleIdx);
-            expect(idleIdx).toBeGreaterThan(-1);
-            expect(listIdx).toBeGreaterThan(idleIdx);
-            // The persisted close flag is still read synchronously, before the
-            // deferred probe — guards against regressing the no-flash behaviour.
-            // The restore refactor reads it into a local `closed` (then applies +
-            // reuses it), replacing the old inline `setCanvasPanelClosed(readCanvasClosed(...))`.
-            const closeFlagIdx = source.indexOf('const closed = readCanvasClosed(workspaceId, canvasPid)');
-            expect(closeFlagIdx).toBeGreaterThan(-1);
-            expect(closeFlagIdx).toBeLessThan(idleIdx);
-            // The discovery effect must not probe synchronously: no canvases.list
-            // between reading the close flag and scheduling the idle callback.
-            const discoveryPrelude = source.slice(closeFlagIdx, idleIdx);
-            expect(discoveryPrelude).not.toContain('client.canvases.list(');
-        });
-
-        it('cancels the deferred probe on cleanup', () => {
-            expect(source).toContain('return () => { cancelled = true; cancelIdle(); };');
+    describe('no chat-owned canvas discovery (canvas lives in the shared panel)', () => {
+        it('does not list or render canvases from the chat itself', () => {
+            // Discovery for the "+" menu belongs to the panel; the chat only
+            // routes live AI events to it.
+            expect(source).not.toContain('client.canvases.list(');
+            expect(source).not.toContain('<CanvasPanel');
+            expect(source).toContain('routeUnifiedCanvasUpdate');
         });
     });
 

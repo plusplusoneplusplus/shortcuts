@@ -581,10 +581,13 @@ all have their own `references/*.md`.
     stored verbatim. On the user-bubble display path,
     `conversation/injectedBlocks.ts` extracts complete leading `<chat-style>`,
     `<coc-chat-mode>` and `<selected_skills>` blocks (any order, each once) and
-    `InjectedBlockDisclosure` renders each under the message as a collapsed
-    disclosure. Selected skill names are additionally parsed out by
-    `parseSelectedSkillNames` and shown as `SkillPills` above the message body. Raw view, copy, rewind/edit, search, export, and
-    model input continue to use the original turn content.
+    `InjectedBlockChips` renders them under the message as one colour-coded chip
+    row — mode (green), style (amber), and one blue chip per skill name parsed
+    out by `parseSelectedSkillNames`, folding past the fourth behind a `+N`
+    chip. Clicking a chip opens a single minimal scrollable `<pre>` with the
+    verbatim block and a copy button; clicking it again closes it. Raw view,
+    copy, rewind/edit, search, export, and model input continue to use the
+    original turn content.
   - Scope is `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
     follow-ups only, enforced by `isChatStyleEligiblePayload`. Ralph,
     classification, task generation, note creation, resolve-comments, Dreams,

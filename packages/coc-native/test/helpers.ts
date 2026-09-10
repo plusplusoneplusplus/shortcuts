@@ -18,6 +18,8 @@ import type { NativeFileIndexAddon } from '../src/file-index';
 import { loadNativeGit } from '../src/git';
 import type { NativeGitAddon } from '../src/git';
 import { resetNativeAddonCache } from '../src/loader';
+import { loadNativeNotesFs } from '../src/notes-fs';
+import type { NativeNotesFsAddon } from '../src/notes-fs';
 import { loadNativeNotesIndex } from '../src/notes-index';
 import type { NativeNotesIndexAddon } from '../src/notes-index';
 
@@ -36,6 +38,9 @@ export const gitAddon: NativeGitAddon = loadNativeGit();
 
 /** The required Notes-index slice of the same compiled addon. */
 export const notesAddon: NativeNotesIndexAddon = loadNativeNotesIndex();
+
+/** The required Notes-filesystem slice of the same compiled addon. */
+export const notesFsAddon: NativeNotesFsAddon = loadNativeNotesFs();
 
 /**
  * Remove a temp directory, best effort.

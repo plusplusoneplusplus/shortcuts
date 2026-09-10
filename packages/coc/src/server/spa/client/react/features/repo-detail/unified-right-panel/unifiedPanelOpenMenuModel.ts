@@ -30,7 +30,7 @@ import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** The non-search entries the menu offers. */
-export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'canvas';
+export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'canvas' | 'changes';
 
 export interface OpenMenuAction {
     id: OpenMenuActionId;
@@ -51,6 +51,13 @@ export interface OpenMenuActionsInput {
     targetUnavailableReason?: string;
     /** The selected chat, or null when none is. Gates the Canvas action. */
     chatId: string | null;
+    /**
+     * The selected chat has recorded at least one completed file change. Gates
+     * the Changes entry, which is omitted rather than disabled: a chat that
+     * edited nothing has no diff to explain, so an always-present dead row
+     * would be noise on every read-only conversation.
+     */
+    chatHasChanges?: boolean;
 }
 
 /**
@@ -63,6 +70,11 @@ export interface OpenMenuActionsInput {
  * label, but the Explorer is no longer a tab kind. Notes stays enabled even for
  * an unavailable target: notes belong to the panel's workspace, not to the repo
  * the terminal points at.
+ *
+ * Changes is the one entry that can be absent for a reason other than the
+ * target: it opens the selected chat's own recorded edits, so it appears only
+ * once that chat has some. It is not gated on the target's availability either
+ * — the diff is replayed from the transcript, not read from the repo.
  */
 export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
     const blocked = input.targetUnavailable === true;
@@ -85,6 +97,11 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
             ? { disabled: true, disabledReason: 'Select a chat first — a canvas belongs to a chat.' }
             : {}),
     });
+    // Listed after New Canvas, and only for a chat that actually changed
+    // files — with no chat selected there is nothing to show either.
+    if (input.chatId !== null && input.chatHasChanges === true) {
+        actions.push({ id: 'changes', label: 'Changes' });
+    }
     return actions;
 }
 

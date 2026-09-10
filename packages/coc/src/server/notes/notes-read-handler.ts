@@ -5,117 +5,37 @@
 
 import * as url from 'url';
 import * as path from 'path';
-import * as fs from 'fs';
+import { mkdir } from 'fs/promises';
 import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { Route } from '../types';
-import { getRepoDataPath } from '../paths';
-import { readOrderFile, applyOrder } from './notes-order';
 import { SYSTEM_FOLDER_NAMES } from './notes-constants';
 import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
-import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
+import { shapeNotesTree } from './notes-tree';
 import { readRepoPreferences } from '../preferences-handler';
 import type { NotesSearchService } from './notes-search-service';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-interface TreeNode {
-    name: string;
-    path: string;
-    type: 'notebook' | 'section' | 'page';
-    children?: TreeNode[];
-    lastModifiedAt?: string;
-}
+import { loadNativeNotesFs, toNotesFsError } from '@plusplusoneplusplus/coc-native';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-function getNotesRoot(dataDir: string, workspaceId: string): string {
-    return getRepoDataPath(dataDir, workspaceId, 'notes');
-}
-
-function getWorkspaceDataDir(dataDir: string, workspaceId: string): string {
-    return path.join(dataDir, 'repos', workspaceId);
-}
-
-function getCopilotDir(): string {
-    return path.join(os.homedir(), '.copilot');
-}
-
-function isAllowedPath(resolved: string, wsDataDir: string, wsRootPath?: string): boolean {
-    return isWithinDirectory(resolved, wsDataDir)
-        || isWithinDirectory(resolved, getCopilotDir())
-        || (!!wsRootPath && isWithinDirectory(resolved, wsRootPath));
+/**
+ * Directories an absolute content path may live under on the default root.
+ *
+ * Only the default root has the absolute-path escape hatch (scratchpad and
+ * session-state files); the native core applies the containment check.
+ */
+export function contentAllowedPrefixes(dataDir: string, workspaceId: string, wsRootPath?: string): string[] {
+    const prefixes = [path.join(dataDir, 'repos', workspaceId), path.join(os.homedir(), '.copilot')];
+    if (wsRootPath) prefixes.push(wsRootPath);
+    return prefixes;
 }
 
 async function ensureNotesRoot(notesRoot: string): Promise<void> {
-    await fs.promises.mkdir(notesRoot, { recursive: true });
-}
-
-/**
- * Recursively scan the notes directory and build a tree.
- * Directories = notebooks (top-level) or sections (nested), .md files = pages.
- * Custom order from `.order.json` is applied per-directory; unlisted items fall
- * back to the default sort (directories first, then files, alphabetically within each group).
- */
-async function buildTree(dir: string, basePath: string, safeRoot?: string): Promise<TreeNode[]> {
-    let entries: fs.Dirent[];
-    try {
-        entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
-        return [];
-    }
-
-    // Keep only non-hidden directories and .md files, with default dirs-first sort
-    const relevant = entries
-        .filter(e => {
-            if (safeRoot && e.isSymbolicLink()) {
-                return false;
-            }
-            if (e.isDirectory()) return !e.name.startsWith('.');
-            return e.name.endsWith('.md');
-        })
-        .sort((a, b) => {
-            const aDir = a.isDirectory() ? 0 : 1;
-            const bDir = b.isDirectory() ? 0 : 1;
-            if (aDir !== bDir) return aDir - bDir;
-            return a.name.localeCompare(b.name);
-        });
-
-    // Apply custom order when present; unlisted items keep their default sort position
-    let explicitOrder: string[] = [];
-    if (!safeRoot) {
-        explicitOrder = await readOrderFile(dir);
-    } else {
-        const orderPath = basePath ? `${basePath}/.order.json` : '.order.json';
-        const safeOrderPath = await resolveSafeNotesPath(safeRoot, orderPath);
-        if (!isNotesPathSafetyError(safeOrderPath)) {
-            explicitOrder = await readOrderFile(dir);
-        }
-    }
-    const sorted = applyOrder(relevant, e => e.name, explicitOrder);
-
-    const nodes: TreeNode[] = [];
-    for (const entry of sorted) {
-        const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-            const children = await buildTree(path.join(dir, entry.name), entryPath, safeRoot);
-            // Top-level dirs are notebooks, nested dirs are sections
-            const type = basePath ? 'section' : 'notebook';
-            nodes.push({ name: entry.name, path: entryPath, type, children });
-        } else {
-            const filePath = path.join(dir, entry.name);
-            const stat = await fs.promises.stat(filePath);
-            nodes.push({ name: entry.name, path: entryPath, type: 'page', lastModifiedAt: stat.mtime.toISOString() });
-        }
-    }
-    return nodes;
+    await mkdir(notesRoot, { recursive: true });
 }
 
 // ============================================================================
@@ -159,12 +79,13 @@ export function registerNotesRoutes(
             if (resolved.isDefault) {
                 await Promise.all(
                     SYSTEM_FOLDER_NAMES.map(name =>
-                        fs.promises.mkdir(path.join(notesRoot, name), { recursive: true }),
+                        mkdir(path.join(notesRoot, name), { recursive: true }),
                     ),
                 );
             }
 
-            const tree = await buildTree(notesRoot, '', resolved.isDefault ? undefined : notesRoot);
+            const scan = await loadNativeNotesFs().notesTree(notesRoot, { isDefaultRoot: resolved.isDefault });
+            const tree = shapeNotesTree(scan, { applyExplicitOrder: true });
             sendJSON(res, 200, {
                 tree,
                 notesRoot,
@@ -198,38 +119,19 @@ export function registerNotesRoutes(
             }
 
             const notesRoot = rootResult.absolutePath;
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-
-            // Absolute paths are used as-is (scratchpad / session-state files) — only for default root.
-            // Relative paths are resolved against the active notesRoot.
-            let resolved: string;
-            if (path.isAbsolute(filePath) && rootResult.isDefault) {
-                resolved = path.resolve(filePath);
-            } else if (!rootResult.isDefault) {
-                const safePath = await resolveSafeNotesPath(notesRoot, filePath);
-                if (isNotesPathSafetyError(safePath)) {
-                    return sendError(res, safePath.statusCode, safePath.error);
-                }
-                resolved = safePath.absolutePath;
-            } else {
-                resolved = path.resolve(notesRoot, filePath);
-            }
-
-            if (rootResult.isDefault && !isAllowedPath(resolved, wsDataDir, ws.rootPath)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
-            }
 
             try {
-                const [content, stat] = await Promise.all([
-                    fs.promises.readFile(resolved, 'utf-8'),
-                    fs.promises.stat(resolved),
-                ]);
-                sendJSON(res, 200, { content, path: filePath, mtime: stat.mtimeMs });
-            } catch (err: any) {
-                if (err.code === 'ENOENT') {
-                    return sendError(res, 404, 'File not found');
+                const note = await loadNativeNotesFs().readNote(notesRoot, filePath, {
+                    isDefaultRoot: rootResult.isDefault,
+                    allowedPrefixes: contentAllowedPrefixes(dataDir, ws.id, ws.rootPath),
+                });
+                sendJSON(res, 200, { content: note.content, path: filePath, mtime: note.mtimeMs });
+            } catch (err: unknown) {
+                const fsError = toNotesFsError(err);
+                if (fsError.statusCode === 500) {
+                    return sendError(res, 500, 'Failed to read file: ' + (fsError.message || 'Unknown error'));
                 }
-                return sendError(res, 500, 'Failed to read file: ' + (err.message || 'Unknown error'));
+                return sendError(res, fsError.statusCode, fsError.message);
             }
         },
     });

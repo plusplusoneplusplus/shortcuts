@@ -1,17 +1,21 @@
 # Dashboard SPA — Canvas & source canvas
 
-Two unrelated right-side panels sharing the chat detail column: the AI co-edited
-**canvas** (`features/canvas/`) and the read-only **source canvas**
-(`features/chat/source-canvas/`). `ChatDetail` owns both and closes the sibling when one
-opens. Chat list and lens: [chat.md](chat.md); conversation rendering:
-[chat-conversation.md](chat-conversation.md).
+Two unrelated surfaces: the AI co-edited **canvas** (`features/canvas/`) and the
+read-only **source canvas** (`features/chat/source-canvas/`). Chat list and lens:
+[chat.md](chat.md); conversation rendering: [chat-conversation.md](chat-conversation.md).
 
-With `features.unifiedRightPanel` on, both surfaces become tabs in the one right panel
-instead of separate columns, and an AI `canvas-updated` event activates the affected
-canvas tab in the current chat; the panel supplies `liveEvent` from its own
-`useSyncExternalStore` relay, since the SSE stream arrives far from the mounted view.
-Flag-off, everything below is unchanged. See
-`features/repo-detail/unified-right-panel/AGENTS.md`.
+The AI canvas has **no chat-side column**. It lives in the unified right panel as a
+`canvas` tab (`UnifiedCanvasTab`), in the standalone pop-out window, or as an inline
+embed; the chat itself renders no rail, resize handle, or reserved width for it. An AI
+`canvas-updated` event activates that tab and reveals the panel — with no panel hosting
+the chat, the event only refreshes an already-mounted view. The panel supplies
+`liveEvent` from its own `useSyncExternalStore` relay, since the SSE stream arrives far
+from the mounted view. See `features/repo-detail/unified-right-panel/AGENTS.md`.
+
+The source canvas (files, notes, folders) and the whisper diff are still chat-owned
+columns, mutually exclusive with the scratchpad, with a session-only per-chat restore
+memory (`features/chat/openCanvasMemory.ts`). No AI-canvas preference affects them; the
+retired `coc.canvasPanel.closed.*` and `coc.canvasPanel.width.*` keys are inert.
 
 ## CanvasPanel
 
@@ -30,13 +34,12 @@ The routed client is passed into every kernel **explicitly** — that is what ke
 clone workspaces hitting the workspace-owning server, and every canvas call in this file
 (record load/save, versions, comments, export, run, extension load, `invoke-capability`,
 `set-state`, `list-files`, `read-file`, embeds, source previews) goes through it (see
-[clone-routing.md](clone-routing.md)). `ChatDetail` discovers linked canvases via
-`client.canvases.list(workspaceId, { processId })`, keeps the summaries in API order for
-the title switcher (which updates `activeCanvasId` once two or more are linked), and
-refreshes on live `canvas-updated` SSE events (`useChatSSE`'s `onCanvasUpdated`). The panel
-mounts as a desktop-only (`lg:`) resizable right column, width persisted under
-`coc.canvasPanel.width.<workspaceId>` via `useResizablePanel`, on the right of a top-level
-split so it spans the full detail height beside the composer.
+[clone-routing.md](clone-routing.md)). The right panel's `+` menu discovers linked
+canvases via `client.canvases.list(workspaceId, { processId })` and opens each as its own
+tab; the tab strip is the canvas switcher, so the header's in-panel switcher only appears
+for a host that passes `availableCanvases`. `ChatDetail` no longer lists canvases at all —
+it only routes live `canvas-updated` SSE events (`useChatSSE`'s `onCanvasUpdated`) to the
+panel.
 
 ### Editing and conflicts
 
@@ -59,19 +62,25 @@ close affordance can prompt Save / Don't Save / Cancel.
 ### Window controls
 
 `onFullscreenChange` re-renders the panel as a full-viewport overlay with the in-flow
-column collapsed. `onPopOut` opens `PopOutCanvasShell`, routed from `entry.tsx` on
-`#popout/canvas` with `?workspace=&canvasId=`; that window maps the global WebSocket
+column collapsed. `onPopOut` (supplied by the canvas tab through
+`features/canvas/canvasPopOut.ts`) opens `PopOutCanvasShell`, routed from `entry.tsx` on
+`#popout/canvas` with `?workspace=&canvasId=` at the canvas's OWNING workspace; the window
+is named `coc-canvas-<id>`, so a repeat pop-out focuses it instead of duplicating, and a
+blocked popup leaves the canvas in its tab. That window maps the global WebSocket
 `canvas-updated` event into the panel's `liveEvent` and bumps `reloadNonce` on focus to
-pick up AI tool edits that streamed over the chat SSE channel. Closing a canvas does not
-detach it — `ChatDetail` keeps a reopen rail.
+pick up AI tool edits that streamed over the chat SSE channel. Closing a canvas tab does
+not unlink the canvas — it stays in the `+` menu and in transcript links.
 
 ### Selection, comments, and copy
 
-Ask AI prefills the follow-up composer through `ChatDetail`'s `onAskAi` (setting
-`followUpInput` and the `RichTextInput` ref) with a prompt quoting the selection plus
-canvas id and revision. Comments anchor to the selection; sending them posts one batch
-message through `onSendToAi` (`sendFollowUp(message, 'enqueue')`, so a busy AI receives it
-at the next turn boundary) and marks them `sent`.
+Ask AI prefills the follow-up composer with a prompt quoting the selection plus canvas id
+and revision; comments anchor to the selection, and sending them posts one batch message
+that is marked `sent` only after the send succeeds. Both reach the canvas's OWNING
+conversation — never the selected one — through the
+`unified-right-panel/unifiedChatCanvasActions.ts` registry: `ChatDetail` publishes
+`{ askAi, sendToAi }` under its chat id (`sendFollowUp(message, 'enqueue')`, so a busy AI
+receives the batch at the next turn boundary), and the canvas tab looks them up by
+`tab.chatId`. An unmounted chat publishes nothing and the tab hides both actions.
 
 `copyImageToClipboard` copies a preview image as an `image/png` bitmap;
 `copySelectionWithInlineImages` (`utils/format.ts`) inlines images in a copied selection as

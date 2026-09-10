@@ -12,6 +12,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
+pub mod registry;
+
 /// Maximum number of matching files returned by one search.
 pub const MAX_MATCHING_FILES: usize = 50;
 /// Maximum number of filename and content matches returned by one search.
@@ -179,19 +181,24 @@ impl NotesSnapshot {
     }
 }
 
+pub(crate) struct NotesIndexInner {
+    root: PathBuf,
+    options: NotesIndexOptions,
+    state: RwLock<Arc<NotesSnapshot>>,
+    /// Writers serialize before capturing the current snapshot, so concurrent
+    /// incremental batches cannot overwrite each other's completed changes.
+    refresh_lock: Mutex<()>,
+}
+
 /// A Notes content index rooted at one already-authorized directory.
 ///
 /// Cloning yields another handle to the same immutable snapshot. A lock-backed
 /// slot keeps snapshot replacement atomic for the refresh operations layered
-/// on this core index.
+/// on this core index. Every handle shares one `Arc`, so the registry can hold
+/// a `Weak` to it and let the last dropped handle unregister the root.
 #[derive(Clone)]
 pub struct NotesIndex {
-    root: PathBuf,
-    options: NotesIndexOptions,
-    state: Arc<RwLock<Arc<NotesSnapshot>>>,
-    /// Writers serialize before capturing the current snapshot, so concurrent
-    /// incremental batches cannot overwrite each other's completed changes.
-    refresh_lock: Arc<Mutex<()>>,
+    inner: Arc<NotesIndexInner>,
 }
 
 impl NotesIndex {
@@ -199,24 +206,53 @@ impl NotesIndex {
     ///
     /// A missing root is a valid empty index. Other root-level errors are
     /// returned, while unreadable descendants are skipped.
+    ///
+    /// The finished index registers itself, so a `notes_fs` write against the
+    /// same root updates this very snapshot instead of waiting for the
+    /// filesystem watcher.
     pub fn build(root: PathBuf, options: NotesIndexOptions) -> io::Result<Self> {
         let snapshot = NotesSnapshot::build(&root, options)?;
-        Ok(Self {
-            root,
-            options,
-            state: Arc::new(RwLock::new(Arc::new(snapshot))),
-            refresh_lock: Arc::new(Mutex::new(())),
-        })
+        let index = Self {
+            inner: Arc::new(NotesIndexInner {
+                root,
+                options,
+                state: RwLock::new(Arc::new(snapshot)),
+                refresh_lock: Mutex::new(()),
+            }),
+        };
+        registry::register(&index);
+        Ok(index)
+    }
+
+    pub(crate) fn from_inner(inner: Arc<NotesIndexInner>) -> Self {
+        Self { inner }
+    }
+
+    pub(crate) fn inner(&self) -> &Arc<NotesIndexInner> {
+        &self.inner
     }
 
     /// The resolved root represented by this index.
     pub fn root(&self) -> &Path {
-        &self.root
+        &self.inner.root
     }
 
     /// The root-specific symlink policy retained for later refreshes.
     pub fn options(&self) -> NotesIndexOptions {
-        self.options
+        self.inner.options
+    }
+
+    /// Root-relative paths in the current snapshot that sit inside
+    /// `directory` — how the registry learns which documents a renamed or
+    /// deleted directory used to hold.
+    pub(crate) fn snapshot_paths_under(&self, directory: &str) -> Vec<String> {
+        let prefix = format!("{directory}/");
+        self.snapshot()
+            .documents
+            .iter()
+            .filter(|document| document.path.starts_with(&prefix))
+            .map(|document| document.path.clone())
+            .collect()
     }
 
     /// Number of eligible Markdown documents in the current snapshot.
@@ -234,8 +270,8 @@ impl NotesIndex {
     /// The old snapshot remains searchable while the replacement is built and
     /// is retained when construction fails.
     pub fn refresh(&self) -> io::Result<()> {
-        let _guard = self.refresh_lock.lock().unwrap_or_else(|error| error.into_inner());
-        let rebuilt = Arc::new(NotesSnapshot::build(&self.root, self.options)?);
+        let _guard = self.inner.refresh_lock.lock().unwrap_or_else(|error| error.into_inner());
+        let rebuilt = Arc::new(NotesSnapshot::build(&self.inner.root, self.inner.options)?);
         self.replace_snapshot(rebuilt);
         Ok(())
     }
@@ -249,19 +285,22 @@ impl NotesIndex {
     /// refresh calls serialize, ensuring each batch starts from the last
     /// complete snapshot rather than losing an earlier batch.
     pub fn refresh_changed(&self, changed_paths: &[String]) -> io::Result<()> {
-        let _guard = self.refresh_lock.lock().unwrap_or_else(|error| error.into_inner());
-        let rebuilt =
-            Arc::new(self.snapshot().refresh_changed(&self.root, self.options, changed_paths)?);
+        let _guard = self.inner.refresh_lock.lock().unwrap_or_else(|error| error.into_inner());
+        let rebuilt = Arc::new(self.snapshot().refresh_changed(
+            &self.inner.root,
+            self.inner.options,
+            changed_paths,
+        )?);
         self.replace_snapshot(rebuilt);
         Ok(())
     }
 
     fn snapshot(&self) -> Arc<NotesSnapshot> {
-        Arc::clone(&self.state.read().unwrap_or_else(|error| error.into_inner()))
+        Arc::clone(&self.inner.state.read().unwrap_or_else(|error| error.into_inner()))
     }
 
     fn replace_snapshot(&self, snapshot: Arc<NotesSnapshot>) {
-        let mut slot = self.state.write().unwrap_or_else(|error| error.into_inner());
+        let mut slot = self.inner.state.write().unwrap_or_else(|error| error.into_inner());
         *slot = snapshot;
     }
 }

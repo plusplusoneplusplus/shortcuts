@@ -15,6 +15,10 @@ ignore = "0.4"
 # which was never published, so it cannot be resolved at all.
 gix = { version = "=0.87.0", default-features = false, features = ["revision", "sha1", "max-performance-safe"] }
 rayon = "1"
+# `.order.json` is read back into the same bytes Node wrote with
+# `JSON.stringify(value, null, 2)`; a real JSON parser is the only way to keep
+# the malformed-file tolerance and the escaping rules identical.
+serde_json = "1"
 # Already in the tree under grep-regex; a direct dependency because the
 # dangerous-command guard's rule set is plain regexes with no searcher around
 # them.

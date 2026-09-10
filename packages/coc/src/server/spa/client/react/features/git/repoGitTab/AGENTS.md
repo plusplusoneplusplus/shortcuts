@@ -14,7 +14,7 @@ refresh, and the two layouts. Everything else lives here.
 | `gitContextMenuModel.ts` | `buildGitContextMenuItems` — the right-click menu as a pure function of (target, capabilities, handlers). |
 | `useTransientToast.ts` | The single bottom-right toast surface shared by every action. |
 | `useRepoGitData.ts` | Commits (pagination + search), branch range + base mode, repo state, client-side caches, `lastRefreshedAt`, `refreshAll`, initial load. |
-| `useRepoGitSelection.ts` | Right-panel routing, URL hash + AppContext sync, deep-link hydration, direct SHA lookup. |
+| `useRepoGitSelection.ts` | Right-panel routing, URL hash + AppContext sync, deep-link hydration, direct SHA lookup. Takes `routeWorkspaceId` (page owner) alongside `workspaceId` (data owner). |
 | `useGitOperationActions.ts` | Fetch/pull/push/push-to/rebase/reset/amend/reword/drop/cherry-pick/reorder/conflict, plus all four async-job pollers. |
 | `useGitAutoPullController.ts` | The per-repo auto-pull setting (written via the preferences PATCH) and a read of the server-owned schedule. Owns no timer and never pulls. |
 | `useGitSkillActions.ts` | Skills list + MRU map, skill runs, Ask AI launches, queue-backed squash and conflict resolution. |
@@ -38,14 +38,30 @@ refresh, and the two layouts. Everything else lives here.
   only through the injected `selection` bridge, and decides *what* to select via
   the pure `reconcileSelectionAfterRefresh`. `changed: false` means "leave the
   view alone" — distinct from `next: null`, which clears it.
+- **Page owner and data owner are separate.** `workspaceId` is the git data
+  (every request, cache, preference, websocket subscription and pop-out) and
+  `routeWorkspaceId` is the page the hash addresses. A repo group passes its own
+  id as `routeWorkspaceId` and the member as `workspaceId`; an ordinary repo
+  passes neither and both default to itself. Never derive the page owner by
+  reading the globally selected repo.
 - **Deep links land in one place.** The mount-time link resolves through
   `hydrateFromInitialLoad` (called by the data hook's `onInitialLoad`); a later
-  link resolves in the effect watching `state.selectedGitCommitHash`. Both fall
-  back to `getCommit` only when `gitCommitLookup` is on and the string is
-  SHA-shaped (`isLookupCandidate`).
+  link resolves in the routed-navigation effect. Both go through the single
+  `applyRoute` resolver and fall back to `getCommit` only when `gitCommitLookup`
+  is on and the string is SHA-shaped (`isLookupCandidate`).
+- **A route belongs to exactly one panel.** `state.gitRouteScope` must name both
+  this page owner and this data member before the selection is consumed, and a
+  consumed route is keyed on all four fields (page, member, revision, file) via
+  `gitRouteIdentity`. The effect reacts to store TRANSITIONS, so a route the
+  panel just published is not mistaken for the user navigating away, and a
+  refreshed commit page cannot re-apply a route the panel moved past.
+- **Late lookups are cancelled.** `openCommitBySha` captures a generation that a
+  member change, a clone re-route or unmount invalidates; a response from an
+  obsolete generation writes neither the view nor the URL.
 - **Navigation writes three things.** Component state, `location.hash`, and the
-  AppContext deep-link fields are updated together by the `select*` callbacks.
-  Never write one of the three at a call site.
+  AppContext Git route are updated together by `publishRoute`, which every
+  `select*` callback goes through. The hash is built by `layout/gitRoute.ts`;
+  never concatenate a `#repos/.../git/...` string at a call site.
 - **Menu capability rules live in the model.** Push-to/drop require an unpushed
   commit, full-message amend requires HEAD, autosquash requires a fixup target,
   cross-clone cherry-pick is feature-flagged, and touch selection entries are

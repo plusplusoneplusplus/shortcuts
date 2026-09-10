@@ -154,4 +154,63 @@ describe('useWhisperDiffState', () => {
         // with the same held context must NOT churn it.
         expect(result.current).toBe(first);
     });
+
+    describe('selectionKey (live sources — AC-03)', () => {
+        const calls: WhisperDiffToolCall[] = [
+            { toolName: 'edit', args: { path: 'src/a.ts', old_str: 'a', new_str: 'A' } },
+        ];
+
+        it('omits the key entirely when the caller supplies none', () => {
+            const { result } = renderHook(() => useWhisperDiffState(ctx([fileEdit('src/a.ts')], calls)));
+            expect(result.current.selectionKey).toBeUndefined();
+        });
+
+        it('is stable across a rebuilt context under the same source id', () => {
+            const { result, rerender } = renderHook(
+                ({ c }) => useWhisperDiffState(c, { selectionKey: 'chat-changes-t1' }),
+                { initialProps: { c: ctx([fileEdit('src/a.ts')], calls) } },
+            );
+            const first = result.current;
+            rerender({
+                c: ctx(
+                    [fileEdit('src/a.ts'), fileEdit('src/b.ts')],
+                    [...calls, { toolName: 'edit', args: { path: 'src/b.ts', old_str: 'b', new_str: 'B' } }],
+                ),
+            });
+            // A genuinely different context — the state identity has to move so
+            // the panel re-renders — but the selection key has not.
+            expect(result.current).not.toBe(first);
+            expect(result.current.selectionKey).toBe(first.selectionKey);
+            expect(result.current.files).toHaveLength(2);
+        });
+
+        it('folds in focusPath, so two opens of one source on different files differ', () => {
+            const { result: all } = renderHook(() =>
+                useWhisperDiffState(ctx([fileEdit('src/a.ts')], calls), { selectionKey: 'src-1' }),
+            );
+            const { result: focused } = renderHook(() =>
+                useWhisperDiffState(ctx([fileEdit('src/a.ts')], calls, { focusPath: 'src/a.ts' }), {
+                    selectionKey: 'src-1',
+                }),
+            );
+            expect(all.current.selectionKey).not.toBe(focused.current.selectionKey);
+            expect(focused.current.selectionKey).toContain('src/a.ts');
+        });
+
+        it('changes with the source id', () => {
+            const { result, rerender } = renderHook(
+                ({ key }) => useWhisperDiffState(ctx([fileEdit('src/a.ts')], calls), { selectionKey: key }),
+                { initialProps: { key: 'chat-changes-t1' } },
+            );
+            const first = result.current.selectionKey;
+            rerender({ key: 'chat-changes-t2' });
+            expect(result.current.selectionKey).not.toBe(first);
+        });
+
+        it('leaves the idle state keyless for a null context', () => {
+            const { result } = renderHook(() => useWhisperDiffState(null, { selectionKey: 'chat-changes-t1' }));
+            expect(result.current.status).toBe('idle');
+            expect(result.current.selectionKey).toBeUndefined();
+        });
+    });
 });
