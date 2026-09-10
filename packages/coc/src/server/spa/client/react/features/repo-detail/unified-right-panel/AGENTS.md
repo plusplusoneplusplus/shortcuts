@@ -7,7 +7,8 @@ tree as its right-edge column. There is no second right panel and no flag.
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
 `dockAvailable` gate (`splitWorkspacePanel` + desktop) and wrap their subtree in
 `UnifiedPanelHostProvider` under the same condition; the panel does not widen
-that gate. The state around it — open, width, resize, target — comes from
+that gate. The state around it — open, selected Search/Explorer mode, width,
+resize, and target — comes from
 `../useWorkspaceDock`, described in `../AGENTS.md`.
 
 ## Scope, owner, and identity

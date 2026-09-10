@@ -79,6 +79,8 @@ function dockStub(target = WS): WorkspaceDockController {
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
+        mode: 'explorer',
+        selectMode: vi.fn(),
         target,
         setTarget: vi.fn(),
         targets: [],

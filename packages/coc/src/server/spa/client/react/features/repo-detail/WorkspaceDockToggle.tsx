@@ -2,14 +2,14 @@ import { useCallback, useSyncExternalStore } from 'react';
 import { cn } from '../../ui';
 
 /**
- * Light-weight open/close plumbing, sizing constants and storage keys for the
+ * Light-weight open/mode plumbing, sizing constants and storage keys for the
  * workspace right panel, kept apart from `UnifiedRightPanel` so consumers that
  * only need the toggle — notably the global TopBar — don't transitively pull in
  * the heavy TerminalView / ExplorerPanel (xterm / Monaco) dependency graph.
  *
- * The open flag is backed by a cross-tree store so the toggle (RepoDetail's chrome
- * header, or the TopBar in the remote-first shell) and the panel body (RepoDetail)
- * stay in sync across separate component subtrees. See `useDockOpen`.
+ * Open and selected mode are backed by cross-tree stores so controls in
+ * RepoDetail's chrome header or the remote-first TopBar stay in sync with the
+ * panel body across separate component subtrees.
  */
 
 /** localStorage key for whether the dock is open, per workspace. */
@@ -30,6 +30,13 @@ export function workspaceDockWidthStorageKey(workspaceId: string): string {
  */
 export function workspaceDockTargetStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:dock-target`;
+}
+
+export type WorkspaceDockMode = 'explorer' | 'search';
+
+/** localStorage key for the selected dock mode, per panel scope. */
+export function workspaceDockModeStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:dock-mode`;
 }
 
 /**
@@ -73,6 +80,7 @@ export const DOCK_MIN_CHAT_WIDTH = 360;
  * workspace switch), matching the old `useCollapsedState` semantics.
  */
 const dockOpenListeners = new Map<string, Set<() => void>>();
+const dockModeListeners = new Map<string, Set<() => void>>();
 
 function readDockOpen(storageKey: string): boolean {
     try {
@@ -104,6 +112,36 @@ function subscribeDockOpen(storageKey: string, listener: () => void): () => void
     };
 }
 
+function readDockMode(storageKey: string): WorkspaceDockMode {
+    try {
+        return localStorage.getItem(storageKey) === 'search' ? 'search' : 'explorer';
+    } catch {
+        return 'explorer';
+    }
+}
+
+function writeDockMode(storageKey: string, mode: WorkspaceDockMode): void {
+    try {
+        localStorage.setItem(storageKey, mode);
+    } catch {
+        /* ignore */
+    }
+    dockModeListeners.get(storageKey)?.forEach(listener => listener());
+}
+
+function subscribeDockMode(storageKey: string, listener: () => void): () => void {
+    let listeners = dockModeListeners.get(storageKey);
+    if (!listeners) {
+        listeners = new Set();
+        dockModeListeners.set(storageKey, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+        listeners!.delete(listener);
+        if (listeners!.size === 0) dockModeListeners.delete(storageKey);
+    };
+}
+
 /**
  * Reveal a workspace's dock from outside React — a chat source link, a canvas
  * event, or a diff action that opens a resource while the panel is collapsed
@@ -131,14 +169,36 @@ export function useDockOpen(storageKey: string): [boolean, () => void] {
 }
 
 /**
- * Lightweight controller for just the dock's open/close flag — for a toggle that
- * lives apart from the panel (the global TopBar in the remote-first shell). It
- * shares the same cross-tree store as `useWorkspaceDock`, so toggling here opens
- * the body rendered by RepoDetail, without pulling in the view/width machinery.
+ * Lightweight controller for dock visibility and selected mode — for controls
+ * that live apart from the panel (the global TopBar in the remote-first shell).
+ * It shares the same cross-tree stores as `useWorkspaceDock`, without pulling in
+ * the view/width machinery.
  */
-export function useWorkspaceDockToggle(workspaceId: string): { isOpen: boolean; toggleOpen: () => void } {
-    const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
-    return { isOpen, toggleOpen };
+export function useWorkspaceDockToggle(workspaceId: string): {
+    isOpen: boolean;
+    mode: WorkspaceDockMode;
+    toggleOpen: () => void;
+    selectMode: (mode: WorkspaceDockMode) => void;
+} {
+    const openStorageKey = workspaceDockOpenStorageKey(workspaceId);
+    const modeStorageKey = workspaceDockModeStorageKey(workspaceId);
+    const [isOpen, toggleOpen] = useDockOpen(openStorageKey);
+    const mode = useSyncExternalStore(
+        useCallback(listener => subscribeDockMode(modeStorageKey, listener), [modeStorageKey]),
+        () => readDockMode(modeStorageKey),
+        () => 'explorer',
+    );
+    const selectMode = useCallback((nextMode: WorkspaceDockMode) => {
+        const currentMode = readDockMode(modeStorageKey);
+        const currentlyOpen = readDockOpen(openStorageKey);
+        if (currentlyOpen && currentMode === nextMode) {
+            writeDockOpen(openStorageKey, false);
+            return;
+        }
+        if (currentMode !== nextMode) writeDockMode(modeStorageKey, nextMode);
+        if (!currentlyOpen) writeDockOpen(openStorageKey, true);
+    }, [modeStorageKey, openStorageKey]);
+    return { isOpen, mode, toggleOpen, selectMode };
 }
 
 /** VS Code-style split-panel glyph, shared by the header and TopBar toggles. */
