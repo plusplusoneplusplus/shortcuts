@@ -482,9 +482,9 @@ export class LanguageServerSession {
             this.connection = undefined;
             this.child = undefined;
             // A process that never finished `initialize` gets the same
-            // escalation as one being stopped; it just is not waited on, so
-            // the caller learns the handshake failed straight away.
-            void this.terminate(child);
+            // escalation as one being stopped. Wait for it to exit before
+            // rejecting so callers may safely remove its working directory.
+            await this.terminate(child);
             // A spawn `error` event already classified this as `unavailable`;
             // the handshake rejection it caused must not overwrite that.
             if (this.state.status !== 'unavailable') {

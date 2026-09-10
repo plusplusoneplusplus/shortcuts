@@ -168,13 +168,16 @@ describe('LanguageServerSession startup', () => {
 
     it('fails when the process starts but never answers initialize', async () => {
         // A process that reads stdin forever and writes nothing back.
+        const root = tempRoot();
         const { session } = createSession(
             fixtureDefinition({ command: process.execPath, args: ['-e', 'process.stdin.resume()'] }),
-            { startTimeoutMs: 250 },
+            { rootPath: root, startTimeoutMs: 250 },
         );
         await expect(session.start()).rejects.toThrow();
         expect(session.status).toBe('failed');
         expect(session.getState().detail).toMatch(/Handshake failed/);
+        // A failed handshake must not leave a process holding the workspace.
+        expect(() => fs.rmSync(root, { recursive: true, force: true })).not.toThrow();
     });
 });
 
