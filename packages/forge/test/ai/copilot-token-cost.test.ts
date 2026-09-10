@@ -66,10 +66,10 @@ describe('Copilot token cost pricing', () => {
     });
 
     it.each([
-        ['GPT 5.6 Luna', 'gpt-5.6-luna', 'GPT-5.6 Luna', 'Lightweight', 1, 0.1, 6],
-        ['GPT 5.6 Sol', 'gpt-5.6-sol', 'GPT-5.6 Sol', 'Powerful', 5, 0.5, 30],
-        ['GPT 5.6 Terra', 'gpt-5.6-terra', 'GPT-5.6 Terra', 'Versatile', 2.5, 0.25, 15],
-        ['GPT 6 Astra', 'gpt-6-astra', 'GPT-6 Astra', 'Powerful', 10, 1, 50],
+        ['GPT 5.6 Luna', 'gpt-5.6-luna', 'GPT-5.6 Luna', 'Lightweight', 0.2, 0.02, 0.25, 1.2],
+        ['GPT 5.6 Sol', 'gpt-5.6-sol', 'GPT-5.6 Sol', 'Powerful', 4, 0.4, 5, 20],
+        ['GPT 5.6 Terra', 'gpt-5.6-terra', 'GPT-5.6 Terra', 'Versatile', 2, 0.2, 2.5, 12],
+        ['GPT 6 Astra', 'gpt-6-astra', 'GPT-6 Astra', 'Powerful', 10, 1, 12.5, 50],
     ] as const)('prices %s with its supported default-tier rates', (
         modelName,
         modelId,
@@ -77,6 +77,7 @@ describe('Copilot token cost pricing', () => {
         category,
         inputRate,
         cachedInputRate,
+        cacheWriteRate,
         outputRate
     ) => {
         expect(normalizeCopilotModelId(modelName)).toBe(modelId);
@@ -88,6 +89,7 @@ describe('Copilot token cost pricing', () => {
             category,
             usdPerMillionInputTokens: inputRate,
             usdPerMillionCachedInputTokens: cachedInputRate,
+            usdPerMillionCacheWriteTokens: cacheWriteRate,
             usdPerMillionOutputTokens: outputRate,
         });
 
@@ -100,6 +102,62 @@ describe('Copilot token cost pricing', () => {
 
         expect(cost).toBeDefined();
         expect(cost!.totalUsd).toBeCloseTo(inputRate + outputRate);
+    });
+
+    // Regression: these rows drifted from the published Copilot pricing table
+    // (GPT-5.6 Luna/Sol/Terra were stored at superseded rates, and the newer
+    // Anthropic, Google, Microsoft, xAI, and Moonshot models were missing
+    // entirely, so their turns showed no cost at all).
+    it.each([
+        ['claude-sonnet-5', 'Claude Sonnet 5', 'anthropic', 2, 0.2, 10],
+        ['claude-fable-5', 'Claude Fable 5', 'anthropic', 10, 1, 50],
+        ['claude-fable-5.1', 'Claude Fable 5.1', 'anthropic', 10, 0.25, 50],
+        ['gemini-3.5-flash', 'Gemini 3.5 Flash', 'google', 1.5, 0.15, 9],
+        ['gemini-3.6-flash', 'Gemini 3.6 Flash', 'google', 0.75, 0.075, 3.75],
+        ['gemini-3.7-flash', 'Gemini 3.7 Flash', 'google', 0.75, 0.075, 3.75],
+        ['gemini-3.8-flash', 'Gemini 3.8 Flash', 'google', 0.75, 0.075, 3.75],
+        ['mai-code-1-flash', 'MAI-Code-1-Flash', 'microsoft', 0.75, 0.075, 4.5],
+        ['mai-code-1.1-flash', 'MAI-Code-1.1-Flash', 'microsoft', 0.2, 0.02, 1.2],
+        ['grok-4.5', 'Grok 4.5', 'xai', 2, 0.5, 6],
+        ['grok-4.6', 'Grok 4.6', 'xai', 2, 0.5, 6],
+        ['kimi-k2.7-code', 'Kimi K2.7 Code', 'moonshot', 0.95, 0.19, 4],
+        ['kimi-k3', 'Kimi K3', 'moonshot', 3, 0.3, 15],
+    ] as const)('prices %s at its published rates', (
+        modelId,
+        displayName,
+        provider,
+        inputRate,
+        cachedInputRate,
+        outputRate
+    ) => {
+        expect(getCopilotModelPricing(modelId)).toMatchObject({
+            modelId,
+            displayName,
+            provider,
+            releaseStatus: 'GA',
+            usdPerMillionInputTokens: inputRate,
+            usdPerMillionCachedInputTokens: cachedInputRate,
+            usdPerMillionOutputTokens: outputRate,
+        });
+
+        const cost = estimateCopilotTokenCost(modelId, {
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheReadTokens: 500_000,
+            cacheWriteTokens: 0,
+        });
+
+        expect(cost).toBeDefined();
+        expect(cost!.totalUsd).toBeCloseTo(inputRate / 2 + cachedInputRate / 2 + outputRate);
+    });
+
+    // Regression: the Claude CLI reports Fable with a hyphenated version
+    // ('claude-fable-5-1'), which the dotted-version fallback used to skip
+    // because it only knew the opus/sonnet/haiku families.
+    it('maps hyphenated Claude Fable CLI IDs onto their pricing entries', () => {
+        expect(normalizeCopilotModelId('claude-fable-5-1')).toBe('claude-fable-5.1');
+        expect(getCopilotModelPricing('claude-fable-5-1-xhigh')?.modelId).toBe('claude-fable-5.1');
+        expect(getCopilotModelPricing('Claude Fable 5')?.modelId).toBe('claude-fable-5');
     });
 
     it('uses Anthropic cache-write pricing', () => {
