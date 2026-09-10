@@ -162,6 +162,12 @@ and transport code stays generic.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The
+  packaged copy is the `typescript-language-server` dependency of
+  `packages/coc`, so TypeScript support works without a separate install. It is
+  never imported — only `require.resolve`d — so it stays out of every bundle.
+  Removing that dependency silently downgrades every project without its own
+  copy to whatever is on `PATH`; `typescript-integration.test.ts` is what fails
+  when that happens. The
   server is run as `node <cli.mjs> --stdio` rather than through a
   `node_modules/.bin` shim, because that shim is a shell script on POSIX and a
   `.cmd` file on Windows and the definition contract forbids a shell.
@@ -277,7 +283,14 @@ and transport code stays generic.
   `initialize` params and its working directory, answers `ask` by sending an
   arbitrary server-to-client request and returning the client's reply or error,
   and dies on `crash` for restart-backoff tests. Add generic protocol coverage there, not against
-  a real `tsserver`. The bridge suite drives a real WebSocket against a real
+  a real `tsserver`. `typescript-integration.test.ts` is the one suite that does
+  run the real server: it builds a temporary project with a `tsconfig.json`, a
+  path alias, a cross-file import and an installed dependency type, then asks
+  each shipped feature a question only a working TypeScript service can answer,
+  including one about a buffer that was never written to disk. Put TypeScript
+  project-understanding coverage there and nothing else. That server sends no
+  `serverInfo`, so `state.serverName` is undefined for it and the user is shown
+  `displayName` and `runtime` instead. The bridge suite drives a real WebSocket against a real
   manager and that fixture, so it covers upgrade scoping, URI refusal, and
   cancellation end to end. `infrastructure.test.ts` starts a real
   `createExecutionServer` and checks the production wiring: the served

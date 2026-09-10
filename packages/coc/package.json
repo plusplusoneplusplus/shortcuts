@@ -89,6 +89,7 @@
     "recharts": "^3.10.1",
     "tunnel": "0.0.6",
     "turndown": "^7.2.4",
+    "typescript-language-server": "^6.0.0",
     "underscore": "^1.13.8",
     "ws": "^8.21.1",
     "zod": "^4.0.0"
