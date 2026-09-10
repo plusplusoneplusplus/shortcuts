@@ -65,9 +65,12 @@ fn write_file(path: &Path, contents: &str) {
     fs::write(path, contents).expect("write fixture");
 }
 
+/// Windows' `SetFileTime` needs a handle opened for writing, so a read-only
+/// `File::open` here fails with "Access is denied" even though the same call
+/// succeeds on Unix. Ask for write access so the helper works on every target.
 fn set_mtime(path: &Path, millis: u64) {
     let time = SystemTime::UNIX_EPOCH + Duration::from_millis(millis);
-    let file = fs::File::open(path).expect("open for utimes");
+    let file = fs::OpenOptions::new().write(true).open(path).expect("open for utimes");
     file.set_modified(time).expect("set mtime");
 }
 
