@@ -5,8 +5,8 @@
  * while the header row above it sat empty and the action strip spent a whole row
  * on six glyphs. These tests pin the layout that fixes it.
  *
- * The width comes from the persisted sidebar width, which is what the user drags
- * — so the threshold is asserted from both sides of it.
+ * The width comes from the rendered sidebar, with the persisted width used only
+ * before the first measurement.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -15,6 +15,17 @@ import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 const treeSpy = vi.fn();
 const searchFilesSpy = vi.fn();
 const searchContentSpy = vi.fn();
+const measuredWidth = vi.hoisted(() => ({ value: 0 }));
+
+vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
+    useContainerWidth: () => ({
+        width: measuredWidth.value,
+        tier: measuredWidth.value < 500 ? 'narrow' : 'medium',
+        isWide: false,
+        isMedium: measuredWidth.value >= 500,
+        isNarrow: measuredWidth.value < 500,
+    }),
+}));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: {
@@ -56,6 +67,7 @@ beforeEach(() => {
     location.hash = '';
     clearExplorerTreeCache();
     clearExplorerContentResults();
+    measuredWidth.value = 0;
     treeSpy.mockReset();
     treeSpy.mockResolvedValue({ entries: ROOT_ENTRIES });
     searchFilesSpy.mockReset();
@@ -67,14 +79,11 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('isNarrowSidebar', () => {
-    it('folds below the threshold and not at it', () => {
-        expect(isNarrowSidebar(NARROW_SIDEBAR_WIDTH - 1, false)).toBe(true);
-        expect(isNarrowSidebar(NARROW_SIDEBAR_WIDTH, false)).toBe(false);
-        expect(isNarrowSidebar(600, false)).toBe(false);
-    });
-
-    it('never folds on mobile, where the sidebar is the whole screen', () => {
-        expect(isNarrowSidebar(200, true)).toBe(false);
+    it('folds measured widths below the threshold', () => {
+        expect(isNarrowSidebar(250)).toBe(true);
+        expect(isNarrowSidebar(380)).toBe(true);
+        expect(isNarrowSidebar(500)).toBe(false);
+        expect(isNarrowSidebar(NARROW_SIDEBAR_WIDTH)).toBe(false);
     });
 });
 
@@ -102,8 +111,8 @@ describe('ExplorerPanel — Search action strip in the header', () => {
 });
 
 describe('ExplorerPanel — Search layout by sidebar width', () => {
-    it('folds at 300px: toggles below the box, ⋯ beside them, actions behind ⋯', async () => {
-        await renderSearchAt(300);
+    it('folds at 380px: toggles below the box, ⋯ beside them, actions behind ⋯', async () => {
+        await renderSearchAt(380);
 
         const row = screen.getByTestId('content-search-toggle-row');
         expect(row.contains(screen.getByTestId('content-search-toggle-case'))).toBe(true);
@@ -119,22 +128,29 @@ describe('ExplorerPanel — Search layout by sidebar width', () => {
         expect(screen.queryByTestId('content-search-collapse-all')).toBeNull();
     });
 
-    it('keeps the desktop shape at 400px', async () => {
-        await renderSearchAt(400);
+    it('keeps the desktop shape at 500px', async () => {
+        await renderSearchAt(500);
 
         expect(screen.queryByTestId('content-search-toggle-row')).toBeNull();
         const input = screen.getByTestId('content-search-input') as HTMLTextAreaElement;
-        expect(input.style.paddingRight).toBe('106px');
+        expect(input.style.paddingRight).toBe('132px');
 
         expect(screen.queryByTestId('content-search-more')).toBeNull();
         expect(screen.getByTestId('content-search-collapse-all')).toBeInTheDocument();
-        expect(screen.getByTestId('content-search-filters-toggle')).toBeInTheDocument();
+        expect(document.querySelectorAll('[data-testid="content-search-filters-toggle"]')).toHaveLength(1);
+    });
+
+    it('uses the measured panel width instead of a wider persisted width', async () => {
+        measuredWidth.value = 380;
+        await renderSearchAt(500);
+        expect(screen.getByTestId('content-search-toggle-row')).toBeInTheDocument();
+        expect(screen.getByTestId('content-search-more')).toBeInTheDocument();
     });
 
     it('still runs the query typed in the folded layout', async () => {
         vi.useFakeTimers();
         try {
-            await renderSearchAt(300);
+            await renderSearchAt(380);
             fireEvent.change(screen.getByTestId('content-search-input'), { target: { value: 'needle' } });
             await act(async () => { await vi.advanceTimersByTimeAsync(500); });
             expect(searchContentSpy).toHaveBeenCalledWith(WS, 'needle', expect.anything());

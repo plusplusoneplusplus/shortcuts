@@ -18,8 +18,8 @@
  * Two deliberate departures from the old flat list, both for VS Code parity:
  *  - match rows carry no line-number gutter (the line still rides along in
  *    `data-line`, which is what the click-through and the tests read);
- *  - the leading indentation of the line is trimmed off the rendered text, so a
- *    deeply indented hit does not push its own match off the right edge.
+ *  - the line's lead-in is capped for display, so every row keeps its matched
+ *    span visible without changing the source columns used by replace.
  *
  * Headers are no longer sticky: the whole tree scrolls as one surface.
  *
@@ -322,13 +322,42 @@ export function splitMatchText(match: ExplorerContentMatch): MatchTextParts {
 }
 
 /**
- * Drop the line's leading indentation for display. Only the `before` segment is
- * touched, so a query that matches whitespace still highlights exactly what the
- * searcher matched — worst case the indentation the user searched for survives
- * inside `hit`.
+ * Drop leading indentation and cap the lead-in for display. Only the `before`
+ * segment is touched, so the matched span and replace columns stay exact.
  */
-export function trimMatchIndent(parts: MatchTextParts): MatchTextParts {
-    return { ...parts, before: parts.before.replace(/^[ \t]+/, '') };
+export const MATCH_DISPLAY_LEAD_CHARS = 20;
+
+export function trimMatchForDisplay(
+    parts: MatchTextParts,
+    maxLeadChars = MATCH_DISPLAY_LEAD_CHARS,
+): MatchTextParts {
+    const withoutIndent = parts.before.replace(/^[ \t]+/, '');
+    const leadChars = Math.max(0, maxLeadChars);
+    const clipped = withoutIndent.length > leadChars;
+    return {
+        ...parts,
+        before: clipped ? `…${leadChars > 0 ? withoutIndent.slice(-leadChars) : ''}` : withoutIndent,
+    };
+}
+
+/** Keep the useful trailing segments of a directory path within a display budget. */
+export function trimDirectoryForDisplay(directory: string, maxLength = 36): string {
+    if (directory.length <= maxLength) return directory;
+    if (maxLength <= 1) return '…'.slice(0, maxLength);
+
+    const segments = directory.split('/');
+    const kept: string[] = [];
+    const available = maxLength - 2; // `…/`
+    let length = 0;
+    for (let index = segments.length - 1; index >= 0; index--) {
+        const segment = segments[index];
+        const nextLength = length === 0 ? segment.length : length + 1 + segment.length;
+        if (nextLength > available) break;
+        kept.unshift(segment);
+        length = nextLength;
+    }
+    if (kept.length > 0) return `…/${kept.join('/')}`;
+    return `…${segments[segments.length - 1]?.slice(-(maxLength - 1)) ?? ''}`;
 }
 
 /**
@@ -460,9 +489,8 @@ function DismissButton({ label, onDismiss }: { label: string; onDismiss: () => v
             type="button"
             onClick={onDismiss}
             className={cn(
-                'flex-shrink-0 px-1 text-xs leading-none text-[#848484]',
+                'px-1 text-xs leading-none text-[#848484]',
                 'bg-transparent border-none cursor-pointer',
-                'opacity-0 group-hover:opacity-100 focus:opacity-100',
                 'hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
             )}
             title={label}
@@ -485,9 +513,8 @@ function ReplaceButton({ label, onReplace }: { label: string; onReplace: () => v
             type="button"
             onClick={onReplace}
             className={cn(
-                'flex-shrink-0 px-1 text-xs leading-none text-[#848484]',
+                'px-1 text-xs leading-none text-[#848484]',
                 'bg-transparent border-none cursor-pointer',
-                'opacity-0 group-hover:opacity-100 focus:opacity-100',
                 'hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
             )}
             title={label}
@@ -533,7 +560,7 @@ function FileGroupRows(props: RowProps & {
     const isCollapsed = collapsedSet.has(path);
     return (
         <div data-testid="content-search-group" data-path={path}>
-            <div className="group flex items-center">
+            <div className="group relative flex items-center">
                 <button
                     type="button"
                     {...rowFocusProps(fileRowKey(path), rowProps)}
@@ -548,20 +575,31 @@ function FileGroupRows(props: RowProps & {
                 >
                     <Twisty collapsed={isCollapsed} />
                     <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">{name}</span>
-                    <span className="text-[#848484] truncate flex-1 min-w-0">{directory}</span>
+                    <span className="text-[#848484] truncate flex-1 min-w-0">
+                        {trimDirectoryForDisplay(directory)}
+                    </span>
                     <CountBadge count={matches.length} />
                 </button>
-                {onReplace && (
-                    <ReplaceButton label={`Replace in ${path}`} onReplace={() => onReplace(matches)} />
-                )}
-                {onDismiss && (
-                    <DismissButton label={`Dismiss ${path}`} onDismiss={() => onDismiss(path)} />
+                {(onReplace || onDismiss) && (
+                    <div className={cn(
+                        'absolute inset-y-0 right-0 flex items-center pl-4 pr-1',
+                        'bg-gradient-to-l from-[#e8e8e8] via-[#e8e8e8] to-transparent',
+                        'dark:from-[#2a2d2e] dark:via-[#2a2d2e]',
+                        'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity',
+                    )}>
+                        {onReplace && (
+                            <ReplaceButton label={`Replace in ${path}`} onReplace={() => onReplace(matches)} />
+                        )}
+                        {onDismiss && (
+                            <DismissButton label={`Dismiss ${path}`} onDismiss={() => onDismiss(path)} />
+                        )}
+                    </div>
                 )}
             </div>
             {!isCollapsed && matches.map(match => {
-                const { before, hit, after } = trimMatchIndent(splitMatchText(match));
+                const { before, hit, after } = trimMatchForDisplay(splitMatchText(match));
                 return (
-                    <div key={`${match.line}:${match.startColumn}`} className="group flex items-center">
+                    <div key={`${match.line}:${match.startColumn}`} className="group relative flex items-center">
                         <button
                             type="button"
                             {...rowFocusProps(matchRowKey(match), rowProps)}
@@ -586,17 +624,26 @@ function FileGroupRows(props: RowProps & {
                                 {after}
                             </span>
                         </button>
-                        {onReplace && (
-                            <ReplaceButton
-                                label={`Replace match at line ${match.line}`}
-                                onReplace={() => onReplace([match])}
-                            />
-                        )}
-                        {onDismiss && (
-                            <DismissButton
-                                label={`Dismiss match at line ${match.line}`}
-                                onDismiss={() => onDismiss(matchDismissKey(match))}
-                            />
+                        {(onReplace || onDismiss) && (
+                            <div className={cn(
+                                'absolute inset-y-0 right-0 flex items-center pl-4 pr-1',
+                                'bg-gradient-to-l from-[#e8e8e8] via-[#e8e8e8] to-transparent',
+                                'dark:from-[#2a2d2e] dark:via-[#2a2d2e]',
+                                'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity',
+                            )}>
+                                {onReplace && (
+                                    <ReplaceButton
+                                        label={`Replace match at line ${match.line}`}
+                                        onReplace={() => onReplace([match])}
+                                    />
+                                )}
+                                {onDismiss && (
+                                    <DismissButton
+                                        label={`Dismiss match at line ${match.line}`}
+                                        onDismiss={() => onDismiss(matchDismissKey(match))}
+                                    />
+                                )}
+                            </div>
                         )}
                     </div>
                 );

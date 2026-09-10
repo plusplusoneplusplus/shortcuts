@@ -132,6 +132,24 @@ describe('ContentSearchPanel — UX states', () => {
         expect(screen.getByTestId('content-search-summary').textContent).toBe('1 result in 1 file');
     });
 
+    it('reports dismissed matches and restores them from the summary', async () => {
+        searchContentSpy.mockResolvedValue({
+            matches: [match({ line: 4 }), match({ line: 8 }), match({ path: 'README.md', line: 1 })],
+            truncated: false,
+        });
+        renderPanel();
+        type('needle');
+        await advance(SEARCH_DEBOUNCE_MS);
+
+        fireEvent.click(screen.getByLabelText('Dismiss src/app.ts'));
+        expect(screen.getByTestId('content-search-dismissed-count')).toHaveTextContent('2 dismissed');
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(1);
+
+        fireEvent.click(screen.getByTestId('content-search-dismissed-count'));
+        expect(screen.queryByTestId('content-search-dismissed-count')).toBeNull();
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(3);
+    });
+
     it('truncated: shows the cap notice alongside the results', async () => {
         searchContentSpy.mockResolvedValue({ matches: [match()], truncated: true });
         renderPanel();

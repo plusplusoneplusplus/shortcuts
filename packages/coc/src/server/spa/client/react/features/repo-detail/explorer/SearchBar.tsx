@@ -4,10 +4,10 @@
  *
  * Optionally renders a row of sticky mode toggles (used by the content-search
  * view for case-sensitive / whole-word / regex), so the two search surfaces
- * share one input rather than duplicating it. The toggles sit inside the
- * input's right edge by default; `togglePlacement="below"` moves them to their
- * own row underneath, which is what a narrow sidebar needs — three glyphs
- * inside the field eat 78px of typing room the panel does not have.
+ * share one input rather than duplicating it. The toggles and any trailing
+ * control sit inside the input's right edge by default;
+ * `togglePlacement="below"` moves them to their own row underneath, which is
+ * what a narrow sidebar needs.
  *
  * `multiline` swaps the `<input>` for an auto-growing `<textarea>` — VS Code's
  * search box shape, where a newline in the query means a multi-line match. It is
@@ -48,8 +48,10 @@ export function autoGrowRows(value: string, maxRows: number = SEARCH_BAR_MAX_ROW
 export function searchBarPaddingRight(
     toggleCount: number,
     placement: SearchBarTogglePlacement = 'inside',
+    trailingControlCount = 0,
 ): number {
-    return CLEAR_BUTTON_WIDTH + (placement === 'below' ? 0 : toggleCount * TOGGLE_WIDTH);
+    return CLEAR_BUTTON_WIDTH
+        + (placement === 'below' ? 0 : (toggleCount + trailingControlCount) * TOGGLE_WIDTH);
 }
 
 /** A sticky on/off button rendered inside the input, VS Code style. */
@@ -83,9 +85,8 @@ export interface SearchBarProps {
      */
     togglePlacement?: SearchBarTogglePlacement;
     /**
-     * Rendered at the right end of the toggle row, so a host with one more
-     * control (the Search view's `…`) can share that row instead of spending a
-     * second one on it. Ignored unless the toggles are below.
+     * Rendered after the toggles, so a host with one more control (the Search
+     * view's `…`) can share their row in either placement.
      */
     children?: ReactNode;
     /**
@@ -137,10 +138,10 @@ export function SearchBar({
     onSubmit,
 }: SearchBarProps) {
     const toggleCount = toggles?.length ?? 0;
-    const togglesBelow = togglePlacement === 'below' && toggleCount > 0;
+    const togglesBelow = togglePlacement === 'below' && (toggleCount > 0 || children !== undefined);
     // Reserve room inside the input for the clear button plus each toggle still
     // sitting in there, so the text never slides underneath them.
-    const paddingRight = searchBarPaddingRight(toggleCount, togglePlacement);
+    const paddingRight = searchBarPaddingRight(toggleCount, togglePlacement, children ? 1 : 0);
 
     // Enter submits; Shift+Enter falls through to the textarea's own newline.
     // preventDefault matters on the textarea only, but costs nothing on the
@@ -156,7 +157,7 @@ export function SearchBar({
         leftGutter ? 'pl-6' : 'pl-2',
         'dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc]',
         'focus:outline-none focus:border-[#0078d4]',
-        multiline && 'resize-none overflow-y-auto leading-5 font-mono',
+        multiline && 'resize-none overflow-x-auto overflow-y-auto whitespace-pre leading-5 font-mono',
     );
 
     const fieldProps = {
@@ -215,6 +216,7 @@ export function SearchBar({
                             {toggle.label}
                         </button>
                     ))}
+                    {!togglesBelow && children}
                 </div>
             </div>
             {togglesBelow && (

@@ -12,7 +12,8 @@ import {
     groupMatchesByFile,
     splitMatchText,
     toggleCollapsedPath,
-    trimMatchIndent,
+    trimDirectoryForDisplay,
+    trimMatchForDisplay,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ContentSearchResults';
 
 function match(overrides: Partial<ExplorerContentMatch> = {}): ExplorerContentMatch {
@@ -81,9 +82,9 @@ describe('splitMatchText', () => {
     });
 });
 
-describe('trimMatchIndent', () => {
+describe('trimMatchForDisplay', () => {
     it('drops the line indentation so the hit is not pushed off the row', () => {
-        expect(trimMatchIndent(splitMatchText(match({
+        expect(trimMatchForDisplay(splitMatchText(match({
             text: '        const needle = 1;',
             startColumn: 14,
             endColumn: 20,
@@ -91,15 +92,44 @@ describe('trimMatchIndent', () => {
     });
 
     it('leaves interior whitespace alone', () => {
-        expect(trimMatchIndent({ before: 'a  b ', hit: 'x', after: ' y' }).before).toBe('a  b ');
+        expect(trimMatchForDisplay({ before: 'a  b ', hit: 'x', after: ' y' }).before).toBe('a  b ');
     });
 
     it('never eats the highlight: whitespace inside the match survives', () => {
         // A query of two spaces, matched inside the indentation itself.
-        const parts = trimMatchIndent(splitMatchText(match({
+        const parts = trimMatchForDisplay(splitMatchText(match({
             text: '    x', startColumn: 2, endColumn: 4,
         })));
         expect(parts).toEqual({ before: '', hit: '  ', after: 'x' });
+    });
+
+    it('leaves a short lead-in untouched', () => {
+        expect(trimMatchForDisplay({ before: 'const value = ', hit: 'needle', after: ';' }))
+            .toEqual({ before: 'const value = ', hit: 'needle', after: ';' });
+    });
+
+    it('clips a long lead-in from the left and prefixes an ellipsis', () => {
+        expect(trimMatchForDisplay({ before: '0123456789abcdefghijEXTRA', hit: 'needle', after: ';' }))
+            .toEqual({ before: '…56789abcdefghijEXTRA', hit: 'needle', after: ';' });
+    });
+
+    it('never shortens the matched span', () => {
+        const hit = 'needle'.repeat(20);
+        expect(trimMatchForDisplay({ before: 'x'.repeat(100), hit, after: '' }).hit).toBe(hit);
+    });
+});
+
+describe('trimDirectoryForDisplay', () => {
+    it('leaves a short directory untouched', () => {
+        expect(trimDirectoryForDisplay('docs/api')).toBe('docs/api');
+    });
+
+    it('keeps trailing path segments within the display budget', () => {
+        expect(trimDirectoryForDisplay('packages/server/references/rest/api', 21)).toBe('…/references/rest/api');
+    });
+
+    it('keeps the tail of a single segment that exceeds the budget', () => {
+        expect(trimDirectoryForDisplay('abcdefghijklmnopqrstuvwxyz', 8)).toBe('…tuvwxyz');
     });
 });
 

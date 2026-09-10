@@ -21,6 +21,7 @@ import { ExplorerTabStrip } from './ExplorerTabStrip';
 import { useExplorerTabs } from './useExplorerTabs';
 import { cycleTabsWithin, findTab, searchTabId, tabIdsToRight } from './explorerTabsModel';
 import { useExplorerEditorTabsEnabled } from '../../../hooks/feature-flags/useExplorerEditorTabsEnabled';
+import { useContainerWidth } from '../../chat/hooks/useContainerWidth';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
@@ -216,18 +217,15 @@ export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set
 const NO_TAB_IDS: ReadonlySet<string> = new Set<string>();
 
 /**
- * Below this sidebar width the Search view switches to its narrow layout: three
- * mode toggles inside the query box leave it about 80px of typing room, which is
- * two characters of a real query.
+ * Below this measured panel width the Search view switches to its narrow layout.
+ * The header toolbar shares the row with the Files / Search tabs, so its usable
+ * width is substantially less than the full sidebar width.
  */
-export const NARROW_SIDEBAR_WIDTH = 320;
+export const NARROW_SIDEBAR_WIDTH = 420;
 
-/**
- * True when the Search view has to fold. Mobile is never narrow — there the
- * sidebar is the full screen, whatever the persisted desktop width says.
- */
-export function isNarrowSidebar(width: number, isMobile: boolean): boolean {
-    return !isMobile && width < NARROW_SIDEBAR_WIDTH;
+/** True when the Search view has to fold at the supplied measured width. */
+export function isNarrowSidebar(width: number, threshold = NARROW_SIDEBAR_WIDTH): boolean {
+    return width < threshold;
 }
 
 export function ExplorerPanel({
@@ -248,7 +246,9 @@ export function ExplorerPanel({
         maxWidth: 600,
         storageKey: 'explorer-sidebar-width',
     });
-    const narrowSidebar = isNarrowSidebar(sidebarWidth, isMobile);
+    const sidebarRef = useRef<HTMLElement>(null);
+    const { width: measuredSidebarWidth } = useContainerWidth(sidebarRef);
+    const narrowSidebar = isNarrowSidebar(measuredSidebarWidth || sidebarWidth);
     // The Search view's action strip is rendered by ContentSearchPanel (which
     // owns the handlers) but lives in this header, so the panel is handed the
     // element to portal into. State, not a ref, because the panel has to re-run
@@ -1282,6 +1282,7 @@ export function ExplorerPanel({
         <div ref={rootRef} className={`flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="explorer-panel">
             {/* Left aside — file tree (hidden on mobile when previewing a file) */}
             <aside
+                ref={sidebarRef}
                 className={`w-full flex-1 min-h-0 border-b lg:border-b-0 border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] overflow-hidden flex flex-col${navigatorMode ? '' : ' lg:flex-none lg:border-r'}`}
                 style={showMobilePreview ? { display: 'none' } : { width: undefined }}
                 data-testid="explorer-sidebar"
