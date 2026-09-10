@@ -225,6 +225,13 @@ mode opens or switches the panel, while selecting its active mode closes it.
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
+Quick Open has an explicit repo or repo-group scope. A desktop repo group owns
+Ctrl/Cmd+P across all of its sub-tabs even while the panel is closed, and sends
+one search request to the group's owning server. Selecting a member result
+atomically switches the dock target, opens Explorer mode and the tree, and opens
+a result-owned preview without changing the page-level group. Ordinary repos and
+Ctrl/Cmd+O retain target-scoped ownership.
+
 The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs,
 with a searchable `+` menu and one right-edge navigator that switches between
 the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
