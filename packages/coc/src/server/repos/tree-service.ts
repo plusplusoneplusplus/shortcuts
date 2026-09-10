@@ -5,7 +5,12 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
 import { loadNativeContentSearch, loadNativeFileIndex } from '@plusplusoneplusplus/coc-native';
-import type { NativeContentSearchAddon, NativeFileIndex, NativeFileIndexAddon } from '@plusplusoneplusplus/coc-native';
+import type {
+    NativeContentSearchAddon,
+    NativeFileIndex,
+    NativeFileIndexAddon,
+    NativeRankedFileMatch,
+} from '@plusplusoneplusplus/coc-native';
 
 const execFileAsync = promisify(execFile);
 import type {
@@ -832,6 +837,30 @@ export class RepoTreeService {
         const results: FileSearchResult[] = await index.search(query, limit);
         // Nothing was dropped on the way in, so no result is missing.
         return { results, truncated: false };
+    }
+
+    /**
+     * Fuzzy-search one repo while retaining the native ordering tuple.
+     *
+     * Server-side aggregators use this to merge independently ranked indexes.
+     * The tuple must not be serialized by the single-repo REST endpoint.
+     */
+    async searchFilesRanked(
+        repoId: string,
+        query: string,
+        options?: { limit?: number; showIgnored?: boolean },
+    ): Promise<NativeRankedFileMatch[]> {
+        const rawLimit = options?.limit ?? 50;
+        const limit = Math.min(Math.max(rawLimit, 1), 200);
+        const showIgnored = options?.showIgnored ?? false;
+
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
+            throw new Error(`Repo not found: ${repoId}`);
+        }
+        const key = RepoTreeService.fileListKey(repoId, showIgnored);
+        const index = await this.nativeIndexFor(key, repoRoot, showIgnored).index;
+        return index.searchRanked(query, limit);
     }
 
     /**

@@ -802,6 +802,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerMyLifeRoutes(routes, store, dataDir);
     registerRepoGroupRoutes(routes, store, dataDir, {
         getWsServer,
+        repoTreeService,
         onGroupRegistered: async (ws) => {
             // Match the startup workspace sweep so a freshly created group can
             // enqueue chats and host schedules without a server restart.

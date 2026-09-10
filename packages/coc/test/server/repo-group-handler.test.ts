@@ -16,6 +16,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { registerRepoGroupRoutes } from '../../src/server/workspaces/repo-group-handler';
 import { createRequestHandler } from '../../src/server/router';
+import { RepoTreeService } from '../../src/server/repos/tree-service';
 import type { Route } from '../../src/server/types';
 import { FileProcessStore, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 
@@ -76,6 +77,7 @@ describe('Repo Group Handler', () => {
     let baseUrl: string;
     let repoA: WorkspaceInfo;
     let repoB: WorkspaceInfo;
+    let repoTreeService: RepoTreeService;
     let broadcastEvents: Array<{ type: string; workspaceId: string; action: string }>;
     let registeredGroups: WorkspaceInfo[];
 
@@ -89,6 +91,7 @@ describe('Repo Group Handler', () => {
             fs.mkdirSync(ws.rootPath, { recursive: true });
             await store.registerWorkspace(ws);
         }
+        repoTreeService = new RepoTreeService(dataDir, { fileListCacheTtlMs: 60_000 }, store);
 
         broadcastEvents = [];
         registeredGroups = [];
@@ -98,6 +101,7 @@ describe('Repo Group Handler', () => {
                 broadcastProcessEvent: (event) => { broadcastEvents.push(event); },
             }),
             onGroupRegistered: async (ws) => { registeredGroups.push(ws); },
+            repoTreeService,
         });
         const handler = createRequestHandler({ routes, spaHtml: () => '<html></html>' });
         server = http.createServer(handler);
@@ -204,6 +208,218 @@ describe('Repo Group Handler', () => {
                 { workspaceId: repoA.id, stale: false, name: 'Repo A', rootPath: repoA.rootPath },
                 { workspaceId: repoB.id, stale: false, name: 'Repo B', rootPath: repoB.rootPath },
             ]);
+        });
+
+        describe('GET /api/repo-groups/:id/search', () => {
+            function write(workspace: WorkspaceInfo, relativePath: string): void {
+                const target = path.join(workspace.rootPath, relativePath);
+                fs.mkdirSync(path.dirname(target), { recursive: true });
+                fs.writeFileSync(target, '');
+            }
+
+            it('returns one ranked list with member identity and public match fields', async () => {
+                write(repoA, 'src/prompt.ts');
+                write(repoB, 'lib/prompt-helper.ts');
+                const { workspace } = await createGroup();
+
+                const res = await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=prompt`);
+                expect(res.status).toBe(200);
+                const body = JSON.parse(res.body);
+                expect(body.status).toBe('complete');
+                expect(body.results.map((result: any) => result.workspaceId)).toEqual([repoA.id, repoB.id]);
+                expect(body.results).toEqual([
+                    expect.objectContaining({
+                        workspaceId: repoA.id,
+                        repoName: repoA.name,
+                        path: 'src/prompt.ts',
+                        score: expect.any(Number),
+                        indices: [4, 5, 6, 7, 8, 9],
+                    }),
+                    expect.objectContaining({
+                        workspaceId: repoB.id,
+                        repoName: repoB.name,
+                        path: 'lib/prompt-helper.ts',
+                        score: expect.any(Number),
+                        indices: [4, 5, 6, 7, 8, 9],
+                    }),
+                ]);
+                expect(Object.keys(body.results[0]).sort()).toEqual([
+                    'indices', 'path', 'repoName', 'score', 'workspaceId',
+                ]);
+            });
+
+            it('merges with every native ranking key and membership order', async () => {
+                const { workspace } = await createGroup();
+                vi.spyOn(repoTreeService, 'searchFilesRanked').mockImplementation(async (repoId) => {
+                    const ranked = (
+                        pathValue: string,
+                        score: number,
+                        tier: number,
+                        targetLen: number,
+                        pathLen: number,
+                        snapshotIndex: number,
+                    ) => ({
+                        path: pathValue,
+                        score,
+                        indices: [0],
+                        ranking: { tier, targetLen, pathLen, snapshotIndex },
+                    });
+                    return repoId === repoA.id
+                        ? [
+                            ranked('a-score', 9, 2, 5, 10, 0),
+                            ranked('a-target', 8, 2, 4, 20, 1),
+                            ranked('a-path', 8, 2, 5, 10, 2),
+                            ranked('a-member', 8, 2, 5, 20, 3),
+                            ranked('a-snapshot-0', 7, 2, 5, 20, 0),
+                            ranked('a-snapshot-1', 7, 2, 5, 20, 1),
+                        ]
+                        : [
+                            ranked('b-tier', 100, 1, 1, 1, 0),
+                            ranked('b-member', 8, 2, 5, 20, 0),
+                        ];
+                });
+
+                const body = JSON.parse((
+                    await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=x`)
+                ).body);
+                expect(body.results.map((result: any) => result.path)).toEqual([
+                    'a-score',
+                    'a-target',
+                    'a-path',
+                    'a-member',
+                    'b-member',
+                    'a-snapshot-0',
+                    'a-snapshot-1',
+                    'b-tier',
+                ]);
+            });
+
+            it('validates query controls and clamps numeric limits', async () => {
+                const { workspace } = await createGroup();
+                for (const suffix of ['', '?q=', '?q=a&q=b', '?q=a&limit=nope', '?q=a&limit=1.5', '?q=a&showIgnored=yes']) {
+                    expect((await request(`${baseUrl}/api/repo-groups/${workspace.id}/search${suffix}`)).status).toBe(400);
+                }
+                const search = vi.spyOn(repoTreeService, 'searchFilesRanked');
+                expect((await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=a&limit=999`)).status).toBe(200);
+                expect(search).toHaveBeenCalledTimes(2);
+                expect(search.mock.calls.every(call => call[2]?.limit === 200)).toBe(true);
+                search.mockClear();
+                expect((await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=a&limit=-1`)).status).toBe(200);
+                expect(search.mock.calls.every(call => call[2]?.limit === 1)).toBe(true);
+            });
+
+            it('honours showIgnored without searching a recursive file list', async () => {
+                write(repoA, '.git/HEAD');
+                write(repoA, '.gitignore');
+                fs.writeFileSync(path.join(repoA.rootPath, '.gitignore'), 'ignored.ts\n');
+                write(repoA, 'ignored.ts');
+                const { workspace } = await createGroup('Solo', [repoA.id]);
+
+                const hidden = JSON.parse((
+                    await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=ignored`)
+                ).body);
+                expect(hidden.results).toEqual([]);
+                const shown = JSON.parse((
+                    await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=ignored&showIgnored=true`)
+                ).body);
+                expect(shown.results.map((result: any) => result.path)).toContain('ignored.ts');
+            });
+
+            it('reports stale members as partial while keeping healthy results', async () => {
+                write(repoA, 'healthy.ts');
+                const { workspace } = await createGroup();
+                fs.rmSync(repoB.rootPath, { recursive: true, force: true });
+
+                const body = JSON.parse((
+                    await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=healthy`)
+                ).body);
+                expect(body).toEqual(expect.objectContaining({
+                    status: 'partial',
+                    memberCount: 2,
+                    searchableMemberCount: 1,
+                    searchedMemberCount: 1,
+                    unavailableMemberCount: 1,
+                    failedMemberCount: 0,
+                }));
+                expect(body.results.map((result: any) => result.workspaceId)).toEqual([repoA.id]);
+            });
+
+            it('distinguishes an empty group from a failed search', async () => {
+                const { workspace } = await createGroup('Empty', []);
+                const empty = JSON.parse((
+                    await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=x`)
+                ).body);
+                expect(empty).toEqual({
+                    status: 'no-searchable-members',
+                    results: [],
+                    memberCount: 0,
+                    searchableMemberCount: 0,
+                    searchedMemberCount: 0,
+                    unavailableMemberCount: 0,
+                    failedMemberCount: 0,
+                });
+
+                const { workspace: populated } = await createGroup('Broken', [repoA.id]);
+                vi.spyOn(repoTreeService, 'searchFilesRanked').mockRejectedValue(new Error('index failed'));
+                const failed = JSON.parse((
+                    await request(`${baseUrl}/api/repo-groups/${populated.id}/search?q=x`)
+                ).body);
+                expect(failed.status).toBe('failed');
+                expect(failed.failedMemberCount).toBe(1);
+            });
+
+            it('keeps healthy matches when one member search fails', async () => {
+                const { workspace } = await createGroup();
+                vi.spyOn(repoTreeService, 'searchFilesRanked').mockImplementation(async (repoId) => {
+                    if (repoId === repoB.id) throw new Error('member disappeared');
+                    return [{
+                        path: 'healthy.ts',
+                        score: 10,
+                        indices: [0],
+                        ranking: { tier: 2, targetLen: 10, pathLen: 10, snapshotIndex: 0 },
+                    }];
+                });
+                const body = JSON.parse((
+                    await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=h`)
+                ).body);
+                expect(body.status).toBe('partial');
+                expect(body.failedMemberCount).toBe(1);
+                expect(body.results).toEqual([
+                    expect.objectContaining({ workspaceId: repoA.id, path: 'healthy.ts' }),
+                ]);
+            });
+
+            it('bounds member-search concurrency', async () => {
+                const members = [repoA, repoB];
+                for (let index = 2; index < 8; index++) {
+                    const workspace = {
+                        id: `repo-${index}`,
+                        name: `Repo ${index}`,
+                        rootPath: path.join(dataDir, 'checkouts', `repo-${index}`),
+                    };
+                    fs.mkdirSync(workspace.rootPath, { recursive: true });
+                    await store.registerWorkspace(workspace);
+                    members.push(workspace);
+                }
+                const { workspace } = await createGroup('Large', members.map(member => member.id));
+                let active = 0;
+                let peak = 0;
+                vi.spyOn(repoTreeService, 'searchFilesRanked').mockImplementation(async () => {
+                    active++;
+                    peak = Math.max(peak, active);
+                    await new Promise(resolve => setTimeout(resolve, 5));
+                    active--;
+                    return [];
+                });
+
+                expect((await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?q=x`)).status).toBe(200);
+                expect(peak).toBe(4);
+            });
+
+            it('returns 404 for a missing or non-group id', async () => {
+                expect((await request(`${baseUrl}/api/repo-groups/group-nope/search?q=x`)).status).toBe(404);
+                expect((await request(`${baseUrl}/api/repo-groups/${repoA.id}/search?q=x`)).status).toBe(404);
+            });
         });
 
         it('marks removed-workspace and missing-path members stale', async () => {
