@@ -184,6 +184,13 @@ export interface LanguageDocumentView {
     /** Fires after each replay, i.e. whenever a fresh host session is ready. */
     onSynchronized(listener: (info: LanguageServerAttachedInfo) => void): () => void;
 
+    /**
+     * The user's retry, handed straight to the transport. The buffer is not
+     * touched: whatever comes back gets the current text replayed into it, so
+     * unsaved work survives a restart the same way it survives a crash.
+     */
+    restart(): void;
+
     /** Releases this view. The document closes when the last view goes. */
     close(): void;
 }
@@ -560,6 +567,12 @@ export class LanguageDocumentStore {
             onText: (listener) => subscribe(record.textListeners, listener),
             onStatus: (listener) => subscribe(record.statusListeners, listener),
             onSynchronized: (listener) => subscribe(record.synchronizedListeners, listener),
+            restart: () => {
+                if (record.closed) {
+                    return;
+                }
+                record.attachment.restart();
+            },
             close: () => {
                 if (!live) {
                     return;

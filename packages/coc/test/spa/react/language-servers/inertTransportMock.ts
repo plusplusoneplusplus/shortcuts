@@ -30,6 +30,7 @@ export function inertAttachment(path: string) {
         onStatus: subscribe,
         sendRequest: async () => undefined,
         sendNotification: () => {},
+        restart: () => {},
         release: () => {},
     };
 }

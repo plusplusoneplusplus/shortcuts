@@ -37,6 +37,8 @@ export interface LanguageServerSessionStateView {
     detail?: string;
     serverName?: string;
     serverVersion?: string;
+    /** Which executable and toolchain the host resolved. Never a host path. */
+    runtime?: string;
     restarts?: number;
     /**
      * Counts the host session's successful handshakes. A change means the
@@ -113,6 +115,11 @@ export interface LanguageServerAttachment {
     sendRequest<T = unknown>(method: string, params?: unknown, options?: LanguageServerRequestOptions): Promise<T>;
     /** Dropped when the attachment is not live; the next attach replays instead. */
     sendNotification(method: string, params?: unknown): void;
+    /**
+     * The user's retry. Picks the one recovery this document actually needs:
+     * a new socket, a fresh attach, or a restart of the host's server process.
+     */
+    restart(): void;
     /** Releases this view. The host session is freed when the last view goes. */
     release(): void;
 }
@@ -553,11 +560,46 @@ export class LanguageServerClient {
         if (record.released || this.status !== 'open') {
             return;
         }
+        // Retire any attach still in flight for this record. Should the host
+        // answer it anyway, the reply finds no record and is detached rather
+        // than leaving a second host session reference behind this document.
+        if (record.attachRequestId) {
+            this.byAttachRequest.delete(record.attachRequestId);
+        }
         const requestId = `attach-${this.generation}-${++this.requestCounter}`;
         record.attachRequestId = requestId;
         record.info = null;
         this.byAttachRequest.set(requestId, record);
         this.send({ type: 'lsp-attach', requestId, path: record.path });
+    }
+
+    /**
+     * One retry button, three different failures underneath it.
+     *
+     * A closed socket needs a connection, not a server restart, and the user
+     * pressing retry means "now" — so the backoff is reset and the reconnect
+     * brought forward. A document the host refused, or one whose attach never
+     * landed, needs a fresh attach; the reason it was refused (support turned
+     * off, no definition, capacity) is fixed elsewhere and re-attaching is what
+     * picks that up. Only a live attachment gets the host restart, because only
+     * then is there a process worth replacing.
+     */
+    private restartRecord(record: AttachmentRecord): void {
+        if (this.disposed || record.released) {
+            return;
+        }
+        if (this.status !== 'open') {
+            this.reconnectDelay = this.reconnectDelayMs;
+            this.clearReconnectTimer();
+            this.connect();
+            return;
+        }
+        if (!record.info) {
+            record.unavailable = null;
+            this.sendAttach(record);
+            return;
+        }
+        this.send({ type: 'lsp-restart', attachmentId: record.info.attachmentId });
     }
 
     private send(message: unknown): boolean {
@@ -599,6 +641,9 @@ export class LanguageServerClient {
                     return;
                 }
                 client.send({ type: 'lsp-notify', attachmentId: record.info.attachmentId, method, params });
+            },
+            restart: () => {
+                client.restartRecord(record);
             },
             release: () => {
                 if (!live) {

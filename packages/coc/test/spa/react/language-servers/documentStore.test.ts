@@ -471,6 +471,49 @@ describe('LanguageDocumentStore', () => {
         });
     });
 
+    describe('restart', () => {
+        it('hands the retry to the transport without touching the buffer', () => {
+            const view = store.open({ path: 'src/a.ts', text: 'const a = 1;' });
+            const attachment = client.get('src/a.ts');
+            attachment.attach();
+            view.update('const a = 2;');
+
+            view.restart();
+
+            expect(attachment.restarts).toBe(1);
+            // The unsaved edit is the whole reason a restart replays rather
+            // than reopening from disk.
+            expect(view.getText()).toBe('const a = 2;');
+            expect(view.isDirty()).toBe(true);
+        });
+
+        it('replays the current buffer into the server the restart produced', () => {
+            const view = store.open({ path: 'src/a.ts', text: 'const a = 1;' });
+            const attachment = client.get('src/a.ts');
+            attachment.attach();
+            view.update('const a = 2;');
+            view.restart();
+
+            // The host restarted: same attachment, new handshake generation.
+            attachment.status(readyState({ textDocumentSync: 1 }, 2));
+
+            const opened = attachment.lastOf('textDocument/didOpen') as any;
+            expect(opened.textDocument.text).toBe('const a = 2;');
+            expect(opened.textDocument.version).toBeGreaterThan(1);
+        });
+
+        it('does nothing once the document is closed', () => {
+            const view = store.open({ path: 'src/a.ts', text: 'a' });
+            const attachment = client.get('src/a.ts');
+            attachment.attach();
+
+            view.close();
+            view.restart();
+
+            expect(attachment.restarts).toBe(0);
+        });
+    });
+
     describe('store lifecycle', () => {
         it('normalizes paths so two spellings share one document', () => {
             store.open({ path: 'src/a.ts', text: 'a' });

@@ -65,6 +65,8 @@ export interface UseLanguageDocumentResult {
     handleChange: (text: string, changes?: DocumentContentChange[]) => void;
     /** Call after the disk write succeeded — never before. */
     markSaved: (text?: string) => void;
+    /** The user's retry; a no-op when language support is off for this host. */
+    restart: () => void;
 }
 
 const NO_DIAGNOSTICS: LspDiagnostic[] = [];
@@ -135,6 +137,10 @@ export function useLanguageDocument(options: UseLanguageDocumentOptions): UseLan
         view?.markSaved(saved);
     }, [view]);
 
+    const restart = useCallback(() => {
+        view?.restart();
+    }, [view]);
+
     const markers = useMemo(
         () => (diagnostics.length === 0 ? NO_MARKERS : toMarkers(diagnostics)),
         [diagnostics],
@@ -151,5 +157,6 @@ export function useLanguageDocument(options: UseLanguageDocumentOptions): UseLan
         ready: status === 'ready',
         handleChange,
         markSaved,
+        restart,
     };
 }

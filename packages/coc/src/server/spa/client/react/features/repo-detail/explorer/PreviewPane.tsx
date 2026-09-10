@@ -25,6 +25,7 @@ import { getMonacoLanguage, type EditorModelMountContext } from '../../../shared
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
 import { toContentChanges } from '../../language-servers/monacoBridge';
 import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
+import { LanguageStatusBadge } from '../../language-servers/LanguageStatusBadge';
 import {
     registerLanguageProviders,
     type MonacoLike,
@@ -148,7 +149,9 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, revealColu
         text: savedText ?? diskText,
         fallbackLanguageId: getMonacoLanguage(fileName),
     });
-    const { handleChange: recordLanguageEdit, markSaved, view: languageView } = languageDocument;
+    const {
+        handleChange: recordLanguageEdit, markSaved, view: languageView, restart: restartLanguageServer,
+    } = languageDocument;
 
     // The Monaco language the editor will actually use for this file, so the
     // providers are registered under the same id the model carries.
@@ -272,6 +275,12 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, revealColu
                     className="absolute top-2 right-6 z-10 flex items-center gap-1.5"
                     data-testid="preview-toolbar"
                 >
+                    {languageEnabled && (
+                        <LanguageStatusBadge
+                            snapshot={languageDocument.snapshot}
+                            onRestart={restartLanguageServer}
+                        />
+                    )}
                     {isDirty && !effectiveReadOnly && (
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"

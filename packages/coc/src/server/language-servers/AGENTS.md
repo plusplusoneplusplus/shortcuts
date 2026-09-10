@@ -106,6 +106,12 @@ and transport code stays generic.
   diagnostics across restarts. `onReady` is where the document layer replays
   open buffers before resuming queries. `sendRequest` starts the server on
   demand.
+- `onStateChange` reports every transition of the user-facing state, in order.
+  A status display needs it, because `starting`, `reconnecting`, `failed` and
+  `disabled` have no handler of their own — only `ready` does. The `ready`
+  transition fires here before `onReady`, with the connection already live, so
+  a subscriber may send on it. A listener that throws is reported through
+  `onError` and does not stop the others.
 - `manager.ts` — `LanguageServerManager` owns every live session on this host.
   `acquire({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
   resolves the definition with `selectDefinitionForFile`, the root with
@@ -173,7 +179,7 @@ and transport code stays generic.
   touched; the origin check is the shared one in
   `src/server/streaming/websocket.ts`, which routes the path to this server.
 - Client messages: `lsp-attach`, `lsp-detach`, `lsp-request`, `lsp-cancel`,
-  `lsp-notify`, `ping`. Server messages: `lsp-welcome`, `lsp-attached`,
+  `lsp-notify`, `lsp-restart`, `ping`. Server messages: `lsp-welcome`, `lsp-attached`,
   `lsp-unavailable`, `lsp-response`, `lsp-notification`, `lsp-status`,
   `lsp-detached`, `lsp-error`, `pong`. This shape is the transport contract a
   container relay implements, so the editor client does not change when the
@@ -193,6 +199,16 @@ and transport code stays generic.
   never waits on a spawn and a handshake; success reaches it through the
   session's ready handler as an `lsp-status`, and a failed start is pushed as
   one too, since no ready handler will fire for it.
+- The socket subscribes to `session.onStateChange` and forwards every
+  transition as an `lsp-status`, so the browser's status display sees
+  `starting`, `reconnecting` and `failed` rather than only `ready`.
+- `lsp-restart` is the user's retry: it restarts the server behind one
+  document without restarting CoC, and the attachment survives it — the same
+  session comes back with a new process and a new `generation`, which is the
+  browser's cue to replay. Restarts are coalesced per session, because one
+  session serves every document under a project root and two panes pressing
+  retry must not stop and start the process twice. Nothing is sent in reply;
+  the session's own state transitions carry the outcome.
 - Server-to-client requests such as `workspace/configuration` and
   `client/registerCapability` are still answered `-32601`; `tsserver` behaves
   better once they are handled.

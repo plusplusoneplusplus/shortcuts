@@ -438,6 +438,97 @@ describe('language-server WebSocket bridge', () => {
         expect(detached.reason).toBe('workspace-removed');
     });
 
+    it('restarts the server behind a document on request, keeping the attachment', async () => {
+        // The user's retry: a new process, without restarting CoC and without
+        // the browser losing the document it is looking at.
+        const harness = await createHarness();
+        const client = await harness.connect();
+        const attached = await client.attach('src/notes.txt');
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready');
+
+        client.send({ type: 'lsp-restart', attachmentId: attached.attachmentId });
+
+        const restarted = await client.next(
+            'lsp-status',
+            (msg) => msg.state.status === 'ready' && msg.state.generation === 2,
+        );
+        expect(restarted.sessionKey).toBe(attached.sessionKey);
+        // A new handshake generation is the browser's cue to replay, and the
+        // same attachment id still addresses the session.
+        const echo = await client.request(attached.attachmentId, 'e1', 'echo', { value: 'after restart' });
+        expect(echo.result).toEqual({ value: 'after restart' });
+        expect(client.received.some((msg) => msg.type === 'lsp-detached')).toBe(false);
+    });
+
+    it('reports the restart while it is happening, not only when it lands', async () => {
+        const harness = await createHarness();
+        const client = await harness.connect();
+        const attached = await client.attach('src/notes.txt');
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready');
+        const before = client.received.length;
+
+        client.send({ type: 'lsp-restart', attachmentId: attached.attachmentId });
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready' && msg.state.generation === 2);
+
+        const during = client.received
+            .slice(before)
+            .filter((msg): msg is Extract<LanguageServerServerMessage, { type: 'lsp-status' }> => msg.type === 'lsp-status')
+            .map((msg) => msg.state.status);
+        expect(during).toContain('starting');
+    });
+
+    it('restarts once when two documents on the same session both ask', async () => {
+        // One session serves every document under a project root. Two panes
+        // pressing retry must not stop and start the process twice.
+        const harness = await createHarness();
+        const client = await harness.connect();
+        const first = await client.attach('src/notes.txt');
+        const second = await client.attach('src/other.txt');
+        expect(second.sessionKey).toBe(first.sessionKey);
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready');
+
+        client.send({ type: 'lsp-restart', attachmentId: first.attachmentId });
+        client.send({ type: 'lsp-restart', attachmentId: second.attachmentId });
+
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready' && msg.state.generation === 2);
+        const echo = await client.request(first.attachmentId, 'e1', 'echo', { value: 'still one server' });
+        expect(echo.result).toEqual({ value: 'still one server' });
+        const generations = client.received
+            .filter((msg): msg is Extract<LanguageServerServerMessage, { type: 'lsp-status' }> => msg.type === 'lsp-status')
+            .map((msg) => msg.state.generation);
+        expect(Math.max(...generations)).toBe(2);
+    });
+
+    it('brings a failed server back, because a retry is what clears the budget', async () => {
+        const harness = await createHarness({
+            definitions: [echoDefinition({ command: 'coc-language-server-that-does-not-exist', args: [] })],
+        });
+        const client = await harness.connect();
+        const attached = await client.attach('src/notes.txt');
+        const failed = await client.next('lsp-status', (msg) => msg.state.status !== 'starting');
+        expect(['failed', 'unavailable']).toContain(failed.state.status);
+
+        client.send({ type: 'lsp-restart', attachmentId: attached.attachmentId });
+
+        // Still broken, so it fails again — but it tried, and the browser was
+        // told about the attempt rather than left on a stale status.
+        const retried = await client.next(
+            'lsp-status',
+            (msg) => msg.state.status === 'starting' || msg.state.status === 'reconnecting',
+        );
+        expect(retried.sessionKey).toBe(attached.sessionKey);
+    });
+
+    it('ignores a restart naming an attachment it does not know', async () => {
+        const harness = await createHarness();
+        const client = await harness.connect();
+        await client.next('lsp-welcome');
+        client.send({ type: 'lsp-restart', attachmentId: 'not-an-attachment' });
+        client.send({ type: 'ping' });
+        await client.next('pong');
+        expect(client.socket.readyState).toBe(WebSocket.OPEN);
+    });
+
     it('answers a ping so a client can check liveness', async () => {
         const harness = await createHarness();
         const client = await harness.connect();

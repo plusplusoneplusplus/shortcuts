@@ -169,6 +169,36 @@ describe('PreviewPane — language document (AC-02)', () => {
         expect(editor.markers[0].message).toBe('cannot find name');
     });
 
+    it('shows the language status beside the file and restarts the server on request', async () => {
+        renderPane();
+        const attachment = await attachmentFor('src/a.ts');
+        act(() => { attachment.attach({ state: readyState() }); });
+
+        expect(screen.getByTestId('language-status-label').textContent).toBe('TypeScript');
+
+        // The server dies. The status follows it, and the retry the user is
+        // offered goes all the way down to the transport.
+        act(() => {
+            attachment.status({
+                status: 'failed',
+                definitionId: 'typescript',
+                displayName: 'TypeScript',
+                detail: 'Handshake failed',
+            });
+        });
+
+        expect(screen.getByTestId('language-status-label').textContent).toBe('TypeScript failed');
+        fireEvent.click(screen.getByTestId('language-restart-btn'));
+        expect(attachment.restarts).toBe(1);
+    });
+
+    it('shows no language status for a file that is not a live repo document', async () => {
+        renderPane({ filePath: `${TRUSTED_PATH_PREFIX}/etc/hosts`, fileName: 'hosts' });
+        await screen.findByTestId('mock-monaco-textarea');
+
+        expect(screen.queryByTestId('language-status')).toBeNull();
+    });
+
     it('opens no document for a trusted absolute path, which belongs to no workspace', async () => {
         renderPane({ filePath: `${TRUSTED_PATH_PREFIX}/etc/hosts`, fileName: 'hosts' });
         await screen.findByTestId('mock-monaco-textarea');

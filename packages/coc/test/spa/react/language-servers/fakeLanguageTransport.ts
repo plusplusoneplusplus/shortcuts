@@ -39,6 +39,8 @@ export type RequestResponder = (params: unknown, signal?: AbortSignal) => unknow
 export class FakeAttachment {
     readonly notifications: SentNotification[] = [];
     readonly requests: SentRequest[] = [];
+    /** Every `restart()` the layers above asked for. */
+    restarts = 0;
     private readonly responders = new Map<string, RequestResponder>();
     refCount = 0;
     released = false;
@@ -80,6 +82,9 @@ export class FakeAttachment {
                     return; // The real client drops notifications while detached.
                 }
                 self.notifications.push({ method, params: (params ?? {}) as Record<string, unknown> });
+            },
+            restart: () => {
+                self.restarts += 1;
             },
             release: () => {
                 if (!live) {

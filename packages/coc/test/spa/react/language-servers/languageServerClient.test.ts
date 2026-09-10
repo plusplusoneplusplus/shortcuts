@@ -509,6 +509,92 @@ describe('LanguageServerClient', () => {
         });
     });
 
+    describe('restart', () => {
+        it('asks the host to restart the server behind a live document', () => {
+            const client = makeClient();
+            const handle = client.attach('src/index.ts');
+            const socket = latest();
+            socket.open();
+            socket.emit(attachedMessage(socket));
+
+            handle.restart();
+
+            expect(socket.sentOfType('lsp-restart')).toEqual([
+                { type: 'lsp-restart', attachmentId: 'att-1' },
+            ]);
+            client.dispose();
+        });
+
+        it('re-attaches instead, when the host refused this document', () => {
+            // Support turned off, no definition, no capacity: the fix is
+            // elsewhere and a fresh attach is what picks it up. Restarting a
+            // process that was never started would do nothing.
+            const client = makeClient();
+            const handle = client.attach('src/index.ts');
+            const socket = latest();
+            socket.open();
+            const attach = socket.sentOfType('lsp-attach').at(-1);
+            socket.emit({
+                type: 'lsp-unavailable',
+                requestId: attach?.requestId,
+                reason: 'disabled',
+                detail: 'Language support is off for this workspace.',
+            });
+            expect(handle.getUnavailable()?.reason).toBe('disabled');
+
+            handle.restart();
+
+            expect(socket.sentOfType('lsp-restart')).toHaveLength(0);
+            expect(socket.sentOfType('lsp-attach')).toHaveLength(2);
+            expect(handle.getUnavailable()).toBeNull();
+            client.dispose();
+        });
+
+        it('retires the in-flight attach so a late reply cannot leak a session', () => {
+            const client = makeClient();
+            const handle = client.attach('src/index.ts');
+            const socket = latest();
+            socket.open();
+            const first = socket.sentOfType('lsp-attach').at(-1);
+
+            handle.restart();
+            // The host answers the attach that was already on the wire.
+            socket.emit(attachedMessage(socket, { requestId: first?.requestId, attachmentId: 'stale-att' }));
+
+            expect(handle.getInfo()).toBeNull();
+            expect(socket.sentOfType('lsp-detach')).toEqual([
+                { type: 'lsp-detach', attachmentId: 'stale-att' },
+            ]);
+            client.dispose();
+        });
+
+        it('reconnects at once when the socket is down, rather than waiting out the backoff', () => {
+            const client = makeClient();
+            const handle = client.attach('src/index.ts');
+            latest().open();
+            latest().drop();
+            const socketsBefore = FakeSocket.instances.length;
+
+            handle.restart();
+
+            expect(FakeSocket.instances.length).toBe(socketsBefore + 1);
+            client.dispose();
+        });
+
+        it('does nothing for a view that was already closed', () => {
+            const client = makeClient();
+            const handle = client.attach('src/index.ts');
+            const socket = latest();
+            socket.open();
+            socket.emit(attachedMessage(socket));
+
+            handle.release();
+            handle.restart();
+
+            expect(socket.sentOfType('lsp-restart')).toHaveLength(0);
+        });
+    });
+
     describe('registry', () => {
         it('reuses one client per workspace and editing session', () => {
             const a = getLanguageServerClient('ws-1', 'session-a');

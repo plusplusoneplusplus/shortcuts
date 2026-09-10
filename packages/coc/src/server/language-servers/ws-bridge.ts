@@ -50,6 +50,7 @@ export type LanguageServerClientMessage =
     | { type: 'lsp-request'; attachmentId: string; id: string; method: string; params?: unknown }
     | { type: 'lsp-cancel'; attachmentId: string; id: string }
     | { type: 'lsp-notify'; attachmentId: string; method: string; params?: unknown }
+    | { type: 'lsp-restart'; attachmentId: string }
     | { type: 'ping' };
 
 export type LanguageServerServerMessage =
@@ -112,6 +113,8 @@ export class LanguageServerWebSocketServer {
     private readonly workspaces: WorkspaceLookup;
     private readonly manager: LanguageServerManager;
     private readonly unsubscribeClosed: () => void;
+    /** In-flight user-initiated restarts, keyed by session. */
+    private readonly restarting = new Map<string, Promise<void>>();
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
     constructor(workspaces: WorkspaceLookup, manager: LanguageServerManager) {
@@ -252,6 +255,9 @@ export class LanguageServerWebSocketServer {
                 return;
             case 'lsp-notify':
                 this.forwardNotification(client, message);
+                return;
+            case 'lsp-restart':
+                await this.restartSession(client, message.attachmentId);
                 return;
             default:
                 return;
@@ -430,6 +436,41 @@ export class LanguageServerWebSocketServer {
         attachment.handle.session.sendNotification(message.method, params.value);
     }
 
+    /**
+     * Restarts the server behind one document, on the user's say-so, without
+     * restarting CoC. The attachment survives it: the same session object comes
+     * back with a new process and a new handshake generation, which is the
+     * browser's cue to replay its buffer.
+     *
+     * Restarts are coalesced per session, because one session serves every
+     * document of a project root and two panes pressing retry must not stop and
+     * start the process twice. Nothing is sent back from here — the session's
+     * own state transitions carry `starting`, `ready` and any failure to every
+     * socket watching it.
+     */
+    private restartSession(client: BridgeClient, attachmentId: string): Promise<void> {
+        const attachment = client.attachments.get(String(attachmentId ?? ''));
+        if (!attachment) {
+            return Promise.resolve();
+        }
+        const key = attachment.handle.key;
+        const existing = this.restarting.get(key);
+        if (existing) {
+            return existing;
+        }
+        const session = attachment.handle.session;
+        const running = session
+            .restart()
+            .catch((err) => {
+                getServerLogger().warn({ sessionKey: key, err }, 'Language-server restart failed');
+            })
+            .finally(() => {
+                this.restarting.delete(key);
+            });
+        this.restarting.set(key, running);
+        return running;
+    }
+
     /** Inbound translation, which doubles as the per-workspace access check. */
     private toServerParams(
         client: BridgeClient,
@@ -469,9 +510,13 @@ export class LanguageServerWebSocketServer {
                 }),
             );
         }
+        // Every transition, not just the handshake: a status display is only
+        // honest if `starting`, `reconnecting` and `failed` reach it too. The
+        // `ready` transition fires here as well, and it carries the new
+        // handshake generation the document layer replays on.
         disposers.push(
-            session.onReady(() => {
-                this.send(client.socket, { type: 'lsp-status', sessionKey: key, state: session.getState() });
+            session.onStateChange((state) => {
+                this.send(client.socket, { type: 'lsp-status', sessionKey: key, state });
             }),
         );
         client.subscriptions.set(key, {

@@ -292,6 +292,40 @@ describe('LanguageServerSession crash recovery', () => {
         expect(session.getState().serverName).toBe(first);
         await expect(session.sendRequest('echo', { n: 1 })).resolves.toEqual({ n: 1 });
     });
+
+    it('reports every state transition to onStateChange subscribers', async () => {
+        // `starting`, `reconnecting` and `failed` have no handler of their own,
+        // so without this subscription an editor status display could only ever
+        // show `ready`.
+        const { session } = createSession(fixtureDefinition());
+        const seen: string[] = [];
+        const unsubscribe = session.onStateChange((state) => seen.push(state.status));
+
+        await session.start();
+        expect(seen).toEqual(['starting', 'ready']);
+        // The connection is live by the time `ready` is announced, so a
+        // subscriber may send on it from the notification it just received.
+        expect(session.isReady).toBe(true);
+
+        await session.restart();
+        expect(seen).toEqual(['starting', 'ready', 'disabled', 'starting', 'ready']);
+
+        unsubscribe();
+        await session.stop();
+        expect(seen).toHaveLength(5);
+    });
+
+    it('keeps reporting state to the remaining subscribers when one throws', async () => {
+        const { session, errors } = createSession(fixtureDefinition());
+        session.onStateChange(() => { throw new Error('status display exploded'); });
+        const seen: string[] = [];
+        session.onStateChange((state) => seen.push(state.status));
+
+        await session.start();
+
+        expect(seen).toEqual(['starting', 'ready']);
+        expect(errors.map((error) => error.message)).toContain('status display exploded');
+    });
 });
 
 describe('LanguageServerSession reference counting and disposal', () => {

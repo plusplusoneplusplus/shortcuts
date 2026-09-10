@@ -99,6 +99,7 @@ export class LanguageServerSession {
     private readonly options: LanguageServerSessionOptions;
     private readonly definition: LanguageServerDefinition;
     private readonly readyHandlers = new Set<(connection: LanguageServerConnection) => void>();
+    private readonly stateHandlers = new Set<(state: LanguageServerSessionState) => void>();
     private readonly notificationHandlers = new Map<string, Set<ServerNotificationHandler>>();
     private readonly requestHandlers = new Map<string, ServerRequestHandler>();
     private readonly clientRequests: LanguageServerClientRequests;
@@ -252,6 +253,22 @@ export class LanguageServerSession {
     }
 
     /**
+     * Every transition of the user-facing state, in order. This is what a
+     * status display subscribes to: `starting`, `reconnecting`, `failed` and
+     * `disabled` are otherwise invisible to anything outside this class,
+     * because only `ready` has a handler of its own.
+     *
+     * The `ready` transition fires here before {@link onReady} does, and the
+     * connection is already live at that point, so a listener may send on it.
+     */
+    onStateChange(handler: (state: LanguageServerSessionState) => void): () => void {
+        this.stateHandlers.add(handler);
+        return () => {
+            this.stateHandlers.delete(handler);
+        };
+    }
+
+    /**
      * Runs after every successful handshake, including reconnects. The
      * document layer replays its open buffers here before sending queries.
      */
@@ -308,6 +325,7 @@ export class LanguageServerSession {
         this.disposed = true;
         await this.stop('Session disposed');
         this.readyHandlers.clear();
+        this.stateHandlers.clear();
         this.notificationHandlers.clear();
         this.requestHandlers.clear();
     }
@@ -553,7 +571,15 @@ export class LanguageServerSession {
 
     private setState(patch: Partial<LanguageServerSessionState>): void {
         this.state = { ...this.state, ...patch };
-        this.options.onStateChange?.(this.getState());
+        const state = this.getState();
+        this.options.onStateChange?.(state);
+        for (const handler of [...this.stateHandlers]) {
+            try {
+                handler(state);
+            } catch (error) {
+                this.report(toError(error));
+            }
+        }
     }
 
     private report(error: Error): void {
