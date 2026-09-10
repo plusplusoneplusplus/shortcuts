@@ -40,6 +40,23 @@ export interface ExplorerSearchResponse {
   truncated: boolean;
 }
 
+export interface ExplorerRepoGroupSearchResult extends ExplorerSearchResult {
+  /** Member workspace that owns the file. */
+  workspaceId: string;
+  /** Display name resolved by the group-owning server. */
+  repoName: string;
+}
+
+export interface ExplorerRepoGroupSearchResponse {
+  status: 'complete' | 'partial' | 'failed' | 'no-searchable-members';
+  results: ExplorerRepoGroupSearchResult[];
+  memberCount: number;
+  searchableMemberCount: number;
+  searchedMemberCount: number;
+  unavailableMemberCount: number;
+  failedMemberCount: number;
+}
+
 export interface ExplorerBlobResponse {
   content: string;
   encoding: 'utf-8' | 'base64';

@@ -20,7 +20,7 @@ import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
 import { StatusActions } from './StatusActions';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
-import { WorkspaceDockToggleButton } from '../features/repo-detail/WorkspaceDockToggle';
+import { WorkspaceDockModeControls } from '../features/repo-detail/WorkspaceDockToggle';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { ScopeSlideSwitcher } from '../features/remote-shell/ScopeSlideSwitcher';
 import { VirtualWorkspaceShellHeader } from '../features/remote-shell/VirtualWorkspaceShellHeader';
@@ -303,18 +303,13 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         <span>New</span>
                     </button>
                 )}
-                {/* Terminal / Explorer / Notes dock toggle — right of "+ New". The dock
-                    body renders in RepoDetail (repo) or RepoGroupView (group); this shares
-                    its open state via a cross-tree store. Shown in the remote-first shell
-                    with a concrete clone selected, or on a repo group — whose dock scopes
-                    to the group id and points its terminal/explorer at a member repo it
-                    picks. My Work / My Life have no dock. (The classic shell keeps its
-                    toggle in RepoDetail's header.) */}
+                {/* Search / Explorer controls for the shared right panel. A repo group
+                    scopes their mode to the group while routing panel data to its target. */}
                 {showRemoteHeader && !!selectedRepo && splitWorkspacePanelEnabled && (
-                    <WorkspaceDockToggleButton workspaceId={String(selectedRepo.workspace.id)} />
+                    <WorkspaceDockModeControls workspaceId={String(selectedRepo.workspace.id)} />
                 )}
                 {showVirtualHeader && splitWorkspacePanelEnabled && isRepoGroupWorkspaceId(state.selectedRepoId) && (
-                    <WorkspaceDockToggleButton workspaceId={String(state.selectedRepoId)} />
+                    <WorkspaceDockModeControls workspaceId={String(state.selectedRepoId)} />
                 )}
                 {/* Status cluster — hidden here when it lives in the global
                     bottom status bar (remote-first shell, desktop). */}

@@ -266,11 +266,17 @@ export function ContentSearchPanel({
         const typedChanged = lastTypedRef.current !== typedSignature;
         lastTypedRef.current = typedSignature;
         const delay = typedChanged ? SEARCH_DEBOUNCE_MS : 0;
+        let stateBeforeRequest: ContentSearchState | null = null;
+        let loadingState: ContentSearchState | null = null;
 
         const timer = setTimeout(() => {
             const controller = new AbortController();
             abortRef.current = controller;
-            setState(prev => ({ ...prev, status: 'loading', error: null, errorKind: null }));
+            setState(prev => {
+                stateBeforeRequest = prev;
+                loadingState = { ...prev, status: 'loading', error: null, errorKind: null };
+                return loadingState;
+            });
             explorerApi.searchContent(workspaceId, trimmed, {
                 caseSensitive: modes.caseSensitive,
                 wholeWord: modes.wholeWord,
@@ -311,6 +317,11 @@ export function ContentSearchPanel({
         return () => {
             clearTimeout(timer);
             abortRef.current?.abort();
+            if (stateBeforeRequest !== null && loadingState !== null) {
+                const restoreState = stateBeforeRequest;
+                const abortedLoadingState = loadingState;
+                setState(current => (current === abortedLoadingState ? restoreState : current));
+            }
         };
     }, [workspaceId, trimmed, typedSignature, include, exclude, modes, filters.useIgnoreFiles, refreshTick, setState]);
 
@@ -349,13 +360,13 @@ export function ContentSearchPanel({
         },
     ], [modes, toggleMode]);
 
-    // Two groupings on purpose: the rendered tree drops the rows the user
-    // dismissed, while the summary keeps reporting what the *search* found —
-    // dismissing is a view filter, not a correction to the result count.
+    // The rendered tree drops dismissed rows. The summary keeps the original
+    // search count and separately reports how many matches are hidden.
     const visibleMatches = useMemo(
         () => applyDismissals(state.matches, state.dismissed),
         [state.matches, state.dismissed],
     );
+    const dismissedCount = state.matches.length - visibleMatches.length;
     const groups = useMemo(() => groupMatchesByFile(visibleMatches), [visibleMatches]);
     const fileCount = useMemo(() => groupMatchesByFile(state.matches).length, [state.matches]);
 
@@ -391,6 +402,9 @@ export function ContentSearchPanel({
 
     const onDismiss = useCallback((key: string) => {
         setState(prev => ({ ...prev, dismissed: dismissRow(prev.dismissed, key) }));
+    }, [setState]);
+    const onRestoreDismissed = useCallback(() => {
+        setState(prev => ({ ...prev, dismissed: NO_DISMISSED_ROWS }));
     }, [setState]);
 
     // Built from the dismissal-filtered matches, not `state.matches`: the buffer
@@ -510,14 +524,12 @@ export function ContentSearchPanel({
                     onSubmit={onRefresh}
                     testIdPrefix="content-search"
                 >
-                    {narrow && (
-                        <SearchFiltersToggle
-                            expanded={filtersExpanded}
-                            onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
-                            active={contentSearchFiltersActive(filters)}
-                            testIdPrefix="content-search"
-                        />
-                    )}
+                    <SearchFiltersToggle
+                        expanded={filtersExpanded}
+                        onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
+                        active={contentSearchFiltersActive(filters)}
+                        testIdPrefix="content-search"
+                    />
                 </SearchBar>
             </ReplaceRow>
             {replaceNotice && (
@@ -533,8 +545,6 @@ export function ContentSearchPanel({
                 filters={filters}
                 onChange={setFilters}
                 expanded={filtersExpanded}
-                onToggleExpanded={() => setFiltersExpanded(prev => !prev)}
-                showToggle={!narrow}
                 testIdPrefix="content-search"
             />
 
@@ -577,6 +587,19 @@ export function ContentSearchPanel({
                         {state.matches.length} {state.matches.length === 1 ? 'result' : 'results'}
                         {' in '}
                         {fileCount} {fileCount === 1 ? 'file' : 'files'}
+                        {dismissedCount > 0 && (
+                            <>
+                                {' · '}
+                                <button
+                                    type="button"
+                                    onClick={onRestoreDismissed}
+                                    className="text-[#0078d4] dark:text-[#3794ff] hover:underline bg-transparent border-none p-0 cursor-pointer"
+                                    data-testid="content-search-dismissed-count"
+                                >
+                                    {dismissedCount} dismissed
+                                </button>
+                            </>
+                        )}
                     </div>
                     {state.truncated && (
                         <div

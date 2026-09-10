@@ -1,13 +1,15 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Cursor-style resource-tabbed column
-holding Terminal, Notes, files, notes, canvases, and chat diffs, with the file
-tree as its right-edge column. There is no second right panel and no flag.
+holding Terminal, Notes, files, notes, canvases, and chat diffs, with a
+Search/Explorer navigator at its right edge. There is no second right panel and
+no flag.
 
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
 `dockAvailable` gate (`splitWorkspacePanel` + desktop) and wrap their subtree in
 `UnifiedPanelHostProvider` under the same condition; the panel does not widen
-that gate. The state around it — open, width, resize, target — comes from
+that gate. The state around it — open, selected Search/Explorer mode, width,
+resize, and target — comes from
 `../useWorkspaceDock`, described in `../AGENTS.md`.
 
 ## Scope, owner, and identity
@@ -34,14 +36,13 @@ queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
 |---|---|
 | `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 2`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
-| `unifiedPanelTree.ts` | The file-tree column's own state: one open bit and one width per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat switches, collapse, and reload. Owns the two width rules: the tree is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column (`isUnifiedTreeVisible`) **without** flipping the stored open bit, so widening restores it. |
+| `unifiedPanelTree.ts` | The navigator column's width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
 | `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted. |
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
-| `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — views on the left, the file-tree column on the right edge. |
-| `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. Its `trailing` slot is the tree toggle's fallback home. |
-| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab plus the tree toggle. The model decides whether the crumbs may navigate the tree. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
-| `UnifiedPanelTreeToggle.tsx` | The single open/close control for the tree column, rendered in whichever of the two hosts is available. |
+| `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/mode/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — resource views on the left, the selected Search/Explorer mode on the right edge. |
+| `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
+| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab. The model decides whether the crumbs may navigate the tree. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
@@ -61,13 +62,12 @@ nested tab strip or a second editor — that is the "one tab row per panel" rule
 
 `ExplorerPanel`'s `mode` prop is required and picks how much of it renders:
 `editor` (the whole Explorer sub-tab, RepoDetail's only mount), `navigator` (tree
-only, opens handed to `onOpenFile`), and `sidebar` (navigator, minus the internal
-breadcrumb row — this panel's file-tree column, whose breadcrumbs belong to the
-panel-level toolbar instead). Nothing is inferred from `onOpenFile`: the two host
-modes are indistinguishable that way, so every caller states its mode.
+only, opens handed to `onOpenFile`), and `sidebar` (navigator without the
+internal Files/Search switch or breadcrumb row). The right panel mounts
+`ContentSearchPanel` beside the same resource area for Search mode. Both mode
+bodies stay mounted after first use; only their visibility changes.
 
-Resource toolbars render *below* the strip; the only thing that ever enters the
-strip is the tree toggle, through its `trailing` slot.
+Resource toolbars render *below* the strip.
 
 ## The toolbar row
 
@@ -75,12 +75,8 @@ Directly under the strip and above the active view, rendered **only** while the
 active tab is a `file` tab — every other kind brings its own toolbar inside its
 own view, and the panel does not stack two. It shows `explorer/Breadcrumbs` for
 the file's path (scrolled to the tail, so a long path truncates from the left
-with the whole thing in the row's tooltip), the tab's `repoLabel` when it has
-one, and the tree toggle at its right end.
-
-The toggle has two homes and one state: the row while it exists, and the tab
-strip beside `+` whenever it does not (a non-file tab, or no tabs). Exactly one
-is on screen at a time and both drive `unifiedPanelTree`.
+with the whole thing in the row's tooltip) and the tab's `repoLabel` when it has
+one.
 
 A breadcrumb click **reveals a folder in the tree** — it never opens, closes, or
 activates a tab. It does that by writing the Explorer's own per-workspace
@@ -95,19 +91,19 @@ any tree) and for a file whose `ownerWorkspaceId` is not the tree's current
 target (its path resolves in a different repo). Retargeting the dock therefore
 mutes an open tab's crumbs without touching the tab.
 
-## The file-tree column
+## The Search/Explorer navigator
 
 Below the strip the panel is one row: the active tab's view on the left, the
-file-tree column pinned to the right edge. The column is `ExplorerPanel` in
-**sidebar mode**, pointed at the dock target (`deepLink` only when that target is
-the panel's own scope), and its selections build their descriptor with
-`explorerFileTabInput`.
+selected Search or Explorer mode pinned to the right edge. Both modes share the
+same panel-scope navigator width and point at the dock target. Explorer uses
+`ExplorerPanel` in **sidebar mode** (`deepLink` only when that target is the
+panel's own scope); Search uses `ContentSearchPanel`.
 
-It is panel-level chrome, not a tab: it renders for every tab kind and for none
-at all, so closing the last tab with the tree open leaves the panel showing the
-tree beside the empty state. It is mounted while `unifiedPanelTree`'s open bit is
-set and hidden with `display:none` when the panel is too narrow for both columns,
-so widening brings it back with its expansion intact.
+The navigator is panel-level chrome, not a tab: it renders for every tab kind
+and for none at all. Search and Explorer are lazy-mounted on first selection and
+then hidden with `display:none`, preserving requests, results, tree expansion,
+resource tabs, terminal sessions, and unsaved buffers across mode switches.
+A panel too narrow for both columns hides the navigator until it widens.
 
 It **follows the host's active file**: `ExplorerPanel`'s `activeFilePath` prop
 is a tri-state, and the panel derives it from the same `unifiedToolbarBreadcrumbs`
@@ -137,13 +133,15 @@ only mounts while the column is open — so a collapsed column meant no listener
 at all, and a mounted Explorer sub-tab meant *two* listeners and two stacked
 dialogs.
 
-`quickOpenOwner({ panelOpen, panelHasFocus, explorerMounted, explorerHasFocus })`
-is the whole decision, pure and unit-tested: focus inside the panel wins;
-otherwise a mounted Explorer sub-tab wins (focused or not, which is what keeps
-today's behaviour for a user with no panel open); otherwise the open panel; else
-nobody. `explorerMounted`/`explorerHasFocus` come from a module-level registry of
-focus probes — only `mode: 'editor'` mounts register, because a navigator/sidebar
-Explorer is somebody else's column.
+`quickOpenOwner({ panelOpen, panelHasFocus, explorerMounted, explorerHasFocus,
+panelEligibleWhenClosed })` is the whole decision, pure and unit-tested: focus
+inside the panel wins; otherwise a mounted Explorer sub-tab wins (focused or
+not, which keeps ordinary-repo behavior); otherwise an open panel or an eligible
+closed group panel wins; else nobody. Closed-panel eligibility is passed only
+for repo-group Ctrl/Cmd+P, never Ctrl/Cmd+O. `explorerMounted` /
+`explorerHasFocus` come from a module-level registry of focus probes — only
+`mode: 'editor'` mounts register, because a navigator/sidebar Explorer is
+somebody else's column.
 
 The panel listens in the **capture** phase on `document` and calls
 `stopPropagation()` when it wins, so `ExplorerPanel`'s bubble-phase listener never
@@ -151,19 +149,33 @@ runs — and neither does Monaco, whose handlers sit on the editor's own DOM, so
 Ctrl+P inside a code buffer in this panel opens this dialog. `preventDefault()`
 is always called by the winner, so the browser print dialog never appears.
 
-The dialogs are the Explorer's own `QuickOpen` / `ExactOpen` (portalled to
-`document.body`), pointed at the **dock target** — the clone the tree column
-browses — not the panel scope, which in a repo group is the group. Because they
-portal outside the panel root, "my dialog is already up" counts as panel focus.
+`RepoGroupView` keeps the panel mounted on every desktop group sub-tab even
+while collapsed, so this same listener owns Ctrl/Cmd+P from Workspace, Git,
+Notes, and Settings. Opening or cancelling the portal does not change the
+panel's open bit; accepting a result opens Explorer mode through the atomic
+selection transaction. Mobile mounts no panel and remains unchanged.
 
-A pick goes through `openTreeFile`: a trusted `__trusted__:` path lands pinned and
-read-only, everything else takes the preview slot, exactly like a tree click. It
-also sets the tree's open bit, and the reveal comes free — the new tab is active,
-`unifiedToolbarBreadcrumbs` resolves its path, and `ExplorerPanel`'s
-`activeFilePath` tracking expands the ancestors and centres the row. The bit is
-set even when the panel is too narrow for `isUnifiedTreeVisible`: the bit is what
-the user asked for and widening restores it, but the panel is never force-widened
-over a boundary the user dragged.
+The dialogs are the Explorer's own `QuickOpen` / `ExactOpen` (portalled to
+`document.body`). Exact Open and ordinary-repo Quick Open point at the dock
+target. Repo-group Quick Open receives the group id, name, live-member count,
+and owner base URL from `RepoGroupView`, so it searches the whole group while
+the page and panel stay group-scoped. Because the dialogs portal outside the
+panel root, "my dialog is already up" counts as panel focus.
+
+A repo pick goes through `openTreeFile`: a trusted `__trusted__:` path lands
+pinned and read-only, everything else takes the preview slot, exactly like a
+tree click. A group pick first re-reads membership from the group owner, binds a
+remote bare member id to that exact owner route, and asks `dock.setTarget()` to
+run the dirty-editor guard. Missing/stale members, unknown remote routes, and a
+declined guard leave tabs, target, tree, and dialog unchanged. An accepted pick
+builds the preview descriptor directly from the result's member id and repo
+label rather than waiting for target state to rerender.
+
+An accepted pick opens Explorer mode and sets the tree's open bit; the active
+tab then drives `ExplorerPanel.activeFilePath`, which expands ancestors and
+centres the row. The bit is set even when the panel is too narrow for
+`isUnifiedTreeVisible`: widening restores it, but the panel is never
+force-widened over a boundary the user dragged.
 
 ## Ctrl/Cmd+W closes the active tab (`closeTabRouting.ts`)
 
@@ -257,7 +269,7 @@ not last is moved to the end. A `preview` bit on any kind but `file` is
 discarded: only the tree's single click creates the slot, and it opens files.
 
 The `+` menu keeps its **Explorer** entry, in place and with its label, but the
-action toggles the tree column instead of opening a tab.
+action selects Explorer mode instead of opening a tab.
 
 ## Permissions ride on one bit
 

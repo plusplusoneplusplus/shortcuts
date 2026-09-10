@@ -12,8 +12,10 @@
  */
 
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import type { NativeRankedFileMatch } from '@plusplusoneplusplus/coc-native';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, badRequest, notFound, missingFields } from '../errors';
+import type { RepoTreeService } from '../repos/tree-service';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import {
@@ -44,6 +46,159 @@ export interface RepoGroupRouteDeps {
      * way the startup workspace sweep does for pre-existing workspaces.
      */
     onGroupRegistered?: (ws: WorkspaceInfo) => void | Promise<void>;
+    /** Shared native file-index service used by repo and repo-group search. */
+    repoTreeService?: Pick<RepoTreeService, 'searchFilesRanked'>;
+}
+
+const GROUP_SEARCH_CONCURRENCY = 4;
+
+export interface RepoGroupSearchResult {
+    status: 'complete' | 'partial' | 'failed' | 'no-searchable-members';
+    results: Array<{
+        workspaceId: string;
+        repoName: string;
+        path: string;
+        score: number;
+        indices: number[];
+    }>;
+    memberCount: number;
+    searchableMemberCount: number;
+    searchedMemberCount: number;
+    unavailableMemberCount: number;
+    failedMemberCount: number;
+}
+
+interface RankedGroupCandidate extends NativeRankedFileMatch {
+    workspaceId: string;
+    repoName: string;
+    memberIndex: number;
+}
+
+function compareGroupCandidates(a: RankedGroupCandidate, b: RankedGroupCandidate): number {
+    return (
+        b.ranking.tier - a.ranking.tier ||
+        b.score - a.score ||
+        a.ranking.targetLen - b.ranking.targetLen ||
+        a.ranking.pathLen - b.ranking.pathLen ||
+        a.memberIndex - b.memberIndex ||
+        a.ranking.snapshotIndex - b.ranking.snapshotIndex
+    );
+}
+
+async function mapBounded<T, R>(
+    items: readonly T[],
+    concurrency: number,
+    fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+    const results = new Array<R>(items.length);
+    let nextIndex = 0;
+    const worker = async (): Promise<void> => {
+        while (nextIndex < items.length) {
+            const index = nextIndex++;
+            results[index] = await fn(items[index], index);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+    return results;
+}
+
+async function searchRepoGroup(
+    members: Awaited<ReturnType<typeof resolveRepoGroupMembers>>,
+    service: Pick<RepoTreeService, 'searchFilesRanked'>,
+    query: string,
+    limit: number,
+    showIgnored: boolean,
+): Promise<RepoGroupSearchResult> {
+    const searchable = members
+        .map((member, memberIndex) => ({ member, memberIndex }))
+        .filter(({ member }) => !member.stale && member.name !== undefined);
+    const unavailableMemberCount = members.length - searchable.length;
+    if (searchable.length === 0) {
+        return {
+            status: 'no-searchable-members',
+            results: [],
+            memberCount: members.length,
+            searchableMemberCount: 0,
+            searchedMemberCount: 0,
+            unavailableMemberCount,
+            failedMemberCount: 0,
+        };
+    }
+
+    const searches = await mapBounded(searchable, GROUP_SEARCH_CONCURRENCY, async ({ member, memberIndex }) => {
+        try {
+            const matches = await service.searchFilesRanked(member.workspaceId, query, { limit, showIgnored });
+            return {
+                matches: matches.map((match): RankedGroupCandidate => ({
+                    ...match,
+                    workspaceId: member.workspaceId,
+                    repoName: member.name!,
+                    memberIndex,
+                })),
+                failed: false,
+            };
+        } catch {
+            return { matches: [] as RankedGroupCandidate[], failed: true };
+        }
+    });
+    const failedMemberCount = searches.filter(search => search.failed).length;
+    const searchedMemberCount = searchable.length - failedMemberCount;
+    const status = searchedMemberCount === 0
+        ? 'failed'
+        : failedMemberCount > 0 || unavailableMemberCount > 0
+            ? 'partial'
+            : 'complete';
+    const results = searches
+        .flatMap(search => search.matches)
+        .sort(compareGroupCandidates)
+        .slice(0, limit)
+        .map(({ workspaceId, repoName, path, score, indices }) => ({
+            workspaceId,
+            repoName,
+            path,
+            score,
+            indices,
+        }));
+    return {
+        status,
+        results,
+        memberCount: members.length,
+        searchableMemberCount: searchable.length,
+        searchedMemberCount,
+        unavailableMemberCount,
+        failedMemberCount,
+    };
+}
+
+function parseGroupSearchQuery(req: Parameters<Route['handler']>[0]):
+    | { query: string; limit: number; showIgnored: boolean }
+    | { error: string } {
+    const params = new URL(req.url ?? '', 'http://localhost').searchParams;
+    const queryValues = params.getAll('q');
+    if (queryValues.length !== 1 || queryValues[0].length === 0) {
+        return { error: 'Missing required query parameter: q' };
+    }
+    let limit = 50;
+    const limitValues = params.getAll('limit');
+    if (limitValues.length > 1) {
+        return { error: 'Invalid query parameter: limit' };
+    }
+    if (limitValues.length === 1) {
+        if (!/^-?\d+$/.test(limitValues[0])) {
+            return { error: 'Invalid query parameter: limit' };
+        }
+        limit = Math.min(Math.max(Number(limitValues[0]), 1), 200);
+    }
+    const showIgnoredValues = params.getAll('showIgnored');
+    if (
+        showIgnoredValues.length > 1 ||
+        (showIgnoredValues.length === 1 &&
+            showIgnoredValues[0] !== 'true' &&
+            showIgnoredValues[0] !== 'false')
+    ) {
+        return { error: 'Invalid query parameter: showIgnored' };
+    }
+    return { query: queryValues[0], limit, showIgnored: showIgnoredValues[0] === 'true' };
 }
 
 /** Members must arrive as an array of workspace-ID strings. */
@@ -94,6 +249,40 @@ export function registerRepoGroupRoutes(
             timestamp: Date.now(),
         });
     }
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repo-groups\/([^/]+)\/search$/,
+        handler: async (req, res, match) => {
+            try {
+                const id = decodeURIComponent(match![1]);
+                if (!readRepoGroup(dataDir, id)) {
+                    return handleAPIError(res, notFound('Repo group'));
+                }
+                const parsed = parseGroupSearchQuery(req);
+                if ('error' in parsed) {
+                    return handleAPIError(res, badRequest(parsed.error));
+                }
+                if (!deps.repoTreeService) {
+                    throw new Error('Repo-group search service is unavailable');
+                }
+                const members = await resolveRepoGroupMembers(dataDir, store, id);
+                sendJSON(
+                    res,
+                    200,
+                    await searchRepoGroup(
+                        members,
+                        deps.repoTreeService,
+                        parsed.query,
+                        parsed.limit,
+                        parsed.showIgnored,
+                    ),
+                );
+            } catch (err) {
+                handleAPIError(res, err);
+            }
+        },
+    });
 
     // ------------------------------------------------------------------
     // POST /api/repo-groups — Create a repo group

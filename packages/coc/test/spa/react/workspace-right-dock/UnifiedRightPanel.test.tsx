@@ -24,6 +24,22 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
         <div data-testid="mock-explorer">explorer:{workspaceId}:{String(deepLink)}</div>
     ),
 }));
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ContentSearchPanel', () => ({
+    ContentSearchPanel: ({
+        workspaceId,
+        onOpenMatch,
+    }: {
+        workspaceId: string;
+        onOpenMatch: (path: string, line: number) => void;
+    }) => (
+        <div data-testid="mock-content-search">
+            search:{workspaceId}
+            <button type="button" data-testid="mock-search-result" onClick={() => onOpenMatch('src/match.ts', 12)}>
+                Open result
+            </button>
+        </div>
+    ),
+}));
 vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
     DockNotesPanel: ({ workspaceId }: { workspaceId: string }) => (
         <div data-testid="mock-notes">notes:{workspaceId}</div>
@@ -80,6 +96,8 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
+        mode: 'explorer',
+        selectMode: vi.fn(),
         target: WS,
         setTarget: vi.fn(),
         targets: [],
@@ -118,9 +136,9 @@ describe('UnifiedRightPanel', () => {
     it('starts empty, and its empty state creates nothing on its own', () => {
         renderPanel();
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
-        // Nothing was auto-opened: no terminal, no explorer, no notes.
+        // The selected Explorer mode is panel chrome, not a resource tab.
         expect(screen.queryByTestId('mock-terminal')).toBeNull();
-        expect(screen.queryByTestId('mock-explorer')).toBeNull();
+        expect(screen.getByTestId('mock-explorer')).toBeTruthy();
         expect(screen.queryByTestId('mock-notes')).toBeNull();
         // The way out of the empty state is an explicit action.
         fireEvent.click(screen.getByTestId('unified-panel-empty-open'));
@@ -215,6 +233,44 @@ describe('UnifiedRightPanel', () => {
         expect(handle.getAttribute('aria-valuemax')).toBe('800');
         fireEvent.mouseDown(handle);
         expect(dock.handleMouseDown).toHaveBeenCalled();
+    });
+
+    it('renders Search and Explorer as keep-alive modes at the same panel width', () => {
+        const { rerender } = renderPanel({ dock: dockStub({ mode: 'explorer', width: 500 }) });
+        const explorer = screen.getByTestId('unified-panel-explorer-mode');
+        expect(screen.getByTestId('unified-panel-body').style.width).toBe('500px');
+        expect(screen.getByTestId('unified-panel-mode-column').style.display).not.toBe('none');
+        expect(screen.queryByTestId('mock-content-search')).toBeNull();
+
+        rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ mode: 'search', width: 620 })} />);
+        const search = screen.getByTestId('unified-panel-search-mode');
+        expect(screen.getByTestId('unified-panel-body').style.width).toBe('620px');
+        expect(search.style.display).not.toBe('none');
+        expect(explorer.style.display).toBe('none');
+
+        rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ mode: 'explorer', width: 620 })} />);
+        expect(screen.getByTestId('unified-panel-body').style.width).toBe('620px');
+        expect(screen.getByTestId('unified-panel-explorer-mode')).toBe(explorer);
+        expect(screen.getByTestId('unified-panel-search-mode')).toBe(search);
+    });
+
+    it('routes Search to the dock target and opens a result in the existing file tabs', () => {
+        renderPanel({
+            chatId: 'chat-1',
+            dock: dockStub({ mode: 'search', target: 'ws-member' }),
+        });
+        expect(screen.getByTestId('mock-content-search').textContent).toContain('search:ws-member');
+
+        fireEvent.click(screen.getByTestId('mock-search-result'));
+
+        const fileId = unifiedTabId({
+            kind: 'file',
+            ownerWorkspaceId: 'ws-member',
+            chatId: 'chat-1',
+            resourceId: 'src/match.ts',
+        });
+        expect(screen.getByTestId(`unified-panel-tab-${fileId}`)).toBeTruthy();
+        expect(screen.getByTestId('unified-panel-search-mode')).toBeTruthy();
     });
 
     it('opens workspace resources against the dock target, with repo attribution', () => {

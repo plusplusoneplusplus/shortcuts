@@ -102,7 +102,6 @@ describe('SearchFilters', () => {
                 filters={DEFAULT_CONTENT_SEARCH_FILTERS}
                 onChange={vi.fn()}
                 expanded={false}
-                onToggleExpanded={vi.fn()}
             />,
         );
         expect(screen.queryByTestId('content-search-filters-fields')).toBeNull();
@@ -112,34 +111,11 @@ describe('SearchFilters', () => {
                 filters={DEFAULT_CONTENT_SEARCH_FILTERS}
                 onChange={vi.fn()}
                 expanded
-                onToggleExpanded={vi.fn()}
             />,
         );
         expect(screen.getByTestId('content-search-include')).toBeDefined();
         expect(screen.getByTestId('content-search-exclude')).toBeDefined();
         expect(screen.getByTestId('content-search-ignore-toggle')).toBeDefined();
-    });
-
-    it('shows the dot only when a filter is active, collapsed or not', () => {
-        const { rerender } = render(
-            <SearchFilters
-                filters={DEFAULT_CONTENT_SEARCH_FILTERS}
-                onChange={vi.fn()}
-                expanded={false}
-                onToggleExpanded={vi.fn()}
-            />,
-        );
-        expect(screen.queryByTestId('content-search-filters-dot')).toBeNull();
-
-        rerender(
-            <SearchFilters
-                filters={{ ...DEFAULT_CONTENT_SEARCH_FILTERS, exclude: '**/dist/**' }}
-                onChange={vi.fn()}
-                expanded={false}
-                onToggleExpanded={vi.fn()}
-            />,
-        );
-        expect(screen.getByTestId('content-search-filters-dot')).toBeDefined();
     });
 
     it('reports the gear as pressed by default and edits through onChange', () => {
@@ -149,7 +125,6 @@ describe('SearchFilters', () => {
                 filters={DEFAULT_CONTENT_SEARCH_FILTERS}
                 onChange={onChange}
                 expanded
-                onToggleExpanded={vi.fn()}
             />,
         );
         const gear = screen.getByTestId('content-search-ignore-toggle');

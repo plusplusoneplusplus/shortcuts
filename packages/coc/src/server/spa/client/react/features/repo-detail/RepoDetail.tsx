@@ -18,6 +18,7 @@ import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
 import { useWorkspaceDock } from './useWorkspaceDock';
+import { WorkspaceDockModeControls } from './WorkspaceDockToggle';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
@@ -165,9 +166,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
     // Workspace right dock (Terminal + Explorer) — behind the same
     // `splitWorkspacePanel` flag. Available on desktop in both shells; the chrome
-    // header owns the toggle when present, while the remote-first chromeless shell
-    // (whose header lives in the global TopBar) toggles it from there via
-    // WorkspaceDockToggleButton — both drive the same cross-tree open store.
+    // header owns the controls when present, while the remote-first chromeless
+    // shell renders them in the global TopBar. Both drive the same cross-tree
+    // open and mode stores.
     const dock = useWorkspaceDock(ws.id);
     const dockAvailable = splitWorkspacePanelEnabled && !isMobile;
     // The dock slot renders the one resource-tabbed panel — same availability
@@ -188,7 +189,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         () => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId } : null),
         [dockAvailable, ws.id, panelChatId],
     );
-    const showHeaderDockToggle = dockAvailable && !chromeless;
+    const showHeaderDockControls = dockAvailable && !chromeless;
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(ws.id, sessionContextAttachmentsEnabled);
     const [headerContextDropTarget, setHeaderContextDropTarget] = useState<'task' | 'ask' | null>(null);
@@ -575,31 +576,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         <div className="w-px self-stretch bg-[#d8dee4] dark:bg-[#3c3c3c] mx-1 my-2 flex-shrink-0" data-testid="repo-header-splitter" />
                         {/* Action buttons */}
                         <div ref={overflowContainerRef} className="flex items-center gap-1 flex-shrink-0 relative">
-                            {/* Right-dock (Terminal + Explorer) open/close toggle. Reflects
-                                open state with active styling. Behind splitWorkspacePanel.
-                                Chromeless shells have no header — they toggle the dock from
-                                the global TopBar (WorkspaceDockToggleButton) instead. */}
-                            {showHeaderDockToggle && (
-                                <button
-                                    type="button"
-                                    onClick={dock.toggleOpen}
-                                    aria-label={dock.isOpen ? 'Close terminal, explorer and notes dock' : 'Open terminal, explorer and notes dock'}
-                                    aria-pressed={dock.isOpen}
-                                    title={dock.isOpen ? 'Close panel' : 'Open panel'}
-                                    data-testid="workspace-dock-toggle"
-                                    className={cn(
-                                        'inline-flex items-center justify-center h-[26px] w-[31px] rounded-md border focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da]',
-                                        dock.isOpen
-                                            ? 'border-[#0969da]/40 bg-[#ddf4ff] text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]'
-                                            : 'border-[#d0d7de] dark:border-[#3c3c3c] bg-[#f6f8fa] dark:bg-[#2a2a2a] text-[#656d76] dark:text-[#999] hover:bg-[#eaeef2] dark:hover:bg-[#333]',
-                                    )}
-                                >
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden>
-                                        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-                                        <line x1="10" y1="2.5" x2="10" y2="13.5" />
-                                        <rect x="10.2" y="2.7" width="4.1" height="10.6" rx="1" fill="currentColor" stroke="none" opacity="0.35" />
-                                    </svg>
-                                </button>
+                            {/* Search and Explorer are peer controls for the shared right
+                                panel. Chromeless shells render the same component in TopBar. */}
+                            {showHeaderDockControls && (
+                                <WorkspaceDockModeControls workspaceId={ws.id} />
                             )}
                             {/* Classic-mode primary visible buttons (mirror reference layout). */}
                             {uiLayoutMode === 'classic' && (

@@ -20,6 +20,8 @@ import {
     type WorkspaceDockController,
 } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 import {
+    workspaceDockModeStorageKey,
+    workspaceDockOpenStorageKey,
     workspaceDockTargetStorageKey,
     workspaceDockWidthStorageKey,
     type DockTarget,
@@ -57,6 +59,83 @@ function pick(workspaceId: string) {
         dock.setTarget(workspaceId);
     });
 }
+
+function selectMode(mode: 'explorer' | 'search') {
+    act(() => {
+        dock.selectMode(mode);
+    });
+}
+
+describe('useWorkspaceDock mode selection', () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    it('defaults to Explorer without writing storage', () => {
+        render(<Harness workspaceId="ws1" />);
+
+        expect(dock.mode).toBe('explorer');
+        expect(dock.isOpen).toBe(false);
+        expect(localStorage.getItem(workspaceDockModeStorageKey('ws1'))).toBeNull();
+    });
+
+    it('opens Search and persists mode and open state to the panel scope', () => {
+        render(<Harness workspaceId="ws1" />);
+
+        selectMode('search');
+
+        expect(dock.mode).toBe('search');
+        expect(dock.isOpen).toBe(true);
+        expect(localStorage.getItem(workspaceDockModeStorageKey('ws1'))).toBe('search');
+        expect(localStorage.getItem(workspaceDockOpenStorageKey('ws1'))).toBe('1');
+    });
+
+    it('switches an open panel to the inactive mode without closing it', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey('ws1'), '1');
+        render(<Harness workspaceId="ws1" />);
+
+        selectMode('search');
+
+        expect(dock.mode).toBe('search');
+        expect(dock.isOpen).toBe(true);
+    });
+
+    it('closes the panel when its active mode is selected again', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey('ws1'), '1');
+        localStorage.setItem(workspaceDockModeStorageKey('ws1'), 'search');
+        render(<Harness workspaceId="ws1" />);
+
+        selectMode('search');
+
+        expect(dock.mode).toBe('search');
+        expect(dock.isOpen).toBe(false);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey('ws1'))).toBe('0');
+    });
+
+    it('reopens the panel when its selected mode is clicked while closed', () => {
+        localStorage.setItem(workspaceDockModeStorageKey('ws1'), 'search');
+        render(<Harness workspaceId="ws1" />);
+
+        selectMode('search');
+
+        expect(dock.mode).toBe('search');
+        expect(dock.isOpen).toBe(true);
+    });
+
+    it('restores valid modes per scope and falls back from invalid values', () => {
+        localStorage.setItem(workspaceDockModeStorageKey('ws-search'), 'search');
+        localStorage.setItem(workspaceDockModeStorageKey('ws-invalid'), 'other');
+
+        const { rerender } = render(<Harness workspaceId="ws-search" />);
+        expect(dock.mode).toBe('search');
+
+        rerender(<Harness workspaceId="ws-default" />);
+        expect(dock.mode).toBe('explorer');
+
+        rerender(<Harness workspaceId="ws-invalid" />);
+        expect(dock.mode).toBe('explorer');
+    });
+});
 
 describe('useWorkspaceDock target selection', () => {
     beforeEach(() => {

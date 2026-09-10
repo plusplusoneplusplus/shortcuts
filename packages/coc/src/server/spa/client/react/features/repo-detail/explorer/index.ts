@@ -19,7 +19,7 @@ export type { ContentSearchToolbarProps } from './ContentSearchToolbar';
 export { ContentSearchPanel, SEARCH_DEBOUNCE_MS, MULTILINE_REPLACE_NOTICE, REPLACE_CONFIRM_THRESHOLD, classifySearchError, keepCollapsedPaths } from './ContentSearchPanel';
 export { buildReplaceFiles, countReplaceTargets, replaceConfirmMessage, describeReplaceResult } from './contentReplaceRequest';
 export type { ContentSearchPanelProps } from './ContentSearchPanel';
-export { ContentSearchResults, groupMatchesByFile, splitMatchText, trimMatchIndent, toggleCollapsedPath, buildSearchTree, collapsibleTreePaths, matchDismissKey, applyDismissals, dismissRow, flattenVisibleRows, rowAfterDismissal, stepToMatch, dirRowKey, fileRowKey, matchRowKey } from './ContentSearchResults';
+export { ContentSearchResults, groupMatchesByFile, splitMatchText, trimMatchForDisplay, trimDirectoryForDisplay, MATCH_DISPLAY_LEAD_CHARS, toggleCollapsedPath, buildSearchTree, collapsibleTreePaths, matchDismissKey, applyDismissals, dismissRow, flattenVisibleRows, rowAfterDismissal, stepToMatch, dirRowKey, fileRowKey, matchRowKey } from './ContentSearchResults';
 export type { ContentSearchResultsProps, ContentSearchFileGroup, MatchTextParts, ContentSearchTreeNode, ContentSearchDirNode, ContentSearchFileNode, ContentSearchRow, ContentSearchRowKind } from './ContentSearchResults';
 export { SearchEditorPane } from './SearchEditorPane';
 export type { SearchEditorPaneProps } from './SearchEditorPane';

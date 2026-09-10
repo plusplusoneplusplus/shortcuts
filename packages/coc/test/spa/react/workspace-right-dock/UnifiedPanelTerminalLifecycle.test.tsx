@@ -128,6 +128,8 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
+        mode: 'explorer',
+        selectMode: vi.fn(),
         target: WS,
         setTarget: vi.fn(),
         targets: [],

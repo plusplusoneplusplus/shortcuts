@@ -286,7 +286,20 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                         />
                     </div>
                 </div>
-                {dockAvailable && <UnifiedRightPanel workspaceId={workspaceId} chatId={panelChatId} dock={dock} targets={dockTargets} />}
+                {dockAvailable && (
+                    <UnifiedRightPanel
+                        workspaceId={workspaceId}
+                        chatId={panelChatId}
+                        dock={dock}
+                        targets={dockTargets}
+                        repoGroup={{
+                            id: workspaceId,
+                            name: groupName,
+                            liveRepoCount: members?.filter(member => !member.stale).length ?? 0,
+                            baseUrl: groupBaseUrl,
+                        }}
+                    />
+                )}
             </div>
         </div>
         </UnifiedPanelHostProvider>

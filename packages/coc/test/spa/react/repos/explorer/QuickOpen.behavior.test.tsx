@@ -10,12 +10,16 @@ import { render, screen, waitFor, fireEvent, cleanup, act } from '@testing-libra
 
 const listFilesSpy = vi.fn();
 const searchSpy = vi.fn();
+const groupSearchSpy = vi.fn();
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: {
         listFiles: (...args: unknown[]) => listFilesSpy(...args),
         searchFiles: (...args: unknown[]) => searchSpy(...args),
     },
+}));
+vi.mock('../../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
+    searchRepoGroupFiles: (...args: unknown[]) => groupSearchSpy(...args),
 }));
 
 import { QuickOpen, highlightMatches, splitIndices } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/QuickOpen';
@@ -34,10 +38,14 @@ function serverSearch(query: string, files: string[] = FILES, limit = 50) {
     return { results: rankFuzzyMatches(query, files, limit), truncated: false };
 }
 
-function renderOpen(props?: { onFileSelect?: (p: string) => void; onClose?: () => void }) {
+function renderOpen(props?: {
+    scope?: React.ComponentProps<typeof QuickOpen>['scope'];
+    onFileSelect?: React.ComponentProps<typeof QuickOpen>['onFileSelect'];
+    onClose?: () => void;
+}) {
     return render(
         <QuickOpen
-            workspaceId="ws-1"
+            scope={props?.scope ?? { kind: 'repo', workspaceId: 'ws-1' }}
             open
             onClose={props?.onClose ?? (() => {})}
             onFileSelect={props?.onFileSelect ?? (() => {})}
@@ -65,6 +73,15 @@ beforeEach(() => {
     listFilesSpy.mockReset();
     searchSpy.mockReset();
     searchSpy.mockImplementation((_ws: string, query: string) => Promise.resolve(serverSearch(query)));
+    groupSearchSpy.mockReset().mockResolvedValue({
+        status: 'complete',
+        results: [],
+        memberCount: 2,
+        searchableMemberCount: 2,
+        searchedMemberCount: 2,
+        unavailableMemberCount: 0,
+        failedMemberCount: 0,
+    });
 });
 
 afterEach(() => {
@@ -165,7 +182,9 @@ describe('QuickOpen — server-side search', () => {
         await waitFor(() => expect(screen.getByTestId('quick-open-item-0')).toBeInTheDocument());
 
         fireEvent.keyDown(screen.getByTestId('quick-open-input'), { key: 'Enter' });
-        expect(onFileSelect).toHaveBeenCalledWith('src/server/repos/tree-service.ts');
+        expect(onFileSelect).toHaveBeenCalledWith(expect.objectContaining({
+            path: 'src/server/repos/tree-service.ts',
+        }));
     });
 
     it('keeps the previous results rendered while the next search is in flight', async () => {
@@ -213,10 +232,156 @@ describe('QuickOpen — server-side search', () => {
     });
 
     it('renders nothing and searches nothing while closed', async () => {
-        render(<QuickOpen workspaceId="ws-1" open={false} onClose={() => {}} onFileSelect={() => {}} />);
+        render(<QuickOpen scope={{ kind: 'repo', workspaceId: 'ws-1' }} open={false} onClose={() => {}} onFileSelect={() => {}} />);
         await flushDebounce();
         expect(screen.queryByTestId('quick-open-dialog')).not.toBeInTheDocument();
         expect(searchSpy).not.toHaveBeenCalled();
+    });
+
+    describe('QuickOpen — repo-group scope', () => {
+        const scope = {
+            kind: 'repo-group' as const,
+            groupId: 'group-platform',
+            groupName: 'Platform',
+            liveRepoCount: 2,
+            baseUrl: 'http://remote.test',
+        };
+
+        function groupResponse(overrides: Record<string, unknown> = {}) {
+            return {
+                status: 'complete',
+                results: [
+                    { workspaceId: 'repo-a', repoName: 'API', path: 'src/index.ts', score: 10, indices: [4, 6, 8] },
+                    { workspaceId: 'repo-b', repoName: 'Web', path: 'src/index.ts', score: 9, indices: [4, 6, 8] },
+                ],
+                memberCount: 2,
+                searchableMemberCount: 2,
+                searchedMemberCount: 2,
+                unavailableMemberCount: 0,
+                failedMemberCount: 0,
+                ...overrides,
+            };
+        }
+
+        it('shows its scope before searching and fetches nothing on open', async () => {
+            renderOpen({ scope });
+            expect(screen.getByRole('dialog')).toHaveAccessibleName('Open file in Platform');
+            expect(screen.getByTestId('quick-open-empty-query')).toHaveTextContent(
+                'Type to search across 2 repositories.',
+            );
+            await flushDebounce();
+            expect(groupSearchSpy).not.toHaveBeenCalled();
+        });
+
+        it('routes one request through the group owner and renders flat duplicate paths with repo badges', async () => {
+            groupSearchSpy.mockResolvedValue(groupResponse());
+            renderOpen({ scope });
+            typeQuery('idx');
+            await flushDebounce();
+
+            expect(groupSearchSpy).toHaveBeenCalledWith(
+                'group-platform',
+                'idx',
+                expect.objectContaining({ limit: 50, signal: expect.any(AbortSignal) }),
+                'http://remote.test',
+            );
+            expect(screen.getAllByRole('option')).toHaveLength(2);
+            expect(screen.getByTestId('quick-open-repo-0')).toHaveTextContent('API');
+            expect(screen.getByTestId('quick-open-repo-1')).toHaveTextContent('Web');
+            expect(screen.getAllByRole('option')[0]).toHaveAccessibleName('index.ts, src, API');
+            expect(screen.getAllByRole('option')[1]).toHaveAccessibleName('index.ts, src, Web');
+        });
+
+        it('renders no-match, no-member, and partial states distinctly', async () => {
+            groupSearchSpy.mockResolvedValueOnce(groupResponse({ results: [] }));
+            const view = renderOpen({ scope });
+            typeQuery('none');
+            await flushDebounce();
+            expect(screen.getByTestId('quick-open-no-results')).toHaveTextContent(
+                'No files found in this repo group.',
+            );
+
+            view.unmount();
+            groupSearchSpy.mockResolvedValueOnce(groupResponse({
+                status: 'no-searchable-members',
+                results: [],
+                searchableMemberCount: 0,
+                searchedMemberCount: 0,
+            }));
+            renderOpen({ scope });
+            typeQuery('none');
+            await flushDebounce();
+            expect(screen.getByTestId('quick-open-no-members')).toBeInTheDocument();
+
+            cleanup();
+            groupSearchSpy.mockResolvedValueOnce(groupResponse({ status: 'partial' }));
+            renderOpen({ scope });
+            typeQuery('idx');
+            await flushDebounce();
+            expect(screen.getByTestId('quick-open-partial')).toHaveTextContent(
+                'Some repositories could not be searched.',
+            );
+            expect(screen.getAllByRole('option')).toHaveLength(2);
+        });
+
+        it('shows total failures with Retry and retries the same query', async () => {
+            groupSearchSpy
+                .mockRejectedValueOnce(new Error('offline'))
+                .mockResolvedValueOnce(groupResponse());
+            renderOpen({ scope });
+            typeQuery('idx');
+            await flushDebounce();
+            expect(screen.getByTestId('quick-open-error')).toHaveTextContent(
+                'Could not search this repo group.',
+            );
+
+            fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+            await flushDebounce();
+            expect(groupSearchSpy).toHaveBeenCalledTimes(2);
+            expect(screen.getAllByRole('option')).toHaveLength(2);
+        });
+
+        it('aborts superseded searches and ignores stale responses', async () => {
+            let resolveFirst: (value: unknown) => void = () => {};
+            groupSearchSpy
+                .mockReturnValueOnce(new Promise(resolve => { resolveFirst = resolve; }))
+                .mockResolvedValueOnce(groupResponse({
+                    results: [{ workspaceId: 'repo-b', repoName: 'Web', path: 'new.ts', score: 10, indices: [0] }],
+                }));
+            renderOpen({ scope });
+            typeQuery('old');
+            await flushDebounce();
+            const firstSignal = groupSearchSpy.mock.calls[0][2].signal as AbortSignal;
+
+            typeQuery('new');
+            await flushDebounce();
+            expect(firstSignal.aborted).toBe(true);
+            expect(await screen.findByRole('option', { name: 'new.ts, Web' })).toBeInTheDocument();
+
+            await act(async () => resolveFirst(groupResponse({
+                results: [{ workspaceId: 'repo-a', repoName: 'API', path: 'old.ts', score: 10, indices: [0] }],
+            })));
+            expect(screen.queryByText('old.ts')).not.toBeInTheDocument();
+        });
+
+        it('keeps the dialog and selection when the consumer declines', async () => {
+            groupSearchSpy.mockResolvedValue(groupResponse());
+            const onFileSelect = vi.fn().mockResolvedValue(false);
+            const onClose = vi.fn();
+            renderOpen({ scope, onFileSelect, onClose });
+            typeQuery('idx');
+            await flushDebounce();
+            fireEvent.keyDown(screen.getByTestId('quick-open-input'), { key: 'Enter' });
+            await act(async () => Promise.resolve());
+
+            expect(onFileSelect).toHaveBeenCalledWith(expect.objectContaining({
+                workspaceId: 'repo-a',
+                path: 'src/index.ts',
+            }));
+            expect(onClose).not.toHaveBeenCalled();
+            expect(screen.getByTestId('quick-open-input')).toHaveValue('idx');
+            expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+        });
     });
 
     it('renders every result the server returned', async () => {

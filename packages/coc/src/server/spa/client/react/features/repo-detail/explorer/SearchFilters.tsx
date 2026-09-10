@@ -7,15 +7,14 @@
  * whenever any filter is off its default — the one thing that keeps a filtered
  * search from looking like an unfiltered one.
  *
- * The button is exported on its own as `SearchFiltersToggle` so a narrow panel
- * can put it on the query box's toggle row (`showToggle={false}` here) rather
- * than give one glyph a row of its own.
+ * The button is exported on its own as `SearchFiltersToggle` so the query box
+ * can keep it beside the search mode toggles.
  *
  * Purely presentational: the panel owns the state and decides when to re-run.
  */
 
 import { cn } from '../../../ui/cn';
-import { contentSearchFiltersActive, type ContentSearchFilters } from './types';
+import type { ContentSearchFilters } from './types';
 
 export interface SearchFiltersToggleProps {
     expanded: boolean;
@@ -27,8 +26,7 @@ export interface SearchFiltersToggleProps {
 }
 
 /**
- * The `…` button on its own, so a narrow panel can put it on the query box's
- * toggle row instead of spending a whole row on one glyph.
+ * The `…` button on its own, for the query box's toggle row.
  */
 export function SearchFiltersToggle({
     expanded,
@@ -64,12 +62,6 @@ export interface SearchFiltersProps {
     filters: ContentSearchFilters;
     onChange: (next: ContentSearchFilters) => void;
     expanded: boolean;
-    onToggleExpanded: () => void;
-    /**
-     * False when the host is rendering `SearchFiltersToggle` itself — the narrow
-     * layout, where the `…` shares the query box's toggle row.
-     */
-    showToggle?: boolean;
     /** Prefix for every `data-testid`, matching the SearchBar's convention. */
     testIdPrefix?: string;
 }
@@ -86,25 +78,10 @@ export function SearchFilters({
     filters,
     onChange,
     expanded,
-    onToggleExpanded,
-    showToggle = true,
     testIdPrefix = 'content-search',
 }: SearchFiltersProps) {
-    const active = contentSearchFiltersActive(filters);
-
     return (
         <div data-testid={`${testIdPrefix}-filters`}>
-            {showToggle && (
-                <div className="flex justify-end px-2">
-                    <SearchFiltersToggle
-                        expanded={expanded}
-                        onToggleExpanded={onToggleExpanded}
-                        active={active}
-                        testIdPrefix={testIdPrefix}
-                    />
-                </div>
-            )}
-
             {expanded && (
                 <div className="px-2 pb-2 flex flex-col gap-1.5" data-testid={`${testIdPrefix}-filters-fields`}>
                     <div>

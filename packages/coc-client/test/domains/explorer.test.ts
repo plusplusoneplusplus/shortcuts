@@ -11,6 +11,7 @@ describe('ExplorerClient', () => {
     await client.tree('repo/a', { path: '/', depth: 2, showIgnored: true });
     await client.listFiles('repo/a', { path: 'src', showIgnored: false });
     await client.searchFiles('repo/a', 'main ts', { limit: 100 });
+    await client.searchRepoGroupFiles('group/a', 'main ts', { limit: 75, showIgnored: true });
     await client.readBlob('repo/a', 'src/main.ts');
     await client.writeBlob('repo/a', 'src/main.ts', 'const x = 1;');
     await client.reveal('repo/a', 'src/main.ts');
@@ -21,6 +22,10 @@ describe('ExplorerClient', () => {
       { path: '/repos/repo%2Fa/tree', options: { query: { path: '/', depth: 2, showIgnored: true } } },
       { path: '/repos/repo%2Fa/files', options: { query: { path: 'src', showIgnored: false } } },
       { path: '/repos/repo%2Fa/search', options: { query: { q: 'main ts', limit: 100 } } },
+      {
+        path: '/repo-groups/group%2Fa/search',
+        options: { query: { q: 'main ts', limit: 75, showIgnored: true } },
+      },
       { path: '/repos/repo%2Fa/blob', options: { query: { path: 'src/main.ts' } } },
       { path: '/repos/repo%2Fa/blob', options: { method: 'PUT', query: { path: 'src/main.ts' }, body: { content: 'const x = 1;' } } },
       { path: '/repos/repo%2Fa/reveal', options: { query: { path: 'src/main.ts' } } },
@@ -137,5 +142,21 @@ describe('ExplorerClient', () => {
     await client.searchContent('repo-a', 'needle', { signal: controller.signal });
 
     expect(adapter.calls[0].options?.signal).toBe(controller.signal);
+  });
+
+  it('forwards an abort signal for group search', async () => {
+    const adapter = createMockAdapter({ status: 'complete', results: [] });
+    const client = new ExplorerClient(adapter);
+    const controller = new AbortController();
+
+    await client.searchRepoGroupFiles('group-a', 'needle', { signal: controller.signal });
+
+    expect(adapter.calls[0]).toMatchObject({
+      path: '/repo-groups/group-a/search',
+      options: {
+        query: { q: 'needle', limit: undefined, showIgnored: undefined },
+        signal: controller.signal,
+      },
+    });
   });
 });

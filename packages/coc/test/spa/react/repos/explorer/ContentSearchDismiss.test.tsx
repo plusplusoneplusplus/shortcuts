@@ -119,6 +119,13 @@ describe('ContentSearchResults — dismiss affordance', () => {
         expect(screen.getAllByTestId('content-search-dismiss')).toHaveLength(5);
     });
 
+    it('floats actions over a relative row instead of reserving row width', () => {
+        render(<ContentSearchResults groups={groups} onOpenMatch={vi.fn()} onDismiss={vi.fn()} />);
+        const dismiss = screen.getAllByTestId('content-search-dismiss')[1];
+        expect(dismiss.parentElement?.className).toContain('absolute');
+        expect(dismiss.parentElement?.parentElement?.className).toContain('relative');
+    });
+
     it('dismisses a whole group with its bare path', () => {
         const onDismiss = vi.fn();
         render(<ContentSearchResults groups={groups} onOpenMatch={vi.fn()} onDismiss={onDismiss} />);

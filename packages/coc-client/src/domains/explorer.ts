@@ -7,6 +7,7 @@ import type {
   ExplorerContentSearchResponse,
   ExplorerFilesOptions,
   ExplorerFilesResponse,
+  ExplorerRepoGroupSearchResponse,
   ExplorerSearchOptions,
   ExplorerSearchResponse,
   ExplorerTreeOptions,
@@ -18,6 +19,10 @@ import { encodePathSegment } from '../url';
 
 function repoPath(repoId: string, suffix = ''): string {
   return `/repos/${encodePathSegment(repoId)}${suffix}`;
+}
+
+function repoGroupPath(groupId: string, suffix = ''): string {
+  return `/repo-groups/${encodePathSegment(groupId)}${suffix}`;
 }
 
 function serializeTreeOptions(options?: ExplorerTreeOptions): CocRequestOptions['query'] {
@@ -82,6 +87,23 @@ export class ExplorerClient {
 
   searchFiles(repoId: string, query: string, options?: ExplorerSearchOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerSearchResponse> {
     return this.transport.request<ExplorerSearchResponse>(repoPath(repoId, '/search'), {
+      query: serializeSearchOptions(query, options),
+      signal: options?.signal,
+    });
+  }
+
+  /**
+   * Search every live member of a repo group through the group-owning server.
+   *
+   * Call this method on the client selected for the group owner. A member
+   * workspace id is result identity only and must not choose the transport.
+   */
+  searchRepoGroupFiles(
+    groupId: string,
+    query: string,
+    options?: ExplorerSearchOptions & Pick<CocRequestOptions, 'signal'>,
+  ): Promise<ExplorerRepoGroupSearchResponse> {
+    return this.transport.request<ExplorerRepoGroupSearchResponse>(repoGroupPath(groupId, '/search'), {
       query: serializeSearchOptions(query, options),
       signal: options?.signal,
     });

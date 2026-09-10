@@ -6,16 +6,17 @@ import {
     DOCK_INITIAL_WIDTH,
     DOCK_MIN_CHAT_WIDTH,
     DOCK_MIN_WIDTH,
-    useDockOpen,
-    workspaceDockOpenStorageKey,
     workspaceDockTargetStorageKey,
     workspaceDockWidthStorageKey,
     type DockTarget,
+    type WorkspaceDockMode,
+    useWorkspaceDockToggle,
 } from './WorkspaceDockToggle';
 
 /**
  * `useWorkspaceDock` — the workspace right panel's state controller: whether the
- * panel is open, how wide it is, and which workspace its contents are pointed at.
+ * panel is open, its selected Search/Explorer mode, how wide it is, and which
+ * workspace its contents are pointed at.
  * The body it drives is `UnifiedRightPanel`; this hook holds no DOM of its own.
  *
  * Call it once per workspace view (RepoDetail, RepoGroupView) and hand the
@@ -24,14 +25,14 @@ import {
  * lives in a different subtree — RepoDetail's chrome header in the classic shell,
  * the global TopBar in the remote-first one.
  *
- * Scope vs. target. `workspaceId` is the panel's SCOPE: it owns the open / width /
- * target persistence, and it is the workspace Notes belongs to. The TARGET is the
+ * Scope vs. target. `workspaceId` is the panel's SCOPE: it owns the open / mode /
+ * width / target persistence, and it is the workspace Notes belongs to. The TARGET is the
  * workspace new terminals and file resources open against; it equals the scope
  * unless the caller passes `targets`. A repo group passes its group root plus its
  * member repos, so the panel gains a picker and its own state (open, tabs, width)
  * survives switching between members — only new content follows the picker.
  *
- * Open, width and target each persist per-scope to localStorage; see the
+ * Open, mode, width and target each persist per-scope to localStorage; see the
  * `workspaceDock*StorageKey` helpers for the key formats.
  */
 
@@ -81,7 +82,7 @@ function useDockTarget(
     storageKey: string,
     targets: readonly DockTarget[],
     scopeWorkspaceId: string,
-): [string, (next: string) => void] {
+): [string, (next: string) => boolean] {
     const targetsKey = targetsKeyOf(targets);
     const [target, setTargetState] = useState<string>(() => readTarget(storageKey, targets, scopeWorkspaceId));
     // Latest target, so `setTarget` can consult it without the confirm prompt
@@ -100,8 +101,8 @@ function useDockTarget(
     }, [storageKey, targetsKey, scopeWorkspaceId]);
 
     const setTarget = useCallback((next: string) => {
-        if (next === targetRef.current) return;
-        if (!confirmDiscardExplorerEditsOnSwitch(targetRef.current, next)) return;
+        if (next === targetRef.current) return true;
+        if (!confirmDiscardExplorerEditsOnSwitch(targetRef.current, next)) return false;
         try {
             localStorage.setItem(storageKey, next);
         } catch {
@@ -109,6 +110,7 @@ function useDockTarget(
         }
         targetRef.current = next;
         setTargetState(next);
+        return true;
     }, [storageKey]);
 
     return [target, setTarget];
@@ -119,6 +121,10 @@ export interface WorkspaceDockController {
     isOpen: boolean;
     /** Flip the open/closed state (wired to the header toggle button). */
     toggleOpen: () => void;
+    /** Selected peer mode, persisted by panel scope. */
+    mode: WorkspaceDockMode;
+    /** Open/switch to a mode, or close the panel when that mode is already active. */
+    selectMode: (mode: WorkspaceDockMode) => void;
     /**
      * The workspace new terminals and file resources open against. Equal to the
      * panel's scope (`workspaceId`) unless the caller supplied `targets` and the
@@ -129,7 +135,7 @@ export interface WorkspaceDockController {
      * Point the panel at another target (persisted). No-ops when the current
      * target has unsaved edits and the user declines to discard them.
      */
-    setTarget: (target: string) => void;
+    setTarget: (target: string) => boolean;
     /** The target options, in picker order; empty when the caller supplied none. */
     targets: readonly DockTarget[];
     /**
@@ -152,13 +158,13 @@ export interface WorkspaceDockController {
 }
 
 /**
- * Owns the per-workspace panel state (open / width / target) so the header toggle
- * button and the panel body share one source of truth. Call once per RepoDetail
+ * Owns the per-workspace panel state (open / mode / width / target) so the header
+ * controls and the panel body share one source of truth. Call once per RepoDetail
  * (or RepoGroupView) render and pass the returned controller to
  * `UnifiedRightPanel` and the header toggle.
  */
 export function useWorkspaceDock(workspaceId: string, targets?: readonly DockTarget[]): WorkspaceDockController {
-    const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
+    const { isOpen, mode, toggleOpen, selectMode } = useWorkspaceDockToggle(workspaceId);
     const targetOptions = targets ?? EMPTY_TARGETS;
     const [target, setTarget] = useDockTarget(workspaceDockTargetStorageKey(workspaceId), targetOptions, workspaceId);
     // Cap the panel relative to the live window so it can be dragged as wide as the
@@ -175,7 +181,7 @@ export function useWorkspaceDock(workspaceId: string, targets?: readonly DockTar
     });
 
     return {
-        isOpen, toggleOpen, target, setTarget, targets: targetOptions,
+        isOpen, toggleOpen, mode, selectMode, target, setTarget, targets: targetOptions,
         width, maxWidth, isDragging, handleMouseDown, handleTouchStart,
     };
 }

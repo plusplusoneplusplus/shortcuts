@@ -274,6 +274,7 @@ describe('ExplorerPanel — the search editor buffer', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         localStorage.clear();
+        localStorage.setItem('explorer-sidebar-width', '500');
         location.hash = '';
         clearExplorerTreeCache();
         clearExplorerContentResults();

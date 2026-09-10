@@ -216,20 +216,30 @@ features default off.
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
 | `features.quickAskSidenotes` | live server flag | — |
-| `features.unifiedRightPanel` | `isUnifiedRightPanelEnabled()` | off |
+### Unified right panel
 
-`features.unifiedRightPanel` (default off) swaps the workspace right dock for one
-resource-tabbed panel — Terminal, Notes, files, notes, canvases, and chat diffs as
-tabs, with a searchable `+` menu, plus a collapsible file-tree column pinned to the
-panel's right edge and a breadcrumb toolbar row under the strip. Terminal and Notes
-tabs belong to the workspace; files, canvases, and diffs follow the selected chat.
-The tree is panel-level chrome rather than a tab, and its single click opens a
-VS Code-style preview tab that the next single click reuses until a double click,
-an edit, or a reorder makes it permanent. The tree follows the active file tab —
-highlighting it, expanding its ancestors and centring the row — whenever that
-file belongs to the repo the dock is targeting. Tab descriptors (never document bodies,
-terminal output, or credentials) persist per panel scope in localStorage. Flag-off
-behavior is untouched. The contract lives in
+The desktop workspace header exposes peer Search and Explorer icon controls for
+one resource-tabbed right panel. The classic repository header and remote/virtual
+TopBar use the same persisted panel-scope open/mode store: selecting an inactive
+mode opens or switches the panel, while selecting its active mode closes it.
+Repository-group mode stays scoped to the group while panel requests use the
+selected dock target.
+
+Quick Open has an explicit repo or repo-group scope. A desktop repo group owns
+Ctrl/Cmd+P across all of its sub-tabs even while the panel is closed, and sends
+one search request to the group's owning server. Selecting a member result
+atomically switches the dock target, opens Explorer mode and the tree, and opens
+a result-owned preview without changing the page-level group. Ordinary repos and
+Ctrl/Cmd+O retain target-scoped ownership.
+
+The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs,
+with a searchable `+` menu and one right-edge navigator that switches between
+the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
+first use, share the panel-scope navigator width, and route through the selected
+dock target. The docked Explorer omits its internal Files/Search switch; the
+standalone Explorer page retains it. Tab descriptors (never document bodies,
+terminal output, or credentials) persist per panel scope in localStorage. The
+full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Remote-target dialogs additionally fetch the selected server's `/config/runtime`

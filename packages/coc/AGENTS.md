@@ -48,6 +48,15 @@ all have their own `references/*.md`.
   open, debounces keystrokes, and highlights using the `indices` the server's
   scorer returned — never by re-deriving the match in the browser, which used to
   let highlight and ranking disagree.
+- **Repo-group file search is group-owner scoped.** `GET
+  /api/repo-groups/:id/search` resolves `group.json` against the owning server's
+  live workspace registry on every request, skips stale members and the virtual
+  group root, and searches member native indexes with concurrency four. It
+  merges `searchRanked()` matches by native tier, score, target length, path
+  length, group membership order, and snapshot index, then strips ranking
+  metadata from the response. Its explicit status is `complete`, `partial`,
+  `failed`, or `no-searchable-members`; never turn `failed` into an empty
+  successful result.
 - **Late-bound executor capabilities live in exactly one contract.** Cron, the
   WebSocket server, MCP OAuth, `send_to_conversation`, the Dreams runner, the
   global system prompt, provider routing, and the turn-performance store are

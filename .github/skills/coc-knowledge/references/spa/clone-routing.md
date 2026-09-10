@@ -72,6 +72,11 @@ The registry exposes:
 - `cloneWsUrlForWorkspace(path, id)`
 - `remoteCloneApiBase(id)` — same, but `undefined` for a local id, so call sites
   hard-coding a relative `/api/...` URL (NoteEditor image URLs) keep that literal locally
+- `hasWorkspaceRouteForBaseUrl(workspaceId, baseUrl)` /
+  `activateWorkspaceRouteForBaseUrl(workspaceId, baseUrl)` — verify, then bind, a
+  colliding bare member id to the exact registered clone on a repo group's owner;
+  verification happens before dock mutation and activation after the dirty-edit guard,
+  so failure or cancel cannot fall through locally or partially switch state
 - `requestForWorkspace(id, url, options?)` — clone-routed analog of `requestSpaApi`
   fetching a **relative** api path against the clone, with the same
   `toSpaCocRequestOptions` and error translation
@@ -124,8 +129,12 @@ through the same seam — no enqueue-path logic is remote-specific.
 ### QuickOpen searches on the server
 
 `QuickOpen` (Ctrl+P) fetches nothing on open. It debounces keystrokes
-(`SEARCH_DEBOUNCE_MS`, 40ms) into a single aborted-on-change `explorerApi.searchFiles`
-call and renders the server's ranking as-is. Highlighting uses the `indices` each result
+(`SEARCH_DEBOUNCE_MS`, 40ms) into a single aborted-on-change
+`explorerApi.searchFiles` call and renders the server's ranking as-is. The typed
+repo-group equivalent is `repoGroupService.searchRepoGroupFiles`, which selects
+`getCocClientFor(groupBaseUrl).explorer.searchRepoGroupFiles`. The group owner's
+explicit base URL chooses that transport; a result member's workspace id is identity
+only and never permits local fallback. Highlighting uses the `indices` each result
 carries — the positions the scorer actually matched — via `splitIndices` +
 `highlightMatches`, so the highlight cannot disagree with the ranking.
 

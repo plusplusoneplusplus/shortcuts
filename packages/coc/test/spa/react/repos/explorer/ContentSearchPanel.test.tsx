@@ -132,6 +132,24 @@ describe('ContentSearchPanel — UX states', () => {
         expect(screen.getByTestId('content-search-summary').textContent).toBe('1 result in 1 file');
     });
 
+    it('reports dismissed matches and restores them from the summary', async () => {
+        searchContentSpy.mockResolvedValue({
+            matches: [match({ line: 4 }), match({ line: 8 }), match({ path: 'README.md', line: 1 })],
+            truncated: false,
+        });
+        renderPanel();
+        type('needle');
+        await advance(SEARCH_DEBOUNCE_MS);
+
+        fireEvent.click(screen.getByLabelText('Dismiss src/app.ts'));
+        expect(screen.getByTestId('content-search-dismissed-count')).toHaveTextContent('2 dismissed');
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(1);
+
+        fireEvent.click(screen.getByTestId('content-search-dismissed-count'));
+        expect(screen.queryByTestId('content-search-dismissed-count')).toBeNull();
+        expect(screen.getAllByTestId('content-search-match')).toHaveLength(3);
+    });
+
     it('truncated: shows the cap notice alongside the results', async () => {
         searchContentSpy.mockResolvedValue({ matches: [match()], truncated: true });
         renderPanel();
@@ -412,6 +430,31 @@ describe('ContentSearchPanel — state survives the tree round trip', () => {
         render(<ContentSearchPanel workspaceId="ws-2" onOpenMatch={vi.fn()} />);
         expect(screen.getByTestId('content-search-idle')).toBeDefined();
         expect((screen.getByTestId('content-search-input') as HTMLInputElement).value).toBe('');
+    });
+
+    it('aborts target work and restores each workspace cache when the target changes', async () => {
+        searchContentSpy.mockResolvedValueOnce({ matches: [match({ line: 12 })], truncated: false });
+        const { rerender } = renderPanel();
+        type('needle');
+        await advance(SEARCH_DEBOUNCE_MS);
+        expect(screen.getByTestId('content-search-match').getAttribute('data-line')).toBe('12');
+
+        const pending = deferred<{ matches: ExplorerContentMatch[]; truncated: boolean }>();
+        searchContentSpy.mockReturnValueOnce(pending.promise);
+        fireEvent.click(screen.getByTestId('content-search-refresh'));
+        await advance(0);
+        const signal: AbortSignal = searchContentSpy.mock.calls[1][2].signal;
+
+        rerender(<ContentSearchPanel workspaceId="ws-2" onOpenMatch={vi.fn()} />);
+        expect(signal.aborted).toBe(true);
+        expect((screen.getByTestId('content-search-input') as HTMLInputElement).value).toBe('');
+        expect(screen.getByTestId('content-search-idle')).toBeDefined();
+
+        rerender(<ContentSearchPanel workspaceId={WS} onOpenMatch={vi.fn()} />);
+        expect((screen.getByTestId('content-search-input') as HTMLInputElement).value).toBe('needle');
+        expect(screen.getByTestId('content-search-match').getAttribute('data-line')).toBe('12');
+        expect(screen.queryByTestId('content-search-loading')).toBeNull();
+        expect(searchContentSpy.mock.calls.every(([workspaceId]) => workspaceId === WS)).toBe(true);
     });
 });
 

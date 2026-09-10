@@ -22,6 +22,8 @@ export declare class FileIndex {
   files(offset: number, limit: number): Array<string>
   /** Score every indexed path and resolve with the best `limit` matches. */
   search(query: string, limit: number): Promise<FileMatch[]>
+  /** Search with the complete native ordering tuple for server-side merging. */
+  searchRanked(query: string, limit: number): Promise<RankedFileMatch[]>
   /** Re-walk the root and atomically swap in the new path list. */
   refresh(): Promise<void>
 }
@@ -143,6 +145,18 @@ export interface FileMatch {
    * JavaScript string index would use.
    */
   indices: Array<number>
+}
+
+/** Native ordering keys for merging matches from multiple file indexes. */
+export interface FileMatchRanking {
+  /** 2 when the basename matched, 1 when only the full path matched. */
+  tier: number
+  /** UTF-16 length of the basename for tier 2, or the full path for tier 1. */
+  targetLen: number
+  /** UTF-16 length of the full path. */
+  pathLen: number
+  /** Position in the index snapshot, used for stable within-repo ties. */
+  snapshotIndex: number
 }
 
 /** One branch as the branch list renders it. */
@@ -920,6 +934,15 @@ export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: s
  * worker thread because a large repository's status output runs to megabytes.
  */
 export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
+
+/** A file match with the complete native ordering tuple. */
+export interface RankedFileMatch {
+  path: string
+  score: number
+  /** Matched UTF-16 offsets within `path`, ascending. */
+  indices: Array<number>
+  ranking: FileMatchRanking
+}
 
 /** Read one note's text and mtime. Rejects with a 404 when it is missing. */
 export declare function readNote(root: string, path: string, options: NotesContentOptions): Promise<NotesFileContent>

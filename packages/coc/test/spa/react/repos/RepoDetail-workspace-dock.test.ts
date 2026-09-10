@@ -39,14 +39,13 @@ describe('Workspace dock — flag gating (AC-01)', () => {
         expect(REPO_DETAIL_SOURCE).toContain('const dockAvailable = splitWorkspacePanelEnabled && !isMobile;');
     });
 
-    it('derives the header toggle only for the chrome header (non-chromeless)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('const showHeaderDockToggle = dockAvailable && !chromeless;');
+    it('derives the header controls only for the chrome header (non-chromeless)', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('const showHeaderDockControls = dockAvailable && !chromeless;');
     });
 
-    it('gates the header toggle on showHeaderDockToggle and the panel body on dockAvailable', () => {
-        // Toggle button
-        expect(REPO_DETAIL_SOURCE).toContain("data-testid=\"workspace-dock-toggle\"");
-        expect(REPO_DETAIL_SOURCE).toContain('{showHeaderDockToggle && (');
+    it('gates the header controls on showHeaderDockControls and the panel body on dockAvailable', () => {
+        expect(REPO_DETAIL_SOURCE).toContain('{showHeaderDockControls && (');
+        expect(REPO_DETAIL_SOURCE).toContain('<WorkspaceDockModeControls workspaceId={ws.id} />');
         // Panel body — exactly one `dockAvailable` slot.
         expect(REPO_DETAIL_SOURCE.split(DOCK_SLOT_GUARD).length - 1).toBe(1);
     });
@@ -75,20 +74,15 @@ describe('Workspace dock — remote-shell reachability (chromeless)', () => {
     });
 });
 
-describe('Workspace dock — header toggle (AC-04)', () => {
-    it('has exactly one dock toggle control in the header', () => {
-        const count = REPO_DETAIL_SOURCE.split('data-testid="workspace-dock-toggle"').length - 1;
+describe('Workspace dock — header mode controls', () => {
+    it('has exactly one shared mode-control group in the header', () => {
+        const count = REPO_DETAIL_SOURCE.split('<WorkspaceDockModeControls workspaceId={ws.id} />').length - 1;
         expect(count).toBe(1);
-    });
-
-    it('reflects open/closed state via aria-pressed on the toggle', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('aria-pressed={dock.isOpen}');
-        expect(REPO_DETAIL_SOURCE).toContain('onClick={dock.toggleOpen}');
     });
 
     it('lives inside the header action cluster (top-right)', () => {
         const clusterIdx = REPO_DETAIL_SOURCE.indexOf('ref={overflowContainerRef}');
-        const toggleIdx = REPO_DETAIL_SOURCE.indexOf('data-testid="workspace-dock-toggle"');
+        const toggleIdx = REPO_DETAIL_SOURCE.indexOf('<WorkspaceDockModeControls workspaceId={ws.id} />');
         expect(clusterIdx).toBeGreaterThan(-1);
         expect(toggleIdx).toBeGreaterThan(clusterIdx);
     });

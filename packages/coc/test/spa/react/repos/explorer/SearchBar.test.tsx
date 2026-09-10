@@ -179,10 +179,28 @@ describe('SearchBar', () => {
                 .toBe(true);
         });
 
+        it('keeps the host control beside inside toggles and reserves its width', () => {
+            render(
+                <SearchBar value="" onChange={vi.fn()} onClear={vi.fn()} toggles={threeToggles()}>
+                    <button data-testid="extra-control">…</button>
+                </SearchBar>,
+            );
+            const input = screen.getByTestId('explorer-search-input') as HTMLInputElement;
+            expect(screen.getByTestId('extra-control')).toBeInTheDocument();
+            expect(input.style.paddingRight).toBe('132px');
+        });
+
         it('ignores the placement when there are no toggles', () => {
             render(<SearchBar value="" onChange={vi.fn()} onClear={vi.fn()} togglePlacement="below" />);
             expect(screen.queryByTestId('explorer-search-toggle-row')).toBeNull();
         });
+    });
+
+    it('keeps a single-line textarea on one horizontally scrollable line', () => {
+        render(<SearchBar value="a long query" onChange={vi.fn()} onClear={vi.fn()} multiline />);
+        const input = screen.getByTestId('explorer-search-input');
+        expect(input.className).toContain('whitespace-pre');
+        expect(input.className).toContain('overflow-x-auto');
     });
 
     describe('testIdPrefix override', () => {

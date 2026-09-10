@@ -31,12 +31,21 @@ export type NativeBuildOptions = Bindings.BuildOptions;
 export type NativeFileMatch = Bindings.FileMatch;
 
 /**
+ * A native file match with the complete lexicographic ordering tuple.
+ *
+ * `ranking` is for server-side merging across indexes. REST responses should
+ * continue to expose only {@link NativeFileMatch}.
+ */
+export type NativeRankedFileMatch = Bindings.RankedFileMatch;
+
+/**
  * An in-memory, gitignore-aware index of one repository's file paths.
  *
  * Every method that walks the tree or scans the path list resolves a real
  * promise backed by an `AsyncTask`, so the work lands on a libuv worker and
- * never blocks the event loop. `search` returns the best `limit` matches,
- * best first.
+ * never blocks the event loop. `search` returns the public match shape;
+ * `searchRanked` additionally returns the ordering tuple needed to merge
+ * multiple indexes. Both return the best `limit` matches, best first.
  */
 export type NativeFileIndex = Bindings.FileIndex;
 

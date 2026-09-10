@@ -87,7 +87,6 @@ import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/featu
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import {
     clearUnifiedTreeState,
-    readUnifiedTreeState,
     writeUnifiedTreeState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import {
@@ -108,6 +107,8 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
     return {
         isOpen: true,
         toggleOpen: vi.fn(),
+        mode: 'explorer',
+        selectMode: vi.fn(),
         target: WS,
         setTarget: vi.fn(),
         targets: [],
@@ -219,7 +220,7 @@ describe('unified panel toolbar row', () => {
         return result;
     }
 
-    it('shows breadcrumbs and the tree toggle for a file tab', () => {
+    it('shows breadcrumbs without a nested Explorer mode control', () => {
         renderWithTreeFile('app');
 
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
@@ -227,42 +228,17 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('breadcrumb-segment-0').textContent).toBe('src');
         expect(screen.getByTestId('breadcrumb-segment-1').textContent).toBe('app.ts');
 
-        const toggle = screen.getByTestId('unified-panel-tree-toggle');
-        expect(toggle.getAttribute('data-placement')).toBe('toolbar');
-        // The row owns the toggle, so the strip must not also show one.
-        expect(screen.getAllByTestId('unified-panel-tree-toggle')).toHaveLength(1);
+        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
     });
 
-    it('drops the row for a non-file tab and moves the toggle into the strip', () => {
+    it('drops the row for a non-file tab without adding nested mode chrome', () => {
         renderPanel();
-        // No tabs at all: still exactly one way to reach the tree.
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
-        expect(screen.getByTestId('unified-panel-tree-toggle').getAttribute('data-placement')).toBe('strip');
+        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
 
         openViaMenu('unified-panel-open-terminal');
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
-        const toggle = screen.getByTestId('unified-panel-tree-toggle');
-        expect(toggle.getAttribute('data-placement')).toBe('strip');
-        expect(screen.getByTestId('unified-panel-tab-strip').contains(toggle)).toBe(true);
-    });
-
-    it('drives one open bit from either placement', () => {
-        renderPanel();
-        expect(readUnifiedTreeState(WS).open).toBe(false);
-
-        // From the strip (no tabs yet).
-        fireEvent.click(screen.getByTestId('unified-panel-tree-toggle'));
-        expect(readUnifiedTreeState(WS).open).toBe(true);
-        expect(screen.getByTestId('unified-panel-tree')).toBeTruthy();
-
-        // Now from the toolbar, with a file tab active.
-        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
-        const toolbarToggle = screen.getByTestId('unified-panel-tree-toggle');
-        expect(toolbarToggle.getAttribute('data-placement')).toBe('toolbar');
-        expect(toolbarToggle.getAttribute('aria-expanded')).toBe('true');
-        fireEvent.click(toolbarToggle);
-        expect(readUnifiedTreeState(WS).open).toBe(false);
-        expect(screen.queryByTestId('unified-panel-tree')).toBeNull();
+        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
     });
 
     it('reveals a folder in the tree on a breadcrumb click without touching tabs', () => {
@@ -296,8 +272,7 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
         expect(screen.queryByTestId('breadcrumb-segment-root')).toBeNull();
         expect(screen.getByTestId('unified-panel-toolbar-path').textContent).toBe('/etc/hosts');
-        // Still reachable: the row renders, so the toggle stays in it.
-        expect(screen.getByTestId('unified-panel-tree-toggle').getAttribute('data-placement')).toBe('toolbar');
+        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
     });
 
     it('attributes a repo-group member file and stops navigating once the tree retargets', () => {

@@ -98,18 +98,27 @@ still persists through `explorerStateStore`.
 
 Target switches go through `confirmDiscardExplorerEditsOnSwitch` (from
 `explorer/explorerDirtyStore.ts`), so picking another member repo cannot silently
-drop a dirty Monaco buffer; declining leaves the selection and localStorage
-untouched.
+drop a dirty Monaco buffer. `dock.setTarget()` returns whether the switch was
+accepted; declining leaves the selection and localStorage untouched, which lets
+group Quick Open keep its dialog and highlighted result unchanged.
 
 Persisted values are validated on read. The target
 (`workspaceDockTargetStorageKey`) falls back to the first enabled
 non-`deprioritized` option, then the first enabled one, then the scope. Only an
 explicit `setTarget` writes; mount and workspace switches never persist.
 
-The open/close toggle lives outside the panel and shares a cross-tree store: the
-classic shell renders it in `RepoDetail`'s header, while the remote-first shell's
-`layout/TopBar.tsx` renders `WorkspaceDockToggleButton` for a concrete clone *or*
-a `group-*` selection under the virtual header. My Work / My Life have no panel.
+Peer icon-only Search and Explorer controls live outside the panel and share its
+cross-tree open and mode stores. The classic shell renders
+`WorkspaceDockModeControls` in `RepoDetail`'s header; the remote-first shell
+renders the same component in `layout/TopBar.tsx` for a concrete clone or a
+`group-*` selection. My Work / My Life have no panel. Selecting an inactive mode
+opens or switches the panel; selecting its active mode while open closes it.
+
+On desktop, a repo group's mounted panel also owns Ctrl/Cmd+P while collapsed,
+from every group sub-tab. The Quick Open portal may appear without changing the
+stored open bit; only an accepted file selection opens Explorer mode. Ordinary
+repos still require an open panel or mounted Explorer owner, Ctrl/Cmd+O remains
+target-repo Exact Open, and mobile mounts no group panel listener.
 
 `../notes/dock/DockNotesPanel.tsx` is the Notes view: search + new-note row, a
 recency-ordered flat list (`dock/dockNotes.ts` holds the pure list/query/naming
@@ -134,12 +143,20 @@ effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
 ## Quick Open file search
 
-`explorer/QuickOpen.tsx` debounces keystrokes and asks
-`/api/repos/:repoId/search` per query, then highlights using the `indices` the
-server returned rather than re-deriving the match locally. Ranking happens in the
-Rust scorer only; `server/shared/fuzzy-file-score.ts` is its reference
-implementation, not a second runtime path. Results stay rendered while the query
-changes; only the first load shows `Loading files…`.
+`explorer/QuickOpen.tsx` takes an explicit repo or repo-group search scope.
+Repo scope asks `/api/repos/:repoId/search`; group scope calls
+`repoGroupService.searchRepoGroupFiles` with the group owner's base URL. Both
+debounce keystrokes, cancel superseded requests, reject stale responses, and
+highlight only the returned `indices`. Ranking happens in the Rust scorer only;
+`server/shared/fuzzy-file-score.ts` is its reference implementation, not a
+second runtime path. Results stay rendered while the query changes; only the
+first load shows `Searching files…`.
+
+Group rows remain one flat server-ranked list. Their identity includes
+`workspaceId`, their visible/accessibility label includes `repoName`, and the
+dialog distinguishes no matches, no searchable members, partial results, and a
+retryable total failure. `onFileSelect` receives the full result and may return
+`false` to keep the query and highlight intact for a declined target switch.
 
 `ExactOpen.tsx` and `ExplorerPanel.tsx` still call `/search` per query. That endpoint
 is backed by a cached repo listing (`RepoTreeService.invalidateFileListCache`), so
