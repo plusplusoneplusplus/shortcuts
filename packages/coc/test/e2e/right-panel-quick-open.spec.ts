@@ -30,6 +30,10 @@ const CHAT_PREVIEW = 'Right panel quick open chat';
 /** The nested file the picker is pointed at — `src/` must expand to reveal it. */
 const TARGET_PATH = 'src/utils.ts';
 const TARGET_NAME = 'utils.ts';
+const GROUP_MEMBER_A = 'ws-rp-qo-group-a';
+const GROUP_MEMBER_B = 'ws-rp-qo-group-b';
+const GROUP_TARGET_PATH = 'group-only/member-b-target.ts';
+const GROUP_TARGET_NAME = 'member-b-target.ts';
 
 /**
  * Seed a git-backed workspace plus one chat, open its detail page on a desktop
@@ -80,6 +84,51 @@ async function openRightPanel(page: Page, serverUrl: string): Promise<string> {
     await expect(page.locator('[data-testid="unified-panel-tree"]')).toHaveCount(0);
 
     return tmpDir;
+}
+
+async function openGroupWithClosedPanel(
+    page: Page,
+    serverUrl: string,
+): Promise<{ tmpDir: string; groupId: string }> {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rp-qo-group-'));
+    const repoA = createMultiCommitRepo(path.join(tmpDir, 'a'));
+    const repoB = createMultiCommitRepo(path.join(tmpDir, 'b'));
+    const target = path.join(repoB, GROUP_TARGET_PATH);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, 'export const memberB = true;\n');
+
+    const config = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'features.splitWorkspacePanel': true }),
+    });
+    if (config.status !== 200) {
+        throw new Error(`Failed to enable splitWorkspacePanel: ${config.status} ${config.body}`);
+    }
+    await seedWorkspace(serverUrl, GROUP_MEMBER_A, 'group-member-a', repoA);
+    await seedWorkspace(serverUrl, GROUP_MEMBER_B, 'group-member-b', repoB);
+    const group = await request(`${serverUrl}/api/repo-groups`, {
+        method: 'POST',
+        body: JSON.stringify({
+            name: 'Quick Open Group',
+            members: [GROUP_MEMBER_A, GROUP_MEMBER_B],
+        }),
+    });
+    if (group.status !== 201) {
+        throw new Error(`Failed to create repo group: ${group.status} ${group.body}`);
+    }
+    const groupId = JSON.parse(group.body).workspace.id as string;
+    await request(`${serverUrl}/api/preferences`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+            hasSeenWelcome: true,
+            onboardingProgress: { dismissed: true, hasCompletedTour: true },
+        }),
+    });
+
+    await page.goto(`${serverUrl}/#repos/${groupId}`);
+    await expect(page.getByTestId('repo-group-view')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('unified-right-panel')).toHaveAttribute('data-open', 'false');
+    return { tmpDir, groupId };
 }
 
 test.describe('Right panel quick open', () => {
@@ -145,6 +194,39 @@ test.describe('Right panel quick open', () => {
             await page.keyboard.press('Control+o');
             await expect(page.locator('[data-testid="exact-open-dialog"]')).toBeVisible({ timeout: 10_000 });
             await expect(page.locator('[data-testid="quick-open-dialog"]')).toHaveCount(0);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('Ctrl+P in a group with the panel closed searches all members and opens the owning repo', async ({ page, serverUrl }) => {
+        const { tmpDir, groupId } = await openGroupWithClosedPanel(page, serverUrl);
+        try {
+            await page.keyboard.press('Control+p');
+            const dialog = page.getByTestId('quick-open-dialog');
+            await expect(dialog).toBeVisible({ timeout: 10_000 });
+            await expect(page.getByTestId('unified-right-panel')).toHaveAttribute('data-open', 'false');
+
+            await page.getByTestId('quick-open-input').fill(GROUP_TARGET_NAME);
+            const result = page.getByRole('option', {
+                name: `${GROUP_TARGET_NAME}, group-only, group-member-b`,
+            });
+            await expect(result).toBeVisible({ timeout: 15_000 });
+            await expect(result.getByTestId('quick-open-repo-0')).toHaveText('group-member-b');
+            await page.keyboard.press('Enter');
+
+            await expect(dialog).toHaveCount(0, { timeout: 10_000 });
+            const panel = page.getByTestId('unified-right-panel');
+            await expect(panel).toHaveAttribute('data-open', 'true', { timeout: 10_000 });
+            await expect(
+                panel.locator('[data-testid^="unified-panel-tab-label-"]').filter({ hasText: GROUP_TARGET_NAME }),
+            ).toHaveCount(1);
+
+            await panel.getByTestId('unified-panel-open-menu').click();
+            await expect(panel.getByTestId('unified-panel-open-menu-repo')).toHaveValue(GROUP_MEMBER_B);
+            await expect(panel.getByTestId('unified-panel-tree')).toBeVisible();
+            await expect(panel.getByTestId(`tree-node-${GROUP_TARGET_PATH}`)).toBeVisible({ timeout: 15_000 });
+            await expect(page.getByTestId('repo-group-view')).toHaveAttribute('data-workspace', groupId);
         } finally {
             safeRmSync(tmpDir);
         }

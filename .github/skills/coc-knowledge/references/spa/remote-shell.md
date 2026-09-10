@@ -229,6 +229,12 @@ that same registry.
   to the remote's `/api/repo-groups` at its `effectiveUrl`. There is no server-side proxy;
   the remote's own `normalizeMembers` validation is the source of truth and surfaces
   inline in the dialog.
+- Group Quick Open uses the same owner route for its single
+  `/api/repo-groups/:id/search` request. On desktop its group-scoped unified panel owns
+  Ctrl/Cmd+P from every group sub-tab even while collapsed; the portal alone opens first,
+  and accepting a member result opens the panel, switches its target, and creates a
+  result-owned preview without navigating away from the group. Mobile has no group panel
+  or shortcut owner.
 - `listRepoGroupServerOptions()` builds `repo-group-server-select` from `/api/servers`:
   `Local` plus every `online` remote with an `effectiveUrl`; an unreachable registry
   degrades to Local-only.
