@@ -20,7 +20,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { LanguageServerSession } from '../../../src/server/language-servers/session';
 import { prepareDefinitionForRoot } from '../../../src/server/language-servers/adapters';
 import { resolveTypeScriptRuntime } from '../../../src/server/language-servers/typescript-adapter';
@@ -125,14 +125,29 @@ function createProject(): string {
 }
 
 function uriFor(relative: string): string {
-    const uri = pathToFileURL(path.join(root, ...relative.split('/'))).href;
-    if (process.platform !== 'win32') {
+    return pathToFileURL(path.join(root, ...relative.split('/'))).href;
+}
+
+/**
+ * File-URI identity for assertions and notification lookup.
+ *
+ * Windows runners expose the temp directory through an 8.3 path such as
+ * `RUNNER~1`, while tsserver can answer with the equivalent long path. URI
+ * spelling alone cannot identify the document there, even after normalizing
+ * drive-letter casing. Resolve both spellings through the filesystem first.
+ */
+function fileUriKey(uri: string): string {
+    if (!uri.startsWith('file:')) {
         return uri;
     }
-    // vscode-uri, used by typescript-language-server, serializes Windows drive
-    // letters in lowercase. Match that canonical form so diagnostics and
-    // locations compare by document identity rather than drive-letter casing.
-    return uri.replace(/^file:\/\/\/([A-Z]):/, (_, drive: string) => `file:///${drive.toLowerCase()}:`);
+    const filePath = fileURLToPath(uri);
+    let resolved: string;
+    try {
+        resolved = fs.realpathSync.native(filePath);
+    } catch {
+        resolved = path.resolve(filePath);
+    }
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 /** Position of a marker inside a document, so no test hard-codes a column. */
@@ -193,23 +208,23 @@ async function waitFor<T>(produce: () => T | undefined, description: string, tim
 
 /** Waits until the diagnostics published for a document satisfy `check`. */
 async function waitForDiagnostics(relative: string, check: (found: Diagnostic[]) => boolean): Promise<Diagnostic[]> {
-    const uri = uriFor(relative);
+    const key = fileUriKey(uriFor(relative));
     return waitFor(() => {
-        const found = diagnostics.get(uri);
+        const found = diagnostics.get(key);
         return found && check(found) ? found : undefined;
     }, `diagnostics for ${relative}`);
 }
 
 /** A definition answer is `Location`, `Location[]`, or `LocationLink[]`. */
-function targetUris(result: unknown): string[] {
+function targetFileKeys(result: unknown): string[] {
     const entries = Array.isArray(result) ? result : result ? [result] : [];
     return entries
         .map((entry) => {
             const record = entry as { uri?: unknown; targetUri?: unknown };
             const uri = typeof record.targetUri === 'string' ? record.targetUri : record.uri;
-            return typeof uri === 'string' ? uri : undefined;
+            return typeof uri === 'string' ? fileUriKey(uri) : undefined;
         })
-        .filter((uri): uri is string => uri !== undefined);
+        .filter((key): key is string => key !== undefined);
 }
 
 function hoverText(result: unknown): string {
@@ -247,7 +262,7 @@ beforeAll(async () => {
     session.onNotification('textDocument/publishDiagnostics', (params) => {
         const payload = params as { uri?: string; diagnostics?: Diagnostic[] };
         if (typeof payload?.uri === 'string') {
-            diagnostics.set(payload.uri, payload.diagnostics ?? []);
+            diagnostics.set(fileUriKey(payload.uri), payload.diagnostics ?? []);
         }
     });
     await session.start();
@@ -330,7 +345,7 @@ describe('TypeScript language features over a real project', () => {
             textDocument: { uri: uriFor('src/app.ts') },
             position: positionAt(APP_TS, "makeWidget('one'", 2),
         });
-        expect(targetUris(result)).toContain(uriFor('src/widgets.ts'));
+        expect(targetFileKeys(result)).toContain(fileUriKey(uriFor('src/widgets.ts')));
     });
 
     it('follows a tsconfig path alias to its target', async () => {
@@ -338,7 +353,7 @@ describe('TypeScript language features over a real project', () => {
             textDocument: { uri: uriFor('src/app.ts') },
             position: positionAt(APP_TS, 'formatWidget(widget)', 2),
         });
-        expect(targetUris(result)).toContain(uriFor('src/lib/format.ts'));
+        expect(targetFileKeys(result)).toContain(fileUriKey(uriFor('src/lib/format.ts')));
     });
 
     it('follows an installed dependency type into node_modules', async () => {
@@ -346,7 +361,7 @@ describe('TypeScript language features over a real project', () => {
             textDocument: { uri: uriFor('src/app.ts') },
             position: positionAt(APP_TS, 'greet(widget.label)', 2),
         });
-        expect(targetUris(result)).toContain(uriFor('node_modules/tiny-dep/index.d.ts'));
+        expect(targetFileKeys(result)).toContain(fileUriKey(uriFor('node_modules/tiny-dep/index.d.ts')));
     });
 
     it('finds references to an exported type across the project', async () => {
@@ -355,9 +370,9 @@ describe('TypeScript language features over a real project', () => {
             position: positionAt(WIDGETS_TS, 'interface Widget', 10),
             context: { includeDeclaration: true },
         });
-        const uris = targetUris(result);
-        expect(uris).toContain(uriFor('src/widgets.ts'));
-        expect(uris).toContain(uriFor('src/lib/format.ts'));
+        const keys = targetFileKeys(result);
+        expect(keys).toContain(fileUriKey(uriFor('src/widgets.ts')));
+        expect(keys).toContain(fileUriKey(uriFor('src/lib/format.ts')));
     });
 
     it('completes the members of an inferred type', async () => {
@@ -426,7 +441,7 @@ describe('a document with CRLF line endings', () => {
             textDocument: { uri: uriFor('src/crlf.ts') },
             position: positionAt(CRLF_TS, "makeWidget('two'", 2),
         });
-        expect(targetUris(result)).toContain(uriFor('src/widgets.ts'));
+        expect(targetFileKeys(result)).toContain(fileUriKey(uriFor('src/widgets.ts')));
     });
 
     it('reports a diagnostic on the CRLF line the edit was made on', async () => {
