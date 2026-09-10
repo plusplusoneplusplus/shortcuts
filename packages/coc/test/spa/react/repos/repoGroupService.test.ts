@@ -13,12 +13,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockRequest = vi.fn();
 const mockServersList = vi.fn();
+const mockGroupSearch = vi.fn();
 const clientForCalls: (string | undefined)[] = [];
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getCocClientFor: (baseUrl?: string) => {
         clientForCalls.push(baseUrl);
-        return { request: mockRequest };
+        return { request: mockRequest, explorer: { searchRepoGroupFiles: mockGroupSearch } };
     },
     getSpaCocClient: () => ({ request: mockRequest, servers: { list: mockServersList } }),
 }));
@@ -29,6 +30,7 @@ import {
     getRepoGroup,
     listRepoGroupServerOptions,
     updateRepoGroup,
+    searchRepoGroupFiles,
 } from '../../../../src/server/spa/client/react/repos/repoGroupService';
 
 const REMOTE = 'http://127.0.0.1:4000';
@@ -37,6 +39,7 @@ beforeEach(() => {
     clientForCalls.length = 0;
     mockRequest.mockReset().mockResolvedValue({});
     mockServersList.mockReset();
+    mockGroupSearch.mockReset().mockResolvedValue({});
 });
 
 describe('repo-group requests route to the owning server', () => {
@@ -73,6 +76,23 @@ describe('repo-group requests route to the owning server', () => {
         await getRepoGroup('group-a b', REMOTE);
 
         expect(mockRequest).toHaveBeenCalledWith('/repo-groups/group-a%20b');
+    });
+
+    it('searches through the group owner and forwards cancellation', async () => {
+        const controller = new AbortController();
+        await searchRepoGroupFiles(
+            'group-platform',
+            'prompt',
+            { limit: 25, showIgnored: true, signal: controller.signal },
+            REMOTE,
+        );
+
+        expect(clientForCalls).toEqual([REMOTE]);
+        expect(mockGroupSearch).toHaveBeenCalledWith(
+            'group-platform',
+            'prompt',
+            { limit: 25, showIgnored: true, signal: controller.signal },
+        );
     });
 });
 

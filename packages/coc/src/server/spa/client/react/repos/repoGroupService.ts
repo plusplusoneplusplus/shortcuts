@@ -12,7 +12,13 @@
  * remote workspace aggregation and clone routing already talk to it. A group's
  * members are always ids from the one server that owns the group.
  */
-import type { RemoteServer, WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
+import type {
+    CocRequestOptions,
+    ExplorerRepoGroupSearchResponse,
+    ExplorerSearchOptions,
+    RemoteServer,
+    WorkspaceInfo,
+} from '@plusplusoneplusplus/coc-client';
 import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
 
 /** A group member as resolved against the live workspace registry. */
@@ -100,6 +106,15 @@ export function createRepoGroup(request: { name: string; members: string[]; desc
 
 export function getRepoGroup(groupId: string, baseUrl?: string): Promise<RepoGroupDetails> {
     return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}`);
+}
+
+export function searchRepoGroupFiles(
+    groupId: string,
+    query: string,
+    options?: ExplorerSearchOptions & Pick<CocRequestOptions, 'signal'>,
+    baseUrl?: string,
+): Promise<ExplorerRepoGroupSearchResponse> {
+    return getCocClientFor(baseUrl).explorer.searchRepoGroupFiles(groupId, query, options);
 }
 
 /**
