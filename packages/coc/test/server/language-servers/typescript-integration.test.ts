@@ -106,10 +106,12 @@ const versions = new Map<string, number>();
  * not author contributes to the answers.
  */
 function createProject(): string {
-    // realpath first: on macOS `os.tmpdir()` is a symlink into `/private`, and
-    // the server answers with the resolved path, so an unresolved root would
-    // make every URI comparison in this file fail.
-    const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'coc-lsp-ts-'));
+    // Canonicalize through the operating system before creating the project.
+    // This resolves macOS's `/tmp` symlink and expands Windows runner 8.3 paths
+    // such as `RUNNER~1`. tsserver reports the native spelling, and
+    // typescript-language-server matches diagnostics to open documents by
+    // filepath, so opening the short spelling would drop every diagnostic.
+    const dir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'coc-lsp-ts-'));
     fs.mkdirSync(path.join(dir, 'src', 'lib'), { recursive: true });
     fs.mkdirSync(path.join(dir, 'node_modules', 'tiny-dep'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'coc-lsp-fixture', version: '1.0.0' }, null, 2));
@@ -288,6 +290,10 @@ afterAll(async () => {
 });
 
 describe('packaged TypeScript runtime', () => {
+    it('opens the project with the native path spelling tsserver reports', () => {
+        expect(root).toBe(fs.realpathSync.native(root));
+    });
+
     it('resolves the language server packaged with CoC for a project that has none', () => {
         const runtime = resolveTypeScriptRuntime(TYPESCRIPT_PRESET, root);
         expect(runtime.server).toBe('bundled');
