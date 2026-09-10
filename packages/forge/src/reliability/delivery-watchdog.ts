@@ -1,8 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import Database from 'better-sqlite3';
 
 export type DeliveryWatchdogMode = 'autopilot' | 'ralph';
+export type WatchdogFailureClass = 'none' | 'ordinary-failure' | 'classifier-rejection';
+export type ClassifierCircuitState = 'closed' | 'attempted' | 'open';
+
+const CLASSIFIER_COMPACTION_PROVIDERS = new Set(['copilot', 'codex', 'claude']);
+const CLASSIFIER_COMPACT_INSTRUCTIONS =
+    'Keep only authoritative delivery state, file references, and one bounded next action. '
+    + 'Omit dense diagnostics and prior rejected content.';
 
 export interface WatchdogLimits {
     pollIntervalMs: number;
@@ -45,6 +53,7 @@ export interface WatchdogProcessSnapshot {
     endTime: string | null;
     error: string | null;
     workingDirectory: string | null;
+    sdkSessionId?: string | null;
     metadata?: unknown;
 }
 
@@ -79,6 +88,10 @@ export interface WatchdogProbe {
     pendingWakeups: number;
     splitBrain: boolean;
     duplicateWriterTaskIds: string[];
+    failureClass: WatchdogFailureClass;
+    failureOccurrenceId: string | null;
+    provider: string | null;
+    hasSdkSession: boolean;
 }
 
 export interface WatchdogState {
@@ -86,12 +99,27 @@ export interface WatchdogState {
     idleStreak: number;
     resumeCount: number;
     lastRecoveryAtMs: number | null;
+    classifierCircuit: ClassifierCircuitState;
+    classifierRejectionCount: number;
+    classifierCompactionAttempts: number;
+    classifierLastOccurrenceId: string | null;
 }
 
 export type WatchdogDecision =
-    | { kind: 'wait'; reason: 'activity' | 'activity-during-recheck' | 'cooldown' | 'idle' | 'split-brain'; state: WatchdogState }
+    | { kind: 'wait'; reason: 'activity' | 'activity-during-recheck' | 'classifier-occurrence-seen' | 'cooldown' | 'idle' | 'split-brain'; state: WatchdogState }
     | { kind: 'recheck'; state: WatchdogState }
     | { kind: 'recover'; state: WatchdogState }
+    | { kind: 'classifier-attempt'; state: WatchdogState }
+    | {
+        kind: 'handoff-required';
+        reason:
+            | 'classifier-circuit-open'
+            | 'classifier-occurrence-unavailable'
+            | 'classifier-recurred'
+            | 'classifier-compaction-unsupported'
+            | 'classifier-session-missing';
+        state: WatchdogState;
+    }
     | { kind: 'reject'; reason: 'duplicate-writer'; state: WatchdogState }
     | { kind: 'stop'; reason: 'binding-changed' | 'max-resumes' | 'ttl'; state: WatchdogState };
 
@@ -100,17 +128,70 @@ export interface RecoveryRequest {
     body: Record<string, unknown>;
 }
 
+export interface ClassifierRecoveryPlan {
+    kind: 'attempt' | 'handoff-required';
+    reason?: 'classifier-compaction-unsupported' | 'classifier-session-missing';
+    compactRequest?: RecoveryRequest;
+    recoveryRequest?: RecoveryRequest;
+}
+
+export interface ClassifierHandoffInput {
+    ledgerCheckpointed: boolean;
+    targetInflight: number;
+    pendingWakeups: number;
+    duplicateWriterTaskIds: string[];
+    successorProcessId?: string;
+    successorWriterCount: number;
+    successorMode: string;
+    successorWorkspaceId: string;
+    successorWorktree: string;
+    watchdogProcessId: string;
+}
+
+export interface ClassifierHandoffPlan {
+    kind: 'ready' | 'fail-closed';
+    reason?:
+        | 'ledger-not-checkpointed'
+        | 'old-writer-active'
+        | 'pending-wakeup'
+        | 'duplicate-writer'
+        | 'fresh-writer-required'
+        | 'successor-binding-mismatch'
+        | 'watchdog-not-retargeted';
+    action?: string;
+    prompt?: string;
+    lineage?: {
+        predecessorProcessId: string;
+        successorProcessId: string;
+    };
+}
+
 export function createWatchdogState(startedAtMs: number): WatchdogState {
     return {
         startedAtMs,
         idleStreak: 0,
         resumeCount: 0,
         lastRecoveryAtMs: null,
+        classifierCircuit: 'closed',
+        classifierRejectionCount: 0,
+        classifierCompactionAttempts: 0,
+        classifierLastOccurrenceId: null,
     };
 }
 
 export function hasExactTerminalMarker(content: string, marker: string): boolean {
     return content.split(/\r?\n/).some(line => line.trim() === marker);
+}
+
+export function classifyWatchdogFailure(error: string | null): WatchdogFailureClass {
+    if (!error) {
+        return 'none';
+    }
+    const hasClassifierStatus = /(?:CAPIError:\s*|HTTP\s+)(?:400|422)\b/i.test(error);
+    const hasClassifierPhrase = /(?:content.{0,48}(?:flagged|blocked|rejected)|possible cybersecurity risk|content policy|safety system)/i.test(error);
+    return hasClassifierStatus && hasClassifierPhrase
+        ? 'classifier-rejection'
+        : 'ordinary-failure';
 }
 
 export function validateDeliveryWatchdogConfig(config: DeliveryWatchdogConfig): void {
@@ -201,6 +282,9 @@ export function deriveWatchdogProbe(
     const duplicateWriterTaskIds: string[] = [];
     const processMetadata = toRecord(snapshot.process?.metadata);
     const processRalph = toRecord(processMetadata.ralph);
+    const provider = typeof processMetadata.provider === 'string'
+        ? processMetadata.provider
+        : null;
 
     for (const task of snapshot.activeTasks) {
         const payload = toRecord(task.payload);
@@ -260,6 +344,14 @@ export function deriveWatchdogProbe(
     const modeMatches = processMetadata.mode === config.mode;
     const ralphSessionMatches = config.mode !== 'ralph'
         || processRalph.sessionId === config.ralphSessionId;
+    const rawFailureClass = classifyWatchdogFailure(snapshot.process?.error ?? null);
+    const failureClass = rawFailureClass === 'classifier-rejection'
+        && snapshot.process?.status === 'completed'
+        ? 'none'
+        : rawFailureClass;
+    const failureOccurrenceId = failureClass === 'classifier-rejection'
+        ? buildFailureOccurrenceId(snapshot.process)
+        : null;
 
     return {
         processStatus: snapshot.process?.status ?? 'missing',
@@ -274,6 +366,10 @@ export function deriveWatchdogProbe(
         pendingWakeups,
         splitBrain: processTerminalOrErrored && sameProcessInflight > 0,
         duplicateWriterTaskIds: duplicateWriterTaskIds.sort(),
+        failureClass,
+        failureOccurrenceId,
+        provider,
+        hasSdkSession: Boolean(snapshot.process?.sdkSessionId?.trim()),
     };
 }
 
@@ -327,6 +423,79 @@ export function confirmWatchdogRecovery(
             kind: 'reject',
             reason: 'duplicate-writer',
             state: resetIdle(state),
+        };
+    }
+    if (state.classifierCircuit === 'open') {
+        return {
+            kind: 'handoff-required',
+            reason: 'classifier-circuit-open',
+            state: resetIdle(state),
+        };
+    }
+    if (probe.failureClass === 'classifier-rejection') {
+        if (state.classifierCircuit === 'attempted') {
+            if (!probe.failureOccurrenceId) {
+                return {
+                    kind: 'handoff-required',
+                    reason: 'classifier-occurrence-unavailable',
+                    state: {
+                        ...resetIdle(state),
+                        classifierCircuit: 'open',
+                    },
+                };
+            }
+            if (probe.failureOccurrenceId === state.classifierLastOccurrenceId) {
+                return {
+                    kind: 'wait',
+                    reason: 'classifier-occurrence-seen',
+                    state: resetIdle(state),
+                };
+            }
+            return {
+                kind: 'handoff-required',
+                reason: 'classifier-recurred',
+                state: {
+                    ...resetIdle(state),
+                    classifierCircuit: 'open',
+                    classifierRejectionCount: state.classifierRejectionCount + 1,
+                    classifierLastOccurrenceId: probe.failureOccurrenceId,
+                },
+            };
+        }
+        if (!probe.failureOccurrenceId) {
+            return {
+                kind: 'handoff-required',
+                reason: 'classifier-occurrence-unavailable',
+                state: {
+                    ...resetIdle(state),
+                    classifierCircuit: 'open',
+                    classifierRejectionCount: state.classifierRejectionCount + 1,
+                },
+            };
+        }
+        if (!probe.hasSdkSession) {
+            return openClassifierCircuit(
+                state,
+                'classifier-session-missing',
+                probe.failureOccurrenceId,
+            );
+        }
+        if (!probe.provider || !CLASSIFIER_COMPACTION_PROVIDERS.has(probe.provider)) {
+            return openClassifierCircuit(
+                state,
+                'classifier-compaction-unsupported',
+                probe.failureOccurrenceId,
+            );
+        }
+        return {
+            kind: 'classifier-attempt',
+            state: {
+                ...resetIdle(state),
+                classifierCircuit: 'attempted',
+                classifierRejectionCount: state.classifierRejectionCount + 1,
+                classifierCompactionAttempts: state.classifierCompactionAttempts + 1,
+                classifierLastOccurrenceId: probe.failureOccurrenceId,
+            },
         };
     }
     if (state.resumeCount >= limits.maxResumes) {
@@ -385,6 +554,80 @@ export function buildRecoveryRequest(
     };
 }
 
+export function planClassifierRecovery(
+    config: DeliveryWatchdogConfig,
+    probe: WatchdogProbe,
+): ClassifierRecoveryPlan {
+    if (!probe.hasSdkSession) {
+        return { kind: 'handoff-required', reason: 'classifier-session-missing' };
+    }
+    if (!probe.provider || !CLASSIFIER_COMPACTION_PROVIDERS.has(probe.provider)) {
+        return { kind: 'handoff-required', reason: 'classifier-compaction-unsupported' };
+    }
+
+    const baseUrl = config.serverUrl.replace(/\/+$/, '');
+    return {
+        kind: 'attempt',
+        compactRequest: {
+            url: `${baseUrl}/api/processes/${encodeURIComponent(config.processId)}/compact`
+                + `?workspaceId=${encodeURIComponent(config.workspaceId)}`,
+            body: { customInstructions: CLASSIFIER_COMPACT_INSTRUCTIONS },
+        },
+        recoveryRequest: buildRecoveryRequest(config, buildClassifierHandoffPrompt(config.ledgerPath)),
+    };
+}
+
+export function planClassifierHandoff(
+    config: DeliveryWatchdogConfig,
+    input: ClassifierHandoffInput,
+): ClassifierHandoffPlan {
+    const failClosed = (reason: NonNullable<ClassifierHandoffPlan['reason']>): ClassifierHandoffPlan => ({
+        kind: 'fail-closed',
+        reason,
+        action: 'Checkpoint the ledger, prove the old writer is quiescent, start exactly one fresh '
+            + 'Autopilot writer, and retarget the detached watchdog before resuming.',
+    });
+
+    if (!input.ledgerCheckpointed) {
+        return failClosed('ledger-not-checkpointed');
+    }
+    if (input.targetInflight > 0) {
+        return failClosed('old-writer-active');
+    }
+    if (input.pendingWakeups > 0) {
+        return failClosed('pending-wakeup');
+    }
+    if (input.duplicateWriterTaskIds.length > 0) {
+        return failClosed('duplicate-writer');
+    }
+    const successorProcessId = input.successorProcessId?.trim();
+    if (
+        !successorProcessId
+        || successorProcessId === config.processId
+        || input.successorWriterCount !== 1
+    ) {
+        return failClosed('fresh-writer-required');
+    }
+    if (
+        input.successorMode !== 'autopilot'
+        || input.successorWorkspaceId !== config.workspaceId
+        || !samePath(input.successorWorktree, config.worktree)
+    ) {
+        return failClosed('successor-binding-mismatch');
+    }
+    if (input.watchdogProcessId !== successorProcessId) {
+        return failClosed('watchdog-not-retargeted');
+    }
+    return {
+        kind: 'ready',
+        prompt: buildClassifierHandoffPrompt(config.ledgerPath),
+        lineage: {
+            predecessorProcessId: config.processId,
+            successorProcessId,
+        },
+    };
+}
+
 export function probeDeliveryWatchdogDatabase(
     config: DeliveryWatchdogConfig,
     nowMs: number = Date.now(),
@@ -400,6 +643,7 @@ export function probeDeliveryWatchdogDatabase(
                 end_time AS endTime,
                 error,
                 working_directory AS workingDirectory,
+                sdk_session_id AS sdkSessionId,
                 metadata
             FROM processes
             WHERE id = ?
@@ -410,6 +654,7 @@ export function probeDeliveryWatchdogDatabase(
             endTime: string | null;
             error: string | null;
             workingDirectory: string | null;
+            sdkSessionId: string | null;
             metadata: string | null;
         } | undefined;
         const taskRows = db.prepare(`
@@ -464,6 +709,7 @@ export function probeDeliveryWatchdogDatabase(
                 endTime: processRow.endTime,
                 error: processRow.error,
                 workingDirectory: processRow.workingDirectory,
+                sdkSessionId: processRow.sdkSessionId,
                 metadata: parseJsonObject(processRow.metadata ?? ''),
             } : null,
             activeTasks: taskRows.map(row => ({
@@ -511,6 +757,42 @@ export function readTerminalMarker(
 
 function resetIdle(state: WatchdogState): WatchdogState {
     return state.idleStreak === 0 ? state : { ...state, idleStreak: 0 };
+}
+
+function openClassifierCircuit(
+    state: WatchdogState,
+    reason: 'classifier-compaction-unsupported' | 'classifier-session-missing',
+    occurrenceId: string,
+): WatchdogDecision {
+    return {
+        kind: 'handoff-required',
+        reason,
+        state: {
+            ...resetIdle(state),
+            classifierCircuit: 'open',
+            classifierRejectionCount: state.classifierRejectionCount + 1,
+            classifierLastOccurrenceId: occurrenceId,
+        },
+    };
+}
+
+function buildFailureOccurrenceId(
+    processSnapshot: WatchdogProcessSnapshot | null,
+): string | null {
+    if (!processSnapshot?.endTime) {
+        return null;
+    }
+    return createHash('sha256')
+        .update(processSnapshot.id)
+        .update('\0')
+        .update(processSnapshot.endTime)
+        .digest('hex');
+}
+
+function buildClassifierHandoffPrompt(ledgerPath: string): string {
+    return `Classifier recovery attempt. Read the authoritative ledger at ${ledgerPath} `
+        + 'and perform exactly its Next bounded action. Keep dense diagnostics on disk and '
+        + 'reference them only by file path.';
 }
 
 function parseJsonObject(value: string): Record<string, unknown> {

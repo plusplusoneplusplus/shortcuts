@@ -36,7 +36,7 @@ describe('long-running-reliability bundled skill', () => {
             description: entry!.description,
             metadata: {
                 author: 'CoC',
-                version: '0.0.1',
+                version: '0.0.2',
             },
         });
     });
@@ -55,6 +55,13 @@ describe('long-running-reliability bundled skill', () => {
             'immediate recheck',
             'duplicate writer',
             'split-brain',
+            'Classifier Circuit Breaker',
+            'one controlled in-place compaction',
+            'opens the circuit',
+            'opaque digest',
+            'Only a distinct later occurrence',
+            'serialized handoff',
+            'predecessor and successor process IDs',
             'exact standalone',
             'bounded wait',
             'targeted cancellation',

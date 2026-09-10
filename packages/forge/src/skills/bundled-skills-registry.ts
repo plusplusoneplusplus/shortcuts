@@ -97,7 +97,7 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
     },
     {
         name: 'long-running-reliability',
-        description: 'Use for multi-hour or unattended autonomous delivery, supervised single-writer coding, Ralph execution, long tests/builds/PR completion, or recovery from SDK timeout, idle timeout, queue/process split-brain, and silent completed-without-continuation stalls. Establishes one writer, a durable ledger, scheduled pacing, and an external detached watchdog; do not use for ordinary one-off commands or simple monitoring.',
+        description: 'Use for multi-hour or unattended autonomous delivery, supervised single-writer coding, Ralph execution, long tests/builds/PR completion, or recovery from SDK timeout, idle timeout, classifier rejection, queue/process split-brain, and silent completed-without-continuation stalls. Establishes one writer, a durable ledger, scheduled pacing, and an external detached watchdog; do not use for ordinary one-off commands or simple monitoring.',
         relativePath: 'long-running-reliability',
     },
     {

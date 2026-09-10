@@ -79,6 +79,10 @@ function healthyProbe(overrides: Partial<WatchdogProbe> = {}): WatchdogProbe {
         pendingWakeups: 0,
         splitBrain: false,
         duplicateWriterTaskIds: [],
+        failureClass: 'none',
+        failureOccurrenceId: null,
+        provider: 'copilot',
+        hasSdkSession: true,
         ...overrides,
     };
 }
@@ -95,6 +99,7 @@ describe('delivery watchdog SQLite probe', () => {
                 end_time TEXT,
                 error TEXT,
                 working_directory TEXT,
+                sdk_session_id TEXT,
                 metadata TEXT
             );
             CREATE TABLE queue_tasks (
@@ -115,13 +120,14 @@ describe('delivery watchdog SQLite probe', () => {
                 root_path TEXT NOT NULL
             );
         `);
-        db.prepare('INSERT INTO processes VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        db.prepare('INSERT INTO processes VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
             config.processId,
             config.workspaceId,
             'completed',
             new Date().toISOString(),
             null,
             config.worktree,
+            'sdk-example',
             JSON.stringify({ mode: 'autopilot' }),
         );
         db.prepare('INSERT INTO queue_tasks VALUES (?, ?, ?, ?, ?, ?)').run(
@@ -162,6 +168,7 @@ describe('delivery watchdog SQLite probe', () => {
                 end_time TEXT,
                 error TEXT,
                 working_directory TEXT,
+                sdk_session_id TEXT,
                 metadata TEXT
             );
             CREATE TABLE queue_tasks (
@@ -186,22 +193,24 @@ describe('delivery watchdog SQLite probe', () => {
             mode: 'ralph',
             ralph: { sessionId: config.ralphSessionId },
         });
-        db.prepare('INSERT INTO processes VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        db.prepare('INSERT INTO processes VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
             config.processId,
             config.workspaceId,
             'completed',
             new Date().toISOString(),
             null,
             config.worktree,
+            'sdk-example',
             metadata,
         );
-        db.prepare('INSERT INTO processes VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        db.prepare('INSERT INTO processes VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
             'queue_replacement',
             config.workspaceId,
             'completed',
             new Date().toISOString(),
             null,
             config.worktree,
+            'sdk-replacement',
             metadata,
         );
         db.prepare('INSERT INTO wakeups VALUES (?, ?, ?)').run(
@@ -466,6 +475,11 @@ describe('delivery watchdog detached lifecycle', () => {
             running: true,
             pid: 4242,
             resumeCount: 1,
+            idleStreak: 1,
+            classifierCircuit: 'closed',
+            classifierRejectionCount: 0,
+            classifierCompactionAttempts: 0,
+            classifierLastOccurrenceId: null,
         });
         expect(requestDeliveryWatchdogStop(config.stateDir)).toEqual({
             requested: true,

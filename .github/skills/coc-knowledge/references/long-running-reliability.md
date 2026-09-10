@@ -11,8 +11,8 @@ continuations from a process outside the CoC server and SDK request.
 |---|---|---|
 | Skill | `packages/forge/resources/bundled-skills/long-running-reliability/SKILL.md` | Three-role protocol, ledger contract, recovery boundaries, invocation, PR terminal criteria |
 | Registry | `packages/forge/src/skills/bundled-skills-registry.ts` | Bundled discovery metadata |
-| State engine | `packages/forge/src/reliability/delivery-watchdog.ts` | Pure idle/recheck/recovery decisions, duplicate-writer classification, recovery request construction, read-only SQLite probe |
-| Runtime | `packages/forge/src/reliability/watchdog-runtime.ts` | Detached lifecycle, persistent state, heartbeat/recovery logs, stop request, HTTP health/recovery calls |
+| State engine | `packages/forge/src/reliability/delivery-watchdog.ts` | Pure idle/recheck/recovery and classifier-circuit decisions, duplicate-writer classification, request construction, read-only SQLite probe |
+| Runtime | `packages/forge/src/reliability/watchdog-runtime.ts` | Detached lifecycle, persistent state, classifier fail-closed boundary, heartbeat/recovery logs, stop request, HTTP calls |
 | CLI | `packages/coc/src/commands/reliability-watchdog.ts` | Option resolution, input validation, start/status/stop output |
 | Detached entry | `packages/coc/src/commands/reliability-watchdog-runner.ts` | Server-independent Node child process |
 
@@ -46,6 +46,10 @@ ID remains target activity. Any other active `autopilot` or `ralph` payload
 whose normalized folder or working directory matches the target is a duplicate
 writer.
 
+The probe classifies the target error without exposing its text. It reports
+`failureClass`, provider, and resumable SDK-session presence alongside activity,
+binding, wakeup, split-brain, and duplicate-writer state.
+
 Target queued/running work or any pending target wakeup resets the idle streak.
 Three idle polls return a `recheck` decision. The runtime immediately probes
 again and rejects new activity, duplicate writers, changed process bindings,
@@ -67,6 +71,50 @@ A terminal/error process that still has a same-process active task is
 split-brain. The state engine resets the idle streak and the runtime logs a
 bounded wait. It never treats task cancellation as limiter release.
 
+## Classifier Circuit
+
+A classifier rejection requires both an HTTP/CAPI `400` or `422` signature and a
+content-classification or safety-rejection phrase. Timeouts and unrelated
+responses remain ordinary failures. Prompts and ledgers keep dense diagnostics on
+disk and carry only neutral verdicts plus file paths.
+
+Classifier state is independent of normal recovery state:
+`classifierCircuit=closed|attempted|open`, rejection count, and compaction-attempt
+count. A classifier attempt does not increment `resumeCount` or update its
+cooldown.
+
+After the normal idle/recheck guards, the first rejection may compact one
+resumable Copilot, Codex, or Claude provider session in place. A successful
+compact permits one mode-correct neutral attempt: Autopilot receives a
+same-process prompt referencing the ledger's `Next bounded action`; Ralph uses
+its session resume route. OpenCode and missing sessions fail closed.
+
+Compaction preserves the provider-session identity and CoC transcript. A
+failed/no-op compact, uncertain dispatch, unsupported provider, missing session,
+or recurring rejection opens the circuit. The runtime persists
+`classifier-circuit-open`, predecessor lineage, and a fixed manual-handoff action,
+then performs no further same-process enqueue.
+
+`failureOccurrenceId` is a SHA-256 digest of process ID and failure `endTime`; it
+contains no error text. Successful partial process updates can preserve an older
+error column, so `status=completed` suppresses classifier failure even when that
+column remains populated. `classifierLastOccurrenceId` lets an attempted circuit
+wait on the same stored rejection without changing counters. A different digest
+is recurrence and opens the circuit. State files without occurrence fields restore
+that value as `null`.
+
+Queue retry creates a fresh task but retains the original payload prompt. Fork
+copies provider history and CoC turns. Neither operation is a clean handoff.
+Public APIs lack one atomic operation covering old-writer quiescence,
+duplicate-worktree exclusion, fresh enqueue, successor discovery, lineage, and
+watchdog retargeting, so automatic classifier handoff is fail-closed.
+
+The supervisor completes a serialized handoff by checkpointing the ledger,
+proving the predecessor has no active task or pending wakeup, rechecking duplicate
+writers, creating exactly one fresh Autopilot writer from a minimal ledger-path
+prompt, recording predecessor/successor IDs, and binding one detached watchdog to
+the successor before work resumes.
+
 ## Detached Lifecycle
 
 `startDeliveryWatchdog` acquires an exclusive state-directory claim, then
@@ -77,9 +125,9 @@ compiled runner with `detached: true` and ignored stdio. Start waits for the
 child's persisted startup heartbeat before reporting success.
 
 State preserves the instance ID, PID, target, mode, start time, idle streak,
-recovery count, last recovery, last heartbeat, latest probe, status, and action.
-Recovery attempts remain bounded across a replacement process for the same
-target.
+recovery count, classifier circuit/counters, last recovery, last heartbeat,
+latest probe, status, action, and manual-handoff lineage. Recovery attempts remain
+bounded across a replacement process for the same target.
 
 `status` combines persisted state with a PID liveness probe. `stop` writes an
 instance-bound stop request. The child observes that file and exits; CoC never
@@ -115,9 +163,10 @@ script, so both mirror forms retain a working helper reference.
 
 ## Validation
 
-Forge tests cover the pure state transitions, exact terminal matching,
-multi-workspace duplicate detection, split-brain, limits, recovery request
+Forge tests cover pure state transitions, classifier signatures and attempt
+ceilings, serialized-handoff prerequisites, exact terminal matching,
+multi-workspace duplicate detection, split-brain, limits, mode-correct request
 routing, read-only SQLite fixtures, detached deployment, persisted status,
-instance-bound stop, and runner recovery. CoC tests cover command registration,
-option validation, default installation, package resources, and Claude/Codex
-mirrors.
+instance-bound stop, and fail-closed runtime behavior. CoC tests cover command
+registration, option validation, default installation, package resources, and
+Claude/Codex mirrors.

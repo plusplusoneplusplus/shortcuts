@@ -8,6 +8,7 @@ import {
     confirmWatchdogRecovery,
     createWatchdogState,
     evaluateWatchdogPoll,
+    planClassifierRecovery,
     probeDeliveryWatchdogDatabase,
     readTerminalMarker,
     validateDeliveryWatchdogConfig,
@@ -32,7 +33,13 @@ export type DeliveryWatchdogRunStatus =
     | 'failed'
     | 'ttl'
     | 'max-resumes'
-    | 'binding-changed';
+    | 'binding-changed'
+    | 'classifier-circuit-open';
+
+export interface ClassifierLineageState {
+    predecessorProcessId: string;
+    handoff: 'manual-required';
+}
 
 export interface DeliveryWatchdogPersistentState extends WatchdogState {
     instanceId: string;
@@ -45,6 +52,7 @@ export interface DeliveryWatchdogPersistentState extends WatchdogState {
     lastHeartbeatAtMs: number;
     lastProbe: WatchdogProbe | null;
     lastAction: string;
+    classifierLineage?: ClassifierLineageState;
     error?: string;
 }
 
@@ -64,9 +72,14 @@ export interface DeliveryWatchdogStatus {
     mode: string;
     resumeCount: number;
     idleStreak: number;
+    classifierCircuit: WatchdogState['classifierCircuit'];
+    classifierRejectionCount: number;
+    classifierCompactionAttempts: number;
+    classifierLastOccurrenceId: string | null;
     startedAt: string;
     lastHeartbeatAt: string;
     lastAction: string;
+    classifierLineage?: ClassifierLineageState;
     error?: string;
 }
 
@@ -125,14 +138,7 @@ export async function startDeliveryWatchdog(
             ? existingState
             : null;
         writePersistentState(config.stateDir, {
-            ...(priorState
-                ? {
-                    startedAtMs: priorState.startedAtMs,
-                    idleStreak: 0,
-                    resumeCount: priorState.resumeCount,
-                    lastRecoveryAtMs: priorState.lastRecoveryAtMs,
-                }
-                : createWatchdogState(now)),
+            ...restoreWatchdogState(priorState, now),
             instanceId: claim.instanceId,
             pid: process.pid,
             status: 'starting',
@@ -143,6 +149,9 @@ export async function startDeliveryWatchdog(
             lastHeartbeatAtMs: now,
             lastProbe: probe,
             lastAction: 'awaiting child launch',
+            ...(priorState?.classifierLineage
+                ? { classifierLineage: priorState.classifierLineage }
+                : {}),
         });
 
         let spawnedPid: number;
@@ -179,6 +188,7 @@ export function getDeliveryWatchdogStatus(
     deps: Pick<WatchdogRuntimeDependencies, 'isProcessAlive'> = {},
 ): DeliveryWatchdogStatus {
     const state = requireState(stateDir);
+    const watchdogState = restoreWatchdogState(state, state.startedAtMs, false);
     const processAlive = (deps.isProcessAlive ?? defaultIsProcessAlive)(state.pid);
     return {
         running: processAlive && ['starting', 'running', 'stop-requested'].includes(state.status),
@@ -188,11 +198,16 @@ export function getDeliveryWatchdogStatus(
         processId: state.processId,
         worktree: state.worktree,
         mode: state.mode,
-        resumeCount: state.resumeCount,
-        idleStreak: state.idleStreak,
-        startedAt: new Date(state.startedAtMs).toISOString(),
+        resumeCount: watchdogState.resumeCount,
+        idleStreak: watchdogState.idleStreak,
+        classifierCircuit: watchdogState.classifierCircuit,
+        classifierRejectionCount: watchdogState.classifierRejectionCount,
+        classifierCompactionAttempts: watchdogState.classifierCompactionAttempts,
+        classifierLastOccurrenceId: watchdogState.classifierLastOccurrenceId,
+        startedAt: new Date(watchdogState.startedAtMs).toISOString(),
         lastHeartbeatAt: new Date(state.lastHeartbeatAtMs).toISOString(),
         lastAction: state.lastAction,
+        ...(state.classifierLineage ? { classifierLineage: state.classifierLineage } : {}),
         ...(state.error ? { error: state.error } : {}),
     };
 }
@@ -235,13 +250,9 @@ export async function runDeliveryWatchdog(
     const previous = readJsonFile<DeliveryWatchdogPersistentState>(
         path.join(stateDir, WATCHDOG_STATE_FILENAME),
     );
-    const baseState = previous && sameTarget(previous, config)
-        ? {
-            startedAtMs: previous.startedAtMs,
-            idleStreak: 0,
-            resumeCount: previous.resumeCount,
-            lastRecoveryAtMs: previous.lastRecoveryAtMs,
-        }
+    const priorForTarget = previous && sameTarget(previous, config) ? previous : null;
+    const baseState = priorForTarget
+        ? restoreWatchdogState(priorForTarget, now())
         : createWatchdogState(now());
     let state: DeliveryWatchdogPersistentState = {
         ...baseState,
@@ -255,6 +266,9 @@ export async function runDeliveryWatchdog(
         lastHeartbeatAtMs: now(),
         lastProbe: null,
         lastAction: 'startup',
+        ...(priorForTarget?.classifierLineage
+            ? { classifierLineage: priorForTarget.classifierLineage }
+            : {}),
     };
 
     try {
@@ -345,8 +359,6 @@ export async function runDeliveryWatchdog(
 
             if (decision.kind === 'recheck') {
                 try {
-                    const prompt = readBoundedPrompt(config.promptFile);
-                    const request = buildRecoveryRequest(config, prompt);
                     await verifyServer(config);
 
                     const dispatchTime = now();
@@ -390,6 +402,8 @@ export async function runDeliveryWatchdog(
                     };
 
                     if (decision.kind === 'recover') {
+                        const prompt = readBoundedPrompt(config.promptFile);
+                        const request = buildRecoveryRequest(config, prompt);
                         state.lastAction = `recovery-intent-${state.resumeCount}`;
                         writePersistentState(stateDir, state);
                         const response = await postJson(request.url, request.body);
@@ -399,6 +413,47 @@ export async function runDeliveryWatchdog(
                             `recovery ${state.resumeCount} enqueued mode=${config.mode}`
                                 + formatRecoveryAcknowledgement(response),
                         );
+                    } else if (decision.kind === 'classifier-attempt') {
+                        const plan = planClassifierRecovery(config, recheckProbe);
+                        if (
+                            plan.kind !== 'attempt'
+                            || !plan.compactRequest
+                            || !plan.recoveryRequest
+                        ) {
+                            state = finishClassifierCircuit(
+                                config,
+                                state,
+                                plan.reason ?? 'classifier recovery unavailable',
+                            );
+                            break;
+                        }
+                        state.lastAction = `classifier-attempt-intent-${state.classifierCompactionAttempts}`;
+                        writePersistentState(stateDir, state);
+                        const compactResponse = await postJson(
+                            plan.compactRequest.url,
+                            plan.compactRequest.body,
+                        );
+                        if (!classifierCompactionSucceeded(compactResponse)) {
+                            state = finishClassifierCircuit(
+                                config,
+                                state,
+                                'classifier compaction did not rewrite history',
+                            );
+                            break;
+                        }
+                        const response = await postJson(
+                            plan.recoveryRequest.url,
+                            plan.recoveryRequest.body,
+                        );
+                        state.lastAction = 'classifier attempt enqueued';
+                        appendLog(
+                            config,
+                            'classifier attempt enqueued'
+                                + formatRecoveryAcknowledgement(response),
+                        );
+                    } else if (decision.kind === 'handoff-required') {
+                        state = finishClassifierCircuit(config, state, decision.reason);
+                        break;
                     } else if (decision.kind === 'reject') {
                         appendLog(
                             config,
@@ -408,6 +463,14 @@ export async function runDeliveryWatchdog(
                         appendLog(config, `immediate recheck rejected recovery: ${decision.reason}`);
                     }
                 } catch {
+                    if (decision.kind === 'classifier-attempt') {
+                        state = finishClassifierCircuit(
+                            config,
+                            state,
+                            'classifier attempt failed',
+                        );
+                        break;
+                    }
                     state = {
                         ...state,
                         idleStreak: 0,
@@ -496,6 +559,26 @@ function finish(
     return next;
 }
 
+function finishClassifierCircuit(
+    config: DeliveryWatchdogConfig,
+    state: DeliveryWatchdogPersistentState,
+    reason: string,
+): DeliveryWatchdogPersistentState {
+    const next: DeliveryWatchdogPersistentState = {
+        ...state,
+        status: 'classifier-circuit-open',
+        classifierCircuit: 'open',
+        idleStreak: 0,
+        classifierLineage: {
+            predecessorProcessId: config.processId,
+            handoff: 'manual-required',
+        },
+        lastAction: 'classifier circuit open; serialized fresh-writer handoff required',
+    };
+    persistAndLog(config, next, `classifier circuit open: ${sanitizeClassifierReason(reason)}`);
+    return next;
+}
+
 function persistAndLog(
     config: DeliveryWatchdogConfig,
     state: DeliveryWatchdogPersistentState,
@@ -510,6 +593,41 @@ function writePersistentState(
     state: DeliveryWatchdogPersistentState,
 ): void {
     writeWatchdogJsonAtomic(path.join(stateDir, WATCHDOG_STATE_FILENAME), state);
+}
+
+function restoreWatchdogState(
+    state: Partial<WatchdogState> | null,
+    nowMs: number,
+    resetIdleStreak: boolean = true,
+): WatchdogState {
+    const fresh = createWatchdogState(nowMs);
+    if (!state) {
+        return fresh;
+    }
+    return {
+        startedAtMs: typeof state.startedAtMs === 'number' ? state.startedAtMs : fresh.startedAtMs,
+        idleStreak: resetIdleStreak
+            ? 0
+            : typeof state.idleStreak === 'number'
+                ? state.idleStreak
+                : 0,
+        resumeCount: typeof state.resumeCount === 'number' ? state.resumeCount : 0,
+        lastRecoveryAtMs: typeof state.lastRecoveryAtMs === 'number'
+            ? state.lastRecoveryAtMs
+            : null,
+        classifierCircuit: state.classifierCircuit === 'attempted' || state.classifierCircuit === 'open'
+            ? state.classifierCircuit
+            : 'closed',
+        classifierRejectionCount: typeof state.classifierRejectionCount === 'number'
+            ? state.classifierRejectionCount
+            : 0,
+        classifierCompactionAttempts: typeof state.classifierCompactionAttempts === 'number'
+            ? state.classifierCompactionAttempts
+            : 0,
+        classifierLastOccurrenceId: typeof state.classifierLastOccurrenceId === 'string'
+            ? state.classifierLastOccurrenceId
+            : null,
+    };
 }
 
 function requireState(stateDir: string): DeliveryWatchdogPersistentState {
@@ -842,6 +960,29 @@ function formatRecoveryAcknowledgement(response: string): string {
     } catch {
         return '';
     }
+}
+
+function classifierCompactionSucceeded(response: string): boolean {
+    try {
+        const parsed = JSON.parse(response) as { success?: unknown };
+        return parsed.success === true;
+    } catch {
+        return false;
+    }
+}
+
+function sanitizeClassifierReason(reason: string): string {
+    const allowed = new Set([
+        'classifier-circuit-open',
+        'classifier-occurrence-unavailable',
+        'classifier-recurred',
+        'classifier-compaction-unsupported',
+        'classifier-session-missing',
+        'classifier recovery unavailable',
+        'classifier compaction did not rewrite history',
+        'classifier attempt failed',
+    ]);
+    return allowed.has(reason) ? reason : 'classifier recovery unavailable';
 }
 
 function toRecord(value: unknown): Record<string, any> {

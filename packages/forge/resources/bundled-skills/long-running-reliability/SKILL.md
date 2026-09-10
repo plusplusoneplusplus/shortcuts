@@ -1,9 +1,9 @@
 ---
 name: long-running-reliability
-description: Use for multi-hour or unattended autonomous delivery, supervised single-writer coding, Ralph execution, long tests/builds/PR completion, or recovery from SDK timeout, idle timeout, queue/process split-brain, and silent completed-without-continuation stalls. Establishes one writer, a durable ledger, scheduled pacing, and an external detached watchdog; do not use for ordinary one-off commands or simple monitoring.
+description: Use for multi-hour or unattended autonomous delivery, supervised single-writer coding, Ralph execution, long tests/builds/PR completion, or recovery from SDK timeout, idle timeout, classifier rejection, queue/process split-brain, and silent completed-without-continuation stalls. Establishes one writer, a durable ledger, scheduled pacing, and an external detached watchdog; do not use for ordinary one-off commands or simple monitoring.
 metadata:
   author: CoC
-  version: "0.0.1"
+  version: "0.0.2"
 ---
 
 # Long-Running Reliability
@@ -37,9 +37,11 @@ task targeting the same normalized worktree.
 - A shell that backgrounds without a follow-up read can produce no activity and
   hit the idle limit. A still in-flight background tool can suppress that safety
   net until the wall limit. Reap background shells before ending a turn.
-- Dense crash or audit text persists in conversation context and can repeatedly
-  trigger content classification. Keep full output on disk and carry compact
-  verdicts plus file paths.
+- A `400` or `422` content-classifier rejection is distinct from timeout and stall
+  recovery. Rejected history can persist in the provider session, so a blind
+  same-process retry can deterministically fail again.
+- Keep crash, audit, security, and tool-output detail on disk. Prompts and ledgers
+  carry only compact neutral engineering verdicts and file paths.
 - Startup orphan reconciliation runs when CoC starts. Pending wakeups re-arm
   after restart, but neither wakeups nor a supervisor cron replace an external
   watchdog.
@@ -93,6 +95,54 @@ queued/running task. Log it and keep a bounded wait. Never assume cancellation
 releases a leaked exclusive limiter slot; release occurs only when the executor
 unwinds.
 
+## Classifier Circuit Breaker
+
+The watchdog recognizes classifier rejection only when an HTTP/CAPI `400` or
+`422` signature appears with a content-classification or safety-rejection phrase.
+Unrelated `400`/`422` responses remain ordinary failures.
+
+On the first rejection, use the normal idle streak, endpoint verification,
+duplicate-writer guard, and immediate recheck. Copilot, Codex, and Claude may
+receive one controlled in-place compaction followed by one mode-correct neutral
+attempt. OpenCode and processes without a resumable SDK session fail closed.
+Classifier attempts have their own counter and never consume the normal resume
+budget.
+
+Compaction summarizes the same provider history; it does not create a clean
+conversation. A failed/no-op compact, uncertain dispatch, or recurring classifier
+rejection opens the circuit. An open circuit prohibits every further same-process
+enqueue.
+
+The watchdog identifies a rejection occurrence with an opaque digest of the
+process ID and failure completion time; raw error text never enters watchdog state
+or logs. CoC partial updates can retain an older error after later success, so a
+completed process does not represent a rejection. After one attempt, the same
+occurrence waits without changing counters. Only a distinct later occurrence opens
+the circuit. State files without an occurrence field load with no prior occurrence.
+
+Queue retry is not a clean handoff because it retains the source payload prompt.
+Fork is not clean because it copies provider and CoC history. Automatic handoff
+also fails closed because public APIs do not atomically guard the old writer,
+create a fresh writer, discover its process ID, persist lineage, and retarget the
+watchdog.
+
+Use this serialized handoff:
+
+1. Checkpoint the authoritative ledger with one next bounded action.
+2. Prove the old writer has no queued/running task or pending wakeup.
+3. Recheck that no other Autopilot/Ralph writer targets the worktree.
+4. Start exactly one fresh Autopilot writer with a minimal prompt that references
+   the ledger path rather than copying diagnostics.
+5. Record predecessor and successor process IDs in the ledger.
+6. Stop the old watchdog through its instance-bound control, start one watchdog
+   for the successor, and recheck that the writers never overlap.
+
+Example lifecycle: keep detailed evidence in `./reliability-state/evidence.log`;
+on a first classifier rejection, allow one supported compact plus neutral attempt;
+on recurrence, checkpoint `./reliability-state/DELIVERY.md`, wait for the old
+writer to become fully idle, start one fresh writer with only that ledger path,
+record lineage, and retarget the watchdog before work resumes.
+
 ## Mode-Correct Recovery
 
 - **Autopilot continuation:** enqueue one follow-up carrying the same process ID.
@@ -142,7 +192,9 @@ coc reliability-watchdog stop --state-dir ./reliability-state/watchdog
 `stop` writes an instance-bound stop request; it does not signal an arbitrary
 reused PID. The helper resolves the endpoint from `--server-url`,
 `COC_SERVER_URL`, or CoC serve configuration, verifies `/api/health`, and
-requires an explicit URL when runtime binding differs from configuration.
+requires an explicit URL when runtime binding differs from configuration. Status
+includes classifier circuit state, rejection/compaction counters, and
+manual-handoff lineage when the circuit is open.
 
 ## PR-Ready Terminal Criteria
 
