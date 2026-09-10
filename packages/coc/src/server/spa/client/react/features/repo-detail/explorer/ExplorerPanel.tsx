@@ -1608,10 +1608,10 @@ export function ExplorerPanel({
 
             {/* Quick Open (Ctrl+P) */}
             <QuickOpen
-                workspaceId={workspaceId}
+                scope={{ kind: 'repo', workspaceId }}
                 open={quickOpenVisible}
                 onClose={() => setQuickOpenVisible(false)}
-                onFileSelect={handleQuickOpenSelect}
+                onFileSelect={result => handleQuickOpenSelect(result.path)}
             />
 
             {/* Exact Open (Ctrl+O) */}

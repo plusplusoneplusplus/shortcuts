@@ -38,8 +38,9 @@ describe('QuickOpen component', () => {
     });
 
     describe('props', () => {
-        it('accepts workspaceId prop', () => {
-            expect(source).toContain('workspaceId: string');
+        it('accepts an explicit search scope', () => {
+            expect(source).toContain('export type QuickOpenScope');
+            expect(source).toContain("kind: 'repo-group'");
         });
 
         it('accepts open prop', () => {
@@ -51,7 +52,7 @@ describe('QuickOpen component', () => {
         });
 
         it('accepts onFileSelect callback', () => {
-            expect(source).toContain('onFileSelect: (filePath: string) => void');
+            expect(source).toContain('onFileSelect: (result: QuickOpenResult)');
         });
     });
 
@@ -72,7 +73,8 @@ describe('QuickOpen component', () => {
         });
 
         it('searches on the server per keystroke', () => {
-            expect(source).toContain('explorerApi.searchFiles(workspaceId, trimmed');
+            expect(source).toContain('explorerApi.searchFiles(scope.workspaceId, trimmed');
+            expect(source).toContain('searchRepoGroupFiles(');
         });
 
         it('legacy: kept for the removed local-matching mode', () => {
@@ -91,7 +93,7 @@ describe('QuickOpen component', () => {
         });
 
         it('holds the server results in state', () => {
-            expect(source).toContain('const [results, setResults] = useState<ExplorerSearchResult[]>([])');
+            expect(source).toContain('const [results, setResults] = useState<QuickOpenResult[]>([])');
         });
 
         it('renders the server ranking as-is', () => {
@@ -101,8 +103,8 @@ describe('QuickOpen component', () => {
             expect(source).toContain('setResults(data.results);');
         });
 
-        it('re-searches when the query or workspace changes', () => {
-            expect(source).toContain('}, [query, open, workspaceId]);');
+        it('re-searches when the query or scope changes', () => {
+            expect(source).toContain('}, [query, open, retry, scopeKey]);');
         });
 
         it('shows an empty list, and issues no request, when the query is empty', () => {

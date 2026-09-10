@@ -136,12 +136,20 @@ effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
 ## Quick Open file search
 
-`explorer/QuickOpen.tsx` debounces keystrokes and asks
-`/api/repos/:repoId/search` per query, then highlights using the `indices` the
-server returned rather than re-deriving the match locally. Ranking happens in the
-Rust scorer only; `server/shared/fuzzy-file-score.ts` is its reference
-implementation, not a second runtime path. Results stay rendered while the query
-changes; only the first load shows `Loading files…`.
+`explorer/QuickOpen.tsx` takes an explicit repo or repo-group search scope.
+Repo scope asks `/api/repos/:repoId/search`; group scope calls
+`repoGroupService.searchRepoGroupFiles` with the group owner's base URL. Both
+debounce keystrokes, cancel superseded requests, reject stale responses, and
+highlight only the returned `indices`. Ranking happens in the Rust scorer only;
+`server/shared/fuzzy-file-score.ts` is its reference implementation, not a
+second runtime path. Results stay rendered while the query changes; only the
+first load shows `Searching files…`.
+
+Group rows remain one flat server-ranked list. Their identity includes
+`workspaceId`, their visible/accessibility label includes `repoName`, and the
+dialog distinguishes no matches, no searchable members, partial results, and a
+retryable total failure. `onFileSelect` receives the full result and may return
+`false` to keep the query and highlight intact for a declined target switch.
 
 `ExactOpen.tsx` and `ExplorerPanel.tsx` still call `/search` per query. That endpoint
 is backed by a cached repo listing (`RepoTreeService.invalidateFileListCache`), so

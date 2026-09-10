@@ -35,11 +35,13 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
 // a pick": their search/ranking behaviour has its own suites, and what matters
 // here is that the panel opens the right one and files what comes back.
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/QuickOpen', () => ({
-    QuickOpen: ({ workspaceId, open, onFileSelect }: {
-        workspaceId: string; open: boolean; onFileSelect: (p: string) => void;
+    QuickOpen: ({ scope, open, onFileSelect }: {
+        scope: { kind: 'repo'; workspaceId: string };
+        open: boolean;
+        onFileSelect: (result: { path: string }) => void;
     }) => (open ? (
-        <div data-testid="quick-open-dialog" data-workspace={workspaceId}>
-            <button type="button" data-testid="quick-open-pick" onClick={() => onFileSelect('src/deep/app.ts')}>
+        <div data-testid="quick-open-dialog" data-workspace={scope.workspaceId}>
+            <button type="button" data-testid="quick-open-pick" onClick={() => onFileSelect({ path: 'src/deep/app.ts' })}>
                 pick
             </button>
         </div>

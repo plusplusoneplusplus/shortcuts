@@ -10,8 +10,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import type { ExplorerSearchResult } from '@plusplusoneplusplus/coc-client';
+import type {
+    ExplorerRepoGroupSearchResult,
+    ExplorerSearchResult,
+} from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../../ui/cn';
+import { searchRepoGroupFiles } from '../../../repos/repoGroupService';
 import { explorerApi } from './explorerApi';
 
 /** Maximum results requested and rendered for a query. */
@@ -24,11 +28,18 @@ const RESULT_LIMIT = 50;
  */
 const SEARCH_DEBOUNCE_MS = 40;
 
+export type QuickOpenScope =
+    | { kind: 'repo'; workspaceId: string }
+    | { kind: 'repo-group'; groupId: string; groupName: string; liveRepoCount: number; baseUrl?: string };
+
+export type QuickOpenResult = ExplorerSearchResult | ExplorerRepoGroupSearchResult;
+
 export interface QuickOpenProps {
-    workspaceId: string;
+    scope: QuickOpenScope;
     open: boolean;
     onClose: () => void;
-    onFileSelect: (filePath: string) => void;
+    /** Return false to keep the dialog open without changing its selection. */
+    onFileSelect: (result: QuickOpenResult) => void | boolean | Promise<void | boolean>;
 }
 
 /**
@@ -82,15 +93,24 @@ function dirName(p: string): string {
     return idx < 0 ? '' : p.slice(0, idx);
 }
 
-export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpenProps) {
+function isGroupResult(result: QuickOpenResult): result is ExplorerRepoGroupSearchResult {
+    return 'workspaceId' in result;
+}
+
+export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps) {
     const [query, setQuery] = useState('');
-    const [results, setResults] = useState<ExplorerSearchResult[]>([]);
+    const [results, setResults] = useState<QuickOpenResult[]>([]);
     const [loading, setLoading] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
+    const [groupStatus, setGroupStatus] = useState<'complete' | 'partial' | 'failed' | 'no-searchable-members' | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [retry, setRetry] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const requestIdRef = useRef(0);
+    const scopeKey = scope.kind === 'repo' ? `repo:${scope.workspaceId}` : `group:${scope.groupId}:${scope.baseUrl ?? ''}`;
 
     // Start each open from a clean slate; nothing is fetched until the first
     // keystroke, so opening the dialog costs no network at all.
@@ -99,17 +119,27 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
         setQuery('');
         setResults([]);
         setHighlightIndex(0);
-    }, [open, workspaceId]);
+        setGroupStatus(null);
+        setError(null);
+    }, [open, scopeKey]);
 
     // Search on the server, debounced, one in-flight request at a time.
     useEffect(() => {
-        if (!open) return;
+        const requestId = ++requestIdRef.current;
+        if (!open) {
+            abortRef.current?.abort();
+            setError(null);
+            setGroupStatus(null);
+            return;
+        }
 
         const trimmed = query.trim();
         if (!trimmed) {
             abortRef.current?.abort();
             setResults([]);
             setLoading(false);
+            setError(null);
+            setGroupStatus(null);
             return;
         }
 
@@ -118,24 +148,47 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
             const abort = new AbortController();
             abortRef.current = abort;
             setLoading(true);
-            explorerApi.searchFiles(workspaceId, trimmed, { limit: RESULT_LIMIT, signal: abort.signal })
+            setError(null);
+            const searching = scope.kind === 'repo'
+                ? explorerApi.searchFiles(scope.workspaceId, trimmed, { limit: RESULT_LIMIT, signal: abort.signal })
+                : searchRepoGroupFiles(
+                    scope.groupId,
+                    trimmed,
+                    { limit: RESULT_LIMIT, signal: abort.signal },
+                    scope.baseUrl,
+                );
+            searching
                 .then(data => {
-                    if (abort.signal.aborted) return;
+                    if (abort.signal.aborted || requestId !== requestIdRef.current || !open) return;
+                    if ('status' in data) {
+                        setGroupStatus(data.status);
+                        if (data.status === 'failed') {
+                            setResults([]);
+                            setError('Could not search this repo group.');
+                            return;
+                        }
+                    }
                     setResults(data.results);
                 })
                 .catch(() => {
-                    if (abort.signal.aborted) return;
-                    setResults([]);
+                    if (abort.signal.aborted || requestId !== requestIdRef.current || !open) return;
+                    if (scope.kind === 'repo-group') {
+                        setError('Could not search this repo group.');
+                        setGroupStatus('failed');
+                    } else {
+                        setResults([]);
+                    }
                 })
                 .finally(() => {
-                    if (!abort.signal.aborted) setLoading(false);
+                    if (!abort.signal.aborted && requestId === requestIdRef.current) setLoading(false);
                 });
         }, SEARCH_DEBOUNCE_MS);
 
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current);
+            if (abortRef.current) abortRef.current.abort();
         };
-    }, [query, open, workspaceId]);
+    }, [query, open, retry, scopeKey]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -145,11 +198,12 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
         };
     }, []);
 
-    // Auto-focus input when opened
+    // Auto-focus input when opened, then restore the prior focus on close.
     useEffect(() => {
-        if (open) {
-            requestAnimationFrame(() => inputRef.current?.focus());
-        }
+        if (!open) return;
+        const previous = document.activeElement as HTMLElement | null;
+        requestAnimationFrame(() => inputRef.current?.focus());
+        return () => previous?.focus();
     }, [open]);
 
     // Reset highlight when results change
@@ -159,12 +213,12 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
 
     // Scroll highlighted item into view
     useEffect(() => {
-        const item = listRef.current?.children[highlightIndex] as HTMLElement | undefined;
+        const item = listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[highlightIndex];
         item?.scrollIntoView({ block: 'nearest' });
     }, [highlightIndex]);
 
-    const handleSelect = useCallback((filePath: string) => {
-        onFileSelect(filePath);
+    const handleSelect = useCallback(async (result: QuickOpenResult) => {
+        if (await onFileSelect(result) === false) return;
         onClose();
     }, [onFileSelect, onClose]);
 
@@ -178,7 +232,7 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
         } else if (e.key === 'Enter') {
             e.preventDefault();
             if (results[highlightIndex]) {
-                handleSelect(results[highlightIndex].path);
+                void handleSelect(results[highlightIndex]);
             }
         } else if (e.key === 'Escape') {
             e.preventDefault();
@@ -203,7 +257,15 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
                 )}
                 onClick={e => e.stopPropagation()}
                 data-testid="quick-open-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label={scope.kind === 'repo-group' ? `Open file in ${scope.groupName}` : 'Open file'}
             >
+                {scope.kind === 'repo-group' && (
+                    <div className="px-3 pt-2 text-xs font-medium text-[#616161] dark:text-[#c8c8c8]">
+                        Open file in {scope.groupName}
+                    </div>
+                )}
                 {/* Search input */}
                 <div className="flex items-center px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <span className="text-[#999] dark:text-[#888] mr-2 text-sm">🔍</span>
@@ -236,33 +298,64 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
                     ref={listRef}
                     className="flex-1 overflow-y-auto"
                     data-testid="quick-open-results"
+                    role="listbox"
                 >
+                    {groupStatus === 'partial' && (
+                        <div className="px-3 py-1.5 text-xs text-[#8a6d1d] dark:text-[#cca700]" data-testid="quick-open-partial">
+                            Some repositories could not be searched.
+                        </div>
+                    )}
                     {/* Only blank out while the first search of a query is in
                         flight — once results exist they stay rendered, so typing
                         never flickers. */}
-                    {loading && results.length === 0 ? (
+                    {!query.trim() && scope.kind === 'repo-group' ? (
+                        <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-empty-query">
+                            Type to search across {scope.liveRepoCount} {scope.liveRepoCount === 1 ? 'repository' : 'repositories'}.
+                        </div>
+                    ) : loading && results.length === 0 ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]">
                             Searching files…
                         </div>
+                    ) : error ? (
+                        <div className="flex flex-col items-center justify-center gap-2 py-4 text-sm text-[#b42318] dark:text-[#f48771]" data-testid="quick-open-error">
+                            <span>{error}</span>
+                            <button
+                                className="rounded border border-current px-2 py-0.5 text-xs"
+                                onClick={() => setRetry(value => value + 1)}
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    ) : groupStatus === 'no-searchable-members' ? (
+                        <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-no-members">
+                            This repo group has no searchable repositories.
+                        </div>
                     ) : results.length === 0 ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-no-results">
-                            No matching files
+                            {scope.kind === 'repo-group' ? 'No files found in this repo group.' : 'No matching files'}
                         </div>
                     ) : (
                         results.map((result, idx) => {
                             const matched = splitIndices(result.path, result.indices ?? []);
                             return (
                                 <div
-                                    key={result.path}
+                                    key={isGroupResult(result) ? `${result.workspaceId}:${result.path}` : result.path}
                                     className={cn(
                                         'flex items-center px-3 py-1.5 cursor-pointer text-sm',
                                         idx === highlightIndex
                                             ? 'bg-[#0078d4]/10 dark:bg-[#0078d4]/20'
                                             : 'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e]',
                                     )}
-                                    onClick={() => handleSelect(result.path)}
+                                    onClick={() => void handleSelect(result)}
                                     onMouseEnter={() => setHighlightIndex(idx)}
                                     data-testid={`quick-open-item-${idx}`}
+                                    role="option"
+                                    aria-selected={idx === highlightIndex}
+                                    aria-label={[
+                                        fileName(result.path),
+                                        dirName(result.path),
+                                        isGroupResult(result) ? result.repoName : '',
+                                    ].filter(Boolean).join(', ')}
                                 >
                                     <span className="text-xs mr-2 opacity-60">📄</span>
                                     <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
@@ -271,6 +364,11 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
                                     {dirName(result.path) && (
                                         <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
                                             {highlightMatches(dirName(result.path), matched.dir)}
+                                        </span>
+                                    )}
+                                    {isGroupResult(result) && (
+                                        <span className="ml-auto rounded bg-[#e8e8e8] dark:bg-[#3c3c3c] px-1.5 py-0.5 text-[10px] text-[#555] dark:text-[#d4d4d4]" data-testid={`quick-open-repo-${idx}`}>
+                                            {result.repoName}
                                         </span>
                                     )}
                                 </div>

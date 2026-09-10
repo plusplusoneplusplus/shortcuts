@@ -915,10 +915,10 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     target workspace — the same clone the column browses — not
                     the panel's own scope, which in a repo group is the group. */}
                 <QuickOpen
-                    workspaceId={target}
+                    scope={{ kind: 'repo', workspaceId: target }}
                     open={quickOpenVisible}
                     onClose={() => setQuickOpenVisible(false)}
-                    onFileSelect={handlePanelFileSelect}
+                    onFileSelect={result => handlePanelFileSelect(result.path)}
                 />
                 <ExactOpen
                     workspaceId={target}
