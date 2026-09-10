@@ -33,6 +33,8 @@ beforeAll(() => {
     write('docs/a file with spaces.md');
     write('docs/日本語/ファイル.md');
     write('docs/café/résumé.md');
+    write('a/x.ts');
+    write('x/a.ts');
 });
 
 afterAll(() => {
@@ -96,12 +98,47 @@ describe('search marshalling', () => {
         index = await addon.buildFileIndex(root, {});
     });
 
-    it('returns paths, scores and ascending highlight indices', async () => {
+    it('keeps the public search result shape unchanged', async () => {
         const [best] = await index.search('index', 5);
         expect(best.path).toBe('src/index.ts');
         expect(best.score).toBeGreaterThan(0);
         expect(best.indices).toEqual([4, 5, 6, 7, 8]);
         expect(best.indices.map(i => best.path[i]).join('')).toBe('index');
+        expect(Object.keys(best).sort()).toEqual(['indices', 'path', 'score']);
+    });
+
+    it('exposes every native ranking key for cross-index merging', async () => {
+        const ordered = index.files(0, index.len());
+        const [basename] = await index.searchRanked('index', 5);
+        expect(basename).toEqual({
+            path: 'src/index.ts',
+            score: expect.any(Number),
+            indices: [4, 5, 6, 7, 8],
+            ranking: {
+                tier: 2,
+                targetLen: 'index.ts'.length,
+                pathLen: 'src/index.ts'.length,
+                snapshotIndex: ordered.indexOf('src/index.ts'),
+            },
+        });
+
+        const [pathOnly] = await index.searchRanked('srcindex', 5);
+        expect(pathOnly.ranking).toEqual({
+            tier: 1,
+            targetLen: 'src/index.ts'.length,
+            pathLen: 'src/index.ts'.length,
+            snapshotIndex: ordered.indexOf('src/index.ts'),
+        });
+    });
+
+    it('preserves tier ordering when public scores are equal', async () => {
+        const matches = (await index.searchRanked('x', 10)).filter(
+            match => match.path === 'a/x.ts' || match.path === 'x/a.ts',
+        );
+        expect(matches.map(match => [match.path, match.score, match.ranking.tier])).toEqual([
+            ['a/x.ts', matches[0].score, 2],
+            ['x/a.ts', matches[0].score, 1],
+        ]);
     });
 
     it('indices are JavaScript string offsets for non-ASCII paths', async () => {

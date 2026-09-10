@@ -31,6 +31,7 @@ export type {
     NativeFileIndex,
     NativeFileIndexAddon,
     NativeFileMatch,
+    NativeRankedFileMatch,
 } from './file-index';
 
 export { loadNativeContentSearch, nativeContentSearchStatus } from './content-search';

@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use coc_native_core::repo_index::{FuzzyMatcher, RepoIndex, WalkOptions};
+use coc_native_core::repo_index::{FuzzyMatcher, Hit, RepoIndex, WalkOptions};
 use napi::bindgen_prelude::{AsyncTask, Error, Result, Status, Task};
 use napi::Env;
 use napi_derive::napi;
@@ -26,6 +26,29 @@ pub struct FileMatch {
     /// Matched UTF-16 offsets within `path`, ascending — the same offsets a
     /// JavaScript string index would use.
     pub indices: Vec<u32>,
+}
+
+/// Native ordering keys for merging matches from multiple file indexes.
+#[napi(object)]
+pub struct FileMatchRanking {
+    /// 2 when the basename matched, 1 when only the full path matched.
+    pub tier: u32,
+    /// UTF-16 length of the basename for tier 2, or the full path for tier 1.
+    pub target_len: u32,
+    /// UTF-16 length of the full path.
+    pub path_len: u32,
+    /// Position in the index snapshot, used for stable within-repo ties.
+    pub snapshot_index: u32,
+}
+
+/// A file match with the complete native ordering tuple.
+#[napi(object)]
+pub struct RankedFileMatch {
+    pub path: String,
+    pub score: u32,
+    /// Matched UTF-16 offsets within `path`, ascending.
+    pub indices: Vec<u32>,
+    pub ranking: FileMatchRanking,
 }
 
 /// An in-memory, gitignore-aware index of one repository's file paths.
@@ -87,22 +110,53 @@ pub struct SearchTask {
     limit: u32,
 }
 
+fn ranked_match(snapshot: &coc_native_core::repo_index::Snapshot, hit: Hit) -> RankedFileMatch {
+    RankedFileMatch {
+        path: snapshot.path_at(hit.index).to_owned(),
+        score: hit.score,
+        indices: hit.indices,
+        ranking: FileMatchRanking {
+            tier: u32::from(hit.tier),
+            target_len: hit.target_len,
+            path_len: hit.path_len,
+            snapshot_index: hit.index,
+        },
+    }
+}
+
+fn search_ranked(matcher: &FuzzyMatcher, query: &str, limit: usize) -> Vec<RankedFileMatch> {
+    let snapshot = matcher.snapshot();
+    matcher.search(query, limit).into_iter().map(|hit| ranked_match(snapshot, hit)).collect()
+}
+
 impl Task for SearchTask {
     type Output = Vec<FileMatch>;
     type JsValue = Vec<FileMatch>;
 
     fn compute(&mut self) -> Result<Self::Output> {
-        let snapshot = self.matcher.snapshot();
-        Ok(self
-            .matcher
-            .search(&self.query, self.limit as usize)
+        Ok(search_ranked(&self.matcher, &self.query, self.limit as usize)
             .into_iter()
-            .map(|hit| FileMatch {
-                path: snapshot.path_at(hit.index).to_owned(),
-                score: hit.score,
-                indices: hit.indices,
-            })
+            .map(|hit| FileMatch { path: hit.path, score: hit.score, indices: hit.indices })
             .collect())
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+pub struct SearchRankedTask {
+    matcher: Arc<FuzzyMatcher>,
+    query: String,
+    limit: u32,
+}
+
+impl Task for SearchRankedTask {
+    type Output = Vec<RankedFileMatch>;
+    type JsValue = Vec<RankedFileMatch>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        Ok(search_ranked(&self.matcher, &self.query, self.limit as usize))
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
@@ -141,6 +195,12 @@ impl FileIndex {
     #[napi(ts_return_type = "Promise<FileMatch[]>")]
     pub fn search(&self, query: String, limit: u32) -> AsyncTask<SearchTask> {
         AsyncTask::new(SearchTask { matcher: self.index.searcher(), query, limit })
+    }
+
+    /// Search with the complete native ordering tuple for server-side merging.
+    #[napi(ts_return_type = "Promise<RankedFileMatch[]>")]
+    pub fn search_ranked(&self, query: String, limit: u32) -> AsyncTask<SearchRankedTask> {
+        AsyncTask::new(SearchRankedTask { matcher: self.index.searcher(), query, limit })
     }
 
     /// Re-walk the root and atomically swap in the new path list.

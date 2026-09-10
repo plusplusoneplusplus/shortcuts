@@ -24,7 +24,7 @@ An npm workspaces monorepo of published Node packages. This file owns the cross-
 
 ### coc-native
 
-One module per capability lives on the Rust core, N-API, and TypeScript sides. The file index behind quick-open search combines an `ignore`-crate parallel gitignore-aware walk with a fuzzy path scorer ported from `packages/coc/src/server/shared/fuzzy-file-score.ts`.
+One module per capability lives on the Rust core, N-API, and TypeScript sides. The file index behind quick-open search combines an `ignore`-crate parallel gitignore-aware walk with a fuzzy path scorer ported from `packages/coc/src/server/shared/fuzzy-file-score.ts`. `FileIndex.search()` returns the public path, score, and highlight positions; `searchRanked()` adds the native basename tier, scored-target length, full-path length, and snapshot index for deterministic server-side merges across repositories.
 
 The Notes index exposes asynchronous initial build, bounded search, full rebuild, and batches of at most 1,024 root-relative incremental upserts/removals over immutable Markdown-content snapshots. Refresh writers serialize per index, build from the last complete snapshot, and atomically swap only on success, so searches during refresh see a complete old or new state. Each root retains its Unicode lowercase cache and symlink policy.
 
