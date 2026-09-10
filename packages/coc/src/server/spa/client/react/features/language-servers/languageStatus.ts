@@ -40,7 +40,17 @@ const UNAVAILABLE_LABELS: Record<string, string> = {
     'no-definition': 'No language server',
     capacity: 'Language servers busy',
     'invalid-path': 'Language support unavailable',
+    // `CONTAINER_UNSUPPORTED_REASON` in `languageServerClient.ts`; a literal
+    // here, like every other reason, so this module stays import-free of it.
+    'container-unsupported': 'Unavailable in container',
 };
+
+/**
+ * Refusals a retry cannot change, so the badge offers no button. Everything
+ * else stays retryable: turning support on or freeing capacity happens
+ * elsewhere, and the retry is what picks that change up.
+ */
+const NON_RETRYABLE_UNAVAILABLE = new Set<string>(['container-unsupported']);
 
 export function describeLanguageStatus(
     snapshot: LanguageDocumentSnapshot | null | undefined,
@@ -59,9 +69,7 @@ export function describeLanguageStatus(
             label,
             title: snapshot.unavailable?.detail || label,
             tone: 'warning',
-            // Turning support on, or freeing capacity, happens elsewhere; the
-            // retry is what picks the change up, so it stays offered.
-            canRestart: true,
+            canRestart: !NON_RETRYABLE_UNAVAILABLE.has(reason),
             busy: false,
         };
     }

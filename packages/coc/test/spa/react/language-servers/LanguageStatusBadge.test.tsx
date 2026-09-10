@@ -9,11 +9,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { LanguageStatusBadge } from '../../../../src/server/spa/client/react/features/language-servers/LanguageStatusBadge';
 import type { LanguageDocumentSnapshot } from '../../../../src/server/spa/client/react/features/language-servers/documentStore';
-import type { LanguageServerSessionStateView } from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
+import {
+    CONTAINER_UNSUPPORTED_REASON,
+    type LanguageServerSessionStateView,
+} from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
 
 function snapshot(
     status: LanguageDocumentSnapshot['status'],
     state: Partial<LanguageServerSessionStateView> | null,
+    unavailable?: LanguageDocumentSnapshot['unavailable'],
 ): LanguageDocumentSnapshot {
     return {
         uri: 'coc-file://ws-1/src/a.ts',
@@ -24,7 +28,8 @@ function snapshot(
         status,
         languageId: 'typescript',
         displayName: 'TypeScript',
-        unavailable: status === 'unavailable' ? { reason: 'disabled', detail: 'Language support is off.' } : null,
+        unavailable: unavailable
+            ?? (status === 'unavailable' ? { reason: 'disabled', detail: 'Language support is off.' } : null),
         state: state ? { status: 'ready', definitionId: 'typescript', displayName: 'TypeScript', ...state } : null,
     };
 }
@@ -51,6 +56,22 @@ describe('LanguageStatusBadge', () => {
         fireEvent.click(screen.getByTestId('language-restart-btn'));
 
         expect(onRestart).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers no retry when the container proxy puts the host out of reach', () => {
+        render(
+            <LanguageStatusBadge
+                snapshot={snapshot('unavailable', null, {
+                    reason: CONTAINER_UNSUPPORTED_REASON,
+                    detail: 'Language support is not available while this workspace is open through the container agent.',
+                })}
+                onRestart={() => {}}
+            />,
+        );
+
+        expect(screen.getByTestId('language-status-label').textContent).toBe('Unavailable in container');
+        expect(screen.queryByTestId('language-restart-btn')).toBeNull();
+        expect(screen.getByTestId('language-status').getAttribute('data-tone')).toBe('warning');
     });
 
     it('offers no retry while the server is already starting', () => {

@@ -265,6 +265,21 @@ and transport code stays generic.
 - `src/server/spa/client/react/features/language-servers/languageServersApi.ts`
   — routes every call through `getCocClientForWorkspace`, so configuration is
   read and written on the host that owns the files.
+- `src/server/spa/client/react/features/language-servers/languageServerClient.ts`
+  — `detectLanguageTransportBlock(workspaceId)` is the one gate in front of the
+  socket. In container mode the dashboard is reached through the agent proxy,
+  which forwards `/ws` and `/ws/agent-link` and destroys every other upgrade, so
+  `/ws/language-server` would close before it opened and the reconnect backoff
+  would run forever on a badge reading "connecting…". The gate therefore opens no
+  socket and settles the document as `unavailable` with reason
+  `container-unsupported` (`CONTAINER_UNSUPPORTED_REASON`), which the store reads
+  synchronously through `getUnavailable()` and `languageStatus.ts` labels
+  "Unavailable in container" with no retry offered, since a retry would reach the
+  same unreachable host. A remote clone is exempt: its socket goes straight to
+  that CoC server's host, which is never itself in container mode. This is a gate,
+  not a redesign — the wire protocol and socket code are untouched, so a relay
+  over the agent link replaces `detectLanguageTransportBlock` and nothing above
+  the transport changes.
 - `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
   — the repo Settings tab's `language-servers` section: master enable toggle,
   the `effective` list with a per-definition enable checkbox, and an editor for

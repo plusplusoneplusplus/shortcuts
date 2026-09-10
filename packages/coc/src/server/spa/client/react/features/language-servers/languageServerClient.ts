@@ -21,8 +21,8 @@
  * incremental edit on top of a fresh replay would corrupt the server's copy.
  */
 
-import { getWsPath } from '../../utils/config';
-import { cloneWsUrlForWorkspace } from '../../repos/cloneRegistry';
+import { getWsPath, isContainerMode } from '../../utils/config';
+import { cloneWsUrlForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { getEditingSessionId } from './editingSession';
 
 // ============================================================================
@@ -62,6 +62,46 @@ export interface LanguageServerAttachedInfo {
 export interface LanguageServerUnavailableInfo {
     reason: string;
     detail: string;
+}
+
+/**
+ * The document is on a host this browser cannot open a language socket to: the
+ * page is served through the container agent proxy, which forwards `/ws` and
+ * `/ws/agent-link` and destroys every other upgrade.
+ */
+export const CONTAINER_UNSUPPORTED_REASON = 'container-unsupported';
+
+/**
+ * Whether a language socket can reach the host that owns `workspaceId`, and if
+ * not, what to tell the user.
+ *
+ * Only one case says no today. In container mode the dashboard is reached
+ * through an agent proxy that serves two websocket paths and nothing else, so
+ * `/ws/language-server` is destroyed during the upgrade. Without this gate the
+ * socket closes before it opens and the reconnect backoff runs forever, leaving
+ * the badge on "connecting…" with no explanation.
+ *
+ * A remote clone is excluded deliberately: its socket goes straight to that
+ * CoC server's own host, which is never in container mode, so the proxy the
+ * page was served through has no say in it.
+ *
+ * This is a gate, not a redesign. The wire protocol and the socket code stay
+ * exactly as they are, so a relay over the agent link can replace the gate
+ * later without touching anything above the transport.
+ */
+export function detectLanguageTransportBlock(
+    workspaceId: string | null | undefined,
+): LanguageServerUnavailableInfo | null {
+    if (lookupCloneBaseUrl(workspaceId)) {
+        return null;
+    }
+    if (!isContainerMode()) {
+        return null;
+    }
+    return {
+        reason: CONTAINER_UNSUPPORTED_REASON,
+        detail: 'Language support is not available while this workspace is open through the container agent.',
+    };
 }
 
 type ServerMessage =
@@ -144,6 +184,8 @@ export interface LanguageServerClientOptions {
     pingIntervalMs?: number;
     /** Default wait for an attachment to go live inside `sendRequest`. */
     attachTimeoutMs?: number;
+    /** Injected in tests; defaults to `detectLanguageTransportBlock`. */
+    detectTransportBlock?: (workspaceId: string) => LanguageServerUnavailableInfo | null;
 }
 
 const OPEN = 1;
@@ -191,6 +233,7 @@ export class LanguageServerClient {
     private readonly maxReconnectDelayMs: number;
     private readonly pingIntervalMs: number;
     private readonly attachTimeoutMs: number;
+    private readonly detectTransportBlock: (workspaceId: string) => LanguageServerUnavailableInfo | null;
 
     private socket: SocketLike | null = null;
     private status: LanguageServerConnectionStatus = 'idle';
@@ -216,6 +259,7 @@ export class LanguageServerClient {
         this.maxReconnectDelayMs = options.maxReconnectDelayMs ?? 30_000;
         this.pingIntervalMs = options.pingIntervalMs ?? 30_000;
         this.attachTimeoutMs = options.attachTimeoutMs ?? 10_000;
+        this.detectTransportBlock = options.detectTransportBlock ?? detectLanguageTransportBlock;
         this.reconnectDelay = this.reconnectDelayMs;
     }
 
@@ -263,9 +307,17 @@ export class LanguageServerClient {
                 statusListeners: new Set(),
             };
             this.attachments.set(record.localId, record);
-            this.connect();
-            if (this.status === 'open') {
-                this.sendAttach(record);
+            const blocked = this.detectTransportBlock(this.workspaceId);
+            if (blocked) {
+                // Settle the document as unavailable without a socket. The store
+                // reads `getUnavailable()` when it builds its record, so this is
+                // visible to the badge on the first render.
+                record.unavailable = blocked;
+            } else {
+                this.connect();
+                if (this.status === 'open') {
+                    this.sendAttach(record);
+                }
             }
         }
         record.refCount += 1;
@@ -292,6 +344,11 @@ export class LanguageServerClient {
 
     private connect(): void {
         if (this.disposed || this.socket || this.status === 'connecting') {
+            return;
+        }
+        if (this.detectTransportBlock(this.workspaceId)) {
+            // No reachable endpoint, so no socket and no backoff loop.
+            this.clearReconnectTimer();
             return;
         }
         this.clearReconnectTimer();
@@ -586,6 +643,13 @@ export class LanguageServerClient {
      */
     private restartRecord(record: AttachmentRecord): void {
         if (this.disposed || record.released) {
+            return;
+        }
+        const blocked = this.detectTransportBlock(this.workspaceId);
+        if (blocked) {
+            // A retry cannot reach the host either; keep the explanation.
+            record.unavailable = blocked;
+            emit(record.unavailableListeners, blocked);
             return;
         }
         if (this.status !== 'open') {

@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { describeLanguageStatus } from '../../../../src/server/spa/client/react/features/language-servers/languageStatus';
+import { CONTAINER_UNSUPPORTED_REASON } from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
 import type { LanguageDocumentSnapshot } from '../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import type { LanguageServerSessionStateView } from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
 
@@ -134,6 +135,24 @@ describe('describeLanguageStatus', () => {
             'Language support unavailable',
             'Language support unavailable',
         ]);
+    });
+
+    it('says language support cannot reach the host through the container, with no retry', () => {
+        // A retry would open the same unreachable socket, so the button is gone.
+        const description = describeLanguageStatus(snapshot({
+            status: 'unavailable',
+            state: null,
+            unavailable: {
+                reason: CONTAINER_UNSUPPORTED_REASON,
+                detail: 'Language support is not available while this workspace is open through the container agent.',
+            },
+        }));
+
+        expect(description.label).toBe('Unavailable in container');
+        expect(description.title)
+            .toBe('Language support is not available while this workspace is open through the container agent.');
+        expect(description.tone).toBe('warning');
+        expect(description.canRestart).toBe(false);
     });
 
     it('treats a document attached to nothing as connecting, not as broken', () => {

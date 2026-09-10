@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
+    CONTAINER_UNSUPPORTED_REASON,
     LanguageServerClient,
     LanguageServerClientError,
     getLanguageServerClient,
@@ -544,6 +545,98 @@ describe('LanguageServerClient', () => {
             handle.restart();
 
             expect(socket.sentOfType('lsp-restart')).toHaveLength(0);
+        });
+    });
+
+    describe('container mode', () => {
+        // The dashboard is reached through the container agent proxy, which
+        // forwards `/ws` and `/ws/agent-link` and destroys every other upgrade.
+        // Opening the language socket there closes it before it opens and the
+        // backoff runs forever, so the client must not open it at all.
+        const originalConfig = (window as unknown as Record<string, unknown>).__DASHBOARD_CONFIG__;
+
+        beforeEach(() => {
+            (window as unknown as Record<string, unknown>).__DASHBOARD_CONFIG__ = {
+                apiBasePath: '/api',
+                wsPath: '/ws',
+                containerMode: true,
+            };
+        });
+
+        afterEach(() => {
+            (window as unknown as Record<string, unknown>).__DASHBOARD_CONFIG__ = originalConfig;
+        });
+
+        it('opens no socket and refuses the document with the container reason', () => {
+            const client = makeClient();
+            const attachment = client.attach('src/index.ts');
+
+            expect(FakeSocket.instances).toHaveLength(0);
+            expect(client.getStatus()).toBe('idle');
+            expect(attachment.getInfo()).toBeNull();
+            expect(attachment.getUnavailable()).toEqual({
+                reason: CONTAINER_UNSUPPORTED_REASON,
+                detail: 'Language support is not available while this workspace is open through the container agent.',
+            });
+            client.dispose();
+        });
+
+        it('never schedules a reconnect, so the badge does not spin forever', () => {
+            vi.useFakeTimers();
+            const client = makeClient();
+            client.attach('src/index.ts');
+
+            vi.advanceTimersByTime(120_000);
+
+            expect(FakeSocket.instances).toHaveLength(0);
+            expect(client.getStatus()).toBe('idle');
+            client.dispose();
+        });
+
+        it('keeps the explanation when the user retries instead of opening a socket', () => {
+            const client = makeClient();
+            const attachment = client.attach('src/index.ts');
+            const seen: string[] = [];
+            attachment.onUnavailable((info) => seen.push(info.reason));
+
+            attachment.restart();
+
+            expect(seen).toEqual([CONTAINER_UNSUPPORTED_REASON]);
+            expect(FakeSocket.instances).toHaveLength(0);
+            client.dispose();
+        });
+
+        it('fails a request with the container reason rather than waiting for the attach timeout', async () => {
+            const client = makeClient();
+            const attachment = client.attach('src/index.ts');
+
+            await expect(attachment.sendRequest('textDocument/hover')).rejects.toMatchObject({
+                name: 'LanguageServerClientError',
+                code: CONTAINER_UNSUPPORTED_REASON,
+            });
+            expect(FakeSocket.instances).toHaveLength(0);
+            client.dispose();
+        });
+
+        it('still opens the socket for a remote clone, whose own host is not behind the proxy', () => {
+            registerCloneBaseUrls([{ workspaceId: 'ws-1', baseUrl: 'http://10.0.0.5:4100' }]);
+            const client = makeClient();
+            const attachment = client.attach('src/index.ts');
+
+            expect(FakeSocket.instances).toHaveLength(1);
+            expect(latest().url.startsWith('ws://10.0.0.5:4100/')).toBe(true);
+            expect(attachment.getUnavailable()).toBeNull();
+            client.dispose();
+        });
+
+        it('is inert when the detector says the host is reachable', () => {
+            // The gate is the only thing container mode changes; with it
+            // answering `null` the transport behaves exactly as before.
+            const client = makeClient({ detectTransportBlock: () => null });
+            client.attach('src/index.ts');
+
+            expect(FakeSocket.instances).toHaveLength(1);
+            client.dispose();
         });
     });
 

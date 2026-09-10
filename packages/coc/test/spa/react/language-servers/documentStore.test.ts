@@ -8,14 +8,18 @@
  * host session is replaced.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     LanguageDocumentStore,
     browserDocumentUri,
     readSyncOptions,
     type LspDiagnostic,
 } from '../../../../src/server/spa/client/react/features/language-servers/documentStore';
-import { FakeClient, diagnostic, readyState } from './fakeLanguageTransport';
+import {
+    CONTAINER_UNSUPPORTED_REASON,
+    LanguageServerClient,
+} from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
+import { FakeClient, FakeSocket, diagnostic, readyState } from './fakeLanguageTransport';
 
 describe('readSyncOptions', () => {
     it('reads the shorthand number form', () => {
@@ -542,5 +546,50 @@ describe('LanguageDocumentStore', () => {
             expect(store.documentCount).toBe(0);
             expect(() => store.open({ path: 'a.ts', text: 'a' })).toThrow(/disposed/);
         });
+    });
+});
+
+describe('LanguageDocumentStore in container mode', () => {
+    // The real transport client here, not `FakeClient`: the point is that the
+    // store's first snapshot already says "unavailable" because the client
+    // refused the attachment without a socket.
+    const originalConfig = (window as unknown as Record<string, unknown>).__DASHBOARD_CONFIG__;
+
+    beforeEach(() => {
+        FakeSocket.instances = [];
+        (window as unknown as Record<string, unknown>).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            containerMode: true,
+        };
+    });
+
+    afterEach(() => {
+        (window as unknown as Record<string, unknown>).__DASHBOARD_CONFIG__ = originalConfig;
+    });
+
+    it('opens a document as unavailable, with no socket and no buffer loss', () => {
+        const client = new LanguageServerClient({
+            workspaceId: 'ws-1',
+            editingSessionId: 'session-a',
+            createSocket: (url: string) => new FakeSocket(url),
+        });
+        const store = new LanguageDocumentStore({ workspaceId: 'ws-1', client });
+
+        const view = store.open({ path: 'src/a.ts', text: 'const a = 1;\n', fallbackLanguageId: 'typescript' });
+
+        expect(FakeSocket.instances).toHaveLength(0);
+        expect(view.getStatus()).toBe('unavailable');
+        expect(view.isReady()).toBe(false);
+        expect(view.getSnapshot().unavailable?.reason).toBe(CONTAINER_UNSUPPORTED_REASON);
+        // The editor still owns the text; only language support is missing.
+        expect(view.getText()).toBe('const a = 1;\n');
+
+        view.update('const a = 2;\n');
+        expect(view.getText()).toBe('const a = 2;\n');
+        expect(view.getStatus()).toBe('unavailable');
+
+        store.dispose();
+        client.dispose();
     });
 });
