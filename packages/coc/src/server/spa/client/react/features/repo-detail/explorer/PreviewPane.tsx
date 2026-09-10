@@ -6,12 +6,36 @@
  * transport, keeps trusted-path read-only forcing, and owns the
  * dirty/status/save callback contract with `ExplorerPanel`. Fetching, retry,
  * truncation and the edit buffer all live in `useFileContent`.
+ *
+ * It is also the first host of language support (AC-02/AC-03). This is where the
+ * decision is made that a blob is a *live repo document*: a real file in this
+ * workspace, read whole, reachable on the workspace's own host. A trusted
+ * absolute path, a truncated oversize file and a binary blob all stay ordinary
+ * viewers with no document behind them. Once that decision is made and the
+ * editor has a model, this is also where the model is moved onto its shadow
+ * language and the Monaco language providers are registered over the document —
+ * one registration per model, disposed with it.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { editor as monacoEditor } from 'monaco-editor';
 import { Spinner, Button } from '../../../ui';
 import { FileViewer } from '../../../shared/file-viewer/FileViewer';
+import { getMonacoLanguage, type EditorModelMountContext } from '../../../shared/file-viewer/MonacoFileEditor';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
+import { toContentChanges } from '../../language-servers/monacoBridge';
+import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
+import { LanguageStatusBadge } from '../../language-servers/LanguageStatusBadge';
+import {
+    registerLanguageProviders,
+    type MonacoLike,
+    type ProviderModel,
+} from '../../language-servers/languageProviders';
+import { applyShadowLanguage, type ShadowMonaco } from '../../language-servers/shadowLanguage';
+import {
+    registerEditorNavigator,
+    type LanguageNavigationTarget,
+} from '../../language-servers/editorNavigation';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
@@ -26,6 +50,11 @@ export interface PreviewPaneProps {
      * when the file is opened from a content-search hit.
      */
     revealLine?: number;
+    /**
+     * One-based column within `revealLine` for the cursor. A search hit leaves it
+     * unset; a language-server navigation supplies the target symbol's column.
+     */
+    revealColumn?: number;
     onClose?: () => void;
     /** When true the editor is non-editable and save/dirty UI is suppressed. */
     readOnly?: boolean;
@@ -55,12 +84,21 @@ export interface PreviewPaneProps {
      * panel) react by refreshing instead of leaving a dead Retry loop.
      */
     onNotFound?: () => void;
+    /**
+     * Where a "go to definition" that lands in ANOTHER file should open. The
+     * surface that renders this pane owns its tab strip, so it is the one that
+     * opens or re-activates the target tab and passes the position back down as
+     * `revealLine` / `revealColumn`. A pane whose host sets no handler still
+     * navigates within its own file — Monaco does that itself — but a
+     * cross-file jump is declined, so nothing silently disappears.
+     */
+    onNavigate?: (target: { path: string; name: string; line: number; column: number }) => void;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, revealLine, revealColumn, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -80,14 +118,122 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
     }, [onNotFound]);
 
     const {
-        displayBlob, loading, error, status, retry,
-        isDirty, isSaving, onChange: handleEditorChange, save: handleSave,
+        blob, displayBlob, isOversized, loading, error, status, retry,
+        isDirty, isSaving, editedContent, onChange: recordEdit, save: writeFile,
     } = useFileContent({
         key: `${isTrusted ? 'trusted' : repoId}:${actualPath}`,
         read,
         write,
         onError: handleNotFound,
     });
+
+    // What the file holds on disk, as far as this pane knows. It starts as the
+    // blob that was read and moves forward only when a write succeeds, because
+    // `useFileContent` keeps serving the original `blob` after a save. Feeding
+    // the stale original to the document store would let a clean buffer be
+    // reset to pre-save text.
+    const diskText = blob?.encoding === 'utf-8' ? blob.content : '';
+    const [savedText, setSavedText] = useState<string | null>(null);
+    useEffect(() => { setSavedText(null); }, [blob]);
+
+    // A live repo document, or not. A trusted absolute path belongs to no
+    // workspace, an oversize file is shown truncated and must never be sent as
+    // if it were complete, and a binary blob has no text to synchronize.
+    const languageEnabled = !isTrusted && !loading && !error
+        && blob?.encoding === 'utf-8' && !isOversized;
+
+    const languageDocument = useLanguageDocument({
+        workspaceId: repoId,
+        path: actualPath,
+        enabled: languageEnabled,
+        text: savedText ?? diskText,
+        fallbackLanguageId: getMonacoLanguage(fileName),
+    });
+    const {
+        handleChange: recordLanguageEdit, markSaved, view: languageView, restart: restartLanguageServer,
+    } = languageDocument;
+
+    // The Monaco language the editor will actually use for this file, so the
+    // providers are registered under the same id the model carries.
+    const monacoLanguageId = getMonacoLanguage(fileName);
+
+    // A jump that leaves this file. It is answered here rather than in the
+    // navigation module because only this pane knows which workspace it is
+    // showing: a target in another workspace is not this surface's to open, and
+    // declining it leaves Monaco free to fall through instead of opening the
+    // wrong repo's file. The handler is read through a ref so a host that
+    // rebuilds its callback every render does not tear the providers down with
+    // it.
+    const navigateRef = useRef(onNavigate);
+    navigateRef.current = onNavigate;
+    const handleNavigate = useCallback((target: LanguageNavigationTarget) => {
+        const navigate = navigateRef.current;
+        if (!navigate || target.workspaceId !== repoId) return false;
+        navigate({
+            path: target.path,
+            name: target.path.split('/').pop() || target.path,
+            line: target.line,
+            column: target.column,
+        });
+        return true;
+    }, [repoId]);
+
+    // The moment the feature stops being plumbing: with a model in hand and a
+    // document behind it, hover/definition/references/completion/signature help
+    // become real. The registration is torn down by the editor when the model
+    // goes away, and rebuilt when the document is replaced, because a provider
+    // outliving its buffer would answer out of a closed document.
+    //
+    // Both casts narrow the real Monaco namespace to the structural slice the
+    // provider module describes; `languageProviders.ts` deliberately carries no
+    // runtime Monaco dependency, so this boundary is where the two meet.
+    const handleModelMount = useCallback(({ monaco, model }: EditorModelMountContext) => {
+        if (!languageView) return;
+        // Before registering anything, move the model off `typescript` /
+        // `javascript` so Monaco's bundled worker stops answering for it. The
+        // providers below then register under whichever id the model ended up
+        // carrying, which is also the id nothing else provides for.
+        const shadow = applyShadowLanguage(monaco as unknown as ShadowMonaco, model);
+        const registration = registerLanguageProviders({
+            monaco: monaco as unknown as MonacoLike,
+            model: model as unknown as ProviderModel,
+            view: languageView,
+            languageId: shadow?.languageId ?? monacoLanguageId,
+        });
+        // Claim the navigations that START in this model, so the global editor
+        // opener knows which surface asked and lands the target in its strip.
+        const navigation = registerEditorNavigator(model, handleNavigate);
+        return () => {
+            navigation.dispose();
+            registration.dispose();
+            shadow?.revert();
+        };
+    }, [languageView, monacoLanguageId, handleNavigate]);
+
+    // One editor change feeds two consumers: the render buffer, and the
+    // document that the language server sees. Monaco's change list is converted
+    // here rather than in the viewer, so the shared viewer stays free of LSP.
+    const handleEditorChange = useCallback((
+        value: string,
+        changes?: readonly monacoEditor.IModelContentChange[],
+    ) => {
+        recordEdit(value);
+        // No change list (a full model reset, or a host that only reports text)
+        // means a full-text update, which is what `undefined` asks the store for.
+        recordLanguageEdit(value, changes && changes.length > 0 ? toContentChanges(changes) : undefined);
+    }, [recordEdit, recordLanguageEdit]);
+
+    // `didSave` goes out only after the write actually succeeded — a failed
+    // save leaves the buffer dirty and the server's copy unchanged.
+    const handleSave = useCallback(async (): Promise<boolean> => {
+        const written = editedContent;
+        const ok = await writeFile();
+        if (ok) {
+            setSavedText(written);
+            markSaved(written);
+        }
+        return ok;
+    }, [editedContent, writeFile, markSaved]);
 
     // Surface unsaved-edits state to the owner so a workspace switch can prompt
     // before discarding the buffer (AC-03). Report the current value whenever it
@@ -129,6 +275,12 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
                     className="absolute top-2 right-6 z-10 flex items-center gap-1.5"
                     data-testid="preview-toolbar"
                 >
+                    {languageEnabled && (
+                        <LanguageStatusBadge
+                            snapshot={languageDocument.snapshot}
+                            onRestart={restartLanguageServer}
+                        />
+                    )}
                     {isDirty && !effectiveReadOnly && (
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"
@@ -172,6 +324,9 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
                     onChange={handleEditorChange}
                     onSave={effectiveReadOnly ? undefined : handleSave}
                     revealLine={revealLine}
+                    revealColumn={revealColumn}
+                    markers={languageEnabled ? languageDocument.markers : undefined}
+                    onModelMount={languageEnabled && languageView ? handleModelMount : undefined}
                     codeTestId="monaco-container"
                 />
             ) : null}

@@ -356,18 +356,18 @@ function input() {
     return screen.getByTestId('new-chat-input');
 }
 
-/** Type a path-shaped token and wait out the search debounce. */
+/** Type an explicit file mention and wait out the search debounce. */
 async function typeAndOpen(text: string) {
     type(text);
     await screen.findByTestId('file-mention-menu');
 }
 
 describe('NewChatArea file mentions', () => {
-    it('opens on a path-shaped token with merged, repo-labelled results', async () => {
+    it('opens on an @ path token with merged, repo-labelled results', async () => {
         renderComposer();
         expect(screen.queryByTestId('file-mention-menu')).toBeNull();
 
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         expect(mockSearchFiles.mock.calls.map(call => call[0]).sort()).toEqual(['ws-alpha', 'ws-beta']);
         expect(screen.getByTestId('file-mention-name-0').textContent).toContain('foo.ts');
@@ -385,9 +385,18 @@ describe('NewChatArea file mentions', () => {
         expect(mockSearchFiles).not.toHaveBeenCalled();
     });
 
+    it('never opens on a bare path-shaped token', async () => {
+        renderComposer();
+        type('src/fo');
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+
+        expect(screen.queryByTestId('file-mention-menu')).toBeNull();
+        expect(mockSearchFiles).not.toHaveBeenCalled();
+    });
+
     it('renders the accepted path as a pill in the composer overlay', async () => {
         renderComposer();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
         fireEvent.keyDown(input(), { key: 'ArrowDown' });
         fireEvent.keyDown(input(), { key: 'Tab' });
 
@@ -402,7 +411,7 @@ describe('NewChatArea file mentions', () => {
 
     it('replaces the token with a backticked path on Tab after ArrowDown', async () => {
         renderComposer();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         fireEvent.keyDown(input(), { key: 'ArrowDown' });
         fireEvent.keyDown(input(), { key: 'Tab' });
@@ -422,7 +431,7 @@ describe('NewChatArea file mentions', () => {
     it('suppresses ghost text while the popup is open, and Tab does not accept it', async () => {
         mockAutocomplete.completion = ' and the rest';
         renderComposer();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         expect(richTextProps['new-chat-input'].ghostText).toBeUndefined();
 
@@ -434,7 +443,7 @@ describe('NewChatArea file mentions', () => {
 
     it('does not submit on Enter while the popup is open', async () => {
         renderComposer();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         fireEvent.keyDown(input(), { key: 'Enter' });
 
@@ -444,12 +453,12 @@ describe('NewChatArea file mentions', () => {
 
     it('leaves the slash menu ahead of the file popup in the keyboard chain', async () => {
         renderComposer();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         mockSlashCommands.menuVisible = true;
         mockSlashCommands.handleKeyDown.mockReturnValue(true);
         // Re-render with the slash menu open by nudging the composer's state.
-        type('src/fo');
+        type('@src/fo');
         fireEvent.keyDown(input(), { key: 'Tab' });
 
         expect(mockSlashCommands.handleKeyDown).toHaveBeenCalled();
@@ -474,7 +483,7 @@ describe('NewChatArea file mentions', () => {
 
     it('closes on Escape and leaves the typed token alone', async () => {
         renderComposer();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         fireEvent.keyDown(input(), { key: 'Escape' });
 

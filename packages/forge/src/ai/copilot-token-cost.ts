@@ -37,7 +37,7 @@ function addCandidate(candidates: string[], candidate: string): void {
 }
 
 function addDottedVersionCandidates(candidates: string[], candidate: string): void {
-    const claudeCliVersion = candidate.match(/^claude-(sonnet|opus|haiku)-(\d+)-(\d+)(.*)$/);
+    const claudeCliVersion = candidate.match(/^claude-(sonnet|opus|haiku|fable)-(\d+)-(\d+)(.*)$/);
     if (claudeCliVersion) {
         const [, family, major, minor, suffix] = claudeCliVersion;
         addCandidate(candidates, `claude-${family}-${major}.${minor}${suffix}`);

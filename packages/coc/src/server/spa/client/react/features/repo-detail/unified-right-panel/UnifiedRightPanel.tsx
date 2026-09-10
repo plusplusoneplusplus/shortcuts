@@ -443,6 +443,29 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     const [exactOpenVisible, setExactOpenVisible] = useState(false);
 
     /**
+     * A language-server jump out of an open file tab. It opens a permanent tab
+     * against the SOURCE tab's owner rather than the dock's current target, so a
+     * definition found in a group member's file keeps hitting that member's host
+     * (AC-04), and it reuses the origin tab's repo label so the new tab reads
+     * the same way in the strip.
+     */
+    const openNavigationFile = useCallback(
+        (
+            file: { path: string; name: string; line: number; column: number },
+            origin: { ownerWorkspaceId: string; repoLabel?: string },
+        ) => {
+            const input = explorerFileTabInput(file, {}, {
+                ownerWorkspaceId: origin.ownerWorkspaceId,
+                scopeWorkspaceId: workspaceId,
+                ownerLabel: origin.repoLabel ?? (origin.ownerWorkspaceId === target ? targetLabel : undefined),
+                chatId,
+            });
+            if (input !== null) open(input);
+        },
+        [open, workspaceId, target, targetLabel, chatId],
+    );
+
+    /**
      * A file picked in either dialog. Same shape as the Explorer's own
      * `handleQuickOpenSelect`: a trusted absolute path is deliberate and
      * unwritable, so it lands as a pinned read-only tab, and everything else
@@ -810,6 +833,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                                     onErrorChange={handleErrorChange}
                                     onRegisterSave={handleRegisterSave}
                                     onTerminalSessionsChange={handleTerminalSessions}
+                                    onOpenFile={openNavigationFile}
                                 />
                             </div>
                         ))

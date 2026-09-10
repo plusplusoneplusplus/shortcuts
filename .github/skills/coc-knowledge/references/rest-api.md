@@ -67,6 +67,7 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | GET/PATCH | `/api/workspaces/:id/preferences` | Read/update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for modes `base`, `ask`, `autopilot` |
 | GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read/update/delete one instruction file (`base`\|`ask`\|`autopilot`; `plan` is an Ask alias) |
+| GET/PUT/PATCH | `/api/workspaces/:id/language-servers` | Read/replace/merge the workspace's language-server configuration (`repos/<workspaceId>/language-servers.json`). Response is `{ enabled, definitions, effective, startable, status, warnings }`: `effective` layers built-in presets with workspace overrides, `startable` is empty while support is disabled, and warnings omit the file path. PUT treats omitted fields as defaults, PATCH keeps stored values. An invalid definition returns `400` with `errors[].field` anchored on the request body (`definitions.0.command`) plus the untouched on-disk `config` |
 | GET/PUT | `/api/workspaces/:id/llm-tools-config` | Read/update per-workspace disabled LLM tools. Response adds `conversationRetrievalAvailable`, derived from the process store's conversation-search support. Unknown tool names such as `create_bug` are filtered from responses and from rewritten preferences |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility; `?refresh=true` revalidates |

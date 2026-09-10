@@ -49,6 +49,7 @@ import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastruc
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
+import { createLanguageServerInfrastructure } from './infrastructure/language-server-infrastructure';
 import { HeapMonitor } from './admin/heap-monitor';
 import { coerceChatStyle, setChatStylePromptOverridesProvider } from './executors/chat-style-prompt';
 import { buildRuntimeFeatures } from './config/runtime-config-handler';
@@ -104,6 +105,7 @@ interface CloseHandlerDeps {
     wsServer: ProcessWebSocketServer;
     terminalWsServer?: { closeAll(): void };
     terminalSessionManager?: { destroyAll(): void };
+    languageServerInfra?: { dispose(): Promise<void> };
     remoteServerConnector: { dispose(): void };
     remoteServerSshConnector: { dispose(): void };
     cronExecutor?: { shutdownAll(): void };
@@ -173,6 +175,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
 
         deps.terminalSessionManager?.destroyAll();
         deps.terminalWsServer?.closeAll();
+        await deps.languageServerInfra?.dispose();
         deps.remoteServerConnector.dispose();
         deps.remoteServerSshConnector.dispose();
         wsServer.closeAll();
@@ -267,6 +270,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Forward declaration — terminal infra is created after the HTTP server
     let terminalInfra: import('./infrastructure/terminal-infrastructure').TerminalInfrastructure | undefined;
+
+    // Forward declaration — language-server infra is created after the HTTP server
+    let languageServerInfra: import('./infrastructure/language-server-infrastructure').LanguageServerInfrastructure | undefined;
 
     // Forward declaration — cron infra is created after queue infra
     let cronInfra: CronInfrastructure | undefined;
@@ -874,7 +880,15 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Terminal infrastructure (optional — gated by config + node-pty availability)
     terminalInfra = createTerminalInfrastructure(store, resolvedConfig, dataDir);
 
-    wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalInfra?.terminalWsServer);
+    // Language-server infrastructure. Always composed: nothing spawns until a
+    // browser attaches a document in a workspace that enabled language support.
+    languageServerInfra = createLanguageServerInfrastructure(store, dataDir);
+
+    wsServer = createWebSocketInfrastructure(
+        server, store, bridge, registry, scheduleManager,
+        terminalInfra?.terminalWsServer,
+        languageServerInfra.languageServerWsServer,
+    );
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);
 
@@ -987,6 +1001,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             wikiManager, scheduleManager, scheduleInfraDispose, notesGitTimerManager, autoPullManager, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
+            languageServerInfra,
             remoteServerConnector,
             remoteServerSshConnector,
             cronExecutor: cronInfra?.cronExecutor,
@@ -1042,6 +1057,8 @@ export { TerminalSessionManager, toSessionInfo } from './terminal/index';
 export type { TerminalSessionManagerOptions, IPty, TerminalSession, TerminalSessionInfo, TerminalClientMessage, TerminalServerMessage } from './terminal/index';
 export { registerTerminalRoutes } from './terminal/terminal-routes';
 export { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
+export { createLanguageServerInfrastructure } from './infrastructure/language-server-infrastructure';
+export type { LanguageServerInfrastructure } from './infrastructure/language-server-infrastructure';
 export type { TerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 
 // SSE

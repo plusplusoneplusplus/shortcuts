@@ -26,6 +26,7 @@ import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../pro
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
+import { registerLanguageServerRoutes } from '../language-servers';
 import { readRepoPreferences, registerPreferencesRoutes } from '../preferences-handler';
 import { registerAdminRoutes } from '../admin/admin-handler';
 import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-handler';
@@ -630,6 +631,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             ]);
         },
     );
+    registerLanguageServerRoutes(routes, dataDir);
     registerSeenStateRoutes(routes, store as any);
     registerWhatsNewRoutes(routes, new WhatsNewService({ dataDir }));
     registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);

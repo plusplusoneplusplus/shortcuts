@@ -213,6 +213,49 @@ column, which would indent the whole surface. Horizontal padding across the view
 is `px-2` — the query bar, filter fields, status lines and results share one left
 edge.
 
+## Language support in the preview
+
+`PreviewPane` decides whether a blob is a *live repo document* — a real file in
+this workspace, read whole, not a trusted absolute path — and only then opens a
+language document and registers Monaco providers over its model
+(`features/language-servers/`).
+
+An LSP-managed model is moved onto a private shadow language id
+(`coc-lsp-typescript`, `coc-lsp-javascript`) before the providers are
+registered. Monaco registers providers per language and its bundled TypeScript
+worker claims `typescript`/`javascript` globally, so a model left there would
+answer every hover, completion and diagnostic twice. The shadow ids are
+registered once in `explorer/monaco-setup.ts`, which copies the base language's
+Monarch tokenizer and configuration; that is the only module that reads them, so
+`shadowLanguage.ts` itself stays free of a runtime Monaco dependency. Reach for
+the global `typescriptDefaults` switches only if you want every Monaco instance
+in the page to lose its built-in support — chat source canvases and diffs
+included. The model is put back on its base language when the pane goes away.
+
+The pane also shows a `LanguageStatusBadge` in its floating toolbar. Two
+statuses feed it and neither is complete alone: the document's own (`detached`,
+`ready`, `unavailable`) says whether this file is synchronized, and the host
+session's (`starting`, `reconnecting`, `failed`) says what the process is doing.
+`languageStatus.ts` is the one place that reconciles them into a label, a tone
+and whether a retry is worth offering; keep wording changes there rather than in
+the component. The retry picks its own recovery — a reconnect when the socket is
+down, a fresh attach when the host refused the document, and a server restart
+when there is a live attachment — so one button covers all three failures. A
+restart keeps the unsaved buffer: the new process gets it replayed, exactly as
+after a crash.
+
+A definition or reference in ANOTHER file goes through one global
+`monaco.editor.registerEditorOpener`, installed in `explorer/monaco-setup.ts`.
+Each pane claims its own model with `registerEditorNavigator`
+(`features/language-servers/editorNavigation.ts`), and the opener dispatches on
+the model the jump started in — that is how the target lands in the Explorer's
+strip or the right panel's, whichever the user was in. The pane refuses a target
+outside its own workspace and a URI that is not a `coc-file://` document, so a
+dependency under `node_modules` cannot be routed through the repo's own file
+endpoint. Surfaces open the target pinned and pass the position back down as
+`revealLine` / `revealColumn`; the column travels with its line through the tab
+descriptors and is dropped whenever the line changes without one.
+
 ## Tests
 
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour

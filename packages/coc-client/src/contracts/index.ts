@@ -6,6 +6,7 @@ export * from './dreams';
 export * from './explorer';
 export * from './for-each';
 export * from './git';
+export * from './language-servers';
 export * from './map-reduce';
 export * from './memory';
 export * from './native-copilot-sessions';

@@ -127,6 +127,27 @@ describe('unifiedPanelTabsModel — identity and deduplication', () => {
         expect(activeTab(state, CHAT_1)?.line).toBe(42);
     });
 
+    it('carries a reveal column, drops a stale one, and keeps a whole position', () => {
+        // A language-server navigation is the only source of a column.
+        let state = open(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1, line: 10, column: 4,
+        });
+        expect(activeTab(state, CHAT_1)).toMatchObject({ line: 10, column: 4 });
+
+        // A deep link into the same file names a line but no column; carrying
+        // the old one over would land the cursor at an unrelated offset.
+        state = open(state, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1, line: 42 });
+        expect(activeTab(state, CHAT_1)?.line).toBe(42);
+        expect(activeTab(state, CHAT_1)?.column).toBeUndefined();
+
+        // Re-focusing with no reveal at all keeps the whole pending position.
+        state = open(state, {
+            kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1, line: 7, column: 21,
+        });
+        state = open(state, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1 });
+        expect(activeTab(state, CHAT_1)).toMatchObject({ line: 7, column: 21 });
+    });
+
     it('lets an editable entry point unlock a read-only tab, and a read-only one re-lock it', () => {
         let state = open(EMPTY_UNIFIED_PANEL, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1, readOnly: true });
         expect(activeTab(state, CHAT_1)?.readOnly).toBe(true);
@@ -249,7 +270,7 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
 
     it('round-trips tabs, order and per-chat selections', () => {
         let state = baseState();
-        state = open(state, { kind: 'file', resourceId: 'src/b.ts', label: 'b.ts', chatId: CHAT_2, repoLabel: 'member-b', readOnly: true, line: 7 });
+        state = open(state, { kind: 'file', resourceId: 'src/b.ts', label: 'b.ts', chatId: CHAT_2, repoLabel: 'member-b', readOnly: true, line: 7, column: 3 });
         state = activateTab(state, CHAT_2, state.workspaceTabs[0].id);
 
         const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));

@@ -152,6 +152,26 @@ describe('revealEditorLine', () => {
         });
     });
 
+    it('puts the cursor on the exact column a navigation named', () => {
+        const editor = fakeEditor();
+        revealEditorLine(editor, 12, 17);
+        expect(editor.revealLineInCenter).toHaveBeenCalledWith(12);
+        expect(editor.setPosition).toHaveBeenCalledWith({ lineNumber: 12, column: 17 });
+        expect(editor.setSelection).toHaveBeenCalledWith({
+            startLineNumber: 12, startColumn: 17, endLineNumber: 12, endColumn: 17,
+        });
+    });
+
+    it('falls back to the start of the line for an unusable column', () => {
+        const editor = fakeEditor();
+        revealEditorLine(editor, 12, 0);
+        revealEditorLine(editor, 12, Number.NaN);
+        for (const call of editor.setPosition.mock.calls) {
+            expect(call[0]).toEqual({ lineNumber: 12, column: 1 });
+        }
+        expect(editor.setPosition).toHaveBeenCalledTimes(2);
+    });
+
     it('ignores a line number below one — Monaco lines are one-based', () => {
         const editor = fakeEditor();
         revealEditorLine(editor, 0);

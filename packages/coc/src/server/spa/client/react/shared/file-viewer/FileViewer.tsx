@@ -4,8 +4,9 @@
  * or Monaco. Every capability is opt-in by prop, so a host renders exactly what
  * it rendered before moving here. Loading/error chrome stays with the host.
  */
+import type { editor as monacoEditor } from 'monaco-editor';
 import { MarkdownFileView, isMarkdownFile } from './MarkdownFileView';
-import { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
+import { MonacoFileEditor, getMonacoLanguage, type EditorModelMountContext } from './MonacoFileEditor';
 import type { FileBlob, LineRange } from './types';
 
 export interface FileViewerProps {
@@ -16,12 +17,32 @@ export interface FileViewerProps {
     /** Optional server-reported language hint (helps detect markdown). */
     language?: string;
     readOnly?: boolean;
-    onChange?: (value: string) => void;
+    /** `changes` is Monaco's own change list; hosts that mirror text ignore it. */
+    onChange?: (value: string, changes: readonly monacoEditor.IModelContentChange[]) => void;
     onSave?: () => void;
+    /**
+     * Diagnostics for the Monaco branch, forwarded verbatim. Only a host that
+     * has decided this blob is a live repo document passes them; the markdown,
+     * image and binary branches have no editor to publish into.
+     */
+    markers?: readonly monacoEditor.IMarkerData[];
+    /**
+     * Handed the live `monaco` namespace and text model for the Monaco branch,
+     * so a host that has decided this blob is a live repo document can register
+     * language providers against exactly that model. The other branches have no
+     * editor, so they never call it.
+     */
+    onModelMount?: (context: EditorModelMountContext) => (() => void) | void;
     /** Line range to highlight + centre (from a `:line` / `:start-end` ref). */
     highlightRange?: LineRange | null;
     /** One-based line to scroll into view only (from a content-search hit). */
     revealLine?: number;
+    /**
+     * One-based column within `revealLine` for the cursor. A search hit leaves it
+     * unset and lands at the start of the line; a language-server navigation
+     * supplies the target symbol's own column.
+     */
+    revealColumn?: number;
     /**
      * `'off'` (the default) renders markdown as source in Monaco, like any
      * other file. `'toggle'` renders it formatted with a Rendered ⇄ Raw switch.
@@ -40,7 +61,7 @@ export function formatFileSize(bytes: number): string {
 
 export function FileViewer({
     blob, fileName, language, readOnly, onChange, onSave,
-    highlightRange, revealLine, markdown = 'off', codeTestId,
+    highlightRange, revealLine, revealColumn, markdown = 'off', codeTestId, markers, onModelMount,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
         return blob.mimeType.startsWith('image/') ? (
@@ -79,6 +100,9 @@ export function FileViewer({
                 onSave={onSave}
                 highlightRange={highlightRange ?? null}
                 revealLine={revealLine}
+                revealColumn={revealColumn}
+                markers={markers}
+                onModelMount={onModelMount}
             />
         </div>
     );

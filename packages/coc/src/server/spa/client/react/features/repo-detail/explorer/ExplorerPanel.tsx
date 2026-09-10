@@ -69,7 +69,7 @@ export interface ExplorerPanelProps {
      * shows the file itself and leaves this unset.
      */
     onOpenFile?: (
-        file: { path: string; name: string; line?: number },
+        file: { path: string; name: string; line?: number; column?: number },
         options: { preview: boolean; readOnly?: boolean },
     ) => void;
     /**
@@ -530,7 +530,7 @@ export function ExplorerPanel({
      * exactly as the Explorer has always done.
      */
     const openFileInEditor = useCallback((
-        file: { path: string; name: string; line?: number },
+        file: { path: string; name: string; line?: number; column?: number },
         options: { preview: boolean; readOnly?: boolean },
     ) => {
         // Navigator mode hands the open to the host and keeps no buffer of its
@@ -547,6 +547,18 @@ export function ExplorerPanel({
         }
         setPreviewFile(file);
     }, [onOpenFile, tabsEnabled, openFileTab, setPreviewFile]);
+
+    /**
+     * A language-server jump into another file. It goes through the same opener
+     * a double click uses, so the target lands in THIS surface's strip — pinned,
+     * because a navigation is a deliberate move and must not be evicted from the
+     * preview slot by the next tree click.
+     */
+    const navigateToFile = useCallback((target: {
+        path: string; name: string; line: number; column: number;
+    }) => {
+        openFileInEditor(target, { preview: false });
+    }, [openFileInEditor]);
 
     /** Close tabs for real, dropping any search texts they owned. */
     const closeTabsNow = useCallback((ids: readonly string[]) => {
@@ -1508,7 +1520,9 @@ export function ExplorerPanel({
                                                     filePath={tab.path}
                                                     fileName={tab.name}
                                                     revealLine={tab.line}
+                                                    revealColumn={tab.column}
                                                     readOnly={tab.readOnly}
+                                                    onNavigate={navigateToFile}
                                                     onClose={isMobile ? undefined : () => handleCloseTab(tab.id)}
                                                     onDirtyChange={dirtyHandlerFor(tab.id)}
                                                     onRegisterSave={saveRegistrarFor(tab.id)}
@@ -1566,8 +1580,10 @@ export function ExplorerPanel({
                                     filePath={previewFile.path}
                                     fileName={previewFile.name}
                                     revealLine={previewFile.line}
+                                    revealColumn={previewFile.column}
                                     onClose={isMobile ? undefined : () => setPreviewFile(null)}
                                     onDirtyChange={reportPreviewDirty}
+                                    onNavigate={navigateToFile}
                                 />
                             </div>
                         </div>

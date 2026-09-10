@@ -44,7 +44,7 @@ export interface ExplorerFileOpenContext {
 
 /** The tab an Explorer file selection opens. */
 export function explorerFileTabInput(
-    file: { path: string; name?: string; line?: number },
+    file: { path: string; name?: string; line?: number; column?: number },
     options: { readOnly?: boolean },
     context: ExplorerFileOpenContext,
 ): OpenUnifiedTabInput | null {
@@ -66,6 +66,8 @@ export function explorerFileTabInput(
             ? { repoLabel: context.ownerLabel }
             : {}),
         ...(options.readOnly ? { readOnly: true } : {}),
-        ...(file.line === undefined ? {} : { line: file.line }),
+        ...(file.line === undefined
+            ? {}
+            : { line: file.line, ...(file.column === undefined ? {} : { column: file.column }) }),
     };
 }

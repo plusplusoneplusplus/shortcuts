@@ -81,6 +81,11 @@ vi.mock('../../../../src/server/spa/client/react/tasks/WorkspaceFileNoteEditorIO
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
 }));
+// `PreviewPane` opens a language document for every live repo file; this suite
+// is about panel behaviour, not language support.
+vi.mock('../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
+    async () => await import('../language-servers/inertTransportMock'));
+
 // The diff chrome has its own suite; the real `useWhisperDiffState` stays in
 // play so what this stub receives is the reconstruction the chat would show.
 vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', async importOriginal => ({

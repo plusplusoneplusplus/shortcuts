@@ -16,12 +16,13 @@ import { FileViewer, formatFileSize } from '../../../../../src/server/spa/client
 vi.mock(
     '../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor',
     () => ({
-        MonacoFileEditor: ({ value, language, readOnly }: any) => (
+        MonacoFileEditor: ({ value, language, readOnly, markers }: any) => (
             <div
                 data-testid="mock-monaco-editor"
                 data-language={language}
                 data-value={value}
                 data-read-only={String(!!readOnly)}
+                data-markers={markers === undefined ? 'none' : String(markers.length)}
             />
         ),
         getMonacoLanguage: (name: string) => (name.endsWith('.md') ? 'markdown' : 'plaintext'),
@@ -51,6 +52,17 @@ describe('FileViewer', () => {
             <FileViewer blob={text('# hi')} fileName="notes.txt" language="markdown" markdown="toggle" />,
         );
         expect(getByTestId('source-canvas-markdown-view')).toBeTruthy();
+    });
+
+    it('forwards the host markers to Monaco, and forwards none when the host manages none', () => {
+        const marker = { severity: 8, message: 'boom', startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 2 };
+        const { getByTestId, rerender } = render(
+            <FileViewer blob={text('x')} fileName="a.ts" markers={[marker]} />,
+        );
+        expect(getByTestId('mock-monaco-editor').getAttribute('data-markers')).toBe('1');
+
+        rerender(<FileViewer blob={text('x')} fileName="a.ts" />);
+        expect(getByTestId('mock-monaco-editor').getAttribute('data-markers')).toBe('none');
     });
 
     it('renders a base64 image blob as an img', () => {
