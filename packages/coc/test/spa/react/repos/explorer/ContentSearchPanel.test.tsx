@@ -431,6 +431,31 @@ describe('ContentSearchPanel — state survives the tree round trip', () => {
         expect(screen.getByTestId('content-search-idle')).toBeDefined();
         expect((screen.getByTestId('content-search-input') as HTMLInputElement).value).toBe('');
     });
+
+    it('aborts target work and restores each workspace cache when the target changes', async () => {
+        searchContentSpy.mockResolvedValueOnce({ matches: [match({ line: 12 })], truncated: false });
+        const { rerender } = renderPanel();
+        type('needle');
+        await advance(SEARCH_DEBOUNCE_MS);
+        expect(screen.getByTestId('content-search-match').getAttribute('data-line')).toBe('12');
+
+        const pending = deferred<{ matches: ExplorerContentMatch[]; truncated: boolean }>();
+        searchContentSpy.mockReturnValueOnce(pending.promise);
+        fireEvent.click(screen.getByTestId('content-search-refresh'));
+        await advance(0);
+        const signal: AbortSignal = searchContentSpy.mock.calls[1][2].signal;
+
+        rerender(<ContentSearchPanel workspaceId="ws-2" onOpenMatch={vi.fn()} />);
+        expect(signal.aborted).toBe(true);
+        expect((screen.getByTestId('content-search-input') as HTMLInputElement).value).toBe('');
+        expect(screen.getByTestId('content-search-idle')).toBeDefined();
+
+        rerender(<ContentSearchPanel workspaceId={WS} onOpenMatch={vi.fn()} />);
+        expect((screen.getByTestId('content-search-input') as HTMLInputElement).value).toBe('needle');
+        expect(screen.getByTestId('content-search-match').getAttribute('data-line')).toBe('12');
+        expect(screen.queryByTestId('content-search-loading')).toBeNull();
+        expect(searchContentSpy.mock.calls.every(([workspaceId]) => workspaceId === WS)).toBe(true);
+    });
 });
 
 describe('ContentSearchPanel — collapsible result groups', () => {

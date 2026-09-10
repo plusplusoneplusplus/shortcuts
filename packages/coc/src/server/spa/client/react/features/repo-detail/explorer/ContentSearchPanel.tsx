@@ -266,11 +266,17 @@ export function ContentSearchPanel({
         const typedChanged = lastTypedRef.current !== typedSignature;
         lastTypedRef.current = typedSignature;
         const delay = typedChanged ? SEARCH_DEBOUNCE_MS : 0;
+        let stateBeforeRequest: ContentSearchState | null = null;
+        let loadingState: ContentSearchState | null = null;
 
         const timer = setTimeout(() => {
             const controller = new AbortController();
             abortRef.current = controller;
-            setState(prev => ({ ...prev, status: 'loading', error: null, errorKind: null }));
+            setState(prev => {
+                stateBeforeRequest = prev;
+                loadingState = { ...prev, status: 'loading', error: null, errorKind: null };
+                return loadingState;
+            });
             explorerApi.searchContent(workspaceId, trimmed, {
                 caseSensitive: modes.caseSensitive,
                 wholeWord: modes.wholeWord,
@@ -311,6 +317,11 @@ export function ContentSearchPanel({
         return () => {
             clearTimeout(timer);
             abortRef.current?.abort();
+            if (stateBeforeRequest !== null && loadingState !== null) {
+                const restoreState = stateBeforeRequest;
+                const abortedLoadingState = loadingState;
+                setState(current => (current === abortedLoadingState ? restoreState : current));
+            }
         };
     }, [workspaceId, trimmed, typedSignature, include, exclude, modes, filters.useIgnoreFiles, refreshTick, setState]);
 
