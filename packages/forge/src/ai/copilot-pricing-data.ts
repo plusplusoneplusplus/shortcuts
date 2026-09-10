@@ -151,6 +151,17 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
         source: COPILOT_PRICING_SOURCE,
     },
     {
+        modelId: 'gpt-6-astra',
+        displayName: 'GPT-6 Astra',
+        provider: 'openai',
+        releaseStatus: 'GA',
+        category: 'Powerful',
+        usdPerMillionInputTokens: 10,
+        usdPerMillionCachedInputTokens: 1,
+        usdPerMillionOutputTokens: 50,
+        source: COPILOT_PRICING_SOURCE,
+    },
+    {
         modelId: 'claude-haiku-4.5',
         displayName: 'Claude Haiku 4.5',
         provider: 'anthropic',

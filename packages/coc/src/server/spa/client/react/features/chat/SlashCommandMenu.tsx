@@ -15,7 +15,7 @@ export interface SkillItem {
     description?: string;
     args?: string;
     /**
-     * Discriminates a built-in meta command (`/model`, `/cron`, `/compact`) from a
+     * Discriminates a built-in meta command (`/model`, `/cron`, `/compact`, `/delegate`) from a
      * server-fetched SKILL.md skill. Derived client-side; when absent it is treated
      * as `'skill'` (see {@link effectiveKind}) so surfaces that don't merge meta
      * still render sanely.
@@ -27,6 +27,7 @@ export const META_SKILL_ITEMS: SkillItem[] = [
     { name: 'model', description: 'Switch AI model', kind: 'builtin' },
     { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' },
     { name: 'compact', description: 'Compact the conversation to free context', args: '[instructions]', kind: 'builtin' },
+    { name: 'delegate', description: 'Delegate a task to a new conversation', args: '[provider] <task>', kind: 'builtin' },
 ];
 
 /**

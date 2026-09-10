@@ -31,9 +31,22 @@ export interface UseSlashCommandsResult {
     parseAndExtract: (text: string) => ParsedSlashCommands;
     /** Dismiss the menu */
     dismissMenu: () => void;
-    /** Ghost text hint shown after a meta-command with no argument yet (e.g. "[interval] <prompt>" after /cron) */
+    /** Ghost text hint shown after a meta-command with no argument yet (e.g. "[provider] <task>" after /delegate) */
     activeCommandHint: string | null;
 }
+
+/**
+ * Meta-commands that activate a bundled skill of the same name. `cron` is only
+ * reachable when the cron feature is enabled, which `getActiveMetaCommands`
+ * already enforces before parsing, so an inactive command never matches here.
+ */
+const SKILL_BACKED_COMMANDS = ['cron', 'delegate'] as const;
+
+/** Meta-commands that show an inline argument hint while the argument is empty. */
+const HINT_COMMANDS = new Set<string>(SKILL_BACKED_COMMANDS);
+
+/** A trailing `/command` token, optionally followed by whitespace, at the end of the input. */
+const TRAILING_COMMAND_REGEX = /(?:^|\s)\/([a-zA-Z][a-zA-Z0-9_-]*)\s*$/;
 
 export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
     const [menuVisible, setMenuVisible] = useState(false);
@@ -51,8 +64,11 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         : [];
 
     const activeCommandHint = useMemo((): string | null => {
-        if (!/\/cron(\s*)$/.test(currentText)) return null;
-        return skills.find(s => s.name === 'cron')?.args ?? null;
+        const match = TRAILING_COMMAND_REGEX.exec(currentText);
+        if (!match) return null;
+        const name = match[1].toLowerCase();
+        if (!HINT_COMMANDS.has(name)) return null;
+        return skills.find(s => s.name === name)?.args ?? null;
     }, [currentText, skills]);
 
     const handleInputChange = useCallback((text: string, cursorPos: number) => {
@@ -130,9 +146,13 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         const cronEnabled = isCronEnabled();
         const activeMeta = getActiveMetaCommands(cronEnabled);
         const result = parseSlashCommands(text, skillNames, activeMeta);
-        // /cron meta-command activates the 'cron' bundled skill (when cron feature is enabled)
-        if (cronEnabled && result.metaCommands.includes('cron') && !result.skills.includes('cron')) {
-            result.skills.push('cron');
+        // These meta-commands are thin entry points onto a bundled skill of the
+        // same name: the command activates the skill and the agent reads the
+        // remaining text as its argument.
+        for (const name of SKILL_BACKED_COMMANDS) {
+            if (result.metaCommands.includes(name) && !result.skills.includes(name)) {
+                result.skills.push(name);
+            }
         }
         return result;
     }, [skillNames]);

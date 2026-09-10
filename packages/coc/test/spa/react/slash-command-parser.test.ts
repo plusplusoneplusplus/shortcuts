@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSlashCommands, getSlashCommandContext, isMetaCommand, META_COMMANDS, getFileMentionContext } from '../../../src/server/spa/client/react/features/chat/slash-command-parser';
+import { parseSlashCommands, getSlashCommandContext, isMetaCommand, META_COMMANDS, getActiveMetaCommands, getFileMentionContext } from '../../../src/server/spa/client/react/features/chat/slash-command-parser';
 
 const AVAILABLE_SKILLS = ['impl', 'go-deep', 'draft', 'pipeline-generator', 'review'];
 
@@ -335,6 +335,40 @@ describe('parseSlashCommands — /cron meta-command', () => {
         const result = parseSlashCommands('/cron test', skills);
         expect(result.metaCommands).toContain('cron');
         expect(result.skills).toEqual([]);
+    });
+});
+
+// ============================================================================
+// /delegate meta-command
+// ============================================================================
+
+describe('parseSlashCommands — /delegate meta-command', () => {
+    it('detects /delegate as a meta-command', () => {
+        const result = parseSlashCommands('/delegate', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('delegate');
+        expect(result.prompt).toBe('');
+    });
+
+    it('keeps the provider and task text in the prompt', () => {
+        const result = parseSlashCommands('/delegate claude Review the plan', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('delegate');
+        expect(result.prompt).toBe('claude Review the plan');
+    });
+
+    it('is unaffected by the cron feature flag', () => {
+        const result = parseSlashCommands('/delegate Review the plan', [], getActiveMetaCommands(false));
+        expect(result.metaCommands).toContain('delegate');
+        expect(result.prompt).toBe('Review the plan');
+    });
+
+    it('recognizes /delegate via isMetaCommand', () => {
+        expect(isMetaCommand('delegate')).toBe(true);
+        expect(isMetaCommand('DELEGATE')).toBe(true);
+    });
+
+    it('leaves the word delegate inside ordinary task text alone', () => {
+        const result = parseSlashCommands('/delegate delegate the review to claude', AVAILABLE_SKILLS);
+        expect(result.prompt).toBe('delegate the review to claude');
     });
 });
 

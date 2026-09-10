@@ -38,6 +38,7 @@ Use this skill when the user asks you to **implement** a change in the codebase 
    - Ensure tests avoid OS-specific path assumptions (use `path` helpers, normalize separators, etc.).
 
 6. **Verify build and tests pass before committing**
+   - **Simplify before validating:** Review the full diff. Reuse existing utilities, consolidate duplicated logic, and remove unnecessary abstractions. Prefer small local refactors when they simplify the overall change. Keep unrelated cleanup out of scope. Minimize added code and diff size while preserving readability, correctness, and meaningful test coverage.
    - Run the repo's actual build command to confirm there are no compilation errors. Use only scripts that exist in `package.json` or are documented by the repository; do not invent root-level commands.
    - Run only the tests likely impacted by your changes (e.g. tests in the same package or files that import the changed modules). Do **not** run the full test suite unless there is no way to scope the run.
    - If the repo uses a monorepo/workspace structure, run the build and tests for the specific sub-packages that contain changed code — not all packages.
