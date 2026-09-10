@@ -603,6 +603,30 @@ export function browserDocumentUri(workspaceId: string, relativePath: string): s
     return `coc-file://${encodeURIComponent(workspaceId)}/${segments.join('/')}`;
 }
 
+/**
+ * The inverse of `browserDocumentUri`, for a URI that came back from a language
+ * server (a definition or reference target). Returns `null` for anything that is
+ * not a live repo document in this scheme — a `file:` dependency, another
+ * scheme, an empty workspace or path, or percent-encoding that will not decode.
+ * That refusal is what keeps navigation inside the workspace.
+ */
+export function parseBrowserDocumentUri(uri: string): { workspaceId: string; path: string } | null {
+    const match = /^coc-file:\/\/([^/?#]+)\/([^?#]*)/.exec(uri);
+    if (!match) return null;
+    try {
+        const workspaceId = decodeURIComponent(match[1]);
+        const path = match[2]
+            .split('/')
+            .filter((segment) => segment.length > 0)
+            .map((segment) => decodeURIComponent(segment))
+            .join('/');
+        if (workspaceId === '' || path === '') return null;
+        return { workspaceId, path };
+    } catch {
+        return null;
+    }
+}
+
 // ============================================================================
 // Per-workspace cache
 // ============================================================================

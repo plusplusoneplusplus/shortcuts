@@ -31,6 +31,10 @@ import {
     type ProviderModel,
 } from '../../language-servers/languageProviders';
 import { applyShadowLanguage, type ShadowMonaco } from '../../language-servers/shadowLanguage';
+import {
+    registerEditorNavigator,
+    type LanguageNavigationTarget,
+} from '../../language-servers/editorNavigation';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
@@ -45,6 +49,11 @@ export interface PreviewPaneProps {
      * when the file is opened from a content-search hit.
      */
     revealLine?: number;
+    /**
+     * One-based column within `revealLine` for the cursor. A search hit leaves it
+     * unset; a language-server navigation supplies the target symbol's column.
+     */
+    revealColumn?: number;
     onClose?: () => void;
     /** When true the editor is non-editable and save/dirty UI is suppressed. */
     readOnly?: boolean;
@@ -74,12 +83,21 @@ export interface PreviewPaneProps {
      * panel) react by refreshing instead of leaving a dead Retry loop.
      */
     onNotFound?: () => void;
+    /**
+     * Where a "go to definition" that lands in ANOTHER file should open. The
+     * surface that renders this pane owns its tab strip, so it is the one that
+     * opens or re-activates the target tab and passes the position back down as
+     * `revealLine` / `revealColumn`. A pane whose host sets no handler still
+     * navigates within its own file — Monaco does that itself — but a
+     * cross-file jump is declined, so nothing silently disappears.
+     */
+    onNavigate?: (target: { path: string; name: string; line: number; column: number }) => void;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, revealLine, revealColumn, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -136,6 +154,27 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
     // providers are registered under the same id the model carries.
     const monacoLanguageId = getMonacoLanguage(fileName);
 
+    // A jump that leaves this file. It is answered here rather than in the
+    // navigation module because only this pane knows which workspace it is
+    // showing: a target in another workspace is not this surface's to open, and
+    // declining it leaves Monaco free to fall through instead of opening the
+    // wrong repo's file. The handler is read through a ref so a host that
+    // rebuilds its callback every render does not tear the providers down with
+    // it.
+    const navigateRef = useRef(onNavigate);
+    navigateRef.current = onNavigate;
+    const handleNavigate = useCallback((target: LanguageNavigationTarget) => {
+        const navigate = navigateRef.current;
+        if (!navigate || target.workspaceId !== repoId) return false;
+        navigate({
+            path: target.path,
+            name: target.path.split('/').pop() || target.path,
+            line: target.line,
+            column: target.column,
+        });
+        return true;
+    }, [repoId]);
+
     // The moment the feature stops being plumbing: with a model in hand and a
     // document behind it, hover/definition/references/completion/signature help
     // become real. The registration is torn down by the editor when the model
@@ -158,11 +197,15 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
         });
+        // Claim the navigations that START in this model, so the global editor
+        // opener knows which surface asked and lands the target in its strip.
+        const navigation = registerEditorNavigator(model, handleNavigate);
         return () => {
+            navigation.dispose();
             registration.dispose();
             shadow?.revert();
         };
-    }, [languageView, monacoLanguageId]);
+    }, [languageView, monacoLanguageId, handleNavigate]);
 
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted
@@ -272,6 +315,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, r
                     onChange={handleEditorChange}
                     onSave={effectiveReadOnly ? undefined : handleSave}
                     revealLine={revealLine}
+                    revealColumn={revealColumn}
                     markers={languageEnabled ? languageDocument.markers : undefined}
                     onModelMount={languageEnabled && languageView ? handleModelMount : undefined}
                     codeTestId="monaco-container"

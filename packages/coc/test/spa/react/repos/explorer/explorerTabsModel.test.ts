@@ -109,10 +109,44 @@ describe('explorerTabsModel — opening files', () => {
         expect(state.tabs[0].line).toBe(40);
     });
 
+    it('carries a reveal column, and drops a stale one with its line', () => {
+        // Only a language-server navigation supplies a column.
+        let state = openFileTab(EMPTY_EXPLORER_TABS, {
+            path: 'a.ts', name: 'a.ts', preview: false, line: 12, column: 17,
+        });
+        expect(state.tabs[0]).toMatchObject({ line: 12, column: 17 });
+
+        // A search hit into the same file names a line but no column: keeping
+        // the old column would put the cursor at an offset from another line.
+        state = openFileTab(state, { path: 'a.ts', name: 'a.ts', preview: false, line: 40 });
+        expect(state.tabs[0].line).toBe(40);
+        expect(state.tabs[0].column).toBeUndefined();
+
+        // An open with no reveal at all leaves the pending one alone.
+        state = openFileTab(state, {
+            path: 'a.ts', name: 'a.ts', preview: false, line: 5, column: 9,
+        });
+        state = openFileTab(state, { path: 'a.ts', name: 'a.ts', preview: false });
+        expect(state.tabs[0]).toMatchObject({ line: 5, column: 9 });
+    });
+
+    it('leaves the state untouched when a re-open repeats the same position', () => {
+        const state = openFileTab(EMPTY_EXPLORER_TABS, {
+            path: 'a.ts', name: 'a.ts', preview: false, line: 12, column: 17,
+        });
+        expect(openFileTab(state, {
+            path: 'a.ts', name: 'a.ts', preview: false, line: 12, column: 17,
+        })).toBe(state);
+    });
+
     it('clears a reveal line once the editor has consumed it', () => {
-        const state = openFileTab(EMPTY_EXPLORER_TABS, { path: 'a.ts', name: 'a.ts', preview: true, line: 3 });
+        const state = openFileTab(EMPTY_EXPLORER_TABS, {
+            path: 'a.ts', name: 'a.ts', preview: true, line: 3, column: 8,
+        });
         const cleared = clearTabRevealLine(state, fileTabId('a.ts'));
         expect(cleared.tabs[0].line).toBeUndefined();
+        // The column goes with it; a column with no line reveals nothing.
+        expect(cleared.tabs[0].column).toBeUndefined();
         // Idempotent, and identity-stable once there is nothing left to clear.
         expect(clearTabRevealLine(cleared, fileTabId('a.ts'))).toBe(cleared);
     });
@@ -365,7 +399,7 @@ describe('explorerTabsModel — labels', () => {
 describe('explorerTabsModel — persistence codec', () => {
     function session(): ExplorerTabsState {
         let state = openPinned(EMPTY_EXPLORER_TABS, 'src/a.ts');
-        state = openFileTab(state, { path: 'src/b.ts', name: 'b.ts', preview: true, line: 7 });
+        state = openFileTab(state, { path: 'src/b.ts', name: 'b.ts', preview: true, line: 7, column: 3 });
         state = openSearchTab(state, { query: 'foo', name: 'Search: foo' });
         state = openFileTab(state, {
             path: 'trusted:/etc/hosts',
@@ -382,6 +416,15 @@ describe('explorerTabsModel — persistence codec', () => {
         expect(restored.tabs).toEqual(state.tabs);
         expect(restored.activeId).toBe(state.activeId);
         expect(restored.mru).toEqual(state.mru);
+    });
+
+    it('drops a persisted column that has no line to belong to', () => {
+        const raw = JSON.stringify({
+            tabs: [{ kind: 'file', path: 'a.ts', name: 'a.ts', preview: false, readOnly: false, column: 9 }],
+            activeId: null,
+            mru: [],
+        });
+        expect(parseExplorerTabs(raw).tabs[0]).not.toHaveProperty('column');
     });
 
     it('falls back to an empty session for malformed payloads', () => {

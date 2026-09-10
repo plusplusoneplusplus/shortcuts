@@ -63,9 +63,16 @@ export interface ExplorerTab {
     readOnly: boolean;
     /**
      * One-based line to reveal when the buffer loads — set when the file was
-     * opened from a content-search hit or a deep link. Absent for a plain open.
+     * opened from a content-search hit, a deep link, or a language-server
+     * navigation. Absent for a plain open.
      */
     line?: number;
+    /**
+     * One-based column within `line` for the cursor. Only a language-server
+     * navigation supplies one; a search hit or a deep link lands at the start
+     * of the line.
+     */
+    column?: number;
     /** For `search` tabs only: the query whose results the buffer holds. */
     query?: string;
 }
@@ -197,6 +204,8 @@ export interface OpenFileTabInput {
     name: string;
     /** One-based line to reveal; carried onto the tab. */
     line?: number;
+    /** One-based column within `line`; carried onto the tab. */
+    column?: number;
     /**
      * True for the single replaceable preview tab (a single tree click, a
      * search hit, a Quick Open pick). False pins the tab immediately, which is
@@ -205,6 +214,17 @@ export interface OpenFileTabInput {
     preview: boolean;
     /** True for trusted absolute-path files, which are never editable. */
     readOnly?: boolean;
+}
+
+/**
+ * The reveal fields an open contributes. A column only ever travels with a
+ * line, so an open that names neither leaves an existing reveal alone.
+ */
+function revealFields(input: OpenFileTabInput): { line?: number; column?: number } {
+    if (input.line === undefined) return {};
+    return input.column === undefined
+        ? { line: input.line }
+        : { line: input.line, column: input.column };
 }
 
 /**
@@ -224,12 +244,16 @@ export function openFileTab(state: ExplorerTabsState, input: OpenFileTabInput): 
     const existingIndex = state.tabs.findIndex(tab => tab.id === id);
     if (existingIndex >= 0) {
         const existing = state.tabs[existingIndex];
+        // A fresh reveal replaces the previous one outright: a column belongs to
+        // the line it was measured on, so carrying it over to a new line would
+        // put the cursor at a stale offset.
+        const { column: _staleColumn, ...withoutColumn } = existing;
         const updated: ExplorerTab = {
-            ...existing,
+            ...(input.line === undefined ? existing : withoutColumn),
             // A pinned open promotes; a preview open of an already-pinned tab
             // must not knock it back to replaceable.
             preview: existing.preview && input.preview,
-            ...(input.line === undefined ? {} : { line: input.line }),
+            ...revealFields(input),
         };
         const tabs = sameTab(existing, updated)
             ? state.tabs
@@ -244,7 +268,7 @@ export function openFileTab(state: ExplorerTabsState, input: OpenFileTabInput): 
         name: input.name,
         preview: input.preview,
         readOnly: input.readOnly === true,
-        ...(input.line === undefined ? {} : { line: input.line }),
+        ...revealFields(input),
     };
 
     if (input.preview) {
@@ -304,6 +328,7 @@ function sameTab(a: ExplorerTab, b: ExplorerTab): boolean {
         && a.preview === b.preview
         && a.readOnly === b.readOnly
         && a.line === b.line
+        && a.column === b.column
         && a.query === b.query;
 }
 
@@ -337,7 +362,7 @@ export function pinTab(state: ExplorerTabsState, id: string): ExplorerTabsState 
 export function clearTabRevealLine(state: ExplorerTabsState, id: string): ExplorerTabsState {
     const index = state.tabs.findIndex(tab => tab.id === id);
     if (index < 0 || state.tabs[index].line === undefined) return state;
-    const { line: _line, ...rest } = state.tabs[index];
+    const { line: _line, column: _column, ...rest } = state.tabs[index];
     return finalize(state, replaceAt(state.tabs, index, rest), state.activeId, state.mru);
 }
 
@@ -555,7 +580,12 @@ function parseTab(entry: unknown): ExplorerTab | null {
             preview: source.preview === true,
             readOnly: source.readOnly === true,
             ...(typeof source.line === 'number' && Number.isFinite(source.line)
-                ? { line: source.line }
+                ? {
+                    line: source.line,
+                    ...(typeof source.column === 'number' && Number.isFinite(source.column)
+                        ? { column: source.column }
+                        : {}),
+                }
                 : {}),
         };
     }

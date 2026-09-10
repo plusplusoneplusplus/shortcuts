@@ -37,13 +37,15 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', () => ({
-    PreviewPane: ({ filePath, revealLine, readOnly, onDirtyChange, onRegisterSave, onClose }: {
+    PreviewPane: ({ filePath, revealLine, revealColumn, readOnly, onDirtyChange, onRegisterSave, onClose, onNavigate }: {
         filePath: string;
         revealLine?: number;
+        revealColumn?: number;
         readOnly?: boolean;
         onDirtyChange?: (d: boolean) => void;
         onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
         onClose?: () => void;
+        onNavigate?: (target: { path: string; name: string; line: number; column: number }) => void;
     }) => {
         useEffect(() => {
             if (!onRegisterSave) return;
@@ -54,10 +56,22 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
             onRegisterSave(save);
         }, [onRegisterSave, readOnly, onDirtyChange, filePath]);
         return (
-            <div data-testid={`mock-preview-${filePath}`} data-reveal-line={revealLine} data-readonly={readOnly ? 'true' : undefined}>
+            <div
+                data-testid={`mock-preview-${filePath}`}
+                data-reveal-line={revealLine}
+                data-reveal-column={revealColumn}
+                data-readonly={readOnly ? 'true' : undefined}
+            >
                 <button data-testid={`make-dirty-${filePath}`} onClick={() => onDirtyChange?.(true)}>dirty</button>
                 <button data-testid={`make-clean-${filePath}`} onClick={() => onDirtyChange?.(false)}>clean</button>
                 <button data-testid={`preview-close-${filePath}`} onClick={() => onClose?.()}>close</button>
+                {/* Stands in for a "go to definition" that leaves this file. */}
+                <button
+                    data-testid={`navigate-${filePath}`}
+                    onClick={() => onNavigate?.({ path: 'c.ts', name: 'c.ts', line: 12, column: 17 })}
+                >
+                    navigate
+                </button>
             </div>
         );
     },
@@ -150,6 +164,22 @@ describe('ExplorerPanel — editor tabs (flag on)', () => {
 
         fireEvent.click(screen.getByTestId('tree-node-b.ts'));
         await waitFor(() => expect(openTabIds()).toEqual(['file:b.ts']));
+    });
+
+    it('opens a language-server jump as a pinned tab at the target position', async () => {
+        await renderPanel();
+        fireEvent.click(screen.getByTestId('tree-node-a.ts'));
+        await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts']));
+
+        fireEvent.click(screen.getByTestId('navigate-a.ts'));
+
+        // The source tab stays open and the target joins it — a navigation is a
+        // deliberate move, so it must not be evicted by the next tree click.
+        await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts', 'file:c.ts']));
+        expect(screen.getByTestId('explorer-tab-file:c.ts')).not.toHaveAttribute('data-preview');
+        const target = screen.getByTestId('mock-preview-c.ts');
+        expect(target).toHaveAttribute('data-reveal-line', '12');
+        expect(target).toHaveAttribute('data-reveal-column', '17');
     });
 
     it('pins the tab on double click, so the next single click adds a second tab', async () => {

@@ -47,9 +47,15 @@ export interface ExplorerPreviewFile {
     name: string;
     /**
      * One-based line to reveal when the file opens. Set when the file is opened
-     * from a content-search hit; absent for a plain tree click.
+     * from a content-search hit or a language-server navigation; absent for a
+     * plain tree click.
      */
     line?: number;
+    /**
+     * One-based column within `line` for the cursor. Only a language-server
+     * navigation supplies one.
+     */
+    column?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,9 +162,10 @@ const PREVIEW_CODEC: Codec<ExplorerPreviewFile | null> = {
     parse(raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.path === 'string' && typeof parsed.name === 'string') {
-            return typeof parsed.line === 'number'
-                ? { path: parsed.path, name: parsed.name, line: parsed.line }
-                : { path: parsed.path, name: parsed.name };
+            if (typeof parsed.line !== 'number') return { path: parsed.path, name: parsed.name };
+            return typeof parsed.column === 'number'
+                ? { path: parsed.path, name: parsed.name, line: parsed.line, column: parsed.column }
+                : { path: parsed.path, name: parsed.name, line: parsed.line };
         }
         return null;
     },

@@ -38,6 +38,12 @@ export interface FileViewerProps {
     /** One-based line to scroll into view only (from a content-search hit). */
     revealLine?: number;
     /**
+     * One-based column within `revealLine` for the cursor. A search hit leaves it
+     * unset and lands at the start of the line; a language-server navigation
+     * supplies the target symbol's own column.
+     */
+    revealColumn?: number;
+    /**
      * `'off'` (the default) renders markdown as source in Monaco, like any
      * other file. `'toggle'` renders it formatted with a Rendered ⇄ Raw switch.
      */
@@ -55,7 +61,7 @@ export function formatFileSize(bytes: number): string {
 
 export function FileViewer({
     blob, fileName, language, readOnly, onChange, onSave,
-    highlightRange, revealLine, markdown = 'off', codeTestId, markers, onModelMount,
+    highlightRange, revealLine, revealColumn, markdown = 'off', codeTestId, markers, onModelMount,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
         return blob.mimeType.startsWith('image/') ? (
@@ -94,6 +100,7 @@ export function FileViewer({
                 onSave={onSave}
                 highlightRange={highlightRange ?? null}
                 revealLine={revealLine}
+                revealColumn={revealColumn}
                 markers={markers}
                 onModelMount={onModelMount}
             />

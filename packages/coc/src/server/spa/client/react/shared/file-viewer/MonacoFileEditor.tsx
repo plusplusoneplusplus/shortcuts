@@ -75,6 +75,13 @@ export interface MonacoFileEditorProps {
      */
     revealLine?: number;
     /**
+     * One-based column within `revealLine` to put the cursor on. Ignored without
+     * a reveal line; defaults to the start of the line, which is what a search
+     * hit or a deep link wants. A language-server navigation supplies the
+     * symbol's own column so the cursor lands on it.
+     */
+    revealColumn?: number;
+    /**
      * One-based inclusive line range to highlight as whole lines, centring the
      * first line in the viewport. Applied on mount and whenever it changes, so
      * opening a second `file:line` reference into an already-open file moves the
@@ -103,15 +110,24 @@ export function buildHighlightDecorations(
     }];
 }
 
-/** Scroll `line` (one-based) into the centre of the viewport and select it. */
+/**
+ * Scroll `line` (one-based) into the centre of the viewport and put the cursor
+ * on it. `column` (one-based) is where in the line the cursor lands — column 1
+ * for a search hit or a deep link, the symbol's own column when a language
+ * server answered with an exact position.
+ */
 export function revealEditorLine(
     editor: Pick<monacoEditor.IStandaloneCodeEditor, 'revealLineInCenter' | 'setPosition' | 'setSelection'>,
     line: number,
+    column = 1,
 ): void {
     if (!Number.isFinite(line) || line < 1) return;
+    const startColumn = Number.isFinite(column) && column >= 1 ? column : 1;
     editor.revealLineInCenter(line);
-    editor.setPosition({ lineNumber: line, column: 1 });
-    editor.setSelection({ startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 });
+    editor.setPosition({ lineNumber: line, column: startColumn });
+    editor.setSelection({
+        startLineNumber: line, startColumn, endLineNumber: line, endColumn: startColumn,
+    });
 }
 
 const EXT_TO_MONACO_LANG: Record<string, string> = {
@@ -209,7 +225,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
 };
 
 export function MonacoFileEditor({
-    value, language, onChange, onSave, readOnly, revealLine, highlightRange, markers, onModelMount,
+    value, language, onChange, onSave, readOnly, revealLine, revealColumn, highlightRange, markers, onModelMount,
 }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
@@ -292,7 +308,7 @@ export function MonacoFileEditor({
             });
         }
 
-        if (revealLine !== undefined) revealEditorLine(editor, revealLine);
+        if (revealLine !== undefined) revealEditorLine(editor, revealLine, revealColumn);
         applyHighlight(editor);
         applyMarkers();
 
@@ -304,7 +320,7 @@ export function MonacoFileEditor({
                 run: () => onSave(),
             });
         }
-    }, [onSave, readOnly, revealLine, applyHighlight, applyMarkers]);
+    }, [onSave, readOnly, revealLine, revealColumn, applyHighlight, applyMarkers]);
 
     // A later reveal (a second search hit in the same already-open file) has no
     // mount to piggyback on, so apply it here too. `value` is a dependency
@@ -313,8 +329,8 @@ export function MonacoFileEditor({
     useEffect(() => {
         const editor = editorRef.current;
         if (!editor || revealLine === undefined) return;
-        revealEditorLine(editor, revealLine);
-    }, [revealLine, value]);
+        revealEditorLine(editor, revealLine, revealColumn);
+    }, [revealLine, revealColumn, value]);
 
     // A later range (a second `file:line` reference into the already-open file)
     // has no mount to piggyback on. `value` is a dependency for the same reason

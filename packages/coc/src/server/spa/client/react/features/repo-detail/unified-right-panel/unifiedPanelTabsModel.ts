@@ -132,6 +132,11 @@ export interface UnifiedPanelTab {
     /** One-based line to reveal when the resource loads, for a deep link. */
     line?: number;
     /**
+     * One-based column within `line` for the cursor. Only a language-server
+     * navigation supplies one; a deep link lands at the start of the line.
+     */
+    column?: number;
+    /**
      * True on the section's single *preview* tab — VS Code's italic slot. A
      * preview tab is a normal tab in every respect except that the next
      * single click in the file tree reuses its slot instead of opening a
@@ -273,6 +278,7 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.repoLabel === b.repoLabel
         && a.readOnly === b.readOnly
         && a.line === b.line
+        && a.column === b.column
         && a.preview === b.preview;
 }
 
@@ -327,6 +333,18 @@ export interface OpenUnifiedTabInput {
     repoLabel?: string;
     readOnly?: boolean;
     line?: number;
+    column?: number;
+}
+
+/**
+ * The reveal fields an open contributes. A column only ever travels with a
+ * line, so a source that names neither contributes nothing.
+ */
+function revealFields(input: { line?: number; column?: number }): { line?: number; column?: number } {
+    if (input.line === undefined) return {};
+    return input.column === undefined
+        ? { line: input.line }
+        : { line: input.line, column: input.column };
 }
 
 /**
@@ -364,7 +382,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         label: input.label,
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
         ...(input.readOnly ? { readOnly: true } : {}),
-        ...(input.line === undefined ? {} : { line: input.line }),
+        ...revealFields(input),
     };
 
     let nextList: readonly UnifiedPanelTab[];
@@ -372,9 +390,10 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         const existing = list[index];
         const merged: UnifiedPanelTab = {
             ...opened,
-            // Keep the existing reveal line when this open supplied none, so
-            // re-focusing a tab does not forget where it was pointed.
-            ...(input.line === undefined && existing.line !== undefined ? { line: existing.line } : {}),
+            // Keep the existing reveal position when this open supplied none, so
+            // re-focusing a tab does not forget where it was pointed. The column
+            // travels with its line and is never kept without one.
+            ...(input.line === undefined ? revealFields(existing) : {}),
         };
         // `merged` takes `readOnly` from `opened`, i.e. from THIS open's entry
         // point: an authorized editable entry point unlocks a tab previously
@@ -439,7 +458,7 @@ export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPrevi
         label: input.label,
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
         ...(input.readOnly ? { readOnly: true } : {}),
-        ...(input.line === undefined ? {} : { line: input.line }),
+        ...revealFields(input),
         preview: true,
     };
 
@@ -667,7 +686,14 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         id, kind, ownerWorkspaceId, chatId, resourceId, label,
         ...(typeof value.repoLabel === 'string' ? { repoLabel: value.repoLabel } : {}),
         ...(value.readOnly === true ? { readOnly: true } : {}),
-        ...(typeof value.line === 'number' && Number.isFinite(value.line) && value.line > 0 ? { line: value.line } : {}),
+        ...(typeof value.line === 'number' && Number.isFinite(value.line) && value.line > 0
+            ? {
+                line: value.line,
+                ...(typeof value.column === 'number' && Number.isFinite(value.column) && value.column > 0
+                    ? { column: value.column }
+                    : {}),
+            }
+            : {}),
         // Only `file` tabs can hold the preview slot: the tree's single click is
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),

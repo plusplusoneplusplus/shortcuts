@@ -68,6 +68,16 @@ export interface UnifiedTabViewProps {
      * confirmation because the ✕ is in the strip, not in the terminal view.
      */
     onTerminalSessionsChange?: (tabId: string, sessions: readonly TerminalSessionSummary[]) => void;
+    /**
+     * Where a language-server jump out of a file tab goes. `origin` carries the
+     * SOURCE tab's owner and repo label, not the dock's current target, so a
+     * definition found in a group member's file opens against that member even
+     * after the dock has been pointed somewhere else (AC-04).
+     */
+    onOpenFile?: (
+        file: { path: string; name: string; line: number; column: number },
+        origin: { ownerWorkspaceId: string; repoLabel?: string },
+    ) => void;
 }
 
 /** The last path segment — what the editor uses to pick a language. */
@@ -78,7 +88,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
-    onRegisterSave, onTerminalSessionsChange,
+    onRegisterSave, onTerminalSessionsChange, onOpenFile,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
@@ -100,6 +110,13 @@ export function UnifiedTabView({
         (save: (() => Promise<boolean>) | null) => onRegisterSave?.(tab.id, save),
         [onRegisterSave, tab.id],
     );
+    const handleNavigate = useCallback(
+        (file: { path: string; name: string; line: number; column: number }) => onOpenFile?.(file, {
+            ownerWorkspaceId: tab.ownerWorkspaceId,
+            ...(tab.repoLabel === undefined ? {} : { repoLabel: tab.repoLabel }),
+        }),
+        [onOpenFile, tab.ownerWorkspaceId, tab.repoLabel],
+    );
     const handleTerminalSessions = useCallback(
         (sessions: readonly TerminalSessionSummary[]) => onTerminalSessionsChange?.(tab.id, sessions),
         [onTerminalSessionsChange, tab.id],
@@ -116,8 +133,10 @@ export function UnifiedTabView({
                     filePath={tab.resourceId}
                     fileName={fileNameOf(tab)}
                     revealLine={tab.line}
+                    revealColumn={tab.column}
                     readOnly={tab.readOnly === true}
                     onClose={close}
+                    onNavigate={onOpenFile ? handleNavigate : undefined}
                     onDirtyChange={handleDirty}
                     onRegisterSave={handleRegisterSave}
                     onStatusChange={handleStatus}

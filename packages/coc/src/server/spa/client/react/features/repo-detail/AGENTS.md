@@ -232,6 +232,18 @@ the global `typescriptDefaults` switches only if you want every Monaco instance
 in the page to lose its built-in support — chat source canvases and diffs
 included. The model is put back on its base language when the pane goes away.
 
+A definition or reference in ANOTHER file goes through one global
+`monaco.editor.registerEditorOpener`, installed in `explorer/monaco-setup.ts`.
+Each pane claims its own model with `registerEditorNavigator`
+(`features/language-servers/editorNavigation.ts`), and the opener dispatches on
+the model the jump started in — that is how the target lands in the Explorer's
+strip or the right panel's, whichever the user was in. The pane refuses a target
+outside its own workspace and a URI that is not a `coc-file://` document, so a
+dependency under `node_modules` cannot be routed through the repo's own file
+endpoint. Surfaces open the target pinned and pass the position back down as
+`revealLine` / `revealColumn`; the column travels with its line through the tab
+descriptors and is dropped whenever the line changes without one.
+
 ## Tests
 
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour
