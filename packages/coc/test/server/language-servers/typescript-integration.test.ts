@@ -65,6 +65,9 @@ export const rendered = formatWidget(widget);
 export const greeting = greet(widget.label);
 `;
 
+const APP_WITH_ERROR_TS = `${APP_TS}export const readinessProbe: number = 'not a number';
+`;
+
 /**
  * The same project in Windows line endings. Built by joining with an explicit
  * `\r\n` so no editor setting, checkout filter or formatter can quietly turn
@@ -268,9 +271,12 @@ beforeAll(async () => {
     await session.start();
     openDocument('src/widgets.ts', WIDGETS_TS);
     openDocument('src/lib/format.ts', FORMAT_TS);
-    openDocument('src/app.ts', APP_TS);
+    openDocument('src/app.ts', APP_WITH_ERROR_TS);
     openDocument('src/crlf.ts', CRLF_TS);
-    // The first answer is the slow one: tsserver has to load the project.
+    // A clean file is allowed to produce no diagnostics notification at all.
+    // Use a real diagnostic as the readiness signal, then verify its clear.
+    await waitForDiagnostics('src/app.ts', (found) => found.some((entry) => entry.message.includes('not assignable')));
+    changeDocument('src/app.ts', APP_TS);
     await waitForDiagnostics('src/app.ts', (found) => found.length === 0);
 }, 120_000);
 
