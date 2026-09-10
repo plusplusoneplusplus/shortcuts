@@ -125,7 +125,14 @@ function createProject(): string {
 }
 
 function uriFor(relative: string): string {
-    return pathToFileURL(path.join(root, ...relative.split('/'))).href;
+    const uri = pathToFileURL(path.join(root, ...relative.split('/'))).href;
+    if (process.platform !== 'win32') {
+        return uri;
+    }
+    // vscode-uri, used by typescript-language-server, serializes Windows drive
+    // letters in lowercase. Match that canonical form so diagnostics and
+    // locations compare by document identity rather than drive-letter casing.
+    return uri.replace(/^file:\/\/\/([A-Z]):/, (_, drive: string) => `file:///${drive.toLowerCase()}:`);
 }
 
 /** Position of a marker inside a document, so no test hard-codes a column. */

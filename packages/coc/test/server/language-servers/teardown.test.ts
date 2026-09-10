@@ -172,8 +172,11 @@ describe('LanguageServerSession teardown', () => {
 
         release();
 
-        await waitFor(() => !isRunning(pid), 'the idle process to exit');
-        expect(session.status).toBe('disabled');
+        // The process can disappear just before Node delivers its exit event,
+        // especially on Windows. The state transition is the public signal
+        // that the asynchronous idle stop has finished.
+        await waitFor(() => session.status === 'disabled', 'the idle session to stop');
+        expect(isRunning(pid)).toBe(false);
     });
 
     // The restart timer is the one timer that survives a crash, so disposal

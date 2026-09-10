@@ -400,7 +400,7 @@ function editor() {
     return screen.getByTestId('activity-chat-input');
 }
 
-/** Type a path-shaped token and wait out the search debounce. */
+/** Type an explicit file mention and wait out the search debounce. */
 async function typeAndOpen(text: string) {
     type(text);
     await screen.findByTestId('file-mention-menu');
@@ -412,11 +412,11 @@ async function settle() {
 }
 
 describe('FollowUpInputArea file mentions', () => {
-    it('opens on a path-shaped token with merged, repo-labelled results', async () => {
+    it('opens on an @ path token with merged, repo-labelled results', async () => {
         renderFollowUp();
         expect(screen.queryByTestId('file-mention-menu')).toBeNull();
 
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         expect(mockSearchFiles.mock.calls.map(call => call[0]).sort()).toEqual(['ws-alpha', 'ws-beta']);
         expect(screen.getByTestId('file-mention-name-0').textContent).toContain('foo.ts');
@@ -434,9 +434,18 @@ describe('FollowUpInputArea file mentions', () => {
         expect(mockSearchFiles).not.toHaveBeenCalled();
     });
 
+    it('never opens on a bare path-shaped token', async () => {
+        renderFollowUp();
+        type('src/fo');
+        await settle();
+
+        expect(screen.queryByTestId('file-mention-menu')).toBeNull();
+        expect(mockSearchFiles).not.toHaveBeenCalled();
+    });
+
     it('replaces the token with a backticked path on Tab after ArrowDown', async () => {
         renderFollowUp();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         fireEvent.keyDown(editor(), { key: 'ArrowDown' });
         fireEvent.keyDown(editor(), { key: 'Tab' });
@@ -449,7 +458,7 @@ describe('FollowUpInputArea file mentions', () => {
 
     it('renders the accepted path as a pill in the composer overlay', async () => {
         renderFollowUp();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
         fireEvent.keyDown(editor(), { key: 'ArrowDown' });
         fireEvent.keyDown(editor(), { key: 'Tab' });
 
@@ -473,7 +482,7 @@ describe('FollowUpInputArea file mentions', () => {
 
     it('inserts on click', async () => {
         renderFollowUp();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         fireEvent.mouseDown(screen.getByTestId('file-mention-item-1'));
 
@@ -484,7 +493,7 @@ describe('FollowUpInputArea file mentions', () => {
     it('suppresses ghost text while the popup is open, and Tab does not accept it', async () => {
         mockAutocomplete.completion = ' and the rest';
         renderFollowUp();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         expect(richTextProps['activity-chat-input'].ghostText).toBeUndefined();
 
@@ -497,7 +506,7 @@ describe('FollowUpInputArea file mentions', () => {
     it('does not send on Enter while the popup is open', async () => {
         const onSend = vi.fn().mockResolvedValue(undefined);
         renderFollowUp({ onSend });
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         fireEvent.keyDown(editor(), { key: 'Enter' });
 
@@ -507,11 +516,11 @@ describe('FollowUpInputArea file mentions', () => {
 
     it('leaves the slash menu ahead of the file popup in the keyboard chain', async () => {
         renderFollowUp();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         mockSlashCommands.menuVisible = true;
         mockSlashCommands.handleKeyDown.mockReturnValue(true);
-        type('src/fo');
+        type('@src/fo');
         fireEvent.keyDown(editor(), { key: 'Tab' });
 
         expect(mockSlashCommands.handleKeyDown).toHaveBeenCalled();
@@ -520,11 +529,11 @@ describe('FollowUpInputArea file mentions', () => {
 
     it('leaves the model menu ahead of the file popup in the keyboard chain', async () => {
         renderFollowUp();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         mockModelCommand.modelMenuVisible = true;
         mockModelCommand.handleModelKeyDown.mockReturnValue(true);
-        type('src/fo');
+        type('@src/fo');
         fireEvent.keyDown(editor(), { key: 'ArrowDown' });
 
         expect(mockModelCommand.handleModelKeyDown).toHaveBeenCalled();
@@ -549,7 +558,7 @@ describe('FollowUpInputArea file mentions', () => {
 
     it('closes on Escape and leaves the typed token alone', async () => {
         renderFollowUp();
-        await typeAndOpen('src/fo');
+        await typeAndOpen('@src/fo');
 
         fireEvent.keyDown(editor(), { key: 'Escape' });
 
@@ -570,7 +579,7 @@ describe('FollowUpInputArea file mentions', () => {
     it('sends the accepted mention as backticked plain text', async () => {
         const onSend = vi.fn().mockResolvedValue(undefined);
         renderFollowUp({ onSend });
-        await typeAndOpen('look at src/fo');
+        await typeAndOpen('look at @src/fo');
         fireEvent.keyDown(editor(), { key: 'Tab' });
 
         expect(screen.queryByTestId('file-mention-menu')).toBeNull();
