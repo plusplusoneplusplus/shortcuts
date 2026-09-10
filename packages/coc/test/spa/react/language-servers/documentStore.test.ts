@@ -19,6 +19,7 @@ import {
     CONTAINER_UNSUPPORTED_REASON,
     LanguageServerClient,
 } from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
+import { toMarkers } from '../../../../src/server/spa/client/react/features/language-servers/monacoBridge';
 import { FakeClient, FakeSocket, diagnostic, readyState } from './fakeLanguageTransport';
 
 describe('readSyncOptions', () => {
@@ -591,5 +592,106 @@ describe('LanguageDocumentStore in container mode', () => {
 
         store.dispose();
         client.dispose();
+    });
+});
+
+/**
+ * A file with Windows line endings has to reach the server exactly as the user
+ * sees it. The store never parses text, so what these cases guard is that it
+ * never rewrites it either: a `\r` dropped on the way out, or a replay that
+ * hands a replacement process `\n` for a buffer Monaco still holds as `\r\n`,
+ * puts every position the server computes one character off per line.
+ */
+describe('CRLF buffers', () => {
+    const CRLF = 'export const a = 1;\r\nexport const b = 2;\r\n';
+    let client: FakeClient;
+    let store: LanguageDocumentStore;
+
+    beforeEach(() => {
+        client = new FakeClient();
+        store = new LanguageDocumentStore({ workspaceId: 'ws-1', client: client.asClient() });
+    });
+
+    it('opens with the terminators intact', () => {
+        store.open({ path: 'src/crlf.ts', text: CRLF });
+        client.get('src/crlf.ts').attach();
+        expect(client.get('src/crlf.ts').lastOf('textDocument/didOpen')).toMatchObject({
+            textDocument: { text: CRLF, version: 1 },
+        });
+    });
+
+    it('forwards a ranged edit spanning the terminator untouched', () => {
+        const view = store.open({ path: 'src/crlf.ts', text: CRLF });
+        const attachment = client.get('src/crlf.ts');
+        attachment.attach({ state: readyState({ textDocumentSync: 2 }) });
+
+        // The user pressed Enter at the end of the file: Monaco inserted the
+        // model's own `\r\n`, and that is what the server has to receive.
+        const range = { start: { line: 2, character: 0 }, end: { line: 2, character: 0 } };
+        view.update(`${CRLF}export const c = 3;\r\n`, [
+            { range, rangeLength: 0, text: 'export const c = 3;\r\n' },
+        ]);
+
+        expect(attachment.lastOf('textDocument/didChange')).toEqual({
+            textDocument: { uri: 'coc-file://ws-1/src/crlf.ts', version: 2 },
+            contentChanges: [{ range, rangeLength: 0, text: 'export const c = 3;\r\n' }],
+        });
+    });
+
+    it('replays the CRLF buffer into a replacement process', () => {
+        const view = store.open({ path: 'src/crlf.ts', text: CRLF });
+        const attachment = client.get('src/crlf.ts');
+        attachment.attach({ state: readyState({ textDocumentSync: 1 }) });
+        const edited = `${CRLF}export const c = 3;\r\n`;
+        view.update(edited);
+
+        // The server crashed and came back: a full-text replay is the only
+        // thing the new process will ever know about this document.
+        attachment.status(readyState({ textDocumentSync: 1 }, 2));
+
+        const replayed = attachment.lastOf('textDocument/didOpen') as {
+            textDocument: { text: string; version: number };
+        };
+        expect(replayed.textDocument.text).toBe(edited);
+        expect(replayed.textDocument.text.split('\r\n')).toHaveLength(4);
+        expect(replayed.textDocument.text.match(/\r/g)).toHaveLength(3);
+        expect(replayed.textDocument.version).toBeGreaterThan(2);
+        expect(view.getText()).toBe(edited);
+    });
+
+    it('sends the CRLF text back on save when the server asked for it', () => {
+        const view = store.open({ path: 'src/crlf.ts', text: CRLF });
+        const attachment = client.get('src/crlf.ts');
+        attachment.attach({ state: readyState({ textDocumentSync: { change: 1, save: { includeText: true } } }) });
+
+        view.markSaved(CRLF);
+
+        expect(attachment.lastOf('textDocument/didSave')).toEqual({
+            textDocument: { uri: 'coc-file://ws-1/src/crlf.ts' },
+            text: CRLF,
+        });
+    });
+
+    it('keeps a diagnostic on the line the server named', () => {
+        const view = store.open({ path: 'src/crlf.ts', text: CRLF });
+        const attachment = client.get('src/crlf.ts');
+        attachment.attach();
+
+        const character = CRLF.split('\r\n')[1].indexOf('b');
+        attachment.notify('textDocument/publishDiagnostics', {
+            uri: 'coc-file://ws-1/src/crlf.ts',
+            diagnostics: [
+                {
+                    range: { start: { line: 1, character }, end: { line: 1, character: character + 1 } },
+                    message: 'Unused declaration.',
+                },
+            ],
+        });
+
+        expect(view.getDiagnostics()[0].range.start).toEqual({ line: 1, character });
+        expect(toMarkers(view.getDiagnostics())[0]).toMatchObject({
+            startLineNumber: 2,
+            startColumn: character + 1,
+        });
     });
 });

@@ -121,3 +121,104 @@ describe('diagnostics as markers', () => {
         expect(LANGUAGE_MARKER_OWNER).toBe('coc-language-server');
     });
 });
+
+describe('CRLF documents', () => {
+    /**
+     * A line terminator belongs to no line: Monaco's columns and LSP's
+     * characters both index a line's own text, so a `\r\n` document has to
+     * convert with nothing here noticing the `\r`. The risk is not the ±1 —
+     * it is a conversion that treats `\r` as a character of the next line, or
+     * rewrites the `\r\n` an editor inserted when the user pressed Enter.
+     */
+    const CRLF = 'const a = 1;\r\nconst b = 2;\r\nconst c = 3;\r\n';
+
+    /** Byte offset of an LSP position, the way a server resolves one. */
+    function lspOffset(text: string, position: { line: number; character: number }): number {
+        let start = 0;
+        for (let line = 0; line < position.line; line += 1) {
+            const next = text.indexOf('\n', start);
+            if (next < 0) {
+                return text.length;
+            }
+            start = next + 1;
+        }
+        let end = start;
+        while (end < text.length && text[end] !== '\r' && text[end] !== '\n') {
+            end += 1;
+        }
+        return Math.min(start + position.character, end);
+    }
+
+    /**
+     * Applies the converted changes the way a language server does — in the
+     * given order, each against the text the previous one produced. If the
+     * conversion were wrong, the result would not be the buffer Monaco holds.
+     */
+    function applyLspChanges(text: string, changes: ReturnType<typeof toContentChanges>): string {
+        let result = text;
+        for (const change of changes) {
+            const start = lspOffset(result, change.range!.start);
+            const end = lspOffset(result, change.range!.end);
+            result = result.slice(0, start) + change.text + result.slice(end);
+        }
+        return result;
+    }
+
+    it('keeps the terminator out of the character offsets', () => {
+        // Column 13 is the end of `const a = 1;`, which is 12 characters long.
+        // The `\r` sits past it and belongs to no column.
+        expect(toLspPosition({ lineNumber: 1, column: 13 })).toEqual({ line: 0, character: 12 });
+        expect(lspOffset(CRLF, { line: 0, character: 12 })).toBe(12);
+        expect(lspOffset(CRLF, { line: 1, character: 0 })).toBe(14);
+        expect(CRLF.slice(12, 14)).toBe('\r\n');
+    });
+
+    it('converts a delete that joins two CRLF lines', () => {
+        // Cursor at the end of line 1, Delete pressed: Monaco removes the two
+        // units of the terminator with one range spanning the line break.
+        const changes = toContentChanges([
+            { range: monacoRange(1, 13, 2, 1), rangeLength: 2, text: '' },
+        ]);
+        expect(changes).toEqual([
+            {
+                range: { start: { line: 0, character: 12 }, end: { line: 1, character: 0 } },
+                rangeLength: 2,
+                text: '',
+            },
+        ]);
+        expect(applyLspChanges(CRLF, changes)).toBe('const a = 1;const b = 2;\r\nconst c = 3;\r\n');
+    });
+
+    it('forwards an inserted CRLF terminator verbatim', () => {
+        // Enter pressed mid-line in a CRLF model: Monaco inserts the model's
+        // own EOL, and normalizing it to `\n` here would desynchronize every
+        // offset the server computes from that point on.
+        const changes = toContentChanges([
+            { range: monacoRange(2, 7, 2, 7), rangeLength: 0, text: '\r\n' },
+        ]);
+        expect(changes[0].text).toBe('\r\n');
+        expect(applyLspChanges(CRLF, changes)).toBe('const a = 1;\r\nconst \r\nb = 2;\r\nconst c = 3;\r\n');
+    });
+
+    it('applies a multi-cursor CRLF edit in the order Monaco reported it', () => {
+        const changes = toContentChanges([
+            { range: monacoRange(3, 7, 3, 8), rangeLength: 1, text: 'z' },
+            { range: monacoRange(1, 7, 1, 8), rangeLength: 1, text: 'x' },
+        ]);
+        expect(applyLspChanges(CRLF, changes)).toBe('const x = 1;\r\nconst b = 2;\r\nconst z = 3;\r\n');
+    });
+
+    it('places a marker on the CRLF line the server named', () => {
+        const lines = CRLF.split('\r\n');
+        const character = lines[2].indexOf('c = 3');
+        const marker = toMarkerData({
+            range: { start: { line: 2, character }, end: { line: 2, character: character + 1 } },
+            message: 'Unused declaration.',
+        });
+        expect(marker.startLineNumber).toBe(3);
+        expect(marker.startColumn).toBe(character + 1);
+        // The column indexes the line's own text, so it still names the symbol
+        // the server flagged rather than sliding by one terminator per line.
+        expect(lines[2][marker.startColumn - 1]).toBe('c');
+    });
+});

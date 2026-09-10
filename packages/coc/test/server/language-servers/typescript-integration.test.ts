@@ -65,6 +65,19 @@ export const rendered = formatWidget(widget);
 export const greeting = greet(widget.label);
 `;
 
+/**
+ * The same project in Windows line endings. Built by joining with an explicit
+ * `\r\n` so no editor setting, checkout filter or formatter can quietly turn
+ * it back into `\n` and leave the cases below proving nothing.
+ */
+const CRLF_TS = [
+    "import { makeWidget } from './widgets';",
+    '',
+    "const crlfWidget = makeWidget('two', 'Two');",
+    'export const crlfLabel = crlfWidget.label;',
+    '',
+].join('\r\n');
+
 const TSCONFIG = {
     compilerOptions: {
         target: 'ES2020',
@@ -101,6 +114,7 @@ function createProject(): string {
     fs.writeFileSync(path.join(dir, 'src', 'widgets.ts'), WIDGETS_TS);
     fs.writeFileSync(path.join(dir, 'src', 'lib', 'format.ts'), FORMAT_TS);
     fs.writeFileSync(path.join(dir, 'src', 'app.ts'), APP_TS);
+    fs.writeFileSync(path.join(dir, 'src', 'crlf.ts'), CRLF_TS);
     fs.writeFileSync(
         path.join(dir, 'node_modules', 'tiny-dep', 'package.json'),
         JSON.stringify({ name: 'tiny-dep', version: '1.0.0', main: 'index.js', types: 'index.d.ts' }, null, 2),
@@ -142,6 +156,17 @@ function changeDocument(relative: string, text: string): void {
     session.sendNotification('textDocument/didChange', {
         textDocument: { uri, version },
         contentChanges: [{ text }],
+    });
+}
+
+/** Replaces one span of a document, the way the store does under incremental sync. */
+function changeDocumentRange(relative: string, range: { start: Position; end: Position }, text: string): void {
+    const uri = uriFor(relative);
+    const version = (versions.get(uri) ?? 1) + 1;
+    versions.set(uri, version);
+    session.sendNotification('textDocument/didChange', {
+        textDocument: { uri, version },
+        contentChanges: [{ range, text }],
     });
 }
 
@@ -222,6 +247,7 @@ beforeAll(async () => {
     openDocument('src/widgets.ts', WIDGETS_TS);
     openDocument('src/lib/format.ts', FORMAT_TS);
     openDocument('src/app.ts', APP_TS);
+    openDocument('src/crlf.ts', CRLF_TS);
     // The first answer is the slow one: tsserver has to load the project.
     await waitForDiagnostics('src/app.ts', (found) => found.length === 0);
 }, 120_000);
@@ -347,6 +373,82 @@ describe('TypeScript language features over a real project', () => {
         expect(result?.signatures?.[0]?.label).toContain('id: string');
         expect(result?.signatures?.[0]?.label).toContain('label: string');
         expect(result?.activeParameter ?? 0).toBe(0);
+    });
+});
+
+/**
+ * AC-02's CRLF requirement, answered by the server itself rather than by a
+ * conversion test. Every position below is measured against the `\r\n` text
+ * the buffer actually holds, so a `\r` counted into a line — in the fixture,
+ * in the helpers, or in what the store sends — moves the answer off the symbol
+ * and the case fails.
+ */
+describe('a document with CRLF line endings', () => {
+    afterAll(async () => {
+        changeDocument('src/crlf.ts', CRLF_TS);
+        await waitForDiagnostics('src/crlf.ts', (list) => list.length === 0);
+    });
+
+    it('writes the fixture with Windows terminators', () => {
+        const onDisk = fs.readFileSync(path.join(root, 'src', 'crlf.ts'), 'utf8');
+        expect(onDisk).toBe(CRLF_TS);
+        expect(onDisk.match(/\r\n/g)).toHaveLength(4);
+        expect(onDisk).not.toMatch(/[^\r]\n/);
+    });
+
+    it('hovers a symbol on a later line at the position we measured', async () => {
+        const position = positionAt(CRLF_TS, 'crlfWidget.label', 2);
+        expect(position.line).toBe(3);
+        const result = (await session.sendRequest('textDocument/hover', {
+            textDocument: { uri: uriFor('src/crlf.ts') },
+            position,
+        })) as { range?: { start: Position; end: Position } } | null;
+
+        expect(hoverText(result)).toContain('Widget');
+        // The server answers with the span it resolved. It has to be the
+        // identifier we aimed at, on the line we counted.
+        const start = positionAt(CRLF_TS, 'crlfWidget.label');
+        expect(result?.range).toEqual({
+            start,
+            end: { line: start.line, character: start.character + 'crlfWidget'.length },
+        });
+    });
+
+    it('resolves a cross-file type through the CRLF buffer', async () => {
+        const result = await session.sendRequest('textDocument/definition', {
+            textDocument: { uri: uriFor('src/crlf.ts') },
+            position: positionAt(CRLF_TS, "makeWidget('two'", 2),
+        });
+        expect(targetUris(result)).toContain(uriFor('src/widgets.ts'));
+    });
+
+    it('reports a diagnostic on the CRLF line the edit was made on', async () => {
+        const broken = `${CRLF_TS}export const crlfBroken: number = crlfLabel;\r\n`;
+        changeDocument('src/crlf.ts', broken);
+        const found = await waitForDiagnostics('src/crlf.ts', (list) => list.length > 0);
+
+        const expected = positionAt(broken, 'crlfBroken:');
+        expect(expected.line).toBe(4);
+        expect(found[0].range.start).toEqual(expected);
+        expect(found[0].message).toContain('not assignable');
+    });
+
+    it('applies a ranged edit measured over CRLF text to the span we named', async () => {
+        changeDocument('src/crlf.ts', CRLF_TS);
+        await waitForDiagnostics('src/crlf.ts', (list) => list.length === 0);
+
+        // Incremental sync, which is what tsserver negotiates: replace the
+        // second argument in place. If the range were computed with the
+        // terminators counted into the line, this would splice somewhere else
+        // and the argument type error would land on another position.
+        const start = positionAt(CRLF_TS, "'Two'");
+        expect(start.line).toBe(2);
+        changeDocumentRange('src/crlf.ts', { start, end: { line: start.line, character: start.character + 5 } }, '2');
+
+        const found = await waitForDiagnostics('src/crlf.ts', (list) => list.length > 0);
+        expect(found[0].message).toContain('not assignable');
+        expect(found[0].range.start).toEqual(start);
+        expect(found[0].range.end).toEqual({ line: start.line, character: start.character + 1 });
     });
 });
 
