@@ -586,6 +586,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
                 panelHasFocus,
                 explorerMounted: isExplorerQuickOpenMounted(),
                 explorerHasFocus: explorerQuickOpenHasFocus(),
+                panelEligibleWhenClosed: shortcut === 'quick' && repoGroup !== undefined,
             });
             if (owner !== 'panel') return;
             event.preventDefault();
@@ -600,7 +601,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
         };
         document.addEventListener('keydown', onKeyDown, true);
         return () => document.removeEventListener('keydown', onKeyDown, true);
-    }, [isOpen, quickOpenVisible, exactOpenVisible]);
+    }, [isOpen, quickOpenVisible, exactOpenVisible, repoGroup]);
 
     // ------------------------------------------------------------------
     // Close the active tab (Ctrl/Cmd+W)

@@ -114,6 +114,12 @@ renders the same component in `layout/TopBar.tsx` for a concrete clone or a
 `group-*` selection. My Work / My Life have no panel. Selecting an inactive mode
 opens or switches the panel; selecting its active mode while open closes it.
 
+On desktop, a repo group's mounted panel also owns Ctrl/Cmd+P while collapsed,
+from every group sub-tab. The Quick Open portal may appear without changing the
+stored open bit; only an accepted file selection opens Explorer mode. Ordinary
+repos still require an open panel or mounted Explorer owner, Ctrl/Cmd+O remains
+target-repo Exact Open, and mobile mounts no group panel listener.
+
 `../notes/dock/DockNotesPanel.tsx` is the Notes view: search + new-note row, a
 recency-ordered flat list (`dock/dockNotes.ts` holds the pure list/query/naming
 helpers), a read-only markdown preview, and the two hand-off actions. The preview

@@ -56,6 +56,17 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
     getRepoGroup: (...args: unknown[]) => mockGetRepoGroup(...args),
+    REPO_GROUP_DESCRIPTION_MAX_LENGTH: 280,
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', () => ({
+    RepoGroupGitTab: ({ workspaceId }: { workspaceId: string }) => (
+        <div data-testid="stub-group-git">git:{workspaceId}</div>
+    ),
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab', () => ({
+    RepoGroupSettingsTab: ({ workspaceId }: { workspaceId: string }) => (
+        <div data-testid="stub-group-settings">settings:{workspaceId}</div>
+    ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
     RepoChatTab: ({ workspaceId }: { workspaceId: string }) => (
@@ -161,6 +172,27 @@ describe('RepoGroupView right panel', () => {
         expect(screen.getByTestId('unified-right-panel')).toBeTruthy();
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));
     });
+
+    it.each(['chats', 'git', 'notes', 'settings'])(
+        'owns Ctrl+P from the %s sub-tab while the panel is closed',
+        async activeTab => {
+            mockAppState.activeRepoSubTab = activeTab;
+            render(<RepoGroupView workspaceId={GROUP_ID} />);
+            await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalled());
+
+            const event = new KeyboardEvent('keydown', {
+                key: 'p',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+            });
+            act(() => document.dispatchEvent(event));
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(screen.getByTestId('quick-open-dialog')).toBeTruthy();
+            expect(screen.getByTestId('unified-right-panel').dataset.open).toBe('false');
+        },
+    );
 
     // The group's selected chat is what owns the panel's chat-scoped tabs, so a
     // file opened from a chat has to land in that chat's set rather than under

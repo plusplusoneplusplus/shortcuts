@@ -133,19 +133,27 @@ only mounts while the column is open — so a collapsed column meant no listener
 at all, and a mounted Explorer sub-tab meant *two* listeners and two stacked
 dialogs.
 
-`quickOpenOwner({ panelOpen, panelHasFocus, explorerMounted, explorerHasFocus })`
-is the whole decision, pure and unit-tested: focus inside the panel wins;
-otherwise a mounted Explorer sub-tab wins (focused or not, which is what keeps
-today's behaviour for a user with no panel open); otherwise the open panel; else
-nobody. `explorerMounted`/`explorerHasFocus` come from a module-level registry of
-focus probes — only `mode: 'editor'` mounts register, because a navigator/sidebar
-Explorer is somebody else's column.
+`quickOpenOwner({ panelOpen, panelHasFocus, explorerMounted, explorerHasFocus,
+panelEligibleWhenClosed })` is the whole decision, pure and unit-tested: focus
+inside the panel wins; otherwise a mounted Explorer sub-tab wins (focused or
+not, which keeps ordinary-repo behavior); otherwise an open panel or an eligible
+closed group panel wins; else nobody. Closed-panel eligibility is passed only
+for repo-group Ctrl/Cmd+P, never Ctrl/Cmd+O. `explorerMounted` /
+`explorerHasFocus` come from a module-level registry of focus probes — only
+`mode: 'editor'` mounts register, because a navigator/sidebar Explorer is
+somebody else's column.
 
 The panel listens in the **capture** phase on `document` and calls
 `stopPropagation()` when it wins, so `ExplorerPanel`'s bubble-phase listener never
 runs — and neither does Monaco, whose handlers sit on the editor's own DOM, so
 Ctrl+P inside a code buffer in this panel opens this dialog. `preventDefault()`
 is always called by the winner, so the browser print dialog never appears.
+
+`RepoGroupView` keeps the panel mounted on every desktop group sub-tab even
+while collapsed, so this same listener owns Ctrl/Cmd+P from Workspace, Git,
+Notes, and Settings. Opening or cancelling the portal does not change the
+panel's open bit; accepting a result opens Explorer mode through the atomic
+selection transaction. Mobile mounts no panel and remains unchanged.
 
 The dialogs are the Explorer's own `QuickOpen` / `ExactOpen` (portalled to
 `document.body`). Exact Open and ordinary-repo Quick Open point at the dock

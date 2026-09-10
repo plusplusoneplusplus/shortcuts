@@ -30,11 +30,19 @@ export interface QuickOpenOwnerContext {
     explorerMounted: boolean;
     /** `document.activeElement` is inside that Explorer tab's root. */
     explorerHasFocus: boolean;
+    /** Quick Open may use the panel's dialog even while the panel is collapsed. */
+    panelEligibleWhenClosed?: boolean;
 }
 
 /** Pure routing decision — see the module comment for the ordered rule. */
 export function quickOpenOwner(context: QuickOpenOwnerContext): QuickOpenOwner | null {
-    const { panelOpen, panelHasFocus, explorerMounted, explorerHasFocus } = context;
+    const {
+        panelOpen,
+        panelHasFocus,
+        explorerMounted,
+        explorerHasFocus,
+        panelEligibleWhenClosed = false,
+    } = context;
     // 1. The panel has the keyboard. A collapsed panel cannot, so `panelOpen`
     //    is checked too rather than trusting containment alone.
     if (panelOpen && panelHasFocus) return 'panel';
@@ -43,7 +51,7 @@ export function quickOpenOwner(context: QuickOpenOwnerContext): QuickOpenOwner |
     // 3. Focus is somewhere else entirely: the Explorer tab first, because that
     //    is where Ctrl+P went before the panel existed.
     if (explorerMounted) return 'explorer';
-    if (panelOpen) return 'panel';
+    if (panelOpen || panelEligibleWhenClosed) return 'panel';
     return null;
 }
 

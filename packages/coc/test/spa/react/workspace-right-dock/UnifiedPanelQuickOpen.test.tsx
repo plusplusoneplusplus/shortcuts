@@ -39,10 +39,11 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
 // a pick": their search/ranking behaviour has its own suites, and what matters
 // here is that the panel opens the right one and files what comes back.
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/QuickOpen', () => ({
-    QuickOpen: ({ scope, open, onFileSelect }: {
+    QuickOpen: ({ scope, open, onFileSelect, onClose }: {
         scope: { kind: 'repo'; workspaceId: string } | { kind: 'repo-group'; groupId: string };
         open: boolean;
         onFileSelect: (result: { path: string; workspaceId?: string; repoName?: string }) => unknown;
+        onClose: () => void;
     }) => (open ? (
         <div
             data-testid="quick-open-dialog"
@@ -58,6 +59,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/Q
             >
                 pick
             </button>
+            <button type="button" data-testid="quick-open-cancel" onClick={onClose}>cancel</button>
         </div>
     ) : null),
 }));
@@ -444,6 +446,67 @@ describe('unified panel quick open', () => {
         const event = press('p');
         expect(screen.queryByTestId('quick-open-dialog')).toBeNull();
         expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('opens group Quick Open while collapsed without opening the panel', () => {
+        const selectMode = vi.fn();
+        renderPanel({
+            workspaceId: 'group-1',
+            dock: dockStub({ isOpen: false, target: 'member-a', selectMode }),
+            repoGroup: { id: 'group-1', name: 'Group', liveRepoCount: 2 },
+        });
+
+        const event = press('p');
+        expect(event.defaultPrevented).toBe(true);
+        expect(screen.getByTestId('quick-open-dialog')).toBeTruthy();
+        expect(selectMode).not.toHaveBeenCalled();
+        expect(screen.getByTestId('unified-right-panel').dataset.open).toBe('false');
+    });
+
+    it('leaves a collapsed group panel closed when Quick Open is cancelled', () => {
+        const selectMode = vi.fn();
+        renderPanel({
+            workspaceId: 'group-1',
+            dock: dockStub({ isOpen: false, target: 'member-a', selectMode }),
+            repoGroup: { id: 'group-1', name: 'Group', liveRepoCount: 2 },
+        });
+        press('p');
+        fireEvent.click(screen.getByTestId('quick-open-cancel'));
+
+        expect(selectMode).not.toHaveBeenCalled();
+        expect(screen.getByTestId('unified-right-panel').dataset.open).toBe('false');
+        expect(screen.queryByTestId('quick-open-dialog')).toBeNull();
+    });
+
+    it('keeps Ctrl+O unclaimed for a collapsed group panel', () => {
+        renderPanel({
+            workspaceId: 'group-1',
+            dock: dockStub({ isOpen: false, target: 'member-a' }),
+            repoGroup: { id: 'group-1', name: 'Group', liveRepoCount: 2 },
+        });
+
+        const event = press('o');
+        expect(event.defaultPrevented).toBe(false);
+        expect(screen.queryByTestId('exact-open-dialog')).toBeNull();
+    });
+
+    it('opens the collapsed group panel only after accepting a result', async () => {
+        const selectMode = vi.fn();
+        const setTarget = vi.fn().mockReturnValue(true);
+        renderPanel({
+            workspaceId: 'group-1',
+            dock: dockStub({ isOpen: false, target: 'member-a', selectMode, setTarget }),
+            repoGroup: { id: 'group-1', name: 'Group', liveRepoCount: 2 },
+        });
+        press('p');
+        await act(async () => fireEvent.click(screen.getByTestId('quick-open-pick')));
+
+        expect(selectMode).toHaveBeenCalledWith('explorer');
+        expect(setTarget).toHaveBeenCalledWith('member-b');
+        expect(storedFileTab('group-1')).toEqual(expect.objectContaining({
+            ownerWorkspaceId: 'member-b',
+            resourceId: 'src/deep/app.ts',
+        }));
     });
 
     it('still opens with the tree column already expanded', () => {

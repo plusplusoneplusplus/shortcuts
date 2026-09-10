@@ -52,6 +52,26 @@ describe('quickOpenOwner', () => {
         expect(owner(false, false, false, false)).toBeNull();
     });
 
+    it('gives a closed eligible group panel Quick Open ownership', () => {
+        expect(quickOpenOwner({
+            panelOpen: false,
+            panelHasFocus: false,
+            explorerMounted: false,
+            explorerHasFocus: false,
+            panelEligibleWhenClosed: true,
+        })).toBe('panel');
+    });
+
+    it('keeps mounted Explorer precedence over a closed eligible group panel', () => {
+        expect(quickOpenOwner({
+            panelOpen: false,
+            panelHasFocus: false,
+            explorerMounted: true,
+            explorerHasFocus: false,
+            panelEligibleWhenClosed: true,
+        })).toBe('explorer');
+    });
+
     it('ignores focus claimed by a panel that is collapsed', () => {
         // A collapsed panel is `display:none`, so nothing in it can really hold
         // the focus — but a stale ref must not out-vote a live Explorer tab.
@@ -66,10 +86,18 @@ describe('quickOpenOwner', () => {
             for (const panelHasFocus of [false, true]) {
                 for (const explorerMounted of [false, true]) {
                     for (const explorerHasFocus of [false, true]) {
-                        const result = owner(panelOpen, panelHasFocus, explorerMounted, explorerHasFocus);
-                        expect(result === null || result === 'panel' || result === 'explorer').toBe(true);
-                        if (result === 'explorer') expect(explorerMounted).toBe(true);
-                        if (result === 'panel') expect(panelOpen).toBe(true);
+                        for (const panelEligibleWhenClosed of [false, true]) {
+                            const result = quickOpenOwner({
+                                panelOpen,
+                                panelHasFocus,
+                                explorerMounted,
+                                explorerHasFocus,
+                                panelEligibleWhenClosed,
+                            });
+                            expect(result === null || result === 'panel' || result === 'explorer').toBe(true);
+                            if (result === 'explorer') expect(explorerMounted).toBe(true);
+                            if (result === 'panel') expect(panelOpen || panelEligibleWhenClosed).toBe(true);
+                        }
                     }
                 }
             }
