@@ -33,13 +33,17 @@ export type QuickOpenScope =
     | { kind: 'repo-group'; groupId: string; groupName: string; liveRepoCount: number; baseUrl?: string };
 
 export type QuickOpenResult = ExplorerSearchResult | ExplorerRepoGroupSearchResult;
+export type QuickOpenSelectionOutcome =
+    | void
+    | boolean
+    | { error: string; retry?: boolean };
 
 export interface QuickOpenProps {
     scope: QuickOpenScope;
     open: boolean;
     onClose: () => void;
     /** Return false to keep the dialog open without changing its selection. */
-    onFileSelect: (result: QuickOpenResult) => void | boolean | Promise<void | boolean>;
+    onFileSelect: (result: QuickOpenResult) => QuickOpenSelectionOutcome | Promise<QuickOpenSelectionOutcome>;
 }
 
 /**
@@ -148,7 +152,6 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
             const abort = new AbortController();
             abortRef.current = abort;
             setLoading(true);
-            setError(null);
             const searching = scope.kind === 'repo'
                 ? explorerApi.searchFiles(scope.workspaceId, trimmed, { limit: RESULT_LIMIT, signal: abort.signal })
                 : searchRepoGroupFiles(
@@ -160,6 +163,7 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
             searching
                 .then(data => {
                     if (abort.signal.aborted || requestId !== requestIdRef.current || !open) return;
+                    setError(null);
                     if ('status' in data) {
                         setGroupStatus(data.status);
                         if (data.status === 'failed') {
@@ -218,7 +222,13 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
     }, [highlightIndex]);
 
     const handleSelect = useCallback(async (result: QuickOpenResult) => {
-        if (await onFileSelect(result) === false) return;
+        const outcome = await onFileSelect(result);
+        if (outcome === false) return;
+        if (typeof outcome === 'object') {
+            setError(outcome.error);
+            if (outcome.retry) setRetry(value => value + 1);
+            return;
+        }
         onClose();
     }, [onFileSelect, onClose]);
 

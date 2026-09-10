@@ -148,18 +148,26 @@ Ctrl+P inside a code buffer in this panel opens this dialog. `preventDefault()`
 is always called by the winner, so the browser print dialog never appears.
 
 The dialogs are the Explorer's own `QuickOpen` / `ExactOpen` (portalled to
-`document.body`), pointed at the **dock target** — the clone the tree column
-browses — not the panel scope, which in a repo group is the group. Because they
-portal outside the panel root, "my dialog is already up" counts as panel focus.
+`document.body`). Exact Open and ordinary-repo Quick Open point at the dock
+target. Repo-group Quick Open receives the group id, name, live-member count,
+and owner base URL from `RepoGroupView`, so it searches the whole group while
+the page and panel stay group-scoped. Because the dialogs portal outside the
+panel root, "my dialog is already up" counts as panel focus.
 
-A pick goes through `openTreeFile`: a trusted `__trusted__:` path lands pinned and
-read-only, everything else takes the preview slot, exactly like a tree click. It
-also sets the tree's open bit, and the reveal comes free — the new tab is active,
-`unifiedToolbarBreadcrumbs` resolves its path, and `ExplorerPanel`'s
-`activeFilePath` tracking expands the ancestors and centres the row. The bit is
-set even when the panel is too narrow for `isUnifiedTreeVisible`: the bit is what
-the user asked for and widening restores it, but the panel is never force-widened
-over a boundary the user dragged.
+A repo pick goes through `openTreeFile`: a trusted `__trusted__:` path lands
+pinned and read-only, everything else takes the preview slot, exactly like a
+tree click. A group pick first re-reads membership from the group owner, binds a
+remote bare member id to that exact owner route, and asks `dock.setTarget()` to
+run the dirty-editor guard. Missing/stale members, unknown remote routes, and a
+declined guard leave tabs, target, tree, and dialog unchanged. An accepted pick
+builds the preview descriptor directly from the result's member id and repo
+label rather than waiting for target state to rerender.
+
+An accepted pick opens Explorer mode and sets the tree's open bit; the active
+tab then drives `ExplorerPanel.activeFilePath`, which expands ancestors and
+centres the row. The bit is set even when the panel is too narrow for
+`isUnifiedTreeVisible`: widening restores it, but the panel is never
+force-widened over a boundary the user dragged.
 
 ## Ctrl/Cmd+W closes the active tab (`closeTabRouting.ts`)
 

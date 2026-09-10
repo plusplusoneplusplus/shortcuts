@@ -14,9 +14,11 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+    activateWorkspaceRouteForBaseUrl,
     cloneApiBase,
     cloneWsUrlForWorkspace,
     getCocClientForWorkspace,
+    hasWorkspaceRouteForBaseUrl,
     lookupCloneBaseUrl,
     registerCloneBaseUrls,
     remoteCloneApiBase,
@@ -92,6 +94,22 @@ describe('lookupCloneBaseUrl', () => {
 
         setActiveCloneForRouting(key2);
         expect(lookupCloneBaseUrl('ws-shared')).toBe('http://127.0.0.1:4001');
+    });
+
+    it('activates a colliding member only for the exact group-owner base URL', () => {
+        const key1 = buildRemoteCloneKey('srv-1', 'ws-shared');
+        const key2 = buildRemoteCloneKey('srv-2', 'ws-shared');
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-shared', cloneKey: key1, baseUrl: 'http://127.0.0.1:4000' },
+            { workspaceId: 'ws-shared', cloneKey: key2, baseUrl: 'http://127.0.0.1:4001' },
+        ]);
+
+        expect(activateWorkspaceRouteForBaseUrl('ws-shared', 'http://127.0.0.1:4001')).toBe(true);
+        expect(lookupCloneBaseUrl('ws-shared')).toBe('http://127.0.0.1:4001');
+        expect(activateWorkspaceRouteForBaseUrl('ws-shared', 'http://127.0.0.1:4999')).toBe(false);
+        expect(activateWorkspaceRouteForBaseUrl('unknown', 'http://127.0.0.1:4001')).toBe(false);
+        expect(hasWorkspaceRouteForBaseUrl('ws-shared', 'http://127.0.0.1:4000')).toBe(true);
+        expect(hasWorkspaceRouteForBaseUrl('ws-shared', 'http://127.0.0.1:4999')).toBe(false);
     });
 
     it('ignores entries with a missing id or baseUrl', () => {

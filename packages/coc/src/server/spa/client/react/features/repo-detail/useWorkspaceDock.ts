@@ -82,7 +82,7 @@ function useDockTarget(
     storageKey: string,
     targets: readonly DockTarget[],
     scopeWorkspaceId: string,
-): [string, (next: string) => void] {
+): [string, (next: string) => boolean] {
     const targetsKey = targetsKeyOf(targets);
     const [target, setTargetState] = useState<string>(() => readTarget(storageKey, targets, scopeWorkspaceId));
     // Latest target, so `setTarget` can consult it without the confirm prompt
@@ -101,8 +101,8 @@ function useDockTarget(
     }, [storageKey, targetsKey, scopeWorkspaceId]);
 
     const setTarget = useCallback((next: string) => {
-        if (next === targetRef.current) return;
-        if (!confirmDiscardExplorerEditsOnSwitch(targetRef.current, next)) return;
+        if (next === targetRef.current) return true;
+        if (!confirmDiscardExplorerEditsOnSwitch(targetRef.current, next)) return false;
         try {
             localStorage.setItem(storageKey, next);
         } catch {
@@ -110,6 +110,7 @@ function useDockTarget(
         }
         targetRef.current = next;
         setTargetState(next);
+        return true;
     }, [storageKey]);
 
     return [target, setTarget];
@@ -134,7 +135,7 @@ export interface WorkspaceDockController {
      * Point the panel at another target (persisted). No-ops when the current
      * target has unsaved edits and the user declines to discard them.
      */
-    setTarget: (target: string) => void;
+    setTarget: (target: string) => boolean;
     /** The target options, in picker order; empty when the caller supplied none. */
     targets: readonly DockTarget[];
     /**

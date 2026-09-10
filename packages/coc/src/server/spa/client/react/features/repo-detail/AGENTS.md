@@ -98,8 +98,9 @@ still persists through `explorerStateStore`.
 
 Target switches go through `confirmDiscardExplorerEditsOnSwitch` (from
 `explorer/explorerDirtyStore.ts`), so picking another member repo cannot silently
-drop a dirty Monaco buffer; declining leaves the selection and localStorage
-untouched.
+drop a dirty Monaco buffer. `dock.setTarget()` returns whether the switch was
+accepted; declining leaves the selection and localStorage untouched, which lets
+group Quick Open keep its dialog and highlighted result unchanged.
 
 Persisted values are validated on read. The target
 (`workspaceDockTargetStorageKey`) falls back to the first enabled

@@ -90,6 +90,30 @@ export function setActiveCloneForRouting(selectionId: string | null | undefined)
 }
 
 /**
+ * Bind a bare workspace id to the clone hosted at an exact base URL.
+ *
+ * Repo-group results carry member ids from the group's owning server. When the
+ * same id exists elsewhere, this establishes the owner context before any
+ * workspace-scoped read. False means no exact remote route is registered, so a
+ * caller must not fall through to the local client.
+ */
+function workspaceRouteKeyForBaseUrl(workspaceId: string, baseUrl: string): string | undefined {
+    const keys = cloneKeysByWorkspace.get(workspaceId);
+    return keys && [...keys].find(candidate => cloneBaseUrlByKey.get(candidate) === baseUrl);
+}
+
+export function hasWorkspaceRouteForBaseUrl(workspaceId: string, baseUrl: string): boolean {
+    return workspaceRouteKeyForBaseUrl(workspaceId, baseUrl) !== undefined;
+}
+
+export function activateWorkspaceRouteForBaseUrl(workspaceId: string, baseUrl: string): boolean {
+    const key = workspaceRouteKeyForBaseUrl(workspaceId, baseUrl);
+    if (!key) return false;
+    activeCloneKey = key;
+    return true;
+}
+
+/**
  * Look up a workspace's remote `baseUrl`, or `undefined` when it is a LOCAL
  * workspace (or unknown). Local/unknown ids deliberately resolve to `undefined`
  * so downstream `getCocClientFor(undefined)` returns the default local client.

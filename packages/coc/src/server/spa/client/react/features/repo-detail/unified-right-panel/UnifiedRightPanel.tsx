@@ -59,7 +59,7 @@ import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ContentSearchPanel } from '../explorer/ContentSearchPanel';
 import { ExplorerPanel, getAncestorPaths } from '../explorer/ExplorerPanel';
 import { useExplorerExpandedPaths, useExplorerSelectedPath } from '../explorer/explorerStateStore';
-import { QuickOpen } from '../explorer/QuickOpen';
+import { QuickOpen, type QuickOpenResult } from '../explorer/QuickOpen';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
 import {
     explorerQuickOpenHasFocus,
@@ -96,6 +96,11 @@ import {
     needsDirtyCloseConfirm,
 } from './unifiedDirtyClose';
 import type { OpenUnifiedPreviewTabInput, OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { getRepoGroup } from '../../../repos/repoGroupService';
+import {
+    activateWorkspaceRouteForBaseUrl,
+    hasWorkspaceRouteForBaseUrl,
+} from '../../../repos/cloneRegistry';
 
 export interface UnifiedRightPanelProps {
     /**
@@ -112,9 +117,16 @@ export interface UnifiedRightPanelProps {
     dock: WorkspaceDockController;
     /** Target options for repo groups; the "+" menu picks among them. */
     targets?: readonly DockTarget[];
+    /** Group-owner context for group-wide Quick Open. */
+    repoGroup?: {
+        id: string;
+        name: string;
+        liveRepoCount: number;
+        baseUrl?: string;
+    };
 }
 
-export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }: UnifiedRightPanelProps) {
+export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, repoGroup }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const {
         tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
@@ -387,15 +399,17 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     // A file picked in the tree opens against the dock's target, exactly as an
     // Explorer navigator tab's selection does — same descriptor builder, so the
     // tree column and the `+` menu file the same kind of tab.
-    const openTreeFile = useCallback(
+    const openFileForOwner = useCallback(
         (
             file: { path: string; name: string; line?: number },
             options: { preview: boolean; readOnly?: boolean },
+            ownerWorkspaceId: string,
+            ownerLabel?: string,
         ) => {
             const input = explorerFileTabInput(file, options, {
-                ownerWorkspaceId: target,
+                ownerWorkspaceId,
                 scopeWorkspaceId: workspaceId,
-                ownerLabel: targetLabel,
+                ownerLabel,
                 chatId,
             });
             if (input === null) return;
@@ -419,7 +433,14 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
             }
             openPreview(previewInput);
         },
-        [target, workspaceId, targetLabel, chatId, open, openPreview, previewToReplace, dirtyIds, requestClose],
+        [workspaceId, chatId, open, openPreview, previewToReplace, dirtyIds, requestClose],
+    );
+    const openTreeFile = useCallback(
+        (
+            file: { path: string; name: string; line?: number },
+            options: { preview: boolean; readOnly?: boolean },
+        ) => openFileForOwner(file, options, target, targetLabel),
+        [openFileForOwner, target, targetLabel],
     );
     const openSearchMatch = useCallback((path: string, line: number) => {
         const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
@@ -488,6 +509,57 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
         openTreeFile({ path: filePath, name }, { preview: true });
     }, [tree, openTreeFile]);
+
+    const handleQuickOpenSelect = useCallback(async (result: QuickOpenResult) => {
+        if (!('workspaceId' in result) || !repoGroup) {
+            handlePanelFileSelect(result.path);
+            return;
+        }
+
+        let latest;
+        try {
+            latest = await getRepoGroup(repoGroup.id, repoGroup.baseUrl);
+        } catch {
+            return { error: 'This repository is no longer available.', retry: true };
+        }
+        const member = latest.members.find(candidate => candidate.workspaceId === result.workspaceId);
+        if (!member || member.stale) {
+            return { error: 'This repository is no longer available.', retry: true };
+        }
+        if (
+            repoGroup.baseUrl &&
+            !hasWorkspaceRouteForBaseUrl(result.workspaceId, repoGroup.baseUrl)
+        ) {
+            return { error: 'This repository is no longer available.', retry: true };
+        }
+        if (result.workspaceId !== target && dock.setTarget(result.workspaceId) === false) {
+            return false;
+        }
+        if (repoGroup.baseUrl) {
+            activateWorkspaceRouteForBaseUrl(result.workspaceId, repoGroup.baseUrl);
+        }
+
+        if (!isOpen || mode !== 'explorer') dock.selectMode('explorer');
+        tree.setOpen(true);
+        const name = result.path.includes('/')
+            ? result.path.slice(result.path.lastIndexOf('/') + 1)
+            : result.path;
+        openFileForOwner(
+            { path: result.path, name },
+            { preview: true },
+            result.workspaceId,
+            result.repoName,
+        );
+    }, [
+        repoGroup,
+        target,
+        dock,
+        isOpen,
+        mode,
+        tree,
+        openFileForOwner,
+        handlePanelFileSelect,
+    ]);
 
     const panelRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -911,14 +983,19 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     )}
                 </div>
 
-                {/* Both portal to document.body, and both search the tree's
-                    target workspace — the same clone the column browses — not
-                    the panel's own scope, which in a repo group is the group. */}
                 <QuickOpen
-                    scope={{ kind: 'repo', workspaceId: target }}
+                    scope={repoGroup
+                        ? {
+                            kind: 'repo-group',
+                            groupId: repoGroup.id,
+                            groupName: repoGroup.name,
+                            liveRepoCount: repoGroup.liveRepoCount,
+                            baseUrl: repoGroup.baseUrl,
+                        }
+                        : { kind: 'repo', workspaceId: target }}
                     open={quickOpenVisible}
                     onClose={() => setQuickOpenVisible(false)}
-                    onFileSelect={result => handlePanelFileSelect(result.path)}
+                    onFileSelect={handleQuickOpenSelect}
                 />
                 <ExactOpen
                     workspaceId={target}

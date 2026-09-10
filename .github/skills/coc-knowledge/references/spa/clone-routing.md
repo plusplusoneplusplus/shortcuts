@@ -72,6 +72,11 @@ The registry exposes:
 - `cloneWsUrlForWorkspace(path, id)`
 - `remoteCloneApiBase(id)` — same, but `undefined` for a local id, so call sites
   hard-coding a relative `/api/...` URL (NoteEditor image URLs) keep that literal locally
+- `hasWorkspaceRouteForBaseUrl(workspaceId, baseUrl)` /
+  `activateWorkspaceRouteForBaseUrl(workspaceId, baseUrl)` — verify, then bind, a
+  colliding bare member id to the exact registered clone on a repo group's owner;
+  verification happens before dock mutation and activation after the dirty-edit guard,
+  so failure or cancel cannot fall through locally or partially switch state
 - `requestForWorkspace(id, url, options?)` — clone-routed analog of `requestSpaApi`
   fetching a **relative** api path against the clone, with the same
   `toSpaCocRequestOptions` and error translation
