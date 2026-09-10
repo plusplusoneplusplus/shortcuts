@@ -21,9 +21,31 @@
  *   $/cancelRequest       -> replies to the cancelled `slow` request with -32800
  *   exit                  -> terminates the process
  *   crash                 -> dies with a non-zero code, for restart tests
+ *
+ * Arguments:
+ *   --pid-file <path>     -> writes this process's pid there at startup
+ *   --stubborn            -> ignores `exit`, a closed stdin, and SIGTERM
  */
 
 import process from 'node:process';
+import { writeFileSync } from 'node:fs';
+
+// `--stubborn` makes the process refuse every polite way of stopping it: the
+// `exit` notification, a closed stdin, and SIGTERM. Teardown tests use it to
+// prove a server that will not leave is killed anyway.
+const STUBBORN = process.argv.includes('--stubborn');
+// `--pid-file <path>` lets a test watch the real process disappear, including
+// through a composed server where it never holds the child handle.
+const pidFileIndex = process.argv.indexOf('--pid-file');
+if (pidFileIndex >= 0 && process.argv[pidFileIndex + 1]) {
+    writeFileSync(process.argv[pidFileIndex + 1], String(process.pid), 'utf8');
+}
+if (STUBBORN) {
+    process.on('SIGTERM', () => {});
+    process.on('SIGINT', () => {});
+    // Holds the event loop, so the process stays up even after stdin ends.
+    setInterval(() => {}, 1_000);
+}
 
 const SEPARATOR = '\r\n\r\n';
 let buffer = Buffer.alloc(0);
@@ -104,6 +126,9 @@ function handle(message) {
             send({ jsonrpc: '2.0', id, result: null });
             return;
         case 'exit':
+            if (STUBBORN) {
+                return;
+            }
             process.exit(0);
             return;
         case 'crash':
@@ -165,4 +190,8 @@ process.stdin.on('data', (chunk) => {
     }
 });
 
-process.stdin.on('end', () => process.exit(0));
+process.stdin.on('end', () => {
+    if (!STUBBORN) {
+        process.exit(0);
+    }
+});

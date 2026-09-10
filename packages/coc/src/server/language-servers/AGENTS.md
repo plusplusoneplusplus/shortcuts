@@ -85,6 +85,14 @@ and transport code stays generic.
   settles on `failed` until `restart()` clears the budget. Process `exit` and
   `error` handlers are bound per child, so a previous process's late exit never
   disposes its successor's connection.
+- `stop()` resolves only once the child is really gone: the `exit` notification
+  first, then a signal, then SIGKILL `killGraceMs` after that (2 seconds by
+  default), and it waits for the exit event throughout. A language server that
+  traps SIGTERM or is stuck in a long request would otherwise outlive the CoC
+  process that started it, and a shutdown that resolved early would report a
+  teardown it had not finished. The escalation timers are the only ones in this
+  module that are NOT `unref`ed — an event loop free to exit before the kill
+  fires would orphan the process the kill exists to remove.
 - `client-requests.ts` — `LanguageServerClientRequests` answers
   `workspace/configuration` (resolved from the definition's `settings` by dotted
   section path), `workspace/workspaceFolders`, `client/registerCapability`,
@@ -133,7 +141,14 @@ and transport code stays generic.
   `shutdown`) so the document layer knows to replay into a fresh session.
 - `disposeWorkspace`, `disposeEditingSession`, and `dispose` release processes,
   timers, and the config subscription. After `dispose` every `acquire` is
-  refused.
+  refused. All three await the child processes, so when they resolve nothing
+  the manager started is still running.
+- `teardown.test.ts` is the evidence for that, and it is the one suite that
+  watches real pids rather than session objects: the fixture writes its pid with
+  `--pid-file <path>`, and `--stubborn` makes it ignore `exit`, a closed stdin
+  and SIGTERM so the kill escalation is actually exercised. It covers the
+  session, the manager, the bridge's heartbeat interval, and a composed
+  `createExecutionServer` through workspace deletion and shutdown.
 
 ## Runtime preparation (`adapters.ts`, `typescript-adapter.ts`)
 

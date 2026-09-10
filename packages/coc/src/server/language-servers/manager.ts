@@ -66,6 +66,8 @@ export interface LanguageServerManagerOptions {
     /** Passed through to every session. */
     idleTimeoutMs?: number;
     startTimeoutMs?: number;
+    /** Grace a stopping process gets before it is killed outright. */
+    killGraceMs?: number;
     requestTimeoutMs?: number;
     maxMessageBytes?: number;
     clientCapabilities?: JsonValue;
@@ -228,6 +230,7 @@ export class LanguageServerManager {
             requestTimeoutMs: this.options.requestTimeoutMs,
             maxMessageBytes: this.options.maxMessageBytes,
             idleTimeoutMs: this.options.idleTimeoutMs,
+            killGraceMs: this.options.killGraceMs,
             onError: this.options.onError,
         };
         const session = this.options.createSession

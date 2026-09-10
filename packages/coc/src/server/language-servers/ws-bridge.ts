@@ -25,7 +25,8 @@ import { LanguageServerRequestError } from './connection';
 import { browserDocumentUri, resolveWorkspaceDocument, toBrowserUri, toServerUri, translateUris } from './uri-mapping';
 import type { UriMappingFailure } from './uri-mapping';
 
-const HEARTBEAT_INTERVAL_MS = 60_000;
+/** Exported so a teardown test can identify this interval among all timers. */
+export const HEARTBEAT_INTERVAL_MS = 60_000;
 
 /** Server notifications forwarded to the browser. Anything else is dropped. */
 const FORWARDED_NOTIFICATIONS = [

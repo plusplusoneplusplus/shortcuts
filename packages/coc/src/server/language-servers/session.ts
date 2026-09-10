@@ -85,6 +85,11 @@ export interface LanguageServerSessionOptions {
     maxRestarts?: number;
     /** First backoff delay; each further attempt doubles it. Defaults to 1 second. */
     restartBackoffMs?: number;
+    /**
+     * How long a stopping process is given to exit on its own before it is
+     * killed outright. Defaults to 2 seconds.
+     */
+    killGraceMs?: number;
     onStateChange?: (state: LanguageServerSessionState) => void;
     onError?: (error: Error) => void;
 }
@@ -93,6 +98,7 @@ const DEFAULT_START_TIMEOUT_MS = 20_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_MAX_RESTARTS = 3;
 const DEFAULT_RESTART_BACKOFF_MS = 1_000;
+const DEFAULT_KILL_GRACE_MS = 2_000;
 const MAX_STDERR_CHARS = 4_000;
 
 export class LanguageServerSession {
@@ -311,7 +317,7 @@ export class LanguageServerSession {
             connection.dispose('Language server stopped');
         }
         if (child) {
-            child.kill();
+            await this.terminate(child);
         }
         this.clientRequests.reset();
         this.setState({ status: 'disabled', detail, capabilities: undefined, dynamicRegistrations: [] });
@@ -328,6 +334,71 @@ export class LanguageServerSession {
         this.stateHandlers.clear();
         this.notificationHandlers.clear();
         this.requestHandlers.clear();
+    }
+
+    /**
+     * Ends a child process for good and resolves only once it is really gone.
+     *
+     * The polite `exit` notification has already been sent by the caller, so
+     * this is the escalation path: a signal first, then an unignorable kill
+     * once the grace period elapses. A language server that traps SIGTERM —
+     * or is stuck in a long request — must not outlive the CoC process that
+     * started it, and `stop` must not resolve while it is still running, or
+     * shutdown would report a teardown it has not finished.
+     */
+    private terminate(child: ChildProcessWithoutNullStreams): Promise<void> {
+        // The exit belongs to this teardown now, not to the crash-restart path.
+        child.removeAllListeners('exit');
+        if (child.exitCode !== null || child.signalCode !== null) {
+            child.stderr.removeAllListeners('data');
+            return Promise.resolve();
+        }
+        const graceMs = this.options.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
+        return new Promise<void>((resolve) => {
+            const timers: NodeJS.Timeout[] = [];
+            const finish = (): void => {
+                for (const timer of timers) {
+                    clearTimeout(timer);
+                }
+                child.off('exit', finish);
+                child.stderr.removeAllListeners('data');
+                resolve();
+            };
+            child.once('exit', finish);
+            if (!this.signal(child)) {
+                finish();
+                return;
+            }
+            timers.push(this.later(graceMs, () => this.signal(child, 'SIGKILL')));
+            // Nothing survives SIGKILL, but a teardown that waits forever on
+            // one is worse than one that gives up and lets the rest proceed.
+            timers.push(
+                this.later(graceMs * 2, () => {
+                    this.report(new Error(`Language server ${this.definition.id} did not exit after SIGKILL`));
+                    finish();
+                }),
+            );
+        });
+    }
+
+    /** Signals the child, reporting rather than throwing if it is already gone. */
+    private signal(child: ChildProcessWithoutNullStreams, signal?: NodeJS.Signals): boolean {
+        try {
+            child.kill(signal);
+            return true;
+        } catch (error) {
+            this.report(toError(error));
+            return false;
+        }
+    }
+
+    /**
+     * Deliberately not `unref`ed, unlike the idle and restart timers: this one
+     * runs during teardown, and an event loop free to exit before it fires
+     * would orphan the very process it is there to kill.
+     */
+    private later(delayMs: number, run: () => void): NodeJS.Timeout {
+        return setTimeout(run, delayMs);
     }
 
     private async launch(): Promise<void> {
@@ -410,8 +481,10 @@ export class LanguageServerSession {
             connection.dispose('Handshake failed');
             this.connection = undefined;
             this.child = undefined;
-            child.removeAllListeners('exit');
-            child.kill();
+            // A process that never finished `initialize` gets the same
+            // escalation as one being stopped; it just is not waited on, so
+            // the caller learns the handshake failed straight away.
+            void this.terminate(child);
             // A spawn `error` event already classified this as `unavailable`;
             // the handshake rejection it caused must not overwrite that.
             if (this.state.status !== 'unavailable') {
