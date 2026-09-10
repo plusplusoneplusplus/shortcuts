@@ -106,10 +106,12 @@ Persisted values are validated on read. The target
 non-`deprioritized` option, then the first enabled one, then the scope. Only an
 explicit `setTarget` writes; mount and workspace switches never persist.
 
-The open/close toggle lives outside the panel and shares a cross-tree store: the
-classic shell renders it in `RepoDetail`'s header, while the remote-first shell's
-`layout/TopBar.tsx` renders `WorkspaceDockToggleButton` for a concrete clone *or*
-a `group-*` selection under the virtual header. My Work / My Life have no panel.
+Peer icon-only Search and Explorer controls live outside the panel and share its
+cross-tree open and mode stores. The classic shell renders
+`WorkspaceDockModeControls` in `RepoDetail`'s header; the remote-first shell
+renders the same component in `layout/TopBar.tsx` for a concrete clone or a
+`group-*` selection. My Work / My Life have no panel. Selecting an inactive mode
+opens or switches the panel; selecting its active mode while open closes it.
 
 `../notes/dock/DockNotesPanel.tsx` is the Notes view: search + new-note row, a
 recency-ordered flat list (`dock/dockNotes.ts` holds the pure list/query/naming

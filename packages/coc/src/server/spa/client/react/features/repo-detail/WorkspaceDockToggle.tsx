@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
 import { cn } from '../../ui';
 
 /**
@@ -212,32 +213,56 @@ export function DockToggleIcon() {
     );
 }
 
-/**
- * The dock open/close toggle for shells whose header lives outside RepoDetail —
- * i.e. the remote-first shell's global TopBar (placed next to "+ New"). Shares the
- * cross-tree open store with the panel via `useWorkspaceDockToggle`, styled to
- * sit in the TopBar action cluster. RepoDetail's classic chrome header renders its
- * own equivalent button inline; both use the `workspace-dock-toggle` test id, and
- * only one is on screen at a time (chromeless XOR classic).
- */
-export function WorkspaceDockToggleButton({ workspaceId }: { workspaceId: string }) {
-    const { isOpen, toggleOpen } = useWorkspaceDockToggle(workspaceId);
+function SearchIcon() {
     return (
-        <button
-            type="button"
-            data-testid="workspace-dock-toggle"
-            onClick={toggleOpen}
-            aria-label={isOpen ? 'Close terminal, explorer and notes dock' : 'Open terminal, explorer and notes dock'}
-            aria-pressed={isOpen}
-            title={isOpen ? 'Close panel' : 'Open panel'}
-            className={cn(
-                'hidden h-7 w-9 items-center justify-center rounded-md border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da] md:inline-flex',
-                isOpen
-                    ? 'border-[#0969da]/40 bg-[#ddf4ff] text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]'
-                    : 'border-[#d0d7de] bg-white text-[#656d76] hover:bg-[#f6f8fa] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#999] dark:hover:bg-[#2a2a2a]',
-            )}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="11" cy="11" r="7" />
+            <path d="M16 16l4 4" />
+        </svg>
+    );
+}
+
+const DOCK_MODE_CONTROLS: ReadonlyArray<{
+    mode: WorkspaceDockMode;
+    label: string;
+    icon: ReactNode;
+}> = [
+    { mode: 'search', label: 'Search', icon: <SearchIcon /> },
+    { mode: 'explorer', label: 'Explorer', icon: <DockToggleIcon /> },
+];
+
+/** Peer Search and Explorer controls shared by classic and remote desktop headers. */
+export function WorkspaceDockModeControls({ workspaceId }: { workspaceId: string }) {
+    const { isOpen, mode, selectMode } = useWorkspaceDockToggle(workspaceId);
+    return (
+        <div
+            role="group"
+            aria-label="Workspace panel mode"
+            data-testid="workspace-dock-mode-controls"
+            className="hidden items-center gap-1 md:flex"
         >
-            <DockToggleIcon />
-        </button>
+            {DOCK_MODE_CONTROLS.map(control => {
+                const active = isOpen && mode === control.mode;
+                return (
+                    <button
+                        key={control.mode}
+                        type="button"
+                        data-testid={`workspace-dock-${control.mode}-toggle`}
+                        onClick={() => selectMode(control.mode)}
+                        aria-label={control.label}
+                        aria-pressed={active}
+                        title={`${control.label} panel`}
+                        className={cn(
+                            'inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da]',
+                            active
+                                ? 'border-[#0969da]/40 bg-[#ddf4ff] text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]'
+                                : 'border-[#d0d7de] bg-white text-[#656d76] hover:bg-[#f6f8fa] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#999] dark:hover:bg-[#2a2a2a]',
+                        )}
+                    >
+                        {control.icon}
+                    </button>
+                );
+            })}
+        </div>
     );
 }

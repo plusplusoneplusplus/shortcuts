@@ -53,7 +53,10 @@ import { ThemeProvider } from '../../../src/server/spa/client/react/layout/Theme
 import { TopBar } from '../../../src/server/spa/client/react/layout/TopBar';
 import { MY_WORK_WORKSPACE_ID } from '../../../src/server/spa/client/react/repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../../../src/server/spa/client/react/repos/MyLifeView';
-import { workspaceDockOpenStorageKey } from '../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
+import {
+    workspaceDockModeStorageKey,
+    workspaceDockOpenStorageKey,
+} from '../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 
 const GROUP_ID = 'group-frontend';
 
@@ -171,47 +174,49 @@ describe('TopBar — repo-group virtual header', () => {
 });
 
 /**
- * AC-06 — the dock toggle in the TopBar. A repo group's right panel renders in
- * RepoGroupView; the toggle sits in the TopBar next to the virtual header and
- * shares the group-scoped cross-tree open store. My Work / My Life have none.
+ * A repo group's right panel renders in RepoGroupView; its peer Search/Explorer
+ * controls sit in TopBar and share the group-scoped cross-tree mode store.
  */
-describe('TopBar — repo-group dock toggle (AC-06)', () => {
-    it('renders the dock toggle alongside the group virtual header', () => {
+describe('TopBar — repo-group dock mode controls', () => {
+    it('renders Search and Explorer controls alongside the group virtual header', () => {
         renderTopBarWithGroup();
-        expect(screen.getByTestId('workspace-dock-toggle')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Explorer' })).toBeTruthy();
     });
 
-    it('toggles the group-scoped dock-open key', () => {
+    it('persists the selected mode and open state to the group panel scope', () => {
         renderTopBarWithGroup();
-        const key = workspaceDockOpenStorageKey(GROUP_ID);
-        expect(localStorage.getItem(key)).toBeNull();
+        const openKey = workspaceDockOpenStorageKey(GROUP_ID);
+        const modeKey = workspaceDockModeStorageKey(GROUP_ID);
+        expect(localStorage.getItem(openKey)).toBeNull();
 
         act(() => {
-            fireEvent.click(screen.getByTestId('workspace-dock-toggle'));
+            fireEvent.click(screen.getByRole('button', { name: 'Search' }));
         });
-        expect(localStorage.getItem(key)).toBe('1');
-        expect(screen.getByTestId('workspace-dock-toggle').getAttribute('aria-pressed')).toBe('true');
+        expect(localStorage.getItem(openKey)).toBe('1');
+        expect(localStorage.getItem(modeKey)).toBe('search');
+        expect(screen.getByRole('button', { name: 'Search' }).getAttribute('aria-pressed')).toBe('true');
 
         act(() => {
-            fireEvent.click(screen.getByTestId('workspace-dock-toggle'));
+            fireEvent.click(screen.getByRole('button', { name: 'Search' }));
         });
-        expect(localStorage.getItem(key)).toBe('0');
+        expect(localStorage.getItem(openKey)).toBe('0');
     });
 
-    it('hides the toggle when the split-workspace flag is off', () => {
+    it('hides the controls when the split-workspace flag is off', () => {
         mockSplitPanelEnabled = false;
         renderTopBarWithGroup();
-        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
+        expect(screen.queryByTestId('workspace-dock-mode-controls')).toBeNull();
     });
 
-    it('renders no toggle for My Work or My Life', () => {
+    it('renders no controls for My Work or My Life', () => {
         renderTopBarWithGroup(true, MY_WORK_WORKSPACE_ID);
         expect(screen.getByTestId('virtual-workspace-shell-header')).toBeTruthy();
-        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
+        expect(screen.queryByTestId('workspace-dock-mode-controls')).toBeNull();
         cleanup();
 
         renderTopBarWithGroup(true, MY_LIFE_WORKSPACE_ID);
         expect(screen.getByTestId('virtual-workspace-shell-header')).toBeTruthy();
-        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
+        expect(screen.queryByTestId('workspace-dock-mode-controls')).toBeNull();
     });
 });

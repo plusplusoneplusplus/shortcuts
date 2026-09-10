@@ -66,12 +66,12 @@ async function openRightPanel(page: Page, serverUrl: string): Promise<string> {
     await page.goto(`${serverUrl}/#repos/${WS_ID}`);
     await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 15_000 });
 
-    // The panel starts collapsed; the header toggle is the way in.
+    // The panel starts collapsed; the Explorer header control is the way in.
     const panel = page.locator('[data-testid="unified-right-panel"]');
-    const toggle = page.locator('[data-testid="workspace-dock-toggle"]').first();
-    await expect(toggle).toBeVisible({ timeout: 15_000 });
+    const explorerControl = page.locator('[data-testid="workspace-dock-explorer-toggle"]').first();
+    await expect(explorerControl).toBeVisible({ timeout: 15_000 });
     if ((await panel.getAttribute('data-open')) !== 'true') {
-        await toggle.click();
+        await explorerControl.click();
     }
     await expect(panel).toHaveAttribute('data-open', 'true', { timeout: 10_000 });
 
