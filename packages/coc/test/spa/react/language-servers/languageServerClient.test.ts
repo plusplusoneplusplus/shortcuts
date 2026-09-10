@@ -13,7 +13,6 @@ import {
     LanguageServerClientError,
     getLanguageServerClient,
     resetLanguageServerClientsForTests,
-    type SocketLike,
 } from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
 import {
     getEditingSessionId,
@@ -23,54 +22,7 @@ import {
     registerCloneBaseUrls,
     resetCloneRegistryForTests,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
-
-class FakeSocket implements SocketLike {
-    static instances: FakeSocket[] = [];
-
-    readyState = 0;
-    sent: Record<string, unknown>[] = [];
-    closed: { code?: number; reason?: string } | null = null;
-
-    onopen: ((event: unknown) => void) | null = null;
-    onmessage: ((event: { data: unknown }) => void) | null = null;
-    onclose: ((event: unknown) => void) | null = null;
-    onerror: ((event: unknown) => void) | null = null;
-
-    constructor(readonly url: string) {
-        FakeSocket.instances.push(this);
-    }
-
-    send(data: string): void {
-        this.sent.push(JSON.parse(data));
-    }
-
-    close(code?: number, reason?: string): void {
-        this.closed = { code, reason };
-        this.readyState = 3;
-        this.onclose?.({});
-    }
-
-    /** Complete the handshake the way a real socket would. */
-    open(): void {
-        this.readyState = 1;
-        this.onopen?.({});
-    }
-
-    /** Deliver a server message. */
-    emit(message: unknown): void {
-        this.onmessage?.({ data: JSON.stringify(message) });
-    }
-
-    /** Drop the socket without a client-side close. */
-    drop(): void {
-        this.readyState = 3;
-        this.onclose?.({});
-    }
-
-    sentOfType(type: string): Record<string, unknown>[] {
-        return this.sent.filter((message) => message.type === type);
-    }
-}
+import { FakeSocket } from './fakeLanguageTransport';
 
 function makeClient(overrides: Record<string, unknown> = {}): LanguageServerClient {
     return new LanguageServerClient({

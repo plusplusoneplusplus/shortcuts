@@ -17,6 +17,7 @@ import type {
     LanguageServerClient,
     LanguageServerSessionStateView,
     LanguageServerUnavailableInfo,
+    SocketLike,
 } from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
 
 export interface SentNotification {
@@ -54,7 +55,7 @@ export class FakeAttachment {
     private readonly notificationListeners = new Set<(method: string, params: unknown) => void>();
     private readonly statusListeners = new Set<(state: LanguageServerSessionStateView) => void>();
 
-    constructor(readonly path: string) {}
+    constructor(readonly path: string, readonly workspaceId = 'ws-1') {}
 
     handle(): LanguageServerAttachment {
         this.refCount += 1;
@@ -113,7 +114,7 @@ export class FakeAttachment {
         const info: LanguageServerAttachedInfo = {
             attachmentId: `att-${this.path}`,
             sessionKey: 'session-key',
-            documentUri: browserDocumentUri('ws-1', this.path),
+            documentUri: browserDocumentUri(this.workspaceId, this.path),
             languageId: 'typescript',
             definitionId: 'typescript',
             displayName: 'TypeScript',
@@ -166,10 +167,17 @@ export class FakeAttachment {
 export class FakeClient {
     readonly attachments = new Map<string, FakeAttachment>();
 
+    /**
+     * The workspace this client stands in for. It matters once a test runs two
+     * of them side by side: the host keys a document on its owner, so a fake
+     * that always claimed `ws-1` could not show a routing mistake.
+     */
+    constructor(readonly workspaceId = 'ws-1') {}
+
     attach(path: string): LanguageServerAttachment {
         let attachment = this.attachments.get(path);
         if (!attachment) {
-            attachment = new FakeAttachment(path);
+            attachment = new FakeAttachment(path, this.workspaceId);
             this.attachments.set(path, attachment);
         }
         return attachment.handle();
@@ -214,4 +222,63 @@ export function readyState(
 
 export function diagnostic(message: string): LspDiagnostic {
     return { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, message };
+}
+
+
+// ============================================================================
+// A fake socket, for the suites that exercise the transport client itself
+// ============================================================================
+
+/**
+ * A `WebSocket` stand-in that records what was sent and lets the test decide
+ * when the handshake completes, when a message arrives, and when the connection
+ * drops. Every instance is remembered on the class, so a suite driving more than
+ * one workspace can pick a socket out by its URL.
+ */
+export class FakeSocket implements SocketLike {
+    static instances: FakeSocket[] = [];
+
+    readyState = 0;
+    sent: Record<string, unknown>[] = [];
+    closed: { code?: number; reason?: string } | null = null;
+
+    onopen: ((event: unknown) => void) | null = null;
+    onmessage: ((event: { data: unknown }) => void) | null = null;
+    onclose: ((event: unknown) => void) | null = null;
+    onerror: ((event: unknown) => void) | null = null;
+
+    constructor(readonly url: string) {
+        FakeSocket.instances.push(this);
+    }
+
+    send(data: string): void {
+        this.sent.push(JSON.parse(data));
+    }
+
+    close(code?: number, reason?: string): void {
+        this.closed = { code, reason };
+        this.readyState = 3;
+        this.onclose?.({});
+    }
+
+    /** Complete the handshake the way a real socket would. */
+    open(): void {
+        this.readyState = 1;
+        this.onopen?.({});
+    }
+
+    /** Deliver a server message. */
+    emit(message: unknown): void {
+        this.onmessage?.({ data: JSON.stringify(message) });
+    }
+
+    /** Drop the socket without a client-side close. */
+    drop(): void {
+        this.readyState = 3;
+        this.onclose?.({});
+    }
+
+    sentOfType(type: string): Record<string, unknown>[] {
+        return this.sent.filter((message) => message.type === type);
+    }
 }
