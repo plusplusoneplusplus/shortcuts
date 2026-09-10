@@ -38,6 +38,12 @@ export interface LanguageServerSessionStateView {
     serverName?: string;
     serverVersion?: string;
     restarts?: number;
+    /**
+     * Counts the host session's successful handshakes. A change means the
+     * server behind this document is new and knows nothing, so the document
+     * layer replays its buffer. Absent from a host that predates the field.
+     */
+    generation?: number;
     [key: string]: unknown;
 }
 

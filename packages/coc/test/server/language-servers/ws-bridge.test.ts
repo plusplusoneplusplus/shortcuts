@@ -221,6 +221,36 @@ describe('language-server WebSocket bridge', () => {
         expect(attached.sessionKey).toContain('session-1');
     });
 
+    it('starts the server when a document attaches and reports the ready generation', async () => {
+        // Lazy startup is "after an eligible file opens", not "after the first
+        // request": a notification cannot spawn a process, so without this the
+        // browser's opening `didOpen` would be dropped and the server would
+        // never learn about the document.
+        const harness = await createHarness();
+        const client = await harness.connect();
+        const attached = await client.attach('src/notes.txt');
+        expect(attached.state.status).not.toBe('ready');
+
+        const status = await client.next('lsp-status', (msg) => msg.state.status === 'ready');
+
+        expect(status.sessionKey).toBe(attached.sessionKey);
+        expect(status.state.generation).toBe(1);
+    });
+
+    it('reports a start that fails instead of leaving the document silent', async () => {
+        const harness = await createHarness({
+            definitions: [echoDefinition({ command: process.execPath, args: ['-e', 'process.exit(3)'] })],
+        });
+        const client = await harness.connect();
+        const attached = await client.attach('src/notes.txt');
+
+        const status = await client.next('lsp-status', (msg) => msg.state.status !== 'starting');
+
+        expect(status.sessionKey).toBe(attached.sessionKey);
+        expect(['failed', 'unavailable']).toContain(status.state.status);
+        expect(status.state.generation).toBe(0);
+    });
+
     it('refuses a document path that climbs out of the workspace', async () => {
         const harness = await createHarness();
         const client = await harness.connect();
@@ -299,8 +329,9 @@ describe('language-server WebSocket bridge', () => {
         const harness = await createHarness();
         const client = await harness.connect();
         const attached = await client.attach('src/notes.txt');
-        // Start the process before notifying: a notification alone does not spawn.
-        await client.request(attached.attachmentId, 'q1', 'echo', {});
+        // A notification alone cannot spawn, so wait until the attach-triggered
+        // start has handshaken before sending one.
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready');
 
         client.send({
             type: 'lsp-notify',

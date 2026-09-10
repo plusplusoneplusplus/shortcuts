@@ -252,6 +252,35 @@ describe('LanguageServerSession crash recovery', () => {
         expect(session.status).toBe('disabled');
     });
 
+    it('counts a generation for every process the browser has to replay into', async () => {
+        // The browser keeps its attachment across a crash, so the handshake
+        // count is its only cue that the process behind the document is new.
+        const { session } = createSession(fixtureDefinition(), { restartBackoffMs: 10, maxRestarts: 3 });
+        expect(session.getState().generation).toBe(0);
+
+        const release = session.attach();
+        await session.start();
+        expect(session.getState().generation).toBe(1);
+
+        await session.restart();
+        expect(session.getState().generation).toBe(2);
+
+        session.sendNotification('crash');
+        await waitFor(() => session.status === 'ready' && session.getState().generation === 3);
+        release();
+    });
+
+    it('leaves the generation alone when a start fails', async () => {
+        const { session } = createSession(
+            fixtureDefinition({ command: process.execPath, args: ['-e', 'process.exit(3)'] }),
+            { restartBackoffMs: 5, maxRestarts: 0, startTimeoutMs: 1_000 },
+        );
+
+        await expect(session.start()).rejects.toThrow();
+
+        expect(session.getState().generation).toBe(0);
+    });
+
     it('restart() clears the backoff budget and brings the server back', async () => {
         const { session } = createSession(fixtureDefinition());
         await session.start();

@@ -49,6 +49,13 @@ export interface LanguageServerSessionState {
     runtime?: string;
     /** Restarts already attempted since the last successful start. */
     restarts: number;
+    /**
+     * Counts successful handshakes. Every restart, crash recovery or config
+     * replacement produces a server that knows no documents, so the browser
+     * uses a change here as its cue to replay its open buffers. Zero means the
+     * process has never completed a handshake.
+     */
+    generation: number;
 }
 
 export interface LanguageServerSessionOptions {
@@ -103,6 +110,7 @@ export class LanguageServerSession {
     private stderrTail = '';
     private references = 0;
     private restarts = 0;
+    private generation = 0;
     private disposed = false;
     private state: LanguageServerSessionState;
 
@@ -119,6 +127,7 @@ export class LanguageServerSession {
             definitionId: this.definition.id,
             displayName: this.definition.displayName,
             restarts: 0,
+            generation: 0,
             runtime: options.runtimeLabel,
         };
     }
@@ -361,6 +370,7 @@ export class LanguageServerSession {
                 connection.sendNotification('workspace/didChangeConfiguration', { settings: this.definition.settings });
             }
             this.restarts = 0;
+            this.generation += 1;
             this.setState({
                 status: 'ready',
                 detail: undefined,
@@ -369,6 +379,7 @@ export class LanguageServerSession {
                 serverName: result?.serverInfo?.name,
                 serverVersion: result?.serverInfo?.version,
                 restarts: 0,
+                generation: this.generation,
             });
             for (const handler of [...this.readyHandlers]) {
                 try {

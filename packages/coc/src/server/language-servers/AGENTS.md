@@ -74,6 +74,11 @@ and transport code stays generic.
   plus the server name, version, and negotiated capabilities. `disabled` covers
   both a config-disabled definition and one stopped because nothing needs it.
   A missing executable is `unavailable`, not `failed`.
+- The state also carries `generation`, a count of successful handshakes. Every
+  restart, crash recovery and config replacement produces a server that knows no
+  documents, and the browser keeps its attachment across all of them, so this
+  number is the only cue it has that the process behind an open file is a new
+  one. It starts at 0 and only ever increases; a failed start leaves it alone.
 - `attach()` returns a release function. The process stops
   `idleTimeoutMs` after the last reference releases; an unexpected exit while
   references remain restarts with doubling backoff up to `maxRestarts`, then
@@ -181,6 +186,13 @@ and transport code stays generic.
   are session-wide rather than per attachment. A manager-initiated close detaches
   every affected attachment with the manager's reason, which is the client's cue
   to re-attach and replay its buffers.
+- Attaching a document starts its session. That is what "lazy startup after an
+  eligible file opens" means here: a notification cannot spawn a process, so
+  without it the browser's opening `didOpen` would be dropped and the server
+  would never learn about the file. `lsp-attached` is sent first so the browser
+  never waits on a spawn and a handshake; success reaches it through the
+  session's ready handler as an `lsp-status`, and a failed start is pushed as
+  one too, since no ready handler will fire for it.
 - Server-to-client requests such as `workspace/configuration` and
   `client/registerCapability` are still answered `-32601`; `tsserver` behaves
   better once they are handled.

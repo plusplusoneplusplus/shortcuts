@@ -308,6 +308,34 @@ export class LanguageServerWebSocketServer {
             displayName: result.handle.definition.displayName,
             state: result.handle.session.getState(),
         });
+
+        // Opening an eligible file is what starts the server (lazy startup).
+        // Without this the first `didOpen` would be dropped, because a
+        // notification needs a live connection and only a request starts one.
+        // `lsp-attached` goes out first so the browser is not made to wait for
+        // a spawn and a handshake; the client replays its buffer when the
+        // session reports a new ready generation.
+        this.startSession(client, attachment);
+    }
+
+    /**
+     * Brings the session up behind a fresh attachment. Success reaches the
+     * browser through the session's own ready handler; a failure has no such
+     * handler, so the state is pushed here instead of leaving the document
+     * sitting silently on a server that will never answer.
+     */
+    private startSession(client: BridgeClient, attachment: Attachment): void {
+        const session = attachment.handle.session;
+        void session.start().catch(() => {
+            if (!client.attachments.has(attachment.id)) {
+                return;
+            }
+            this.send(client.socket, {
+                type: 'lsp-status',
+                sessionKey: attachment.handle.key,
+                state: session.getState(),
+            });
+        });
     }
 
     private detachDocument(client: BridgeClient, attachmentId: string, reason: string): void {

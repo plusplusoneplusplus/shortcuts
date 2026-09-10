@@ -190,12 +190,20 @@ export function add<T>(set: Set<T>, listener: T): () => void {
     };
 }
 
-export function readyState(capabilities: Record<string, unknown> = { textDocumentSync: 1 }): LanguageServerSessionStateView {
+/**
+ * `generation` mirrors the host's handshake counter, which the store uses to
+ * decide whether the process behind a live attachment is a new one.
+ */
+export function readyState(
+    capabilities: Record<string, unknown> = { textDocumentSync: 1 },
+    generation = 1,
+): LanguageServerSessionStateView {
     return {
         status: 'ready',
         definitionId: 'typescript',
         displayName: 'TypeScript',
         capabilities,
+        generation,
     };
 }
 

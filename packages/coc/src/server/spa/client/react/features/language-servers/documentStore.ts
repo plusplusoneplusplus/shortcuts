@@ -16,8 +16,12 @@
  *     the previous connection, so a late reply from the old session can always
  *     be told apart by version.
  *   - Replay is complete text, never a queued incremental edit. `onAttached`
- *     fires whenever the host session is new (first attach, socket drop, config
- *     change, crash restart), and each time we send the whole current buffer.
+ *     fires whenever the attachment is new (first attach, socket drop, config
+ *     change, host-side detach), and each time we send the whole current
+ *     buffer. A crash restart keeps the attachment, so the second replay cue is
+ *     the session state's `generation`: the host counts its handshakes, and a
+ *     number we have not opened on means the server behind this document is a
+ *     fresh process that knows nothing about it.
  *   - A dirty buffer is never overwritten by disk. `setDiskText` is how a
  *     file-watcher or a refresh hands us new bytes; it is refused while the
  *     user has unsaved edits, and the caller decides what to do about it.
@@ -89,7 +93,7 @@ const DEFAULT_SYNC: DocumentSyncOptions = { change: 1, includeTextOnSave: false,
  * in the wild, so both are handled; anything unrecognizable falls back to full
  * sync, which every server that syncs at all accepts.
  */
-export function readSyncOptions(state: LanguageServerSessionStateView | undefined): DocumentSyncOptions {
+export function readSyncOptions(state: LanguageServerSessionStateView | null | undefined): DocumentSyncOptions {
     const capabilities = state?.capabilities as Record<string, unknown> | undefined;
     const sync = capabilities?.textDocumentSync;
     if (typeof sync === 'number') {
@@ -213,6 +217,12 @@ interface DocumentRecord {
     closed: boolean;
     /** True once `didOpen` went out on the current connection. */
     opened: boolean;
+    /**
+     * Host handshake count the current `didOpen` was sent on, or null when the
+     * server has not handshaken yet. Compared against every status update to
+     * decide whether a replay is due.
+     */
+    openedGeneration: number | null;
     sync: DocumentSyncOptions;
     attachment: LanguageServerAttachment;
     info: LanguageServerAttachedInfo | null;
@@ -299,6 +309,7 @@ export class LanguageDocumentStore {
             refCount: 0,
             closed: false,
             opened: false,
+            openedGeneration: null,
             sync: DEFAULT_SYNC,
             attachment,
             info: null,
@@ -322,12 +333,14 @@ export class LanguageDocumentStore {
                 // The host's copy is gone. Drop the derived state but keep the
                 // buffer: the user's unsaved text is the whole point.
                 record.opened = false;
+                record.openedGeneration = null;
                 record.info = null;
                 this.setDiagnostics(record, []);
                 this.emitStatus(record);
             }),
             attachment.onUnavailable((info) => {
                 record.opened = false;
+                record.openedGeneration = null;
                 record.info = null;
                 record.unavailable = info;
                 this.setDiagnostics(record, []);
@@ -338,6 +351,13 @@ export class LanguageDocumentStore {
             }),
             attachment.onStatus((state) => {
                 record.state = state;
+                if (this.shouldReplay(record, state)) {
+                    // A restart, a crash recovery or a lazily started server:
+                    // the attachment is the same but the process behind it has
+                    // never seen this document.
+                    this.replay(record, state);
+                    return;
+                }
                 this.emitStatus(record);
             }),
         );
@@ -351,14 +371,29 @@ export class LanguageDocumentStore {
         return record;
     }
 
-    /** Replay: a fresh host session knows nothing, so send the whole buffer. */
+    /** A new attachment: the host session behind it has never seen this file. */
     private handleAttached(record: DocumentRecord, info: LanguageServerAttachedInfo): void {
         record.info = info;
         record.unavailable = null;
         record.state = info.state;
         record.languageId = info.languageId;
-        record.sync = readSyncOptions(info.state);
+        this.replay(record, info.state);
+    }
+
+    /**
+     * Sends the whole current buffer, so a server that knows nothing about this
+     * document ends up holding exactly what the user is looking at. Always full
+     * text at a higher version than anything the previous process saw, which is
+     * what lets a late reply from that process be told apart.
+     */
+    private replay(record: DocumentRecord, state: LanguageServerSessionStateView | null): void {
+        const info = record.info;
+        if (!info) {
+            return;
+        }
+        record.sync = readSyncOptions(state);
         record.opened = false;
+        record.openedGeneration = readyGeneration(state);
         this.setDiagnostics(record, []);
 
         if (record.sync.openClose) {
@@ -377,6 +412,20 @@ export class LanguageDocumentStore {
         for (const listener of [...record.synchronizedListeners]) {
             listener(info);
         }
+    }
+
+    /**
+     * True when the status update names a host handshake this document has not
+     * opened on. That covers the lazily started server, whose first handshake
+     * happens after the attachment exists, and the crash restart, which leaves
+     * the attachment in place while replacing the process behind it.
+     */
+    private shouldReplay(record: DocumentRecord, state: LanguageServerSessionStateView): boolean {
+        if (record.closed || !record.info) {
+            return false;
+        }
+        const generation = readyGeneration(state);
+        return generation !== null && generation !== record.openedGeneration;
     }
 
     private handleNotification(record: DocumentRecord, method: string, params: unknown): void {
@@ -557,6 +606,18 @@ export class LanguageDocumentStore {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * The host's handshake counter, but only once the session actually reports
+ * `ready` — a `starting` state carries the previous process's number, and
+ * replaying into a server that is not up would drop the buffer again.
+ */
+function readyGeneration(state: LanguageServerSessionStateView | null | undefined): number | null {
+    if (!state || state.status !== 'ready' || typeof state.generation !== 'number') {
+        return null;
+    }
+    return state.generation;
+}
 
 function statusOf(record: DocumentRecord): LanguageDocumentStatus {
     if (record.info && record.opened) {

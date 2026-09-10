@@ -370,6 +370,76 @@ describe('LanguageDocumentStore', () => {
             expect(view.getSnapshot().displayName).toBe('TypeScript');
         });
 
+        it('replays into a server that handshook after the document attached', () => {
+            // Lazy startup: the host answers `lsp-attached` before the process
+            // is up, so the opening `didOpen` never reached a server. The first
+            // ready generation is the cue to send the buffer again.
+            const view = store.open({ path: 'a.ts', text: 'a' });
+            const attachment = client.get('a.ts');
+            attachment.attach({
+                state: { status: 'starting', definitionId: 'typescript', displayName: 'TypeScript', generation: 0 },
+            });
+            view.update('ab');
+
+            attachment.status(readyState());
+
+            expect(attachment.methods()).toEqual([
+                'textDocument/didOpen',
+                'textDocument/didChange',
+                'textDocument/didOpen',
+            ]);
+            const replay = attachment.lastOf('textDocument/didOpen') as { textDocument: Record<string, unknown> };
+            expect(replay.textDocument.text).toBe('ab');
+            expect(replay.textDocument.version).toBe(3);
+        });
+
+        it('replays after a crash restart that kept the attachment alive', () => {
+            const view = store.open({ path: 'a.ts', text: 'a' });
+            const attachment = client.get('a.ts');
+            attachment.attach();
+            view.update('ab');
+            attachment.notify('textDocument/publishDiagnostics', {
+                uri: 'coc-file://ws-1/a.ts',
+                diagnostics: [diagnostic('stale')],
+            });
+
+            attachment.status(readyState({ textDocumentSync: 1 }, 2));
+
+            const replay = attachment.lastOf('textDocument/didOpen') as { textDocument: Record<string, unknown> };
+            expect(replay.textDocument.text).toBe('ab');
+            expect(replay.textDocument.version).toBe(3);
+            // The dead process's findings do not describe the new one's view.
+            expect(view.getDiagnostics()).toEqual([]);
+        });
+
+        it('does not replay for a status update from the generation it opened on', () => {
+            const view = store.open({ path: 'a.ts', text: 'a' });
+            const attachment = client.get('a.ts');
+            attachment.attach();
+
+            attachment.status(readyState());
+            attachment.status(readyState());
+
+            expect(attachment.methods()).toEqual(['textDocument/didOpen']);
+            expect(view.getVersion()).toBe(1);
+        });
+
+        it('waits for ready before replaying, so the buffer is not dropped again', () => {
+            const view = store.open({ path: 'a.ts', text: 'a' });
+            const attachment = client.get('a.ts');
+            attachment.attach();
+
+            attachment.status({
+                status: 'reconnecting',
+                definitionId: 'typescript',
+                displayName: 'TypeScript',
+                generation: 1,
+            });
+
+            expect(attachment.methods()).toEqual(['textDocument/didOpen']);
+            expect(view.getSnapshot().state?.status).toBe('reconnecting');
+        });
+
         it('fires onSynchronized after each replay', () => {
             const view = store.open({ path: 'a.ts', text: 'a' });
             const attachment = client.get('a.ts');
