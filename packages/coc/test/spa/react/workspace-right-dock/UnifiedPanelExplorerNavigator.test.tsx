@@ -93,17 +93,23 @@ function dockStub(target = WS): WorkspaceDockController {
 }
 
 /** Open the tree column the way the "+" menu does, then mount the panel. */
-async function renderWithExplorer(owner = WS, repoLabel?: string) {
+async function renderWithExplorer(
+    owner = WS,
+    repoLabel?: string,
+    mode: 'explorer' | 'search' = 'explorer',
+) {
     writeUnifiedTreeState(WS, { open: true, width: 220 });
     render(
         <UnifiedRightPanel
             workspaceId={WS}
             chatId={CHAT}
-            dock={dockStub(owner)}
+            dock={{ ...dockStub(owner), mode }}
             {...(repoLabel === undefined ? {} : { targets: [{ workspaceId: owner, label: repoLabel }] })}
         />,
     );
-    await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId(
+        mode === 'explorer' ? 'tree-node-a.ts' : 'mock-content-search',
+    )).toBeInTheDocument());
 }
 
 /** The unified strip's tab ids, in order. */
@@ -181,8 +187,7 @@ describe('unified panel — the tree column as a navigator', () => {
     });
 
     it('opens a content-search hit at its matching line', async () => {
-        await renderWithExplorer();
-        fireEvent.click(screen.getByTestId('explorer-view-search'));
+        await renderWithExplorer(WS, undefined, 'search');
 
         fireEvent.click(await screen.findByTestId('open-match'));
 
@@ -205,8 +210,7 @@ describe('unified panel — the tree column as a navigator', () => {
     });
 
     it('hides "Open in Editor" in the search view, which has no editor to park a buffer in', async () => {
-        await renderWithExplorer();
-        fireEvent.click(screen.getByTestId('explorer-view-search'));
+        await renderWithExplorer(WS, undefined, 'search');
 
         expect(await screen.findByTestId('mock-content-search'))
             .toHaveAttribute('data-has-open-in-editor', 'false');

@@ -3,9 +3,8 @@
  * explorer-sidebar-preview-tabs AC-01b — ExplorerPanel's `mode` prop.
  *
  * `editor` renders the whole panel; `navigator` drops the editor area, its
- * resize handle and its tab strip; `sidebar` drops the internal breadcrumb row
- * on top of that, because the unified right panel renders one breadcrumb row
- * above the whole panel instead.
+ * resize handle and its tab strip; `sidebar` also drops the internal mode
+ * switch and breadcrumb row because the unified right panel owns both.
  *
  * Regression guard: the mode is taken from the explicit prop, NOT inferred from
  * `onOpenFile`. The two host modes are indistinguishable by callback shape, so
@@ -126,12 +125,14 @@ describe('ExplorerPanel — sidebar mode (the unified panel tree column)', () =>
         expect(screen.getByRole('complementary', { name: 'File tree' })).toBeTruthy();
     });
 
-    it('keeps the tree affordances that are not tab-related', async () => {
+    it('keeps tree actions but omits the nested Files / Search switch', async () => {
         await renderPanel({ workspaceId: WS, mode: 'sidebar', onOpenFile: vi.fn() });
         expect(screen.getByTestId('explorer-collapse-all-btn')).toBeTruthy();
         expect(screen.getByTestId('explorer-reveal-file-btn')).toBeTruthy();
         expect(screen.getByTestId('explorer-refresh-btn')).toBeTruthy();
-        expect(screen.getByTestId('explorer-view-search')).toBeTruthy();
+        expect(screen.queryByRole('tablist', { name: 'Explorer view' })).toBeNull();
+        expect(screen.queryByTestId('explorer-view-tree')).toBeNull();
+        expect(screen.queryByTestId('explorer-view-search')).toBeNull();
     });
 
     it('hands a single file click to the host as a preview open', async () => {

@@ -132,10 +132,11 @@ describe('unified panel file-tree column', () => {
         clearUnifiedTreeState();
     });
 
-    it('is absent until the panel scope has the tree open', () => {
+    it('shows Explorer mode even before the legacy tree toggle is opened', () => {
         renderPanel();
         expect(screen.queryByTestId('unified-panel-tree')).toBeNull();
-        expect(screen.queryByTestId('mock-explorer')).toBeNull();
+        expect(screen.getByTestId('unified-panel-mode-column')).toBeTruthy();
+        expect(screen.getByTestId('mock-explorer')).toBeTruthy();
     });
 
     it('renders beside the empty state, so closing the last tab leaves the panel open', () => {

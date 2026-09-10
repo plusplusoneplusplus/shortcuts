@@ -25,20 +25,17 @@
  *    `useWorkspaceDock` controller, which also owns the header toggle's open
  *    bit — the panel does not persist a width of its own.
  *  - **The toolbar row.** Directly under the strip, and only while a file tab
- *    is active: breadcrumbs for that file plus the file-tree toggle. Other
- *    kinds keep rendering their own toolbars inside their own views, and when
- *    this row is absent the toggle moves into the strip beside "+", so there is
- *    always exactly one visible way to reach the tree.
+ *    is active: breadcrumbs for that file. Other kinds keep rendering their
+ *    own toolbars inside their own views.
  *  - **The preview slot.** A single click in the tree opens into the section's
  *    one replaceable, italic preview tab; every other entry point — `+`, a chat
  *    source link, a note link, a double click — opens a permanent tab. The
  *    rules live in `unifiedPanelTabsModel`; what the shell adds is the guard,
  *    because reusing the slot destroys a buffer exactly as a close does.
- *  - **The file-tree column.** A collapsible tree pinned to the panel's right
- *    edge, beside whatever the active tab is showing — a terminal, a canvas, or
- *    the empty state. It is panel-level (`unifiedPanelTree`), not a tab and not
- *    per-tab, and it has its own drag: the tree gives up width before the view
- *    does, and a panel too narrow for both hides it without closing it.
+ *  - **The Search/Explorer navigator.** The selected mode is pinned to the
+ *    panel's right edge beside the resource view. Both bodies use the dock
+ *    target, share one panel-scope width, and stay mounted after first use.
+ *    The navigator gives up width before the resource view does.
  *
  * Closing is guarded rather than immediate where a close would destroy something
  * (AC-05). A terminal tab with live sessions asks before ending them; a file tab
@@ -59,6 +56,7 @@ import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
+import { ContentSearchPanel } from '../explorer/ContentSearchPanel';
 import { ExplorerPanel, getAncestorPaths } from '../explorer/ExplorerPanel';
 import { useExplorerExpandedPaths, useExplorerSelectedPath } from '../explorer/explorerStateStore';
 import { QuickOpen } from '../explorer/QuickOpen';
@@ -82,7 +80,6 @@ import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
-import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { breadcrumbFolderPath, unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
@@ -118,7 +115,7 @@ export interface UnifiedRightPanelProps {
 }
 
 export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }: UnifiedRightPanelProps) {
-    const { isOpen, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
+    const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const {
         tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
     } = useUnifiedPanelTabs(workspaceId, chatId);
@@ -164,13 +161,11 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     }, [open, workspaceId, target, targetLabel, chatId]);
 
     // ------------------------------------------------------------------
-    // The file-tree column (AC-01)
+    // The Search/Explorer navigator (AC-01)
     // ------------------------------------------------------------------
 
-    // Panel-level, not per-tab: the column stays put across tab switches, chat
-    // switches, a collapse, and a reload, and it renders beside every kind of
-    // view — including the empty state, which is why closing the last tab with
-    // the tree open leaves the panel showing a tree next to "Nothing open".
+    // Panel-level, not per-tab: the navigator width stays put across tab
+    // switches, mode switches, a collapse, and a reload.
     const tree = useUnifiedPanelTree(workspaceId);
 
     // Bring an older persisted layout up to the current codec, once per panel
@@ -181,12 +176,12 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     useEffect(() => {
         migrateUnifiedPanelState(workspaceId);
     }, [workspaceId]);
-    const treeVisible = isUnifiedTreeVisible(tree.state, width);
+    const modeColumnVisible = isUnifiedTreeVisible({ ...tree.state, open: true }, width);
 
     // The column's drag. It is deliberately given no `storageKey`: the width
-    // lives in the tree store, which the toggle in the toolbar shares, and two
-    // localStorage owners for one number would drift. So the drag runs
-    // uncommitted and the result is written back when it ends.
+    // lives in the existing panel navigator store, and two localStorage owners
+    // for one number would drift. The drag runs uncommitted and writes back
+    // when it ends.
     const treeResize = useResizablePanel({
         initialWidth: tree.state.width,
         minWidth: UNIFIED_TREE_MIN_WIDTH,
@@ -206,9 +201,14 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
 
     // What the column actually renders at: the live drag width, clamped against
     // the panel's current width so the active view keeps its minimum. A panel
-    // dragged narrow shrinks the tree first, and below the point where both fit
-    // `treeVisible` hides it without touching the user's open bit.
+    // dragged narrow shrinks the navigator first, and below the point where both
+    // fit `modeColumnVisible` hides it.
     const treeWidth = clampUnifiedTreeWidth(treeResize.width, width);
+    const [mountedModes, setMountedModes] = useState<ReadonlySet<typeof mode>>(() => new Set([mode]));
+    useEffect(() => {
+        if (!isOpen) return;
+        setMountedModes(prev => (prev.has(mode) ? prev : new Set(prev).add(mode)));
+    }, [isOpen, mode]);
 
     // A file picked in the tree opens a panel tab; that flow needs the close
     // guard's dirty state, so `openTreeFile` is defined with it further down.
@@ -218,8 +218,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
     // ------------------------------------------------------------------
 
     // Breadcrumbs exist for file tabs only; every other kind brings its own
-    // toolbar. A null here is what removes the row entirely — and what moves the
-    // tree toggle into the strip.
+    // toolbar. A null here removes the row entirely.
     const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active, target), [active, target]);
 
     // Breadcrumb clicks drive the tree column through the Explorer's own
@@ -250,13 +249,6 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         if (toolbar === null) return undefined;
         return toolbar.interactive ? toolbar.path : null;
     }, [toolbar]);
-
-    const treeToggle = useCallback(
-        (placement: 'toolbar' | 'strip') => (
-            <UnifiedPanelTreeToggle open={tree.state.open} onToggle={tree.toggleOpen} placement={placement} />
-        ),
-        [tree.state.open, tree.toggleOpen],
-    );
 
     // Per-tab dirty / error state, reported by the views. It lives here rather
     // than in each view because the strip has to show it for tabs that are not
@@ -429,6 +421,10 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
         },
         [target, workspaceId, targetLabel, chatId, open, openPreview, previewToReplace, dirtyIds, requestClose],
     );
+    const openSearchMatch = useCallback((path: string, line: number) => {
+        const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
+        openTreeFile({ path, name, line }, { preview: true });
+    }, [openTreeFile]);
 
     // ------------------------------------------------------------------
     // Quick Open (Ctrl/Cmd+P) and Exact Open (Ctrl/Cmd+O)
@@ -758,7 +754,6 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     onMove={move}
                     onPromote={promote}
                     onOpenMenu={toggleMenu}
-                    trailing={toolbar === null ? treeToggle('strip') : undefined}
                 />
 
                 {menuOpen && (
@@ -772,11 +767,9 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                             onOpenResource={openResource}
                             onOpenWorkspaceResource={kind => {
                                 setMenuOpen(false);
-                                // The menu keeps its Explorer entry, but the
-                                // Explorer is a column now: the action toggles
-                                // the tree instead of opening a tab (AC-05).
+                                // Explorer is a panel mode, not a resource tab.
                                 if (kind === 'explorer') {
-                                    tree.toggleOpen();
+                                    dock.selectMode('explorer');
                                     return;
                                 }
                                 openWorkspaceResource(kind);
@@ -786,15 +779,14 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     </div>
                 )}
 
-                {/* Views on the left, the file tree pinned to the panel's right
-                    edge — one row spanning everything below the tab strip. */}
+                {/* Resource views on the left, the selected navigator mode on
+                    the right — one row spanning everything below the strip. */}
                 <div className="flex min-h-0 min-w-0 flex-1" data-testid="unified-panel-content">
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                     {toolbar !== null && (
                         <UnifiedPanelToolbar
                             breadcrumbs={toolbar}
                             onNavigate={revealTreeFolder}
-                            trailing={treeToggle('toolbar')}
                         />
                     )}
                     {tabs.length === 0 ? (
@@ -847,14 +839,15 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                     )}
                     </div>
 
-                    {/* Mounted while the user has the column open, hidden (never
-                        unmounted) when the panel is too narrow to show it, so
-                        widening restores the tree with its expansion intact. */}
-                    {tree.state.open && (
+                    {/* Search and Explorer share this one navigator slot and its
+                        persisted width. A mode mounts on first use and then stays
+                        mounted so switching never loses Search or tree state. */}
+                    {mountedModes.size > 0 && (
                         <div
                             className="flex min-h-0 flex-shrink-0"
-                            style={{ display: treeVisible ? undefined : 'none' }}
-                            data-testid="unified-panel-tree"
+                            style={{ display: modeColumnVisible ? undefined : 'none' }}
+                            data-testid={tree.state.open ? 'unified-panel-tree' : 'unified-panel-mode-column'}
+                            data-mode={mode}
                         >
                             {/* Right-anchored column: drag left to widen it. */}
                             <div
@@ -879,17 +872,40 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets }:
                                 style={{ width: treeWidth }}
                                 data-tree-width={treeWidth}
                             >
-                                <ExplorerPanel
-                                    workspaceId={target}
-                                    // Same rule as an Explorer tab: only a column
-                                    // pointed at the panel's own workspace may write
-                                    // the explorer deep-link hash, or a group member's
-                                    // file click would navigate out of the group.
-                                    deepLink={target === workspaceId}
-                                    mode="sidebar"
-                                    activeFilePath={trackedTreeFile}
-                                    onOpenFile={openTreeFile}
-                                />
+                                {mountedModes.has('explorer') && (
+                                    <div
+                                        className="flex min-h-0 flex-1 flex-col"
+                                        style={{ display: mode === 'explorer' ? undefined : 'none' }}
+                                        data-testid="unified-panel-explorer-mode"
+                                    >
+                                        <ExplorerPanel
+                                            key={target}
+                                            workspaceId={target}
+                                            // Same rule as an Explorer tab: only a column
+                                            // pointed at the panel's own workspace may write
+                                            // the explorer deep-link hash, or a group member's
+                                            // file click would navigate out of the group.
+                                            deepLink={target === workspaceId}
+                                            mode="sidebar"
+                                            activeFilePath={trackedTreeFile}
+                                            onOpenFile={openTreeFile}
+                                        />
+                                    </div>
+                                )}
+                                {mountedModes.has('search') && (
+                                    <div
+                                        className="flex min-h-0 flex-1 flex-col"
+                                        style={{ display: mode === 'search' ? undefined : 'none' }}
+                                        data-testid="unified-panel-search-mode"
+                                    >
+                                        <ContentSearchPanel
+                                            key={target}
+                                            workspaceId={target}
+                                            onOpenMatch={openSearchMatch}
+                                            narrow={treeWidth < 300}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

@@ -226,9 +226,13 @@ Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
 The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs,
-with a searchable `+` menu and panel-level Explorer state. Tab descriptors (never
-document bodies, terminal output, or credentials) persist per panel scope in
-localStorage. The full contract lives in
+with a searchable `+` menu and one right-edge navigator that switches between
+the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
+first use, share the panel-scope navigator width, and route through the selected
+dock target. The docked Explorer omits its internal Files/Search switch; the
+standalone Explorer page retains it. Tab descriptors (never document bodies,
+terminal output, or credentials) persist per panel scope in localStorage. The
+full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Remote-target dialogs additionally fetch the selected server's `/config/runtime`

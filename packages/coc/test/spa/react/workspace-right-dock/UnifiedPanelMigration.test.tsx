@@ -11,8 +11,8 @@
  *
  * The codec's own rules are unit-tested in `unifiedPanelTabsModel.test.ts`;
  * these cases pin the shell wiring — the mount-time migration, the rewritten
- * storage entry, and the `+` menu's Explorer action toggling the column rather
- * than opening a tab.
+ * storage entry, and the `+` menu's Explorer action selecting the panel mode
+ * rather than opening a tab.
  *
  * @vitest-environment jsdom
  */
@@ -179,19 +179,15 @@ describe('unified panel — codec v2 migration', () => {
         await waitFor(() => expect(terminalSpy).toHaveBeenCalledWith(WS));
     });
 
-    it('toggles the tree from the "+" menu Explorer entry instead of opening a tab', async () => {
-        renderPanel();
+    it('selects Explorer mode from the "+" menu instead of opening a tab', async () => {
+        const dock = dockStub();
+        renderPanel({ dock });
 
         fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
         fireEvent.click(screen.getByTestId('unified-panel-open-explorer'));
 
         await waitFor(() => expect(screen.getByTestId('mock-explorer')).toBeInTheDocument());
-        expect(readUnifiedTreeState(WS).open).toBe(true);
+        expect(dock.selectMode).toHaveBeenCalledWith('explorer');
         expect(screen.getByTestId('unified-panel-tab-list').querySelectorAll('[role="tab"]')).toHaveLength(0);
-
-        // ...and it is a toggle, not an open.
-        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
-        fireEvent.click(screen.getByTestId('unified-panel-open-explorer'));
-        await waitFor(() => expect(readUnifiedTreeState(WS).open).toBe(false));
     });
 });

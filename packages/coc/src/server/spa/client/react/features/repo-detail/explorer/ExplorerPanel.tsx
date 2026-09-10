@@ -44,9 +44,9 @@ import { quickOpenShortcut, registerExplorerQuickOpen } from '../unified-right-p
  *   `features.explorerEditorTabs`) its own tab strip. The Explorer sub-tab.
  * - `navigator` — tree only; every file open is handed to `onOpenFile` so the
  *   host's tab strip is the only place a file appears.
- * - `sidebar` — `navigator` minus the internal breadcrumb row, because the host
- *   renders one breadcrumb row of its own above the whole panel. This is the
- *   unified right panel's file-tree column.
+ * - `sidebar` — `navigator` minus the internal Files / Search switch and
+ *   breadcrumb row, because the unified right panel owns both mode selection
+ *   and breadcrumbs.
  */
 export type ExplorerPanelMode = 'editor' | 'navigator' | 'sidebar';
 
@@ -431,7 +431,8 @@ export function ExplorerPanel({
 
     // Which sidebar view is showing. Persisted per workspace, so the choice
     // survives a remount; the tree's own state is untouched while Search is up.
-    const [view, setView] = useExplorerView(workspaceId);
+    const [storedView, setView] = useExplorerView(workspaceId);
+    const view = sidebarMode ? 'tree' : storedView;
     // Owned here only so "Find in Folder" can write the include glob; the Search
     // panel reads the same persisted store, so the write lands in its box.
     const [, setContentFilters] = useExplorerContentFilters(workspaceId);
@@ -1299,24 +1300,26 @@ export function ExplorerPanel({
                     <style>{`@media (min-width: 1024px) { [data-testid="explorer-sidebar"] { width: ${sidebarWidth}px !important; } }`}</style>
                 )}
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <div className="flex items-center gap-2" role="tablist" aria-label="Explorer view">
-                        {(['tree', 'search'] as const).map(target => (
-                            <button
-                                key={target}
-                                role="tab"
-                                aria-selected={view === target}
-                                onClick={() => setView(target)}
-                                className={`text-xs bg-transparent border-none p-0 cursor-pointer transition-colors ${
-                                    view === target
-                                        ? 'font-medium text-[#1e1e1e] dark:text-[#cccccc]'
-                                        : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
-                                }`}
-                                data-testid={`explorer-view-${target}`}
-                            >
-                                {target === 'tree' ? 'Files' : 'Search'}
-                            </button>
-                        ))}
-                    </div>
+                    {!sidebarMode && (
+                        <div className="flex items-center gap-2" role="tablist" aria-label="Explorer view">
+                            {(['tree', 'search'] as const).map(target => (
+                                <button
+                                    key={target}
+                                    role="tab"
+                                    aria-selected={view === target}
+                                    onClick={() => setView(target)}
+                                    className={`text-xs bg-transparent border-none p-0 cursor-pointer transition-colors ${
+                                        view === target
+                                            ? 'font-medium text-[#1e1e1e] dark:text-[#cccccc]'
+                                            : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                                    }`}
+                                    data-testid={`explorer-view-${target}`}
+                                >
+                                    {target === 'tree' ? 'Files' : 'Search'}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     {/* One header row, two strips: collapsing, revealing and
                         refreshing the tree say nothing in Search, which fills the
                         same corner with ContentSearchToolbar instead — rendered

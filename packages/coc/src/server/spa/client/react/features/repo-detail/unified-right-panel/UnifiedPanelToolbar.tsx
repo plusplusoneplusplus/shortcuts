@@ -3,8 +3,7 @@
  *
  * Rendered only while a file tab is active; every other kind brings its own
  * toolbar inside its own view, and the panel does not stack two of them. It
- * reuses the Explorer's own `Breadcrumbs` so the two surfaces read identically,
- * and hosts the file-tree toggle at its right end.
+ * reuses the Explorer's own `Breadcrumbs` so the two surfaces read identically.
  *
  * A segment click reveals that folder in the tree column — it never opens,
  * closes, or activates a tab. When the path cannot be located in the tree at
@@ -19,7 +18,7 @@
  * row's tooltip.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { cn } from '../../../ui/cn';
 import { Breadcrumbs } from '../explorer/Breadcrumbs';
 import type { UnifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
@@ -29,11 +28,9 @@ export interface UnifiedPanelToolbarProps {
     breadcrumbs: UnifiedToolbarBreadcrumbs;
     /** A folder segment was clicked; -1 is the repo root. */
     onNavigate: (segmentIndex: number) => void;
-    /** The tree toggle, which lives at the row's right end. */
-    trailing?: ReactNode;
 }
 
-export function UnifiedPanelToolbar({ breadcrumbs, onNavigate, trailing }: UnifiedPanelToolbarProps) {
+export function UnifiedPanelToolbar({ breadcrumbs, onNavigate }: UnifiedPanelToolbarProps) {
     const scrollRef = useRef<HTMLDivElement | null>(null);
 
     // Keep the tail of the path in view as the active file changes.
@@ -73,7 +70,6 @@ export function UnifiedPanelToolbar({ breadcrumbs, onNavigate, trailing }: Unifi
                     </span>
                 )}
             </div>
-            {trailing}
         </div>
     );
 }
