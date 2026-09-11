@@ -132,6 +132,12 @@ path to the composer.
 
 ## Explorer lazy-load state
 
+`explorer/FileTypeIcon.tsx` owns Explorer file and folder icons. It maps common
+language, config, data, media, archive, and tool-specific filenames to compact
+colored badges, uses open/closed SVG folder states, and falls back to a neutral
+document icon. Keep classification in `getFileIconDescriptor` so standalone and
+docked Explorer trees render the same icon for a path.
+
 `explorer/TreeNode.tsx` derives its spinner — `isDir && isExpanded && children ===
 undefined && !loadError` — instead of tracking a `loading` flag. `childrenMap`
 lives in `useSyncExternalStore` (`explorerTreeCache`), so a successful fetch

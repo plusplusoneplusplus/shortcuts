@@ -62,48 +62,9 @@ describe('TreeNode', () => {
     });
 
     describe('file-type icons', () => {
-        it('uses folder icon for directories', () => {
-            expect(source).toContain("'📁'");
-        });
-
-        it('uses note icon for markdown files', () => {
-            expect(source).toContain("'📝'");
-        });
-
-        it('uses document icon for JS/TS files', () => {
-            expect(source).toContain("'📄'");
-        });
-
-        it('uses gear icon for config files', () => {
-            expect(source).toContain("'⚙️'");
-        });
-
-        it('uses image icon for image files', () => {
-            expect(source).toContain("'🖼️'");
-        });
-
-        it('checks for .md extension', () => {
-            expect(source).toContain('.md');
-        });
-
-        it('checks for .ts extension', () => {
-            expect(source).toContain('.ts');
-        });
-
-        it('checks for .json extension', () => {
-            expect(source).toContain('.json');
-        });
-
-        it('checks for .yaml extension', () => {
-            expect(source).toContain('.yaml');
-        });
-
-        it('checks for .png extension', () => {
-            expect(source).toContain('.png');
-        });
-
-        it('checks for .svg extension', () => {
-            expect(source).toContain('.svg');
+        it('delegates file and folder rendering to FileTypeIcon', () => {
+            expect(source).toContain("import { FileTypeIcon } from './FileTypeIcon'");
+            expect(source).toContain('<FileTypeIcon entry={entry} expanded={isExpanded} />');
         });
     });
 
