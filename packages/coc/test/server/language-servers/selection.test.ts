@@ -17,7 +17,7 @@ import {
     resolveServerRoot,
     selectDefinitionForFile,
 } from '../../../src/server/language-servers/selection';
-import { TYPESCRIPT_PRESET, mergeWithBuiltIns } from '../../../src/server/language-servers/presets';
+import { RUST_PRESET, TYPESCRIPT_PRESET, mergeWithBuiltIns } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 
 function definition(overrides: Partial<LanguageServerDefinition>): LanguageServerDefinition {
@@ -191,12 +191,30 @@ describe('resolveServerRoot', () => {
 });
 
 describe('mergeWithBuiltIns', () => {
-    it('exposes the TypeScript preset when nothing is configured', () => {
-        expect(mergeWithBuiltIns([]).map(d => d.id)).toEqual(['typescript']);
+    it('exposes the built-in presets when nothing is configured', () => {
+        expect(mergeWithBuiltIns([]).map(d => d.id)).toEqual(['typescript', 'rust']);
     });
 
-    it('ships the TypeScript preset disabled so language support starts off', () => {
+    it('ships every preset disabled so language support starts off', () => {
         expect(TYPESCRIPT_PRESET.enabled).toBe(false);
+        expect(RUST_PRESET.enabled).toBe(false);
+    });
+
+    it('defines Rust defaults for fast diagnostics and macro expansion', () => {
+        expect(RUST_PRESET).toMatchObject({
+            languageIds: ['rust'],
+            filePatterns: ['**/*.rs'],
+            command: 'rust-analyzer',
+            args: [],
+            rootMarkers: ['Cargo.toml'],
+            extensionLanguageIds: { '.rs': 'rust' },
+            initializationOptions: {
+                checkOnSave: false,
+                cargo: { buildScripts: { enable: true } },
+                procMacro: { enable: true },
+            },
+            builtIn: true,
+        });
     });
 
     it('lets a workspace definition override the preset without losing built-in status', () => {
@@ -209,12 +227,19 @@ describe('mergeWithBuiltIns', () => {
 
     it('appends custom definitions after the built-ins', () => {
         const merged = mergeWithBuiltIns([definition({ id: 'custom' })]);
-        expect(merged.map(d => d.id)).toEqual(['typescript', 'custom']);
+        expect(merged.map(d => d.id)).toEqual(['typescript', 'rust', 'custom']);
         expect(merged.find(d => d.id === 'custom')?.builtIn).toBeUndefined();
     });
 
     it('routes a TypeScript file to the preset once enabled', () => {
         const merged = mergeWithBuiltIns([{ ...TYPESCRIPT_PRESET, enabled: true }]);
         expect(selectDefinitionForFile(merged, 'src/App.tsx')?.id).toBe('typescript');
+    });
+
+    it('routes only Rust source files to the Rust preset once enabled', () => {
+        const merged = mergeWithBuiltIns([{ ...RUST_PRESET, enabled: true }]);
+        expect(selectDefinitionForFile(merged, 'crates/app/src/main.rs')?.id).toBe('rust');
+        expect(selectDefinitionForFile(merged, 'Cargo.toml')).toBeUndefined();
+        expect(resolveLanguageId(RUST_PRESET, 'src/lib.rs')).toBe('rust');
     });
 });
