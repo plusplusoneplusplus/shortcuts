@@ -9,10 +9,11 @@ import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
 import { executeQueueCancel, executeQueueList, executeQueueStatus, executeQueueSubmit } from './commands/queue';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
-import { resolveConfig } from './config';
+import { loadConfigFile, resolveConfig } from './config';
 import { setColorEnabled } from './logger';
 import { executeSkillList, executeSkillInstallBundled, executeSkillInstall, executeSkillDelete, executeSkillCheckUpdates } from './commands/skills';
 import {
+    executeReliabilityWatchdogResume,
     executeReliabilityWatchdogStart,
     executeReliabilityWatchdogStatus,
     executeReliabilityWatchdogStop,
@@ -245,6 +246,17 @@ export function createProgram(): Command {
         .action(async (opts: Record<string, unknown>) => {
             const config = resolveConfig();
             const exitCode = await executeReliabilityWatchdogStart(opts, { config });
+            process.exit(exitCode);
+        });
+
+    reliabilityWatchdog
+        .command('resume')
+        .description('Resume one persisted watchdog after its process exits')
+        .requiredOption('--state-dir <path>', 'External watchdog state directory')
+        .option('--server-url <url>', 'CoC server URL')
+        .action(async (opts: Record<string, unknown>) => {
+            const config = loadConfigFile();
+            const exitCode = await executeReliabilityWatchdogResume(opts, { config });
             process.exit(exitCode);
         });
 

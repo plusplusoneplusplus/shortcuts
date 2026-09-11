@@ -36,7 +36,7 @@ describe('long-running-reliability bundled skill', () => {
             description: entry!.description,
             metadata: {
                 author: 'CoC',
-                version: '0.0.2',
+                version: '0.0.3',
             },
         });
     });
@@ -69,8 +69,14 @@ describe('long-running-reliability bundled skill', () => {
             'Autopilot continuation',
             'approved server restart',
             'coc reliability-watchdog start',
+            'coc reliability-watchdog resume',
             'coc reliability-watchdog status',
             'coc reliability-watchdog stop',
+            'I restarted CoC',
+            'one known state directory',
+            'resume-all',
+            'host-reboot auto-discovery',
+            'supervisor dialtone resurrection',
             'PR-ready',
         ]) {
             expect(content, required).toContain(required);

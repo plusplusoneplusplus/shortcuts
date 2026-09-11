@@ -13,7 +13,7 @@ continuations from a process outside the CoC server and SDK request.
 | Registry | `packages/forge/src/skills/bundled-skills-registry.ts` | Bundled discovery metadata |
 | State engine | `packages/forge/src/reliability/delivery-watchdog.ts` | Pure idle/recheck/recovery and classifier-circuit decisions, duplicate-writer classification, request construction, read-only SQLite probe |
 | Runtime | `packages/forge/src/reliability/watchdog-runtime.ts` | Detached lifecycle, persistent state, classifier fail-closed boundary, heartbeat/recovery logs, stop request, HTTP calls |
-| CLI | `packages/coc/src/commands/reliability-watchdog.ts` | Option resolution, input validation, start/status/stop output |
+| CLI | `packages/coc/src/commands/reliability-watchdog.ts` | Option resolution, input validation, start/resume/status/stop output |
 | Detached entry | `packages/coc/src/commands/reliability-watchdog-runner.ts` | Server-independent Node child process |
 
 Forge owns the reusable state and storage logic because it already owns the
@@ -133,6 +133,26 @@ bounded across a replacement process for the same target.
 instance-bound stop request. The child observes that file and exits; CoC never
 signals a potentially reused PID.
 
+`coc reliability-watchdog resume --state-dir <dir> [--server-url <url>]`
+re-engages one known persisted deployment after a CoC/server restart. Persisted
+configuration supplies target identity, paths, limits, markers, and mode. Endpoint
+precedence is explicit option, `COC_SERVER_URL`, explicitly configured current
+serve host/port, then the persisted URL.
+
+Resume acquires the atomic start claim before its idempotent decision. A live
+active PID returns success without spawning only after an instance-bound loopback
+challenge verifies the child process lease; a reused PID or unverifiable identity
+fails closed. A dead deployment passes exact-marker, valid original-TTL start with
+a five-second clock-skew allowance, persisted binding, read-only SQLite activity,
+duplicate-writer, pending-wakeup, health, and target-process checks under the
+claim. Relaunch preserves recovery and classifier counters, the original TTL
+start, and lineage.
+
+Resume handles one explicit state directory. Automatic host-reboot auto-discovery,
+`resume-all`, and supervisor dialtone resurrection are separate product work.
+Missing or unreadable configuration/state and every uncertain preflight condition
+fail closed.
+
 The runtime checks the ledger after each poll and after endpoint verification,
 immediately before recovery. This minimizes but cannot eliminate the external
 TOCTOU interval. It logs startup, heartbeat, split-brain, rejected recovery,
@@ -141,9 +161,10 @@ directory.
 
 ## Safety Boundary
 
-The helper reads SQLite and writes only its caller-selected state directory. It
-does not update process/queue rows, cancel tasks, kill SDK clients, reset queue
-limiters, globally force-fail work, or restart CoC.
+The helper reads SQLite and writes only its caller-selected state directory. Start
+and resume do not update process/queue rows, cancel tasks, kill SDK clients, reset
+queue limiters, globally force-fail work, enqueue recovery directly, or restart
+CoC.
 
 For a leaked exclusive slot, the operating sequence is bounded wait through
 request timeout and stale-task grace, optional targeted cancellation with no
@@ -166,7 +187,8 @@ script, so both mirror forms retain a working helper reference.
 Forge tests cover pure state transitions, classifier signatures and attempt
 ceilings, serialized-handoff prerequisites, exact terminal matching,
 multi-workspace duplicate detection, split-brain, limits, mode-correct request
-routing, read-only SQLite fixtures, detached deployment, persisted status,
-instance-bound stop, and fail-closed runtime behavior. CoC tests cover command
-registration, option validation, default installation, package resources, and
-Claude/Codex mirrors.
+routing, read-only SQLite fixtures, detached deployment, idempotent resume,
+preserved bounded state, persisted status, instance-bound stop, and fail-closed
+runtime behavior. CoC tests cover command registration, endpoint precedence,
+option validation, default installation, package resources, and Claude/Codex
+mirrors.

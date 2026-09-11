@@ -4,13 +4,16 @@ import * as fs from 'fs';
 import {
     DEFAULT_WATCHDOG_LIMITS,
     getDeliveryWatchdogStatus,
+    resumeDeliveryWatchdog,
     requestDeliveryWatchdogStop,
     startDeliveryWatchdog,
     validateDeliveryWatchdogConfig,
     type DeliveryWatchdogConfig,
+    type ResumeDeliveryWatchdogOptions,
+    type ResumeDeliveryWatchdogResult,
     type DeliveryWatchdogStatus,
 } from '@plusplusoneplusplus/forge';
-import type { ResolvedCLIConfig } from '../config';
+import type { CLIConfig } from '../config';
 
 type OutputStream = NodeJS.WritableStream;
 
@@ -39,13 +42,21 @@ export interface ReliabilityWatchdogStateOptions {
     stateDir?: string;
 }
 
+export interface ReliabilityWatchdogResumeOptions extends ReliabilityWatchdogStateOptions {
+    serverUrl?: string;
+}
+
 export interface ReliabilityWatchdogDependencies {
     cwd?: string;
     env?: NodeJS.ProcessEnv;
-    config?: Pick<ResolvedCLIConfig, 'serve'>;
+    config?: Pick<CLIConfig, 'serve'>;
     stdout?: OutputStream;
     stderr?: OutputStream;
     start?: (config: DeliveryWatchdogConfig) => Promise<{ pid: number; stateFile: string }>;
+    resume?: (
+        stateDir: string,
+        options: ResumeDeliveryWatchdogOptions,
+    ) => Promise<ResumeDeliveryWatchdogResult>;
     status?: (stateDir: string) => DeliveryWatchdogStatus | Promise<DeliveryWatchdogStatus>;
     stop?: (stateDir: string) => { requested: boolean; pid: number } | Promise<{ requested: boolean; pid: number }>;
 }
@@ -119,6 +130,38 @@ export async function executeReliabilityWatchdogStart(
     }
 }
 
+export async function executeReliabilityWatchdogResume(
+    opts: ReliabilityWatchdogResumeOptions,
+    deps: ReliabilityWatchdogDependencies = {},
+): Promise<number> {
+    const stdout = deps.stdout ?? process.stdout;
+    const stderr = deps.stderr ?? process.stderr;
+    try {
+        const stateDir = resolveStateDir(opts, deps.cwd ?? process.cwd());
+        const serverUrl = resolveResumeServerUrl(opts, deps);
+        const options: ResumeDeliveryWatchdogOptions = serverUrl ? { serverUrl } : {};
+        const resume = deps.resume ?? ((value: string, resumeOptions: ResumeDeliveryWatchdogOptions) => (
+            resumeDeliveryWatchdog(
+                value,
+                path.join(__dirname, 'reliability-watchdog-runner.js'),
+                resumeOptions,
+            )
+        ));
+        const result = await resume(stateDir, options);
+        writeLine(
+            stdout,
+            result.resumed
+                ? `Watchdog resumed: PID ${result.pid}`
+                : `Watchdog already running: PID ${result.pid}`,
+        );
+        writeLine(stdout, `State: ${result.stateFile}`);
+        return 0;
+    } catch (error) {
+        writeLine(stderr, errorMessage(error));
+        return 1;
+    }
+}
+
 export async function executeReliabilityWatchdogStatus(
     opts: ReliabilityWatchdogStateOptions,
     deps: ReliabilityWatchdogDependencies = {},
@@ -155,6 +198,23 @@ export async function executeReliabilityWatchdogStop(
 
 function resolveStateDir(opts: ReliabilityWatchdogStateOptions, cwd: string): string {
     return resolvePath(cwd, requiredString(opts.stateDir, 'state-dir'));
+}
+
+function resolveResumeServerUrl(
+    opts: ReliabilityWatchdogResumeOptions,
+    deps: Pick<ReliabilityWatchdogDependencies, 'env' | 'config'>,
+): string | undefined {
+    const env = deps.env ?? process.env;
+    const explicitOrEnvironment = optionalString(opts.serverUrl)
+        ?? optionalString(env.COC_SERVER_URL);
+    if (explicitOrEnvironment) {
+        return explicitOrEnvironment.replace(/\/+$/, '');
+    }
+    const serve = deps.config?.serve;
+    if (serve?.host === undefined && serve?.port === undefined) {
+        return undefined;
+    }
+    return `http://${clientHost(serve?.host ?? '127.0.0.1')}:${serve?.port ?? 4000}`;
 }
 
 function positiveInteger(

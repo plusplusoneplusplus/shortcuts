@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as net from 'net';
 import { randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import Database from 'better-sqlite3';
@@ -22,6 +23,7 @@ export const WATCHDOG_STATE_FILENAME = 'watchdog-state.json';
 export const WATCHDOG_STOP_FILENAME = 'stop-request.json';
 export const WATCHDOG_LOG_FILENAME = 'watchdog.log';
 export const WATCHDOG_LOCK_FILENAME = 'watchdog-control.db';
+export const WATCHDOG_START_TIME_CLOCK_SKEW_MS = 5_000;
 
 export type DeliveryWatchdogRunStatus =
     | 'starting'
@@ -52,8 +54,19 @@ export interface DeliveryWatchdogPersistentState extends WatchdogState {
     lastHeartbeatAtMs: number;
     lastProbe: WatchdogProbe | null;
     lastAction: string;
+    processLease?: WatchdogProcessLease;
     classifierLineage?: ClassifierLineageState;
     error?: string;
+}
+
+export interface WatchdogProcessLease {
+    port: number;
+    token: string;
+}
+
+export interface WatchdogProcessLeaseHandle {
+    identity: WatchdogProcessLease;
+    close: () => Promise<void>;
 }
 
 interface WatchdogDeploymentFile {
@@ -91,7 +104,37 @@ export interface WatchdogRuntimeDependencies {
     verifyServer?: (config: DeliveryWatchdogConfig) => Promise<void>;
     spawnDetached?: (runnerScript: string, configFile: string) => number;
     isProcessAlive?: (pid: number) => boolean;
+    createProcessLease?: (instanceId: string) => Promise<WatchdogProcessLeaseHandle>;
+    verifyProcessLease?: (state: DeliveryWatchdogPersistentState) => Promise<boolean>;
 }
+
+export interface ResumeDeliveryWatchdogOptions {
+    serverUrl?: string;
+}
+
+export interface ResumeDeliveryWatchdogResult {
+    resumed: boolean;
+    pid: number;
+    stateFile: string;
+}
+
+const ACTIVE_WATCHDOG_STATUSES: readonly DeliveryWatchdogRunStatus[] = [
+    'starting',
+    'running',
+    'stop-requested',
+];
+
+const ALL_WATCHDOG_STATUSES: readonly string[] = [
+    ...ACTIVE_WATCHDOG_STATUSES,
+    'stopped',
+    'complete',
+    'blocked',
+    'failed',
+    'ttl',
+    'max-resumes',
+    'binding-changed',
+    'classifier-circuit-open',
+];
 
 export async function startDeliveryWatchdog(
     config: DeliveryWatchdogConfig,
@@ -108,78 +151,160 @@ export async function startDeliveryWatchdog(
     const now = deps.now?.() ?? Date.now();
     const claim = acquireStartClaim(config.stateDir, now, isProcessAlive);
     try {
-        const existingState = readJsonFile<DeliveryWatchdogPersistentState>(stateFile);
-        if (
-            existingState
-            && ['starting', 'running', 'stop-requested'].includes(existingState.status)
-            && isProcessAlive(existingState.pid)
-        ) {
-            throw new Error(`A watchdog is already active in ${config.stateDir}`);
-        }
-
-        const probe = (deps.probe ?? probeDeliveryWatchdogDatabase)(config, now);
-        if (!probe.bindingMatches) {
-            throw new Error('Target process does not match the configured workspace, worktree, and mode');
-        }
-        if (probe.duplicateWriterTaskIds.length > 0) {
-            throw new Error(`Duplicate writers target the worktree: ${probe.duplicateWriterTaskIds.join(', ')}`);
-        }
-        await (deps.verifyServer ?? defaultVerifyServer)(config);
-
-        const configFile = path.join(config.stateDir, WATCHDOG_CONFIG_FILENAME);
-        writeWatchdogJsonAtomic(configFile, {
-            instanceId: claim.instanceId,
+        return await startDeliveryWatchdogWithClaim(
             config,
-            requiresParentHandoff: true,
-        } satisfies WatchdogDeploymentFile);
-        fs.rmSync(path.join(config.stateDir, WATCHDOG_STOP_FILENAME), { force: true });
-
-        const priorState = existingState && sameTarget(existingState, config)
-            ? existingState
-            : null;
-        writePersistentState(config.stateDir, {
-            ...restoreWatchdogState(priorState, now),
-            instanceId: claim.instanceId,
-            pid: process.pid,
-            status: 'starting',
-            workspaceId: config.workspaceId,
-            processId: config.processId,
-            worktree: canonicalFilesystemPath(config.worktree),
-            mode: config.mode,
-            lastHeartbeatAtMs: now,
-            lastProbe: probe,
-            lastAction: 'awaiting child launch',
-            ...(priorState?.classifierLineage
-                ? { classifierLineage: priorState.classifierLineage }
-                : {}),
-        });
-
-        let spawnedPid: number;
-        try {
-            spawnedPid = (deps.spawnDetached ?? defaultSpawnDetached)(runnerScript, configFile);
-            if (!Number.isSafeInteger(spawnedPid) || spawnedPid <= 0) {
-                throw new Error('Detached watchdog did not return a valid PID');
-            }
-            acknowledgeChildLaunch(config.stateDir, claim.instanceId, spawnedPid);
-        } catch (error) {
-            const current = readJsonFile<DeliveryWatchdogPersistentState>(stateFile);
-            if (current?.instanceId === claim.instanceId && current.status === 'starting') {
-                writePersistentState(config.stateDir, {
-                    ...current,
-                    status: 'failed',
-                    lastAction: 'child launch failed',
-                    error: errorMessage(error),
-                });
-            }
-            throw error;
-        }
-
-        if (!deps.spawnDetached) {
-            await waitForStartup(stateFile, claim.instanceId, spawnedPid, isProcessAlive);
-        }
-        return { pid: spawnedPid, stateFile };
+            runnerScript,
+            claim,
+            now,
+            isProcessAlive,
+            deps,
+        );
     } finally {
         releaseStartClaim(config.stateDir, claim.instanceId);
+    }
+}
+
+async function startDeliveryWatchdogWithClaim(
+    config: DeliveryWatchdogConfig,
+    runnerScript: string,
+    claim: { instanceId: string },
+    now: number,
+    isProcessAlive: (pid: number) => boolean,
+    deps: WatchdogRuntimeDependencies,
+): Promise<{ pid: number; stateFile: string }> {
+    const stateFile = path.join(config.stateDir, WATCHDOG_STATE_FILENAME);
+    const existingState = readJsonFile<DeliveryWatchdogPersistentState>(stateFile);
+    if (
+        existingState
+        && ACTIVE_WATCHDOG_STATUSES.includes(existingState.status)
+        && isProcessAlive(existingState.pid)
+    ) {
+        throw new Error(`A watchdog is already active in ${config.stateDir}`);
+    }
+
+    const probe = (deps.probe ?? probeDeliveryWatchdogDatabase)(config, now);
+    if (!probe.bindingMatches) {
+        throw new Error('Target process does not match the configured workspace, worktree, and mode');
+    }
+    if (probe.duplicateWriterTaskIds.length > 0) {
+        throw new Error(`Duplicate writers target the worktree: ${probe.duplicateWriterTaskIds.join(', ')}`);
+    }
+    await (deps.verifyServer ?? defaultVerifyServer)(config);
+
+    const configFile = path.join(config.stateDir, WATCHDOG_CONFIG_FILENAME);
+    writeWatchdogJsonAtomic(configFile, {
+        instanceId: claim.instanceId,
+        config,
+        requiresParentHandoff: true,
+    } satisfies WatchdogDeploymentFile);
+    fs.rmSync(path.join(config.stateDir, WATCHDOG_STOP_FILENAME), { force: true });
+
+    const priorState = existingState && sameTarget(existingState, config)
+        ? existingState
+        : null;
+    writePersistentState(config.stateDir, {
+        ...restoreWatchdogState(priorState, now),
+        instanceId: claim.instanceId,
+        pid: process.pid,
+        status: 'starting',
+        workspaceId: config.workspaceId,
+        processId: config.processId,
+        worktree: canonicalFilesystemPath(config.worktree),
+        mode: config.mode,
+        lastHeartbeatAtMs: now,
+        lastProbe: probe,
+        lastAction: 'awaiting child launch',
+        ...(priorState?.classifierLineage
+            ? { classifierLineage: priorState.classifierLineage }
+            : {}),
+    });
+
+    let spawnedPid: number;
+    try {
+        spawnedPid = (deps.spawnDetached ?? defaultSpawnDetached)(runnerScript, configFile);
+        if (!Number.isSafeInteger(spawnedPid) || spawnedPid <= 0) {
+            throw new Error('Detached watchdog did not return a valid PID');
+        }
+        acknowledgeChildLaunch(config.stateDir, claim.instanceId, spawnedPid);
+    } catch (error) {
+        const current = readJsonFile<DeliveryWatchdogPersistentState>(stateFile);
+        if (current?.instanceId === claim.instanceId && current.status === 'starting') {
+            writePersistentState(config.stateDir, {
+                ...current,
+                status: 'failed',
+                lastAction: 'child launch failed',
+                error: errorMessage(error),
+            });
+        }
+        throw error;
+    }
+
+    if (!deps.spawnDetached) {
+        await waitForStartup(stateFile, claim.instanceId, spawnedPid, isProcessAlive);
+    }
+    return { pid: spawnedPid, stateFile };
+}
+
+export async function resumeDeliveryWatchdog(
+    stateDir: string,
+    runnerScript: string,
+    options: ResumeDeliveryWatchdogOptions = {},
+    deps: WatchdogRuntimeDependencies = {},
+): Promise<ResumeDeliveryWatchdogResult> {
+    loadResumeDeployment(stateDir, options);
+    const isProcessAlive = deps.isProcessAlive ?? defaultIsProcessAlive;
+    const claimTime = deps.now?.() ?? Date.now();
+    const claim = acquireStartClaim(stateDir, claimTime, isProcessAlive, true);
+    try {
+        const { config, state, stateFile } = loadResumeDeployment(stateDir, options);
+        const now = deps.now?.() ?? Date.now();
+        assertResumeTtl(state, config, now);
+        if (
+            ACTIVE_WATCHDOG_STATUSES.includes(state.status)
+            && isProcessAlive(state.pid)
+        ) {
+            const leaseMatches = await (
+                deps.verifyProcessLease
+                ?? defaultVerifyProcessLease
+            )(state);
+            if (!leaseMatches) {
+                throw new Error('Watchdog process identity could not be verified; refusing to resume');
+            }
+            return {
+                resumed: false,
+                pid: state.pid,
+                stateFile,
+            };
+        }
+        validateInputFiles(config);
+        const probe = deps.probe ?? probeDeliveryWatchdogDatabase;
+        assertResumeProbeSafe(probe(config, now));
+
+        const verifyServer = deps.verifyServer ?? defaultVerifyServer;
+        const result = await startDeliveryWatchdogWithClaim(
+            config,
+            runnerScript,
+            claim,
+            now,
+            isProcessAlive,
+            {
+                ...deps,
+                probe,
+                verifyServer: async value => {
+                    await verifyServer(value);
+                    validateInputFiles(value);
+                    const recheckTime = deps.now?.() ?? Date.now();
+                    assertResumeTtl(state, value, recheckTime);
+                    assertResumeProbeSafe(probe(value, recheckTime));
+                },
+            },
+        );
+        return {
+            resumed: true,
+            ...result,
+        };
+    } finally {
+        releaseStartClaim(stateDir, claim.instanceId);
     }
 }
 
@@ -270,8 +395,17 @@ export async function runDeliveryWatchdog(
             ? { classifierLineage: priorForTarget.classifierLineage }
             : {}),
     };
+    let processLeaseHandle: WatchdogProcessLeaseHandle | undefined;
 
     try {
+        processLeaseHandle = await (
+            deps.createProcessLease
+            ?? defaultCreateProcessLease
+        )(instanceId);
+        state = {
+            ...state,
+            processLease: processLeaseHandle.identity,
+        };
         const initialProbe = probe(config, now());
         if (!initialProbe.bindingMatches) {
             throw new Error('Target process binding changed before watchdog startup');
@@ -500,6 +634,8 @@ export async function runDeliveryWatchdog(
         };
         persistAndLog(config, state, 'fatal: watchdog failed');
         throw new Error('Delivery watchdog failed');
+    } finally {
+        await processLeaseHandle?.close();
     }
 }
 
@@ -686,6 +822,7 @@ function acquireStartClaim(
     stateDir: string,
     nowMs: number,
     isProcessAlive: (pid: number) => boolean,
+    allowActiveState: boolean = false,
 ): { instanceId: string } {
     const controlFile = path.join(stateDir, WATCHDOG_LOCK_FILENAME);
     let db: Database.Database;
@@ -714,7 +851,8 @@ function acquireStartClaim(
             path.join(stateDir, WATCHDOG_STATE_FILENAME),
         );
         if (
-            state
+            !allowActiveState
+            && state
             && ['starting', 'running', 'stop-requested'].includes(state.status)
             && isProcessAlive(state.pid)
         ) {
@@ -798,6 +936,196 @@ function readJsonFile<T>(file: string): T | null {
     }
 }
 
+function readPersistedJson(file: string, name: 'config' | 'state'): unknown {
+    let content: string;
+    try {
+        content = fs.readFileSync(file, 'utf-8');
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            throw new Error(`Watchdog ${name} not found in ${path.dirname(file)}`);
+        }
+        throw new Error(`Watchdog ${name} is unreadable`);
+    }
+    try {
+        const parsed: unknown = JSON.parse(content);
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('invalid persisted JSON object');
+        }
+        return parsed;
+    } catch {
+        throw new Error(`Watchdog ${name} is unreadable`);
+    }
+}
+
+function loadResumeDeployment(
+    stateDir: string,
+    options: ResumeDeliveryWatchdogOptions,
+): {
+    config: DeliveryWatchdogConfig;
+    state: DeliveryWatchdogPersistentState;
+    stateFile: string;
+} {
+    const deployment = readPersistedJson(
+        path.join(stateDir, WATCHDOG_CONFIG_FILENAME),
+        'config',
+    );
+    const stateFile = path.join(stateDir, WATCHDOG_STATE_FILENAME);
+    const state = readPersistedJson(stateFile, 'state');
+    if (!isValidWatchdogDeployment(deployment) || !isValidPersistentState(state)) {
+        throw new Error('Watchdog persisted configuration or state is unreadable');
+    }
+
+    const persistedConfig = deployment.config;
+    if (!sameCanonicalPath(stateDir, persistedConfig.stateDir)) {
+        throw new Error('Watchdog state directory does not match persisted configuration');
+    }
+    validateDeliveryWatchdogConfig(persistedConfig);
+    if (
+        deployment.instanceId !== state.instanceId
+        || !sameTarget(state, persistedConfig)
+    ) {
+        throw new Error('Watchdog persisted target binding does not match its state');
+    }
+
+    const config: DeliveryWatchdogConfig = options.serverUrl === undefined
+        ? persistedConfig
+        : {
+            ...persistedConfig,
+            serverUrl: options.serverUrl.trim().replace(/\/+$/, ''),
+        };
+    validateDeliveryWatchdogConfig(config);
+    return { config, state, stateFile };
+}
+
+function isValidWatchdogDeployment(value: unknown): value is WatchdogDeploymentFile {
+    if (!isRecord(value) || !isRecord(value.config)) {
+        return false;
+    }
+    const config = value.config;
+    const limits = config.limits;
+    return typeof value.instanceId === 'string'
+        && value.instanceId.length > 0
+        && typeof config.workspaceId === 'string'
+        && typeof config.processId === 'string'
+        && typeof config.worktree === 'string'
+        && typeof config.ledgerPath === 'string'
+        && typeof config.promptFile === 'string'
+        && typeof config.stateDir === 'string'
+        && typeof config.dataDir === 'string'
+        && typeof config.serverUrl === 'string'
+        && typeof config.mode === 'string'
+        && (config.ralphSessionId === undefined || typeof config.ralphSessionId === 'string')
+        && typeof config.completeMarker === 'string'
+        && typeof config.blockedMarker === 'string'
+        && isRecord(limits)
+        && typeof limits.pollIntervalMs === 'number'
+        && typeof limits.idlePolls === 'number'
+        && typeof limits.cooldownMs === 'number'
+        && typeof limits.ttlMs === 'number'
+        && typeof limits.maxResumes === 'number'
+        && typeof limits.heartbeatIntervalMs === 'number';
+}
+
+function isValidPersistentState(
+    state: unknown,
+): state is DeliveryWatchdogPersistentState {
+    if (!isRecord(state)) {
+        return false;
+    }
+    return typeof state.instanceId === 'string'
+        && state.instanceId.length > 0
+        && typeof state.pid === 'number'
+        && Number.isSafeInteger(state.pid)
+        && state.pid > 0
+        && typeof state.status === 'string'
+        && ALL_WATCHDOG_STATUSES.includes(state.status)
+        && typeof state.workspaceId === 'string'
+        && typeof state.processId === 'string'
+        && typeof state.worktree === 'string'
+        && typeof state.mode === 'string'
+        && typeof state.startedAtMs === 'number'
+        && Number.isFinite(state.startedAtMs)
+        && typeof state.idleStreak === 'number'
+        && Number.isSafeInteger(state.idleStreak)
+        && state.idleStreak >= 0
+        && typeof state.resumeCount === 'number'
+        && Number.isSafeInteger(state.resumeCount)
+        && state.resumeCount >= 0
+        && (
+            state.lastRecoveryAtMs === null
+            || (
+                typeof state.lastRecoveryAtMs === 'number'
+                && Number.isFinite(state.lastRecoveryAtMs)
+            )
+        )
+        && (
+            state.classifierCircuit === 'closed'
+            || state.classifierCircuit === 'attempted'
+            || state.classifierCircuit === 'open'
+        )
+        && typeof state.classifierRejectionCount === 'number'
+        && Number.isSafeInteger(state.classifierRejectionCount)
+        && state.classifierRejectionCount >= 0
+        && typeof state.classifierCompactionAttempts === 'number'
+        && Number.isSafeInteger(state.classifierCompactionAttempts)
+        && state.classifierCompactionAttempts >= 0
+        && (
+            state.classifierLastOccurrenceId === null
+            || typeof state.classifierLastOccurrenceId === 'string'
+        )
+        && typeof state.lastHeartbeatAtMs === 'number'
+        && Number.isFinite(state.lastHeartbeatAtMs)
+        && typeof state.lastAction === 'string'
+        && (
+            state.processLease === undefined
+            || isValidProcessLease(state.processLease)
+        );
+}
+
+function isValidProcessLease(value: unknown): value is WatchdogProcessLease {
+    return isRecord(value)
+        && typeof value.port === 'number'
+        && Number.isSafeInteger(value.port)
+        && value.port > 0
+        && value.port <= 65_535
+        && typeof value.token === 'string'
+        && value.token.length > 0
+        && value.token.length <= 128;
+}
+
+function assertResumeTtl(
+    state: DeliveryWatchdogPersistentState,
+    config: DeliveryWatchdogConfig,
+    nowMs: number,
+): void {
+    if (
+        state.startedAtMs < 0
+        || state.startedAtMs > nowMs + WATCHDOG_START_TIME_CLOCK_SKEW_MS
+    ) {
+        throw new Error('Watchdog persisted start time is invalid');
+    }
+    if (Math.max(0, nowMs - state.startedAtMs) >= config.limits.ttlMs) {
+        throw new Error('Watchdog TTL has expired');
+    }
+}
+
+function assertResumeProbeSafe(probe: WatchdogProbe): void {
+    if (!probe.bindingMatches) {
+        throw new Error('Watchdog target binding changed before resume');
+    }
+    if (probe.targetInflight > 0 || probe.splitBrain) {
+        throw new Error('Cannot resume watchdog while target queued or running work exists');
+    }
+    if (probe.pendingWakeups > 0) {
+        throw new Error('Cannot resume watchdog while a pending target wakeup exists');
+    }
+    if (probe.duplicateWriterTaskIds.length > 0) {
+        throw new Error(
+            `Cannot resume watchdog while a duplicate writer is active: ${probe.duplicateWriterTaskIds.join(', ')}`,
+        );
+    }
+}
+
 async function waitForStartup(
     stateFile: string,
     instanceId: string,
@@ -807,8 +1135,12 @@ async function waitForStartup(
     const deadline = Date.now() + 5_000;
     while (Date.now() < deadline) {
         const state = readJsonFile<DeliveryWatchdogPersistentState>(stateFile);
-        if (state?.instanceId === instanceId && state.pid === pid && state.status === 'running') {
-            return;
+        if (        state?.instanceId === instanceId
+        && state.pid === pid
+        && state.status === 'running'
+        && isValidProcessLease(state.processLease)
+        ) {
+        return;
         }
         if (!isProcessAlive(pid)) {
             throw new Error('Detached watchdog exited before startup completed');
@@ -862,6 +1194,129 @@ function defaultIsProcessAlive(pid: number): boolean {
     } catch (error) {
         return (error as NodeJS.ErrnoException).code === 'EPERM';
     }
+}
+
+async function defaultCreateProcessLease(
+    instanceId: string,
+): Promise<WatchdogProcessLeaseHandle> {
+    const token = randomUUID();
+    const server = net.createServer(socket => {
+        socket.setEncoding('utf-8');
+        socket.setTimeout(1_000, () => socket.destroy());
+        let request = '';
+        socket.on('data', chunk => {
+            request += chunk;
+            if (request.length > 256) {
+                socket.destroy();
+                return;
+            }
+            const newline = request.indexOf('\n');
+            if (newline < 0) {
+                return;
+            }
+            if (request.slice(0, newline) !== token) {
+                socket.destroy();
+                return;
+            }
+            socket.end(`${JSON.stringify({ instanceId, pid: process.pid })}\n`);
+        });
+        socket.on('error', () => {
+            socket.destroy();
+        });
+    });
+    await new Promise<void>((resolve, reject) => {
+        const onError = (error: Error) => {
+            server.off('listening', onListening);
+            reject(error);
+        };
+        const onListening = () => {
+            server.off('error', onError);
+            resolve();
+        };
+        server.once('error', onError);
+        server.once('listening', onListening);
+        server.listen({ host: '127.0.0.1', port: 0, exclusive: true });
+    });
+    server.unref();
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+        await closeServer(server);
+        throw new Error('Watchdog process lease did not bind to a TCP port');
+    }
+    return {
+        identity: {
+            port: address.port,
+            token,
+        },
+        close: () => closeServer(server),
+    };
+}
+
+async function defaultVerifyProcessLease(
+    state: DeliveryWatchdogPersistentState,
+): Promise<boolean> {
+    if (!isValidProcessLease(state.processLease)) {
+        return false;
+    }
+    const { port, token } = state.processLease;
+    return new Promise<boolean>(resolve => {
+        const socket = net.createConnection({ host: '127.0.0.1', port });
+        let response = '';
+        let settled = false;
+        const finish = (verified: boolean) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            socket.destroy();
+            resolve(verified);
+        };
+        socket.setEncoding('utf-8');
+        socket.setTimeout(1_000, () => finish(false));
+        socket.once('connect', () => {
+            socket.write(`${token}\n`);
+        });
+        socket.on('data', chunk => {
+            response += chunk;
+            if (response.length > 512) {
+                finish(false);
+                return;
+            }
+            const newline = response.indexOf('\n');
+            if (newline < 0) {
+                return;
+            }
+            try {
+                const identity = JSON.parse(response.slice(0, newline)) as {
+                    instanceId?: unknown;
+                    pid?: unknown;
+                };
+                finish(
+                    identity.instanceId === state.instanceId
+                    && identity.pid === state.pid,
+                );
+            } catch {
+                finish(false);
+            }
+        });
+        socket.once('error', () => finish(false));
+        socket.once('close', () => finish(false));
+    });
+}
+
+function closeServer(server: net.Server): Promise<void> {
+    if (!server.listening) {
+        return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => {
+        server.close(error => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve();
+        });
+    });
 }
 
 export async function verifyDeliveryWatchdogServer(
@@ -983,6 +1438,10 @@ function sanitizeClassifierReason(reason: string): string {
         'classifier attempt failed',
     ]);
     return allowed.has(reason) ? reason : 'classifier recovery unavailable';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function toRecord(value: unknown): Record<string, any> {

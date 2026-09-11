@@ -175,12 +175,12 @@ describe('CLI', () => {
             expect(optionNames).toContain('--output');
         });
 
-        it('should have reliability-watchdog start, status, and stop commands', () => {
+        it('should have reliability-watchdog start, resume, status, and stop commands', () => {
             const program = createProgram();
             const watchdog = program.commands.find(c => c.name() === 'reliability-watchdog');
             expect(watchdog).toBeDefined();
             expect(watchdog!.commands.map(c => c.name())).toEqual(
-                expect.arrayContaining(['start', 'status', 'stop']),
+                expect.arrayContaining(['start', 'resume', 'status', 'stop']),
             );
 
             const start = watchdog!.commands.find(c => c.name() === 'start')!;
@@ -207,6 +207,12 @@ describe('CLI', () => {
             ]) {
                 expect(optionNames).toContain(option);
             }
+
+            const resume = watchdog!.commands.find(c => c.name() === 'resume')!;
+            const resumeOptionNames = resume.options.map(o => o.long || o.short);
+            expect(resumeOptionNames).toEqual(
+                expect.arrayContaining(['--state-dir', '--server-url']),
+            );
         });
     });
 });

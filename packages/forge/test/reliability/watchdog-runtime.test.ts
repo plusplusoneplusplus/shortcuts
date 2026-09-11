@@ -10,12 +10,15 @@ import {
 } from '../../src/reliability/delivery-watchdog';
 import {
     getDeliveryWatchdogStatus,
+    resumeDeliveryWatchdog,
     requestDeliveryWatchdogStop,
     postDeliveryWatchdogRecovery,
     runDeliveryWatchdog,
     startDeliveryWatchdog,
+    type DeliveryWatchdogPersistentState,
     verifyDeliveryWatchdogServer,
     writeWatchdogJsonAtomic,
+    WATCHDOG_START_TIME_CLOCK_SKEW_MS,
     WATCHDOG_CONFIG_FILENAME,
     WATCHDOG_LOCK_FILENAME,
     WATCHDOG_LOG_FILENAME,
@@ -85,6 +88,43 @@ function healthyProbe(overrides: Partial<WatchdogProbe> = {}): WatchdogProbe {
         hasSdkSession: true,
         ...overrides,
     };
+}
+
+function persistDeployment(
+    config: DeliveryWatchdogConfig,
+    overrides: Partial<DeliveryWatchdogPersistentState> = {},
+): DeliveryWatchdogPersistentState {
+    const state: DeliveryWatchdogPersistentState = {
+        instanceId: 'persisted-instance',
+        pid: 4242,
+        status: 'stopped',
+        workspaceId: config.workspaceId,
+        processId: config.processId,
+        worktree: config.worktree,
+        mode: config.mode,
+        startedAtMs: 100,
+        idleStreak: 2,
+        resumeCount: 1,
+        lastRecoveryAtMs: 200,
+        classifierCircuit: 'attempted',
+        classifierRejectionCount: 1,
+        classifierCompactionAttempts: 1,
+        classifierLastOccurrenceId: 'occurrence-1',
+        lastHeartbeatAtMs: 300,
+        lastProbe: healthyProbe(),
+        lastAction: 'stopped',
+        classifierLineage: {
+            predecessorProcessId: config.processId,
+            handoff: 'manual-required',
+        },
+        ...overrides,
+    };
+    fs.writeFileSync(path.join(config.stateDir, WATCHDOG_CONFIG_FILENAME), JSON.stringify({
+        instanceId: state.instanceId,
+        config,
+    }));
+    fs.writeFileSync(path.join(config.stateDir, WATCHDOG_STATE_FILENAME), JSON.stringify(state));
+    return state;
 }
 
 describe('delivery watchdog SQLite probe', () => {
@@ -228,6 +268,671 @@ describe('delivery watchdog SQLite probe', () => {
 });
 
 describe('delivery watchdog detached lifecycle', () => {
+    it('returns a live persisted watchdog without probing or spawning', async () => {
+        const { config } = fixture();
+        const state = persistDeployment(config, {
+            status: 'running',
+            lastHeartbeatAtMs: 995,
+            processLease: {
+                port: 41000,
+                token: 'instance-token',
+            },
+        });
+        const probe = vi.fn(() => healthyProbe());
+        const verifyServer = vi.fn().mockResolvedValue(undefined);
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+        const verifyProcessLease = vi.fn().mockResolvedValue(true);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                probe,
+                verifyServer,
+                spawnDetached,
+                isProcessAlive: pid => pid === state.pid,
+                verifyProcessLease,
+            },
+        )).resolves.toEqual({
+            resumed: false,
+            pid: state.pid,
+            stateFile: path.join(config.stateDir, WATCHDOG_STATE_FILENAME),
+        });
+        expect(verifyProcessLease).toHaveBeenCalledWith(state);
+        expect(probe).not.toHaveBeenCalled();
+        expect(verifyServer).not.toHaveBeenCalled();
+        expect(spawnDetached).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unrelated process that reused the persisted PID', async () => {
+        const { config } = fixture();
+        persistDeployment(config, {
+            status: 'running',
+            lastHeartbeatAtMs: 995,
+            processLease: {
+                port: 41000,
+                token: 'stale-token',
+            },
+        });
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                verifyProcessLease: async () => false,
+                spawnDetached,
+                isProcessAlive: () => true,
+            },
+        )).rejects.toThrow(/process identity could not be verified/);
+        expect(spawnDetached).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['negative', -1],
+        ['beyond clock skew', 10_000 + WATCHDOG_START_TIME_CLOCK_SKEW_MS + 1],
+    ])('rejects a live watchdog with a %s persisted start time', async (_name, startedAtMs) => {
+        const { config } = fixture();
+        persistDeployment(config, {
+            status: 'running',
+            startedAtMs,
+            processLease: {
+                port: 41000,
+                token: 'instance-token',
+            },
+        });
+        const verifyProcessLease = vi.fn().mockResolvedValue(true);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 10_000,
+                verifyProcessLease,
+                isProcessAlive: () => true,
+            },
+        )).rejects.toThrow(/persisted start time is invalid/);
+        expect(verifyProcessLease).not.toHaveBeenCalled();
+    });
+
+    it('publishes and verifies a live child process lease', async () => {
+        const { config } = fixture();
+        persistDeployment(config);
+        let releaseSleep: (() => void) | undefined;
+        const sleepGate = new Promise<void>(resolve => {
+            releaseSleep = resolve;
+        });
+        const running = runDeliveryWatchdog(
+            path.join(config.stateDir, WATCHDOG_CONFIG_FILENAME),
+            {
+                now: () => 1_000,
+                sleep: async () => sleepGate,
+                probe: () => healthyProbe(),
+                verifyServer: async () => undefined,
+            },
+        );
+
+        try {
+            await vi.waitFor(() => {
+                expect(JSON.parse(fs.readFileSync(
+                    path.join(config.stateDir, WATCHDOG_STATE_FILENAME),
+                    'utf-8',
+                ))).toMatchObject({
+                    pid: process.pid,
+                    status: 'running',
+                    processLease: {
+                        port: expect.any(Number),
+                        token: expect.any(String),
+                    },
+                });
+            });
+
+            await expect(resumeDeliveryWatchdog(
+                config.stateDir,
+                '/dist/watchdog-runner.js',
+                {},
+                {
+                    now: () => 1_000,
+                    isProcessAlive: pid => pid === process.pid,
+                },
+            )).resolves.toMatchObject({
+                resumed: false,
+                pid: process.pid,
+            });
+        } finally {
+            fs.appendFileSync(config.ledgerPath, '\nDELIVERY_COMPLETE\n');
+            releaseSleep!();
+            await running;
+        }
+    });
+
+    it('relaunches one dead persisted watchdog and preserves its bounded state', async () => {
+        const { config } = fixture();
+        const prior = persistDeployment(config, { status: 'running' });
+        const verifyServer = vi.fn().mockResolvedValue(undefined);
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+        const serverUrl = 'http://127.0.0.1:4500';
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            { serverUrl },
+            {
+                now: () => 1_000,
+                probe: () => healthyProbe(),
+                verifyServer,
+                spawnDetached,
+                isProcessAlive: () => false,
+            },
+        )).resolves.toEqual({
+            resumed: true,
+            pid: 7000,
+            stateFile: path.join(config.stateDir, WATCHDOG_STATE_FILENAME),
+        });
+
+        expect(spawnDetached).toHaveBeenCalledOnce();
+        expect(verifyServer).toHaveBeenCalledWith(expect.objectContaining({
+            workspaceId: config.workspaceId,
+            processId: config.processId,
+            worktree: config.worktree,
+            mode: config.mode,
+            serverUrl,
+        }));
+        expect(JSON.parse(fs.readFileSync(
+            path.join(config.stateDir, WATCHDOG_CONFIG_FILENAME),
+            'utf-8',
+        ))).toMatchObject({
+            config: {
+                workspaceId: config.workspaceId,
+                processId: config.processId,
+                worktree: config.worktree,
+                ledgerPath: config.ledgerPath,
+                promptFile: config.promptFile,
+                stateDir: config.stateDir,
+                dataDir: config.dataDir,
+                serverUrl,
+                limits: config.limits,
+            },
+        });
+        expect(JSON.parse(fs.readFileSync(
+            path.join(config.stateDir, WATCHDOG_STATE_FILENAME),
+            'utf-8',
+        ))).toMatchObject({
+            pid: 7000,
+            status: 'starting',
+            startedAtMs: prior.startedAtMs,
+            resumeCount: prior.resumeCount,
+            lastRecoveryAtMs: prior.lastRecoveryAtMs,
+            classifierCircuit: prior.classifierCircuit,
+            classifierRejectionCount: prior.classifierRejectionCount,
+            classifierCompactionAttempts: prior.classifierCompactionAttempts,
+            classifierLastOccurrenceId: prior.classifierLastOccurrenceId,
+            classifierLineage: prior.classifierLineage,
+        });
+    });
+
+    it.each([
+        ['complete', 'DELIVERY_COMPLETE'],
+        ['blocked', 'DELIVERY_BLOCKED'],
+    ])('rejects an exact %s marker before relaunch', async (_name, marker) => {
+        const { config } = fixture();
+        persistDeployment(config);
+        fs.appendFileSync(config.ledgerPath, `\n${marker}\n`);
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                probe: () => healthyProbe(),
+                verifyServer: async () => undefined,
+                spawnDetached,
+                isProcessAlive: () => false,
+            },
+        )).rejects.toThrow(/terminal marker/);
+        expect(spawnDetached).not.toHaveBeenCalled();
+    });
+
+    it('rejects a persisted watchdog whose original TTL has expired', async () => {
+        const { config } = fixture();
+        config.limits.ttlMs = 100;
+        persistDeployment(config, { startedAtMs: 100 });
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 200,
+                probe: () => healthyProbe(),
+                verifyServer: async () => undefined,
+                spawnDetached: () => 7000,
+                isProcessAlive: () => false,
+            },
+        )).rejects.toThrow(/TTL has expired/);
+    });
+
+    it.each([
+        ['workspace', { workspaceId: 'ws-other' }],
+        ['process', { processId: 'queue_other' }],
+        ['worktree', { worktree: 'other-worktree' }],
+        ['mode', { mode: 'ralph' }],
+    ])('rejects a persisted %s binding mismatch', async (_name, stateOverride) => {
+        const { root, config } = fixture();
+        persistDeployment(config, {
+            ...stateOverride,
+            ...(stateOverride.worktree
+                ? { worktree: path.join(root, stateOverride.worktree) }
+                : {}),
+        });
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                probe: () => healthyProbe(),
+                verifyServer: async () => undefined,
+                spawnDetached: () => 7000,
+                isProcessAlive: () => false,
+            },
+        )).rejects.toThrow(/persisted target binding/);
+    });
+
+    it.each([
+        ['changed target binding', healthyProbe({ bindingMatches: false }), /target binding changed/],
+        ['target queued or running work', healthyProbe({ targetInflight: 1 }), /queued or running work/],
+        ['pending target wakeup', healthyProbe({ pendingWakeups: 1 }), /pending target wakeup/],
+        ['duplicate writer', healthyProbe({ duplicateWriterTaskIds: ['other-writer'] }), /duplicate writer/],
+    ])('rejects %s before relaunch', async (_name, probeResult, expected) => {
+        const { config } = fixture();
+        persistDeployment(config);
+        const verifyServer = vi.fn().mockResolvedValue(undefined);
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                probe: () => probeResult,
+                verifyServer,
+                spawnDetached,
+                isProcessAlive: () => false,
+            },
+        )).rejects.toThrow(expected);
+        expect(verifyServer).not.toHaveBeenCalled();
+        expect(spawnDetached).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['target queued or running work', healthyProbe({ targetInflight: 1 }), /queued or running work/],
+        ['pending target wakeup', healthyProbe({ pendingWakeups: 1 }), /pending target wakeup/],
+    ])('rejects %s that appears during endpoint verification', async (_name, unsafeProbe, expected) => {
+        const { config } = fixture();
+        persistDeployment(config);
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+        const probe = vi.fn()
+            .mockReturnValueOnce(healthyProbe())
+            .mockReturnValue(unsafeProbe);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                probe,
+                verifyServer: async () => undefined,
+                spawnDetached,
+                isProcessAlive: () => false,
+            },
+        )).rejects.toThrow(expected);
+        expect(spawnDetached).not.toHaveBeenCalled();
+    });
+
+    it('rejects a TTL that expires during endpoint verification', async () => {
+        const { config } = fixture();
+        config.limits.ttlMs = 100;
+        persistDeployment(config, { startedAtMs: 100 });
+        let currentTime = 199;
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => currentTime,
+                probe: () => healthyProbe(),
+                verifyServer: async () => {
+                    currentTime = 200;
+                },
+                spawnDetached,
+                isProcessAlive: () => false,
+            },
+        )).rejects.toThrow(/TTL has expired/);
+        expect(spawnDetached).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['at the clock-skew boundary', WATCHDOG_START_TIME_CLOCK_SKEW_MS, true],
+        ['beyond the clock-skew boundary', WATCHDOG_START_TIME_CLOCK_SKEW_MS + 1, false],
+    ])('%s validates a future persisted start time', async (_name, offset, accepted) => {
+        const { config } = fixture();
+        const now = 10_000;
+        const startedAtMs = now + offset;
+        persistDeployment(config, { startedAtMs });
+        const invocation = resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => now,
+                probe: () => healthyProbe(),
+                verifyServer: async () => undefined,
+                spawnDetached: () => 7000,
+                isProcessAlive: () => false,
+            },
+        );
+
+        if (!accepted) {
+            await expect(invocation).rejects.toThrow(/persisted start time is invalid/);
+            return;
+        }
+        await expect(invocation).resolves.toMatchObject({ resumed: true, pid: 7000 });
+        expect(JSON.parse(fs.readFileSync(
+            path.join(config.stateDir, WATCHDOG_STATE_FILENAME),
+            'utf-8',
+        ))).toMatchObject({ startedAtMs });
+    });
+
+    it('rejects a negative persisted start time', async () => {
+        const { config } = fixture();
+        persistDeployment(config, { startedAtMs: -1 });
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                isProcessAlive: () => false,
+            },
+        )).rejects.toThrow(/persisted start time is invalid/);
+    });
+
+    it.each([
+        ['config', WATCHDOG_CONFIG_FILENAME],
+        ['state', WATCHDOG_STATE_FILENAME],
+    ])('rejects a missing persisted %s file', async (_name, filename) => {
+        const { config } = fixture();
+        persistDeployment(config);
+        fs.rmSync(path.join(config.stateDir, filename));
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            { isProcessAlive: () => false },
+        )).rejects.toThrow(new RegExp(`Watchdog ${_name} not found`));
+    });
+
+    it.each([
+        ['config', WATCHDOG_CONFIG_FILENAME],
+        ['state', WATCHDOG_STATE_FILENAME],
+    ])('rejects an unreadable persisted %s file', async (_name, filename) => {
+        const { config } = fixture();
+        persistDeployment(config);
+        fs.writeFileSync(path.join(config.stateDir, filename), 'not json');
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            { isProcessAlive: () => false },
+        )).rejects.toThrow(new RegExp(`Watchdog ${_name} is unreadable`));
+    });
+
+    it.each([
+        ['config', WATCHDOG_CONFIG_FILENAME, { instanceId: 'persisted-instance', config: {} }],
+        ['state', WATCHDOG_STATE_FILENAME, { instanceId: 'persisted-instance' }],
+    ])('rejects malformed persisted %s data', async (_name, filename, value) => {
+        const { config } = fixture();
+        persistDeployment(config);
+        fs.writeFileSync(path.join(config.stateDir, filename), JSON.stringify(value));
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            { isProcessAlive: () => false },
+        )).rejects.toThrow(/persisted configuration or state is unreadable/);
+    });
+
+    it('rejects a state directory that does not match persisted configuration', async () => {
+        const { root, config } = fixture();
+        persistDeployment(config);
+        const otherStateDir = path.join(root, 'other-state');
+        fs.mkdirSync(otherStateDir);
+        fs.copyFileSync(
+            path.join(config.stateDir, WATCHDOG_CONFIG_FILENAME),
+            path.join(otherStateDir, WATCHDOG_CONFIG_FILENAME),
+        );
+        fs.copyFileSync(
+            path.join(config.stateDir, WATCHDOG_STATE_FILENAME),
+            path.join(otherStateDir, WATCHDOG_STATE_FILENAME),
+        );
+
+        await expect(resumeDeliveryWatchdog(
+            otherStateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            { isProcessAlive: () => false },
+        )).rejects.toThrow(/state directory does not match persisted configuration/);
+    });
+
+    it('accepts a canonical alias for the persisted state directory', async () => {
+        const { root, config } = fixture();
+        persistDeployment(config);
+        const stateDirAlias = path.join(root, 'state-alias');
+        createDirectoryAlias(config.stateDir, stateDirAlias);
+
+        await expect(resumeDeliveryWatchdog(
+            stateDirAlias,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                probe: () => healthyProbe(),
+                verifyServer: async () => undefined,
+                spawnDetached: () => 7000,
+                isProcessAlive: () => false,
+            },
+        )).resolves.toMatchObject({
+            resumed: true,
+            pid: 7000,
+        });
+    });
+
+    it('allows only one concurrent relaunch through the existing atomic claim', async () => {
+        const { config } = fixture();
+        persistDeployment(config);
+        let releaseVerification: (() => void) | undefined;
+        const verificationGate = new Promise<void>(resolve => {
+            releaseVerification = resolve;
+        });
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+        const verifyServer = vi.fn(async () => {
+            await verificationGate;
+        });
+        const deps = {
+            now: () => 1_000,
+            probe: () => healthyProbe(),
+            verifyServer,
+            spawnDetached,
+            isProcessAlive: () => false,
+        };
+
+        const first = resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            deps,
+        );
+        await vi.waitFor(() => expect(verifyServer).toHaveBeenCalledOnce());
+        const second = resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            deps,
+        );
+
+        await expect(second).rejects.toThrow(/start is already in progress/);
+        releaseVerification!();
+        await expect(first).resolves.toMatchObject({ resumed: true, pid: 7000 });
+        expect(spawnDetached).toHaveBeenCalledOnce();
+    });
+
+    it('re-reads persisted state after acquiring a stale start claim', async () => {
+        const { config } = fixture();
+        persistDeployment(config);
+        const db = new Database(path.join(config.stateDir, WATCHDOG_LOCK_FILENAME));
+        db.exec(`
+            CREATE TABLE watchdog_claim (
+                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                instance_id TEXT NOT NULL,
+                owner_pid INTEGER NOT NULL,
+                created_at_ms INTEGER NOT NULL
+            )
+        `);
+        db.prepare('INSERT INTO watchdog_claim VALUES (1, ?, ?, ?)').run(
+            'stale-starter',
+            9000,
+            500,
+        );
+        db.close();
+        let replaced = false;
+        const spawnDetached = vi.fn().mockReturnValue(7001);
+        const verifyProcessLease = vi.fn().mockResolvedValue(true);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                probe: () => healthyProbe(),
+                verifyServer: async () => undefined,
+                verifyProcessLease,
+                spawnDetached,
+                isProcessAlive: pid => {
+                    if (pid === 9000 && !replaced) {
+                        persistDeployment(config, {
+                            status: 'running',
+                            pid: 7000,
+                            lastHeartbeatAtMs: 995,
+                            processLease: {
+                                port: 41000,
+                                token: 'replacement-token',
+                            },
+                        });
+                        replaced = true;
+                        return false;
+                    }
+                    return pid === 7000;
+                },
+            },
+        )).resolves.toMatchObject({
+            resumed: false,
+            pid: 7000,
+        });
+        expect(verifyProcessLease).toHaveBeenCalledOnce();
+        expect(spawnDetached).not.toHaveBeenCalled();
+    });
+
+    it('rejects an in-progress parent launch before checking child identity', async () => {
+        const { config } = fixture();
+        persistDeployment(config, {
+            status: 'starting',
+            pid: process.pid,
+            lastHeartbeatAtMs: 1_000,
+        });
+        const db = new Database(path.join(config.stateDir, WATCHDOG_LOCK_FILENAME));
+        db.exec(`
+            CREATE TABLE watchdog_claim (
+                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                instance_id TEXT NOT NULL,
+                owner_pid INTEGER NOT NULL,
+                created_at_ms INTEGER NOT NULL
+            )
+        `);
+        db.prepare('INSERT INTO watchdog_claim VALUES (1, ?, ?, ?)').run(
+            'persisted-instance',
+            process.pid,
+            500,
+        );
+        db.close();
+        const verifyProcessLease = vi.fn().mockResolvedValue(true);
+        const spawnDetached = vi.fn().mockReturnValue(7000);
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                verifyProcessLease,
+                spawnDetached,
+                isProcessAlive: () => true,
+            },
+        )).rejects.toThrow(/start is already in progress/);
+        expect(verifyProcessLease).not.toHaveBeenCalled();
+        expect(spawnDetached).not.toHaveBeenCalled();
+    });
+
+    it('rejects a live conflicting start claim', async () => {
+        const { config } = fixture();
+        persistDeployment(config, { pid: process.pid + 10_000 });
+        const db = new Database(path.join(config.stateDir, WATCHDOG_LOCK_FILENAME));
+        db.exec(`
+            CREATE TABLE watchdog_claim (
+                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                instance_id TEXT NOT NULL,
+                owner_pid INTEGER NOT NULL,
+                created_at_ms INTEGER NOT NULL
+            )
+        `);
+        db.prepare('INSERT INTO watchdog_claim VALUES (1, ?, ?, ?)').run(
+            'other-starter',
+            process.pid,
+            500,
+        );
+        db.close();
+
+        await expect(resumeDeliveryWatchdog(
+            config.stateDir,
+            '/dist/watchdog-runner.js',
+            {},
+            {
+                now: () => 1_000,
+                probe: () => healthyProbe(),
+                verifyServer: async () => undefined,
+                spawnDetached: () => 7000,
+                isProcessAlive: pid => pid === process.pid,
+            },
+        )).rejects.toThrow(/start is already in progress/);
+    });
+
     it('validates the target before writing deployment config and spawning', async () => {
         const { config } = fixture();
         const spawnDetached = vi.fn().mockReturnValue(4242);

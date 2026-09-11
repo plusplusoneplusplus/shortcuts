@@ -1,9 +1,9 @@
 ---
 name: long-running-reliability
-description: Use for multi-hour or unattended autonomous delivery, supervised single-writer coding, Ralph execution, long tests/builds/PR completion, or recovery from SDK timeout, idle timeout, classifier rejection, queue/process split-brain, and silent completed-without-continuation stalls. Establishes one writer, a durable ledger, scheduled pacing, and an external detached watchdog; do not use for ordinary one-off commands or simple monitoring.
+description: Use for multi-hour or unattended autonomous delivery, supervised single-writer coding, Ralph execution, long tests/builds/PR completion, recovery from SDK timeout, idle timeout, classifier rejection, queue/process split-brain, and silent completed-without-continuation stalls, or when the user says "I restarted CoC; re-engage the watchdog." Establishes one writer, a durable ledger, scheduled pacing, and an external detached watchdog; do not use for ordinary one-off commands or simple monitoring.
 metadata:
   author: CoC
-  version: "0.0.2"
+  version: "0.0.3"
 ---
 
 # Long-Running Reliability
@@ -182,6 +182,29 @@ coc reliability-watchdog start --workspace-id ws-example --process-id queue_exam
 For Ralph, add `--mode ralph --ralph-session-id ralph-example`. Keep the state
 directory and ledger outside the target worktree.
 
+After a CoC/server restart, re-engage one known state directory without rebuilding
+its configuration:
+
+```text
+coc reliability-watchdog resume --state-dir ./reliability-state/watchdog
+```
+
+Persisted configuration supplies the target identity, paths, limits, markers, and
+mode. Resume resolves the endpoint from explicit `--server-url`,
+`COC_SERVER_URL`, explicitly configured current CoC serve host/port, then the
+persisted URL. It acquires the atomic start claim before deciding whether to
+relaunch. A live recorded watchdog is idempotent success only when its
+instance-bound loopback lease proves the PID belongs to that watchdog. A dead
+watchdog relaunches once through the held claim and preserves its valid original
+TTL start, recovery and classifier counters, and lineage.
+
+Resume fails closed for an exact terminal marker, expired TTL, missing or
+unreadable configuration/state, invalid start time beyond the bounded clock-skew
+allowance, target binding mismatch, unverifiable process identity, duplicate
+writer, queued/running target work, pending target wakeup, or conflicting live
+start claim. It never discovers deliveries. Automatic host-reboot auto-discovery,
+`resume-all`, and supervisor dialtone resurrection are separate product work.
+
 Inspect or stop the exact helper instance:
 
 ```text
@@ -190,11 +213,9 @@ coc reliability-watchdog stop --state-dir ./reliability-state/watchdog
 ```
 
 `stop` writes an instance-bound stop request; it does not signal an arbitrary
-reused PID. The helper resolves the endpoint from `--server-url`,
-`COC_SERVER_URL`, or CoC serve configuration, verifies `/api/health`, and
-requires an explicit URL when runtime binding differs from configuration. Status
-includes classifier circuit state, rejection/compaction counters, and
-manual-handoff lineage when the circuit is open.
+reused PID. Start and resume verify `/api/health` plus the target process before
+spawning. Status includes classifier circuit state, rejection/compaction counters,
+and manual-handoff lineage when the circuit is open.
 
 ## PR-Ready Terminal Criteria
 
