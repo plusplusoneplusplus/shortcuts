@@ -164,9 +164,35 @@ describe('orchestrateFinalCheck', () => {
             expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
         });
 
+        it('preserves an explicit Claude effort selection for gap-fix iterations', async () => {
+            const deps = makeDeps({
+                provider: 'claude',
+                existingTaskConfig: {
+                    model: 'opus',
+                    reasoningEffort: 'medium',
+                    afterEffortTier: 'medium',
+                },
+            });
+
+            await orchestrateFinalCheck(makeInput(makeGapsResponse('Fix it.'), deps));
+
+            const enqueuedTask = (deps.enqueueTask as Mock).mock.calls[0][0];
+            expect(enqueuedTask.payload.provider).toBe('claude');
+            expect(enqueuedTask.config).toEqual({
+                model: 'opus',
+                reasoningEffort: 'medium',
+                afterEffortTier: 'medium',
+            });
+        });
+
         it('keeps auto-provider routing requested for gap-fix iterations instead of carrying the resolved provider', async () => {
             const deps = makeDeps({
                 provider: 'claude',
+                existingTaskConfig: {
+                    model: 'opus',
+                    reasoningEffort: 'medium',
+                    afterEffortTier: 'medium',
+                },
                 extraContext: {
                     autoProviderRouting: {
                         requested: true,
@@ -182,6 +208,7 @@ describe('orchestrateFinalCheck', () => {
             const enqueuedTask = (deps.enqueueTask as Mock).mock.calls[0][0];
             expect(enqueuedTask.payload.provider).toBeUndefined();
             expect(enqueuedTask.payload.context.autoProviderRouting.requested).toBe(true);
+            expect(enqueuedTask.config).toEqual({ afterEffortTier: 'medium' });
         });
 
         it('persists record with gapLoopStarted=true and gapCount=1', async () => {

@@ -366,6 +366,11 @@ all have their own `references/*.md`.
   `RalphExecutor` must use validation-only system instructions whenever
   `context.ralph.finalCheck` is present. Do not route final checks through the
   normal implementation-loop system prompt.
+- **Ralph follow-on task config** comes from the completed task for iterations,
+  final checks, and gap-fix loops. Explicit-provider tasks preserve model,
+  reasoning effort, and `afterEffortTier`; Auto-routed tasks preserve
+  `afterEffortTier` but clear the completed task's concrete model/reasoning so
+  the tier is expanded after the next provider is selected.
 - **Ralph task kind** is derived only through `getRalphTaskKind(ctx)`
   (`src/server/ralph/task-kind.ts`), which returns
   `'iteration' | 'final-check' | 'submit'`. `RalphExecutor` rebuilds the user
