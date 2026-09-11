@@ -135,6 +135,7 @@ async function createHarness(
         definitions?: LanguageServerDefinition[];
         enabled?: boolean;
         maxSessions?: number;
+        requestTimeoutMs?: number;
         workspaces?: { id: string; rootPath: string }[];
     } = {},
 ): Promise<Harness> {
@@ -150,7 +151,7 @@ async function createHarness(
         dataDir,
         maxSessions: options.maxSessions,
         startTimeoutMs: 10_000,
-        requestTimeoutMs: 5_000,
+        requestTimeoutMs: options.requestTimeoutMs ?? 5_000,
     });
     const workspaces = options.workspaces ?? [{ id: WORKSPACE_ID, rootPath: workspaceRoot }];
     const bridge = new LanguageServerWebSocketServer({ getWorkspaces: async () => workspaces }, manager);
@@ -292,6 +293,24 @@ describe('language-server WebSocket bridge', () => {
         expect(response.error).toBeUndefined();
         expect(response.result.textDocument.uri).toBe(documentUri);
         expect(response.result.position).toEqual({ line: 1, character: 2 });
+    });
+
+    it('forwards ordered indexing states and keeps the request alive', async () => {
+        const harness = await createHarness({ requestTimeoutMs: 40 });
+        const client = await harness.connect();
+        const attached = await client.attach('src/notes.txt');
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready');
+
+        const response = await client.request(attached.attachmentId, 'q-index', 'indexing', { delayMs: 100 });
+
+        expect(response.error).toBeUndefined();
+        expect(response.result).toEqual({ indexed: true });
+        const statuses = client.received
+            .filter((msg): msg is Extract<LanguageServerServerMessage, { type: 'lsp-status' }> =>
+                msg.type === 'lsp-status' && msg.sessionKey === attached.sessionKey,
+            )
+            .map((msg) => msg.state.status);
+        expect(statuses).toEqual(['starting', 'ready', 'indexing', 'ready']);
     });
 
     it('refuses a request naming a document in another workspace', async () => {

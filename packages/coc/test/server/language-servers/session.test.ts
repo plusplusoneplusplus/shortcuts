@@ -205,6 +205,16 @@ describe('LanguageServerSession requests and notifications', () => {
         expect(session.status).toBe('ready');
     });
 
+    it('reports indexing and does not time out a request across the indexing window', async () => {
+        const { session, states } = createSession(fixtureDefinition(), { requestTimeoutMs: 40 });
+        await session.start();
+
+        await expect(session.sendRequest('indexing', { delayMs: 100 })).resolves.toEqual({ indexed: true });
+
+        expect(states.map((state) => state.status)).toEqual(['starting', 'ready', 'indexing', 'ready']);
+        expect(session.isReady).toBe(true);
+    });
+
     it('delivers server notifications to subscribers registered before start', async () => {
         const { session } = createSession(fixtureDefinition());
         const published: unknown[] = [];

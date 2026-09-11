@@ -627,11 +627,15 @@ export class LanguageDocumentStore {
 
 /**
  * The host's handshake counter, but only once the session actually reports
- * `ready` — a `starting` state carries the previous process's number, and
+ * ready or indexing — a `starting` state carries the previous process's number, and
  * replaying into a server that is not up would drop the buffer again.
  */
 function readyGeneration(state: LanguageServerSessionStateView | null | undefined): number | null {
-    if (!state || state.status !== 'ready' || typeof state.generation !== 'number') {
+    if (
+        !state
+        || (state.status !== 'ready' && state.status !== 'indexing')
+        || typeof state.generation !== 'number'
+    ) {
         return null;
     }
     return state.generation;
