@@ -335,7 +335,9 @@ and transport code stays generic.
 - `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
   from `packages/coc`.
 - `npm run test:e2e -- test/e2e/explorer-lsp.spec.ts` from `packages/coc` drives
-  the real browser, the real Monaco and a real `typescript-language-server`.
+  the real browser and Monaco against real TypeScript and Rust language servers.
+  The Rust cases cover hover, cross-crate definition navigation in both Explorer
+  and unified right-panel tabs, and dirty-buffer replay after restart.
   Its direct-remote case starts a second CoC server in-process
   (`test/e2e/fixtures/secondary-server.ts`), registers it as a `url` remote, and
   turns language support on for the remote workspace only, while the dashboard

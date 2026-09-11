@@ -17,7 +17,11 @@ import { request } from './seed';
 type Definition = Record<string, unknown>;
 
 /** Turn language support on for one workspace. Call before `page.goto`. */
-export async function enableLanguageServers(baseURL: string, workspaceId: string): Promise<void> {
+export async function enableLanguageServers(
+    baseURL: string,
+    workspaceId: string,
+    definitionId?: string,
+): Promise<void> {
     const url = `${baseURL}/api/workspaces/${encodeURIComponent(workspaceId)}/language-servers`;
 
     const read = await request(url);
@@ -25,7 +29,10 @@ export async function enableLanguageServers(baseURL: string, workspaceId: string
         throw new Error(`Failed to read language-server config: ${read.status} ${read.body}`);
     }
     const { effective } = JSON.parse(read.body) as { effective: Definition[] };
-    const definitions = effective.map(definition => ({ ...definition, enabled: true }));
+    const definitions = effective.map(definition => ({
+        ...definition,
+        enabled: definitionId ? definition.id === definitionId : true,
+    }));
 
     const write = await request(url, {
         method: 'PUT',
@@ -34,6 +41,71 @@ export async function enableLanguageServers(baseURL: string, workspaceId: string
     if (write.status !== 200) {
         throw new Error(`Failed to enable language servers: ${write.status} ${write.body}`);
     }
+}
+
+/**
+ * A small Cargo workspace for browser coverage. The root package calls into a
+ * member crate, giving rust-analyzer a cross-crate hover and definition target.
+ */
+export function createRustRepoFixture(tmpDir: string, dirName = 'rust-lsp-repo'): string {
+    const repoDir = path.join(tmpDir, dirName);
+    fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(repoDir, 'core-fixture', 'src'), { recursive: true });
+
+    fs.writeFileSync(
+        path.join(repoDir, 'Cargo.toml'),
+        [
+            '[workspace]',
+            'resolver = "2"',
+            'members = ["core-fixture"]',
+            '',
+            '[package]',
+            'name = "rust-lsp-app"',
+            'version = "0.1.0"',
+            'edition = "2024"',
+            '',
+            '[lib]',
+            'path = "src/app.rs"',
+            '',
+            '[dependencies]',
+            'core-fixture = { path = "core-fixture" }',
+            '',
+        ].join('\n'),
+    );
+    fs.writeFileSync(
+        path.join(repoDir, 'core-fixture', 'Cargo.toml'),
+        [
+            '[package]',
+            'name = "core-fixture"',
+            'version = "0.1.0"',
+            'edition = "2024"',
+            '',
+        ].join('\n'),
+    );
+    fs.writeFileSync(
+        path.join(repoDir, 'core-fixture', 'src', 'lib.rs'),
+        [
+            '/// Formats a label for display.',
+            'pub fn make_widget(label: &str) -> String {',
+            '    format!("widget: {label}")',
+            '}',
+            '',
+        ].join('\n'),
+    );
+    fs.writeFileSync(
+        path.join(repoDir, 'src', 'app.rs'),
+        [
+            'use core_fixture::make_widget;',
+            '',
+            'pub fn render() -> String {',
+            '    let label = make_widget("gadget");',
+            '    label',
+            '}',
+            '',
+        ].join('\n'),
+    );
+
+    return repoDir;
 }
 
 /** How one checkout of the shared TypeScript fixture differs from another. */
