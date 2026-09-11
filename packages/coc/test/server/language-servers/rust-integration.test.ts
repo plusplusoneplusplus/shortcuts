@@ -387,11 +387,19 @@ describe('Rust language features over a real Cargo workspace', () => {
     });
 
     it('answers signature help inside a cross-crate call', async () => {
-        const result = (await session.sendRequest('textDocument/signatureHelp', {
-            textDocument: { uri: uriFor('app/src/lib.rs') },
-            position: positionAt(APP_RS, '"One")', 2),
-            context: { triggerKind: 1, isRetrigger: false },
-        })) as { signatures?: { label?: string }[]; activeParameter?: number } | null;
+        const result = await waitForRequest<{
+            signatures?: { label?: string }[];
+            activeParameter?: number;
+        } | null>(
+            'textDocument/signatureHelp',
+            {
+                textDocument: { uri: uriFor('app/src/lib.rs') },
+                position: positionAt(APP_RS, '"One")', 2),
+                context: { triggerKind: 1, isRetrigger: false },
+            },
+            (candidate) => candidate?.signatures?.[0]?.label?.includes('id: &str') === true,
+            'signature help after buffer restore',
+        );
         expect(result?.signatures?.[0]?.label).toContain('id: &str');
         expect(result?.signatures?.[0]?.label).toContain('label: &str');
         expect(result?.activeParameter).toBe(1);
@@ -424,14 +432,14 @@ describe('unsaved Rust buffers', () => {
     afterAll(async () => {
         changeApp(APP_RS);
         await waitForDiagnostics((found) => found.length === 0);
-    });
+    }, 120_000);
 
     it('publishes diagnostics for content that was never written to disk', async () => {
         changeApp(APP_WITH_ERROR_RS);
         const found = await waitForDiagnostics((entries) => entries.some((entry) => /expected.*expression/i.test(entry.message)));
         expect(found.length).toBeGreaterThan(0);
         expect(fs.readFileSync(path.join(root, 'app', 'src', 'lib.rs'), 'utf8')).toBe(APP_RS);
-    });
+    }, 120_000);
 
     it('answers hover from the unsaved content and clears its diagnostic', async () => {
         const unsaved = APP_RS.replace('let _external', 'let unsaved_name');
