@@ -449,6 +449,14 @@ test.describe('Explorer language support – status', () => {
             await waitForLanguageServer(page);
             await expect(page.locator(`${APP_PANEL} [data-testid="language-status-label"]`))
                 .toHaveText('TypeScript');
+
+            const badgeBox = await statusBadge(page).boundingBox();
+            const firstLineBox = await page.locator(
+                `${APP_PANEL} [data-testid="monaco-container"] .view-lines .view-line`,
+            ).first().boundingBox();
+            expect(badgeBox).not.toBeNull();
+            expect(firstLineBox).not.toBeNull();
+            expect(badgeBox!.y).toBeGreaterThanOrEqual(firstLineBox!.y + firstLineBox!.height);
         } finally {
             safeRmSync(tmpDir);
         }

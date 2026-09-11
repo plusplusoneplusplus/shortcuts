@@ -89,4 +89,18 @@ describe('LanguageStatusBadge', () => {
         fireEvent.click(screen.getByTestId('language-restart-btn'));
         expect(onRestart).toHaveBeenCalledTimes(1);
     });
+
+    it.each([
+        ['ready', snapshot('ready', { status: 'ready' }), 'opacity-[0.55]', true],
+        ['pending', snapshot('detached', { status: 'starting' }), 'opacity-100', false],
+        ['warning', snapshot('unavailable', null), 'opacity-100', false],
+        ['error', snapshot('detached', { status: 'failed' }), 'opacity-100', false],
+    ] as const)('uses the expected corner opacity for the %s tone', (_tone, value, opacity, fades) => {
+        render(<LanguageStatusBadge snapshot={value} onRestart={() => {}} variant="corner" />);
+
+        const badge = screen.getByTestId('language-status');
+        expect(badge.classList.contains(opacity)).toBe(true);
+        expect(badge.classList.contains('hover:opacity-100')).toBe(fades);
+        expect(badge.classList.contains('focus-within:opacity-100')).toBe(fades);
+    });
 });

@@ -298,12 +298,6 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
                     className="absolute top-2 right-6 z-10 flex items-center gap-1.5"
                     data-testid="preview-toolbar"
                 >
-                    {languageEnabled && (
-                        <LanguageStatusBadge
-                            snapshot={languageDocument.snapshot}
-                            onRestart={restartLanguageServer}
-                        />
-                    )}
                     {isDirty && !effectiveReadOnly && (
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"
@@ -353,6 +347,16 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
                     codeTestId="monaco-container"
                 />
             ) : null}
+
+            {!loading && !error && languageEnabled && (
+                <div className="absolute bottom-1 right-3 z-10 max-w-[70%] pointer-events-none">
+                    <LanguageStatusBadge
+                        snapshot={languageDocument.snapshot}
+                        onRestart={restartLanguageServer}
+                        variant="corner"
+                    />
+                </div>
+            )}
         </div>
     );
 }
