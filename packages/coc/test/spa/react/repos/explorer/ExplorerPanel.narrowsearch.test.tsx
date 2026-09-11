@@ -153,7 +153,7 @@ describe('ExplorerPanel — Search layout by sidebar width', () => {
             await renderSearchAt(380);
             fireEvent.change(screen.getByTestId('content-search-input'), { target: { value: 'needle' } });
             await act(async () => { await vi.advanceTimersByTimeAsync(500); });
-            expect(searchContentSpy).toHaveBeenCalledWith(WS, 'needle', expect.anything());
+            expect(searchContentSpy).toHaveBeenCalledWith(WS, 'needle', expect.anything(), undefined);
 
             // The refresh button reached the header's slot with its handler intact.
             fireEvent.click(screen.getByTestId('content-search-refresh'));

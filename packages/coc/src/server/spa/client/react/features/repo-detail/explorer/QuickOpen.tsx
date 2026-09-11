@@ -29,7 +29,7 @@ const RESULT_LIMIT = 50;
 const SEARCH_DEBOUNCE_MS = 40;
 
 export type QuickOpenScope =
-    | { kind: 'repo'; workspaceId: string }
+    | { kind: 'repo'; workspaceId: string; routingRef?: string | null }
     | { kind: 'repo-group'; groupId: string; groupName: string; liveRepoCount: number; baseUrl?: string };
 
 export type QuickOpenResult = ExplorerSearchResult | ExplorerRepoGroupSearchResult;
@@ -114,7 +114,9 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
     const abortRef = useRef<AbortController | null>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const requestIdRef = useRef(0);
-    const scopeKey = scope.kind === 'repo' ? `repo:${scope.workspaceId}` : `group:${scope.groupId}:${scope.baseUrl ?? ''}`;
+    const scopeKey = scope.kind === 'repo'
+        ? `repo:${scope.routingRef ?? scope.workspaceId}`
+        : `group:${scope.groupId}:${scope.baseUrl ?? ''}`;
 
     // Start each open from a clean slate; nothing is fetched until the first
     // keystroke, so opening the dialog costs no network at all.
@@ -153,7 +155,12 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
             abortRef.current = abort;
             setLoading(true);
             const searching = scope.kind === 'repo'
-                ? explorerApi.searchFiles(scope.workspaceId, trimmed, { limit: RESULT_LIMIT, signal: abort.signal })
+                ? explorerApi.searchFiles(
+                    scope.workspaceId,
+                    trimmed,
+                    { limit: RESULT_LIMIT, signal: abort.signal },
+                    scope.routingRef,
+                )
                 : searchRepoGroupFiles(
                     scope.groupId,
                     trimmed,

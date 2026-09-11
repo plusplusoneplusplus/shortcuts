@@ -27,7 +27,7 @@ import * as path from 'path';
  * panel. There is one panel component now, so the guard and the JSX inside it
  * are both pinned here.
  */
-const DOCK_SLOT_GUARD = '{dockAvailable && <UnifiedRightPanel';
+const DOCK_SLOT_GUARD = '{dockAvailable && (';
 
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
@@ -55,6 +55,21 @@ describe('Workspace dock — flag gating (AC-01)', () => {
         // no ternary, and no second right-side component to swap against.
         expect(REPO_DETAIL_SOURCE.split('<UnifiedRightPanel').length - 1).toBe(1);
         expect(REPO_DETAIL_SOURCE).not.toContain('unifiedRightPanelEnabled');
+    });
+
+    it('passes the selected clone route into the unified panel', () => {
+        const dockIdx = REPO_DETAIL_SOURCE.indexOf('<UnifiedRightPanel');
+        const dockEndIdx = REPO_DETAIL_SOURCE.indexOf('/>', dockIdx);
+        const dockSource = REPO_DETAIL_SOURCE.slice(dockIdx, dockEndIdx);
+        expect(dockSource).toContain('workspaceId={ws.id}');
+        expect(dockSource).toContain('routingRef={explorerRoutingRef}');
+    });
+
+    it('remounts the Explorer when concrete clone ownership changes', () => {
+        const explorerIdx = REPO_DETAIL_SOURCE.indexOf('<ExplorerPanel');
+        const explorerEndIdx = REPO_DETAIL_SOURCE.indexOf('/>', explorerIdx);
+        const explorerSource = REPO_DETAIL_SOURCE.slice(explorerIdx, explorerEndIdx);
+        expect(explorerSource).toContain('key={sourceSelectionId}');
     });
 
     it('gates the unified panel host on dockAvailable alone', () => {

@@ -101,6 +101,25 @@ describe('WorkspaceTabsCluster', () => {
         expect(mockSwitchSubTab).toHaveBeenCalledWith('git');
     });
 
+    it('keeps a remote clone key when switching its sub-tab', () => {
+        const base = repo('shared', 'remote');
+        const remote = {
+            ...base,
+            workspace: {
+                ...base.workspace,
+                remote: { serverId: 'server-1' },
+            },
+        };
+        render(<WorkspaceTabsCluster repo={remote as any} repos={[remote] as any} />);
+
+        const explorer = screen.getAllByTestId('clone-scope-tab')
+            .find(el => el.getAttribute('data-subtab') === 'explorer')!;
+        fireEvent.click(explorer);
+
+        expect(mockSelectClone).toHaveBeenCalledWith('remote:server-1:shared', 'explorer');
+        expect(mockSwitchSubTab).not.toHaveBeenCalled();
+    });
+
     it('highlights the active clone sub-tab on the repos tab', () => {
         mockAppState = { activeTab: 'repos', activeRepoSubTab: 'git' };
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];

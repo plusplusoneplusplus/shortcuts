@@ -37,6 +37,7 @@ describe('sourceLinkTabInput — what a chat source link opens', () => {
         expect(input({ fullPath: '/repos/main/src/app.ts', wsId: 'ws-1', line: 42 })).toEqual({
             kind: 'file',
             ownerWorkspaceId: 'ws-1',
+            ownerRoutingRef: null,
             chatId: 'task-A',
             resourceId: 'src/app.ts',
             label: 'app.ts',
@@ -65,6 +66,28 @@ describe('sourceLinkTabInput — what a chat source link opens', () => {
         const tab = input({ fullPath: '/repos/member/src/a.ts', wsId: 'ws-1' });
         expect(tab?.ownerWorkspaceId).toBe('ws-2');
         expect(tab?.repoLabel).toBe('member-repo');
+    });
+
+    it('keeps the concrete remote clone route selected by path resolution', () => {
+        const remoteWorkspaces: SourceLinkWorkspace[] = [
+            WORKSPACES[0]!,
+            {
+                id: 'ws-1',
+                name: 'remote-main',
+                rootPath: '/repos/main',
+                remote: { serverId: 'server-b', cloneKey: 'remote:server-b:ws-1' },
+            },
+        ];
+        const tab = sourceLinkTabInput({
+            fileRef: { fullPath: '/repos/main/src/app.ts', wsId: 'ws-1' } as never,
+            workspaces: remoteWorkspaces,
+            sourceSelectionId: 'remote:server-b:ws-1',
+            scopeWorkspaceId: 'ws-1',
+            chatId: 'task-A',
+        });
+
+        expect(tab?.ownerWorkspaceId).toBe('ws-1');
+        expect(tab?.ownerRoutingRef).toBe('remote:server-b:ws-1');
     });
 
     it('leaves off the repo label when the owner is the panel’s own workspace', () => {

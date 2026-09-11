@@ -36,6 +36,18 @@ export async function enableLanguageServers(baseURL: string, workspaceId: string
     }
 }
 
+/** How one checkout of the shared TypeScript fixture differs from another. */
+export interface TypeScriptRepoFixtureOptions {
+    /** Directory name under `tmpDir`. Defaults to `lsp-repo`. */
+    dirName?: string;
+    /**
+     * A comment written into `src/format.ts` above `formatWidget`, naming the
+     * checkout it came from. Two hosts can then hold the same relative path
+     * with contents that are told apart by reading the open editor.
+     */
+    marker?: string;
+}
+
 /**
  * A small TypeScript project the language server can actually understand: a
  * `tsconfig.json` for the root marker, a module that exports a type and a
@@ -48,8 +60,12 @@ export async function enableLanguageServers(baseURL: string, workspaceId: string
  *
  * @returns Absolute path to the created repo directory.
  */
-export function createTypeScriptRepoFixture(tmpDir: string): string {
-    const repoDir = path.join(tmpDir, 'lsp-repo');
+export function createTypeScriptRepoFixture(
+    tmpDir: string,
+    options: TypeScriptRepoFixtureOptions = {},
+): string {
+    const { dirName = 'lsp-repo', marker } = options;
+    const repoDir = path.join(tmpDir, dirName);
     fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
 
     fs.writeFileSync(
@@ -77,6 +93,7 @@ export function createTypeScriptRepoFixture(tmpDir: string): string {
             '    size: number;',
             '}',
             '',
+            ...(marker ? [`// ${marker}`] : []),
             'export function formatWidget(widget: Widget): string {',
             '    return widget.name + String(widget.size);',
             '}',
@@ -90,6 +107,45 @@ export function createTypeScriptRepoFixture(tmpDir: string): string {
             "import { formatWidget } from './format';",
             '',
             "export const label = formatWidget({ name: 'gadget', size: 3 });",
+            '',
+        ].join('\n'),
+    );
+
+    return repoDir;
+}
+
+/**
+ * A checkout that occupies the same relative paths as the real fixture and
+ * cannot answer any question asked of it.
+ *
+ * `formatWidget` is absent, so a go-to-definition that leaked to this host
+ * would find nothing; `src/format.ts` carries text the real one never has, so
+ * a file read that leaked here is visible in the editor rather than silently
+ * passing. There is no `tsconfig.json`: the host this sits on is meant to have
+ * no language server at all.
+ *
+ * @returns Absolute path to the created repo directory.
+ */
+export function createDecoyRepoFixture(tmpDir: string, dirName = 'decoy-repo'): string {
+    const repoDir = path.join(tmpDir, dirName);
+    fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+
+    fs.writeFileSync(
+        path.join(repoDir, 'src', 'format.ts'),
+        [
+            '// decoy checkout on the dashboard host',
+            'export function decoyOnlyHelper(name: string): string {',
+            '    return name;',
+            '}',
+            '',
+        ].join('\n'),
+    );
+
+    fs.writeFileSync(
+        path.join(repoDir, 'src', 'app.ts'),
+        [
+            '// decoy checkout on the dashboard host',
+            "export const label = 'decoy';",
             '',
         ].join('\n'),
     );

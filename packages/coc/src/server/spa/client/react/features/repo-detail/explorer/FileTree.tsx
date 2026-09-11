@@ -11,6 +11,7 @@ import type { TreeEntry } from './types';
 
 export interface FileTreeProps {
     workspaceId: string;
+    routingRef?: string | null;
     entries: TreeEntry[];
     selectedPath: string | null;
     expandedPaths: Set<string>;
@@ -86,7 +87,7 @@ export function filterEntries(
 }
 
 export function FileTree({
-    workspaceId, entries, selectedPath, expandedPaths, childrenMap,
+    workspaceId, routingRef, entries, selectedPath, expandedPaths, childrenMap,
     onSelect, onToggle, onFileOpen, onFilePin, onChildrenLoaded, onContextMenu, filterQuery, scrollRef,
 }: FileTreeProps) {
     const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -166,6 +167,7 @@ export function FileTree({
                         entry={entry}
                         depth={0}
                         workspaceId={workspaceId}
+                        routingRef={routingRef}
                         selectedPath={selectedPath}
                         expandedPaths={expandedPaths}
                         childrenMap={childrenMap}

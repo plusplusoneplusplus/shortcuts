@@ -237,6 +237,26 @@ this workspace, read whole, not a trusted absolute path — and only then opens 
 language document and registers Monaco providers over its model
 (`features/language-servers/`).
 
+The selected repo passes its clone-qualified routing ref separately from the
+workspace id. File reads/writes and the language socket resolve through that ref,
+while browser document URIs and WebSocket query parameters keep the workspace id
+understood by the owning server. Local repos pass an explicit local route, so a
+same-id remote registry entry cannot capture a local Explorer document.
+Tree loading, server file search, content search/replace, Quick Open, Exact Open,
+and OS reveal use the same route. Follow-up Explorer operations therefore cannot
+be retargeted by an ambiguous or rebound bare workspace-id registry entry.
+
+Explorer tree caches, persisted view state, tab sessions, search buffers, dirty
+tracking, and deep links use the clone-qualified route as their owner key. Local
+owners keep the bare workspace id, preserving existing localStorage keys. A
+local and remote clone with the same workspace id therefore cannot share or
+replace each other's Explorer state.
+
+The unified right panel persists the same routing ref on every file-tab
+descriptor. Its `PreviewPane`, definition-navigation callback, and target-file
+loader reuse that stored owner instead of the dock's current target. Repo groups
+derive each member's clone key from the concrete server that owns the group.
+
 An LSP-managed model is moved onto a private shadow language id
 (`coc-lsp-typescript`, `coc-lsp-javascript`) before the providers are
 registered. Monaco registers providers per language and its bundled TypeScript
@@ -263,6 +283,8 @@ after a crash.
 
 A definition or reference in ANOTHER file goes through one global
 `monaco.editor.registerEditorOpener`, installed in `explorer/monaco-setup.ts`.
+That setup also imports Monaco's `goToDefinitionAtPosition` contribution because
+the API-only Monaco entry point does not register the Ctrl/Cmd-click gesture.
 Each pane claims its own model with `registerEditorNavigator`
 (`features/language-servers/editorNavigation.ts`), and the opener dispatches on
 the model the jump started in — that is how the target lands in the Explorer's

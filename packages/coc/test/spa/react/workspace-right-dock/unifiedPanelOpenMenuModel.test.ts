@@ -168,10 +168,16 @@ describe('selection descriptors', () => {
     });
 
     it('opens a searched file as an editable, chat-scoped tab on the owning clone', () => {
-        const input = fileOpenInput('src/app.ts', { ...context, ownerWorkspaceId: 'ws-member', ownerLabel: 'member' });
+        const input = fileOpenInput('src/app.ts', {
+            ...context,
+            ownerWorkspaceId: 'ws-member',
+            ownerRoutingRef: 'remote:server-b:ws-member',
+            ownerLabel: 'member',
+        });
         expect(input).toEqual({
             kind: 'file',
             ownerWorkspaceId: 'ws-member',
+            ownerRoutingRef: 'remote:server-b:ws-member',
             chatId: 'chat-1',
             resourceId: 'src/app.ts',
             label: 'app.ts',

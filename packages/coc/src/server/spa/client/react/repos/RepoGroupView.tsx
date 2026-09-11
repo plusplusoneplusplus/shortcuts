@@ -46,6 +46,7 @@ import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWo
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
+import { getRemoteCloneKey } from './cloneIdentity';
 
 /**
  * The only tabs a repo group exposes: chat ("Workspace"), Notes, and Settings.
@@ -168,11 +169,15 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // group detail read goes to whichever server owns the group — local for a
     // local group, the remote's baseUrl for one aggregated from a remote server.
     const dockAvailable = splitWorkspacePanelEnabled && !isMobile;
+    const remoteGroup = useMemo(
+        () => (remoteGroups ?? []).find(ws => String(ws?.id ?? '') === workspaceId),
+        [remoteGroups, workspaceId],
+    );
     const groupBaseUrl = useMemo(() => {
-        const match = (remoteGroups ?? []).find(ws => String(ws?.id ?? '') === workspaceId);
-        const url = (match as { baseUrl?: unknown } | undefined)?.baseUrl;
+        const url = (remoteGroup as { baseUrl?: unknown } | undefined)?.baseUrl;
         return typeof url === 'string' && url.length > 0 ? url : undefined;
-    }, [remoteGroups, workspaceId]);
+    }, [remoteGroup]);
+    const groupRoutingRef = getRemoteCloneKey(remoteGroup) ?? null;
     // Member repos, for the dock's target picker and the Git tab's host. The
     // Settings tab does its own read — it needs the descriptions too, and only
     // while it is the visible tab.
@@ -289,6 +294,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                 {dockAvailable && (
                     <UnifiedRightPanel
                         workspaceId={workspaceId}
+                        routingRef={groupRoutingRef}
                         chatId={panelChatId}
                         dock={dock}
                         targets={dockTargets}

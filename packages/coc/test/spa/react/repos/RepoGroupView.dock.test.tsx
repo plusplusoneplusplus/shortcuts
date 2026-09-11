@@ -85,8 +85,12 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView'
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
-    ExplorerPanel: ({ workspaceId, deepLink }: { workspaceId: string; deepLink?: boolean }) => (
-        <div data-testid="mock-explorer" data-deeplink={String(deepLink === true)}>explorer:{workspaceId}</div>
+    ExplorerPanel: ({ workspaceId, routingRef, deepLink }: { workspaceId: string; routingRef?: string | null; deepLink?: boolean }) => (
+        <div
+            data-testid="mock-explorer"
+            data-routing-ref={routingRef ?? ''}
+            data-deeplink={String(deepLink === true)}
+        >explorer:{workspaceId}</div>
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
@@ -318,10 +322,31 @@ describe('RepoGroupView right panel', () => {
     });
 
     it('reads a remote group from its own server base URL', async () => {
-        mockRemoteGroupWorkspaces = [{ id: GROUP_ID, name: 'AI Repos', baseUrl: 'http://remote:3000' }];
+        mockRemoteGroupWorkspaces = [{
+            id: GROUP_ID,
+            name: 'AI Repos',
+            baseUrl: 'http://remote:3000',
+            remote: { serverId: 'server-remote', cloneKey: `remote:server-remote:${GROUP_ID}` },
+        }];
         mockAppState.workspaces = [];
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, 'http://remote:3000'));
+    });
+
+    it('routes a remote group member tree through the group server', async () => {
+        mockRemoteGroupWorkspaces = [{
+            id: GROUP_ID,
+            name: 'AI Repos',
+            baseUrl: 'http://remote:3000',
+            remote: { serverId: 'server-remote', cloneKey: `remote:server-remote:${GROUP_ID}` },
+        }];
+        mockAppState.workspaces = [];
+        renderOpen();
+        openMenu();
+        await waitFor(() => expect(picker().value).toBe('r1'));
+
+        act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-explorer')); });
+        expect(screen.getByTestId('mock-explorer').dataset.routingRef).toBe('remote:server-remote:r1');
     });
 
     it('shows no repo picker when the group detail request fails', async () => {

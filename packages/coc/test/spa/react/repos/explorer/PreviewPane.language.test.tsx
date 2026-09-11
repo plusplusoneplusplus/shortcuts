@@ -23,14 +23,20 @@ const mockExplorerApi = vi.hoisted(() => ({
     readTrustedBlob: vi.fn(),
 }));
 
-const transport = vi.hoisted(() => ({ client: null as any }));
+const transport = vi.hoisted(() => ({
+    client: null as any,
+    clientCalls: [] as unknown[][],
+}));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: mockExplorerApi,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/language-servers/languageServerClient', () => ({
-    getLanguageServerClient: () => transport.client.asClient(),
+    getLanguageServerClient: (...args: unknown[]) => {
+        transport.clientCalls.push(args);
+        return transport.client.asClient();
+    },
 }));
 
 // jsdom cannot run Monaco. The stub records the markers it is handed and hands
@@ -66,6 +72,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     resetLanguageDocumentStoresForTests();
     transport.client = new FakeClient();
+    transport.clientCalls = [];
     editor.onChange = undefined;
     editor.markers = undefined;
     mockExplorerApi.readBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
@@ -87,6 +94,20 @@ describe('PreviewPane — language document (AC-02)', () => {
         expect(attachment.methods()).toContain('textDocument/didOpen');
         const opened = attachment.lastOf('textDocument/didOpen') as any;
         expect(opened.textDocument.text).toBe('const a = 1;');
+    });
+
+    it('uses the concrete clone identity for the file read and language transport', async () => {
+        const routingRef = 'remote:server-owner:ws-1';
+        renderPane({ routingRef });
+        await attachmentFor('src/a.ts');
+
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'ws-1',
+            'src/a.ts',
+            expect.anything(),
+            routingRef,
+        );
+        expect(transport.clientCalls).toContainEqual(['ws-1', undefined, routingRef]);
     });
 
     it('forwards an edit as an incremental change when the server negotiated one', async () => {

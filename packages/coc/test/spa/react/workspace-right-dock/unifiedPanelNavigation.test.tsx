@@ -48,13 +48,21 @@ function renderTab(tab: UnifiedPanelTab, onOpenFile?: any) {
 describe('UnifiedTabView — language navigation (AC-03/AC-04)', () => {
     it('opens the target against the source tab’s owner and label', () => {
         const onOpenFile = vi.fn();
-        renderTab(fileTab({ repoLabel: 'member-b' }), onOpenFile);
+        renderTab(fileTab({
+            repoLabel: 'member-b',
+            ownerRoutingRef: 'remote:server-b:member-b',
+        }), onOpenFile);
 
         previewProps.last.onNavigate({ path: 'src/types.ts', name: 'types.ts', line: 12, column: 17 });
 
+        expect(previewProps.last.routingRef).toBe('remote:server-b:member-b');
         expect(onOpenFile).toHaveBeenCalledWith(
             { path: 'src/types.ts', name: 'types.ts', line: 12, column: 17 },
-            { ownerWorkspaceId: 'member-b', repoLabel: 'member-b' },
+            {
+                ownerWorkspaceId: 'member-b',
+                ownerRoutingRef: 'remote:server-b:member-b',
+                repoLabel: 'member-b',
+            },
         );
     });
 

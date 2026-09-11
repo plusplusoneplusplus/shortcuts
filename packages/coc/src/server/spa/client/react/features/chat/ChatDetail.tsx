@@ -710,6 +710,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     : sourceLinkTabInput({
                         fileRef,
                         workspaces: resolvableWorkspaces,
+                        sourceSelectionId,
                         // The panel's scope; the descriptor's owner is whichever
                         // clone the resolution picked.
                         scopeWorkspaceId: unifiedPanelHost.workspaceId,
@@ -726,7 +727,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         };
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
         return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
-    }, [openSourceCanvas, unifiedPanelHost, resolvableWorkspaces, taskId]);
+    }, [openSourceCanvas, unifiedPanelHost, resolvableWorkspaces, sourceSelectionId, taskId]);
 
     // "Insert into chat" from the workspace right dock's Notes panel lands here:
     // the dock is a sibling column with no React path to this composer, so it

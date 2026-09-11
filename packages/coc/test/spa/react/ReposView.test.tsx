@@ -1071,10 +1071,10 @@ describe('RepoDetail — ExplorerPanel keep-mounted', () => {
         expect(source).toContain("activeSubTab === 'explorer' ? undefined : 'none'");
     });
 
-    it('retains key={ws.id} on ExplorerPanel so repo switches still force remount', () => {
+    it('uses the clone-qualified selection key so repo and clone switches force remount', () => {
         const explorerIdx = source.indexOf('<ExplorerPanel');
         expect(explorerIdx).toBeGreaterThan(-1);
         const explorerBlock = source.substring(explorerIdx, explorerIdx + 120);
-        expect(explorerBlock).toContain('key={ws.id}');
+        expect(explorerBlock).toContain('key={sourceSelectionId}');
     });
 });

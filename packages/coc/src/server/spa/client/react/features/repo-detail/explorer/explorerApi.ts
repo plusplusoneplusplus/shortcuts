@@ -17,20 +17,38 @@ import { getSpaCocClient } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 
 export const explorerApi = {
-    tree(workspaceId: string, options?: ExplorerTreeOptions): Promise<ExplorerTreeResponse> {
-        return getCocClientForWorkspace(workspaceId).explorer.tree(workspaceId, options);
+    tree(workspaceId: string, options?: ExplorerTreeOptions, routingRef?: string | null): Promise<ExplorerTreeResponse> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.tree(workspaceId, options);
     },
 
-    listFiles(workspaceId: string, options?: ExplorerFilesOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerFilesResponse> {
-        return getCocClientForWorkspace(workspaceId).explorer.listFiles(workspaceId, options);
+    listFiles(
+        workspaceId: string,
+        options?: ExplorerFilesOptions & Pick<CocRequestOptions, 'signal'>,
+        routingRef?: string | null,
+    ): Promise<ExplorerFilesResponse> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.listFiles(workspaceId, options);
     },
 
-    searchFiles(workspaceId: string, query: string, options?: ExplorerSearchOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerSearchResponse> {
-        return getCocClientForWorkspace(workspaceId).explorer.searchFiles(workspaceId, query, options);
+    searchFiles(
+        workspaceId: string,
+        query: string,
+        options?: ExplorerSearchOptions & Pick<CocRequestOptions, 'signal'>,
+        routingRef?: string | null,
+    ): Promise<ExplorerSearchResponse> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.searchFiles(workspaceId, query, options);
     },
 
-    searchContent(workspaceId: string, query: string, options?: ExplorerContentSearchOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerContentSearchResponse> {
-        return getCocClientForWorkspace(workspaceId).explorer.searchContent(workspaceId, query, options);
+    searchContent(
+        workspaceId: string,
+        query: string,
+        options?: ExplorerContentSearchOptions & Pick<CocRequestOptions, 'signal'>,
+        routingRef?: string | null,
+    ): Promise<ExplorerContentSearchResponse> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.searchContent(workspaceId, query, options);
     },
 
     replaceContent(
@@ -39,20 +57,35 @@ export const explorerApi = {
         replacement: string,
         files: ExplorerContentReplaceFile[],
         options?: ExplorerContentReplaceOptions,
+        routingRef?: string | null,
     ): Promise<ExplorerContentReplaceResponse> {
-        return getCocClientForWorkspace(workspaceId).explorer.replaceContent(workspaceId, query, replacement, files, options);
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.replaceContent(workspaceId, query, replacement, files, options);
     },
 
-    readBlob(workspaceId: string, path: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<ExplorerBlobResponse> {
-        return getCocClientForWorkspace(workspaceId).explorer.readBlob(workspaceId, path, options);
+    readBlob(
+        workspaceId: string,
+        path: string,
+        options?: Pick<CocRequestOptions, 'signal'>,
+        routingRef?: string | null,
+    ): Promise<ExplorerBlobResponse> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.readBlob(workspaceId, path, options);
     },
 
-    writeBlob(workspaceId: string, path: string, content: string): Promise<{ success: boolean }> {
-        return getCocClientForWorkspace(workspaceId).explorer.writeBlob(workspaceId, path, content);
+    writeBlob(
+        workspaceId: string,
+        path: string,
+        content: string,
+        routingRef?: string | null,
+    ): Promise<{ success: boolean }> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.writeBlob(workspaceId, path, content);
     },
 
-    reveal(workspaceId: string, path: string): Promise<void> {
-        return getCocClientForWorkspace(workspaceId).explorer.reveal(workspaceId, path);
+    reveal(workspaceId: string, path: string, routingRef?: string | null): Promise<void> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.reveal(workspaceId, path);
     },
 
     readTrustedBlob(path: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<ExplorerBlobResponse> {

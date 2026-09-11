@@ -20,6 +20,7 @@ import {
     registerCloneBaseUrls,
     resetCloneRegistryForTests,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import { FakeSocket } from './fakeLanguageTransport';
 
 const LOCAL = 'ws-local';
@@ -121,6 +122,87 @@ describe('language routing across workspaces and hosts (AC-04)', () => {
         expect(new URL(local.socket().url).host).toBe(window.location.host);
         expect(new URL(remote.socket().url).host).toBe('10.0.0.5:4100');
         expect(remote.socket().url.startsWith('ws://')).toBe(true);
+    });
+
+    it('routes a concrete remote clone when its workspace id is ambiguous across hosts', () => {
+        const workspaceId = 'ws-shared';
+        const ownerKey = buildRemoteCloneKey('server-b', workspaceId);
+        registerCloneBaseUrls([
+            {
+                workspaceId,
+                serverId: 'server-a',
+                baseUrl: 'http://10.0.0.6:4200',
+            },
+            {
+                workspaceId,
+                serverId: 'server-b',
+                baseUrl: 'http://10.0.0.7:4300',
+            },
+        ]);
+        const client = new LanguageServerClient({
+            workspaceId,
+            routingRef: ownerKey,
+            editingSessionId: 'session-owner',
+            createSocket: (url: string) => new FakeSocket(url),
+        });
+
+        client.attach(PATH);
+
+        expect(FakeSocket.instances.at(-1)?.url)
+            .toBe('ws://10.0.0.7:4300/ws/language-server?workspaceId=ws-shared&editingSessionId=session-owner');
+        client.dispose();
+    });
+
+    it('rejects stale requests and replays only the owner buffer when a remote route changes', async () => {
+        const workspaceId = 'ws-late-remote';
+        const ownerKey = buildRemoteCloneKey('server-owner', workspaceId);
+        const client = new LanguageServerClient({
+            workspaceId,
+            routingRef: ownerKey,
+            editingSessionId: 'session-route-refresh',
+            createSocket: (url: string) => new FakeSocket(url),
+        });
+        const attachment = client.attach(PATH);
+
+        expect(FakeSocket.instances).toHaveLength(0);
+        expect(attachment.getUnavailable()?.reason).toBe('remote-route-unavailable');
+
+        registerCloneBaseUrls([{
+            workspaceId,
+            serverId: 'server-owner',
+            baseUrl: 'http://10.0.0.8:4400',
+        }]);
+        expect(FakeSocket.instances.map(socket => new URL(socket.url).host)).toEqual(['10.0.0.8:4400']);
+
+        const firstRemoteSocket = FakeSocket.instances[0];
+        const store = new LanguageDocumentStore({ workspaceId, routingRef: ownerKey, client });
+        const view = store.open({ path: PATH, text: 'export const remote = 1;' });
+        firstRemoteSocket.open();
+        completeAttach({ workspaceId, client, store, socket: () => firstRemoteSocket });
+        view.update('export const remote = 2;');
+        const staleRequest = view.sendRequest('textDocument/hover', view.documentParams());
+
+        registerCloneBaseUrls([{
+            workspaceId,
+            serverId: 'server-owner',
+            baseUrl: 'http://10.0.0.9:4500',
+        }]);
+
+        expect(firstRemoteSocket.closed?.reason).toBe('clone route changed');
+        await expect(staleRequest).rejects.toMatchObject({ code: 'disconnected' });
+        expect(FakeSocket.instances.map(socket => new URL(socket.url).host))
+            .toEqual(['10.0.0.8:4400', '10.0.0.9:4500']);
+        expect(FakeSocket.instances.some(socket => new URL(socket.url).host === window.location.host)).toBe(false);
+
+        const secondRemoteSocket = FakeSocket.instances[1];
+        secondRemoteSocket.open();
+        completeAttach({ workspaceId, client, store, socket: () => secondRemoteSocket });
+        const replayed = lastNotification(secondRemoteSocket, 'textDocument/didOpen') as any;
+        expect(replayed.textDocument.text).toBe('export const remote = 2;');
+
+        attachment.release();
+        store.dispose();
+        client.dispose();
     });
 
     it('opens the document on each host under that host’s own workspace id', () => {

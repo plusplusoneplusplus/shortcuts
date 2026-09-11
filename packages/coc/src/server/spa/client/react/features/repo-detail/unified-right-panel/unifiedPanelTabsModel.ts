@@ -108,6 +108,12 @@ export interface UnifiedPanelTab {
      * requests route to the resource owner rather than the page origin.
      */
     ownerWorkspaceId: string;
+    /**
+     * Concrete clone identity used to route the resource owner. A remote clone
+     * key keeps same-id workspaces on different hosts distinct; `null` pins a
+     * local owner to the page origin. Omission preserves older bare-id tabs.
+     */
+    ownerRoutingRef?: string | null;
     /** The chat this tab belongs to, or null for a workspace-owned tab. */
     chatId: string | null;
     /**
@@ -184,11 +190,16 @@ export const EMPTY_UNIFIED_PANEL: UnifiedPanelState = {
 export function unifiedTabId(input: {
     kind: UnifiedTabKind;
     ownerWorkspaceId: string;
+    ownerRoutingRef?: string | null;
     chatId: string | null;
     resourceId: string;
 }): string {
     const scopeKey = scopeKeyFor(input.kind, input.chatId);
-    return [input.kind, scopeKey, input.ownerWorkspaceId, input.resourceId].map(escapePart).join('|');
+    // Keep local and older bare-id tab ids stable. A concrete remote route
+    // replaces only the owner identity part, which separates two hosts that
+    // expose the same workspace id and relative path.
+    const ownerIdentity = input.ownerRoutingRef || input.ownerWorkspaceId;
+    return [input.kind, scopeKey, ownerIdentity, input.resourceId].map(escapePart).join('|');
 }
 
 function escapePart(part: string): string {
@@ -272,6 +283,7 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
     return a.id === b.id
         && a.kind === b.kind
         && a.ownerWorkspaceId === b.ownerWorkspaceId
+        && a.ownerRoutingRef === b.ownerRoutingRef
         && a.chatId === b.chatId
         && a.resourceId === b.resourceId
         && a.label === b.label
@@ -323,6 +335,8 @@ export interface OpenUnifiedTabInput {
     kind: UnifiedTabKind;
     /** The clone that owns the resource — a group member or remote clone. */
     ownerWorkspaceId: string;
+    /** Concrete route for that clone; `null` explicitly means page origin. */
+    ownerRoutingRef?: string | null;
     /**
      * The selected chat. Ignored for workspace-owned kinds; for chat-owned
      * kinds, null files the tab under the workspace instead.
@@ -369,7 +383,13 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
     const scope = scopeForKind(input.kind);
     const scopeKey = scopeKeyFor(input.kind, input.chatId);
     const chatId = scope === 'workspace' ? null : (input.chatId ?? null);
-    const id = unifiedTabId({ kind: input.kind, ownerWorkspaceId: input.ownerWorkspaceId, chatId: input.chatId, resourceId: input.resourceId });
+    const id = unifiedTabId({
+        kind: input.kind,
+        ownerWorkspaceId: input.ownerWorkspaceId,
+        ownerRoutingRef: input.ownerRoutingRef,
+        chatId: input.chatId,
+        resourceId: input.resourceId,
+    });
     const list = scope === 'workspace' ? state.workspaceTabs : (state.chatTabs[scopeKey] ?? []);
     const index = list.findIndex(tab => tab.id === id);
 
@@ -377,6 +397,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         id,
         kind: input.kind,
         ownerWorkspaceId: input.ownerWorkspaceId,
+        ...(input.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: input.ownerRoutingRef }),
         chatId,
         resourceId: input.resourceId,
         label: input.label,
@@ -440,7 +461,13 @@ export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPrevi
     const scope = scopeForKind(kind);
     const scopeKey = scopeKeyFor(kind, input.chatId);
     const viewKey = input.chatId ?? WORKSPACE_SCOPE_KEY;
-    const id = unifiedTabId({ kind, ownerWorkspaceId: input.ownerWorkspaceId, chatId: input.chatId, resourceId: input.resourceId });
+    const id = unifiedTabId({
+        kind,
+        ownerWorkspaceId: input.ownerWorkspaceId,
+        ownerRoutingRef: input.ownerRoutingRef,
+        chatId: input.chatId,
+        resourceId: input.resourceId,
+    });
 
     // Visible, not just same-section: a file opened permanently with no chat
     // selected still shows in the strip once a chat is, and clicking it in the
@@ -453,6 +480,7 @@ export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPrevi
         id,
         kind,
         ownerWorkspaceId: input.ownerWorkspaceId,
+        ...(input.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: input.ownerRoutingRef }),
         chatId: input.chatId ?? null,
         resourceId: input.resourceId,
         label: input.label,
@@ -494,7 +522,13 @@ export function previewTabToReplace(
     chatId: string | null,
     input: OpenUnifiedPreviewTabInput,
 ): UnifiedPanelTab | null {
-    const id = unifiedTabId({ kind: 'file', ownerWorkspaceId: input.ownerWorkspaceId, chatId: input.chatId, resourceId: input.resourceId });
+    const id = unifiedTabId({
+        kind: 'file',
+        ownerWorkspaceId: input.ownerWorkspaceId,
+        ownerRoutingRef: input.ownerRoutingRef,
+        chatId: input.chatId,
+        resourceId: input.resourceId,
+    });
     if (visibleTabs(state, chatId).some(tab => tab.id === id)) return null;
     const current = previewTab(state, input.chatId);
     return current === null || current.id === id ? null : current;
@@ -612,9 +646,10 @@ export function moveTab(state: UnifiedPanelState, id: string, beforeId: string |
  * Bump when the descriptor shape changes. A payload whose version is neither
  * this one nor a listed legacy version is discarded wholesale.
  *
- * v2 added the `preview` bit and removed the `explorer` kind.
+ * The current payload stores the concrete owner routing ref and the `preview`
+ * bit, and has no `explorer` kind.
  */
-export const UNIFIED_PANEL_STATE_VERSION = 2;
+export const UNIFIED_PANEL_STATE_VERSION = 3;
 
 /**
  * Versions this build can still read. A v1 payload restores field-for-field —
@@ -623,7 +658,7 @@ export const UNIFIED_PANEL_STATE_VERSION = 2;
  * other unknown descriptor. `restoreUnifiedPanelState` reports that drop so the
  * caller can open the tree column instead, which is where the Explorer went.
  */
-const UNIFIED_PANEL_LEGACY_VERSIONS: readonly number[] = [1];
+const UNIFIED_PANEL_LEGACY_VERSIONS: readonly number[] = [1, 2];
 
 /** The `kind` a pre-v2 payload used for the Explorer tab this build dropped. */
 const LEGACY_EXPLORER_KIND = 'explorer';
@@ -677,13 +712,22 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
     if (typeof resourceId !== 'string' || resourceId === '') return null;
     if (typeof label !== 'string' || label === '') return null;
     if (typeof id !== 'string') return null;
+    if (
+        value.ownerRoutingRef !== undefined
+        && value.ownerRoutingRef !== null
+        && (typeof value.ownerRoutingRef !== 'string' || value.ownerRoutingRef === '')
+    ) return null;
+    const ownerRoutingRef = value.ownerRoutingRef === null || typeof value.ownerRoutingRef === 'string'
+        ? value.ownerRoutingRef
+        : undefined;
     const chatId = value.chatId === null || value.chatId === undefined ? null : value.chatId;
     if (chatId !== null && typeof chatId !== 'string') return null;
     if (scopeKeyFor(kind, chatId) !== expectedScopeKey) return null;
-    if (unifiedTabId({ kind, ownerWorkspaceId, chatId, resourceId }) !== id) return null;
+    if (unifiedTabId({ kind, ownerWorkspaceId, ownerRoutingRef, chatId, resourceId }) !== id) return null;
 
     const tab: UnifiedPanelTab = {
         id, kind, ownerWorkspaceId, chatId, resourceId, label,
+        ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
         ...(typeof value.repoLabel === 'string' ? { repoLabel: value.repoLabel } : {}),
         ...(value.readOnly === true ? { readOnly: true } : {}),
         ...(typeof value.line === 'number' && Number.isFinite(value.line) && value.line > 0

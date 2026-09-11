@@ -44,7 +44,7 @@ const CHILDREN: TreeEntry[] = [
  * exactly as ExplorerPanel wires it (a stable `useCallback` writer over a fresh
  * Map copy).
  */
-function Harness({ expanded = true }: { expanded?: boolean }) {
+function Harness({ expanded = true, routingRef }: { expanded?: boolean; routingRef?: string }) {
     const [childrenMap, setChildrenMap] = useExplorerChildrenMap(WS);
     const onChildrenLoaded = useCallback((parentPath: string, children: TreeEntry[]) => {
         setChildrenMap(prev => new Map(prev).set(parentPath, children));
@@ -54,6 +54,7 @@ function Harness({ expanded = true }: { expanded?: boolean }) {
             entry={DIR}
             depth={0}
             workspaceId={WS}
+            routingRef={routingRef}
             selectedPath={null}
             expandedPaths={expanded ? new Set([DIR.path]) : new Set()}
             childrenMap={childrenMap}
@@ -95,7 +96,16 @@ describe('TreeNode — lazy-loading a directory', () => {
         await waitFor(() => expect(screen.getByTestId('tree-node-.git/refs/heads')).toBeInTheDocument());
 
         expect(treeSpy).toHaveBeenCalledTimes(1);
-        expect(treeSpy).toHaveBeenCalledWith(WS, { path: DIR.path });
+        expect(treeSpy).toHaveBeenCalledWith(WS, { path: DIR.path }, undefined);
+    });
+
+    it('routes a lazy listing through the concrete clone owner', async () => {
+        treeSpy.mockResolvedValue({ entries: CHILDREN });
+
+        render(<Harness routingRef="remote:server-b:ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('tree-node-.git/refs/heads')).toBeInTheDocument());
+
+        expect(treeSpy).toHaveBeenCalledWith(WS, { path: DIR.path }, 'remote:server-b:ws-1');
     });
 
     it('does not fetch for a collapsed directory', () => {

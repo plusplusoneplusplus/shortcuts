@@ -38,10 +38,12 @@ import {
 import type { SourceCanvasFileRef } from '../../chat/source-canvas/types';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { getRemoteCloneKey, parseRemoteCloneKey } from '../../../repos/cloneIdentity';
 
 /** A workspace as this module needs it: resolution fields plus a display name. */
 export interface SourceLinkWorkspace extends SourceCanvasWorkspace {
     name?: string;
+    remote?: { serverId?: unknown; cloneKey?: unknown } | null;
 }
 
 export interface SourceLinkTabInputArgs {
@@ -49,6 +51,8 @@ export interface SourceLinkTabInputArgs {
     fileRef: SourceCanvasFileRef;
     /** Every workspace path resolution may choose from — remote clones included. */
     workspaces: ReadonlyArray<SourceLinkWorkspace>;
+    /** Concrete selection that owns the source chat, when the panel is on a direct remote clone. */
+    sourceSelectionId?: string;
     /** The panel's own workspace (a group id in a repo group); only for repo labelling. */
     scopeWorkspaceId: string;
     /** The chat the link was clicked in, never whichever chat is selected later. */
@@ -61,7 +65,7 @@ export interface SourceLinkTabInputArgs {
  * resolve to a file inside a known workspace root).
  */
 export function sourceLinkTabInput(args: SourceLinkTabInputArgs): OpenUnifiedTabInput | null {
-    const { fileRef, workspaces, scopeWorkspaceId, chatId } = args;
+    const { fileRef, workspaces, sourceSelectionId, scopeWorkspaceId, chatId } = args;
 
     // Notes and folders are their own views, not files. Notes are workspace-owned
     // and folders open the Explorer; both keep the existing surface until their
@@ -76,7 +80,12 @@ export function sourceLinkTabInput(args: SourceLinkTabInputArgs): OpenUnifiedTab
     // there is no single clone to route a blob read at.
     if (!isAbsolutePath(resolved.path)) return null;
 
-    const workspace = workspaces.find(ws => ws.id === resolved.wsId);
+    const sourceRemote = parseRemoteCloneKey(sourceSelectionId);
+    const workspace = (
+        sourceRemote?.workspaceId === resolved.wsId
+            ? workspaces.find(ws => getRemoteCloneKey(ws) === sourceSelectionId)
+            : undefined
+    ) ?? workspaces.find(ws => ws.id === resolved.wsId);
     const rootPath = typeof workspace?.rootPath === 'string' ? workspace.rootPath.trim() : '';
     if (!rootPath) return null;
 
@@ -92,6 +101,8 @@ export function sourceLinkTabInput(args: SourceLinkTabInputArgs): OpenUnifiedTab
         // The clone the bytes come from — a group member or a remote clone — so
         // the read routes to its own server rather than the page origin.
         ownerWorkspaceId: resolved.wsId,
+        ownerRoutingRef: getRemoteCloneKey(workspace)
+            ?? (sourceRemote?.workspaceId === resolved.wsId ? sourceSelectionId : null),
         chatId,
         resourceId: relativePath,
         label: resourcePathName(relativePath),

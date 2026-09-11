@@ -30,7 +30,7 @@ describe('ExplorerPanel — two-level prefetch (source)', () => {
     });
 
     it('mount fetch uses depth=2', () => {
-        expect(source).toContain("explorerApi.tree(workspaceId, { path: '/', depth: 2 })");
+        expect(source).toContain("explorerApi.tree(workspaceId, { path: '/', depth: 2 }, routingRef)");
     });
 
     it('seeds childrenMap after setting rootEntries', () => {

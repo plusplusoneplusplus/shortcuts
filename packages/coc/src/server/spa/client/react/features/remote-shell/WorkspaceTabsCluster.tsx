@@ -49,7 +49,8 @@ function formatUnreadCount(count: number): string {
 
 export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps) {
     const ws = repo.workspace;
-    const cloneId = String(ws.id);
+    const workspaceId = String(ws.id);
+    const cloneId = getRepoSelectionId(repo);
     const { state } = useApp();
     const { state: queueState } = useQueue();
     const { selectClone, switchSubTab } = useShellNavigation();
@@ -72,8 +73,8 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     // no workspace sub-tab is being viewed — so none of them should highlight.
     const activeTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
 
-    const { running: runningCount, queued: queuedCount } = useRepoQueueStats(cloneId);
-    const { ahead: gitAhead, behind: gitBehind } = useGitInfo(cloneId);
+    const { running: runningCount, queued: queuedCount } = useRepoQueueStats(workspaceId);
+    const { ahead: gitAhead, behind: gitBehind } = useGitInfo(workspaceId);
 
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
@@ -198,7 +199,11 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     }, [cloneStatus, requestRemove]);
 
     const onTab = (key: RepoSubTab) => {
-        switchSubTab(key);
+        if (cloneId === workspaceId) {
+            switchSubTab(key);
+        } else {
+            selectClone(cloneId, key);
+        }
         setOvOpen(false);
     };
 

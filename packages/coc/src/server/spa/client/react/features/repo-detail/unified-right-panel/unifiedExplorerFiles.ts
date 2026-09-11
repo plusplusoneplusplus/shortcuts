@@ -34,6 +34,8 @@ import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 export interface ExplorerFileOpenContext {
     /** The clone the Explorer is browsing — where the blob read must route. */
     ownerWorkspaceId: string;
+    /** Concrete clone route; `null` pins a local owner to page origin. */
+    ownerRoutingRef?: string | null;
     /** The panel's own workspace; a differing owner earns a repo label. */
     scopeWorkspaceId: string;
     /** Label for the owning repo, shown when it is not the panel's own. */
@@ -59,6 +61,7 @@ export function explorerFileTabInput(
     return {
         kind: 'file',
         ownerWorkspaceId: context.ownerWorkspaceId,
+        ...(context.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: context.ownerRoutingRef }),
         chatId: context.chatId,
         resourceId,
         label,

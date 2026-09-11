@@ -86,6 +86,31 @@ The routing hooks `useResolveCloneBaseUrl()`, `useCocClient(ref?)`, and
 `ReposContext` dependency, so they are safe in deep per-tab components and unit tests; a
 workspace **object** resolves from its own marker.
 
+Long-lived language transports subscribe to the registry rather than resolving
+only once. Their cache identity is `(workspaceId, concrete clone route,
+editingSessionId)`: the clone route chooses the socket origin, while the plain
+workspace id stays in `/ws/language-server` and `coc-file://` payloads for the
+owning host. An unresolved concrete remote key is unavailable and cannot fall
+through to the page origin. Endpoint refresh replaces the socket and replays the
+clone's own document buffers on the new connection.
+
+Explorer file panes receive the selected clone route directly. Unified-panel
+file descriptors persist that route with the owning workspace id, use it as the
+owner part of tab identity, and forward it through cross-file language
+navigation. Repo-group panels derive member routes from the concrete server that
+owns the group. Open tabs therefore keep their original socket, document store,
+and blob loader even when the dock target or selected clone changes.
+The shared Monaco setup explicitly registers its mouse definition contribution,
+so Ctrl/Cmd-click and F12 use the same clone-scoped provider and editor opener.
+Explorer tree caches, persisted view state, tab sessions, search buffers, dirty
+tracking, and deep links use that route as their owner key; local clones retain
+their existing bare-workspace keys.
+Tree loading, file and content search, content replacement, Quick Open, Exact
+Open, and OS reveal also receive the concrete route while sending the plain
+workspace id to the owning host.
+`WorkspaceTabsCluster` reselects a remote clone by its clone key when changing a
+sub-tab, while local clones keep the existing in-place tab switch.
+
 **No-local-fallthrough guarantee.** A selected remote clone's clone key, or its bare
 workspace id when unique or active-disambiguated, resolves to its `baseUrl`, so its
 clone-scoped REST and WS never hit the default local client. Because cached and offline

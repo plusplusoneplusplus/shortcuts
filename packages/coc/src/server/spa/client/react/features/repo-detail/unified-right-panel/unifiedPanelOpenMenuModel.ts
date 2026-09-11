@@ -206,6 +206,8 @@ export function resourcePathName(path: string): string {
 export interface OpenMenuTargetContext {
     /** The clone the resource's bytes come from — where requests must route. */
     ownerWorkspaceId: string;
+    /** Concrete clone route for file reads and language transport. */
+    ownerRoutingRef?: string | null;
     /** The panel's own workspace; a differing owner earns a repo label. */
     scopeWorkspaceId: string;
     /** Label for the owning repo, shown when it is not the panel's own. */
@@ -223,6 +225,7 @@ export function fileOpenInput(path: string, context: OpenMenuTargetContext): Ope
     return {
         kind: 'file',
         ownerWorkspaceId: context.ownerWorkspaceId,
+        ...(context.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: context.ownerRoutingRef }),
         chatId: context.chatId,
         resourceId,
         label: resourcePathName(resourceId),

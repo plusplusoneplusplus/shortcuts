@@ -12,12 +12,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     LanguageDocumentStore,
     browserDocumentUri,
+    getLanguageDocumentStore,
     readSyncOptions,
+    resetLanguageDocumentStoresForTests,
     type LspDiagnostic,
 } from '../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import {
     CONTAINER_UNSUPPORTED_REASON,
     LanguageServerClient,
+    resetLanguageServerClientsForTests,
 } from '../../../../src/server/spa/client/react/features/language-servers/languageServerClient';
 import { toMarkers } from '../../../../src/server/spa/client/react/features/language-servers/monacoBridge';
 import { FakeClient, FakeSocket, diagnostic, readyState } from './fakeLanguageTransport';
@@ -39,6 +42,24 @@ describe('readSyncOptions', () => {
     it('falls back to full sync when the server advertises nothing usable', () => {
         expect(readSyncOptions(readyState({}))).toEqual({ change: 1, includeTextOnSave: false, openClose: true });
         expect(readSyncOptions(undefined)).toEqual({ change: 1, includeTextOnSave: false, openClose: true });
+    });
+});
+
+describe('language document store registry', () => {
+    afterEach(() => {
+        resetLanguageDocumentStoresForTests();
+        resetLanguageServerClientsForTests();
+    });
+
+    it('isolates same-workspace buffers by concrete clone owner', () => {
+        const first = getLanguageDocumentStore('ws-shared', 'remote:server-a:ws-shared');
+        const second = getLanguageDocumentStore('ws-shared', 'remote:server-b:ws-shared');
+        const local = getLanguageDocumentStore('ws-shared', null);
+
+        expect(first).not.toBe(second);
+        expect(first).not.toBe(local);
+        expect(second).not.toBe(local);
+        expect(getLanguageDocumentStore('ws-shared', 'remote:server-a:ws-shared')).toBe(first);
     });
 });
 

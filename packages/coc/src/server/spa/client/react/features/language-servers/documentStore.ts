@@ -7,10 +7,10 @@
  * LSP requires. Monaco sits above it and never talks to the transport directly.
  *
  * The rules that shape the design:
- *   - One buffer and one version sequence per open document, no matter how many
- *     views show it. Two views of the same file in the Explorer and the right
- *     panel share this record; closing one leaves the document open for the
- *     other, because views are reference-counted.
+ *   - One buffer and one version sequence per open document in a concrete
+ *     clone, no matter how many views show it. Two views of the same clone's
+ *     file in the Explorer and the right panel share this record; same-id
+ *     clones on different hosts do not.
  *   - Versions only ever increase, including across a reconnect. A server that
  *     sees a replayed `didOpen` gets a version higher than anything it saw on
  *     the previous connection, so a late reply from the old session can always
@@ -210,7 +210,9 @@ export interface OpenDocumentOptions {
 
 export interface LanguageDocumentStoreOptions {
     workspaceId: string;
-    /** Injected in tests; defaults to the cached per-workspace client. */
+    /** Concrete clone identity for transport routing; `null` pins page origin. */
+    routingRef?: string | null;
+    /** Injected in tests; defaults to the cached per-clone client. */
     client?: LanguageServerClient;
 }
 
@@ -251,6 +253,7 @@ interface DocumentRecord {
  */
 export class LanguageDocumentStore {
     readonly workspaceId: string;
+    readonly routingRef: string | null;
 
     private readonly client: LanguageServerClient;
     private readonly documents = new Map<string, DocumentRecord>();
@@ -258,7 +261,9 @@ export class LanguageDocumentStore {
 
     constructor(options: LanguageDocumentStoreOptions) {
         this.workspaceId = options.workspaceId;
-        this.client = options.client ?? getLanguageServerClient(options.workspaceId);
+        this.routingRef = options.routingRef === undefined ? options.workspaceId : options.routingRef;
+        this.client = options.client
+            ?? getLanguageServerClient(options.workspaceId, undefined, this.routingRef);
     }
 
     /** Number of open documents; a view count would be higher. */
@@ -702,17 +707,22 @@ export function parseBrowserDocumentUri(uri: string): { workspaceId: string; pat
 }
 
 // ============================================================================
-// Per-workspace cache
+// Per-clone cache
 // ============================================================================
 
 const stores = new Map<string, LanguageDocumentStore>();
 
-/** One store per workspace in this tab, matching the transport's own cache. */
-export function getLanguageDocumentStore(workspaceId: string): LanguageDocumentStore {
-    let store = stores.get(workspaceId);
+/** One store per concrete clone in this tab, matching the transport's own cache. */
+export function getLanguageDocumentStore(
+    workspaceId: string,
+    routingRef?: string | null,
+): LanguageDocumentStore {
+    const resolvedRoutingRef = routingRef === undefined ? workspaceId : routingRef;
+    const key = `${workspaceId}\u0000${resolvedRoutingRef ?? '<local>'}`;
+    let store = stores.get(key);
     if (!store) {
-        store = new LanguageDocumentStore({ workspaceId });
-        stores.set(workspaceId, store);
+        store = new LanguageDocumentStore({ workspaceId, routingRef: resolvedRoutingRef });
+        stores.set(key, store);
     }
     return store;
 }

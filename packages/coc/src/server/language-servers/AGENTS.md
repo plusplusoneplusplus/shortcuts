@@ -266,20 +266,19 @@ and transport code stays generic.
   — routes every call through `getCocClientForWorkspace`, so configuration is
   read and written on the host that owns the files.
 - `src/server/spa/client/react/features/language-servers/languageServerClient.ts`
-  — `detectLanguageTransportBlock(workspaceId)` is the one gate in front of the
-  socket. In container mode the dashboard is reached through the agent proxy,
-  which forwards `/ws` and `/ws/agent-link` and destroys every other upgrade, so
-  `/ws/language-server` would close before it opened and the reconnect backoff
-  would run forever on a badge reading "connecting…". The gate therefore opens no
-  socket and settles the document as `unavailable` with reason
-  `container-unsupported` (`CONTAINER_UNSUPPORTED_REASON`), which the store reads
-  synchronously through `getUnavailable()` and `languageStatus.ts` labels
-  "Unavailable in container" with no retry offered, since a retry would reach the
-  same unreachable host. A remote clone is exempt: its socket goes straight to
-  that CoC server's host, which is never itself in container mode. This is a gate,
-  not a redesign — the wire protocol and socket code are untouched, so a relay
-  over the agent link replaces `detectLanguageTransportBlock` and nothing above
-  the transport changes.
+  keys clients by concrete clone route, workspace, and editing session. A direct
+  remote clone key resolves the socket origin while the query keeps the owning
+  host's workspace id. Clone-registry subscriptions replace a live or pending
+  socket when an effective URL appears or changes; an unresolved concrete remote
+  route settles as `remote-route-unavailable` and never opens on the page origin.
+  `detectLanguageTransportBlock` is also the container gate: an explicitly local
+  clone behind the agent proxy settles as `container-unsupported`, while a routed
+  remote clone connects directly to its own CoC host.
+- Explorer and unified-panel file views pass the concrete route into
+  `PreviewPane`. Unified file tabs persist it beside `ownerWorkspaceId`, include
+  it in tab identity, and forward it through cross-file definition navigation,
+  so a dock retarget or an equal workspace id on another host cannot change the
+  client, buffer, or blob loader an open tab uses.
 - `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
   — the repo Settings tab's `language-servers` section: master enable toggle,
   the `effective` list with a per-definition enable checkbox, and an editor for
@@ -313,4 +312,13 @@ and transport code stays generic.
   shutdown unpublishing the manager.
 - `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
   from `packages/coc`.
+- `npm run test:e2e -- test/e2e/explorer-lsp.spec.ts` from `packages/coc` drives
+  the real browser, the real Monaco and a real `typescript-language-server`.
+  Its direct-remote case starts a second CoC server in-process
+  (`test/e2e/fixtures/secondary-server.ts`), registers it as a `url` remote, and
+  turns language support on for the remote workspace only, while the dashboard
+  host holds a decoy checkout over the same relative paths with no
+  `formatWidget` and no language support. The badge reaching `ready` and the
+  definition landing on the remote copy are therefore only reachable through the
+  owning host.
 - `npm run test:run` from `packages/coc-client`.
