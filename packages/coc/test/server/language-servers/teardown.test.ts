@@ -26,6 +26,7 @@ import type { LanguageServerServerMessage } from '../../../src/server/language-s
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
 import { attachWebSocketUpgradeHandler, ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
+import { safeRm } from '../../helpers/safe-rm';
 
 const FIXTURE_SERVER = path.join(__dirname, 'fixtures', 'echo-language-server.mjs');
 
@@ -49,7 +50,7 @@ afterEach(async () => {
         }
     }
     for (const dir of tempDirs.splice(0)) {
-        fs.rmSync(dir, { recursive: true, force: true });
+        await safeRm(dir);
     }
 });
 

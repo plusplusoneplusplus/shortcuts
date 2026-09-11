@@ -7494,7 +7494,7 @@ describe('Ralph session queue continuity', () => {
                     },
                 },
             } as any,
-            config: {},
+            config: { timeoutMs: 123_000 },
             displayName: 'Ralph iteration 1',
         });
 
@@ -7538,6 +7538,7 @@ describe('Ralph session queue continuity', () => {
         // places it ahead of unrelated exclusive backlog (ordering verified in forge unit tests).
         expect(finalCheckTask).toBeDefined();
         expect(finalCheckTask?.continuationOfSessionId).toBe(sessionId);
+        expect(finalCheckTask?.config).toEqual({ timeoutMs: 123_000 });
 
         // Resolve the final-check so the executor can clean up its slot before dispose.
         finalCheckDone.resolve({

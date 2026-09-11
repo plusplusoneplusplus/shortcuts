@@ -475,6 +475,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 provider: isAutoProviderRoutingRequested((completedTask.payload as any).context)
                     ? undefined
                     : (completedTask.payload as any).provider,
+                existingTaskConfig: completedTask.config as Record<string, unknown>,
                 repoId: completedTask.repoId,
                 extraContext: getRalphCarryForwardContext((completedTask.payload as any).context),
             },

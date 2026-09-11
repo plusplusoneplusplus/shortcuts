@@ -12,7 +12,11 @@ import {
     getTightestFiniteQuotaType,
     getUnlimitedQuotaTypes,
 } from './quotaUtils';
-import { useAgentProvidersQuota, AGENT_PROVIDER_QUOTA_POLL_MS } from './useAgentProvidersQuota';
+import {
+    useAgentProvidersQuota,
+    AGENT_PROVIDER_QUOTA_POLL_MS,
+    type AgentProvidersQuotaRoutingTarget,
+} from './useAgentProvidersQuota';
 import { Spinner } from '../ui';
 import { cn } from '../ui/cn';
 
@@ -197,11 +201,12 @@ export interface AgentProviderQuotaIndicatorProps {
      *  bottom-docked placements (sidebar footer) where the panel opens upward
      *  and is left-aligned to avoid overflowing off-screen. */
     placement?: 'down' | 'up';
+    routingTarget?: AgentProvidersQuotaRoutingTarget;
 }
 
-export function agentProviderQuotaIndicator({ placement = 'down' }: AgentProviderQuotaIndicatorProps = {}) {
+export function agentProviderQuotaIndicator({ placement = 'down', routingTarget }: AgentProviderQuotaIndicatorProps = {}) {
     const [open, setOpen] = useState(false);
-    const { quotaData, loading, refreshing, error, refresh: refreshQuota } = useAgentProvidersQuota();
+    const { quotaData, loading, refreshing, error, refresh: refreshQuota } = useAgentProvidersQuota(routingTarget);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const panelPos = useAnchoredPanelPosition({ open, placement, triggerRef: buttonRef, panelRef });

@@ -11,6 +11,7 @@
 
 import { buildFinalCheckPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
 import type { RalphFinalCheckRecord, RalphSessionRecord } from './types';
+import type { RalphTaskExecutionConfig } from './enqueue-iteration';
 
 // ============================================================================
 // In-memory idempotency guard (AC-01 §assumption 5)
@@ -82,6 +83,7 @@ export interface BuildFinalCheckTaskInput {
     folderPath?: string;
     repoId?: string;
     provider?: import('../tasks/task-types').ChatProvider;
+    config?: RalphTaskExecutionConfig;
     extraContext?: Record<string, unknown>;
 }
 
@@ -97,7 +99,7 @@ export function buildFinalCheckTaskPayload(input: BuildFinalCheckTaskInput) {
     const {
         workspaceId, sessionId, originalGoal, checkIndex, sourceIteration,
         loopIndex, progressPath, workingDirectory, folderPath, repoId, provider,
-        extraContext,
+        config, extraContext,
     } = input;
 
     const prompt = buildFinalCheckPrompt({
@@ -116,7 +118,7 @@ export function buildFinalCheckTaskPayload(input: BuildFinalCheckTaskInput) {
         folderPath,
         continuationOfSessionId: sessionId,
         displayName: `Ralph final check ${checkIndex} (${sessionId})`,
-        config: {},
+        config: { ...(config ?? {}) },
         payload: {
             kind: 'chat' as const,
             mode: 'ralph' as const,

@@ -788,6 +788,8 @@ export interface ChatListPaneProps {
     isMobile: boolean;
     now: number;
     workspaceId?: string;
+    /** Clone-qualified owner used for provider quota routing. */
+    quotaRoutingTarget?: string;
     /** Set of process IDs with unseen activity (bold + dot indicator). */
     unseenProcessIds?: Set<string>;
     /**
@@ -1219,11 +1221,12 @@ export function ChatListPane({
     onSelectMapReduceRun,
     cursorTaskId,
     forceScope,
+    quotaRoutingTarget,
 }: ChatListPaneProps) {
     const { state: queueState } = useQueue();
     const isTaskSubmitting = queueState.isTaskSubmitting;
 
-    const { quotaData } = useAgentProvidersQuota();
+    const { quotaData } = useAgentProvidersQuota(quotaRoutingTarget ?? workspaceId);
 
     // Quota risk for the pause pills — computed once so both pills share the same value.
     const pillMostConstrained = getMostConstrainedProviderQuota(quotaData);
@@ -4816,6 +4819,7 @@ export function ChatListPane({
                                         onMouseLeave={() => setInsertingPauseAt(null)}
                                         onClick={() => openPauseMarkerMenu(-1)}
                                         onSelectDuration={(options) => handleInsertPauseMarker(-1, options)}
+                                        quotaData={quotaData}
                                     />
                                 )}
                                 {visibleTabFilteredQueued.map((item: any, index: number) => {
@@ -4862,6 +4866,7 @@ export function ChatListPane({
                                                     onMouseLeave={() => setInsertingPauseAt(null)}
                                                     onClick={() => openPauseMarkerMenu(globalIndex)}
                                                     onSelectDuration={(options) => handleInsertPauseMarker(globalIndex, options)}
+                                                    quotaData={quotaData}
                                                 />
                                             )}
                                         </div>
@@ -5365,7 +5370,7 @@ function PauseMarkerRow({ markerId, durationHours, scope, onRemove }: {
     );
 }
 
-function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMouseLeave, onClick, onSelectDuration }: {
+function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMouseLeave, onClick, onSelectDuration, quotaData }: {
     index: number;
     active: boolean;
     menuOpen: boolean;
@@ -5374,6 +5379,7 @@ function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMou
     onMouseLeave: () => void;
     onClick: () => void;
     onSelectDuration: (options?: QueuePauseInsertOptions) => void;
+    quotaData: AgentProvidersQuotaResponse | null;
 }) {
     return (
         <div
@@ -5410,6 +5416,7 @@ function PauseInsertZone({ index, active, menuOpen, menuRef, onMouseEnter, onMou
                             onSelect: (options) => onSelectDuration({ ...options, scope: 'autopilot' }),
                         },
                     ]}
+                    quotaData={quotaData}
                 />
             )}
         </div>

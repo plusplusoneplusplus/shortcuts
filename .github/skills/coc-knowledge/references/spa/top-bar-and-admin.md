@@ -154,5 +154,8 @@ The desktop `AgentProviderQuotaIndicator` gauges the most-constrained enabled pr
 used percentage and opens a dropdown with one row per enabled provider. Each row's gauge
 and risk badge follow that provider's tightest finite window; the body lists every finite
 window with its used/entitlement caption, UTC reset timestamp, and countdown, plus
-provider-level errors. Its force-refresh button calls
-`admin.getAgentProvidersQuota({ force: true })` and it links to `#admin/agents`.
+provider-level errors. `StatusActions` passes the active clone-qualified repo or repo-group
+selection into `useAgentProvidersQuota`, so initial load, polling, and force refresh use the
+owning server. Changing owner clears the displayed snapshot, and an unresolved remote route
+shows its own error without falling through to page-origin quota. It links to
+`#admin/agents`; that Admin page remains page-origin administration.

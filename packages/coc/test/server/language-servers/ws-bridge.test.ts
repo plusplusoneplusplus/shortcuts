@@ -20,6 +20,7 @@ import { writeLanguageServerConfig } from '../../../src/server/language-servers/
 import { browserDocumentUri } from '../../../src/server/language-servers/uri-mapping';
 import { attachWebSocketUpgradeHandler, ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
+import { safeRm } from '../../helpers/safe-rm';
 
 const FIXTURE_SERVER = path.join(__dirname, 'fixtures', 'echo-language-server.mjs');
 const WORKSPACE_ID = 'ws-a';
@@ -32,7 +33,7 @@ afterEach(async () => {
         await cleanup();
     }
     for (const dir of tempDirs.splice(0)) {
-        fs.rmSync(dir, { recursive: true, force: true });
+        await safeRm(dir);
     }
 });
 

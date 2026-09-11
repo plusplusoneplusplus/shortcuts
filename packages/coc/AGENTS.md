@@ -280,6 +280,14 @@ all have their own `references/*.md`.
   get. The folder routes start with `resolveWorkspaceOrFail`, so a local-origin
   call for a remote clone 404s: the create shows "Could not create folder" and
   the list fetch's catch leaves the Folders section silently empty.
+- **Workspace-facing provider quota** routes through
+  `react/shared/useAgentProvidersQuota.ts` with the active clone-qualified
+  selection. The hook distinguishes local, resolved remote, and unresolved remote
+  routes through `cloneRegistry.resolveCloneRoute`; an unresolved remote must never
+  use the page-origin client. Quota state is server-owned: clear it when the owner
+  endpoint changes, ignore late responses from the prior owner, and restart polling
+  and forced refreshes on the resolved client. The Admin AI Providers page remains
+  page-origin administration.
 - **Shared dialogs that take a workspace id** (`ResolveContextDialog`,
   `ModalJobAiControls`, `MarkdownReviewDialog`) route through
   `getCocClientForWorkspace(wsId)` — or, for reveal-in-explorer, through
@@ -366,6 +374,11 @@ all have their own `references/*.md`.
   `RalphExecutor` must use validation-only system instructions whenever
   `context.ralph.finalCheck` is present. Do not route final checks through the
   normal implementation-loop system prompt.
+- **Ralph follow-on task config** comes from the completed task for iterations,
+  final checks, and gap-fix loops. Explicit-provider tasks preserve model,
+  reasoning effort, and `afterEffortTier`; Auto-routed tasks preserve
+  `afterEffortTier` but clear the completed task's concrete model/reasoning so
+  the tier is expanded after the next provider is selected.
 - **Ralph task kind** is derived only through `getRalphTaskKind(ctx)`
   (`src/server/ralph/task-kind.ts`), which returns
   `'iteration' | 'final-check' | 'submit'`. `RalphExecutor` rebuilds the user
