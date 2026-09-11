@@ -20,7 +20,7 @@ import { LanguageServerSession } from '../../../src/server/language-servers/sess
 import type { LanguageServerSessionOptions } from '../../../src/server/language-servers/session';
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
 import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
-import { TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
+import { RUST_PRESET, TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 
 const FIXTURE_SERVER = path.join(__dirname, 'fixtures', 'echo-language-server.mjs');
@@ -484,6 +484,29 @@ describe('LanguageServerManager runtime preparation', () => {
         expect(JSON.stringify(state)).not.toContain('node_modules');
     });
 
+    it('forwards Rust install guidance without exposing a host path', () => {
+        const harness = createHarness([{ ...RUST_PRESET, enabled: true }], {
+            prepareDeps: {
+                runRustupWhich: () => undefined,
+                resolveOnPath: () => undefined,
+            },
+        });
+        const result = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/lib.rs',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(harness.created[0]).toMatchObject({
+            commandLabel: 'rust-analyzer',
+            runtimeLabel: 'Server: unavailable',
+            unavailableDetail: 'Install with: rustup component add rust-analyzer',
+        });
+        expect(JSON.stringify(harness.manager.listStates())).not.toContain(harness.workspaceRoot);
+    });
+
     it('leaves a non-TypeScript definition exactly as configured', () => {
         const harness = createHarness();
         acquireTxt(harness, 'browser-1');
@@ -493,5 +516,6 @@ describe('LanguageServerManager runtime preparation', () => {
         expect(sessionOptions.definition.args).toEqual([FIXTURE_SERVER]);
         expect(sessionOptions.runtimeLabel).toBeUndefined();
         expect(sessionOptions.commandLabel).toBeUndefined();
+        expect(sessionOptions.unavailableDetail).toBeUndefined();
     });
 });

@@ -159,6 +159,23 @@ describe('LanguageServerSession startup', () => {
         expect(session.getState().detail).toBe('Executable not found: typescript-language-server');
     });
 
+    it('includes adapter install guidance when the executable is unavailable', async () => {
+        const { session } = createSession(
+            fixtureDefinition({ command: 'coc-language-server-that-does-not-exist', args: [] }),
+            {
+                startTimeoutMs: 2_000,
+                commandLabel: 'rust-analyzer',
+                unavailableDetail: 'Install with: rustup component add rust-analyzer',
+            },
+        );
+        await expect(session.start()).rejects.toThrow();
+        await waitFor(() => session.status !== 'starting');
+        expect(session.getState()).toMatchObject({
+            status: 'unavailable',
+            detail: 'Executable not found: rust-analyzer. Install with: rustup component add rust-analyzer',
+        });
+    });
+
     it('reports the resolved runtime in the state from the first status onwards', () => {
         const { session } = createSession(fixtureDefinition(), {
             runtimeLabel: 'Server: workspace \u00b7 TypeScript 5.9.2: workspace',
