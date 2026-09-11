@@ -314,7 +314,11 @@ and transport code stays generic.
   path alias, a cross-file import and an installed dependency type, then asks
   each shipped feature a question only a working TypeScript service can answer,
   including one about a buffer that was never written to disk. Put TypeScript
-  project-understanding coverage there and nothing else. That server sends no
+  project-understanding coverage there and nothing else. `rust-integration.test.ts`
+  does the same for rust-analyzer with a real Cargo workspace, cross-crate
+  symbols, build-script output, a derive macro, a crates.io dependency, dirty
+  buffers, and workspace check settings. It hard-fails when rust-analyzer is
+  unavailable. That TypeScript server sends no
   `serverInfo`, so `state.serverName` is undefined for it and the user is shown
   `displayName` and `runtime` instead. The bridge suite drives a real WebSocket against a real
   manager and that fixture, so it covers upgrade scoping, URI refusal, and
