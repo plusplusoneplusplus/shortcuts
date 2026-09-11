@@ -75,7 +75,9 @@ and transport code stays generic.
   `disabled`, `unavailable`, `starting`, `ready`, `reconnecting`, `failed` —
   plus the server name, version, and negotiated capabilities. `disabled` covers
   both a config-disabled definition and one stopped because nothing needs it.
-  A missing executable is `unavailable`, not `failed`.
+  A missing executable is `unavailable`, not `failed`. Runtime adapters may
+  provide path-safe install guidance, which the manager forwards and the session
+  appends only to that unavailable detail.
 - The state also carries `generation`, a count of successful handshakes. Every
   restart, crash recovery and config replacement produces a server that knows no
   documents, and the browser keeps its attachment across all of them, so this
@@ -165,7 +167,8 @@ and transport code stays generic.
   a bounded timeout so `rust-toolchain.toml` overrides are honored, then scans
   the owning host's `PATH`. CoC does not download or bundle rust-analyzer.
   Missing discovery leaves `rust-analyzer` as the command so startup reports
-  `unavailable`; user-facing labels never contain the resolved absolute path.
+  `unavailable` with the rustup component install command; user-facing labels
+  never contain the resolved absolute path.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The

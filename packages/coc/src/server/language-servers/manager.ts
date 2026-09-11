@@ -231,6 +231,7 @@ export class LanguageServerManager {
             rootPath,
             runtimeLabel: prepared.runtimeLabel,
             commandLabel: prepared.commandLabel,
+            unavailableDetail: prepared.notes?.join(' '),
             clientCapabilities: this.options.clientCapabilities,
             startTimeoutMs: this.options.startTimeoutMs,
             requestTimeoutMs: this.options.requestTimeoutMs,
