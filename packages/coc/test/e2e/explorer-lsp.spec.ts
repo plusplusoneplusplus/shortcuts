@@ -22,7 +22,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { request, seedWorkspace } from './fixtures/seed';
-import { enableExplorerEditorTabs, expectEditorTabs } from './fixtures/explorer-tabs-seed';
+import {
+    editorTab,
+    enableExplorerEditorTabs,
+    expectEditorTabs,
+} from './fixtures/explorer-tabs-seed';
 import {
     createDecoyRepoFixture,
     createTypeScriptRepoFixture,
@@ -260,17 +264,25 @@ async function squigglyLines(page: Page, panel = APP_PANEL): Promise<string[]> {
 }
 
 /**
- * The text of the line the caret currently sits on, or null while there is no
- * visible caret yet.
+ * The model position and text of the logical line carrying the caret, or null
+ * while there is no visible caret yet.
  *
- * Monaco keeps no line number in the DOM, so the caret is matched to its line
- * by vertical position — the same way the eye does it. That is the only way to
- * tell "the file opened" from "the file opened at the symbol".
+ * Monaco keeps position out of the DOM, so this matches the caret to rendered
+ * lines and gutter numbers. Wrapped visual lines are joined and counted toward
+ * the model column, which keeps narrow editors exact too.
  */
-async function caretLineText(page: Page, panel: string): Promise<string | null> {
+interface CaretPosition {
+    line: number;
+    column: number;
+    lineText: string;
+}
+
+async function caretPosition(page: Page, panel: string): Promise<CaretPosition | null> {
     return page.evaluate((selector: string) => {
         const root = document.querySelector(selector);
-        const cursor = root?.querySelector('.cursors-layer .cursor') as HTMLElement | null;
+        const editor = root?.querySelector('.monaco-editor');
+        const cursor = Array.from(editor?.querySelectorAll('.cursors-layer .cursor') ?? [])
+            .find(node => node.closest('.monaco-editor') === editor) as HTMLElement | undefined;
         if (!cursor) {
             return null;
         }
@@ -278,10 +290,73 @@ async function caretLineText(page: Page, panel: string): Promise<string | null> 
         if (height === 0) {
             return null;
         }
-        const lines = Array.from(root!.querySelectorAll('.view-line')) as HTMLElement[];
+        const viewLines = Array.from(editor!.querySelectorAll('.view-lines'))
+            .find(node => node.closest('.monaco-editor') === editor);
+        const lines = Array.from(
+            viewLines?.querySelectorAll(':scope > .view-line') ?? [],
+        ) as HTMLElement[];
         const line = lines.find(node => Math.abs(node.getBoundingClientRect().top - top) < 2);
-        return line ? (line.textContent ?? '').replace(/\u00a0/g, ' ') : null;
+        if (!line) {
+            return null;
+        }
+
+        const lineNumbers = Array.from(
+            editor!.querySelectorAll('.margin-view-overlays .line-numbers'),
+        )
+            .filter(node => node.closest('.monaco-editor') === editor)
+            .map(node => ({
+                line: Number.parseInt(node.textContent ?? '', 10),
+                top: (node as HTMLElement).getBoundingClientRect().top,
+            }))
+            .filter(entry => Number.isFinite(entry.line))
+            .sort((a, b) => a.top - b.top);
+        const lineNumberEntry = lineNumbers.filter(entry => entry.top <= top + 2).at(-1);
+        const lineNumber = lineNumberEntry?.line ?? lines.indexOf(line) + 1;
+        if (lineNumber < 1) {
+            return null;
+        }
+        const logicalLineTop = lineNumberEntry?.top ?? line.getBoundingClientRect().top;
+        const nextLogicalLineTop = lineNumbers.find(entry => entry.top > logicalLineTop + 2)?.top
+            ?? Number.POSITIVE_INFINITY;
+        const logicalLines = lines.filter(node => {
+            const lineTop = node.getBoundingClientRect().top;
+            return lineTop >= logicalLineTop - 2 && lineTop < nextLogicalLineTop - 2;
+        });
+
+        const cursorLeft = cursor.getBoundingClientRect().left;
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        let visualColumn = 1;
+        let closest = { column: visualColumn, distance: Number.POSITIVE_INFINITY };
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const text = node.textContent ?? '';
+            for (let offset = 0; offset <= text.length; offset += 1) {
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.collapse(true);
+                const distance = Math.abs(range.getBoundingClientRect().left - cursorLeft);
+                if (distance < closest.distance) {
+                    closest = { column: visualColumn + offset, distance };
+                }
+            }
+            visualColumn += text.length;
+        }
+        const wrappedPrefixLength = logicalLines
+            .slice(0, logicalLines.indexOf(line))
+            .reduce((length, node) => length + (node.textContent ?? '').length, 0);
+
+        return {
+            line: lineNumber,
+            column: wrappedPrefixLength + closest.column,
+            lineText: logicalLines
+                .map(node => node.textContent ?? '')
+                .join('')
+                .replace(/\u00a0/g, ' '),
+        };
     }, `${panel} [data-testid="monaco-container"]`);
+}
+
+async function caretLineText(page: Page, panel: string): Promise<string | null> {
+    return (await caretPosition(page, panel))?.lineText ?? null;
 }
 
 /**
@@ -663,6 +738,13 @@ test.describe('Explorer language support – direct remote clone', () => {
 
             await expectEditorTabs(page, [APP_TAB]);
 
+            const unsavedMarker = 'export const unsavedRemoteBuffer = label;';
+            await focusMonacoBuffer(page);
+            await page.keyboard.press('Control+End');
+            await page.keyboard.type(unsavedMarker);
+            await expect(page.locator(`${APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toBeVisible({ timeout: 10_000 });
+
             // AC-02: go to definition across files. The answer comes from the
             // remote server, and the file it names has to be read back from the
             // remote host too.
@@ -682,8 +764,42 @@ test.describe('Explorer language support – direct remote clone', () => {
             expect(await paneText(page, formatPanel)).not.toContain('decoy checkout');
 
             await expect
-                .poll(() => caretLineText(page, formatPanel), { timeout: 15_000 })
-                .toContain('export function formatWidget');
+                .poll(() => caretPosition(page, formatPanel), { timeout: 15_000 })
+                .toEqual({
+                    line: 7,
+                    column: 17,
+                    lineText: 'export function formatWidget(widget: Widget): string {',
+                });
+
+            await expect(page.locator('[data-testid="clone-switch"]'))
+                .toHaveAttribute('title', 'Remote LSP Repo');
+            await expect(page.locator(`${APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toHaveCount(1);
+
+            // Monaco handles same-file definitions itself. The gesture must move
+            // to the parameter without creating a third tab or leaving this clone.
+            await ctrlClickWord(page, 'return widget.name', 'widget', formatPanel);
+            await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
+            await expect
+                .poll(() => caretPosition(page, formatPanel), { timeout: 15_000 })
+                .toEqual({
+                    line: 7,
+                    column: 30,
+                    lineText: 'export function formatWidget(widget: Widget): string {',
+                });
+            await expect(page.locator('[data-testid="clone-switch"]'))
+                .toHaveAttribute('title', 'Remote LSP Repo');
+
+            await editorTab(page, APP_TAB).click();
+            await expect(page.locator(`${APP_PANEL} [data-testid="monaco-container"]`))
+                .toBeVisible({ timeout: 10_000 });
+            await expect
+                .poll(() => paneText(page, APP_PANEL), { timeout: 10_000 })
+                .toContain(unsavedMarker);
+            await expect(page.locator(`${APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toBeVisible();
+            await expect(page.locator('[data-testid="clone-switch"]'))
+                .toHaveAttribute('title', 'Remote LSP Repo');
         } finally {
             if (remoteServerId) {
                 await request(`${serverUrl}/api/servers/${encodeURIComponent(remoteServerId)}`, {
@@ -753,8 +869,12 @@ test.describe('Explorer language support – direct remote clone', () => {
                 .toContain('formatting for the remote panel checkout');
             expect(await paneText(page, UNIFIED_ACTIVE_FILE)).not.toContain('decoy checkout');
             await expect
-                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
-                .toContain('formatWidget(widget');
+                .poll(() => caretPosition(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
+                .toEqual({
+                    line: 7,
+                    column: 17,
+                    lineText: 'export function formatWidget(widget: Widget): string {',
+                });
         } finally {
             if (remoteServerId) {
                 await request(`${serverUrl}/api/servers/${encodeURIComponent(remoteServerId)}`, {
