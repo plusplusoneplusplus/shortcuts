@@ -214,13 +214,16 @@ async function waitForRequest<T>(
     }, description);
 }
 
-async function waitForDiagnostics(check: (found: Diagnostic[]) => boolean): Promise<Diagnostic[]> {
+async function waitForDiagnostics(
+    check: (found: Diagnostic[]) => boolean,
+    timeoutMs = 90_000,
+): Promise<Diagnostic[]> {
     const key = fileUriKey(uriFor('app/src/lib.rs'));
     try {
         return await waitFor(() => {
             const found = diagnostics.get(key);
             return found && check(found) ? found : undefined;
-        }, 'Rust diagnostics');
+        }, 'Rust diagnostics', timeoutMs);
     } catch (error) {
         throw new Error(`${String(error)}; received ${JSON.stringify([...diagnostics])}`);
     }
@@ -431,15 +434,23 @@ describe('Rust language features over a real Cargo workspace', () => {
 describe('unsaved Rust buffers', () => {
     afterAll(async () => {
         changeApp(APP_RS);
-        await waitForDiagnostics((found) => found.length === 0);
-    }, 120_000);
+        await waitForDiagnostics((found) => found.length === 0, 180_000);
+    }, 240_000);
 
     it('publishes diagnostics for content that was never written to disk', async () => {
+        await waitFor(
+            () => session.getState().status === 'ready' ? true : undefined,
+            'rust-analyzer indexing',
+            240_000,
+        );
         changeApp(APP_WITH_ERROR_RS);
-        const found = await waitForDiagnostics((entries) => entries.some((entry) => /expected.*expression/i.test(entry.message)));
+        const found = await waitForDiagnostics(
+            (entries) => entries.some((entry) => /expected.*expression/i.test(entry.message)),
+            180_000,
+        );
         expect(found.length).toBeGreaterThan(0);
         expect(fs.readFileSync(path.join(root, 'app', 'src', 'lib.rs'), 'utf8')).toBe(APP_RS);
-    }, 120_000);
+    }, 300_000);
 
     it('answers hover from the unsaved content and clears its diagnostic', async () => {
         const unsaved = APP_RS.replace('let _external', 'let unsaved_name');
