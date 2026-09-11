@@ -72,6 +72,8 @@ export interface LanguageServerSessionOptions {
      * `command` to an absolute host path, which must not reach the browser.
      */
     commandLabel?: string;
+    /** Safe guidance appended when the executable cannot be found. */
+    unavailableDetail?: string;
     /** Client capabilities sent in `initialize`. Defaults to `DEFAULT_CLIENT_CAPABILITIES`. */
     clientCapabilities?: JsonValue;
     /** Bound on the initialize handshake. Defaults to 20 seconds. */
@@ -618,7 +620,12 @@ export class LanguageServerSession {
         this.setState({
             status: missing ? 'unavailable' : 'failed',
             detail: missing
-                ? `Executable not found: ${this.options.commandLabel ?? this.definition.command}`
+                ? [
+                      `Executable not found: ${this.options.commandLabel ?? this.definition.command}`,
+                      this.options.unavailableDetail,
+                  ]
+                      .filter(Boolean)
+                      .join('. ')
                 : this.describeFailure('Language server could not start', error),
             capabilities: undefined,
             dynamicRegistrations: [],
