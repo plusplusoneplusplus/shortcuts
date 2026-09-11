@@ -131,7 +131,7 @@ fixture-derive = { path = "../fixture-derive" }
 unicode-ident = "1.0"
 `);
     write('app/src/lib.rs', APP_RS);
-    execFileSync('cargo', ['fetch', '--quiet'], { cwd: root, timeout: 120_000 });
+    execFileSync('cargo', ['fetch', '--quiet'], { cwd: root, timeout: 300_000 });
     return dir;
 }
 
@@ -292,7 +292,7 @@ beforeAll(async () => {
         (result) => hoverText(result).includes('fn make_widget'),
         'rust-analyzer project loading',
     );
-}, 180_000);
+}, 420_000);
 
 afterAll(async () => {
     await session?.dispose();
