@@ -31,7 +31,7 @@ export {
     writeLanguageServerConfig,
 } from './repository';
 export type { PreparedDefinition, PrepareDefinitionDeps } from './adapters';
-export { prepareDefinitionForRoot } from './adapters';
+export { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 export type { TypeScriptRuntime, TypeScriptRuntimeDeps, TypeScriptRuntimeOrigin } from './typescript-adapter';
 export {
     MIN_WORKSPACE_TYPESCRIPT_VERSION,
@@ -45,6 +45,7 @@ export {
     applyRustRuntime,
     findExecutableOnPath,
     resolveRustRuntime,
+    resolveRustServerRoot,
 } from './rust-adapter';
 export { registerLanguageServerRoutes } from './routes';
 export type {

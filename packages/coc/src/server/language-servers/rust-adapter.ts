@@ -1,6 +1,8 @@
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { normalizeRelativePath } from './file-match';
+import { resolveServerRoot } from './selection';
 import type { LanguageServerDefinition } from './types';
 
 export const RUSTUP_RESOLUTION_TIMEOUT_MS = 3_000;
@@ -19,6 +21,8 @@ export interface RustRuntime {
 export interface RustRuntimeDeps {
     runRustupWhich?: (rootPath: string, timeoutMs: number) => string | undefined;
     resolveOnPath?: (command: string) => string | undefined;
+    /** Reads a Cargo manifest for workspace-root discovery. */
+    readFile?: (file: string) => string | undefined;
 }
 
 export interface PathResolutionOptions {
@@ -61,6 +65,38 @@ export function resolveRustRuntime(
         label: 'Server: unavailable',
         notes: [RUST_ANALYZER_INSTALL_GUIDANCE],
     };
+}
+
+/**
+ * Resolves a Rust project to its outermost Cargo workspace, falling back to
+ * the nearest Cargo manifest when no readable workspace manifest is present.
+ */
+export function resolveRustServerRoot(
+    definition: LanguageServerDefinition,
+    workspaceRoot: string,
+    relativePath: string,
+    deps: Pick<RustRuntimeDeps, 'readFile'> & { exists?: (candidate: string) => boolean } = {},
+): string {
+    const exists = deps.exists ?? fs.existsSync;
+    const readFile = deps.readFile ?? defaultReadFile;
+    const root = path.resolve(workspaceRoot);
+    const fallback = resolveServerRoot(definition, root, relativePath, exists);
+    let dir = path.dirname(path.resolve(root, normalizeRelativePath(relativePath)));
+    let cargoWorkspace: string | undefined;
+
+    while (dir === root || dir.startsWith(`${root}${path.sep}`)) {
+        const manifest = path.join(dir, 'Cargo.toml');
+        if (exists(manifest) && declaresCargoWorkspace(manifest, readFile)) {
+            cargoWorkspace = dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            break;
+        }
+        dir = parent;
+    }
+
+    return cargoWorkspace ?? fallback;
 }
 
 export function applyRustRuntime(
@@ -116,6 +152,25 @@ function defaultRunRustupWhich(rootPath: string, timeoutMs: number): string | un
     }
     const resolved = result.stdout.trim().split(/\r?\n/, 1)[0];
     return resolved && path.isAbsolute(resolved) ? resolved : undefined;
+}
+
+function defaultReadFile(file: string): string | undefined {
+    try {
+        return fs.readFileSync(file, 'utf8');
+    } catch {
+        return undefined;
+    }
+}
+
+function declaresCargoWorkspace(file: string, readFile: (file: string) => string | undefined): boolean {
+    try {
+        const content = readFile(file);
+        return content !== undefined && content.split(/\r?\n/).some(line => (
+            /^\s*\[\s*(?:workspace|"workspace"|'workspace')\s*\]\s*(?:#.*)?$/.test(line)
+        ));
+    } catch {
+        return false;
+    }
 }
 
 function executableNames(
