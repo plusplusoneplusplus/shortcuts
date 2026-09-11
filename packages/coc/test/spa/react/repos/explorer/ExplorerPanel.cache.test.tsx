@@ -51,7 +51,7 @@ describe('ExplorerPanel — in-memory tree cache (AC-02)', () => {
         render(<ExplorerPanel workspaceId="ws-1" mode="editor" />);
         await waitFor(() => expect(screen.getByTestId('explorer-panel')).toBeInTheDocument());
         expect(treeSpy).toHaveBeenCalledTimes(1);
-        expect(treeSpy).toHaveBeenCalledWith('ws-1', { path: '/', depth: 2 });
+        expect(treeSpy).toHaveBeenCalledWith('ws-1', { path: '/', depth: 2 }, undefined);
     });
 
     it('does not re-fetch the root listing when switching back to a workspace', async () => {
@@ -77,7 +77,7 @@ describe('ExplorerPanel — in-memory tree cache (AC-02)', () => {
         first.unmount();
 
         render(<ExplorerPanel workspaceId="ws-2" mode="editor" />);
-        await waitFor(() => expect(treeSpy).toHaveBeenCalledWith('ws-2', { path: '/', depth: 2 }));
+        await waitFor(() => expect(treeSpy).toHaveBeenCalledWith('ws-2', { path: '/', depth: 2 }, undefined));
         expect(treeSpy).toHaveBeenCalledTimes(2);
     });
 });

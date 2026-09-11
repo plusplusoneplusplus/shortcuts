@@ -53,6 +53,7 @@ function renderMenu(props: Partial<React.ComponentProps<typeof UnifiedPanelOpenM
             workspaceId={WS}
             chatId={props.chatId === undefined ? 'chat-1' : props.chatId}
             target={props.target ?? WS}
+            targetRoutingRef={props.targetRoutingRef}
             targets={props.targets}
             {...handlers}
         />,
@@ -223,6 +224,7 @@ describe('file search', () => {
         searchFiles.mockResolvedValue({ results: [{ path: 'src/app.ts' }] });
         const { onOpenResource } = renderMenu({
             target: 'ws-member',
+            targetRoutingRef: 'remote:server-b:ws-member',
             targets: [
                 { workspaceId: WS, label: 'root' },
                 { workspaceId: 'ws-member', label: 'member' },
@@ -233,7 +235,12 @@ describe('file search', () => {
         expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({
             ownerWorkspaceId: 'ws-member', repoLabel: 'member',
         }));
-        expect(searchFiles).toHaveBeenCalledWith('ws-member', 'app', expect.anything());
+        expect(searchFiles).toHaveBeenCalledWith(
+            'ws-member',
+            'app',
+            expect.anything(),
+            'remote:server-b:ws-member',
+        );
     });
 
     it('disables search and the repo-bound actions when the target is unavailable', async () => {

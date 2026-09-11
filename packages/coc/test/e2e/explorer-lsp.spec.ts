@@ -37,8 +37,6 @@ import { execFileSync } from 'child_process';
 import type { Locator, Page } from '@playwright/test';
 
 const WORKSPACE_ID = 'ws-lsp';
-/** The id the direct-remote cases register on the other host. */
-const REMOTE_WORKSPACE_ID = 'ws-lsp-remote';
 const APP_TAB = 'file:src/app.ts';
 const FORMAT_TAB = 'file:src/format.ts';
 const APP_PANEL = `[data-testid="explorer-tab-panel-${APP_TAB}"]`;
@@ -571,7 +569,7 @@ test.describe('Explorer language support – direct remote clone', () => {
                 marker: 'formatting for the remote checkout',
             });
             initGitCheckout(remoteDir, 'https://github.com/acme/remote-lsp.git');
-            await seedWorkspace(secondary.url, REMOTE_WORKSPACE_ID, 'Remote LSP Repo', remoteDir);
+            await seedWorkspace(secondary.url, WORKSPACE_ID, 'Remote LSP Repo', remoteDir);
 
             // The decoy, on the dashboard host, under the SAME workspace id and
             // the same relative paths.
@@ -584,7 +582,7 @@ test.describe('Explorer language support – direct remote clone', () => {
             // dashboard host keeps its shipped-off config, so a document that
             // read its configuration locally would report "Language support off"
             // and never start anything.
-            await enableLanguageServers(secondary.url, REMOTE_WORKSPACE_ID);
+            await enableLanguageServers(secondary.url, WORKSPACE_ID);
             await registerRemoteServer(serverUrl, 'Remote Host', secondary.url);
 
             await enableRemoteShell(page);

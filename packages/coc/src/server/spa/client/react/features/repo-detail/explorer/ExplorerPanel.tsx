@@ -133,6 +133,7 @@ export async function mergeServerResultsIntoChildrenMap(
     childrenMap: Map<string, TreeEntry[]>,
     setChildrenMap: Dispatch<SetStateAction<Map<string, TreeEntry[]>>>,
     workspaceId: string,
+    routingRef?: string | null,
 ): Promise<string[]> {
     const allAncestors = new Set<string>();
     for (const p of paths) {
@@ -144,7 +145,7 @@ export async function mergeServerResultsIntoChildrenMap(
     if (missing.length > 0) {
         const results = await Promise.all(
             missing.map(dir =>
-                explorerApi.tree(workspaceId, { path: dir })
+                explorerApi.tree(workspaceId, { path: dir }, routingRef)
                     .then((data: { entries: TreeEntry[] }) => ({ dir, entries: data.entries }))
                     .catch(() => null),
             ),
@@ -487,7 +488,7 @@ export function ExplorerPanel({
         let cancelled = false;
         setLoading(true);
         setError(null);
-        explorerApi.tree(workspaceId, { path: '/', depth: 2 })
+        explorerApi.tree(workspaceId, { path: '/', depth: 2 }, routingRef)
             .then((data: { entries: TreeEntry[] }) => {
                 if (!cancelled) {
                     setRootEntries(data.entries);
@@ -504,7 +505,7 @@ export function ExplorerPanel({
             })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [workspaceId, routingRef]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Deep-link: read hash on mount to restore selected path and open file preview.
     // An explicit hash deep-link for THIS workspace wins over the persisted state
@@ -870,7 +871,7 @@ export function ExplorerPanel({
             label: 'Reveal in File Explorer',
             icon: '🗂️',
             onClick: async () => {
-                await explorerApi.reveal(workspaceId, entry.path);
+                await explorerApi.reveal(workspaceId, entry.path, routingRef);
             },
         });
 
@@ -908,7 +909,7 @@ export function ExplorerPanel({
         for (const dir of ancestors) {
             if (!known.has(dir)) {
                 try {
-                    const data = await explorerApi.tree(workspaceId, { path: dir });
+                    const data = await explorerApi.tree(workspaceId, { path: dir }, routingRef);
                     handleChildrenLoaded(dir, data.entries);
                     known.add(dir);
                 } catch (err) {
@@ -932,7 +933,7 @@ export function ExplorerPanel({
         }
         setSelectedPath(target);
         setRevealTarget(failedAt ?? target);
-    }, [childrenMap, workspaceId, handleChildrenLoaded]);
+    }, [childrenMap, workspaceId, routingRef, handleChildrenLoaded]);
 
     /** The toolbar's "Reveal open file" button — the editor's own file. */
     const handleRevealOpenFile = useCallback(async () => {
@@ -997,8 +998,8 @@ export function ExplorerPanel({
         setError(null);
         const targets = [...expandedPaths];
         Promise.allSettled([
-            explorerApi.tree(workspaceId, { path: '/', depth: 2 }),
-            ...targets.map(dir => explorerApi.tree(workspaceId, { path: dir })),
+            explorerApi.tree(workspaceId, { path: '/', depth: 2 }, routingRef),
+            ...targets.map(dir => explorerApi.tree(workspaceId, { path: dir }, routingRef)),
         ]).then(results => {
             // A newer refresh started while this one was in flight — its results win.
             if (runId !== refreshRunIdRef.current) return;
@@ -1045,7 +1046,7 @@ export function ExplorerPanel({
         }).finally(() => {
             if (runId === refreshRunIdRef.current) setRefreshing(false);
         });
-    }, [workspaceId, expandedPaths]);
+    }, [workspaceId, routingRef, expandedPaths]);
 
     // Search handlers
     const onSearchChange = useCallback((value: string) => {
@@ -1105,11 +1106,11 @@ export function ExplorerPanel({
         }
         serverSearchTimerRef.current = setTimeout(() => {
             setServerSearchLoading(true);
-            explorerApi.searchFiles(workspaceId, searchQuery, { limit: 100 })
+            explorerApi.searchFiles(workspaceId, searchQuery, { limit: 100 }, routingRef)
                 .then(async (data: { results: { path: string; score: number }[] }) => {
                     const paths = data.results.map(r => r.path);
                     const ancestors = await mergeServerResultsIntoChildrenMap(
-                        paths, childrenMap, setChildrenMap, workspaceId,
+                        paths, childrenMap, setChildrenMap, workspaceId, routingRef,
                     );
                     if (ancestors.length > 0) {
                         setExpandedPaths(prev => {
@@ -1125,7 +1126,7 @@ export function ExplorerPanel({
         return () => {
             if (serverSearchTimerRef.current) clearTimeout(serverSearchTimerRef.current);
         };
-    }, [searchQuery, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [searchQuery, workspaceId, routingRef]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /**
      * Announce this mount to the Ctrl+P router. Only the Explorer *sub-tab*
@@ -1386,6 +1387,7 @@ export function ExplorerPanel({
                 {view === 'search' ? (
                     <ContentSearchPanel
                         workspaceId={workspaceId}
+                        routingRef={routingRef}
                         stateKey={ownerKey}
                         focusQueryToken={searchFocusToken}
                         onOpenMatch={handleOpenMatch}
@@ -1420,6 +1422,7 @@ export function ExplorerPanel({
                         )}
                         <FileTree
                             workspaceId={workspaceId}
+                            routingRef={routingRef}
                             entries={rootEntries}
                             selectedPath={selectedPath}
                             expandedPaths={expandedPaths}
@@ -1619,7 +1622,7 @@ export function ExplorerPanel({
 
             {/* Quick Open (Ctrl+P) */}
             <QuickOpen
-                scope={{ kind: 'repo', workspaceId }}
+                scope={{ kind: 'repo', workspaceId, routingRef }}
                 open={quickOpenVisible}
                 onClose={() => setQuickOpenVisible(false)}
                 onFileSelect={result => handleQuickOpenSelect(result.path)}
@@ -1628,6 +1631,7 @@ export function ExplorerPanel({
             {/* Exact Open (Ctrl+O) */}
             <ExactOpen
                 workspaceId={workspaceId}
+                routingRef={routingRef}
                 open={exactOpenVisible}
                 onClose={() => setExactOpenVisible(false)}
                 onFileSelect={handleQuickOpenSelect}

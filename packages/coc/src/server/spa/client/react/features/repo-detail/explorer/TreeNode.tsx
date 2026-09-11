@@ -16,6 +16,7 @@ export interface TreeNodeProps {
     entry: TreeEntry;
     depth: number;
     workspaceId: string;
+    routingRef?: string | null;
     selectedPath: string | null;
     expandedPaths: Set<string>;
     childrenMap: Map<string, TreeEntry[]>;
@@ -48,7 +49,7 @@ function getFileIcon(entry: TreeEntry): string {
 }
 
 export function TreeNode({
-    entry, depth, workspaceId, selectedPath, expandedPaths, childrenMap,
+    entry, depth, workspaceId, routingRef, selectedPath, expandedPaths, childrenMap,
     onToggle, onSelect, onFileOpen, onFilePin, onChildrenLoaded, onContextMenu, isFocused, treeIndex, filterQuery,
 }: TreeNodeProps) {
     const isDir = entry.type === 'dir';
@@ -85,7 +86,7 @@ export function TreeNode({
     useEffect(() => {
         if (!isDir || !isExpanded || children !== undefined || loadError) return;
         let cancelled = false;
-        explorerApi.tree(workspaceId, { path: entry.path })
+        explorerApi.tree(workspaceId, { path: entry.path }, routingRef)
             .then((data: { entries: TreeEntry[] }) => {
                 if (!cancelled) onChildrenLoaded(entry.path, data.entries);
             })
@@ -93,7 +94,7 @@ export function TreeNode({
                 if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
             });
         return () => { cancelled = true; };
-    }, [isDir, isExpanded, children, loadError, workspaceId, entry.path, onChildrenLoaded]);
+    }, [isDir, isExpanded, children, loadError, workspaceId, routingRef, entry.path, onChildrenLoaded]);
 
     const handleClick = () => {
         if (isDir) {
@@ -173,6 +174,7 @@ export function TreeNode({
                     entry={child}
                     depth={depth + 1}
                     workspaceId={workspaceId}
+                    routingRef={routingRef}
                     selectedPath={selectedPath}
                     expandedPaths={expandedPaths}
                     childrenMap={childrenMap}

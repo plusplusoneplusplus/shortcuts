@@ -15,6 +15,7 @@ export const TRUSTED_PATH_PREFIX = '__trusted__:';
 
 export interface ExactOpenProps {
     workspaceId: string;
+    routingRef?: string | null;
     open: boolean;
     onClose: () => void;
     onFileSelect: (filePath: string) => void;
@@ -54,7 +55,7 @@ export function isAbsolutePath(query: string): boolean {
     return false;
 }
 
-export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpenProps) {
+export function ExactOpen({ workspaceId, routingRef, open, onClose, onFileSelect }: ExactOpenProps) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
@@ -121,7 +122,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
             const abort = new AbortController();
             abortRef.current = abort;
             setLoading(true);
-            explorerApi.searchFiles(workspaceId, query, { limit: 50, signal: abort.signal })
+            explorerApi.searchFiles(workspaceId, query, { limit: 50, signal: abort.signal }, routingRef)
                 .then((data: { results: { path: string; score: number }[]; truncated: boolean }) => {
                     if (abort.signal.aborted) return;
                     setResults(data.results.map(r => r.path));
@@ -138,7 +139,7 @@ export function ExactOpen({ workspaceId, open, onClose, onFileSelect }: ExactOpe
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current);
         };
-    }, [query, open, workspaceId]);
+    }, [query, open, workspaceId, routingRef]);
 
     // Cleanup on unmount
     useEffect(() => {

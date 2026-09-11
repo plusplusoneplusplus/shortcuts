@@ -128,9 +128,9 @@ describe('ExplorerPanel — Refresh preserves the open hierarchy (AC-01)', () =>
         await act(async () => { clickRefresh(); });
 
         expect(treeSpy).toHaveBeenCalledTimes(3);
-        expect(treeSpy).toHaveBeenCalledWith(WS, { path: '/', depth: 2 });
-        expect(treeSpy).toHaveBeenCalledWith(WS, { path: 'src' });
-        expect(treeSpy).toHaveBeenCalledWith(WS, { path: 'src/lib' });
+        expect(treeSpy).toHaveBeenCalledWith(WS, { path: '/', depth: 2 }, undefined);
+        expect(treeSpy).toHaveBeenCalledWith(WS, { path: 'src' }, undefined);
+        expect(treeSpy).toHaveBeenCalledWith(WS, { path: 'src/lib' }, undefined);
     });
 
     it('never unmounts the tree or shows the panel spinner while refreshing', async () => {

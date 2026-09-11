@@ -242,6 +242,9 @@ workspace id. File reads/writes and the language socket resolve through that ref
 while browser document URIs and WebSocket query parameters keep the workspace id
 understood by the owning server. Local repos pass an explicit local route, so a
 same-id remote registry entry cannot capture a local Explorer document.
+Tree loading, server file search, content search/replace, Quick Open, Exact Open,
+and OS reveal use the same route. Follow-up Explorer operations therefore cannot
+be retargeted by an ambiguous or rebound bare workspace-id registry entry.
 
 Explorer tree caches, persisted view state, tab sessions, search buffers, dirty
 tracking, and deep links use the clone-qualified route as their owner key. Local

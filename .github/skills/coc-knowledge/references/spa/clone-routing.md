@@ -103,6 +103,9 @@ and blob loader even when the dock target or selected clone changes.
 Explorer tree caches, persisted view state, tab sessions, search buffers, dirty
 tracking, and deep links use that route as their owner key; local clones retain
 their existing bare-workspace keys.
+Tree loading, file and content search, content replacement, Quick Open, Exact
+Open, and OS reveal also receive the concrete route while sending the plain
+workspace id to the owning host.
 `WorkspaceTabsCluster` reselects a remote clone by its clone key when changing a
 sub-tab, while local clones keep the existing in-place tab switch.
 

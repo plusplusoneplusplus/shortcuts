@@ -174,14 +174,14 @@ describe('ExplorerPanel', () => {
             // `setExpandedPaths(new Set())`, and that must not read as a regression here.
             const start = source.indexOf('const handleRefresh = useCallback(');
             expect(start).toBeGreaterThan(-1);
-            const handler = source.slice(start, source.indexOf('}, [workspaceId, expandedPaths]);', start));
+            const handler = source.slice(start, source.indexOf('}, [workspaceId, routingRef, expandedPaths]);', start));
             expect(handler).not.toContain('setChildrenMap(new Map())');
             expect(handler).not.toContain('setExpandedPaths(new Set())');
         });
 
         it('re-fetches the root plus every expanded directory in parallel', () => {
             expect(source).toContain('Promise.allSettled');
-            expect(source).toContain('targets.map(dir => explorerApi.tree(workspaceId, { path: dir }))');
+            expect(source).toContain('targets.map(dir => explorerApi.tree(workspaceId, { path: dir }, routingRef))');
         });
 
         it('guards against a superseded refresh overwriting fresher data', () => {

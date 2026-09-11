@@ -1003,6 +1003,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                                         <ContentSearchPanel
                                             key={targetRoutingRef ?? target}
                                             workspaceId={target}
+                                            routingRef={targetRoutingRef}
                                             stateKey={targetRoutingRef ?? target}
                                             onOpenMatch={openSearchMatch}
                                             narrow={treeWidth < 300}
@@ -1023,13 +1024,14 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                             liveRepoCount: repoGroup.liveRepoCount,
                             baseUrl: repoGroup.baseUrl,
                         }
-                        : { kind: 'repo', workspaceId: target }}
+                        : { kind: 'repo', workspaceId: target, routingRef: targetRoutingRef }}
                     open={quickOpenVisible}
                     onClose={() => setQuickOpenVisible(false)}
                     onFileSelect={handleQuickOpenSelect}
                 />
                 <ExactOpen
                     workspaceId={target}
+                    routingRef={targetRoutingRef}
                     open={exactOpenVisible}
                     onClose={() => setExactOpenVisible(false)}
                     onFileSelect={handlePanelFileSelect}

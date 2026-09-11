@@ -75,7 +75,7 @@ describe('ExplorerPanel — server search (source)', () => {
         });
 
         it('passes searchQuery to the typed client', () => {
-            expect(source).toContain('searchQuery, { limit: 100 }');
+            expect(source).toContain('searchQuery, { limit: 100 }, routingRef');
         });
 
         it('clears serverSearchLoading when query is empty', () => {
@@ -190,8 +190,27 @@ describe('mergeServerResultsIntoChildrenMap', () => {
             'ws-1',
         );
 
-        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src' });
+        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src' }, undefined);
         expect(setChildrenMap).toHaveBeenCalledTimes(1);
+    });
+
+    it('routes ancestor tree loads through the concrete clone owner', async () => {
+        mockExplorerApi.tree.mockResolvedValue({ entries: [] });
+        const setChildrenMap = vi.fn();
+
+        await mergeServerResultsIntoChildrenMap(
+            ['src/index.ts'],
+            new Map(),
+            setChildrenMap as any,
+            'ws-1',
+            'remote:server-b:ws-1',
+        );
+
+        expect(mockExplorerApi.tree).toHaveBeenCalledWith(
+            'ws-1',
+            { path: 'src' },
+            'remote:server-b:ws-1',
+        );
     });
 
     it('returns all ancestor paths', async () => {
@@ -255,7 +274,7 @@ describe('mergeServerResultsIntoChildrenMap', () => {
 
         // 'src' is already present; only 'src/components' should be fetched
         expect(mockExplorerApi.tree).toHaveBeenCalledTimes(1);
-        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src/components' });
+        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src/components' }, undefined);
     });
 
     it('returns empty array when given no paths', async () => {
@@ -303,6 +322,6 @@ describe('mergeServerResultsIntoChildrenMap', () => {
 
         // Both paths share 'src' ancestor — should only fetch once
         expect(mockExplorerApi.tree).toHaveBeenCalledTimes(1);
-        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src' });
+        expect(mockExplorerApi.tree).toHaveBeenCalledWith('ws-1', { path: 'src' }, undefined);
     });
 });

@@ -92,7 +92,8 @@ export const SEARCH_DEBOUNCE_MS = 250;
 
 export interface ContentSearchPanelProps {
     workspaceId: string;
-    /** Concrete clone owner used only to isolate persisted and in-memory UI state. */
+    /** Concrete clone owner used for requests and persisted/in-memory UI state. */
+    routingRef?: string | null;
     stateKey?: string;
     /**
      * Bump to move focus into the query box. A counter rather than a boolean
@@ -181,6 +182,7 @@ function isAbortError(error: unknown): boolean {
 
 export function ContentSearchPanel({
     workspaceId,
+    routingRef,
     stateKey = workspaceId,
     focusQueryToken = 0,
     onOpenMatch,
@@ -288,7 +290,7 @@ export function ContentSearchPanel({
                 include,
                 exclude,
                 signal: controller.signal,
-            })
+            }, routingRef)
                 .then(response => {
                     if (runId !== runIdRef.current) return;
                     setState(prev => ({
@@ -326,7 +328,7 @@ export function ContentSearchPanel({
                 setState(current => (current === abortedLoadingState ? restoreState : current));
             }
         };
-    }, [workspaceId, trimmed, typedSignature, include, exclude, modes, filters.useIgnoreFiles, refreshTick, setState]);
+    }, [workspaceId, routingRef, trimmed, typedSignature, include, exclude, modes, filters.useIgnoreFiles, refreshTick, setState]);
 
     // Unmounting mid-request must not leave a request running: bump the run id
     // so any in-flight response is discarded, and abort the fetch itself.
@@ -463,6 +465,7 @@ export function ContentSearchPanel({
                     regex: modes.regex,
                     preserveCase: replace.preserveCase,
                 },
+                routingRef,
             );
             setReplaceNotice(describeReplaceResult(response));
             setRefreshTick(tick => tick + 1);
@@ -471,7 +474,7 @@ export function ContentSearchPanel({
         } finally {
             replacingRef.current = false;
         }
-    }, [workspaceId, state.query, trimmed, replace, modes]);
+    }, [workspaceId, routingRef, state.query, trimmed, replace, modes]);
 
     const onReplaceRows = useMemo(
         () => (replaceAvailable ? runReplace : undefined),

@@ -73,7 +73,9 @@ describe('QuickOpen component', () => {
         });
 
         it('searches on the server per keystroke', () => {
-            expect(source).toContain('explorerApi.searchFiles(scope.workspaceId, trimmed');
+            expect(source).toContain('explorerApi.searchFiles(');
+            expect(source).toContain('scope.workspaceId,');
+            expect(source).toContain('scope.routingRef,');
             expect(source).toContain('searchRepoGroupFiles(');
         });
 

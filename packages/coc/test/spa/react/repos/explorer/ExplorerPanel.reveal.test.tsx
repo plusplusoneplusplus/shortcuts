@@ -179,7 +179,7 @@ describe('AC-02 — Reveal Open File', () => {
         expect(storedExpanded().sort()).toEqual(['a', 'a/b', 'a/b/c']);
         // `a` and `a/b` were seeded by the depth-2 mount listing; only `a/b/c` is fetched.
         expect(treeSpy).toHaveBeenCalledTimes(1);
-        expect(treeSpy).toHaveBeenCalledWith(WS, { path: 'a/b/c' });
+        expect(treeSpy).toHaveBeenCalledWith(WS, { path: 'a/b/c' }, undefined);
         expect(screen.getByTestId(`tree-node-${DEEP}`)).toBeInTheDocument();
     });
 

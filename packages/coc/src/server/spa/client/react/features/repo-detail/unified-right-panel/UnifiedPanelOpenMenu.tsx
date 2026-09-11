@@ -180,7 +180,12 @@ export function UnifiedPanelOpenMenu({
         const issuedFor = target;
         setLoading(true);
         setSearchError(false);
-        explorerApi.searchFiles(issuedFor, trimmed, { limit: RESULT_LIMIT, signal: abort.signal })
+        explorerApi.searchFiles(
+            issuedFor,
+            trimmed,
+            { limit: RESULT_LIMIT, signal: abort.signal },
+            targetRoutingRef,
+        )
             .then(data => {
                 if (abort.signal.aborted) return;
                 setFiles(data.results);
@@ -192,7 +197,7 @@ export function UnifiedPanelOpenMenu({
                 setSearchError(true);
                 setLoading(false);
             });
-    }, [target, targetUnavailable]);
+    }, [target, targetRoutingRef, targetUnavailable]);
 
     useEffect(() => {
         if (debounceRef.current) clearTimeout(debounceRef.current);
