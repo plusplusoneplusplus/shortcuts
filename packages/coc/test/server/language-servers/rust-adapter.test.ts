@@ -7,6 +7,7 @@ import {
     RUSTUP_RESOLUTION_TIMEOUT_MS,
     findExecutableOnPath,
     resolveRustRuntime,
+    resolveRustServerRoot,
 } from '../../../src/server/language-servers/rust-adapter';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 
@@ -61,6 +62,59 @@ describe('resolveRustRuntime', () => {
             origin: 'path',
             label: 'Server: system PATH',
             notes: [],
+        });
+    });
+
+    describe('resolveRustServerRoot', () => {
+        it('selects the outermost Cargo workspace above the nearest crate manifest', () => {
+            const member = path.join(rootPath, 'crates', 'member');
+            const manifests = new Map([
+                [path.join(rootPath, 'Cargo.toml'), '[workspace]\nmembers = ["crates/member"]'],
+                [path.join(member, 'Cargo.toml'), '[package]\nname = "member"'],
+            ]);
+
+            expect(resolveRustServerRoot(
+                preset(),
+                rootPath,
+                'crates/member/src/lib.rs',
+                {
+                    exists: candidate => manifests.has(candidate),
+                    readFile: file => manifests.get(file),
+                },
+            )).toBe(rootPath);
+        });
+
+        it('falls back to the nearest Cargo manifest for a standalone crate', () => {
+            const crate = path.join(rootPath, '独立-crate');
+            const manifest = path.join(crate, 'Cargo.toml');
+
+            expect(resolveRustServerRoot(
+                preset(),
+                rootPath,
+                '独立-crate\\src\\lib.rs',
+                {
+                    exists: candidate => candidate === manifest,
+                    readFile: () => '[package]\nname = "standalone"',
+                },
+            )).toBe(crate);
+        });
+
+        it.each([
+            ['unreadable', () => { throw new Error('EACCES'); }],
+            ['unparseable', () => '[workspace'],
+        ])('degrades to the nearest marker when a manifest is %s', (_label, readFile) => {
+            const crate = path.join(rootPath, 'crate');
+            const manifest = path.join(crate, 'Cargo.toml');
+
+            expect(resolveRustServerRoot(
+                preset(),
+                rootPath,
+                'crate/src/lib.rs',
+                {
+                    exists: candidate => candidate === manifest,
+                    readFile,
+                },
+            )).toBe(crate);
         });
     });
 

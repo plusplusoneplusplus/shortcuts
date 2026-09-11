@@ -14,9 +14,9 @@
 import { LanguageServerSession } from './session';
 import type { LanguageServerSessionOptions, LanguageServerSessionState } from './session';
 import { onLanguageServerConfigChanged, resolveLanguageServerDefinitions } from './repository';
-import { prepareDefinitionForRoot } from './adapters';
+import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 import type { PrepareDefinitionDeps } from './adapters';
-import { resolveLanguageId, resolveServerRoot, selectDefinitionForFile } from './selection';
+import { resolveLanguageId, selectDefinitionForFile } from './selection';
 import type { JsonValue, LanguageServerDefinition } from './types';
 
 /** Why a document has no language server. Each maps to a concise editor status. */
@@ -130,11 +130,14 @@ export class LanguageServerManager {
         if (!definition) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
         }
-        const rootPath = resolveServerRoot(
+        const rootPath = resolveDefinitionRoot(
             definition,
             request.workspaceRoot,
             request.relativePath,
-            this.options.exists,
+            {
+                exists: this.options.exists,
+                ...this.options.prepareDeps,
+            },
         );
         const key = sessionKey(request.workspaceId, request.editingSessionId, definition.id, rootPath);
         let entry = this.entries.get(key);
