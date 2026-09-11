@@ -100,6 +100,8 @@ owner part of tab identity, and forward it through cross-file language
 navigation. Repo-group panels derive member routes from the concrete server that
 owns the group. Open tabs therefore keep their original socket, document store,
 and blob loader even when the dock target or selected clone changes.
+The shared Monaco setup explicitly registers its mouse definition contribution,
+so Ctrl/Cmd-click and F12 use the same clone-scoped provider and editor opener.
 Explorer tree caches, persisted view state, tab sessions, search buffers, dirty
 tracking, and deep links use that route as their owner key; local clones retain
 their existing bare-workspace keys.

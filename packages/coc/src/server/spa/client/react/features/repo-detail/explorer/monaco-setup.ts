@@ -5,6 +5,7 @@
  * Must be imported before any Monaco editor components mount.
  */
 import * as monaco from 'monaco-editor';
+import 'monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/link/goToDefinitionAtPosition.js';
 import { loader } from '@monaco-editor/react';
 import { conf as tsConf, language as tsLanguage } from 'monaco-editor/esm/vs/basic-languages/typescript/typescript.js';
 import { conf as jsConf, language as jsLanguage } from 'monaco-editor/esm/vs/basic-languages/javascript/javascript.js';
@@ -25,7 +26,8 @@ registerShadowLanguages(monaco as unknown as ShadowMonaco, {
 
 // A definition in another file has nowhere to open in a standalone Monaco, so
 // the one global opener is installed here and dispatches to whichever preview
-// pane started the navigation. Panes register themselves against their model.
+// pane started the navigation. The side-effect import above supplies Monaco's
+// Ctrl/Cmd-click gesture; panes register themselves against their model.
 installLanguageEditorOpener(monaco as unknown as NavigationMonaco);
 
 // Point web workers to /static/ served files

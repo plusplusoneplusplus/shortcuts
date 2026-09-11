@@ -283,6 +283,8 @@ after a crash.
 
 A definition or reference in ANOTHER file goes through one global
 `monaco.editor.registerEditorOpener`, installed in `explorer/monaco-setup.ts`.
+That setup also imports Monaco's `goToDefinitionAtPosition` contribution because
+the API-only Monaco entry point does not register the Ctrl/Cmd-click gesture.
 Each pane claims its own model with `registerEditorNavigator`
 (`features/language-servers/editorNavigation.ts`), and the opener dispatches on
 the model the jump started in — that is how the target lands in the Explorer's

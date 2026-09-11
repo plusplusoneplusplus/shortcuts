@@ -6,7 +6,7 @@
  * Every other suite in this feature stops short of one of those. The jsdom
  * tests drive the real store and the real providers against a fake socket; the
  * server integration suite drives a real language server with no browser at
- * all. Only here do a keystroke, a hover and an F12 travel the whole way and
+ * all. Only here do a keystroke, a hover and a Ctrl-click travel the whole way and
  * back, which is why the pieces this file asserts on are the ones no unit test
  * can reach: Monaco's own hover widget, its squiggles, and its go-to-definition
  * command landing a file in the Explorer's tab strip.
@@ -37,6 +37,7 @@ import { execFileSync } from 'child_process';
 import type { Locator, Page } from '@playwright/test';
 
 const WORKSPACE_ID = 'ws-lsp';
+const PANEL_WORKSPACE_ID = 'ws-lsp-panel';
 const APP_TAB = 'file:src/app.ts';
 const FORMAT_TAB = 'file:src/format.ts';
 const APP_PANEL = `[data-testid="explorer-tab-panel-${APP_TAB}"]`;
@@ -107,17 +108,19 @@ async function wordCenter(
     lineText: string,
     word: string,
     panel = APP_PANEL,
+    fromEnd = false,
 ): Promise<{ x: number; y: number } | null> {
     return page.evaluate(
-        ({ selector, lineText: line, word: needle }) => {
+        ({ selector, lineText: line, word: needle, fromEnd: useLast }) => {
             const plain = (value: string | null): string => (value ?? '').replace(/\u00a0/g, ' ');
             const root = document.querySelector(selector);
             if (!root) {
                 return null;
             }
-            const target = Array.from(root.querySelectorAll('.view-line')).find(node =>
+            const targets = Array.from(root.querySelectorAll('.view-line')).filter(node =>
                 plain(node.textContent).includes(line),
             );
+            const target = useLast ? targets.at(-1) : targets[0];
             if (!target) {
                 return null;
             }
@@ -138,7 +141,7 @@ async function wordCenter(
             }
             return null;
         },
-        { selector: `${panel} [data-testid="monaco-container"]`, lineText, word },
+        { selector: `${panel} [data-testid="monaco-container"]`, lineText, word, fromEnd },
     );
 }
 
@@ -148,15 +151,37 @@ async function findWord(
     lineText: string,
     word: string,
     panel = APP_PANEL,
+    fromEnd = false,
 ): Promise<{ x: number; y: number }> {
     let spot: { x: number; y: number } | null = null;
     await expect
         .poll(async () => {
-            spot = await wordCenter(page, lineText, word, panel);
+            spot = await wordCenter(page, lineText, word, panel, fromEnd);
             return spot !== null;
         }, { timeout: 15_000 })
         .toBe(true);
     return spot!;
+}
+
+/** Invoke Monaco's mouse-driven go-to-definition gesture on one rendered word. */
+async function ctrlClickWord(
+    page: Page,
+    lineText: string,
+    word: string,
+    panel = APP_PANEL,
+    fromEnd = false,
+): Promise<void> {
+    const spot = await findWord(page, lineText, word, panel, fromEnd);
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.mouse.click(spot.x, spot.y);
+    await page.mouse.move(4, 4);
+    await page.keyboard.down(modifier);
+    try {
+        await page.mouse.move(spot.x, spot.y);
+        await page.mouse.click(spot.x, spot.y);
+    } finally {
+        await page.keyboard.up(modifier);
+    }
 }
 
 /**
@@ -587,12 +612,15 @@ async function openUnifiedSourceFile(page: Page, name: string): Promise<void> {
 }
 
 test.describe('Explorer language support – direct remote clone', () => {
+    test.describe.configure({ mode: 'serial' });
+
     test('LSP.7 a remote clone gets its own host\'s language server and definition', async ({
         page,
         serverUrl,
     }) => {
         const tmpDir = makeTmpDir();
         const secondary = await startSecondaryServer();
+        let remoteServerId: string | null = null;
         try {
             // The real project, on the other host.
             const remoteDir = createTypeScriptRepoFixture(tmpDir, {
@@ -614,7 +642,7 @@ test.describe('Explorer language support – direct remote clone', () => {
             // read its configuration locally would report "Language support off"
             // and never start anything.
             await enableLanguageServers(secondary.url, WORKSPACE_ID);
-            await registerRemoteServer(serverUrl, 'Remote Host', secondary.url);
+            remoteServerId = (await registerRemoteServer(serverUrl, 'Remote Host', secondary.url)).id;
 
             await enableRemoteShell(page);
             await page.goto(serverUrl);
@@ -638,12 +666,7 @@ test.describe('Explorer language support – direct remote clone', () => {
             // AC-02: go to definition across files. The answer comes from the
             // remote server, and the file it names has to be read back from the
             // remote host too.
-            const spot = await findWord(page, 'export const label', 'formatWidget');
-            await page.mouse.click(spot.x, spot.y);
-            await expect
-                .poll(() => caretLineText(page, APP_PANEL), { timeout: 10_000 })
-                .toContain('export const label');
-            await page.keyboard.press('F12');
+            await ctrlClickWord(page, 'export const label', 'formatWidget');
 
             await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
             const formatPanel = `[data-testid="explorer-tab-panel-${FORMAT_TAB}"]`;
@@ -662,6 +685,11 @@ test.describe('Explorer language support – direct remote clone', () => {
                 .poll(() => caretLineText(page, formatPanel), { timeout: 15_000 })
                 .toContain('export function formatWidget');
         } finally {
+            if (remoteServerId) {
+                await request(`${serverUrl}/api/servers/${encodeURIComponent(remoteServerId)}`, {
+                    method: 'DELETE',
+                });
+            }
             await secondary.cleanup();
             safeRmSync(tmpDir);
         }
@@ -673,21 +701,24 @@ test.describe('Explorer language support – direct remote clone', () => {
     }) => {
         const tmpDir = makeTmpDir();
         const secondary = await startSecondaryServer();
+        let remoteServerId: string | null = null;
         try {
             const remoteDir = createTypeScriptRepoFixture(tmpDir, {
                 dirName: 'remote-panel-repo',
                 marker: 'formatting for the remote panel checkout',
             });
             initGitCheckout(remoteDir, 'https://github.com/acme/remote-panel-lsp.git');
-            await seedWorkspace(secondary.url, WORKSPACE_ID, 'Remote Panel LSP Repo', remoteDir);
+            await seedWorkspace(secondary.url, PANEL_WORKSPACE_ID, 'Remote Panel LSP Repo', remoteDir);
 
             const decoyDir = createDecoyRepoFixture(tmpDir);
             initGitCheckout(decoyDir, 'https://github.com/acme/decoy-panel-lsp.git');
-            await seedWorkspace(serverUrl, WORKSPACE_ID, 'Decoy Panel Repo', decoyDir);
+            await seedWorkspace(serverUrl, PANEL_WORKSPACE_ID, 'Decoy Panel Repo', decoyDir);
 
             await enableSplitWorkspacePanel(serverUrl);
-            await enableLanguageServers(secondary.url, WORKSPACE_ID);
-            await registerRemoteServer(serverUrl, 'Remote Panel Host', secondary.url);
+            await enableLanguageServers(secondary.url, PANEL_WORKSPACE_ID);
+            remoteServerId = (
+                await registerRemoteServer(serverUrl, 'Remote Panel Host', secondary.url)
+            ).id;
 
             await enableRemoteShell(page);
             await page.goto(serverUrl);
@@ -700,17 +731,20 @@ test.describe('Explorer language support – direct remote clone', () => {
             expect(await paneText(page, UNIFIED_ACTIVE_FILE)).toContain('formatWidget');
             await waitForProjectLoaded(page, UNIFIED_ACTIVE_FILE);
 
-            await focusMonacoBuffer(page, UNIFIED_ACTIVE_FILE);
-            await page.keyboard.press('Control+f');
-            await page.keyboard.type('formatWidget');
-            await page.keyboard.press('Escape');
-            await page.keyboard.press('F12');
-
             const tabLabels = page.locator(
                 `${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`,
             );
+            const formatTab = tabLabels.filter({ hasText: 'format.ts' });
+            await ctrlClickWord(
+                page,
+                'formatWidget',
+                'formatWidget',
+                UNIFIED_ACTIVE_FILE,
+                true,
+            );
+
             await expect(tabLabels.filter({ hasText: 'app.ts' })).toHaveCount(1);
-            await expect(tabLabels.filter({ hasText: 'format.ts' })).toHaveCount(1);
+            await expect(formatTab).toHaveCount(1, { timeout: 15_000 });
             await expect
                 .poll(
                     async () => (await paneText(page, UNIFIED_ACTIVE_FILE)).replace(/\s+/g, ' '),
@@ -722,6 +756,11 @@ test.describe('Explorer language support – direct remote clone', () => {
                 .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toContain('formatWidget(widget');
         } finally {
+            if (remoteServerId) {
+                await request(`${serverUrl}/api/servers/${encodeURIComponent(remoteServerId)}`, {
+                    method: 'DELETE',
+                });
+            }
             await secondary.cleanup();
             safeRmSync(tmpDir);
         }
