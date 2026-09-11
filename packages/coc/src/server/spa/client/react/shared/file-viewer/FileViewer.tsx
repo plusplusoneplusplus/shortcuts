@@ -27,10 +27,10 @@ export interface FileViewerProps {
      */
     markers?: readonly monacoEditor.IMarkerData[];
     /**
-     * Handed the live `monaco` namespace and text model for the Monaco branch,
-     * so a host that has decided this blob is a live repo document can register
-     * language providers against exactly that model. The other branches have no
-     * editor, so they never call it.
+     * Handed the live editor, `monaco` namespace and text model for the Monaco
+     * branch, so a host that has decided this blob is a live repo document can
+     * register language providers and editor listeners against exactly that
+     * model. The other branches have no editor, so they never call it.
      */
     onModelMount?: (context: EditorModelMountContext) => (() => void) | void;
     /** Line range to highlight + centre (from a `:line` / `:start-end` ref). */
