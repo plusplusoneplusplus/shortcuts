@@ -83,7 +83,7 @@ function resolveQueueActions(hash: string) {
 // Fix 1: Tab components use key={ws.id} to force remount on workspace change
 // ════════════════════════════════════════════════════════════════════════
 
-describe('Fix 1: key={ws.id} on workspace-dependent tab components', () => {
+describe('Fix 1: repo-scoped keys on workspace-dependent tab components', () => {
     it('RepoChatTab has key containing ws.id', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}');
     });
@@ -96,8 +96,8 @@ describe('Fix 1: key={ws.id} on workspace-dependent tab components', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoSettingsTab key={ws.id}');
     });
 
-    it('ExplorerPanel has key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<ExplorerPanel key={ws.id}');
+    it('ExplorerPanel is keyed by the clone-qualified repo selection', () => {
+        expect(REPO_DETAIL_SOURCE).toMatch(/<ExplorerPanel\s+key=\{sourceSelectionId\}/);
     });
 
     it('RepoGitTab still has key={ws.id}', () => {

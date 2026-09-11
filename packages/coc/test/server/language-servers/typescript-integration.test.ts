@@ -26,6 +26,7 @@ import { prepareDefinitionForRoot } from '../../../src/server/language-servers/a
 import { resolveTypeScriptRuntime } from '../../../src/server/language-servers/typescript-adapter';
 import { TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
+import { safeRm } from '../../helpers/safe-rm';
 
 interface Position {
     line: number;
@@ -285,7 +286,7 @@ beforeAll(async () => {
 afterAll(async () => {
     await session?.dispose();
     if (root) {
-        fs.rmSync(root, { recursive: true, force: true });
+        await safeRm(root);
     }
 });
 

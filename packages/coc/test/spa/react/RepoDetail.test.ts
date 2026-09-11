@@ -469,8 +469,8 @@ describe('RepoDetail Git tab wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<RepoSettingsTab key={ws.id}');
     });
 
-    it('mounts a fresh ExplorerPanel on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<ExplorerPanel key={ws.id}');
+    it('mounts a fresh ExplorerPanel for every clone-qualified repo selection', () => {
+        expect(REPO_DETAIL_SOURCE).toMatch(/<ExplorerPanel\s+key=\{sourceSelectionId\}/);
     });
 
     it('renders tasks tab using RepoChatTab with mode="tasks"', () => {
