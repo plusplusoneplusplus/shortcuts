@@ -222,6 +222,54 @@ describe('LanguageServerManager session identity', () => {
         expect(harness.manager.size).toBe(2);
     });
 
+    it('reuses one Rust session across Cargo workspace crates and isolates a standalone crate', () => {
+        const harness = createHarness([{ ...RUST_PRESET, enabled: true }], {
+            prepareDeps: {
+                runRustupWhich: () => undefined,
+                resolveOnPath: () => undefined,
+            },
+        });
+        const cargoWorkspace = path.join(harness.workspaceRoot, 'rust-workspace');
+        const firstCrate = path.join(cargoWorkspace, 'crates', 'first');
+        const secondCrate = path.join(cargoWorkspace, 'crates', 'second');
+        const standalone = path.join(harness.workspaceRoot, 'standalone');
+        for (const directory of [firstCrate, secondCrate, standalone]) {
+            fs.mkdirSync(path.join(directory, 'src'), { recursive: true });
+            fs.writeFileSync(path.join(directory, 'Cargo.toml'), '[package]\nname = "fixture"\n');
+        }
+        fs.writeFileSync(path.join(cargoWorkspace, 'Cargo.toml'), '[workspace]\nmembers = ["crates/*"]\n');
+
+        const first = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'rust-workspace/crates/first/src/lib.rs',
+        });
+        const second = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'rust-workspace\\crates\\second\\src\\lib.rs',
+        });
+        const separate = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'standalone/src/lib.rs',
+        });
+
+        expect(first.ok && second.ok && separate.ok).toBe(true);
+        if (!first.ok || !second.ok || !separate.ok) {
+            return;
+        }
+        expect(first.handle.rootPath).toBe(cargoWorkspace);
+        expect(second.handle.rootPath).toBe(cargoWorkspace);
+        expect(second.handle.session).toBe(first.handle.session);
+        expect(separate.handle.rootPath).toBe(standalone);
+        expect(separate.handle.session).not.toBe(first.handle.session);
+        expect(harness.manager.size).toBe(2);
+    });
+
     it('keeps workspaces apart even when the relative path matches', () => {
         const harness = createHarness();
         const other = tempDir('coc-lsp-manager-repo-b-');

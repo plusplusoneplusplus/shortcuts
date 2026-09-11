@@ -13,15 +13,16 @@ and transport code stays generic.
   `{a,b}`). Patterns match the workspace-relative path, so Windows separators
   are normalized before matching.
 - `selection.ts` — deterministic server selection (priority, then pattern
-  specificity, then id), LSP language-id resolution, and project-root discovery
-  from root markers.
+  specificity, then id), LSP language-id resolution, and nearest-marker
+  project-root discovery.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
-- `adapters.ts` — `prepareDefinitionForRoot`, the one language-neutral hook the
+- `adapters.ts` — the language-neutral root and runtime preparation hooks the
   manager calls before starting a session.
 - `typescript-adapter.ts` — TypeScript's answer to that hook: which
   `typescript-language-server` runs and which TypeScript library it drives.
-- `rust-adapter.ts` — Rust's answer to that hook: discover rust-analyzer from
-  the active rustup toolchain for the project, then from the owning host's PATH.
+- `rust-adapter.ts` — Rust's answer to that hook: choose the outermost Cargo
+  workspace root, then discover rust-analyzer from its active rustup toolchain
+  or the owning host's PATH.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -127,10 +128,11 @@ and transport code stays generic.
 - `manager.ts` — `LanguageServerManager` owns every live session on this host.
   `acquire({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
   resolves the definition with `selectDefinitionForFile`, the root with
-  `resolveServerRoot`, and returns a handle carrying the session, the LSP
-  language id, and a `release` function. A failure carries a reason of
-  `disabled`, `no-definition`, or `capacity` so the editor can show a concise
-  status instead of an error.
+  the adapter registry (generic definitions use nearest-marker discovery; Rust
+  uses the outermost Cargo workspace), and returns a handle carrying the
+  session, the LSP language id, and a `release` function. A failure carries a
+  reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
+  concise status instead of an error.
 - Sessions are keyed on workspace, browser editing session, definition id, and
   resolved root. Two browser windows on the same file therefore get two
   processes and cannot see each other's buffers or diagnostics, and a monorepo
