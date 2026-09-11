@@ -20,6 +20,8 @@ and transport code stays generic.
   manager calls before starting a session.
 - `typescript-adapter.ts` — TypeScript's answer to that hook: which
   `typescript-language-server` runs and which TypeScript library it drives.
+- `rust-adapter.ts` — Rust's answer to that hook: discover rust-analyzer from
+  the active rustup toolchain for the project, then from the owning host's PATH.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -159,6 +161,11 @@ and transport code stays generic.
 - An adapter claims a definition only when it is a built-in preset that still
   points at its own command. Repointing a preset in workspace settings is an
   explicit choice, and preparation must not undo it.
+- `rust-adapter.ts` asks `rustup which rust-analyzer` from the project root with
+  a bounded timeout so `rust-toolchain.toml` overrides are honored, then scans
+  the owning host's `PATH`. CoC does not download or bundle rust-analyzer.
+  Missing discovery leaves `rust-analyzer` as the command so startup reports
+  `unavailable`; user-facing labels never contain the resolved absolute path.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The
