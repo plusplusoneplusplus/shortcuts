@@ -611,6 +611,11 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Install rust-analyzer
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-analyzer
+
       # e2e boots the real server, so unlike coc-test it needs every workspace
       # dist/ and packages/coc's own. It gets them from this one step: npm runs
       # `prebuild` first, and scripts/prebuild.mjs builds the whole

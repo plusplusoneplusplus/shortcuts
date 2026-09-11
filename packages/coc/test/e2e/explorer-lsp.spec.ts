@@ -524,18 +524,9 @@ test.describe('Explorer language support – TypeScript features', () => {
                 await page.keyboard.up(modifier);
             }
 
-            // Click the call, then Monaco's own go-to-definition keybinding —
-            // the target is in another file, so it can only land through the
-            // editor opener the Explorer installs.
-            const spot = await findWord(page, 'export const label', 'formatWidget');
-            await page.mouse.click(spot.x, spot.y);
-            // The keystroke asks about wherever the caret is, and the caret
-            // starts on line 1, so pressing before the click has landed asks
-            // about the import instead.
-            await expect
-                .poll(() => caretLineText(page, APP_PANEL), { timeout: 10_000 })
-                .toContain('export const label');
-            await page.keyboard.press('F12');
+            // Use Monaco's mouse-driven definition gesture after proving its
+            // own link decoration is active on the symbol.
+            await ctrlClickWord(page, 'export const label', 'formatWidget');
 
             await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
             const formatPanel = `[data-testid="explorer-tab-panel-${FORMAT_TAB}"]`;
