@@ -153,7 +153,7 @@ describe('language routing across workspaces and hosts (AC-04)', () => {
         client.dispose();
     });
 
-    it('never falls through locally while a concrete remote route appears or changes', () => {
+    it('rejects stale requests and replays only the owner buffer when a remote route changes', async () => {
         const workspaceId = 'ws-late-remote';
         const ownerKey = buildRemoteCloneKey('server-owner', workspaceId);
         const client = new LanguageServerClient({
@@ -175,6 +175,13 @@ describe('language routing across workspaces and hosts (AC-04)', () => {
         expect(FakeSocket.instances.map(socket => new URL(socket.url).host)).toEqual(['10.0.0.8:4400']);
 
         const firstRemoteSocket = FakeSocket.instances[0];
+        const store = new LanguageDocumentStore({ workspaceId, routingRef: ownerKey, client });
+        const view = store.open({ path: PATH, text: 'export const remote = 1;' });
+        firstRemoteSocket.open();
+        completeAttach({ workspaceId, client, store, socket: () => firstRemoteSocket });
+        view.update('export const remote = 2;');
+        const staleRequest = view.sendRequest('textDocument/hover', view.documentParams());
+
         registerCloneBaseUrls([{
             workspaceId,
             serverId: 'server-owner',
@@ -182,9 +189,19 @@ describe('language routing across workspaces and hosts (AC-04)', () => {
         }]);
 
         expect(firstRemoteSocket.closed?.reason).toBe('clone route changed');
+        await expect(staleRequest).rejects.toMatchObject({ code: 'disconnected' });
         expect(FakeSocket.instances.map(socket => new URL(socket.url).host))
             .toEqual(['10.0.0.8:4400', '10.0.0.9:4500']);
         expect(FakeSocket.instances.some(socket => new URL(socket.url).host === window.location.host)).toBe(false);
+
+        const secondRemoteSocket = FakeSocket.instances[1];
+        secondRemoteSocket.open();
+        completeAttach({ workspaceId, client, store, socket: () => secondRemoteSocket });
+        const replayed = lastNotification(secondRemoteSocket, 'textDocument/didOpen') as any;
+        expect(replayed.textDocument.text).toBe('export const remote = 2;');
+
+        attachment.release();
+        store.dispose();
         client.dispose();
     });
 
