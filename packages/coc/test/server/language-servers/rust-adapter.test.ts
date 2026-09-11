@@ -136,11 +136,11 @@ describe('resolveRustRuntime', () => {
 
 describe('findExecutableOnPath', () => {
     it('uses PATH order without invoking a shell', () => {
-        const first = path.resolve(path.sep, 'first', 'rust-analyzer');
-        const second = path.resolve(path.sep, 'second', 'rust-analyzer');
+        const first = path.posix.resolve('/', 'first', 'rust-analyzer');
+        const second = path.posix.resolve('/', 'second', 'rust-analyzer');
 
         expect(findExecutableOnPath('rust-analyzer', {
-            env: { PATH: [path.dirname(first), path.dirname(second)].join(path.delimiter) },
+            env: { PATH: [path.posix.dirname(first), path.posix.dirname(second)].join(path.posix.delimiter) },
             platform: 'linux',
             isExecutable: candidate => candidate === second,
         })).toBe(second);
