@@ -312,4 +312,13 @@ and transport code stays generic.
   shutdown unpublishing the manager.
 - `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
   from `packages/coc`.
+- `npm run test:e2e -- test/e2e/explorer-lsp.spec.ts` from `packages/coc` drives
+  the real browser, the real Monaco and a real `typescript-language-server`.
+  Its direct-remote case starts a second CoC server in-process
+  (`test/e2e/fixtures/secondary-server.ts`), registers it as a `url` remote, and
+  turns language support on for the remote workspace only, while the dashboard
+  host holds a decoy checkout over the same relative paths with no
+  `formatWidget` and no language support. The badge reaching `ready` and the
+  definition landing on the remote copy are therefore only reachable through the
+  owning host.
 - `npm run test:run` from `packages/coc-client`.

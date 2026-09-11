@@ -23,10 +23,22 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { enableExplorerEditorTabs, expectEditorTabs } from './fixtures/explorer-tabs-seed';
-import { createTypeScriptRepoFixture, enableLanguageServers } from './fixtures/language-server-seed';
+import {
+    createDecoyRepoFixture,
+    createTypeScriptRepoFixture,
+    enableLanguageServers,
+} from './fixtures/language-server-seed';
+import {
+    enableRemoteShell,
+    registerRemoteServer,
+    startSecondaryServer,
+} from './fixtures/secondary-server';
+import { execFileSync } from 'child_process';
 import type { Locator, Page } from '@playwright/test';
 
 const WORKSPACE_ID = 'ws-lsp';
+/** The id the direct-remote cases register on the other host. */
+const REMOTE_WORKSPACE_ID = 'ws-lsp-remote';
 const APP_TAB = 'file:src/app.ts';
 const FORMAT_TAB = 'file:src/format.ts';
 const APP_PANEL = `[data-testid="explorer-tab-panel-${APP_TAB}"]`;
@@ -463,6 +475,165 @@ test.describe('Explorer language support – recovery', () => {
                 .poll(() => hoverTextFor(page, 'export const extra', 'extra'), { timeout: 90_000 })
                 .toContain('const extra: string');
         } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 4. A clone that lives on another CoC server
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything above runs against one server, where routing a language request to
+ * "the workspace" and routing it to "this machine" are the same thing. A direct
+ * remote clone splits them: the page is served by the dashboard host, and the
+ * files, the config and the language server all belong to a different host the
+ * browser reaches at its own origin.
+ *
+ * The trap the cases below are built to catch is that a mis-routed call still
+ * looks valid. Both hosts here register the SAME workspace id over the SAME
+ * relative paths, so a request that forgets which clone it belongs to reaches
+ * the dashboard host and is answered — with the wrong file, or with "language
+ * support off" — instead of failing outright. The dashboard host is given a
+ * decoy checkout with no `formatWidget` and no language support at all, so
+ * there is no way for it to satisfy a case by accident.
+ */
+
+/** Make `dir` a git checkout with a fixed `origin` (never fetched — it only feeds grouping). */
+function initGitCheckout(dir: string, originUrl: string): void {
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+    git('init');
+    git('config', 'user.email', 'e2e@example.com');
+    git('config', 'user.name', 'E2E');
+    git('add', '.');
+    git('commit', '-m', 'init');
+    git('remote', 'add', 'origin', originUrl);
+}
+
+/** Pick a repo out of the remote picker by name, and wait for its detail body. */
+async function selectRepoNamed(page: Page, name: string): Promise<void> {
+    await expect(page.locator('[data-testid="remote-chip"]').first()).toBeVisible({ timeout: 30_000 });
+    await page.locator('[data-testid="remote-chip"]').first().click();
+    await expect(page.locator('[data-testid="remote-dropdown"]')).toBeVisible({ timeout: 10_000 });
+    await page.locator('[data-testid="remote-search-input"]').fill(name);
+    const row = page.locator('[data-testid="remote-dropdown-item"]');
+    await expect(row).toHaveCount(1, { timeout: 30_000 });
+    await row.click();
+    await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * Click one sub-tab of the selected clone.
+ *
+ * In the remote-first shell the sub-tabs live in the top bar, and a narrow
+ * viewport moves the later ones into an overflow menu, so both places have to
+ * be tried.
+ */
+async function openSubTab(page: Page, key: string): Promise<void> {
+    const inline = page.locator(`button[data-subtab="${key}"]`).first();
+    if (await inline.isVisible().catch(() => false)) {
+        await inline.click();
+    } else {
+        await page.locator('[data-testid="subbar-overflow-toggle"]').click();
+        await page.locator(`[data-testid="subbar-overflow-menu"] [data-subtab="${key}"]`).click();
+    }
+    await expect(page.locator('[data-testid="explorer-panel"]')).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * The text of every line currently rendered in one editor pane.
+ *
+ * Read off `.view-line` rather than the container's `innerText`, which carries
+ * only the line-number gutter — the same reason the caret and squiggle helpers
+ * above walk the view lines themselves.
+ */
+async function paneText(page: Page, panel: string): Promise<string> {
+    return page.evaluate((selector: string) => {
+        const root = document.querySelector(selector);
+        return Array.from(root?.querySelectorAll('.view-line') ?? [])
+            .map(node => (node.textContent ?? '').replace(/\u00a0/g, ' '))
+            .join('\n');
+    }, `${panel} [data-testid="monaco-container"]`);
+}
+
+test.describe('Explorer language support – direct remote clone', () => {
+    test('LSP.7 a remote clone gets its own host\'s language server and definition', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = makeTmpDir();
+        const secondary = await startSecondaryServer();
+        try {
+            // The real project, on the other host.
+            const remoteDir = createTypeScriptRepoFixture(tmpDir, {
+                dirName: 'remote-repo',
+                marker: 'formatting for the remote checkout',
+            });
+            initGitCheckout(remoteDir, 'https://github.com/acme/remote-lsp.git');
+            await seedWorkspace(secondary.url, REMOTE_WORKSPACE_ID, 'Remote LSP Repo', remoteDir);
+
+            // The decoy, on the dashboard host, under the SAME workspace id and
+            // the same relative paths.
+            const decoyDir = createDecoyRepoFixture(tmpDir);
+            initGitCheckout(decoyDir, 'https://github.com/acme/decoy-lsp.git');
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'Decoy Local Repo', decoyDir);
+
+            await enableExplorerEditorTabs(serverUrl);
+            // Language support is turned on for the REMOTE workspace only. The
+            // dashboard host keeps its shipped-off config, so a document that
+            // read its configuration locally would report "Language support off"
+            // and never start anything.
+            await enableLanguageServers(secondary.url, REMOTE_WORKSPACE_ID);
+            await registerRemoteServer(serverUrl, 'Remote Host', secondary.url);
+
+            await enableRemoteShell(page);
+            await page.goto(serverUrl);
+            await selectRepoNamed(page, 'Remote LSP Repo');
+            await openSubTab(page, 'explorer');
+            await openSourceFile(page, 'app.ts');
+
+            // AC-01: the badge can only reach `ready` through the remote host's
+            // config and a server process started on that host.
+            await waitForLanguageServer(page);
+            await expect(page.locator(`${APP_PANEL} [data-testid="language-status-label"]`))
+                .toHaveText('TypeScript');
+
+            // The buffer on screen is the remote checkout's, not the decoy that
+            // shares its path on the page origin.
+            expect(await paneText(page, APP_PANEL)).toContain('formatWidget');
+            await waitForProjectLoaded(page);
+
+            await expectEditorTabs(page, [APP_TAB]);
+
+            // AC-02: go to definition across files. The answer comes from the
+            // remote server, and the file it names has to be read back from the
+            // remote host too.
+            const spot = await findWord(page, 'export const label', 'formatWidget');
+            await page.mouse.click(spot.x, spot.y);
+            await expect
+                .poll(() => caretLineText(page, APP_PANEL), { timeout: 10_000 })
+                .toContain('export const label');
+            await page.keyboard.press('F12');
+
+            await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
+            const formatPanel = `[data-testid="explorer-tab-panel-${FORMAT_TAB}"]`;
+            await expect(page.locator(`${formatPanel} [data-testid="monaco-container"]`))
+                .toBeVisible({ timeout: 15_000 });
+
+            // The marker is written into the remote checkout only, so this is
+            // the assertion that separates "the right path" from "the right
+            // host's copy of that path".
+            await expect
+                .poll(() => paneText(page, formatPanel), { timeout: 15_000 })
+                .toContain('formatting for the remote checkout');
+            expect(await paneText(page, formatPanel)).not.toContain('decoy checkout');
+
+            await expect
+                .poll(() => caretLineText(page, formatPanel), { timeout: 15_000 })
+                .toContain('export function formatWidget');
+        } finally {
+            await secondary.cleanup();
             safeRmSync(tmpDir);
         }
     });
