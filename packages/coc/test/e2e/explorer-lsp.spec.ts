@@ -21,7 +21,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { seedWorkspace } from './fixtures/seed';
+import { request, seedWorkspace } from './fixtures/seed';
 import { enableExplorerEditorTabs, expectEditorTabs } from './fixtures/explorer-tabs-seed';
 import {
     createDecoyRepoFixture,
@@ -201,9 +201,9 @@ async function hoverTextFor(
  * declared in src/format.ts, so `const label: string` is the first moment the
  * whole project is in play.
  */
-async function waitForProjectLoaded(page: Page): Promise<void> {
+async function waitForProjectLoaded(page: Page, panel = APP_PANEL): Promise<void> {
     await expect
-        .poll(() => hoverTextFor(page, 'export const label', 'label'), { timeout: 60_000 })
+        .poll(() => hoverTextFor(page, 'export const label', 'label', panel), { timeout: 60_000 })
         .toContain('const label: string');
 }
 
@@ -555,6 +555,37 @@ async function paneText(page: Page, panel: string): Promise<string> {
     }, `${panel} [data-testid="monaco-container"]`);
 }
 
+const UNIFIED_PANEL = '[data-testid="unified-right-panel"]';
+const UNIFIED_ACTIVE_FILE = `${UNIFIED_PANEL} [data-testid^="unified-panel-view-"]:not([style*="display: none"])`;
+
+async function enableSplitWorkspacePanel(serverUrl: string): Promise<void> {
+    const response = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'features.splitWorkspacePanel': true }),
+    });
+    if (response.status !== 200) {
+        throw new Error(`Failed to enable splitWorkspacePanel: ${response.status} ${response.body}`);
+    }
+}
+
+async function openUnifiedSourceFile(page: Page, name: string): Promise<void> {
+    const explorerControl = page.locator('[data-testid="workspace-dock-explorer-toggle"]').first();
+    await expect(explorerControl).toBeVisible({ timeout: 15_000 });
+    if ((await explorerControl.getAttribute('aria-pressed')) !== 'true') {
+        await explorerControl.click();
+    }
+    await expect(page.locator(UNIFIED_PANEL)).toHaveAttribute('data-open', 'true', { timeout: 10_000 });
+    await page.keyboard.press('Control+p');
+    const dialog = page.locator('[data-testid="quick-open-dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await dialog.locator('[data-testid="quick-open-input"]').fill(name);
+    await expect(dialog.locator('[data-testid="quick-open-item-0"]')).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press('Enter');
+    await expect(dialog).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="monaco-container"]`))
+        .toBeVisible({ timeout: 15_000 });
+}
+
 test.describe('Explorer language support – direct remote clone', () => {
     test('LSP.7 a remote clone gets its own host\'s language server and definition', async ({
         page,
@@ -630,6 +661,66 @@ test.describe('Explorer language support – direct remote clone', () => {
             await expect
                 .poll(() => caretLineText(page, formatPanel), { timeout: 15_000 })
                 .toContain('export function formatWidget');
+        } finally {
+            await secondary.cleanup();
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('LSP.8 a direct remote definition stays in unified right-panel file tabs', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = makeTmpDir();
+        const secondary = await startSecondaryServer();
+        try {
+            const remoteDir = createTypeScriptRepoFixture(tmpDir, {
+                dirName: 'remote-panel-repo',
+                marker: 'formatting for the remote panel checkout',
+            });
+            initGitCheckout(remoteDir, 'https://github.com/acme/remote-panel-lsp.git');
+            await seedWorkspace(secondary.url, WORKSPACE_ID, 'Remote Panel LSP Repo', remoteDir);
+
+            const decoyDir = createDecoyRepoFixture(tmpDir);
+            initGitCheckout(decoyDir, 'https://github.com/acme/decoy-panel-lsp.git');
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'Decoy Panel Repo', decoyDir);
+
+            await enableSplitWorkspacePanel(serverUrl);
+            await enableLanguageServers(secondary.url, WORKSPACE_ID);
+            await registerRemoteServer(serverUrl, 'Remote Panel Host', secondary.url);
+
+            await enableRemoteShell(page);
+            await page.goto(serverUrl);
+            await selectRepoNamed(page, 'Remote Panel LSP Repo');
+            await openUnifiedSourceFile(page, 'app.ts');
+
+            await waitForLanguageServer(page, UNIFIED_ACTIVE_FILE);
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="language-status-label"]`))
+                .toHaveText('TypeScript');
+            expect(await paneText(page, UNIFIED_ACTIVE_FILE)).toContain('formatWidget');
+            await waitForProjectLoaded(page, UNIFIED_ACTIVE_FILE);
+
+            await focusMonacoBuffer(page, UNIFIED_ACTIVE_FILE);
+            await page.keyboard.press('Control+f');
+            await page.keyboard.type('formatWidget');
+            await page.keyboard.press('Escape');
+            await page.keyboard.press('F12');
+
+            const tabLabels = page.locator(
+                `${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`,
+            );
+            await expect(tabLabels.filter({ hasText: 'app.ts' })).toHaveCount(1);
+            await expect(tabLabels.filter({ hasText: 'format.ts' })).toHaveCount(1);
+            await expect
+                .poll(
+                    async () => (await paneText(page, UNIFIED_ACTIVE_FILE)).replace(/\s+/g, ' '),
+                    { timeout: 15_000 },
+                )
+                .toContain('formatting for the remote panel checkout');
+            expect(await paneText(page, UNIFIED_ACTIVE_FILE)).not.toContain('decoy checkout');
+            await expect
+                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
+                .toContain('formatWidget(widget');
         } finally {
             await secondary.cleanup();
             safeRmSync(tmpDir);
