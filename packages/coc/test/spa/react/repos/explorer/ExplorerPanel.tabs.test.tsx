@@ -117,8 +117,8 @@ function openTabIds(): string[] {
         .filter((id): id is string => id !== null);
 }
 
-async function renderPanel(wsId = 'ws-1') {
-    render(<ExplorerPanel workspaceId={wsId} mode="editor" />);
+async function renderPanel(wsId = 'ws-1', routingRef?: string | null) {
+    render(<ExplorerPanel workspaceId={wsId} routingRef={routingRef} mode="editor" />);
     await waitFor(() => expect(screen.getByTestId('tree-node-a.ts')).toBeInTheDocument());
 }
 
@@ -156,6 +156,26 @@ afterEach(() => {
 });
 
 describe('ExplorerPanel — editor tabs (flag on)', () => {
+    it('isolates remote tree and tab state from a local clone with the same workspace id', async () => {
+        const routingRef = 'remote:server-b:ws-1';
+        await renderPanel('ws-1', null);
+        fireEvent.click(screen.getByTestId('tree-node-a.ts'));
+        await waitFor(() => expect(readTabs('ws-1').tabs.map(tab => tab.id)).toEqual(['file:a.ts']));
+        cleanup();
+
+        treeSpy.mockResolvedValue({ entries: [{ name: 'remote.ts', type: 'file', path: 'remote.ts' }] });
+        render(<ExplorerPanel workspaceId="ws-1" routingRef={routingRef} mode="editor" />);
+        await waitFor(() => expect(screen.getByTestId('tree-node-remote.ts')).toBeInTheDocument());
+        expect(screen.queryByTestId('tree-node-a.ts')).toBeNull();
+        expect(openTabIds()).toEqual([]);
+
+        fireEvent.click(screen.getByTestId('tree-node-remote.ts'));
+        await waitFor(() => expect(openTabIds()).toEqual(['file:remote.ts']));
+
+        expect(readTabs(routingRef).tabs.map(tab => tab.id)).toEqual(['file:remote.ts']);
+        expect(readTabs('ws-1').tabs.map(tab => tab.id)).toEqual(['file:a.ts']);
+    });
+
     it('opens a single replaceable preview tab on single click', async () => {
         await renderPanel();
         fireEvent.click(screen.getByTestId('tree-node-a.ts'));

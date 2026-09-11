@@ -100,6 +100,9 @@ owner part of tab identity, and forward it through cross-file language
 navigation. Repo-group panels derive member routes from the concrete server that
 owns the group. Open tabs therefore keep their original socket, document store,
 and blob loader even when the dock target or selected clone changes.
+Explorer tree caches, persisted view state, tab sessions, search buffers, dirty
+tracking, and deep links use that route as their owner key; local clones retain
+their existing bare-workspace keys.
 `WorkspaceTabsCluster` reselects a remote clone by its clone key when changing a
 sub-tab, while local clones keep the existing in-place tab switch.
 

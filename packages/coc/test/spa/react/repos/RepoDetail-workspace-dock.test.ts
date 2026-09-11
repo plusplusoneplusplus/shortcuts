@@ -65,6 +65,13 @@ describe('Workspace dock — flag gating (AC-01)', () => {
         expect(dockSource).toContain('routingRef={explorerRoutingRef}');
     });
 
+    it('remounts the Explorer when concrete clone ownership changes', () => {
+        const explorerIdx = REPO_DETAIL_SOURCE.indexOf('<ExplorerPanel');
+        const explorerEndIdx = REPO_DETAIL_SOURCE.indexOf('/>', explorerIdx);
+        const explorerSource = REPO_DETAIL_SOURCE.slice(explorerIdx, explorerEndIdx);
+        expect(explorerSource).toContain('key={sourceSelectionId}');
+    });
+
     it('gates the unified panel host on dockAvailable alone', () => {
         expect(REPO_DETAIL_SOURCE).toContain('() => (dockAvailable ? { workspaceId: ws.id, chatId: panelChatId } : null),');
     });

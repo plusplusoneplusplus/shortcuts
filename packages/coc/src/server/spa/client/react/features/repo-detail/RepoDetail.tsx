@@ -853,7 +853,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             {wasVisited('explorer') && (
                                 <ExplorerPanel
-                                    key={ws.id}
+                                    key={sourceSelectionId}
                                     workspaceId={ws.id}
                                     routingRef={explorerRoutingRef}
                                     mode="editor"

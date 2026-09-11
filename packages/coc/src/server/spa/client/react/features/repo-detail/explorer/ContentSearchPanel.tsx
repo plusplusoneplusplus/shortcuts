@@ -92,6 +92,8 @@ export const SEARCH_DEBOUNCE_MS = 250;
 
 export interface ContentSearchPanelProps {
     workspaceId: string;
+    /** Concrete clone owner used only to isolate persisted and in-memory UI state. */
+    stateKey?: string;
     /**
      * Bump to move focus into the query box. A counter rather than a boolean
      * because the request ("Find in Folder") can arrive while the view is
@@ -179,22 +181,23 @@ function isAbortError(error: unknown): boolean {
 
 export function ContentSearchPanel({
     workspaceId,
+    stateKey = workspaceId,
     focusQueryToken = 0,
     onOpenMatch,
     onOpenInEditor,
     narrow = false,
     toolbarSlot = null,
 }: ContentSearchPanelProps) {
-    const [query, setQuery] = useExplorerContentQuery(workspaceId);
-    const [modes, setModes] = useExplorerContentModes(workspaceId);
-    const [filters, setFilters] = useExplorerContentFilters(workspaceId);
+    const [query, setQuery] = useExplorerContentQuery(stateKey);
+    const [modes, setModes] = useExplorerContentModes(stateKey);
+    const [filters, setFilters] = useExplorerContentFilters(stateKey);
     // Replace state is persisted like the query, and deliberately kept out of
     // the request effect: nothing here changes what was searched.
-    const [replace, setReplace] = useExplorerContentReplace(workspaceId);
-    const [state, setState] = useExplorerContentResults(workspaceId);
+    const [replace, setReplace] = useExplorerContentReplace(stateKey);
+    const [state, setState] = useExplorerContentResults(stateKey);
     // List vs. tree is a display preference, not part of the query, so it is
     // persisted and never touches the request effect.
-    const [resultView, setResultView] = useExplorerContentResultView(workspaceId);
+    const [resultView, setResultView] = useExplorerContentResultView(stateKey);
     // The `…` section starts open when it is already filtering, so a persisted
     // filter is never hidden behind a collapsed chevron on the first render.
     const [filtersExpanded, setFiltersExpanded] = useState(() => contentSearchFiltersActive(filters));

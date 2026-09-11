@@ -52,7 +52,11 @@ export type ExplorerPanelMode = 'editor' | 'navigator' | 'sidebar';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
-    /** Concrete clone identity for live file and language-server operations. */
+    /**
+     * Concrete clone identity for live file/language operations and Explorer
+     * state. Local owners pass null so their existing workspace-scoped keys stay
+     * unchanged.
+     */
     routingRef?: string | null;
     /**
      * Whether this mount owns the global `#repos/:id/explorer/:path` route.
@@ -238,6 +242,7 @@ export function ExplorerPanel({
     mode: panelMode,
     activeFilePath,
 }: ExplorerPanelProps) {
+    const ownerKey = routingRef ?? workspaceId;
     // Navigator mode: the host owns the editor, so this panel is only a tree.
     // `sidebar` is navigator plus "the host owns the breadcrumbs too".
     const navigatorMode = panelMode !== 'editor';
@@ -260,12 +265,12 @@ export function ExplorerPanel({
 
     // Fetched tree data — cached in-memory per workspace so a switch-back reuses
     // already-loaded directory listings instead of re-fetching (AC-02). These
-    // survive the `key={ws.id}` remount because they live in explorerTreeCache,
+    // survive the clone-owner remount because they live in explorerTreeCache,
     // not in this component's React state. Cache is in-memory only; a page reload
     // starts empty and re-fetches.
-    const [rootEntries, setRootEntries] = useExplorerRootEntries(workspaceId);
-    const [childrenMap, setChildrenMap] = useExplorerChildrenMap(workspaceId);
-    const [rootLoaded, setRootLoaded] = useExplorerRootLoaded(workspaceId);
+    const [rootEntries, setRootEntries] = useExplorerRootEntries(ownerKey);
+    const [childrenMap, setChildrenMap] = useExplorerChildrenMap(ownerKey);
+    const [rootLoaded, setRootLoaded] = useExplorerRootLoaded(ownerKey);
     // Skip the mount spinner when the root listing is already cached from an
     // earlier visit to this workspace, so a switch-back renders instantly.
     const [loading, setLoading] = useState(!rootLoaded);
@@ -276,12 +281,12 @@ export function ExplorerPanel({
     const refreshRunIdRef = useRef(0);
 
     // Per-workspace persisted UI state (localStorage). Because ExplorerPanel is
-    // remounted with `key={ws.id}` on every workspace switch, these must survive
+    // remounted on every clone-owner switch, these must survive
     // outside React state so expanded folders + the open file are restored when
     // the user switches back (and across a page reload). See explorerStateStore.
-    const [selectedPath, setSelectedPath] = useExplorerSelectedPath(workspaceId);
-    const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(workspaceId);
-    const [previewFile, setPreviewFile] = useExplorerPreviewFile(workspaceId);
+    const [selectedPath, setSelectedPath] = useExplorerSelectedPath(ownerKey);
+    const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(ownerKey);
+    const [previewFile, setPreviewFile] = useExplorerPreviewFile(ownerKey);
     // The "Open in Editor" buffer (§2.7). In memory only — it is a snapshot of a
     // result set, and a stale one restored after a reload would be a lie.
     const [searchEditor, setSearchEditor] = useState<{ text: string; query: string } | null>(null);
@@ -292,7 +297,7 @@ export function ExplorerPanel({
     // through the persisted per-workspace tab session and the editor area
     // renders one buffer per tab, each owning its own loading/error/dirty state.
     const tabsEnabled = useExplorerEditorTabsEnabled();
-    const tabs = useExplorerTabs(workspaceId);
+    const tabs = useExplorerTabs(ownerKey);
     const tabsState = tabs.state;
     const { openFile: openFileTab, openSearch: openSearchTab, close: closeTabById, closeMany: closeTabsByIds, pin: pinTabById, activate: activateTabById, idsOther, idsAll } = tabs;
     // The freshest session, readable from the keyboard listener without making
@@ -308,7 +313,7 @@ export function ExplorerPanel({
     const rootRef = useRef<HTMLDivElement>(null);
     // Search-tab texts: in memory, shared by both mounts of this workspace, and
     // deliberately never persisted (see explorerStateStore).
-    const [searchBuffers, setSearchBuffers] = useExplorerSearchBuffers(workspaceId);
+    const [searchBuffers, setSearchBuffers] = useExplorerSearchBuffers(ownerKey);
     const [dirtyTabIds, setDirtyTabIds] = useState<ReadonlySet<string>>(NO_TAB_IDS);
     // Mobile only: the Files back action hides the editor without closing the
     // active tab, so a trip back to the tree keeps the whole tab set (AC-06).
@@ -320,11 +325,11 @@ export function ExplorerPanel({
     // dock) independent; the flag is cleared when this panel unmounts.
     const dirtyInstanceId = useId();
     const reportPreviewDirty = useCallback((isDirty: boolean) => {
-        setExplorerInstanceDirty(workspaceId, dirtyInstanceId, isDirty);
-    }, [workspaceId, dirtyInstanceId]);
+        setExplorerInstanceDirty(ownerKey, dirtyInstanceId, isDirty);
+    }, [ownerKey, dirtyInstanceId]);
     useEffect(
-        () => () => setExplorerInstanceDirty(workspaceId, dirtyInstanceId, false),
-        [workspaceId, dirtyInstanceId],
+        () => () => setExplorerInstanceDirty(ownerKey, dirtyInstanceId, false),
+        [ownerKey, dirtyInstanceId],
     );
 
     // With tabs on, dirtiness is per buffer, so the guard sees the aggregate:
@@ -351,8 +356,8 @@ export function ExplorerPanel({
     }, [pinTabById]);
     useEffect(() => {
         if (!tabsEnabled) return;
-        setExplorerInstanceDirty(workspaceId, dirtyInstanceId, dirtyTabIds.size > 0);
-    }, [tabsEnabled, dirtyTabIds, workspaceId, dirtyInstanceId]);
+        setExplorerInstanceDirty(ownerKey, dirtyInstanceId, dirtyTabIds.size > 0);
+    }, [tabsEnabled, dirtyTabIds, ownerKey, dirtyInstanceId]);
 
     // Per-tab load/error, so the strip can show a spinner or a warning for a
     // buffer the user is not looking at (AC-05/AC-06). Like the dirty handlers,
@@ -434,11 +439,11 @@ export function ExplorerPanel({
 
     // Which sidebar view is showing. Persisted per workspace, so the choice
     // survives a remount; the tree's own state is untouched while Search is up.
-    const [storedView, setView] = useExplorerView(workspaceId);
+    const [storedView, setView] = useExplorerView(ownerKey);
     const view = sidebarMode ? 'tree' : storedView;
     // Owned here only so "Find in Folder" can write the include glob; the Search
     // panel reads the same persisted store, so the write lands in its box.
-    const [, setContentFilters] = useExplorerContentFilters(workspaceId);
+    const [, setContentFilters] = useExplorerContentFilters(ownerKey);
     // Bumped by "Find in Folder" to move focus into the Search panel's query box.
     const [searchFocusToken, setSearchFocusToken] = useState(0);
 
@@ -503,7 +508,7 @@ export function ExplorerPanel({
 
     // Deep-link: read hash on mount to restore selected path and open file preview.
     // An explicit hash deep-link for THIS workspace wins over the persisted state
-    // (per the feature decision). The `parts[1] === workspaceId` guard ensures a
+    // (per the feature decision). The owner-key guard ensures a same-id clone
     // stale hash left over from another workspace does not clobber this
     // workspace's restored state — each workspace's explorer stays independent.
     useEffect(() => {
@@ -511,7 +516,7 @@ export function ExplorerPanel({
         const parts = hash.split('/');
         // #repos/:id/explorer/:path
         if (parts[0] === 'repos'
-            && decodeURIComponent(parts[1] ?? '') === workspaceId
+            && decodeURIComponent(parts[1] ?? '') === ownerKey
             && parts[2] === 'explorer'
             && parts[3]) {
             const decoded = decodeURIComponent(parts.slice(3).join('/'));
@@ -525,7 +530,7 @@ export function ExplorerPanel({
                 else setPreviewFile({ path: decoded, name: lastName });
             }
         }
-    }, [workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [ownerKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /**
      * Show a file in the editor area. With tabs on this opens — or re-activates,
@@ -689,9 +694,9 @@ export function ExplorerPanel({
         setSelectedPath(path);
         // Update hash for deep-linking — only when this mount owns the route.
         if (deepLink) {
-            location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(path)}`;
+            location.hash = `#repos/${encodeURIComponent(ownerKey)}/explorer/${encodeURIComponent(path)}`;
         }
-    }, [workspaceId, deepLink]);
+    }, [ownerKey, deepLink]);
 
     const handleToggle = useCallback((path: string) => {
         setExpandedPaths(prev => {
@@ -781,9 +786,9 @@ export function ExplorerPanel({
             });
         }
         if (deepLink) {
-            location.hash = `#repos/${encodeURIComponent(workspaceId)}/explorer/${encodeURIComponent(filePath)}`;
+            location.hash = `#repos/${encodeURIComponent(ownerKey)}/explorer/${encodeURIComponent(filePath)}`;
         }
-    }, [workspaceId, deepLink, openFileInEditor]);
+    }, [ownerKey, deepLink, openFileInEditor]);
 
     const handleTreeContextMenu = useCallback((e: React.MouseEvent, entry: TreeEntry) => {
         setContextMenu({ position: { x: e.clientX, y: e.clientY }, entry });
@@ -949,7 +954,7 @@ export function ExplorerPanel({
         if (activeFilePath === undefined) return;
         // Keyed by workspace as well as path: retargeting the column to another
         // clone is a new tree, so the same path there is a different row.
-        const key = `${workspaceId}\u0000${activeFilePath ?? ''}`;
+        const key = `${ownerKey}\u0000${activeFilePath ?? ''}`;
         if (key === trackedFileRef.current) return;
         trackedFileRef.current = key;
         if (activeFilePath === null) {
@@ -957,7 +962,7 @@ export function ExplorerPanel({
             return;
         }
         void revealPath(activeFilePath, { silent: true });
-    }, [activeFilePath, workspaceId, revealPath, setSelectedPath]);
+    }, [activeFilePath, ownerKey, revealPath, setSelectedPath]);
 
     // Centre the revealed row once the expansion above has rendered. Runs against
     // the tree's own scroll container so nothing outside the sidebar moves.
@@ -1381,6 +1386,7 @@ export function ExplorerPanel({
                 {view === 'search' ? (
                     <ContentSearchPanel
                         workspaceId={workspaceId}
+                        stateKey={ownerKey}
                         focusQueryToken={searchFocusToken}
                         onOpenMatch={handleOpenMatch}
                         // "Open in Editor" parks a result set in an editor this

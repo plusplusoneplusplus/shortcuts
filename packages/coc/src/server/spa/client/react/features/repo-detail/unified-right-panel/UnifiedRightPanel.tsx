@@ -980,7 +980,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                                         data-testid="unified-panel-explorer-mode"
                                     >
                                         <ExplorerPanel
-                                            key={target}
+                                            key={targetRoutingRef ?? target}
                                             workspaceId={target}
                                             routingRef={targetRoutingRef}
                                             // Same rule as an Explorer tab: only a column
@@ -1001,8 +1001,9 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                                         data-testid="unified-panel-search-mode"
                                     >
                                         <ContentSearchPanel
-                                            key={target}
+                                            key={targetRoutingRef ?? target}
                                             workspaceId={target}
+                                            stateKey={targetRoutingRef ?? target}
                                             onOpenMatch={openSearchMatch}
                                             narrow={treeWidth < 300}
                                         />

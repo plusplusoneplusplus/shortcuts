@@ -1,11 +1,11 @@
 /**
- * explorerTreeCache — in-memory, per-workspace cache of the File Explorer's
+ * explorerTreeCache — in-memory, per-owner cache of the File Explorer's
  * fetched tree data (root entries + lazily-loaded directory children).
  *
- * ExplorerPanel is remounted with `key={ws.id}` at both mount sites (RepoDetail,
- * unified right panel), so every workspace switch fully remounts it and wipes all
+ * ExplorerPanel is remounted with its clone-owner key at both mount sites
+ * (RepoDetail, unified right panel), so every owner switch fully remounts it and wipes all
  * of its `useState`. Persisting the fetched tree here — module-level, keyed per
- * workspace — lets a switch-back reuse already-loaded directory listings instead
+ * owner — lets a switch-back reuse already-loaded directory listings instead
  * of re-fetching them (AC-02 of preserve-explorer-state).
  *
  * Storage split (matching the feature decision):
