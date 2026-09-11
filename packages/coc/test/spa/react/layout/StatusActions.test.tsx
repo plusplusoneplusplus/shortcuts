@@ -10,9 +10,13 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 const mockToggleTheme = vi.fn();
 let mockActiveTab = 'repos';
 let mockWsStatus = 'open';
+let mockSelectedRepoId: string | null = null;
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: { activeTab: mockActiveTab, wsStatus: mockWsStatus }, dispatch: vi.fn() }),
+    useApp: () => ({
+        state: { activeTab: mockActiveTab, wsStatus: mockWsStatus, selectedRepoId: mockSelectedRepoId },
+        dispatch: vi.fn(),
+    }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/ThemeProvider', () => ({
     useTheme: () => ({ theme: 'light', toggleTheme: mockToggleTheme }),
@@ -23,8 +27,13 @@ vi.mock('../../../../src/server/spa/client/react/shared/NotificationBell', () =>
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator', () => ({
-    agentProviderQuotaIndicator: ({ placement }: { placement?: string } = {}) => (
-        <button aria-label="Agent provider quota" data-testid="agent-provider-quota-indicator" data-placement={placement ?? 'down'} />
+    agentProviderQuotaIndicator: ({ placement, routingTarget }: { placement?: string; routingTarget?: string } = {}) => (
+        <button
+            aria-label="Agent provider quota"
+            data-testid="agent-provider-quota-indicator"
+            data-placement={placement ?? 'down'}
+            data-routing-target={routingTarget}
+        />
     ),
 }));
 
@@ -34,6 +43,7 @@ beforeEach(() => {
     mockToggleTheme.mockReset();
     mockActiveTab = 'repos';
     mockWsStatus = 'open';
+    mockSelectedRepoId = null;
     location.hash = '';
 });
 
@@ -68,6 +78,13 @@ describe('StatusActions — topbar variant', () => {
         render(<StatusActions variant="topbar" />);
         expect(screen.getByTestId('ws-status-label').textContent).toBe('Disconnected');
         expect(screen.getByTestId('ws-status-indicator').getAttribute('data-ws-status')).toBe('closed');
+    });
+
+    it('passes the active clone-qualified selection to the quota indicator', () => {
+        mockSelectedRepoId = 'remote:srv-1:ws-remote';
+        render(<StatusActions variant="topbar" />);
+        expect(screen.getByTestId('agent-provider-quota-indicator').getAttribute('data-routing-target'))
+            .toBe(mockSelectedRepoId);
     });
 
     it('exposes the backend endpoint and port in the connection tooltip', () => {

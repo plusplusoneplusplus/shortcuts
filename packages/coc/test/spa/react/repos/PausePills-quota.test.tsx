@@ -18,15 +18,10 @@ import { ChatListPane } from '../../../../src/server/spa/client/react/features/c
 
 // ── Mutable quota state controlled per test ──────────────────────────────────
 let mockQuotaData: AgentProvidersQuotaResponse | null = null;
+const mockUseAgentProvidersQuota = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../src/server/spa/client/react/shared/useAgentProvidersQuota', () => ({
-    useAgentProvidersQuota: () => ({
-        quotaData: mockQuotaData,
-        loading: false,
-        refreshing: false,
-        error: null,
-        refresh: vi.fn(),
-    }),
+    useAgentProvidersQuota: mockUseAgentProvidersQuota,
     AGENT_PROVIDER_QUOTA_POLL_MS: 300000,
 }));
 
@@ -196,10 +191,25 @@ describe('Pause pills — quota-aware visuals', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockQuotaData = null;
+        mockUseAgentProvidersQuota.mockImplementation(() => ({
+            quotaData: mockQuotaData,
+            loading: false,
+            refreshing: false,
+            error: null,
+            refresh: vi.fn(),
+        }));
         globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
     });
 
     // ── 1. Running-state dot color ────────────────────────────────────────────
+
+    it('loads pause quota through the chat pane clone-qualified owner', () => {
+        renderPane({
+            workspaceId: 'ws-shared',
+            quotaRoutingTarget: 'remote:srv-2:ws-shared',
+        });
+        expect(mockUseAgentProvidersQuota).toHaveBeenCalledWith('remote:srv-2:ws-shared');
+    });
 
     describe('running-state dot color', () => {
         it('ALL dot has emerald class when quotaData is null (safe)', () => {

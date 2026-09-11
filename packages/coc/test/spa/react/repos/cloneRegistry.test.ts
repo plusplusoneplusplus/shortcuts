@@ -22,6 +22,7 @@ import {
     lookupCloneBaseUrl,
     registerCloneBaseUrls,
     remoteCloneApiBase,
+    resolveCloneRoute,
     resetCloneRegistryForTests,
     setActiveCloneForRouting,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
@@ -46,6 +47,43 @@ describe('lookupCloneBaseUrl', () => {
     it('returns undefined for a local / unregistered workspace id', () => {
         registerCloneBaseUrls([{ workspaceId: 'remote-1', baseUrl: 'http://127.0.0.1:4000' }]);
         expect(lookupCloneBaseUrl('local-1')).toBeUndefined();
+    });
+
+    describe('resolveCloneRoute', () => {
+        it('distinguishes local, resolved remote, and unresolved clone-qualified targets', () => {
+            const remoteKey = buildRemoteCloneKey('srv-1', 'ws-remote');
+            expect(resolveCloneRoute('ws-local')).toEqual({ kind: 'local' });
+            expect(resolveCloneRoute(remoteKey)).toEqual({ kind: 'unresolved-remote' });
+
+            registerCloneBaseUrls([{
+                workspaceId: 'ws-remote',
+                serverId: 'srv-1',
+                cloneKey: remoteKey,
+                baseUrl: 'http://127.0.0.1:4000',
+            }]);
+
+            expect(resolveCloneRoute(remoteKey)).toEqual({
+                kind: 'remote',
+                baseUrl: 'http://127.0.0.1:4000',
+            });
+        });
+
+        it('treats an ambiguous registered workspace id as unresolved remote', () => {
+            registerCloneBaseUrls([
+                {
+                    workspaceId: 'ws-shared',
+                    cloneKey: buildRemoteCloneKey('srv-1', 'ws-shared'),
+                    baseUrl: 'http://127.0.0.1:4000',
+                },
+                {
+                    workspaceId: 'ws-shared',
+                    cloneKey: buildRemoteCloneKey('srv-2', 'ws-shared'),
+                    baseUrl: 'http://127.0.0.1:4001',
+                },
+            ]);
+
+            expect(resolveCloneRoute('ws-shared')).toEqual({ kind: 'unresolved-remote' });
+        });
     });
 
     it('returns the remote baseUrl for a registered remote workspace id', () => {

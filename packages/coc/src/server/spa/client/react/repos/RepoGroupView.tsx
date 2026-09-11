@@ -232,6 +232,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                                 chatList={
                                     <RepoChatTab
                                         workspaceId={workspaceId}
+                                        sourceSelectionId={groupRoutingRef ?? undefined}
                                         dockStatusFooter
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
@@ -266,7 +267,11 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                                 }
                             />
                         ) : (
-                            <RepoChatTab workspaceId={workspaceId} dockStatusFooter />
+                            <RepoChatTab
+                                workspaceId={workspaceId}
+                                sourceSelectionId={groupRoutingRef ?? undefined}
+                                dockStatusFooter
+                            />
                         )}
                     </div>
                     {!mobileWorkspaceSplit && (

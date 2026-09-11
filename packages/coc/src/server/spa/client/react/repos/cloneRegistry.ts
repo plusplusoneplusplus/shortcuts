@@ -40,7 +40,7 @@ let activeCloneKey: string | null = null;
 
 interface CloneRouteSubscription {
     ref: string | CloneRegistryLookup | null | undefined;
-    baseUrl: string | undefined;
+    routeKey: string;
     listener: (baseUrl: string | undefined) => void;
 }
 
@@ -59,6 +59,11 @@ export interface CloneRegistryLookup {
     serverId?: string | null;
     cloneKey?: string | null;
 }
+
+export type CloneRouteResolution =
+    | { kind: 'local' }
+    | { kind: 'remote'; baseUrl: string }
+    | { kind: 'unresolved-remote' };
 
 function getEntryKey(entry: CloneRegistryEntry): string | null {
     if (entry.cloneKey && parseRemoteCloneKey(entry.cloneKey)) return entry.cloneKey;
@@ -160,6 +165,39 @@ export function lookupCloneBaseUrl(ref: string | CloneRegistryLookup | null | un
 }
 
 /**
+ * Resolve whether a routing target is local, remote, or a remote target whose
+ * endpoint is not currently registered. Unlike lookupCloneBaseUrl, this keeps a
+ * clone-qualified remote selection from being mistaken for a local workspace.
+ */
+export function resolveCloneRoute(
+    ref: string | CloneRegistryLookup | null | undefined,
+): CloneRouteResolution {
+    const baseUrl = lookupCloneBaseUrl(ref);
+    if (baseUrl) return { kind: 'remote', baseUrl };
+    if (!ref) return { kind: 'local' };
+
+    if (typeof ref === 'string') {
+        if (parseRemoteCloneKey(ref)) return { kind: 'unresolved-remote' };
+        const keys = cloneKeysByWorkspace.get(ref);
+        return keys && keys.size > 0 ? { kind: 'unresolved-remote' } : { kind: 'local' };
+    }
+
+    if (
+        (ref.cloneKey && parseRemoteCloneKey(ref.cloneKey))
+        || (ref.serverId && ref.workspaceId)
+    ) {
+        return { kind: 'unresolved-remote' };
+    }
+    return ref.workspaceId ? resolveCloneRoute(ref.workspaceId) : { kind: 'local' };
+}
+
+function cloneRouteKey(ref: string | CloneRegistryLookup | null | undefined): string {
+    const route = resolveCloneRoute(ref);
+    if (route.kind === 'remote') return `remote:${route.baseUrl}`;
+    return route.kind;
+}
+
+/**
  * Observe the resolved endpoint for one concrete clone reference.
  *
  * Language sockets are long-lived, unlike REST calls that resolve on every
@@ -174,7 +212,7 @@ export function subscribeCloneBaseUrl(
 ): () => void {
     const subscription: CloneRouteSubscription = {
         ref,
-        baseUrl: lookupCloneBaseUrl(ref),
+        routeKey: cloneRouteKey(ref),
         listener,
     };
     routeSubscriptions.add(subscription);
@@ -185,12 +223,13 @@ export function subscribeCloneBaseUrl(
 
 function notifyCloneRouteSubscriptions(): void {
     for (const subscription of [...routeSubscriptions]) {
-        const baseUrl = lookupCloneBaseUrl(subscription.ref);
-        if (baseUrl === subscription.baseUrl) {
+        const route = resolveCloneRoute(subscription.ref);
+        const routeKey = route.kind === 'remote' ? `remote:${route.baseUrl}` : route.kind;
+        if (routeKey === subscription.routeKey) {
             continue;
         }
-        subscription.baseUrl = baseUrl;
-        subscription.listener(baseUrl);
+        subscription.routeKey = routeKey;
+        subscription.listener(route.kind === 'remote' ? route.baseUrl : undefined);
     }
 }
 

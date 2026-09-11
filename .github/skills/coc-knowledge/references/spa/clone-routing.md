@@ -39,6 +39,7 @@ repos-list/git-info aggregation stay on the page origin.
 |---|---|
 | `getCocClientFor(baseUrl?)` (`api/cocClient.ts`) | Default singleton when omitted, else a per-`baseUrl`-cached `CocClient` whose REST (`/api` base) and `events` WebSocket target that origin |
 | `resolveCloneBaseUrl(ref, repos)` (`repos/cloneRouting.ts`) | Maps a workspace object, workspace id, or clone key to its remote `baseUrl` (`undefined` when local) |
+| `resolveCloneRoute(ref)` (`repos/cloneRegistry.ts`) | Classifies a registry target as local, resolved remote, or unresolved remote so strict consumers do not treat a missing remote endpoint as local |
 | `cloneWsUrl(path, baseUrl?)` (`api/wsUrl.ts`) | With a `baseUrl`, derives `ws(s)://{host:port}{path}` (http→ws, https→wss) keeping path and query verbatim; without one, reproduces `window.location` behavior |
 
 The shared `/ws` process-event stream (`useWebSocket` → `getSpaCocClient().events`) is
@@ -223,6 +224,21 @@ mirrors the global `/ws` stream per online remote clone and feeds it into App's 
 `onMessage` — see [../streaming-architecture.md](../streaming-architecture.md). Without
 it a remote task's `process-updated` never arrives and its sidebar row stays stuck
 "running" while the per-process SSE shows the conversation completing.
+
+### Provider quota
+
+`shared/useAgentProvidersQuota` accepts a workspace or clone-qualified routing
+target and resolves it through `cloneRegistry.resolveCloneRoute`. Local targets use
+the page-origin client; resolved remote repos and repo groups use their registered
+owner client; unresolved remote targets expose an error without issuing a local
+request. The hook keys retained data, polling, and forced refreshes by owner
+endpoint, clears data on owner changes, subscribes to topology updates, and ignores
+late responses from a prior endpoint.
+
+`StatusActions` passes the active selection id to the topbar/sidebar indicator.
+`RepoChatTab` passes its clone-qualified source into `ChatListPane`, whose pause
+pills and duration menus consume the same routed quota. The Admin AI Providers page
+uses the page-origin administration client independently.
 
 The terminal PTY socket (`useTerminalWebSocket`) resolves the clone baseUrl from the
 registry and passes it into `cloneWsUrl`. The `/ws` comment subscriptions
