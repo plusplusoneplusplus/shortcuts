@@ -19,7 +19,7 @@ import {
     type RalphStartGapFixLoopAction,
 } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { RalphSessionStore } from './ralph-session-store';
-import { buildRalphIterationTask } from './enqueue-iteration';
+import { buildRalphIterationTask, inheritRalphTaskConfig } from './enqueue-iteration';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { resolveRalphAdditionalIterations } from '../routes/ralph-route-utils';
 
@@ -53,6 +53,8 @@ export interface OrchestrateFinalCheckDeps {
     folderPath?: string;
     /** AI provider override for gap-fix iterations. */
     provider?: import('../tasks/task-types').ChatProvider;
+    /** The completed final-check config carried into gap-fix iterations. */
+    existingTaskConfig?: Record<string, unknown>;
     /** repoId for gap-fix iteration tasks. */
     repoId?: string;
     /** Non-Ralph context to preserve when enqueueing gap-fix iterations. */
@@ -209,20 +211,23 @@ async function startGapFixLoop(input: StartGapFixLoopInput): Promise<void> {
     const nextIteration = newLoopRecord.currentIteration + 1;
     const autoProviderRouting = isAutoProviderRoutingRequested(deps.extraContext);
 
-    const taskInput = buildRalphIterationTask({
-        workspaceId,
-        workingDirectory: deps.workingDirectory,
-        folderPath: deps.folderPath,
-        sessionId,
-        originalGoal: action.gapFixGoal,
-        iteration: nextIteration,
-        maxIterations: newLoopRecord.maxIterations,
-        dataDir: deps.dataDir,
-        provider: autoProviderRouting ? undefined : deps.provider,
-        autoProviderRouting,
-        continuationOfSessionId: sessionId,
-        extraContext: { ...(deps.extraContext ?? {}), ralph: { loopIndex: newLoopIndex } },
-    });
+    const taskInput = {
+        ...buildRalphIterationTask({
+            workspaceId,
+            workingDirectory: deps.workingDirectory,
+            folderPath: deps.folderPath,
+            sessionId,
+            originalGoal: action.gapFixGoal,
+            iteration: nextIteration,
+            maxIterations: newLoopRecord.maxIterations,
+            dataDir: deps.dataDir,
+            provider: autoProviderRouting ? undefined : deps.provider,
+            autoProviderRouting,
+            continuationOfSessionId: sessionId,
+            extraContext: { ...(deps.extraContext ?? {}), ralph: { loopIndex: newLoopIndex } },
+        }),
+        config: inheritRalphTaskConfig(deps.existingTaskConfig, autoProviderRouting),
+    };
 
     let newTaskId: string;
     try {

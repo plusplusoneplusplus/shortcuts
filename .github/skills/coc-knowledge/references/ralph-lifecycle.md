@@ -155,6 +155,12 @@ is present: inspection and read-only validation commands are allowed, file edits
 state-changing tools are forbidden, and the response must be a `RALPH_FINAL_CHECK_RESULT`
 rather than `RALPH_NEXT`/`RALPH_COMPLETE`.
 
+Ralph-owned follow-on tasks inherit the completed task's execution config across normal
+iterations, final checks, and gap-fix loops. Explicit-provider tasks keep the selected model,
+reasoning effort, and `afterEffortTier`. Auto-routed tasks keep `afterEffortTier` but clear the
+completed task's concrete model and reasoning effort, allowing the lifecycle runner to expand
+the tier after choosing the provider for each follow-on task.
+
 Terminal paths broadcast `ralph-session-complete` with `reason`: `signal` (clean), `cap`,
 `final-check-failed` (parse failure), `final-check-enqueue-failed`,
 `final-check-session-missing`, `final-check-gap-loop-start-failed`,

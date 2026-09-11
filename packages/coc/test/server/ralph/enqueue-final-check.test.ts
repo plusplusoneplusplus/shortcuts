@@ -210,6 +210,27 @@ describe('buildFinalCheckTaskPayload', () => {
         });
         expect(result.continuationOfSessionId).toBe('sess-01');
     });
+
+    it('copies the execution config into the final-check task', () => {
+        const config = {
+            model: 'opus',
+            reasoningEffort: 'medium' as const,
+            afterEffortTier: 'medium' as const,
+        };
+        const result = buildFinalCheckTaskPayload({
+            workspaceId: 'ws-01',
+            sessionId: 'sess-01',
+            originalGoal: 'Goal.',
+            checkIndex: 1,
+            sourceIteration: 4,
+            loopIndex: 1,
+            progressPath: '/progress.md',
+            config,
+        });
+
+        expect(result.config).toEqual(config);
+        expect(result.config).not.toBe(config);
+    });
 });
 
 // ── buildFinalCheckStartRecord ────────────────────────────────────────────────

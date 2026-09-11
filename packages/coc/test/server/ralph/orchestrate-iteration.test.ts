@@ -177,6 +177,42 @@ describe('orchestrateRalphIteration — RALPH_NEXT (continue)', () => {
         expect(enqueuedTask.payload.context.autoProviderRouting.requested).toBe(true);
     });
 
+    it('re-expands the effort tier after Auto chooses the next iteration provider', async () => {
+        const deps = makeDeps({
+            dataDir,
+            provider: 'claude',
+            existingPayloadContext: {
+                autoProviderRouting: {
+                    requested: true,
+                    selectedByAuto: true,
+                    provider: 'claude',
+                    fallbackUsed: false,
+                },
+            },
+            existingTaskConfig: {
+                model: 'opus',
+                reasoningEffort: 'medium',
+                afterEffortTier: 'medium',
+                timeoutMs: 123_000,
+            },
+        });
+
+        await orchestrateRalphIteration({
+            responseText: makeNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 1,
+            maxIterations: 5,
+            deps,
+        });
+
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.config).toEqual({ afterEffortTier: 'medium', timeoutMs: 123_000 });
+    });
+
     it('writes progress section to journal', async () => {
         const deps = makeDeps({ dataDir });
         await orchestrateRalphIteration({
@@ -259,6 +295,74 @@ describe('orchestrateRalphIteration — RALPH_COMPLETE (final-check enqueue)', (
         const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
         expect(enqueuedTask.displayName).toContain('final check');
         expect(enqueuedTask.payload.context.ralph.finalCheck).toBeDefined();
+    });
+
+    it('preserves an explicit Claude effort selection for the final check', async () => {
+        const deps = makeDeps({
+            dataDir,
+            provider: 'claude',
+            existingTaskConfig: {
+                model: 'opus',
+                reasoningEffort: 'medium',
+                afterEffortTier: 'medium',
+            },
+        });
+
+        await orchestrateRalphIteration({
+            responseText: makeCompleteResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 3,
+            maxIterations: 5,
+            deps,
+        });
+
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.payload.provider).toBe('claude');
+        expect(enqueuedTask.config).toEqual({
+            model: 'opus',
+            reasoningEffort: 'medium',
+            afterEffortTier: 'medium',
+        });
+    });
+
+    it('re-expands the effort tier after Auto chooses the final-check provider', async () => {
+        const deps = makeDeps({
+            dataDir,
+            provider: 'claude',
+            existingPayloadContext: {
+                autoProviderRouting: {
+                    requested: true,
+                    selectedByAuto: true,
+                    provider: 'claude',
+                    fallbackUsed: false,
+                },
+            },
+            existingTaskConfig: {
+                model: 'opus',
+                reasoningEffort: 'medium',
+                afterEffortTier: 'medium',
+            },
+        });
+
+        await orchestrateRalphIteration({
+            responseText: makeCompleteResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 3,
+            maxIterations: 5,
+            deps,
+        });
+
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.payload.provider).toBeUndefined();
+        expect(enqueuedTask.config).toEqual({ afterEffortTier: 'medium' });
     });
 
     it('does not broadcast session-complete when final-check is enqueued', async () => {

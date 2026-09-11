@@ -21,7 +21,7 @@ import {
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { RalphSessionStore } from './ralph-session-store';
 import { recordRalphIteration } from './record-iteration';
-import { buildRalphIterationTask } from './enqueue-iteration';
+import { buildRalphIterationTask, inheritRalphTaskConfig } from './enqueue-iteration';
 import {
     buildFinalCheckTaskPayload,
     buildFinalCheckStartRecord,
@@ -62,7 +62,7 @@ export interface OrchestrateRalphIterationDeps {
      * does not inspect the non-ralph fields; it passes them through opaquely.
      */
     existingPayloadContext?: Record<string, unknown>;
-    /** The config from the completed task (carries model/reasoningEffort forward). */
+    /** The execution config from the completed task, carried into Ralph-owned follow-on tasks. */
     existingTaskConfig?: Record<string, unknown>;
 }
 
@@ -209,7 +209,7 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                                 },
                             },
                         },
-                        config: deps.existingTaskConfig ?? nextTask.config,
+                        config: inheritRalphTaskConfig(deps.existingTaskConfig, autoProviderRouting),
                     });
                 } catch (err) {
                     logger.warn(LogCategory.AI, `[Ralph] Failed to enqueue next iteration for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
@@ -338,6 +338,7 @@ async function enqueueFinalCheckForSession(input: EnqueueFinalCheckInput): Promi
 
     const progressPath = store.getProgressPath(workspaceId, sessionId);
 
+    const autoProviderRouting = isAutoProviderRoutingRequested(deps.existingPayloadContext);
     const taskPayload = buildFinalCheckTaskPayload({
         workspaceId,
         sessionId,
@@ -349,7 +350,8 @@ async function enqueueFinalCheckForSession(input: EnqueueFinalCheckInput): Promi
         workingDirectory: deps.workingDirectory,
         folderPath: deps.folderPath,
         repoId: deps.repoId,
-        provider: isAutoProviderRoutingRequested(deps.existingPayloadContext) ? undefined : deps.provider,
+        provider: autoProviderRouting ? undefined : deps.provider,
+        config: inheritRalphTaskConfig(deps.existingTaskConfig, autoProviderRouting),
         extraContext: deps.existingPayloadContext,
     });
 

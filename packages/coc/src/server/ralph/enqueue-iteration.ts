@@ -8,10 +8,36 @@
  */
 
 import { buildRalphIterationPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
+import { isEffortTierKey, type TaskExecutionConfig } from '@plusplusoneplusplus/forge';
 import { RalphSessionStore } from './ralph-session-store';
 import type { ChatContext, ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 export type RalphEffortTier = 'very-low' | 'low' | 'medium' | 'high';
+
+export type RalphTaskExecutionConfig = TaskExecutionConfig & {
+    effortTier?: RalphEffortTier;
+    afterEffortTier?: RalphEffortTier;
+};
+
+/**
+ * Copy a completed Ralph task's execution settings onto its next owned task.
+ *
+ * Auto-routed tasks retain the selected tier as `afterEffortTier`, but their
+ * concrete model and reasoning effort belong to the provider selected for the
+ * completed task. Clear those concrete values so the lifecycle runner expands
+ * the tier again after choosing the provider for the follow-on task.
+ */
+export function inheritRalphTaskConfig(
+    config: Record<string, unknown> | undefined,
+    autoProviderRouting: boolean,
+): RalphTaskExecutionConfig {
+    const inherited = { ...(config ?? {}) } as RalphTaskExecutionConfig;
+    if (autoProviderRouting && isEffortTierKey(inherited.afterEffortTier)) {
+        delete inherited.model;
+        delete inherited.reasoningEffort;
+    }
+    return inherited;
+}
 
 export interface BuildRalphIterationTaskInput {
     workspaceId?: string;
