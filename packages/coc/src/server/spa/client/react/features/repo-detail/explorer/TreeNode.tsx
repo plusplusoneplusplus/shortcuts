@@ -8,6 +8,7 @@ import { cn } from '../../../ui/cn';
 import { Spinner } from '../../../ui';
 import { highlightMatch } from '../../../tasks/TaskSearchResults';
 import { filterEntries } from './FileTree';
+import { FileTypeIcon } from './FileTypeIcon';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
 import { createFilePathDragPayload, writeFilePathDragData } from '../../chat/sessionContextDrag';
@@ -36,16 +37,6 @@ export interface TreeNodeProps {
     isFocused?: boolean;
     treeIndex?: number;
     filterQuery?: string;
-}
-
-function getFileIcon(entry: TreeEntry): string {
-    if (entry.type === 'dir') return '📁';
-    const name = entry.name.toLowerCase();
-    if (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.mdx')) return '📝';
-    if (name.endsWith('.ts') || name.endsWith('.tsx') || name.endsWith('.js') || name.endsWith('.jsx')) return '📄';
-    if (name.endsWith('.json') || name.endsWith('.yaml') || name.endsWith('.yml')) return '⚙️';
-    if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.svg') || name.endsWith('.gif')) return '🖼️';
-    return '📄';
 }
 
 export function TreeNode({
@@ -151,7 +142,7 @@ export function TreeNode({
                 {isDir && (
                     <span className={cn('text-[10px] transition-transform inline-block', isExpanded && 'rotate-90')}>▶</span>
                 )}
-                <span className="flex-shrink-0">{getFileIcon(entry)}</span>
+                <span className="flex-shrink-0"><FileTypeIcon entry={entry} expanded={isExpanded} /></span>
                 <span className="truncate">{filterQuery ? highlightMatch(entry.name, filterQuery) : entry.name}</span>
                 {loading && <Spinner size="sm" className="ml-auto" />}
                 {loadError && (
