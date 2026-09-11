@@ -12,7 +12,9 @@
  * an explicit choice, and preparation must not undo it.
  */
 
-import { TYPESCRIPT_PRESET } from './presets';
+import { RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { applyRustRuntime, resolveRustRuntime } from './rust-adapter';
+import type { RustRuntimeDeps } from './rust-adapter';
 import { applyTypeScriptRuntime, resolveTypeScriptRuntime } from './typescript-adapter';
 import type { TypeScriptRuntimeDeps } from './typescript-adapter';
 import type { LanguageServerDefinition } from './types';
@@ -28,7 +30,7 @@ export interface PreparedDefinition {
     notes?: string[];
 }
 
-export type PrepareDefinitionDeps = TypeScriptRuntimeDeps;
+export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps;
 
 /**
  * Resolves the runtime for one definition and project root. Returns the
@@ -39,16 +41,25 @@ export function prepareDefinitionForRoot(
     rootPath: string,
     deps: PrepareDefinitionDeps = {},
 ): PreparedDefinition {
-    if (!claimsTypeScript(definition)) {
-        return { definition };
+    if (claimsTypeScript(definition)) {
+        const runtime = resolveTypeScriptRuntime(definition, rootPath, deps);
+        return {
+            definition: applyTypeScriptRuntime(definition, runtime),
+            runtimeLabel: runtime.label,
+            commandLabel: TYPESCRIPT_PRESET.command,
+            notes: runtime.notes,
+        };
     }
-    const runtime = resolveTypeScriptRuntime(definition, rootPath, deps);
-    return {
-        definition: applyTypeScriptRuntime(definition, runtime),
-        runtimeLabel: runtime.label,
-        commandLabel: TYPESCRIPT_PRESET.command,
-        notes: runtime.notes,
-    };
+    if (claimsRust(definition)) {
+        const runtime = resolveRustRuntime(definition, rootPath, deps);
+        return {
+            definition: applyRustRuntime(definition, runtime),
+            runtimeLabel: runtime.label,
+            commandLabel: RUST_PRESET.command,
+            notes: runtime.notes,
+        };
+    }
+    return { definition };
 }
 
 function claimsTypeScript(definition: LanguageServerDefinition): boolean {
@@ -57,4 +68,8 @@ function claimsTypeScript(definition: LanguageServerDefinition): boolean {
         definition.builtIn === true &&
         definition.command === TYPESCRIPT_PRESET.command
     );
+}
+
+function claimsRust(definition: LanguageServerDefinition): boolean {
+    return definition.id === RUST_PRESET.id && definition.builtIn === true && definition.command === RUST_PRESET.command;
 }
