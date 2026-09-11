@@ -167,6 +167,33 @@ async function findWord(
     return spot!;
 }
 
+/** Whether Monaco's inline definition decoration currently wraps a word. */
+async function wordHasDefinitionLink(
+    page: Page,
+    lineText: string,
+    word: string,
+    panel = APP_PANEL,
+): Promise<boolean> {
+    return page.evaluate(({ selector, line, needle }) => {
+        const plain = (value: string | null): string => (value ?? '').replace(/\u00a0/g, ' ');
+        const root = document.querySelector(selector);
+        const target = Array.from(root?.querySelectorAll('.view-line') ?? [])
+            .find(node => plain(node.textContent).includes(line));
+        if (!target) return false;
+        const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (plain(node.textContent).includes(needle)) {
+                return node.parentElement?.closest('.goto-definition-link') !== null;
+            }
+        }
+        return false;
+    }, {
+        selector: `${panel} [data-testid="monaco-container"]`,
+        line: lineText,
+        needle: word,
+    });
+}
+
 /** Invoke Monaco's mouse-driven go-to-definition gesture on one rendered word. */
 async function ctrlClickWord(
     page: Page,
@@ -468,6 +495,22 @@ test.describe('Explorer language support – TypeScript features', () => {
             await waitForProjectLoaded(page);
 
             await expectEditorTabs(page, [APP_TAB]);
+
+            const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+            const linkSpot = await findWord(page, 'export const label', 'formatWidget');
+            await page.mouse.move(4, 4);
+            await page.keyboard.down(modifier);
+            try {
+                await page.mouse.move(linkSpot.x, linkSpot.y);
+                await expect
+                    .poll(
+                        () => wordHasDefinitionLink(page, 'export const label', 'formatWidget'),
+                        { timeout: 10_000 },
+                    )
+                    .toBe(true);
+            } finally {
+                await page.keyboard.up(modifier);
+            }
 
             // Click the call, then Monaco's own go-to-definition keybinding —
             // the target is in another file, so it can only land through the

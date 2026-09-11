@@ -7,11 +7,11 @@
  *
  * It also carries the three hooks a language-server host needs, and no more:
  * the raw Monaco change list alongside the new text, a marker list to publish,
- * and `onModelMount`, which hands the live `monaco` namespace and text model up
- * to the host so it can register providers against exactly this model. All
- * three are deliberately expressed in Monaco's own vocabulary — this module
- * knows nothing about LSP, documents or workspaces, so the conversion and the
- * decision to enable language support stay with the host (AC-02/AC-03).
+ * and `onModelMount`, which hands the live editor, `monaco` namespace and text
+ * model up to the host so it can register providers against exactly this model.
+ * All three are deliberately expressed in Monaco's own vocabulary — this
+ * module knows nothing about LSP, documents or workspaces, so the conversion
+ * and the decision to enable language support stay with the host (AC-02/AC-03).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,6 +30,7 @@ export type MonacoNamespace = Parameters<OnMount>[1];
 
 /** What a host is given when a model becomes available in this editor. */
 export interface EditorModelMountContext {
+    editor: monacoEditor.IStandaloneCodeEditor;
     monaco: MonacoNamespace;
     model: monacoEditor.ITextModel;
 }
@@ -356,7 +357,7 @@ export function MonacoFileEditor({
         if (!mounted || !onModelMount) return;
         const model = mounted.editor.getModel();
         if (!model) return;
-        const cleanup = onModelMount({ monaco: mounted.monaco, model });
+        const cleanup = onModelMount({ editor: mounted.editor, monaco: mounted.monaco, model });
         return () => { cleanup?.(); };
     }, [mounted, modelGeneration, onModelMount]);
 

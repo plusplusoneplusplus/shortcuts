@@ -31,6 +31,14 @@ const mockExplorerApi = vi.hoisted(() => ({
 }));
 
 const transport = vi.hoisted(() => ({ client: null as any }));
+const cueStub = vi.hoisted(() => {
+    const installed: { options: any; disposed: boolean }[] = [];
+    return {
+        installed,
+        reset: () => { installed.length = 0; },
+        live: () => installed.filter(entry => !entry.disposed),
+    };
+});
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: mockExplorerApi,
@@ -38,6 +46,14 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 
 vi.mock('../../../../../src/server/spa/client/react/features/language-servers/languageServerClient', () => ({
     getLanguageServerClient: () => transport.client.asClient(),
+}));
+
+vi.mock('../../../../../src/server/spa/client/react/features/language-servers/definitionLinkCue', () => ({
+    installDefinitionLinkCue: (options: any) => {
+        const entry = { options, disposed: false };
+        cueStub.installed.push(entry);
+        return { dispose: () => { entry.disposed = true; } };
+    },
 }));
 
 // jsdom cannot run Monaco. This stub stands in for the editor and does the one
@@ -88,6 +104,7 @@ const monacoStub = vi.hoisted(() => {
                 },
             },
         },
+        editor: {},
         model: {
             languageId: 'typescript',
             uri: { toString: () => 'coc-file://ws-1/src/a.ts' },
@@ -103,7 +120,11 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
         MonacoFileEditor: ({ value, onModelMount }: any) => {
             useEffect(() => {
                 if (!onModelMount) return;
-                const cleanup = onModelMount({ monaco: monacoStub.namespace, model: monacoStub.model });
+                const cleanup = onModelMount({
+                    editor: monacoStub.editor,
+                    monaco: monacoStub.namespace,
+                    model: monacoStub.model,
+                });
                 return () => { cleanup?.(); };
             }, [onModelMount]);
             return <textarea data-testid="mock-monaco-textarea" value={value} readOnly />;
@@ -143,6 +164,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     resetLanguageDocumentStoresForTests();
     monacoStub.reset();
+    cueStub.reset();
     monacoStub.model.languageId = 'typescript';
     // `monaco-setup` does this at import time in the browser; jsdom cannot load
     // it, so the same registration is made against the stub.
@@ -174,6 +196,29 @@ describe('PreviewPane — language providers (AC-03)', () => {
         // worker, and every answer would arrive twice.
         expect(new Set(monacoStub.live().map(entry => entry.languageId)))
             .toEqual(new Set([`${SHADOW_LANGUAGE_PREFIX}typescript`]));
+    });
+
+    it('installs the definition cue with the model and disposes it with the pane', async () => {
+        const { unmount } = renderPane();
+        const attachment = await attachmentFor('src/a.ts');
+        attachWith(attachment);
+
+        await waitFor(() => expect(cueStub.live()).toHaveLength(1));
+        expect(cueStub.live()[0].options.editor).toBe(monacoStub.editor);
+        expect(cueStub.live()[0].options.model).toBe(monacoStub.model);
+
+        await act(async () => { unmount(); });
+
+        expect(cueStub.live()).toHaveLength(0);
+    });
+
+    it('does not keep a definition cue when the server lacks definition support', async () => {
+        renderPane();
+        const attachment = await attachmentFor('src/a.ts');
+        attachWith(attachment, { textDocumentSync: 1, hoverProvider: true });
+
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toEqual(['hover']));
+        expect(cueStub.live()).toHaveLength(0);
     });
 
     it('moves the model off Monaco’s TypeScript id and clears the worker’s markers', async () => {
