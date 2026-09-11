@@ -29,6 +29,7 @@ import {
 } from './fixtures/explorer-tabs-seed';
 import {
     createDecoyRepoFixture,
+    createRustRepoFixture,
     createTypeScriptRepoFixture,
     enableLanguageServers,
 } from './fixtures/language-server-seed';
@@ -45,6 +46,9 @@ const PANEL_WORKSPACE_ID = 'ws-lsp-panel';
 const APP_TAB = 'file:src/app.ts';
 const FORMAT_TAB = 'file:src/format.ts';
 const APP_PANEL = `[data-testid="explorer-tab-panel-${APP_TAB}"]`;
+const RUST_APP_TAB = 'file:src/app.rs';
+const RUST_CORE_TAB = 'file:core-fixture/src/lib.rs';
+const RUST_APP_PANEL = `[data-testid="explorer-tab-panel-${RUST_APP_TAB}"]`;
 
 /**
  * Starting a Node process, handshaking with it and letting it read a project is
@@ -630,7 +634,132 @@ test.describe('Explorer language support – recovery', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. A clone that lives on another CoC server
+// 4. Rust language support
+// ---------------------------------------------------------------------------
+
+test.describe('Explorer language support – Rust', () => {
+    test.describe.configure({ mode: 'serial' });
+
+    test('LSP.R1 rust-analyzer powers hover, definition, and dirty-buffer restart in Explorer', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createRustRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'rust-lsp-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+            await enableLanguageServers(serverUrl, WORKSPACE_ID, 'rust');
+
+            await gotoExplorer(page, serverUrl);
+            await openSourceFile(page, 'app.rs');
+            await waitForLanguageServer(page, RUST_APP_PANEL);
+            await expect(page.locator(`${RUST_APP_PANEL} [data-testid="language-status-label"]`))
+                .toHaveText('rust-analyzer');
+
+            await expect
+                .poll(
+                    () => hoverTextFor(
+                        page,
+                        'let label = make_widget',
+                        'make_widget',
+                        RUST_APP_PANEL,
+                    ),
+                    { timeout: 90_000 },
+                )
+                .toContain('fn make_widget');
+
+            const unsaved = 'pub const unsaved_marker: &str = "dirty";';
+            await focusMonacoBuffer(page, RUST_APP_PANEL);
+            await page.keyboard.press('Control+End');
+            await page.keyboard.type(unsaved);
+            await expect(page.locator(`${RUST_APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toBeVisible({ timeout: 10_000 });
+
+            await ctrlClickWord(
+                page,
+                'let label = make_widget',
+                'make_widget',
+                RUST_APP_PANEL,
+            );
+            await expectEditorTabs(page, [RUST_APP_TAB, RUST_CORE_TAB]);
+            const corePanel = `[data-testid="explorer-tab-panel-${RUST_CORE_TAB}"]`;
+            await expect
+                .poll(() => caretLineText(page, corePanel), { timeout: 15_000 })
+                .toContain('pub fn make_widget');
+
+            await editorTab(page, RUST_APP_TAB).click();
+            await expect
+                .poll(() => paneText(page, RUST_APP_PANEL), { timeout: 10_000 })
+                .toContain(unsaved);
+            await page.locator(`${RUST_APP_PANEL} [data-testid="language-restart-btn"]`).click();
+            await waitForLanguageServer(page, RUST_APP_PANEL);
+            await expect
+                .poll(
+                    () => hoverTextFor(
+                        page,
+                        'pub const unsaved_marker',
+                        'unsaved_marker',
+                        RUST_APP_PANEL,
+                    ),
+                    { timeout: 90_000 },
+                )
+                .toContain('const unsaved_marker');
+            await expect(page.locator(`${RUST_APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toBeVisible();
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('LSP.R2 rust-analyzer definition navigation stays in unified right-panel tabs', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createRustRepoFixture(tmpDir, 'rust-panel-repo');
+            await seedWorkspace(serverUrl, PANEL_WORKSPACE_ID, 'Rust Panel Repo', repoDir);
+            await enableSplitWorkspacePanel(serverUrl);
+            await enableLanguageServers(serverUrl, PANEL_WORKSPACE_ID, 'rust');
+
+            await page.goto(serverUrl);
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, {
+                timeout: 10_000,
+            });
+            await page.locator('[data-testid="repo-tab"]').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 8_000 });
+            await openUnifiedSourceFile(page, 'app.rs');
+
+            await waitForLanguageServer(page, UNIFIED_ACTIVE_FILE);
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="language-status-label"]`))
+                .toHaveText('rust-analyzer');
+
+            const tabLabels = page.locator(
+                `${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`,
+            );
+            await ctrlClickWord(
+                page,
+                'make_widget',
+                'make_widget',
+                UNIFIED_ACTIVE_FILE,
+                true,
+            );
+            await expect(tabLabels.filter({ hasText: 'app.rs' })).toHaveCount(1);
+            await expect(tabLabels.filter({ hasText: 'lib.rs' })).toHaveCount(1, {
+                timeout: 15_000,
+            });
+            await expect
+                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
+                .toContain('pub fn make_widget');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 5. A clone that lives on another CoC server
 // ---------------------------------------------------------------------------
 
 /**
