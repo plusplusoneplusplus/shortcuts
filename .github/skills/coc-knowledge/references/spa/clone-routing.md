@@ -94,6 +94,13 @@ owning host. An unresolved concrete remote key is unavailable and cannot fall
 through to the page origin. Endpoint refresh replaces the socket and replays the
 clone's own document buffers on the new connection.
 
+Explorer file panes receive the selected clone route directly. Unified-panel
+file descriptors persist that route with the owning workspace id, use it as the
+owner part of tab identity, and forward it through cross-file language
+navigation. Repo-group panels derive member routes from the concrete server that
+owns the group. Open tabs therefore keep their original socket, document store,
+and blob loader even when the dock target or selected clone changes.
+
 **No-local-fallthrough guarantee.** A selected remote clone's clone key, or its bare
 workspace id when unique or active-disambiguated, resolves to its `baseUrl`, so its
 clone-scoped REST and WS never hit the default local client. Because cached and offline

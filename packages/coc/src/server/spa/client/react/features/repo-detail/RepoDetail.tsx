@@ -899,7 +899,14 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     </div>
                 )}
             </div>
-            {dockAvailable && <UnifiedRightPanel workspaceId={ws.id} chatId={panelChatId} dock={dock} />}
+            {dockAvailable && (
+                <UnifiedRightPanel
+                    workspaceId={ws.id}
+                    routingRef={explorerRoutingRef}
+                    chatId={panelChatId}
+                    dock={dock}
+                />
+            )}
             </div>
 
             {/* Generate Task with AI dialog */}

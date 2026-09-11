@@ -243,6 +243,11 @@ while browser document URIs and WebSocket query parameters keep the workspace id
 understood by the owning server. Local repos pass an explicit local route, so a
 same-id remote registry entry cannot capture a local Explorer document.
 
+The unified right panel persists the same routing ref on every file-tab
+descriptor. Its `PreviewPane`, definition-navigation callback, and target-file
+loader reuse that stored owner instead of the dock's current target. Repo groups
+derive each member's clone key from the concrete server that owns the group.
+
 An LSP-managed model is moved onto a private shadow language id
 (`coc-lsp-typescript`, `coc-lsp-javascript`) before the providers are
 registered. Monaco registers providers per language and its bundled TypeScript

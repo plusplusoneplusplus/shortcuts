@@ -101,6 +101,22 @@ import {
     activateWorkspaceRouteForBaseUrl,
     hasWorkspaceRouteForBaseUrl,
 } from '../../../repos/cloneRegistry';
+import { buildRemoteCloneKey, parseRemoteCloneKey } from '../../../repos/cloneIdentity';
+
+/**
+ * Resolve a resource owner against the concrete server that owns the panel.
+ * Repo-group members use plain workspace ids on that server, so a remote panel
+ * route contributes its server id while a local panel explicitly stays local.
+ */
+export function routingRefForPanelOwner(
+    panelRoutingRef: string | null | undefined,
+    ownerWorkspaceId: string,
+): string | null | undefined {
+    if (panelRoutingRef === null) return null;
+    const remote = parseRemoteCloneKey(panelRoutingRef);
+    if (remote) return buildRemoteCloneKey(remote.serverId, ownerWorkspaceId);
+    return undefined;
+}
 
 export interface UnifiedRightPanelProps {
     /**
@@ -108,6 +124,8 @@ export interface UnifiedRightPanelProps {
      * and its width — and which workspace Notes belongs to.
      */
     workspaceId: string;
+    /** Concrete route for the panel scope; `null` explicitly means local. */
+    routingRef?: string | null;
     /**
      * The selected chat, or null when none is. Chat-owned tabs (file, canvas,
      * diff) are filed under it; workspace tabs stay visible either way.
@@ -126,7 +144,7 @@ export interface UnifiedRightPanelProps {
     };
 }
 
-export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, repoGroup }: UnifiedRightPanelProps) {
+export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock, targets, repoGroup }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const {
         tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
@@ -155,6 +173,10 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
     const targetLabel = useMemo(
         () => targetOptions.find(option => option.workspaceId === target)?.label,
         [targetOptions, target],
+    );
+    const targetRoutingRef = useMemo(
+        () => routingRefForPanelOwner(routingRef, target),
+        [routingRef, target],
     );
 
     // New workspace resources open against the dock's current target, and carry
@@ -404,10 +426,12 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
             file: { path: string; name: string; line?: number },
             options: { preview: boolean; readOnly?: boolean },
             ownerWorkspaceId: string,
+            ownerRoutingRef?: string | null,
             ownerLabel?: string,
         ) => {
             const input = explorerFileTabInput(file, options, {
                 ownerWorkspaceId,
+                ownerRoutingRef,
                 scopeWorkspaceId: workspaceId,
                 ownerLabel,
                 chatId,
@@ -439,8 +463,8 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
         (
             file: { path: string; name: string; line?: number },
             options: { preview: boolean; readOnly?: boolean },
-        ) => openFileForOwner(file, options, target, targetLabel),
-        [openFileForOwner, target, targetLabel],
+        ) => openFileForOwner(file, options, target, targetRoutingRef, targetLabel),
+        [openFileForOwner, target, targetRoutingRef, targetLabel],
     );
     const openSearchMatch = useCallback((path: string, line: number) => {
         const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
@@ -469,10 +493,11 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
     const openNavigationFile = useCallback(
         (
             file: { path: string; name: string; line: number; column: number },
-            origin: { ownerWorkspaceId: string; repoLabel?: string },
+            origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
         ) => {
             const input = explorerFileTabInput(file, {}, {
                 ownerWorkspaceId: origin.ownerWorkspaceId,
+                ownerRoutingRef: origin.ownerRoutingRef,
                 scopeWorkspaceId: workspaceId,
                 ownerLabel: origin.repoLabel ?? (origin.ownerWorkspaceId === target ? targetLabel : undefined),
                 chatId,
@@ -548,6 +573,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
             { path: result.path, name },
             { preview: true },
             result.workspaceId,
+            routingRefForPanelOwner(routingRef, result.workspaceId),
             result.repoName,
         );
     }, [
@@ -559,6 +585,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
         tree,
         openFileForOwner,
         handlePanelFileSelect,
+        routingRef,
     ]);
 
     const panelRootRef = useRef<HTMLDivElement | null>(null);
@@ -835,6 +862,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
                             workspaceId={workspaceId}
                             chatId={chatId}
                             target={target}
+                            targetRoutingRef={targetRoutingRef}
                             targets={targetOptions}
                             onSelectTarget={dock.setTarget}
                             onOpenResource={openResource}
@@ -954,6 +982,7 @@ export function UnifiedRightPanel({ workspaceId, chatId = null, dock, targets, r
                                         <ExplorerPanel
                                             key={target}
                                             workspaceId={target}
+                                            routingRef={targetRoutingRef}
                                             // Same rule as an Explorer tab: only a column
                                             // pointed at the panel's own workspace may write
                                             // the explorer deep-link hash, or a group member's

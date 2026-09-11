@@ -104,6 +104,28 @@ describe('unifiedPanelTabsModel — identity and deduplication', () => {
         expect(tabs[0].id).not.toBe(tabs[1].id);
     });
 
+    it('keeps same-id clones on different hosts as distinct tabs', () => {
+        const ownerWorkspaceId = 'ws-shared';
+        const routeA = 'remote:server-a:ws-shared';
+        const routeB = 'remote:server-b:ws-shared';
+        let state = open(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', resourceId: 'src/index.ts', label: 'server-a', chatId: CHAT_1,
+            ownerWorkspaceId, ownerRoutingRef: routeA,
+        });
+        state = open(state, {
+            kind: 'file', resourceId: 'src/index.ts', label: 'server-b', chatId: CHAT_1,
+            ownerWorkspaceId, ownerRoutingRef: routeB,
+        });
+
+        const tabs = visibleTabs(state, CHAT_1);
+        expect(tabs).toHaveLength(2);
+        expect(tabs.map(tab => tab.ownerRoutingRef)).toEqual([routeA, routeB]);
+        expect(tabs[0].id).not.toBe(tabs[1].id);
+
+        const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
+        expect(visibleTabs(restored, CHAT_1).map(tab => tab.ownerRoutingRef)).toEqual([routeA, routeB]);
+    });
+
     it('keeps the same file opened from two chats as distinct tabs', () => {
         let state = open(EMPTY_UNIFIED_PANEL, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1 });
         state = open(state, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_2 });
@@ -535,7 +557,7 @@ describe('unifiedPanelTabsModel — preview tabs', () => {
     });
 });
 
-describe('unifiedPanelTabsModel — codec v2: preview, repair, and migration', () => {
+describe('unifiedPanelTabsModel — codec v3: clone routes, preview repair, and migration', () => {
     /** A v1 payload: the previous version's shape, with an `explorer` tab. */
     function legacyPayload(): Record<string, unknown> {
         // The id v1 would have written for it: kind|scope|owner|resource.
@@ -599,6 +621,21 @@ describe('unifiedPanelTabsModel — codec v2: preview, repair, and migration', (
         expect(restored.openTree).toBe(true);
         expect(restored.state.workspaceTabs.map(t => t.kind)).toEqual(['terminal', 'notes']);
         expect(restored.state.chatTabs[CHAT_1].map(t => t.label)).toEqual(['a.ts']);
+    });
+
+    it('migrates route-less v2 tabs without changing their stable ids', () => {
+        const payload = JSON.parse(serializeUnifiedPanelState(baseState()));
+        payload.version = 2;
+        const originalId = payload.chatTabs[CHAT_1][0].id;
+
+        const restored = restoreUnifiedPanelState(JSON.stringify(payload));
+        expect(restored.migrated).toBe(true);
+        expect(restored.openTree).toBe(false);
+        expect(restored.state.chatTabs[CHAT_1][0]).toMatchObject({
+            id: originalId,
+            ownerWorkspaceId: WS,
+        });
+        expect(restored.state.chatTabs[CHAT_1][0].ownerRoutingRef).toBeUndefined();
     });
 
     it('reports no tree to open when the old payload had no explorer tab', () => {

@@ -274,6 +274,11 @@ and transport code stays generic.
   `detectLanguageTransportBlock` is also the container gate: an explicitly local
   clone behind the agent proxy settles as `container-unsupported`, while a routed
   remote clone connects directly to its own CoC host.
+- Explorer and unified-panel file views pass the concrete route into
+  `PreviewPane`. Unified file tabs persist it beside `ownerWorkspaceId`, include
+  it in tab identity, and forward it through cross-file definition navigation,
+  so a dock retarget or an equal workspace id on another host cannot change the
+  client, buffer, or blob loader an open tab uses.
 - `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
   — the repo Settings tab's `language-servers` section: master enable toggle,
   the `effective` list with a per-definition enable checkbox, and an editor for

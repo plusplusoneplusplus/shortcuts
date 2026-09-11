@@ -63,6 +63,14 @@ describe('explorerFileTabInput', () => {
         expect(input?.repoLabel).toBe('member-repo');
     });
 
+    it('keeps the concrete clone route on the file descriptor', () => {
+        const input = explorerFileTabInput({ path: 'src/a.ts', name: 'a.ts' }, {}, {
+            ...CTX,
+            ownerRoutingRef: 'remote:server-b:ws-1',
+        });
+        expect(input?.ownerRoutingRef).toBe('remote:server-b:ws-1');
+    });
+
     it('omits the repo label when the owner is the panel workspace', () => {
         const input = explorerFileTabInput({ path: 'src/a.ts', name: 'a.ts' }, {}, { ...CTX, ownerLabel: 'ws-1' });
         expect(input).not.toHaveProperty('repoLabel');

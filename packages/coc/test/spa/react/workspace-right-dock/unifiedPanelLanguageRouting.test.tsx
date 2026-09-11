@@ -21,6 +21,9 @@ import { FakeClient, readyState, diagnostic } from '../language-servers/fakeLang
 
 const MEMBER_A = 'member-a';
 const MEMBER_B = 'member-b';
+const SHARED_MEMBER = 'member-shared';
+const SHARED_ROUTE_A = 'remote:server-a:member-shared';
+const SHARED_ROUTE_B = 'remote:server-b:member-shared';
 /** Both members of the group have a file at this path. */
 const PATH = 'src/index.ts';
 
@@ -39,10 +42,10 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/language-servers/languageServerClient', () => ({
-    getLanguageServerClient: (workspaceId: string) => {
-        const client = transport.clients.get(workspaceId);
+    getLanguageServerClient: (workspaceId: string, _editingSessionId?: string, routingRef?: string | null) => {
+        const client = transport.clients.get(routingRef ?? workspaceId);
         if (!client) {
-            throw new Error(`No fake client for ${workspaceId}`);
+            throw new Error(`No fake client for ${routingRef ?? workspaceId}`);
         }
         return client.asClient();
     },
@@ -56,27 +59,35 @@ const editor = vi.hoisted(() => ({ markers: undefined as any }));
 vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor', () => ({
     MonacoFileEditor: ({ value, markers }: any) => {
         editor.markers = markers;
-        return <textarea data-testid="mock-monaco-textarea" value={value} readOnly />;
+        return (
+            <textarea
+                data-testid="mock-monaco-textarea"
+                data-marker={markers.map((marker: { message: string }) => marker.message).join('|')}
+                value={value}
+                readOnly
+            />
+        );
     },
     getMonacoLanguage: () => 'typescript',
     LANGUAGE_MARKER_OWNER: 'coc-language-server',
 }));
 
-function fileTab(ownerWorkspaceId: string): UnifiedPanelTab {
+function fileTab(ownerWorkspaceId: string, ownerRoutingRef?: string | null): UnifiedPanelTab {
     return {
         id: `file|${ownerWorkspaceId}|chat-1|${PATH}`,
         kind: 'file',
         ownerWorkspaceId,
+        ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
         chatId: 'chat-1',
         resourceId: PATH,
         label: 'index.ts',
     } as UnifiedPanelTab;
 }
 
-function renderTab(ownerWorkspaceId: string, scopeWorkspaceId: string) {
+function renderTab(ownerWorkspaceId: string, scopeWorkspaceId: string, ownerRoutingRef?: string | null) {
     return render(
         <UnifiedTabView
-            tab={fileTab(ownerWorkspaceId)}
+            tab={fileTab(ownerWorkspaceId, ownerRoutingRef)}
             scopeWorkspaceId={scopeWorkspaceId}
             onClose={() => undefined}
         />,
@@ -96,6 +107,8 @@ beforeEach(() => {
     transport.clients = new Map([
         [MEMBER_A, new FakeClient(MEMBER_A)],
         [MEMBER_B, new FakeClient(MEMBER_B)],
+        [SHARED_ROUTE_A, new FakeClient(SHARED_MEMBER)],
+        [SHARED_ROUTE_B, new FakeClient(SHARED_MEMBER)],
     ]);
     editor.markers = undefined;
     mockExplorerApi.readBlob.mockResolvedValue({ content: 'export const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
@@ -183,6 +196,52 @@ describe('right panel — language routing by tab owner (AC-04)', () => {
             .toBe(`coc-file://${MEMBER_B}/${PATH}`);
 
         // Closing one member's tab leaves the other member's document open.
+        first.unmount();
+        await waitFor(() => expect(attachmentA.released).toBe(true));
+        expect(attachmentB.released).toBe(false);
+        second.unmount();
+    });
+
+    it('keeps same-id clones on different hosts in separate routed stores', async () => {
+        const first = renderTab(SHARED_MEMBER, 'group-a', SHARED_ROUTE_A);
+        const second = renderTab(SHARED_MEMBER, 'group-b', SHARED_ROUTE_B);
+        const clientA = transport.clients.get(SHARED_ROUTE_A);
+        const clientB = transport.clients.get(SHARED_ROUTE_B);
+
+        await waitFor(() => {
+            expect(clientA.attachments.has(PATH)).toBe(true);
+            expect(clientB.attachments.has(PATH)).toBe(true);
+        });
+        const attachmentA = clientA.get(PATH);
+        const attachmentB = clientB.get(PATH);
+        act(() => {
+            attachmentA.attach({ state: readyState() });
+            attachmentB.attach({ state: readyState() });
+        });
+
+        act(() => {
+            attachmentA.notify('textDocument/publishDiagnostics', {
+                uri: `coc-file://${SHARED_MEMBER}/${PATH}`,
+                diagnostics: [diagnostic('server A')],
+            });
+            attachmentB.notify('textDocument/publishDiagnostics', {
+                uri: `coc-file://${SHARED_MEMBER}/${PATH}`,
+                diagnostics: [diagnostic('server B')],
+            });
+        });
+        await waitFor(() => {
+            expect(first.container.querySelector('textarea')?.dataset.marker).toBe('server A');
+            expect(second.container.querySelector('textarea')?.dataset.marker).toBe('server B');
+        });
+
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            SHARED_MEMBER, PATH, expect.anything(), SHARED_ROUTE_A,
+        );
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            SHARED_MEMBER, PATH, expect.anything(), SHARED_ROUTE_B,
+        );
+        expect(attachmentA).not.toBe(attachmentB);
+
         first.unmount();
         await waitFor(() => expect(attachmentA.released).toBe(true));
         expect(attachmentB.released).toBe(false);

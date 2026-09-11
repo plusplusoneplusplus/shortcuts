@@ -18,8 +18,10 @@ Three different workspace ids, kept apart on purpose:
 
 - **Panel scope** (`workspaceId`) — whose localStorage the tab set lives in. In a
   repo group this is the group id.
-- **Tab owner** (`tab.ownerWorkspaceId`) — the clone the bytes come from (a group
-  member, a remote clone). Route every request by this, never by page origin.
+- **Tab owner** (`tab.ownerWorkspaceId` + `tab.ownerRoutingRef`) — the owning
+  server's workspace id plus its concrete clone route. A remote clone key keeps
+  equal workspace ids on different hosts separate; `null` pins a local owner to
+  page origin. Route every file and language request with both fields.
 - **Dock target** — what `useWorkspaceDock` points Terminal and Explorer at. It
   affects new tabs only; changing it never retargets an open one.
 
@@ -28,13 +30,15 @@ Tabs are scoped by kind: `terminal | notes | note` are workspace-owned,
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the
 queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
-`selectedTaskId`, which can name another workspace's chat.
+`selectedTaskId`, which can name another workspace's chat. `unifiedTabId` uses
+the concrete route as the owner identity when one exists, so equal relative paths
+from same-id clones never merge into one tab.
 
 ## Layers
 
 | File | Holds |
 |---|---|
-| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 2`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab. |
+| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
 | `unifiedPanelTree.ts` | The navigator column's width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
@@ -249,18 +253,18 @@ nothing remounts before the promotion lands. `ExplorerPanel` needs `onFilePin`
 wherever a permanent tab has somewhere to live — its own strip *or* a host that
 takes the opens — not only when its own `explorerEditorTabs` flag is on.
 
-## Persistence and migration (codec v2)
+## Persistence and migration (codec v3)
 
-The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION`). v2 persists the
-`preview` bit, so a restored preview comes back italic in the same slot, still
-replaceable, and it dropped the `explorer` kind. `restoreUnifiedPanelState`
-reads a v1 payload rather than discarding it: its Explorer descriptors fail the
-kind check like any other unknown entry, and the restore reports `openTree` so
-the caller opens the tree column instead — an Explorer tab carried no state, so
-nothing is lost. `migrateUnifiedPanelState` (called from a mount effect in
-`UnifiedRightPanel`) is what acts on that: it flips the tree's open bit and
-rewrites the entry at the current version. A version this build does not know is
-still discarded whole.
+The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION`). v3 persists the
+concrete owner route. v2 payloads remain valid with an omitted route and keep
+their stable bare-workspace tab ids. The codec also preserves the `preview` bit,
+so a restored preview comes back italic in the same replaceable slot, and it no
+longer accepts the old `explorer` kind. `restoreUnifiedPanelState` reads v1
+payloads rather than discarding them: Explorer descriptors fail the kind check
+like any other unknown entry, and the restore reports `openTree` so the caller
+opens the tree column instead. `migrateUnifiedPanelState` runs from a mount
+effect in `UnifiedRightPanel`, flips that tree-open bit, and rewrites the entry
+at the current version. An unknown version is discarded whole.
 
 The parse repairs as well as validates. A section with two preview bits keeps
 the **last** one and returns the rest permanent — nothing is dropped, because a
@@ -324,10 +328,10 @@ surface untouched.
 | Entry point | Lives in | Notes |
 |---|---|---|
 | Chat diff action | `ChatDetail` `WHISPER_DIFF_EVENT` handler | A whisper diff is rebuilt from an in-memory transcript, so `unifiedDiffSources` is the join between a persisted tab and its source. |
-| Chat source link | `ChatDetail` `coc-open-source-canvas` | Declines relative/group refs and paths outside a known root — `PreviewPane` reads repo-relative blobs, so a tab for those could only render an error. |
+| Chat source link | `ChatDetail` `coc-open-source-canvas` | Declines relative/group refs and paths outside a known root — `PreviewPane` reads repo-relative blobs, so a tab for those could only render an error. The chat's clone-qualified selection disambiguates same-id local and remote workspaces. |
 | Note link | same handler, `kind: 'note'` branch | `resourceId` is `<fetchMode>\|<root>\|<path>`: the note root is part of the identity, resolved once at open time because the link is gone by restore time. |
 | Explorer selection | `ExplorerPanel` `onOpenFile` | The tree column (and navigator mode elsewhere): `options.preview` picks the preview slot vs a permanent tab. |
-| Language navigation | `UnifiedTabView` `onOpenFile` | A "go to definition" out of a file tab. The descriptor takes its owner and repo label from the SOURCE tab, never from the dock's current target, so a definition found in a group member's file keeps hitting that member's host. Always a permanent tab. |
+| Language navigation | `UnifiedTabView` `onOpenFile` | A "go to definition" out of a file tab. The descriptor takes its workspace id, concrete route, and repo label from the SOURCE tab, never from the dock's current target, so the target read and language document stay on the initiating clone. Always a permanent tab. |
 | Canvas embed | `shared/CanvasEmbed.tsx` "Open in panel" | Gated on `useUnifiedPanelHostForChat`; the chat id arrives through `ChatRenderContext.chatId` because the embed is portaled. |
 | Linked canvas / New Canvas | the `+` menu | Both build through `canvasOpenInput`, so an embed, a menu pick, and an AI event converge on one tab per `(owning clone, canvas id, chat)`. |
 | AI canvas create/update | `ChatDetail` `onCanvasUpdated` | See below. |

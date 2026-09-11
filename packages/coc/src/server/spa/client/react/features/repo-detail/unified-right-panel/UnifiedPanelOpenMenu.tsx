@@ -66,6 +66,8 @@ export interface UnifiedPanelOpenMenuProps {
     chatId: string | null;
     /** The repo new resources and file search act on. */
     target: string;
+    /** Concrete clone route for the target repo. */
+    targetRoutingRef?: string | null;
     /** Point the menu (and the dock) at another repo. */
     onSelectTarget: (workspaceId: string) => void;
     /** Repo options for a group; a single-repo panel passes none. */
@@ -82,6 +84,7 @@ export function UnifiedPanelOpenMenu({
     workspaceId,
     chatId,
     target,
+    targetRoutingRef,
     onSelectTarget,
     targets,
     onOpenResource,
@@ -219,10 +222,11 @@ export function UnifiedPanelOpenMenu({
 
     const ownerContext = useMemo(() => ({
         ownerWorkspaceId: target,
+        ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
         scopeWorkspaceId: workspaceId,
         chatId,
         ...(targetOption?.label ? { ownerLabel: targetOption.label } : {}),
-    }), [target, workspaceId, chatId, targetOption?.label]);
+    }), [target, targetRoutingRef, workspaceId, chatId, targetOption?.label]);
 
     const createCanvas = useCallback(async () => {
         if (chatId === null || creating) return;

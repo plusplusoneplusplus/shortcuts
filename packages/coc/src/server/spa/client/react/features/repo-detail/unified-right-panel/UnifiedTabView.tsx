@@ -76,7 +76,7 @@ export interface UnifiedTabViewProps {
      */
     onOpenFile?: (
         file: { path: string; name: string; line: number; column: number },
-        origin: { ownerWorkspaceId: string; repoLabel?: string },
+        origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
     ) => void;
 }
 
@@ -113,9 +113,10 @@ export function UnifiedTabView({
     const handleNavigate = useCallback(
         (file: { path: string; name: string; line: number; column: number }) => onOpenFile?.(file, {
             ownerWorkspaceId: tab.ownerWorkspaceId,
+            ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
             ...(tab.repoLabel === undefined ? {} : { repoLabel: tab.repoLabel }),
         }),
-        [onOpenFile, tab.ownerWorkspaceId, tab.repoLabel],
+        [onOpenFile, tab.ownerWorkspaceId, tab.ownerRoutingRef, tab.repoLabel],
     );
     const handleTerminalSessions = useCallback(
         (sessions: readonly TerminalSessionSummary[]) => onTerminalSessionsChange?.(tab.id, sessions),
@@ -130,6 +131,7 @@ export function UnifiedTabView({
             return (
                 <PreviewPane
                     repoId={tab.ownerWorkspaceId}
+                    routingRef={tab.ownerRoutingRef}
                     filePath={tab.resourceId}
                     fileName={fileNameOf(tab)}
                     revealLine={tab.line}
