@@ -36,7 +36,7 @@ import { getEditingSessionId } from './editingSession';
 
 /** Subset of the host's session state the browser reads. */
 export interface LanguageServerSessionStateView {
-    status: 'disabled' | 'unavailable' | 'starting' | 'ready' | 'reconnecting' | 'failed';
+    status: 'disabled' | 'unavailable' | 'starting' | 'indexing' | 'ready' | 'reconnecting' | 'failed';
     definitionId: string;
     displayName: string;
     detail?: string;

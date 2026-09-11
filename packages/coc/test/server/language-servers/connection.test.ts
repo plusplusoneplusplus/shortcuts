@@ -97,6 +97,41 @@ describe('LanguageServerConnection over a stream pair', () => {
         }
     });
 
+    it('suspends normal request deadlines while the server is indexing', async () => {
+        vi.useFakeTimers();
+        try {
+            const { connection, reply } = createPair({ requestTimeoutMs: 50 });
+            const pending = connection.sendRequest('hover');
+            await vi.advanceTimersByTimeAsync(20);
+            connection.setRequestTimeoutsSuspended(true);
+            await vi.advanceTimersByTimeAsync(100);
+            expect(connection.pendingRequestCount).toBe(1);
+
+            connection.setRequestTimeoutsSuspended(false);
+            await vi.advanceTimersByTimeAsync(20);
+            reply({ jsonrpc: '2.0', id: 1, result: 'hover result' });
+            await expect(pending).resolves.toBe('hover result');
+            connection.dispose();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('keeps non-suspendable lifecycle request deadlines active', async () => {
+        vi.useFakeTimers();
+        try {
+            const { connection } = createPair({ requestTimeoutMs: 50 });
+            connection.setRequestTimeoutsSuspended(true);
+            const pending = connection.sendRequest('shutdown', null, { suspendable: false });
+            const settled = pending.catch((error: unknown) => error);
+            await vi.advanceTimersByTimeAsync(60);
+            await expect(settled).resolves.toMatchObject({ failure: 'timeout', method: 'shutdown' });
+            connection.dispose();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('cancels a superseded request through its abort signal', async () => {
         const { connection, sent } = createPair();
         const controller = new AbortController();

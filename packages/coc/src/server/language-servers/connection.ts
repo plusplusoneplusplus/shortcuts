@@ -61,6 +61,8 @@ export interface SendRequestOptions {
     signal?: AbortSignal;
     /** Overrides the connection-wide timeout for one call. */
     timeoutMs?: number;
+    /** False for lifecycle requests that must remain bounded during server work. */
+    suspendable?: boolean;
 }
 
 interface PendingRequest {
@@ -68,6 +70,10 @@ interface PendingRequest {
     resolve: (value: unknown) => void;
     reject: (error: Error) => void;
     timer?: NodeJS.Timeout;
+    timeoutMs: number;
+    remainingTimeoutMs: number;
+    timeoutStartedAt?: number;
+    suspendable: boolean;
     detachSignal?: () => void;
 }
 
@@ -84,6 +90,7 @@ export class LanguageServerConnection {
     private readonly notificationHandlers = new Map<string, Set<ServerNotificationHandler>>();
     private nextRequestId = 1;
     private closed = false;
+    private requestTimeoutsSuspended = false;
 
     constructor(options: LanguageServerConnectionOptions) {
         this.input = options.input;
@@ -111,6 +118,28 @@ export class LanguageServerConnection {
         return this.pending.size;
     }
 
+    /**
+     * Pauses normal request deadlines while the server reports long-running
+     * background work. Abort signals and explicitly non-suspendable lifecycle
+     * requests remain active.
+     */
+    setRequestTimeoutsSuspended(suspended: boolean): void {
+        if (this.requestTimeoutsSuspended === suspended) {
+            return;
+        }
+        this.requestTimeoutsSuspended = suspended;
+        for (const [id, entry] of this.pending) {
+            if (!entry.suspendable || entry.timeoutMs <= 0) {
+                continue;
+            }
+            if (suspended) {
+                this.pauseTimeout(entry);
+            } else {
+                this.armTimeout(id, entry);
+            }
+        }
+    }
+
     /** Sends a request and resolves with the server's result. */
     sendRequest<T = unknown>(method: string, params?: unknown, options: SendRequestOptions = {}): Promise<T> {
         if (this.closed) {
@@ -127,22 +156,12 @@ export class LanguageServerConnection {
                 method,
                 resolve: resolve as (value: unknown) => void,
                 reject,
+                timeoutMs: options.timeoutMs ?? this.requestTimeoutMs,
+                remainingTimeoutMs: options.timeoutMs ?? this.requestTimeoutMs,
+                suspendable: options.suspendable !== false,
             };
-            const timeoutMs = options.timeoutMs ?? this.requestTimeoutMs;
-            if (timeoutMs > 0) {
-                entry.timer = setTimeout(() => {
-                    this.settle(id, () =>
-                        reject(
-                            new LanguageServerRequestError(
-                                'timeout',
-                                method,
-                                `${method} timed out after ${timeoutMs}ms`,
-                            ),
-                        ),
-                    );
-                    this.cancelRequest(id);
-                }, timeoutMs);
-                entry.timer.unref?.();
+            if (!this.requestTimeoutsSuspended || !entry.suspendable) {
+                this.armTimeout(id, entry);
             }
             if (options.signal) {
                 const signal = options.signal;
@@ -333,6 +352,37 @@ export class LanguageServerConnection {
             clearTimeout(entry.timer);
         }
         entry.detachSignal?.();
+    }
+
+    private pauseTimeout(entry: PendingRequest): void {
+        if (!entry.timer || entry.timeoutStartedAt === undefined) {
+            return;
+        }
+        clearTimeout(entry.timer);
+        entry.timer = undefined;
+        entry.remainingTimeoutMs = Math.max(0, entry.remainingTimeoutMs - (Date.now() - entry.timeoutStartedAt));
+        entry.timeoutStartedAt = undefined;
+    }
+
+    private armTimeout(id: JsonRpcId, entry: PendingRequest): void {
+        if (entry.timer || entry.timeoutMs <= 0) {
+            return;
+        }
+        const delayMs = entry.remainingTimeoutMs;
+        entry.timeoutStartedAt = Date.now();
+        entry.timer = setTimeout(() => {
+            this.settle(id, () =>
+                entry.reject(
+                    new LanguageServerRequestError(
+                        'timeout',
+                        entry.method,
+                        `${entry.method} timed out after ${entry.timeoutMs}ms`,
+                    ),
+                ),
+            );
+            this.cancelRequest(id);
+        }, delayMs);
+        entry.timer.unref?.();
     }
 
     private write(message: unknown): boolean {

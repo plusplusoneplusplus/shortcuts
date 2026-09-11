@@ -12,6 +12,7 @@
  *   echo                  -> returns the params unchanged
  *   getInit               -> the received initialize params plus process.cwd()
  *   slow                  -> never replies, for timeout and cancellation tests
+ *   indexing              -> reports work progress around a delayed reply
  *   fail                  -> replies with a JSON-RPC error
  *   askClient             -> sends a server-to-client request and returns its result
  *   ask                   -> sends `params.method` to the client and returns its result
@@ -102,6 +103,20 @@ function handle(message) {
         case 'slow':
             cancellable.set(id, true);
             return;
+        case 'indexing': {
+            const token = params?.token ?? 'indexing';
+            const delayMs = params?.delayMs ?? 100;
+            send({
+                jsonrpc: '2.0',
+                method: '$/progress',
+                params: { token, value: { kind: 'begin', title: 'Indexing workspace' } },
+            });
+            setTimeout(() => {
+                send({ jsonrpc: '2.0', method: '$/progress', params: { token, value: { kind: 'end' } } });
+                send({ jsonrpc: '2.0', id, result: { indexed: true } });
+            }, delayMs);
+            return;
+        }
         case 'fail':
             send({ jsonrpc: '2.0', id, error: { code: -32603, message: 'echo server failed on purpose' } });
             return;

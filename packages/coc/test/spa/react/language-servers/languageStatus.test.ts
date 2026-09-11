@@ -86,6 +86,18 @@ describe('describeLanguageStatus', () => {
         expect(description.title).toContain('2 restarts');
     });
 
+    it('shows indexing as distinct busy work without offering a restart', () => {
+        const description = describeLanguageStatus(snapshot({
+            state: state({ status: 'indexing', serverName: 'rust-analyzer' }),
+        }));
+
+        expect(description.label).toBe('Indexing with rust-analyzer…');
+        expect(description.title).toBe('rust-analyzer is indexing');
+        expect(description.tone).toBe('pending');
+        expect(description.busy).toBe(true);
+        expect(description.canRestart).toBe(false);
+    });
+
     it('offers the retry on a failed server and carries the detail into the tooltip', () => {
         const description = describeLanguageStatus(snapshot({
             status: 'detached',
