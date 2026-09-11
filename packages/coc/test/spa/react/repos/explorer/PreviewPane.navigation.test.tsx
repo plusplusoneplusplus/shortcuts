@@ -42,6 +42,15 @@ vi.mock('../../../../../src/server/spa/client/react/features/language-servers/la
 // jsdom cannot run Monaco, so the editor stub does the one thing this suite
 // needs: hand the host a model, and take the registration down on unmount.
 const monacoStub = vi.hoisted(() => ({
+    editor: {
+        createDecorationsCollection: () => ({ clear: () => undefined, set: () => [] }),
+        onDidChangeModelContent: () => ({ dispose: () => undefined }),
+        onDidScrollChange: () => ({ dispose: () => undefined }),
+        onKeyDown: () => ({ dispose: () => undefined }),
+        onKeyUp: () => ({ dispose: () => undefined }),
+        onMouseLeave: () => ({ dispose: () => undefined }),
+        onMouseMove: () => ({ dispose: () => undefined }),
+    },
     namespace: {
         languages: {
             registerHoverProvider: () => ({ dispose: () => undefined }),
@@ -79,7 +88,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
             }, []);
             useEffect(() => {
                 if (!onModelMount) return;
-                const cleanup = onModelMount({ monaco: monacoStub.namespace, model });
+                const cleanup = onModelMount({ editor: monacoStub.editor, monaco: monacoStub.namespace, model });
                 return () => { cleanup?.(); };
             }, [onModelMount, model]);
             return (
