@@ -100,6 +100,8 @@ owner part of tab identity, and forward it through cross-file language
 navigation. Repo-group panels derive member routes from the concrete server that
 owns the group. Open tabs therefore keep their original socket, document store,
 and blob loader even when the dock target or selected clone changes.
+`WorkspaceTabsCluster` reselects a remote clone by its clone key when changing a
+sub-tab, while local clones keep the existing in-place tab switch.
 
 **No-local-fallthrough guarantee.** A selected remote clone's clone key, or its bare
 workspace id when unique or active-disambiguated, resolves to its `baseUrl`, so its
