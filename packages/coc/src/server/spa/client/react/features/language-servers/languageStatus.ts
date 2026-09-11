@@ -79,6 +79,8 @@ export function describeLanguageStatus(
             return { label: `Starting ${name}…`, title: detailed(`Starting ${name}`, state), tone: 'pending', canRestart: false, busy: true };
         case 'reconnecting':
             return { label: `Restarting ${name}…`, title: detailed(`Restarting ${name}`, state), tone: 'pending', canRestart: false, busy: true };
+        case 'indexing':
+            return { label: `Indexing with ${name}…`, title: detailed(`${name} is indexing`, state), tone: 'pending', canRestart: false, busy: true };
         case 'unavailable':
             return { label: `${name} not found`, title: detailed(`${name} could not be started`, state), tone: 'error', canRestart: true, busy: false };
         case 'failed':

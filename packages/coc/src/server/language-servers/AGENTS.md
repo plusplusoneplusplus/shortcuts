@@ -73,7 +73,8 @@ and transport code stays generic.
   `definition.command` with `definition.args` and `shell: false` in the resolved
   `rootPath`, runs `initialize`/`initialized`/`shutdown`/`exit`, and wraps a
   `LanguageServerConnection`. `getState()` reports the concise status set —
-  `disabled`, `unavailable`, `starting`, `ready`, `reconnecting`, `failed` —
+  `disabled`, `unavailable`, `starting`, `indexing`, `ready`, `reconnecting`,
+  `failed` —
   plus the server name, version, and negotiated capabilities. `disabled` covers
   both a config-disabled definition and one stopped because nothing needs it.
   A missing executable is `unavailable`, not `failed`. Runtime adapters may
@@ -125,6 +126,11 @@ and transport code stays generic.
   transition fires here before `onReady`, with the connection already live, so
   a subscriber may send on it. A listener that throws is reported through
   `onError` and does not stop the others.
+- Standard `$/progress` begin/end tokens move a handshaken session between
+  `indexing` and `ready`. Multiple tokens keep it indexing until all end.
+  Normal request deadlines pause across that window, including requests already
+  in flight; abort signals and bounded lifecycle requests such as `shutdown`
+  remain active. The browser keeps the document synchronized while indexing.
 - `manager.ts` — `LanguageServerManager` owns every live session on this host.
   `acquire({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
   resolves the definition with `selectDefinitionForFile`, the root with
@@ -234,7 +240,7 @@ and transport code stays generic.
   one too, since no ready handler will fire for it.
 - The socket subscribes to `session.onStateChange` and forwards every
   transition as an `lsp-status`, so the browser's status display sees
-  `starting`, `reconnecting` and `failed` rather than only `ready`.
+  `starting`, `indexing`, `reconnecting` and `failed` rather than only `ready`.
 - `lsp-restart` is the user's retry: it restarts the server behind one
   document without restarting CoC, and the attachment survives it — the same
   session comes back with a new process and a new `generation`, which is the

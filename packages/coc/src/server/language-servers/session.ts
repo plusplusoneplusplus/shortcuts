@@ -27,7 +27,14 @@ import type { JsonValue, LanguageServerDefinition } from './types';
  * `disabled` covers both "turned off in settings" and "not running because
  * nothing needs it"; either way the session is idle and starts on demand.
  */
-export type LanguageServerStatus = 'disabled' | 'unavailable' | 'starting' | 'ready' | 'reconnecting' | 'failed';
+export type LanguageServerStatus =
+    | 'disabled'
+    | 'unavailable'
+    | 'starting'
+    | 'indexing'
+    | 'ready'
+    | 'reconnecting'
+    | 'failed';
 
 export interface LanguageServerSessionState {
     status: LanguageServerStatus;
@@ -120,6 +127,7 @@ export class LanguageServerSession {
     private references = 0;
     private restarts = 0;
     private generation = 0;
+    private readonly progressTokens = new Set<string | number>();
     private disposed = false;
     private state: LanguageServerSessionState;
 
@@ -161,7 +169,7 @@ export class LanguageServerSession {
 
     /** True while a process is running and has completed initialize. */
     get isReady(): boolean {
-        return this.state.status === 'ready' && this.connection !== undefined;
+        return (this.state.status === 'ready' || this.state.status === 'indexing') && this.connection !== undefined;
     }
 
     /**
@@ -311,7 +319,7 @@ export class LanguageServerSession {
         this.child = undefined;
         if (connection) {
             try {
-                await connection.sendRequest('shutdown', null, { timeoutMs: 2_000 });
+                await connection.sendRequest('shutdown', null, { timeoutMs: 2_000, suspendable: false });
                 connection.sendNotification('exit');
             } catch {
                 // A server that will not shut down cleanly is killed below.
@@ -322,6 +330,7 @@ export class LanguageServerSession {
             await this.terminate(child);
         }
         this.clientRequests.reset();
+        this.progressTokens.clear();
         this.setState({ status: 'disabled', detail, capabilities: undefined, dynamicRegistrations: [] });
     }
 
@@ -436,6 +445,7 @@ export class LanguageServerSession {
             maxMessageBytes: this.options.maxMessageBytes,
             onError: (error) => this.report(error),
         });
+        connection.onNotification('$/progress', (params) => this.handleProgress(connection, params));
         // Built-in answers go on first; a caller's own handler for the same
         // method is installed after and wins.
         this.clientRequests.reset();
@@ -463,7 +473,7 @@ export class LanguageServerSession {
             this.restarts = 0;
             this.generation += 1;
             this.setState({
-                status: 'ready',
+                status: this.progressTokens.size > 0 ? 'indexing' : 'ready',
                 detail: undefined,
                 capabilities: result?.capabilities ?? {},
                 dynamicRegistrations: this.clientRequests.getRegistrations(),
@@ -483,6 +493,7 @@ export class LanguageServerSession {
             connection.dispose('Handshake failed');
             this.connection = undefined;
             this.child = undefined;
+            this.progressTokens.clear();
             // A process that never finished `initialize` gets the same
             // escalation as one being stopped. Wait for it to exit before
             // rejecting so callers may safely remove its working directory.
@@ -532,6 +543,7 @@ export class LanguageServerSession {
         this.child = undefined;
         this.connection?.dispose('Language server exited');
         this.connection = undefined;
+        this.progressTokens.clear();
         const how = signal ? `signal ${signal}` : `exit code ${code}`;
         this.clientRequests.reset();
         if (this.references === 0) {
@@ -614,6 +626,7 @@ export class LanguageServerSession {
         this.child = undefined;
         this.connection?.dispose('Language server could not start');
         this.connection = undefined;
+        this.progressTokens.clear();
         this.clientRequests.reset();
         const code = (error as NodeJS.ErrnoException | undefined)?.code;
         const missing = code === 'ENOENT';
@@ -647,6 +660,36 @@ export class LanguageServerSession {
     /** Keeps a bounded tail of stderr for failure messages, never the whole log. */
     private appendStderr(chunk: string): void {
         this.stderrTail = (this.stderrTail + chunk).slice(-MAX_STDERR_CHARS);
+    }
+
+    private handleProgress(connection: LanguageServerConnection, params: unknown): void {
+        if (!params || typeof params !== 'object') {
+            return;
+        }
+        const progress = params as { token?: unknown; value?: { kind?: unknown } };
+        if ((typeof progress.token !== 'string' && typeof progress.token !== 'number') || !progress.value) {
+            return;
+        }
+        if (progress.value.kind === 'begin') {
+            const wasIdle = this.progressTokens.size === 0;
+            this.progressTokens.add(progress.token);
+            if (wasIdle) {
+                connection.setRequestTimeoutsSuspended(true);
+                if (this.isReady) {
+                    this.setState({ status: 'indexing' });
+                }
+            }
+            return;
+        }
+        if (progress.value.kind !== 'end' || !this.progressTokens.delete(progress.token)) {
+            return;
+        }
+        if (this.progressTokens.size === 0) {
+            connection.setRequestTimeoutsSuspended(false);
+            if (this.connection === connection && this.state.status === 'indexing') {
+                this.setState({ status: 'ready' });
+            }
+        }
     }
 
     private setState(patch: Partial<LanguageServerSessionState>): void {
