@@ -76,6 +76,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
     const wsStatus: WsStatus = state.wsStatus ?? 'closed';
     const wsConfig = wsStatusConfig[wsStatus];
     const wsTooltip = connectionTooltip(wsConfig.label);
+    const quotaRoutingTarget = state.selectedRepoId ?? undefined;
 
     // The admin shell hosts `admin` itself plus the embedded tool routes
     // (skills/logs/stats/servers). Reflect "user is in the admin shell" in the
@@ -109,7 +110,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                         &#9881;
                     </button>
                     <NotificationBell placement="up" />
-                    <AgentProviderQuotaIndicator placement="up" />
+                    <AgentProviderQuotaIndicator placement="up" routingTarget={quotaRoutingTarget} />
                     <button
                         className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
                         aria-label="Dev tools"
@@ -175,7 +176,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                 />
             </span>
             <NotificationBell />
-            <AgentProviderQuotaIndicator />
+            <AgentProviderQuotaIndicator routingTarget={quotaRoutingTarget} />
             <button
                 id="admin-toggle"
                 data-tab="admin"

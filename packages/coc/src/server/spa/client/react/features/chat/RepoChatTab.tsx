@@ -1051,6 +1051,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             isMobile={isMobile}
             now={now}
             workspaceId={workspaceId}
+            quotaRoutingTarget={sourceSelectionId ?? workspaceId}
             unseenProcessIds={unseenProcessIds}
             awaitingInputProcessIds={awaitingInputProcessIds}
             onMarkAllRead={markTasksSeen}
