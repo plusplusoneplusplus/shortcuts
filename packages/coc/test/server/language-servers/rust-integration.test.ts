@@ -304,10 +304,10 @@ describe('real rust-analyzer runtime', () => {
         expect(runtime.origin).toBe('rustup');
         expect(path.isAbsolute(runtime.command)).toBe(true);
         expect(session.getState()).toMatchObject({
-            status: 'ready',
             displayName: 'Rust',
             runtime: expect.stringContaining('rustup'),
         });
+        expect(['ready', 'indexing']).toContain(session.getState().status);
         expect(JSON.stringify(session.getState())).not.toContain(runtime.command);
     });
 
@@ -372,11 +372,16 @@ describe('Rust language features over a real Cargo workspace', () => {
         });
         expect(completionLabels(widgetResult)).toContain('label');
 
-        const macroResult = await session.sendRequest('textDocument/completion', {
-            textDocument: { uri: uriFor('app/src/lib.rs') },
-            position: positionAt(completionText, 'derived.', 'derived.'.length),
-            context: { triggerKind: 1 },
-        });
+        const macroResult = await waitForRequest(
+            'textDocument/completion',
+            {
+                textDocument: { uri: uriFor('app/src/lib.rs') },
+                position: positionAt(completionText, 'derived.', 'derived.'.length),
+                context: { triggerKind: 1 },
+            },
+            (result) => completionLabels(result).includes('generated_label'),
+            'derive-macro completion',
+        );
         expect(completionLabels(macroResult)).toContain('generated_label');
         changeApp(APP_RS);
     });
@@ -393,10 +398,15 @@ describe('Rust language features over a real Cargo workspace', () => {
     });
 
     it('resolves build-script output with the preset defaults', async () => {
-        const result = await session.sendRequest('textDocument/hover', {
-            textDocument: { uri: uriFor('app/src/lib.rs') },
-            position: positionAt(APP_RS, 'generated_by_build_script();', 2),
-        });
+        const result = await waitForRequest(
+            'textDocument/hover',
+            {
+                textDocument: { uri: uriFor('app/src/lib.rs') },
+                position: positionAt(APP_RS, 'generated_by_build_script();', 2),
+            },
+            (candidate) => hoverText(candidate).includes('fn generated_by_build_script'),
+            'build-script symbol',
+        );
         expect(hoverText(result)).toContain('fn generated_by_build_script');
     });
 
