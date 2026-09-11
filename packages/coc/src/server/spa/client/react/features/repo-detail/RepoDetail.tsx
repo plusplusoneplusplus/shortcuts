@@ -54,7 +54,7 @@ import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { TAB_GROUP_INDEX, computeVisibleSubTabs } from './repoSubTabs';
 import type { RepoData } from '../../repos/repoGrouping';
-import { getRepoSelectionId } from '../../repos/cloneIdentity';
+import { getRepoSelectionId, parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import type { RepoSubTab, TasksPanelNavState } from '../../types/dashboard';
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
 import {
@@ -106,6 +106,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const ws = repo.workspace;
     const sourceSelectionId = getRepoSelectionId(repo);
+    const explorerRoutingRef = parseRemoteCloneKey(sourceSelectionId) ? sourceSelectionId : null;
     const tasksNavStateKey = `${ws.id}::tasks`;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
@@ -850,7 +851,14 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         </div>}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                            {wasVisited('explorer') && <ExplorerPanel key={ws.id} workspaceId={ws.id} mode="editor" />}
+                            {wasVisited('explorer') && (
+                                <ExplorerPanel
+                                    key={ws.id}
+                                    workspaceId={ws.id}
+                                    routingRef={explorerRoutingRef}
+                                    mode="editor"
+                                />
+                            )}
                         </div>
                         {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             {wasVisited('pull-requests') && <PullRequestsTab

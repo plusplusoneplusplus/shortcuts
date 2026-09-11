@@ -3,8 +3,8 @@
  *
  * Speaks the `/ws/language-server` message shape defined by the host bridge
  * (`packages/coc/src/server/language-servers/ws-bridge.ts`). One client owns one
- * socket for one (workspace, editing session) pair and multiplexes every open
- * document over it.
+ * socket for one (concrete clone, editing session) pair and multiplexes every
+ * open document over it.
  *
  * What lives here and what does not:
  *   - Here: socket lifecycle, reconnect with backoff, attach bookkeeping,
@@ -22,7 +22,12 @@
  */
 
 import { getWsPath, isContainerMode } from '../../utils/config';
-import { cloneWsUrlForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
+import {
+    cloneWsUrlForWorkspace,
+    lookupCloneBaseUrl,
+    subscribeCloneBaseUrl,
+} from '../../repos/cloneRegistry';
+import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { getEditingSessionId } from './editingSession';
 
 // ============================================================================
@@ -70,6 +75,7 @@ export interface LanguageServerUnavailableInfo {
  * `/ws/agent-link` and destroys every other upgrade.
  */
 export const CONTAINER_UNSUPPORTED_REASON = 'container-unsupported';
+export const REMOTE_ROUTE_UNAVAILABLE_REASON = 'remote-route-unavailable';
 
 /**
  * Whether a language socket can reach the host that owns `workspaceId`, and if
@@ -81,9 +87,11 @@ export const CONTAINER_UNSUPPORTED_REASON = 'container-unsupported';
  * socket closes before it opens and the reconnect backoff runs forever, leaving
  * the badge on "connecting…" with no explanation.
  *
- * A remote clone is excluded deliberately: its socket goes straight to that
- * CoC server's own host, which is never in container mode, so the proxy the
- * page was served through has no say in it.
+ * A routed remote clone is excluded deliberately: its socket goes straight to
+ * that CoC server's own host, which is never in container mode, so the proxy
+ * the page was served through has no say in it. A concrete remote clone whose
+ * route is unresolved is unavailable; it must never fall through to the page
+ * origin.
  *
  * This is a gate, not a redesign. The wire protocol and the socket code stay
  * exactly as they are, so a relay over the agent link can replace the gate
@@ -91,9 +99,16 @@ export const CONTAINER_UNSUPPORTED_REASON = 'container-unsupported';
  */
 export function detectLanguageTransportBlock(
     workspaceId: string | null | undefined,
+    routingRef: string | null | undefined = workspaceId,
 ): LanguageServerUnavailableInfo | null {
-    if (lookupCloneBaseUrl(workspaceId)) {
+    if (lookupCloneBaseUrl(routingRef)) {
         return null;
+    }
+    if (routingRef && parseRemoteCloneKey(routingRef)) {
+        return {
+            reason: REMOTE_ROUTE_UNAVAILABLE_REASON,
+            detail: 'The remote language-server endpoint is unavailable.',
+        };
     }
     if (!isContainerMode()) {
         return null;
@@ -176,6 +191,13 @@ export interface SocketLike {
 
 export interface LanguageServerClientOptions {
     workspaceId: string;
+    /**
+     * Concrete clone identity used only for endpoint routing. The WebSocket
+     * query and browser document URI still carry `workspaceId`, which is the
+     * identity understood by the owning host. `null` pins a local clone to the
+     * page origin; omission keeps the workspace-id lookup for compatibility.
+     */
+    routingRef?: string | null;
     editingSessionId?: string;
     /** Injected in tests; defaults to a real `WebSocket` at the owning host. */
     createSocket?: (url: string) => SocketLike;
@@ -185,7 +207,10 @@ export interface LanguageServerClientOptions {
     /** Default wait for an attachment to go live inside `sendRequest`. */
     attachTimeoutMs?: number;
     /** Injected in tests; defaults to `detectLanguageTransportBlock`. */
-    detectTransportBlock?: (workspaceId: string) => LanguageServerUnavailableInfo | null;
+    detectTransportBlock?: (
+        workspaceId: string,
+        routingRef?: string | null,
+    ) => LanguageServerUnavailableInfo | null;
 }
 
 const OPEN = 1;
@@ -221,19 +246,24 @@ interface AttachmentRecord {
 }
 
 /**
- * One socket per (workspace, editing session). Created lazily on the first
+ * One socket per (concrete clone, editing session). Created lazily on the first
  * `attach` and torn down when the last attachment is released.
  */
 export class LanguageServerClient {
     readonly workspaceId: string;
     readonly editingSessionId: string;
+    readonly routingRef: string | null;
 
     private readonly createSocket: (url: string) => SocketLike;
     private readonly reconnectDelayMs: number;
     private readonly maxReconnectDelayMs: number;
     private readonly pingIntervalMs: number;
     private readonly attachTimeoutMs: number;
-    private readonly detectTransportBlock: (workspaceId: string) => LanguageServerUnavailableInfo | null;
+    private readonly detectTransportBlock: (
+        workspaceId: string,
+        routingRef?: string | null,
+    ) => LanguageServerUnavailableInfo | null;
+    private unsubscribeCloneRoute: () => void = () => {};
 
     private socket: SocketLike | null = null;
     private status: LanguageServerConnectionStatus = 'idle';
@@ -253,6 +283,7 @@ export class LanguageServerClient {
 
     constructor(options: LanguageServerClientOptions) {
         this.workspaceId = options.workspaceId;
+        this.routingRef = options.routingRef === undefined ? options.workspaceId : options.routingRef;
         this.editingSessionId = options.editingSessionId ?? getEditingSessionId();
         this.createSocket = options.createSocket ?? defaultCreateSocket;
         this.reconnectDelayMs = options.reconnectDelayMs ?? 1000;
@@ -261,6 +292,9 @@ export class LanguageServerClient {
         this.attachTimeoutMs = options.attachTimeoutMs ?? 10_000;
         this.detectTransportBlock = options.detectTransportBlock ?? detectLanguageTransportBlock;
         this.reconnectDelay = this.reconnectDelayMs;
+        this.unsubscribeCloneRoute = subscribeCloneBaseUrl(this.routingRef, () => {
+            this.handleCloneRouteChange();
+        });
     }
 
     getStatus(): LanguageServerConnectionStatus {
@@ -307,7 +341,7 @@ export class LanguageServerClient {
                 statusListeners: new Set(),
             };
             this.attachments.set(record.localId, record);
-            const blocked = this.detectTransportBlock(this.workspaceId);
+            const blocked = this.detectTransportBlock(this.workspaceId, this.routingRef);
             if (blocked) {
                 // Settle the document as unavailable without a socket. The store
                 // reads `getUnavailable()` when it builds its record, so this is
@@ -327,6 +361,8 @@ export class LanguageServerClient {
     /** Drops every attachment and the socket. The client is unusable after. */
     dispose(): void {
         this.disposed = true;
+        this.unsubscribeCloneRoute();
+        this.unsubscribeCloneRoute = () => {};
         for (const [, record] of this.attachments) {
             record.released = true;
             this.failWaiters(record, new LanguageServerClientError('released', 'Language client disposed'));
@@ -346,7 +382,7 @@ export class LanguageServerClient {
         if (this.disposed || this.socket || this.status === 'connecting') {
             return;
         }
-        if (this.detectTransportBlock(this.workspaceId)) {
+        if (this.detectTransportBlock(this.workspaceId, this.routingRef)) {
             // No reachable endpoint, so no socket and no backoff loop.
             this.clearReconnectTimer();
             return;
@@ -355,7 +391,7 @@ export class LanguageServerClient {
         const path = `${getWsPath()}/language-server`
             + `?workspaceId=${encodeURIComponent(this.workspaceId)}`
             + `&editingSessionId=${encodeURIComponent(this.editingSessionId)}`;
-        const url = cloneWsUrlForWorkspace(path, this.workspaceId);
+        const url = cloneWsUrlForWorkspace(path, this.routingRef);
         this.setStatus('connecting');
 
         let socket: SocketLike;
@@ -424,6 +460,54 @@ export class LanguageServerClient {
         if (!this.disposed && this.attachments.size > 0) {
             this.scheduleReconnect();
         }
+    }
+
+    /** Replace a live or pending socket when this clone's concrete endpoint changes. */
+    private handleCloneRouteChange(): void {
+        if (this.disposed || this.attachments.size === 0) return;
+
+        const blocked = this.detectTransportBlock(this.workspaceId, this.routingRef);
+        this.clearReconnectTimer();
+        this.stopPing();
+        const socket = this.socket;
+        this.socket = null;
+        this.byAttachmentId.clear();
+        this.byAttachRequest.clear();
+        for (const [, record] of this.attachments) {
+            const wasAttached = record.info !== null;
+            record.info = null;
+            record.attachRequestId = null;
+            record.pending.clear();
+            if (wasAttached) {
+                emit(record.detachedListeners, 'clone-route-changed');
+            }
+        }
+        this.rejectAllPending(
+            new LanguageServerClientError('disconnected', 'Language-server clone route changed'),
+        );
+        if (socket) {
+            try {
+                socket.close(1000, 'clone route changed');
+            } catch {
+                // The stale endpoint may already have closed itself.
+            }
+        }
+
+        if (blocked) {
+            this.setStatus('closed');
+            for (const [, record] of this.attachments) {
+                record.unavailable = blocked;
+                this.failWaiters(record, new LanguageServerClientError(blocked.reason, blocked.detail));
+                emit(record.unavailableListeners, blocked);
+            }
+            return;
+        }
+
+        for (const [, record] of this.attachments) {
+            record.unavailable = null;
+        }
+        this.setStatus('idle');
+        this.connect();
     }
 
     private scheduleReconnect(): void {
@@ -645,7 +729,7 @@ export class LanguageServerClient {
         if (this.disposed || record.released) {
             return;
         }
-        const blocked = this.detectTransportBlock(this.workspaceId);
+        const blocked = this.detectTransportBlock(this.workspaceId, this.routingRef);
         if (blocked) {
             // A retry cannot reach the host either; keep the explanation.
             record.unavailable = blocked;
@@ -893,16 +977,25 @@ function defaultCreateSocket(url: string): SocketLike {
 const clientsByKey = new Map<string, LanguageServerClient>();
 
 /**
- * One client per (workspace, editing session). Keying on the workspace is what
- * routes every document to its owning host, so a repo group's panel keeps
- * asking the right server after its dock target changes (AC-04).
+ * One client per (workspace, concrete clone route, editing session). The route
+ * key separates same-id clones on different hosts while the workspace id in
+ * the protocol remains the value the owning host understands.
  */
-export function getLanguageServerClient(workspaceId: string, editingSessionId?: string): LanguageServerClient {
+export function getLanguageServerClient(
+    workspaceId: string,
+    editingSessionId?: string,
+    routingRef?: string | null,
+): LanguageServerClient {
     const sessionId = editingSessionId ?? getEditingSessionId();
-    const key = `${workspaceId} ${sessionId}`;
+    const resolvedRoutingRef = routingRef === undefined ? workspaceId : routingRef;
+    const key = `${workspaceId} ${resolvedRoutingRef ?? '<local>'} ${sessionId}`;
     let client = clientsByKey.get(key);
     if (!client) {
-        client = new LanguageServerClient({ workspaceId, editingSessionId: sessionId });
+        client = new LanguageServerClient({
+            workspaceId,
+            routingRef: resolvedRoutingRef,
+            editingSessionId: sessionId,
+        });
         clientsByKey.set(key, client);
     }
     return client;

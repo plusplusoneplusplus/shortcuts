@@ -38,6 +38,14 @@ const cloneBaseUrlByKey = new Map<string, string>();
 const cloneKeysByWorkspace = new Map<string, Set<string>>();
 let activeCloneKey: string | null = null;
 
+interface CloneRouteSubscription {
+    ref: string | CloneRegistryLookup | null | undefined;
+    baseUrl: string | undefined;
+    listener: (baseUrl: string | undefined) => void;
+}
+
+const routeSubscriptions = new Set<CloneRouteSubscription>();
+
 /** A minimal remote-workspace shape: just the routing essentials. */
 export interface CloneRegistryEntry {
     workspaceId: string;
@@ -82,11 +90,13 @@ export function registerCloneBaseUrls(entries: Iterable<CloneRegistryEntry>): vo
     if (activeCloneKey && !cloneBaseUrlByKey.has(activeCloneKey)) {
         activeCloneKey = null;
     }
+    notifyCloneRouteSubscriptions();
 }
 
 export function setActiveCloneForRouting(selectionId: string | null | undefined): void {
     const parsed = parseRemoteCloneKey(selectionId);
     activeCloneKey = parsed ? buildRemoteCloneKey(parsed.serverId, parsed.workspaceId) : null;
+    notifyCloneRouteSubscriptions();
 }
 
 /**
@@ -110,6 +120,7 @@ export function activateWorkspaceRouteForBaseUrl(workspaceId: string, baseUrl: s
     const key = workspaceRouteKeyForBaseUrl(workspaceId, baseUrl);
     if (!key) return false;
     activeCloneKey = key;
+    notifyCloneRouteSubscriptions();
     return true;
 }
 
@@ -146,6 +157,41 @@ export function lookupCloneBaseUrl(ref: string | CloneRegistryLookup | null | un
         return cloneBaseUrlByKey.get([...keys][0]);
     }
     return undefined;
+}
+
+/**
+ * Observe the resolved endpoint for one concrete clone reference.
+ *
+ * Language sockets are long-lived, unlike REST calls that resolve on every
+ * request. A DevTunnel port can be reassigned while a document is open, and a
+ * selected remote clone can become routable after the component first mounts.
+ * Subscribers use this signal to replace their socket instead of retaining the
+ * origin that happened to resolve at construction time.
+ */
+export function subscribeCloneBaseUrl(
+    ref: string | CloneRegistryLookup | null | undefined,
+    listener: (baseUrl: string | undefined) => void,
+): () => void {
+    const subscription: CloneRouteSubscription = {
+        ref,
+        baseUrl: lookupCloneBaseUrl(ref),
+        listener,
+    };
+    routeSubscriptions.add(subscription);
+    return () => {
+        routeSubscriptions.delete(subscription);
+    };
+}
+
+function notifyCloneRouteSubscriptions(): void {
+    for (const subscription of [...routeSubscriptions]) {
+        const baseUrl = lookupCloneBaseUrl(subscription.ref);
+        if (baseUrl === subscription.baseUrl) {
+            continue;
+        }
+        subscription.baseUrl = baseUrl;
+        subscription.listener(baseUrl);
+    }
 }
 
 /**
@@ -230,4 +276,5 @@ export function resetCloneRegistryForTests(): void {
     cloneBaseUrlByKey.clear();
     cloneKeysByWorkspace.clear();
     activeCloneKey = null;
+    notifyCloneRouteSubscriptions();
 }

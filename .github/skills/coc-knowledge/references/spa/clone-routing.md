@@ -86,6 +86,14 @@ The routing hooks `useResolveCloneBaseUrl()`, `useCocClient(ref?)`, and
 `ReposContext` dependency, so they are safe in deep per-tab components and unit tests; a
 workspace **object** resolves from its own marker.
 
+Long-lived language transports subscribe to the registry rather than resolving
+only once. Their cache identity is `(workspaceId, concrete clone route,
+editingSessionId)`: the clone route chooses the socket origin, while the plain
+workspace id stays in `/ws/language-server` and `coc-file://` payloads for the
+owning host. An unresolved concrete remote key is unavailable and cannot fall
+through to the page origin. Endpoint refresh replaces the socket and replays the
+clone's own document buffers on the new connection.
+
 **No-local-fallthrough guarantee.** A selected remote clone's clone key, or its bare
 workspace id when unique or active-disambiguated, resolves to its `baseUrl`, so its
 clone-scoped REST and WS never hit the default local client. Because cached and offline

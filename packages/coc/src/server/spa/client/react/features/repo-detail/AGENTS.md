@@ -237,6 +237,12 @@ this workspace, read whole, not a trusted absolute path — and only then opens 
 language document and registers Monaco providers over its model
 (`features/language-servers/`).
 
+The selected repo passes its clone-qualified routing ref separately from the
+workspace id. File reads/writes and the language socket resolve through that ref,
+while browser document URIs and WebSocket query parameters keep the workspace id
+understood by the owning server. Local repos pass an explicit local route, so a
+same-id remote registry entry cannot capture a local Explorer document.
+
 An LSP-managed model is moved onto a private shadow language id
 (`coc-lsp-typescript`, `coc-lsp-javascript`) before the providers are
 registered. Monaco registers providers per language and its bundled TypeScript

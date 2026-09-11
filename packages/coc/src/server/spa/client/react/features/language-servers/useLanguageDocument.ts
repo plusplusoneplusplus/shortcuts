@@ -36,6 +36,8 @@ import { toMarkers } from './monacoBridge';
 export interface UseLanguageDocumentOptions {
     /** Owning workspace. Empty or missing disables the hook. */
     workspaceId?: string | null;
+    /** Concrete clone identity used to reach the workspace's owning host. */
+    routingRef?: string | null;
     /** Repo-relative path. Empty or missing disables the hook. */
     path?: string | null;
     /**
@@ -73,7 +75,15 @@ const NO_DIAGNOSTICS: LspDiagnostic[] = [];
 const NO_MARKERS: monacoEditor.IMarkerData[] = [];
 
 export function useLanguageDocument(options: UseLanguageDocumentOptions): UseLanguageDocumentResult {
-    const { workspaceId, path, enabled = true, text, fallbackLanguageId, store: injectedStore } = options;
+    const {
+        workspaceId,
+        routingRef,
+        path,
+        enabled = true,
+        text,
+        fallbackLanguageId,
+        store: injectedStore,
+    } = options;
     const active = enabled && !!workspaceId && !!path;
 
     const [view, setView] = useState<LanguageDocumentView | null>(null);
@@ -95,7 +105,7 @@ export function useLanguageDocument(options: UseLanguageDocumentOptions): UseLan
             setDiagnostics(NO_DIAGNOSTICS);
             return;
         }
-        const store = injectedStore ?? getLanguageDocumentStore(workspaceId as string);
+        const store = injectedStore ?? getLanguageDocumentStore(workspaceId as string, routingRef);
         const opened = store.open({
             path: path as string,
             text: textRef.current,
@@ -116,7 +126,7 @@ export function useLanguageDocument(options: UseLanguageDocumentOptions): UseLan
             setSnapshot(null);
             setDiagnostics(NO_DIAGNOSTICS);
         };
-    }, [active, workspaceId, path, injectedStore]);
+    }, [active, workspaceId, routingRef, path, injectedStore]);
 
     // A later read from disk — a refresh, or a watcher — is offered to the
     // store, which refuses it while the buffer is dirty. Skipping the offer

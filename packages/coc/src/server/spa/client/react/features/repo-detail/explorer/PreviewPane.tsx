@@ -41,6 +41,8 @@ import { explorerApi } from './explorerApi';
 
 export interface PreviewPaneProps {
     repoId: string;
+    /** Concrete clone identity for file I/O and language transport routing. */
+    routingRef?: string | null;
     /** Relative path from repo root, or prefixed with TRUSTED_PATH_PREFIX for absolute paths */
     filePath: string;
     /** File name for language detection, e.g. "index.ts" */
@@ -98,7 +100,7 @@ export interface PreviewPaneProps {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, filePath, fileName, revealLine, revealColumn, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine, revealColumn, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -106,12 +108,20 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, revealColu
     const read = useCallback((signal: AbortSignal) => (
         isTrusted
             ? explorerApi.readTrustedBlob(actualPath, { signal })
-            : explorerApi.readBlob(repoId, actualPath, { signal })
-    ), [actualPath, isTrusted, repoId]);
+            : routingRef === undefined
+                ? explorerApi.readBlob(repoId, actualPath, { signal })
+                : explorerApi.readBlob(repoId, actualPath, { signal }, routingRef)
+    ), [actualPath, isTrusted, repoId, routingRef]);
 
     const write = useMemo(() => (
-        effectiveReadOnly ? undefined : (content: string) => explorerApi.writeBlob(repoId, actualPath, content).then(() => undefined)
-    ), [effectiveReadOnly, repoId, actualPath]);
+        effectiveReadOnly
+            ? undefined
+            : (content: string) => (
+                routingRef === undefined
+                    ? explorerApi.writeBlob(repoId, actualPath, content)
+                    : explorerApi.writeBlob(repoId, actualPath, content, routingRef)
+            ).then(() => undefined)
+    ), [effectiveReadOnly, repoId, actualPath, routingRef]);
 
     const handleNotFound = useCallback((err: Error) => {
         if ((err as { status?: number }).status === 404) onNotFound?.();
@@ -144,6 +154,7 @@ export function PreviewPane({ repoId, filePath, fileName, revealLine, revealColu
 
     const languageDocument = useLanguageDocument({
         workspaceId: repoId,
+        routingRef,
         path: actualPath,
         enabled: languageEnabled,
         text: savedText ?? diskText,

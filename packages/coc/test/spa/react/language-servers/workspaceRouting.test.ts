@@ -20,6 +20,7 @@ import {
     registerCloneBaseUrls,
     resetCloneRegistryForTests,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 import { FakeSocket } from './fakeLanguageTransport';
 
 const LOCAL = 'ws-local';
@@ -121,6 +122,70 @@ describe('language routing across workspaces and hosts (AC-04)', () => {
         expect(new URL(local.socket().url).host).toBe(window.location.host);
         expect(new URL(remote.socket().url).host).toBe('10.0.0.5:4100');
         expect(remote.socket().url.startsWith('ws://')).toBe(true);
+    });
+
+    it('routes a concrete remote clone when its workspace id is ambiguous across hosts', () => {
+        const workspaceId = 'ws-shared';
+        const ownerKey = buildRemoteCloneKey('server-b', workspaceId);
+        registerCloneBaseUrls([
+            {
+                workspaceId,
+                serverId: 'server-a',
+                baseUrl: 'http://10.0.0.6:4200',
+            },
+            {
+                workspaceId,
+                serverId: 'server-b',
+                baseUrl: 'http://10.0.0.7:4300',
+            },
+        ]);
+        const client = new LanguageServerClient({
+            workspaceId,
+            routingRef: ownerKey,
+            editingSessionId: 'session-owner',
+            createSocket: (url: string) => new FakeSocket(url),
+        });
+
+        client.attach(PATH);
+
+        expect(FakeSocket.instances.at(-1)?.url)
+            .toBe('ws://10.0.0.7:4300/ws/language-server?workspaceId=ws-shared&editingSessionId=session-owner');
+        client.dispose();
+    });
+
+    it('never falls through locally while a concrete remote route appears or changes', () => {
+        const workspaceId = 'ws-late-remote';
+        const ownerKey = buildRemoteCloneKey('server-owner', workspaceId);
+        const client = new LanguageServerClient({
+            workspaceId,
+            routingRef: ownerKey,
+            editingSessionId: 'session-route-refresh',
+            createSocket: (url: string) => new FakeSocket(url),
+        });
+        const attachment = client.attach(PATH);
+
+        expect(FakeSocket.instances).toHaveLength(0);
+        expect(attachment.getUnavailable()?.reason).toBe('remote-route-unavailable');
+
+        registerCloneBaseUrls([{
+            workspaceId,
+            serverId: 'server-owner',
+            baseUrl: 'http://10.0.0.8:4400',
+        }]);
+        expect(FakeSocket.instances.map(socket => new URL(socket.url).host)).toEqual(['10.0.0.8:4400']);
+
+        const firstRemoteSocket = FakeSocket.instances[0];
+        registerCloneBaseUrls([{
+            workspaceId,
+            serverId: 'server-owner',
+            baseUrl: 'http://10.0.0.9:4500',
+        }]);
+
+        expect(firstRemoteSocket.closed?.reason).toBe('clone route changed');
+        expect(FakeSocket.instances.map(socket => new URL(socket.url).host))
+            .toEqual(['10.0.0.8:4400', '10.0.0.9:4500']);
+        expect(FakeSocket.instances.some(socket => new URL(socket.url).host === window.location.host)).toBe(false);
+        client.dispose();
     });
 
     it('opens the document on each host under that host’s own workspace id', () => {

@@ -24,6 +24,7 @@ import {
     resetCloneRegistryForTests,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { FakeSocket } from './fakeLanguageTransport';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 function makeClient(overrides: Record<string, unknown> = {}): LanguageServerClient {
     return new LanguageServerClient({
@@ -652,6 +653,19 @@ describe('LanguageServerClient', () => {
             // Cross-window isolation starts here: a different editing session
             // gets a different host session key (AC-02).
             expect(otherSession).not.toBe(a);
+        });
+
+        it('isolates clients for concrete clones that share a workspace id', () => {
+            const firstKey = buildRemoteCloneKey('server-a', 'ws-shared');
+            const secondKey = buildRemoteCloneKey('server-b', 'ws-shared');
+
+            const first = getLanguageServerClient('ws-shared', 'session-a', firstKey);
+            const second = getLanguageServerClient('ws-shared', 'session-a', secondKey);
+            const local = getLanguageServerClient('ws-shared', 'session-a', null);
+
+            expect(first).not.toBe(second);
+            expect(first).not.toBe(local);
+            expect(second).not.toBe(local);
         });
     });
 });

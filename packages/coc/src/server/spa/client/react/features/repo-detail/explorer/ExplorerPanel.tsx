@@ -52,6 +52,8 @@ export type ExplorerPanelMode = 'editor' | 'navigator' | 'sidebar';
 
 export interface ExplorerPanelProps {
     workspaceId: string;
+    /** Concrete clone identity for live file and language-server operations. */
+    routingRef?: string | null;
     /**
      * Whether this mount owns the global `#repos/:id/explorer/:path` route.
      * Selecting a file writes that hash, which the router reads as "switch to
@@ -230,6 +232,7 @@ export function isNarrowSidebar(width: number, threshold = NARROW_SIDEBAR_WIDTH)
 
 export function ExplorerPanel({
     workspaceId,
+    routingRef,
     deepLink = true,
     onOpenFile,
     mode: panelMode,
@@ -1521,6 +1524,7 @@ export function ExplorerPanel({
                                             : (
                                                 <PreviewPane
                                                     repoId={workspaceId}
+                                                    routingRef={routingRef}
                                                     filePath={tab.path}
                                                     fileName={tab.name}
                                                     revealLine={tab.line}
@@ -1581,6 +1585,7 @@ export function ExplorerPanel({
                             <div className="flex-1 min-h-0">
                                 <PreviewPane
                                     repoId={workspaceId}
+                                    routingRef={routingRef}
                                     filePath={previewFile.path}
                                     fileName={previewFile.name}
                                     revealLine={previewFile.line}

@@ -43,12 +43,24 @@ export const explorerApi = {
         return getCocClientForWorkspace(workspaceId).explorer.replaceContent(workspaceId, query, replacement, files, options);
     },
 
-    readBlob(workspaceId: string, path: string, options?: Pick<CocRequestOptions, 'signal'>): Promise<ExplorerBlobResponse> {
-        return getCocClientForWorkspace(workspaceId).explorer.readBlob(workspaceId, path, options);
+    readBlob(
+        workspaceId: string,
+        path: string,
+        options?: Pick<CocRequestOptions, 'signal'>,
+        routingRef?: string | null,
+    ): Promise<ExplorerBlobResponse> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.readBlob(workspaceId, path, options);
     },
 
-    writeBlob(workspaceId: string, path: string, content: string): Promise<{ success: boolean }> {
-        return getCocClientForWorkspace(workspaceId).explorer.writeBlob(workspaceId, path, content);
+    writeBlob(
+        workspaceId: string,
+        path: string,
+        content: string,
+        routingRef?: string | null,
+    ): Promise<{ success: boolean }> {
+        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
+            .explorer.writeBlob(workspaceId, path, content);
     },
 
     reveal(workspaceId: string, path: string): Promise<void> {
