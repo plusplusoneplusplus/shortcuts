@@ -22,6 +22,7 @@ import { writeLanguageServerConfig } from '../../../src/server/language-servers/
 import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
 import { TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
+import { safeRm } from '../../helpers/safe-rm';
 
 const FIXTURE_SERVER = path.join(__dirname, 'fixtures', 'echo-language-server.mjs');
 
@@ -31,7 +32,7 @@ const tempDirs: string[] = [];
 afterEach(async () => {
     await Promise.all(managers.splice(0).map((manager) => manager.dispose()));
     for (const dir of tempDirs.splice(0)) {
-        fs.rmSync(dir, { recursive: true, force: true });
+        await safeRm(dir);
     }
 });
 
@@ -72,6 +73,8 @@ function createHarness(
         enabled?: boolean;
         exists?: (candidate: string) => boolean;
         prepareDeps?: PrepareDefinitionDeps;
+        /** Holds a session's teardown open, by the order dispose was called. */
+        disposeGate?: (callIndex: number) => Promise<void> | void;
     } = {},
 ): Harness {
     const dataDir = tempDir('coc-lsp-manager-data-');
@@ -87,6 +90,7 @@ function createHarness(
     };
     write(definitions, options.enabled ?? true);
 
+    let disposeCalls = 0;
     const manager = new LanguageServerManager({
         dataDir,
         maxSessions: options.maxSessions,
@@ -98,6 +102,7 @@ function createHarness(
             const originalDispose = session.dispose.bind(session);
             session.dispose = async (): Promise<void> => {
                 disposed.push(sessionOptions.definition.id);
+                await options.disposeGate?.(disposeCalls++);
                 await originalDispose();
             };
             return session;
@@ -256,6 +261,38 @@ describe('LanguageServerManager capacity', () => {
         expect(harness.manager.size).toBe(2);
         expect(harness.closed.map((event) => event.reason)).toEqual(['evicted']);
         expect(harness.closed[0].editingSessionId).toBe('browser-1');
+    });
+
+    it('waits for an eviction still tearing down before shutdown resolves', async () => {
+        // An eviction leaves the entry map before anything awaits its teardown,
+        // so `dispose` is the only place that wait can happen. Without it CoC
+        // shuts down while an evicted server is still holding its process and
+        // its project root, which on Windows fails the next directory removal.
+        let openTheGate = (): void => {};
+        const gate = new Promise<void>((resolve) => { openTheGate = resolve; });
+        const harness = createHarness([echoDefinition()], {
+            maxSessions: 1,
+            // Only the evicted session is held; shutdown's own close runs free.
+            disposeGate: (callIndex) => (callIndex === 0 ? gate : undefined),
+        });
+
+        const first = acquireTxt(harness, 'browser-1');
+        expect(first.ok).toBe(true);
+        if (!first.ok) {
+            return;
+        }
+        first.handle.release();
+        expect(acquireTxt(harness, 'browser-2').ok).toBe(true);
+        expect(harness.closed.map((event) => event.reason)).toEqual(['evicted']);
+
+        let settled = false;
+        const shutdown = harness.manager.dispose().then(() => { settled = true; });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(settled).toBe(false);
+
+        openTheGate();
+        await shutdown;
+        expect(settled).toBe(true);
     });
 
     it('refuses a new session rather than evicting one a document still holds', () => {

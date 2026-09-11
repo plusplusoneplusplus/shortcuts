@@ -103,13 +103,15 @@ export class LanguageServerManager {
     private readonly entries = new Map<string, SessionEntry>();
     private readonly closedListeners = new Set<(event: SessionClosedEvent) => void>();
     private readonly unsubscribeConfig: () => void;
+    /** Closes nobody awaits — evictions and config reloads — so `dispose` can. */
+    private readonly pendingCloses = new Set<Promise<unknown>>();
     private clock = 0;
     private disposed = false;
 
     constructor(options: LanguageServerManagerOptions) {
         this.options = options;
         this.unsubscribeConfig = onLanguageServerConfigChanged((event) => {
-            void this.handleConfigChanged(event.workspaceId);
+            this.trackClose(this.handleConfigChanged(event.workspaceId));
         });
     }
 
@@ -140,7 +142,7 @@ export class LanguageServerManager {
         let entry = this.entries.get(key);
         if (entry && entry.fingerprint !== fingerprintOf(definition)) {
             // Configuration moved on while this session was alive.
-            void this.closeEntry(entry, 'config-changed');
+            this.trackClose(this.closeEntry(entry, 'config-changed'));
             entry = undefined;
         }
         if (!entry) {
@@ -207,6 +209,10 @@ export class LanguageServerManager {
         this.unsubscribeConfig();
         const doomed = [...this.entries.values()];
         await Promise.all(doomed.map((entry) => this.closeEntry(entry, 'shutdown')));
+        // An evicted session left the map before anyone awaited its teardown.
+        // Shutdown is the last chance to wait for it, and callers take
+        // `dispose` resolving to mean no language server process is left.
+        await Promise.allSettled([...this.pendingCloses]);
         this.closedListeners.clear();
     }
 
@@ -295,8 +301,21 @@ export class LanguageServerManager {
         if (!victim) {
             return false;
         }
-        void this.closeEntry(victim, 'evicted');
+        this.trackClose(this.closeEntry(victim, 'evicted'));
         return true;
+    }
+
+    /**
+     * Holds on to a close whose caller cannot await it, so `dispose` can. The
+     * settle handler doubles as the rejection handler, keeping a failed close
+     * from surfacing as an unhandled rejection.
+     */
+    private trackClose(closing: Promise<unknown>): void {
+        this.pendingCloses.add(closing);
+        const settle = (): void => {
+            this.pendingCloses.delete(closing);
+        };
+        closing.then(settle, settle);
     }
 
     /**

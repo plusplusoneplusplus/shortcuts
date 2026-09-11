@@ -24,6 +24,7 @@ import {
 } from '../../../src/server/language-servers/active';
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
+import { safeRm } from '../../helpers/safe-rm';
 import type { LanguageServerServerMessage } from '../../../src/server/language-servers/ws-bridge';
 
 const FIXTURE_SERVER = path.join(__dirname, 'fixtures', 'echo-language-server.mjs');
@@ -36,7 +37,7 @@ afterEach(async () => {
         await cleanup();
     }
     for (const dir of tempDirs.splice(0)) {
-        fs.rmSync(dir, { recursive: true, force: true });
+        await safeRm(dir);
     }
 });
 

@@ -19,6 +19,7 @@ import {
 } from '../../../src/server/language-servers/client-requests';
 import { LanguageServerSession } from '../../../src/server/language-servers/session';
 import type { LanguageServerDefinition, JsonValue } from '../../../src/server/language-servers/types';
+import { safeRm } from '../../helpers/safe-rm';
 
 const FIXTURE_SERVER = path.join(__dirname, 'fixtures', 'echo-language-server.mjs');
 
@@ -28,7 +29,7 @@ const tempDirs: string[] = [];
 afterEach(async () => {
     await Promise.all(sessions.splice(0).map((session) => session.dispose()));
     for (const dir of tempDirs.splice(0)) {
-        fs.rmSync(dir, { recursive: true, force: true });
+        await safeRm(dir);
     }
 });
 
