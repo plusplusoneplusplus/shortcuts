@@ -46,7 +46,7 @@ from same-id clones never merge into one tab.
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
 | `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/mode/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — resource views on the left, the selected Search/Explorer mode on the right edge. |
 | `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
-| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab and the Search/Explorer navigator controls. The model decides whether the crumbs may navigate the tree. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
+| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. |
@@ -88,18 +88,16 @@ toolbar is not rendered, the same pair moves beside the tab strip's `+`. Each
 selects its navigator mode, opens it when needed, and collapses it when selected
 again.
 
-A breadcrumb click **reveals a folder in the tree** — it never opens, closes, or
-activates a tab. It does that by writing the Explorer's own per-workspace
-`explorerStateStore` selection/expansion for the tree's target, which is the
-same store the column reads, so there is no second selection model. Ancestors
-are expanded along with the target; a row inside a collapsed parent is not a
-reveal.
+A breadcrumb click opens an in-place directory picker listing that folder's
+files and subfolders. Picking a subfolder drills into it; picking a file opens
+the file in the preview slot. The picker reads through the active tab's
+`ownerWorkspaceId` and `ownerRoutingRef`, so an open repo-group member or remote
+clone remains correctly routed even when the Explorer targets another repo. It
+does not change Explorer selection, expansion, mode, or focus.
 
 `unifiedToolbarBreadcrumbs` turns the crumbs off — the row falls back to a plain
-path label — for a `__trusted__:` absolute path (not repo-relative, no row in
-any tree) and for a file whose `ownerWorkspaceId` is not the tree's current
-target (its path resolves in a different repo). Retargeting the dock therefore
-mutes an open tab's crumbs without touching the tab.
+path label — for a `__trusted__:` absolute path because it is not repo-relative
+and cannot use the repo directory API.
 
 ## The Search/Explorer navigator
 

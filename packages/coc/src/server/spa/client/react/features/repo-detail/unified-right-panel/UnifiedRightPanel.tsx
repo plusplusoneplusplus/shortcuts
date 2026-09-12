@@ -59,8 +59,7 @@ import { DOCK_MIN_WIDTH, SearchIcon, type DockTarget } from '../WorkspaceDockTog
 import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ContentSearchPanel } from '../explorer/ContentSearchPanel';
-import { ExplorerPanel, getAncestorPaths } from '../explorer/ExplorerPanel';
-import { useExplorerExpandedPaths, useExplorerSelectedPath } from '../explorer/explorerStateStore';
+import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { QuickOpen, type QuickOpenResult } from '../explorer/QuickOpen';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
 import {
@@ -83,7 +82,7 @@ import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
-import { breadcrumbFolderPath, unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
+import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
@@ -257,25 +256,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     // Breadcrumbs exist for file tabs only; every other kind brings its own
     // toolbar. A null here removes the row and moves the navigator toggle into
     // the tab strip.
-    const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active, target), [active, target]);
-
-    // Breadcrumb clicks drive the tree column through the Explorer's own
-    // per-workspace state, the same store the column reads — so a click reveals
-    // the folder without a second selection model and without touching tabs.
-    const [, setTreeSelectedPath] = useExplorerSelectedPath(target);
-    const [, setTreeExpandedPaths] = useExplorerExpandedPaths(target);
-    const revealTreeFolder = useCallback((segmentIndex: number) => {
-        const folder = breadcrumbFolderPath(toolbar?.segments ?? [], segmentIndex);
-        if (folder === null) {
-            // The root crumb: clear the selection, leave the expansion alone.
-            setTreeSelectedPath(null);
-            return;
-        }
-        setTreeSelectedPath(folder);
-        // Expand the folder AND its ancestors: a row nobody can see is not a
-        // reveal, and the tree lazy-loads each level as it renders.
-        setTreeExpandedPaths(prev => new Set([...prev, ...getAncestorPaths(folder), folder]));
-    }, [toolbar, setTreeSelectedPath, setTreeExpandedPaths]);
+    const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active), [active]);
 
     const explorerToggle = useCallback(
         (placement: 'toolbar' | 'strip') => (
@@ -528,6 +509,18 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         ) => openFileForOwner(file, options, target, targetRoutingRef, targetLabel),
         [openFileForOwner, target, targetRoutingRef, targetLabel],
     );
+    const openBreadcrumbFile = useCallback((file: { path: string; name: string }) => {
+        if (!active || active.kind !== 'file') {
+            return;
+        }
+        openFileForOwner(
+            file,
+            { preview: true },
+            active.ownerWorkspaceId,
+            active.ownerRoutingRef,
+            active.repoLabel,
+        );
+    }, [active, openFileForOwner]);
     const openSearchMatch = useCallback((path: string, line: number) => {
         const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
         openTreeFile({ path, name, line }, { preview: true });
@@ -986,7 +979,9 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                     {toolbar !== null && (
                         <UnifiedPanelToolbar
                             breadcrumbs={toolbar}
-                            onNavigate={revealTreeFolder}
+                            workspaceId={active?.ownerWorkspaceId ?? target}
+                            routingRef={active?.ownerRoutingRef}
+                            onOpenFile={openBreadcrumbFile}
                             trailing={navigatorControls('toolbar')}
                         />
                     )}
