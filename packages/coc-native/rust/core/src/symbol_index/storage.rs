@@ -176,27 +176,26 @@ impl SymbolStore {
 
         for (position, relative) in paths.iter().enumerate() {
             let absolute = root.join(relative);
-            let metadata = std::fs::metadata(&absolute)?;
-            let source = read_bounded(&absolute, limits.max_file_bytes)?;
-            let entry = FileManifestEntry {
-                path: relative.clone(),
-                size: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
-                mtime: modified_millis(&metadata)?,
-                hash: blake3::hash(&source).to_hex().to_string(),
-            };
-            if previous.get(relative) == Some(&entry) {
-                stats.unchanged += 1;
-            } else {
-                match extractor.extract(relative, &source) {
-                    Ok(symbols) => {
-                        replace_file_in_transaction(&transaction, &entry, &symbols)?;
-                        stats.parsed += 1;
+            match read_manifest_source(&absolute, relative, limits.max_file_bytes) {
+                Ok((entry, source)) => {
+                    if previous.get(relative) == Some(&entry) {
+                        stats.unchanged += 1;
+                    } else {
+                        match extractor.extract(relative, &source) {
+                            Ok(symbols) => {
+                                replace_file_in_transaction(&transaction, &entry, &symbols)?;
+                                stats.parsed += 1;
+                            }
+                            Err(error) => stats.failures.push(SymbolFileFailure {
+                                path: relative.clone(),
+                                reason: error.to_string(),
+                            }),
+                        }
                     }
-                    Err(error) => stats.failures.push(SymbolFileFailure {
-                        path: relative.clone(),
-                        reason: error.to_string(),
-                    }),
                 }
+                Err(error) => stats
+                    .failures
+                    .push(SymbolFileFailure { path: relative.clone(), reason: error.to_string() }),
             }
             let processed = position + 1;
             if processed == paths.len() || processed % progress_stride == 0 {
@@ -246,16 +245,34 @@ impl SymbolStore {
                     stats.removed += usize::from(self.remove_changed_file(&relative)? > 0);
                     continue;
                 }
-                Err(error) => return Err(Box::new(error)),
+                Err(error) => {
+                    stats
+                        .failures
+                        .push(SymbolFileFailure { path: relative, reason: error.to_string() });
+                    continue;
+                }
             };
-            let source = read_bounded(&absolute, limits.max_file_bytes)?;
-            let entry = FileManifestEntry {
-                path: previous
-                    .as_ref()
-                    .map_or_else(|| relative.clone(), |entry| entry.path.clone()),
-                size: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
-                mtime: modified_millis(&metadata)?,
-                hash: blake3::hash(&source).to_hex().to_string(),
+            let source = match read_bounded(&absolute, limits.max_file_bytes) {
+                Ok(source) => source,
+                Err(error) => {
+                    stats
+                        .failures
+                        .push(SymbolFileFailure { path: relative, reason: error.to_string() });
+                    continue;
+                }
+            };
+            let entry = match manifest_entry(
+                previous.as_ref().map_or(relative.as_str(), |entry| entry.path.as_str()),
+                &metadata,
+                &source,
+            ) {
+                Ok(entry) => entry,
+                Err(error) => {
+                    stats
+                        .failures
+                        .push(SymbolFileFailure { path: relative, reason: error.to_string() });
+                    continue;
+                }
             };
             if previous.as_ref() == Some(&entry) {
                 stats.unchanged += 1;
@@ -310,6 +327,29 @@ impl SymbolStore {
         };
         connection.execute(sql, [path])
     }
+}
+
+fn read_manifest_source(
+    absolute: &Path,
+    relative: &str,
+    max_file_bytes: usize,
+) -> io::Result<(FileManifestEntry, Vec<u8>)> {
+    let metadata = std::fs::metadata(absolute)?;
+    let source = read_bounded(absolute, max_file_bytes)?;
+    Ok((manifest_entry(relative, &metadata, &source)?, source))
+}
+
+fn manifest_entry(
+    path: &str,
+    metadata: &std::fs::Metadata,
+    source: &[u8],
+) -> io::Result<FileManifestEntry> {
+    Ok(FileManifestEntry {
+        path: path.to_owned(),
+        size: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
+        mtime: modified_millis(metadata)?,
+        hash: blake3::hash(source).to_hex().to_string(),
+    })
 }
 
 fn replace_file_in_transaction(
@@ -510,6 +550,37 @@ mod tests {
 
         assert_eq!(stats.failures.len(), 1);
         assert_eq!(store.symbols_for_file("one.c").expect("readable")[0].name, "stable");
+    }
+
+    #[test]
+    fn oversized_files_fail_without_aborting_other_updates() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(root.path().join("good.c"), "int before();\n").expect("good");
+        std::fs::write(root.path().join("large.c"), "int retained();\n").expect("large");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("initial");
+        std::fs::write(root.path().join("good.c"), "int after();\n").expect("change good");
+        std::fs::write(root.path().join("large.c"), vec![b'x'; 65]).expect("oversized");
+        let limits = ExtractionLimits { max_file_bytes: 64, ..ExtractionLimits::default() };
+
+        let full = store.sync_repository(root.path(), limits).expect("full sync");
+
+        assert_eq!((full.parsed, full.failures.len()), (1, 1));
+        assert_eq!(full.failures[0].path, "large.c");
+        assert_eq!(store.symbols_for_file("good.c").expect("good symbols")[0].name, "after");
+        assert_eq!(
+            store.symbols_for_file("large.c").expect("retained symbols")[0].name,
+            "retained"
+        );
+
+        std::fs::write(root.path().join("good.c"), "int latest();\n").expect("change good again");
+        let targeted = store
+            .sync_changed_paths(root.path(), &["large.c".to_owned(), "good.c".to_owned()], limits)
+            .expect("targeted sync");
+        assert_eq!((targeted.parsed, targeted.failures.len()), (1, 1));
+        assert_eq!(targeted.failures[0].path, "large.c");
+        assert_eq!(store.symbols_for_file("good.c").expect("latest symbols")[0].name, "latest");
     }
 
     #[test]

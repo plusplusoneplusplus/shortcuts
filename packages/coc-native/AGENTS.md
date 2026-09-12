@@ -12,7 +12,8 @@ grammar, and tags crate versions stay pinned as one compatibility set.
 It uses WAL plus `files(path, size, mtime, hash)` and `symbols` tables, compares
 the manifest before parsing, applies a full sync in one atomic transaction,
 replaces a targeted file's rows transactionally, removes deleted files, and
-retains the previous committed rows when extraction or storage fails.
+retains previous committed rows when a file cannot be read or parsed. A
+database write failure rolls back the full sync transaction.
 `refreshChanged(paths)` validates and deduplicates repository-relative paths,
 then reads and updates only those files. Server-side writes debounce and
 coalesce their paths before calling it.
