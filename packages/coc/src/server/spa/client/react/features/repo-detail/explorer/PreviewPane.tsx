@@ -169,6 +169,22 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
     // The Monaco language the editor will actually use for this file, so the
     // providers are registered under the same id the model carries.
     const monacoLanguageId = getMonacoLanguage(fileName);
+    const symbolDefinitions = useMemo(() => (
+        monacoLanguageId === 'c' || monacoLanguageId === 'cpp'
+            ? {
+                workspaceId: repoId,
+                lookup: async (name: string, signal: AbortSignal) => {
+                    const response = await explorerApi.searchSymbols(
+                        repoId,
+                        name,
+                        { signal },
+                        routingRef,
+                    );
+                    return response.results;
+                },
+            }
+            : undefined
+    ), [monacoLanguageId, repoId, routingRef]);
 
     // A jump that leaves this file. It is answered here rather than in the
     // navigation module because only this pane knows which workspace it is
@@ -213,6 +229,7 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             model: model as unknown as ProviderModel,
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
+            symbolDefinitions,
         });
         const definitionLinkCue = definitionSupported
             ? installDefinitionLinkCue({
@@ -231,7 +248,7 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             registration.dispose();
             shadow?.revert();
         };
-    }, [languageView, monacoLanguageId, handleNavigate, definitionSupported]);
+    }, [languageView, monacoLanguageId, handleNavigate, definitionSupported, symbolDefinitions]);
 
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted

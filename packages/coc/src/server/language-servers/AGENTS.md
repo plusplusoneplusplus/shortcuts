@@ -333,6 +333,11 @@ and transport code stays generic.
   it in tab identity, and forward it through cross-file definition navigation,
   so a dock retarget or an equal workspace id on another host cannot change the
   client, buffer, or blob loader an open tab uses.
+- C and C++ definition requests query clangd and the owning workspace's
+  repository symbol index together. Exact clangd locations sort first; index
+  candidates are deduplicated by file and line and carry a
+  `symbol-index-candidate` URI fragment so Monaco identifies their fuzzy source.
+  The index path remains available when clangd is disabled or unavailable.
 - `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
   — the repo Settings tab's `language-servers` section: master enable toggle,
   the `effective` list with a per-definition enable checkbox, and an editor for

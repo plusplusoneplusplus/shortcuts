@@ -28,6 +28,7 @@ const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
     writeBlob: vi.fn(),
     readTrustedBlob: vi.fn(),
+    searchSymbols: vi.fn(),
 }));
 
 const transport = vi.hoisted(() => ({ client: null as any }));
@@ -109,6 +110,7 @@ const monacoStub = vi.hoisted(() => {
             languageId: 'typescript',
             uri: { toString: () => 'coc-file://ws-1/src/a.ts' },
             getWordUntilPosition: () => ({ startColumn: 1, endColumn: 5 }),
+            getWordAtPosition: () => ({ word: 'Widget', startColumn: 1, endColumn: 7 }),
             getLanguageId(): string { return this.languageId; },
         },
     };
@@ -129,7 +131,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
             }, [onModelMount]);
             return <textarea data-testid="mock-monaco-textarea" value={value} readOnly />;
         },
-        getMonacoLanguage: () => 'typescript',
+        getMonacoLanguage: (name: string) => name.endsWith('.cpp') ? 'cpp' : 'typescript',
         LANGUAGE_MARKER_OWNER: 'coc-language-server',
     };
 });
@@ -177,6 +179,7 @@ beforeEach(() => {
     mockExplorerApi.readBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
     mockExplorerApi.readTrustedBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
     mockExplorerApi.writeBlob.mockResolvedValue(undefined);
+    mockExplorerApi.searchSymbols.mockResolvedValue({ indexed: true, results: [] });
 });
 
 afterEach(() => {
@@ -275,6 +278,32 @@ describe('PreviewPane — language providers (AC-03)', () => {
         expect((sent!.params as any).textDocument.uri).toBe('coc-file://ws-1/src/a.ts');
         // Zero-based on the wire, one-based in Monaco.
         expect((sent!.params as any).position).toEqual({ line: 0, character: 6 });
+    });
+
+    it('queries the routed repository symbol index for C++ definitions', async () => {
+        monacoStub.model.languageId = 'cpp';
+        renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp', routingRef: 'remote:ws-1' });
+        const attachment = await attachmentFor('src/a.cpp');
+        attachWith(attachment, { textDocumentSync: 1 });
+        mockExplorerApi.searchSymbols.mockResolvedValue({
+            indexed: true,
+            results: [{ name: 'Widget', kind: 'class', path: 'include/widget.hpp', line: 5, column: 3 }],
+        });
+
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
+        const links = await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+
+        expect(mockExplorerApi.searchSymbols).toHaveBeenCalledWith(
+            'ws-1',
+            'Widget',
+            { signal: expect.any(AbortSignal) },
+            'remote:ws-1',
+        );
+        expect(links[0].uri.toString()).toContain('include/widget.hpp#symbol-index-candidate');
     });
 
     it('ignores a model that is not this document', async () => {

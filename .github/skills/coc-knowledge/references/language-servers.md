@@ -51,6 +51,12 @@ database priority; `--compile-commands-dir=<directory>` selects an external one.
 MSVC fallback flags use `--driver-mode=cl` and include the MSVC standard library
 and Windows SDK `/I` paths. CoC does not generate databases or modify user clangd
 configuration.
+
+C and C++ go-to-definition combines clangd locations with the owning workspace's
+persistent symbol-index candidates in the Monaco provider. Exact locations sort
+first, results are deduplicated by file and line, and candidate URIs carry a
+`symbol-index-candidate` fragment. The index continues to answer when clangd is
+disabled, unavailable, or does not advertise definition support.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.

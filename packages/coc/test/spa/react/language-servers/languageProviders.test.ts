@@ -84,6 +84,7 @@ function model(uri: string): ProviderModel {
         uri: { toString: () => uri },
         // "cons|" — the word starts at column 1 and the cursor sits after it.
         getWordUntilPosition: () => ({ startColumn: 1, endColumn: 5 }),
+        getWordAtPosition: () => ({ word: 'Widget', startColumn: 1, endColumn: 7 }),
     };
 }
 
@@ -247,6 +248,66 @@ describe('registerLanguageProviders', () => {
         expect(links).toHaveLength(1);
         expect(links[0].uri.toString()).toBe('coc-file://ws-1/src/b.ts');
         expect(links[0].range).toEqual({ startLineNumber: 4, startColumn: 3, endLineNumber: 4, endColumn: 9 });
+    });
+
+    it('merges exact and symbol-index definitions and dedupes by file and line', async () => {
+        const lookup = vi.fn().mockResolvedValue([
+            { path: 'src/exact.cpp', line: 4, column: 12 },
+            { path: 'src/candidate.hpp', line: 9, column: 3 },
+            { path: 'src/candidate.hpp', line: 9, column: 20 },
+        ]);
+        const view = store.open({ path: 'src/a.cpp', text: 'Widget value;\n' });
+        const attachment = client.get('src/a.cpp');
+        attachment.attach({ state: readyState({ definitionProvider: true }) });
+        attachment.respond('textDocument/definition', () => [{
+            uri: 'coc-file://ws-1/src/exact.cpp',
+            range: { start: { line: 3, character: 1 }, end: { line: 3, character: 7 } },
+        }]);
+        const target = model(view.uri);
+        registerLanguageProviders({
+            monaco: monaco.asMonaco(),
+            model: target,
+            view,
+            languageId: 'cpp',
+            symbolDefinitions: { workspaceId: 'ws-1', lookup },
+        });
+
+        const links = await monaco.provider('definition').provideDefinition(target, POSITION, token());
+
+        expect(lookup).toHaveBeenCalledWith('Widget', expect.any(AbortSignal));
+        expect(links).toHaveLength(2);
+        expect(links[0].uri.toString()).toBe('coc-file://ws-1/src/exact.cpp');
+        expect(links[1].uri.toString()).toBe('coc-file://ws-1/src/candidate.hpp#symbol-index-candidate');
+    });
+
+    it('answers from the symbol index when the language server is unavailable', async () => {
+        const view = store.open({ path: 'src/a.cpp', text: 'Widget value;\n' });
+        const attachment = client.get('src/a.cpp');
+        attachment.attach({
+            state: {
+                status: 'unavailable',
+                definitionId: 'clangd',
+                displayName: 'C / C++ (clangd)',
+                capabilities: {},
+            },
+        });
+        const target = model(view.uri);
+        registerLanguageProviders({
+            monaco: monaco.asMonaco(),
+            model: target,
+            view,
+            languageId: 'cpp',
+            symbolDefinitions: {
+                workspaceId: 'ws-1',
+                lookup: async () => [{ path: 'include/widget.hpp', line: 7, column: 2 }],
+            },
+        });
+
+        const links = await monaco.provider('definition').provideDefinition(target, POSITION, token());
+
+        expect(links.map((link: { uri: { toString(): string } }) => link.uri.toString()))
+            .toEqual(['coc-file://ws-1/include/widget.hpp#symbol-index-candidate']);
+        expect(attachment.requests).toHaveLength(0);
     });
 
     it('asks for references including the declaration', async () => {
