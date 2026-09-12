@@ -20,6 +20,23 @@ export function isValidPauseDurationHours(value: unknown): value is PauseDuratio
 }
 
 /**
+ * Cooldown between task starts ("delay between tasks"), in whole minutes.
+ * Any integer in [1, 1440]; validated at the API boundary.
+ */
+export type TaskDelayMinutes = number;
+
+/** Largest cooldown between tasks we accept, in minutes (24 hours). */
+export const MAX_TASK_DELAY_MINUTES = 1440;
+
+/** True when `value` is an integer number of minutes in [1, 1440]. */
+export function isValidTaskDelayMinutes(value: unknown): value is TaskDelayMinutes {
+    return typeof value === 'number'
+        && Number.isInteger(value)
+        && value >= 1
+        && value <= MAX_TASK_DELAY_MINUTES;
+}
+
+/**
  * What a pause marker holds back. Absent means `'all'`.
  */
 export type PauseScope = 'all' | 'autopilot';
@@ -203,7 +220,9 @@ export type QueueChangeType =
     | 'autopilot-paused'
     | 'autopilot-resumed'
     | 'admitted'
-    | 'unadmitted';
+    | 'unadmitted'
+    | 'task-delay-changed'
+    | 'task-delay-skipped';
 
 export interface QueueChangeEvent {
     /** Type of change */
@@ -401,6 +420,14 @@ export interface QueueStats {
     pauseSource?: 'manual' | 'quota';
     /** Who initiated the current Autopilot pause: 'manual' (HTTP caller) or 'quota' (watcher). */
     autopilotPauseSource?: 'manual' | 'quota';
+    /** Configured cooldown between tasks for the whole queue, in minutes. Omitted when off. */
+    taskDelayMinutes?: number;
+    /** Epoch milliseconds when the queue-wide cooldown elapses. Present only while it defers a start. */
+    taskDelayUntil?: number;
+    /** Configured cooldown between autopilot tasks, in minutes. Omitted when off. */
+    autopilotTaskDelayMinutes?: number;
+    /** Epoch milliseconds when the autopilot cooldown elapses. Present only while it defers a start. */
+    autopilotTaskDelayUntil?: number;
 }
 
 // ============================================================================
