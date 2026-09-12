@@ -83,8 +83,37 @@ const definition = [{
     range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
 }];
 
+/**
+ * A window stand-in that records its listeners, so a test can fire a key
+ * release the editor never saw and still assert the removal on dispose.
+ */
+class FakeWindow {
+    private readonly listeners = new Map<string, Set<(event: unknown) => void>>();
+
+    readonly addEventListener = (type: string, listener: (event: never) => void): void => {
+        const set = this.listeners.get(type) ?? new Set();
+        set.add(listener as (event: unknown) => void);
+        this.listeners.set(type, set);
+    };
+
+    readonly removeEventListener = (type: string, listener: (event: never) => void): void => {
+        this.listeners.get(type)?.delete(listener as (event: unknown) => void);
+    };
+
+    count(type: string): number {
+        return this.listeners.get(type)?.size ?? 0;
+    }
+
+    emit(type: string, event: unknown = {}): void {
+        for (const listener of [...(this.listeners.get(type) ?? [])]) {
+            listener(event);
+        }
+    }
+}
+
 function setup(sendRequest = vi.fn().mockResolvedValue(definition), platform = 'Linux') {
     const editor = new FakeEditor();
+    const globalEvents = new FakeWindow();
     const model = {
         getWordAtPosition: ({ column }: { column: number }) => (
             column < 3
@@ -105,8 +134,9 @@ function setup(sendRequest = vi.fn().mockResolvedValue(definition), platform = '
         view: view as never,
         isEnabled: () => true,
         platform,
+        globalEvents: globalEvents as never,
     });
-    return { cue, editor, sendRequest };
+    return { cue, editor, globalEvents, sendRequest };
 }
 
 async function finishDebounce(): Promise<void> {
@@ -156,6 +186,14 @@ describe('installDefinitionLinkCue', () => {
 
     it.each([
         ['modifier release', ({ editor }: ReturnType<typeof setup>) => editor.emitKeyUp(false)],
+        [
+            'a modifier release the unfocused editor never sees',
+            ({ globalEvents }: ReturnType<typeof setup>) => globalEvents.emit('keyup', {
+                ctrlKey: false,
+                metaKey: false,
+            }),
+        ],
+        ['the window losing focus', ({ globalEvents }: ReturnType<typeof setup>) => globalEvents.emit('blur')],
         ['moving off the word', ({ editor }: ReturnType<typeof setup>) => editor.emitMouse(null)],
         ['mouse leave', ({ editor }: ReturnType<typeof setup>) => editor.emitMouseLeave()],
         ['scroll', ({ editor }: ReturnType<typeof setup>) => editor.emitScroll()],
@@ -194,6 +232,28 @@ describe('installDefinitionLinkCue', () => {
 
         expect(signal.aborted).toBe(true);
         cue.dispose();
+    });
+
+    it('keeps the cue while a window key release leaves the modifier down', async () => {
+        const { editor, globalEvents } = setup();
+        editor.emitMouse(1);
+        await finishDebounce();
+        const clearsBefore = editor.collection.clear.mock.calls.length;
+
+        globalEvents.emit('keyup', { ctrlKey: true, metaKey: false });
+
+        expect(editor.collection.clear.mock.calls.length).toBe(clearsBefore);
+    });
+
+    it('stops listening on the window once disposed', () => {
+        const { cue, globalEvents } = setup();
+        expect(globalEvents.count('keyup')).toBe(1);
+        expect(globalEvents.count('blur')).toBe(1);
+
+        cue.dispose();
+
+        expect(globalEvents.count('keyup')).toBe(0);
+        expect(globalEvents.count('blur')).toBe(0);
     });
 
     it('uses Cmd rather than Ctrl on macOS', async () => {

@@ -183,7 +183,8 @@ async function wordHasDefinitionLink(
         const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
             if (plain(node.textContent).includes(needle)) {
-                return node.parentElement?.closest('.goto-definition-link') !== null;
+                const owner = node.parentElement;
+                return owner !== null && owner.closest('.goto-definition-link') !== null;
             }
         }
         return false;
@@ -519,6 +520,19 @@ test.describe('Explorer language support – TypeScript features', () => {
             } finally {
                 await page.keyboard.up(modifier);
             }
+
+            // Releasing the modifier has to retire the cue even though the
+            // editor never held focus and so never saw the key release. The
+            // click below depends on it: Monaco resolves a click against the
+            // span the browser named as its target, and a decoration torn down
+            // while the click is in flight detaches that span, which loses the
+            // caret the assertions after it are about.
+            await expect
+                .poll(
+                    () => wordHasDefinitionLink(page, 'export const label', 'formatWidget'),
+                    { timeout: 10_000 },
+                )
+                .toBe(false);
 
             // Click the call, then Monaco's own go-to-definition keybinding —
             // the target is in another file, so it can only land through the

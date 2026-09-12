@@ -25,6 +25,9 @@ export type DefinitionLinkCueEditor = Pick<
     | 'onMouseMove'
 >;
 
+/** The slice of `window` the cue watches the modifier on. */
+export type DefinitionLinkCueGlobalEvents = Pick<Window, 'addEventListener' | 'removeEventListener'>;
+
 export interface InstallDefinitionLinkCueOptions {
     editor: DefinitionLinkCueEditor;
     model: Pick<monacoEditor.ITextModel, 'getWordAtPosition'>;
@@ -32,6 +35,8 @@ export interface InstallDefinitionLinkCueOptions {
     isEnabled: () => boolean;
     /** Overridable for tests; defaults to the browser platform. */
     platform?: string;
+    /** Overridable for tests; defaults to the page's window, `null` off-browser. */
+    globalEvents?: DefinitionLinkCueGlobalEvents | null;
 }
 
 export function installDefinitionLinkCue({
@@ -40,6 +45,7 @@ export function installDefinitionLinkCue({
     view,
     isEnabled,
     platform,
+    globalEvents = typeof window === 'undefined' ? null : window,
 }: InstallDefinitionLinkCueOptions): { dispose(): void } {
     const useMetaKey = isMacPlatform(platform);
     const decorations = editor.createDecorationsCollection();
@@ -139,7 +145,35 @@ export function installDefinitionLinkCue({
         }, DEFINITION_LINK_CUE_DELAY_MS);
     };
 
+    // Monaco only reports a key release while it holds DOM focus, and this cue
+    // routinely appears without it: the modifier rides on the mouse event, so
+    // hovering decorates the word whatever is focused. Left to the editor alone
+    // the underline outlives the release and is retired by the next mouse move
+    // instead — the move that opens a click. Tearing the decoration down there
+    // re-renders the line under the pointer mid-gesture, and the click that
+    // follows focuses the editor without moving the caret. Watching the window
+    // catches the release wherever it lands, which is before that click.
+    const onGlobalKeyUp = (event: KeyboardEvent): void => {
+        if (modifierFrom(event)) return;
+        modifierHeld = false;
+        clear();
+    };
+    // A window that has lost focus never sees the release at all, so the
+    // modifier is treated as dropped rather than held indefinitely.
+    const onGlobalBlur = (): void => {
+        modifierHeld = false;
+        clear();
+    };
+    globalEvents?.addEventListener('keyup', onGlobalKeyUp, true);
+    globalEvents?.addEventListener('blur', onGlobalBlur);
+
     disposables.push(
+        {
+            dispose: () => {
+                globalEvents?.removeEventListener('keyup', onGlobalKeyUp, true);
+                globalEvents?.removeEventListener('blur', onGlobalBlur);
+            },
+        },
         editor.onMouseMove((event) => {
             lastMouseEvent = event;
             inspectMouseTarget(event);
