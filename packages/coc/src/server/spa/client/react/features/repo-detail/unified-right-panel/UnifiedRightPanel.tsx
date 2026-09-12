@@ -630,6 +630,41 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         return () => document.removeEventListener('keydown', onKeyDown, true);
     }, [isOpen, quickOpenVisible, exactOpenVisible, repoGroup]);
 
+    // While the visible navigator is the file tree, Ctrl/Cmd+F belongs to its
+    // filter. Claim it in capture phase so Monaco's find widget and the native
+    // browser/Electron find bar do not open first when focus is in a resource
+    // view on the other side of this panel.
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (
+                !(event.ctrlKey || event.metaKey)
+                || event.altKey
+                || event.shiftKey
+                || event.key.toLowerCase() !== 'f'
+                || !isOpen
+                || mode !== 'explorer'
+                || !modeColumnVisible
+            ) return;
+            const root = panelRootRef.current;
+            const focused = document.activeElement;
+            if (
+                root === null
+                || focused === null
+                || focused === document.body
+                || !root.contains(focused)
+            ) return;
+            const filter = root.querySelector<HTMLInputElement>(
+                '[data-testid="unified-panel-explorer-mode"] [data-testid="explorer-search-input"]',
+            );
+            if (filter === null) return;
+            event.preventDefault();
+            event.stopPropagation();
+            filter.focus();
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        return () => document.removeEventListener('keydown', onKeyDown, true);
+    }, [isOpen, mode, modeColumnVisible]);
+
     // ------------------------------------------------------------------
     // Close the active tab (Ctrl/Cmd+W)
     // ------------------------------------------------------------------

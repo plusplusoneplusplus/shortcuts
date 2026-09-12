@@ -210,6 +210,14 @@ unsaved buffer still get their prompts. `ExplorerPanel`'s own Ctrl+W handler is
 independent and self-gates on its own root; there is deliberately no shared
 helper.
 
+## Ctrl/Cmd+F focuses the file filter
+
+When Explorer is the visible navigator and keyboard focus is inside the open
+right panel, Ctrl/Cmd+F focuses Explorer's **Filter files** input. The panel
+claims the key in the capture phase so the behavior also works from Monaco;
+Ctrl/Cmd+Shift+F remains available for workspace search. Search mode, a hidden
+or narrow navigator, and focus outside the panel leave native find unchanged.
+
 ## The preview slot
 
 Each scope section has at most **one preview tab**, and it is always the
