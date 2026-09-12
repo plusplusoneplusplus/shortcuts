@@ -165,17 +165,18 @@ function uriFor(relative: string): string {
     return pathToFileURL(path.join(root, ...relative.split('/'))).href;
 }
 
-function fileUriKey(uri: string): string {
-    if (!uri.startsWith('file:')) {
-        return uri;
-    }
+function filePathKey(candidate: string): string {
     let resolved: string;
     try {
-        resolved = fs.realpathSync.native(fileURLToPath(uri));
+        resolved = fs.realpathSync.native(candidate);
     } catch {
-        resolved = path.resolve(fileURLToPath(uri));
+        resolved = path.resolve(candidate);
     }
     return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function fileUriKey(uri: string): string {
+    return uri.startsWith('file:') ? filePathKey(fileURLToPath(uri)) : uri;
 }
 
 function openDocument(relative: string, text: string): void {
@@ -347,7 +348,7 @@ describe('Python language features over packaged Pyright', () => {
             textDocument: { uri: uriFor('main.py') },
             position: positionAt(MAIN_TEXT, 'format_message("CoC"', 2),
         });
-        expect(definitionPaths(result).map(fileUriKey)).toContain(fileUriKey(uriFor('typed_api.pyi')));
+        expect(definitionPaths(result).map(filePathKey)).toContain(fileUriKey(uriFor('typed_api.pyi')));
     });
 
     it('finds references across Python files', async () => {

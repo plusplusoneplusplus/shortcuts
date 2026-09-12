@@ -203,7 +203,7 @@ describe('LanguageServerSession startup', () => {
         const { session } = createSession(
             fixtureDefinition({
                 command: process.execPath,
-                args: ['-e', `console.error("failed at ${privatePath} TOKEN=private"); process.exit(2)`],
+                args: ['-e', `console.error(${JSON.stringify(`failed at ${privatePath} TOKEN=private`)}); process.exit(2)`],
             }),
             { startTimeoutMs: 1_000 },
         );

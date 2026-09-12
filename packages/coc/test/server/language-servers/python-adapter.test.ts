@@ -146,8 +146,8 @@ describe('applyPythonRuntime', () => {
     });
 
     it('fills only a missing pythonPath from the project environment', () => {
-        const root = path.resolve('/repo');
-        const interpreter = path.join(root, '.venv', 'bin', 'python');
+        const root = '/repo';
+        const interpreter = path.posix.join(root, '.venv', 'bin', 'python');
         const definition = preset({
             settings: {
                 python: { analysis: { typeCheckingMode: 'basic' } },
@@ -161,6 +161,8 @@ describe('applyPythonRuntime', () => {
             label: 'Server: packaged with CoC',
         }, root, {
             isExecutable: candidate => candidate === interpreter,
+            pathApi: path.posix,
+            platform: 'linux',
         });
 
         expect(applied.settings).toEqual({

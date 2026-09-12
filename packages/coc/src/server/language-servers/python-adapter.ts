@@ -13,7 +13,7 @@ import { findExecutableOnPath } from './rust-adapter';
 import type { JsonValue, LanguageServerDefinition } from './types';
 
 const PYRIGHT_SERVER_SPECIFIER = 'pyright/langserver.index.js';
-const PYRIGHT_SERVER_RELATIVE = path.join('node_modules', 'pyright', 'langserver.index.js');
+const PYRIGHT_SERVER_PARTS = ['node_modules', 'pyright', 'langserver.index.js'] as const;
 
 export type PythonRuntimeOrigin = 'project' | 'bundled' | 'path' | 'unavailable';
 
@@ -46,7 +46,7 @@ export function resolvePythonRuntime(
     const pathApi = deps.pathApi ?? path;
     const nodePath = deps.nodePath ?? process.execPath;
     const stdioArgs = definition.args.length > 0 ? definition.args : ['--stdio'];
-    const projectServer = findUp(rootPath, PYRIGHT_SERVER_RELATIVE, exists, pathApi);
+    const projectServer = findUp(rootPath, PYRIGHT_SERVER_PARTS, exists, pathApi);
     if (projectServer) {
         return {
             command: nodePath,
@@ -189,13 +189,13 @@ export function resolvePythonInterpreter(
 
 function findUp(
     from: string,
-    relative: string,
+    relativeParts: readonly string[],
     exists: (candidate: string) => boolean,
     pathApi: path.PlatformPath,
 ): string | undefined {
     let dir = pathApi.resolve(from);
     for (;;) {
-        const candidate = pathApi.join(dir, relative);
+        const candidate = pathApi.join(dir, ...relativeParts);
         if (exists(candidate)) {
             return candidate;
         }
