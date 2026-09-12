@@ -153,6 +153,14 @@ export class QueueClient {
     });
   }
 
+  skipTaskDelay(scopeName: QueuePauseScope, scope?: QueueScope): Promise<QueueStatsResponse & { scope: QueuePauseScope }> {
+    return this.transport.request('/queue/task-delay/skip', {
+      method: 'POST',
+      query: serializeQueueScope(scope),
+      body: { scope: scopeName },
+    });
+  }
+
   insertPauseMarker(request: QueuePauseMarkerRequest = {}): Promise<QueuePauseMarkerResponse> {
     return this.transport.request<QueuePauseMarkerResponse>('/queue/pause-marker', { method: 'POST', body: request });
   }

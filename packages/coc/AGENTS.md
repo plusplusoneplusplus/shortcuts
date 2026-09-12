@@ -369,6 +369,10 @@ all have their own `references/*.md`.
   `task-delay-skipped` never does, because skip releases one active wait without
   turning off the repeating delay. Restore applies only configured minutes, not
   the last-task-end clock, so the first task after restart can start immediately.
+  `RepoChatTab` forwards active deadlines to `ChatListPane`, whose existing
+  one-second tick drives the All and Autopilot pill countdowns. The menu's skip
+  action calls the workspace-routed `QueueClient.skipTaskDelay`, releasing only
+  the current wait.
 - **Non-admin namespaced config fields** (queue, models, logging, monitoring,
   skills, memoryPromotion, …) keep hand-written descriptors in
   `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.

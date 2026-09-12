@@ -166,6 +166,7 @@ function defaultProps(overrides: Partial<any> = {}): any {
         fetchQueue: vi.fn().mockResolvedValue(undefined),
         onPauseResumeAutopilot: vi.fn(),
         onSetTaskDelay: vi.fn().mockResolvedValue(undefined),
+        onSkipTaskDelay: vi.fn().mockResolvedValue(undefined),
         ...overrides,
     };
 }
@@ -382,6 +383,70 @@ describe('PauseDurationMenu — delay between tasks', () => {
 
         await waitFor(() => expect(screen.getByTestId('task-delay-all-custom-error').textContent).toContain('Could not save delay'));
         expect(screen.getByTestId('task-delay-all-5').textContent).toContain('✓');
+        expect(screen.getByTestId('pause-duration-menu-all')).toBeTruthy();
+    });
+
+    it('shows scope-specific cooldown countdowns and hides expired deadlines', () => {
+        const now = 1_800_000_000_000;
+        renderPane({
+            now,
+            taskDelayUntil: now + 5 * 60_000,
+            autopilotTaskDelayUntil: now + 30_000,
+        });
+
+        expect(screen.getByTestId('task-delay-countdown-all').textContent).toBe('next in 5m');
+        expect(screen.getByTestId('task-delay-countdown-autopilot').textContent).toBe('next in 30s');
+    });
+
+    it('does not show a cooldown countdown without a future deadline', () => {
+        const now = 1_800_000_000_000;
+        renderPane({ now, taskDelayUntil: now });
+
+        expect(screen.queryByTestId('task-delay-countdown-all')).toBeNull();
+        expect(screen.queryByTestId('task-delay-countdown-autopilot')).toBeNull();
+    });
+
+    it('gives manual pause text precedence over a cooldown countdown', () => {
+        const now = 1_800_000_000_000;
+        renderPane({
+            now,
+            isPaused: true,
+            pausedUntil: now + 2 * 60_000,
+            taskDelayUntil: now + 5 * 60_000,
+        });
+
+        expect(screen.getByLabelText('▶ Resume all tasks').textContent).toBe('2m');
+        expect(screen.queryByTestId('task-delay-countdown-all')).toBeNull();
+    });
+
+    it('skips only the pending scope and keeps the configured delay', async () => {
+        const now = 1_800_000_000_000;
+        const onSkipTaskDelay = vi.fn().mockResolvedValue(undefined);
+        renderPane({
+            now,
+            taskDelayMinutes: 5,
+            taskDelayUntil: now + 5 * 60_000,
+            onSkipTaskDelay,
+        });
+        openAllMenu();
+
+        expect(screen.getByTestId('task-delay-all-5').textContent).toContain('✓');
+        expect(screen.queryByTestId('task-delay-autopilot-skip')).toBeNull();
+        fireEvent.click(screen.getByTestId('task-delay-all-skip'));
+
+        await waitFor(() => expect(onSkipTaskDelay).toHaveBeenCalledWith('all'));
+        await waitFor(() => expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull());
+        expect(screen.queryByTestId('task-delay-countdown-all')).toBeTruthy();
+    });
+
+    it('keeps the menu open and reports a skip failure inline', async () => {
+        const now = 1_800_000_000_000;
+        const onSkipTaskDelay = vi.fn().mockRejectedValue(new Error('Could not skip delay'));
+        renderPane({ now, taskDelayUntil: now + 60_000, onSkipTaskDelay });
+        openAllMenu();
+        fireEvent.click(screen.getByTestId('task-delay-all-skip'));
+
+        await waitFor(() => expect(screen.getByTestId('task-delay-all-custom-error').textContent).toContain('Could not skip delay'));
         expect(screen.getByTestId('pause-duration-menu-all')).toBeTruthy();
     });
 });
