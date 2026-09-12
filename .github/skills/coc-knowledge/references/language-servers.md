@@ -6,7 +6,11 @@ dashboard file editor.
 ### Session lifecycle
 
 `LanguageServerManager` keys sessions by workspace, browser editing session,
-definition, and resolved project root. `LanguageServerSession` starts lazily,
+definition, and resolved project root by default. Definitions may select
+workspace scope to share an expensive process across editing sessions, and may
+set per-definition process caps, request timeouts, and idle timeouts. clangd
+shares by workspace and root, caps itself at four processes, uses a two-minute
+request timeout, and remains idle for 30 minutes. `LanguageServerSession` starts lazily,
 performs the LSP initialize handshake, preserves bounded stderr, and reports
 `starting`, `indexing`, `ready`, `reconnecting`, `unavailable`, `timeout`, or
 `failed`. A successful handshake clears prior failure detail.

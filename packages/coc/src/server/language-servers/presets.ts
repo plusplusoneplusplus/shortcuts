@@ -109,6 +109,10 @@ export const CLANGD_PRESET: LanguageServerDefinition = {
         '.mm': 'objective-cpp',
     },
     priority: 100,
+    sessionScope: 'workspace',
+    maxSessions: 4,
+    requestTimeoutMs: 120_000,
+    idleTimeoutMs: 30 * 60_000,
     enabled: false,
     builtIn: true,
 };

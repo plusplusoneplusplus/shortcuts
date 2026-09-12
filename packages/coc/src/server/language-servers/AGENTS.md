@@ -198,6 +198,11 @@ and transport code stays generic.
   entries for the MSVC standard library and Windows SDK, and required `/D`
   defines in `fallbackFlags`. Bear cannot generate a database on Windows because
   its process interception model is not supported there.
+- Definitions can set `sessionScope`, `maxSessions`, `requestTimeoutMs`, and
+  `idleTimeoutMs`. clangd uses workspace scope so editing sessions sharing one
+  workspace and resolved root reuse a process, caps itself at four live roots,
+  allows two-minute requests, and remains idle for 30 minutes. The manager and
+  session apply these fields without branching on a language id.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The

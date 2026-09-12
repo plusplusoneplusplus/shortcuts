@@ -133,6 +133,37 @@ describe('validateLanguageServerDefinition', () => {
             expect(result.definition.settings).toEqual({ test: { trace: 'off', levels: [1, 2] } });
         }
     });
+
+    it('keeps valid per-definition session lifecycle controls', () => {
+        const result = validateLanguageServerDefinition(validDefinition({
+            sessionScope: 'workspace',
+            maxSessions: 4,
+            requestTimeoutMs: 120_000,
+            idleTimeoutMs: 1_800_000,
+        }));
+        expect(result).toMatchObject({
+            ok: true,
+            definition: {
+                sessionScope: 'workspace',
+                maxSessions: 4,
+                requestTimeoutMs: 120_000,
+                idleTimeoutMs: 1_800_000,
+            },
+        });
+    });
+
+    it.each([
+        [{ sessionScope: 'global' }, 'sessionScope'],
+        [{ maxSessions: 0 }, 'maxSessions'],
+        [{ requestTimeoutMs: 0 }, 'requestTimeoutMs'],
+        [{ idleTimeoutMs: -1 }, 'idleTimeoutMs'],
+    ])('rejects invalid lifecycle controls %#', (overrides, field) => {
+        const result = validateLanguageServerDefinition(validDefinition(overrides));
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.errors.some(error => error.field === field)).toBe(true);
+        }
+    });
 });
 
 describe('validateLanguageServerDefinitions', () => {

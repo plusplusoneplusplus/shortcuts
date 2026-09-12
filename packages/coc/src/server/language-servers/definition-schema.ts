@@ -35,6 +35,10 @@ const definitionSchema = z.object({
     initializationOptions: jsonValueSchema.optional(),
     settings: jsonValueSchema.optional(),
     priority: z.number().int('Priority must be a whole number').optional(),
+    sessionScope: z.enum(['editing-session', 'workspace']).optional(),
+    maxSessions: z.number().int('Session limit must be a whole number').positive('Session limit must be positive').optional(),
+    requestTimeoutMs: z.number().int('Request timeout must be a whole number').positive('Request timeout must be positive').optional(),
+    idleTimeoutMs: z.number().int('Idle timeout must be a whole number').nonnegative('Idle timeout cannot be negative').optional(),
     enabled: z.boolean().optional(),
     builtIn: z.boolean().optional(),
 });

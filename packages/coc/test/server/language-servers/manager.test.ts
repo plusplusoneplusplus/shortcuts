@@ -20,7 +20,7 @@ import { LanguageServerSession } from '../../../src/server/language-servers/sess
 import type { LanguageServerSessionOptions } from '../../../src/server/language-servers/session';
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
 import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
-import { PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
+import { CLANGD_PRESET, PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 import { safeRm } from '../../helpers/safe-rm';
 
@@ -207,6 +207,36 @@ describe('LanguageServerManager session identity', () => {
         expect(harness.manager.size).toBe(2);
     });
 
+    it('shares a workspace-scoped definition across browser editing sessions', () => {
+        const harness = createHarness([{ ...CLANGD_PRESET, enabled: true }], {
+            prepareDeps: {
+                resolveOnPath: () => undefined,
+                isExecutable: () => false,
+                readDir: () => [],
+            },
+        });
+        const first = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/one.cpp',
+        });
+        const second = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-2',
+            relativePath: 'src/two.cpp',
+        });
+
+        expect(first.ok && second.ok).toBe(true);
+        if (!first.ok || !second.ok) {
+            return;
+        }
+        expect(second.handle.session).toBe(first.handle.session);
+        expect(second.handle.key).toBe(first.handle.key);
+        expect(harness.created).toHaveLength(1);
+    });
+
     it('gives each project root its own session within one editing session', () => {
         const harness = createHarness([echoDefinition()], {
             exists: (candidate) => candidate.includes(`packages${path.sep}app${path.sep}package.json`),
@@ -387,6 +417,34 @@ describe('LanguageServerManager session identity', () => {
 });
 
 describe('LanguageServerManager capacity', () => {
+    it('enforces a definition-specific session limit below the manager limit', () => {
+        const harness = createHarness([echoDefinition({ maxSessions: 1 })], { maxSessions: 12 });
+        const first = acquireTxt(harness, 'browser-1');
+        expect(first.ok).toBe(true);
+        const second = acquireTxt(harness, 'browser-2');
+        expect(second.ok).toBe(false);
+        if (!second.ok) {
+            expect(second.reason).toBe('capacity');
+        }
+    });
+
+    it('applies definition-specific limits independently per workspace', () => {
+        const harness = createHarness([echoDefinition({ maxSessions: 1 })], { maxSessions: 12 });
+        const otherRoot = tempDir('coc-lsp-manager-limit-repo-');
+        writeLanguageServerConfig(harness.dataDir, 'ws-b', {
+            enabled: true,
+            definitions: [echoDefinition({ maxSessions: 1 })],
+        });
+
+        expect(acquireTxt(harness, 'browser-1').ok).toBe(true);
+        expect(harness.manager.acquire({
+            workspaceId: 'ws-b',
+            workspaceRoot: otherRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/notes.txt',
+        }).ok).toBe(true);
+    });
+
     it('evicts the least recently used unreferenced session at the bound', () => {
         const harness = createHarness([echoDefinition()], { maxSessions: 2 });
         const first = acquireTxt(harness, 'browser-1');
@@ -581,6 +639,22 @@ describe('LanguageServerManager teardown', () => {
         expect(harness.closed).toHaveLength(1);
     });
 
+    it('keeps a workspace-scoped session while another editing session still uses it', async () => {
+        const harness = createHarness([echoDefinition({ sessionScope: 'workspace' })]);
+        const first = acquireTxt(harness, 'browser-1');
+        const second = acquireTxt(harness, 'browser-2');
+        expect(first.ok && second.ok).toBe(true);
+
+        await harness.manager.disposeEditingSession('ws-a', 'browser-1');
+
+        expect(harness.manager.size).toBe(1);
+        expect(harness.closed).toHaveLength(0);
+        await harness.manager.disposeEditingSession('ws-a', 'browser-2');
+        expect(harness.manager.size).toBe(1);
+        expect(harness.closed).toHaveLength(0);
+        expect(first.ok && first.handle.session.referenceCount).toBe(0);
+    });
+
     it('disposes every session and stops listening for config changes on shutdown', async () => {
         const harness = createHarness();
         acquireTxt(harness, 'browser-1');
@@ -682,6 +756,26 @@ describe('LanguageServerManager runtime preparation', () => {
             unavailableDetail: 'Install with: rustup component add rust-analyzer',
         });
         expect(JSON.stringify(harness.manager.listStates())).not.toContain(harness.workspaceRoot);
+    });
+
+    it('applies definition request and idle timeouts to the session', () => {
+        const harness = createHarness([{ ...CLANGD_PRESET, enabled: true }], {
+            prepareDeps: {
+                resolveOnPath: () => undefined,
+                isExecutable: () => false,
+                readDir: () => [],
+            },
+        });
+        const result = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/main.cpp',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(harness.created[0].requestTimeoutMs).toBe(120_000);
+        expect(harness.created[0].idleTimeoutMs).toBe(30 * 60_000);
     });
 
     it('leaves a non-TypeScript definition exactly as configured', () => {

@@ -287,6 +287,10 @@ describe('mergeWithBuiltIns', () => {
             args: ['--background-index=false'],
             rootMarkers: ['compile_commands.json', '.clangd', 'compile_flags.txt'],
             priority: 100,
+            sessionScope: 'workspace',
+            maxSessions: 4,
+            requestTimeoutMs: 120_000,
+            idleTimeoutMs: 30 * 60_000,
             enabled: false,
             builtIn: true,
         });
