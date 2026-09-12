@@ -181,6 +181,33 @@ function GenericFileIcon({ style }: { style: CSSProperties }) {
     );
 }
 
+export interface FileNameIconProps {
+    fileName: string;
+    showTitle?: boolean;
+    testId?: string;
+}
+
+export function FileNameIcon({
+    fileName,
+    showTitle = true,
+    testId = 'file-type-icon',
+}: FileNameIconProps) {
+    const descriptor = getFileIconDescriptor(fileName);
+    const style = { color: descriptor.color };
+    return (
+        <span
+            aria-hidden="true"
+            className="inline-flex h-4 w-5 flex-shrink-0 items-center justify-center font-mono text-[9px] font-semibold leading-none"
+            style={style}
+            title={showTitle ? descriptor.title : undefined}
+            data-testid={testId}
+            data-icon-label={descriptor.label || 'file'}
+        >
+            {descriptor.label || <GenericFileIcon style={style} />}
+        </span>
+    );
+}
+
 export function FileTypeIcon({ entry, expanded = false }: { entry: TreeEntry; expanded?: boolean }) {
     if (entry.type === 'dir') {
         return (
@@ -190,18 +217,5 @@ export function FileTypeIcon({ entry, expanded = false }: { entry: TreeEntry; ex
         );
     }
 
-    const descriptor = getFileIconDescriptor(entry.name);
-    const style = { color: descriptor.color };
-    return (
-        <span
-            aria-hidden="true"
-            className="inline-flex h-4 w-5 items-center justify-center font-mono text-[9px] font-semibold leading-none"
-            style={style}
-            title={descriptor.title}
-            data-testid="file-type-icon"
-            data-icon-label={descriptor.label || 'file'}
-        >
-            {descriptor.label || <GenericFileIcon style={style} />}
-        </span>
-    );
+    return <FileNameIcon fileName={entry.name} />;
 }

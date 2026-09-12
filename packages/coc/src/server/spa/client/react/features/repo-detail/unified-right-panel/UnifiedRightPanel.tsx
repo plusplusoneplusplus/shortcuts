@@ -55,7 +55,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
-import { DOCK_MIN_WIDTH, SearchIcon, type DockTarget } from '../WorkspaceDockToggle';
+import {
+    DOCK_MIN_WIDTH,
+    SearchIcon,
+    setWorkspaceDockOpen,
+    type DockTarget,
+} from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ContentSearchPanel } from '../explorer/ContentSearchPanel';
@@ -151,6 +156,15 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     const {
         tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
     } = useUnifiedPanelTabs(workspaceId, chatId);
+
+    // Reconcile only at the chat-selection boundary. Resource entry points still
+    // reveal the panel themselves, and a user may explicitly keep an empty panel
+    // open until another selection (or a reload) asks us to reconcile again.
+    const hasVisibleTabsRef = useRef(tabs.length > 0);
+    hasVisibleTabsRef.current = tabs.length > 0;
+    useEffect(() => {
+        setWorkspaceDockOpen(workspaceId, hasVisibleTabsRef.current);
+    }, [workspaceId, chatId]);
 
     // Views mounted so far, by tab id. A tab enters this set when it first
     // becomes active and stays until it is closed — that is the keep-alive that

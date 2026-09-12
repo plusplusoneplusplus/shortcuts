@@ -137,6 +137,37 @@ describe('ExplorerTabStrip', () => {
         expect(tabTooltip(tabs[1])).toBe('Search: needle');
     });
 
+    it('renders decorative file-type and search icons without changing tab labels', () => {
+        const tabs = [
+            fileTab('src/component.TS'),
+            fileTab('package.json'),
+            fileTab('AUTHORS'),
+            searchTab('needle'),
+        ];
+        renderStrip(tabs, tabs[0].id);
+
+        const expectedIcons = [
+            [tabs[0], 'TS', '#3178c6'],
+            [tabs[1], 'NPM', '#cb3837'],
+            [tabs[2], 'file', '#8a8a8a'],
+            [tabs[3], 'search', '#8a8a8a'],
+        ] as const;
+        for (const [tab, iconLabel, color] of expectedIcons) {
+            const rendered = screen.getByTestId(`explorer-tab-icon-${tab.id}`);
+            expect(rendered).toHaveAttribute('aria-hidden', 'true');
+            expect(rendered).toHaveAttribute('data-icon-label', iconLabel);
+            expect(rendered).toHaveStyle({ color });
+            expect(rendered.className).toContain('flex-shrink-0');
+            expect(rendered).not.toHaveAttribute('title');
+        }
+
+        expect(screen.getByTestId(`explorer-tab-icon-${tabs[2].id}`).querySelector('svg')).not.toBeNull();
+        expect(screen.getByTestId(`explorer-tab-icon-${tabs[3].id}`).querySelector('svg'))
+            .toHaveAttribute('data-icon-kind', 'search');
+        expect(screen.getByTestId(`explorer-tab-label-${tabs[0].id}`)).toHaveTextContent('component.TS');
+        expect(screen.getByTestId(`explorer-tab-${tabs[0].id}`)).toHaveAttribute('title', 'src/component.TS');
+    });
+
     it('activates a tab on click and pins it on double click', () => {
         const tabs = [fileTab('src/a.ts', { preview: true }), fileTab('src/b.ts')];
         const { onActivate, onPin } = renderStrip(tabs, tabs[1].id);

@@ -58,6 +58,8 @@ let capturedOnChange: ((editor: unknown) => void) | null = null;
 let capturedHandlePaste: ((view: unknown, event: ClipboardEvent) => boolean) | null = null;
 
 let richEditorMountCount = 0;
+let reportEditorReadyImmediately = true;
+let reportEditorReady: (() => void) | null = null;
 const mockInsertContent = vi.fn(() => ({ run: vi.fn() }));
 
 const mockEditor = {
@@ -100,7 +102,11 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/RichEdito
         if (props.handlePaste) capturedHandlePaste = props.handlePaste;
         useEffect(() => {
             richEditorMountCount++;
-            props.onEditorReady?.(mockEditor);
+            reportEditorReady = () => props.onEditorReady?.(mockEditor);
+            if (reportEditorReadyImmediately) reportEditorReady();
+            return () => {
+                reportEditorReady = null;
+            };
         }, []);
         return <div data-testid="editor-content" />;
     },
@@ -152,6 +158,8 @@ describe('NoteEditor', () => {
         capturedOnChange = null;
         capturedHandlePaste = null;
         richEditorMountCount = 0;
+        reportEditorReadyImmediately = true;
+        reportEditorReady = null;
         mockQueueDispatch.mockReset();
         mockArxivPaperIngestEnabled = false;
     });
@@ -755,6 +763,77 @@ describe('NoteEditor', () => {
     // ══════════════════════════════════════════════════════════════════════
 
     describe('editor always-mounted (regression)', () => {
+        it('hydrates a fast load once when the editor becomes ready without autosaving', async () => {
+            reportEditorReadyImmediately = false;
+            mockLoadContent.mockResolvedValue({ content: '# Fast plan', path: 'plan.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="plan.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(mockLoadContent).toHaveBeenCalledTimes(1));
+            await waitFor(() => expect(screen.queryByTestId('note-editor-loading')).toBeNull());
+            expect(mockSetContent).not.toHaveBeenCalled();
+
+            await act(async () => {
+                reportEditorReady?.();
+            });
+
+            expect(mockSetContent).toHaveBeenCalledTimes(1);
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Fast plan</p>', { emitUpdate: false });
+
+            vi.useFakeTimers();
+            await act(async () => { vi.advanceTimersByTime(2000); });
+            expect(mockIOSaveContent).not.toHaveBeenCalled();
+        });
+
+        it('hydrates an empty document when the editor becomes ready', async () => {
+            reportEditorReadyImmediately = false;
+            mockLoadContent.mockResolvedValue({ content: '', path: 'empty.md' });
+
+            await act(async () => {
+                render(<NoteEditor workspaceId="ws1" notePath="empty.md" io={mockIo} />);
+            });
+            await waitFor(() => expect(screen.queryByTestId('note-editor-loading')).toBeNull());
+            expect(mockSetContent).not.toHaveBeenCalled();
+
+            await act(async () => {
+                reportEditorReady?.();
+            });
+
+            expect(mockSetContent).toHaveBeenCalledOnce();
+            expect(mockSetContent).toHaveBeenCalledWith('<p></p>', { emitUpdate: false });
+        });
+
+        it('hydrates only the latest note when files switch before editor readiness', async () => {
+            reportEditorReadyImmediately = false;
+            let resolveFirst!: (v: { content: string; path: string }) => void;
+            let resolveSecond!: (v: { content: string; path: string }) => void;
+            mockLoadContent
+                .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+                .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve; }));
+
+            const { rerender } = await act(async () => {
+                return render(<NoteEditor workspaceId="ws1" notePath="a.md" io={mockIo} />);
+            });
+            await act(async () => {
+                resolveFirst({ content: '# First', path: 'a.md' });
+            });
+            expect(mockSetContent).not.toHaveBeenCalled();
+
+            await act(async () => {
+                rerender(<NoteEditor workspaceId="ws1" notePath="b.md" io={mockIo} />);
+            });
+            await act(async () => {
+                resolveSecond({ content: '# Second', path: 'b.md' });
+            });
+
+            await act(async () => {
+                reportEditorReady?.();
+            });
+
+            expect(mockSetContent).toHaveBeenCalledTimes(1);
+            expect(mockSetContent).toHaveBeenCalledWith('<p># Second</p>', { emitUpdate: false });
+        });
 
         it('RichEditorCore stays mounted during loading — never unmounted and remounted', async () => {
             let resolveLoad!: (v: { content: string; path: string }) => void;

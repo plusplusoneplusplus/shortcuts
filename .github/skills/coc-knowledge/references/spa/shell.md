@@ -225,6 +225,13 @@ panel; they select or collapse the right-edge navigator without closing the pane
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
+On mount and on a panel-scope chat selection change, the panel reconciles its open
+bit with that chat's visible tab view: workspace-owned tabs plus the selected
+chat's tabs open it, while an empty view closes it. The selected chat comes from
+`selectedTaskIdByRepo[workspaceId]`. Tab descriptors and remembered active tabs
+remain stored, and an explicit toggle can keep an empty panel open until the next
+selection or reload.
+
 Quick Open has an explicit repo or repo-group scope. A desktop repo group owns
 Ctrl/Cmd+P across all of its sub-tabs even while the panel is closed, and sends
 one search request to the group's owning server. Selecting a member result
@@ -242,6 +249,10 @@ docked Explorer omits its internal Files/Search switch; the standalone Explorer
 page retains it. Tab descriptors (never document bodies, terminal output, or
 credentials) persist per panel scope in localStorage. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
+
+Explorer editor tabs render the same filename-classified badge or generic
+document icon as the file tree. Search-result editor tabs render a decorative
+search icon.
 
 Remote-target dialogs additionally fetch the selected server's `/config/runtime`
 `gitWorktreeExecutionEnabled` as a **per-target capability signal**, since the local flag
