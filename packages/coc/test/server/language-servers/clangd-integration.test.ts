@@ -117,4 +117,60 @@ describeWithClangd('real clangd runtime', () => {
         await waitFor(() => diagnostics.length > 0, 'clangd diagnostics');
         expect(diagnostics.some(diagnostic => diagnostic.message.length > 0)).toBe(true);
     });
+
+    it('uses an in-tree compilation database instead of fallback flags', async () => {
+        const databaseRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'coc-lsp-clangd-db-'));
+        const source = `#ifndef FROM_DATABASE
+#error compilation database was ignored
+#endif
+#ifdef FROM_FALLBACK
+#error fallback flags overrode the compilation database
+#endif
+int main() { return 0; }
+`;
+        const file = path.join(databaseRoot, 'main.cpp');
+        fs.writeFileSync(file, source);
+        fs.writeFileSync(path.join(databaseRoot, 'compile_commands.json'), JSON.stringify([{
+            directory: databaseRoot,
+            file,
+            arguments: ['clang++', '-DFROM_DATABASE', '-std=c++17', '-c', file],
+        }]));
+        const enabled: LanguageServerDefinition = {
+            ...CLANGD_PRESET,
+            enabled: true,
+            initializationOptions: { fallbackFlags: ['-DFROM_FALLBACK'] },
+        };
+        const prepared = prepareDefinitionForRoot(enabled, databaseRoot);
+        const databaseSession = new LanguageServerSession({
+            definition: prepared.definition,
+            rootPath: databaseRoot,
+            runtimeLabel: prepared.runtimeLabel,
+            commandLabel: prepared.commandLabel,
+            startTimeoutMs: 45_000,
+            requestTimeoutMs: 30_000,
+        });
+        let receivedDiagnostics = false;
+        let databaseDiagnostics: Diagnostic[] = [];
+        databaseSession.onNotification('textDocument/publishDiagnostics', params => {
+            receivedDiagnostics = true;
+            databaseDiagnostics = (params as { diagnostics?: Diagnostic[] }).diagnostics ?? [];
+        });
+
+        try {
+            await databaseSession.start();
+            databaseSession.sendNotification('textDocument/didOpen', {
+                textDocument: {
+                    uri: pathToFileURL(file).href,
+                    languageId: 'cpp',
+                    version: 1,
+                    text: source,
+                },
+            });
+            await waitFor(() => receivedDiagnostics, 'clangd compilation database diagnostics');
+            expect(databaseDiagnostics).toEqual([]);
+        } finally {
+            await databaseSession.dispose();
+            await safeRm(databaseRoot);
+        }
+    });
 });

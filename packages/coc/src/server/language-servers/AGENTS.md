@@ -187,6 +187,15 @@ and transport code stays generic.
   versioned `/usr/lib/llvm-*` directories, or `%ProgramFiles%\LLVM`. Its preset
   disables background indexing and roots only at `compile_commands.json`,
   `.clangd`, or `compile_flags.txt`; repointed commands remain untouched.
+- clangd compilation fallback is configured per workspace through
+  `initializationOptions.fallbackFlags`; the adapter passes the array through
+  unchanged. An in-tree compilation database takes precedence automatically.
+  A database elsewhere is selected with `--compile-commands-dir=<directory>` in
+  `args`; CoC never writes a database or user-level clangd configuration.
+- MSVC projects should include `--driver-mode=cl`, `/std:c++<version>`, `/I`
+  entries for the MSVC standard library and Windows SDK, and required `/D`
+  defines in `fallbackFlags`. Bear cannot generate a database on Windows because
+  its process interception model is not supported there.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The

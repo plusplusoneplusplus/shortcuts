@@ -106,6 +106,24 @@ describe('clangd adapter wiring', () => {
         })).not.toContain(executable);
     });
 
+    it('preserves user-supplied fallback flags and compile database arguments', () => {
+        const initializationOptions = {
+            fallbackFlags: ['--driver-mode=cl', '/std:c++20', '/I<MSVC include>', '/DUNICODE'],
+        };
+        const prepared = prepareDefinitionForRoot(preset({
+            args: ['--background-index=false', '--compile-commands-dir=/repo-data/build'],
+            initializationOptions,
+        }), path.resolve(path.sep, 'repo'), {
+            resolveOnPath: () => path.resolve(path.sep, 'tools', 'clangd'),
+        });
+
+        expect(prepared.definition.args).toEqual([
+            '--background-index=false',
+            '--compile-commands-dir=/repo-data/build',
+        ]);
+        expect(prepared.definition.initializationOptions).toBe(initializationOptions);
+    });
+
     it('leaves a workspace-repointed clangd definition untouched', () => {
         const repointed = preset({ command: path.resolve(path.sep, 'custom', 'clangd') });
         const prepared = prepareDefinitionForRoot(repointed, path.resolve(path.sep, 'repo'), {

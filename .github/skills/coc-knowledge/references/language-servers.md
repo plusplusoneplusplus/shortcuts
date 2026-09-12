@@ -38,6 +38,13 @@ Objective-C++, and CUDA files with `--background-index=false`. Its adapter check
 the owning host's PATH before platform-specific LLVM install locations. Project
 roots use only `compile_commands.json`, `.clangd`, and `compile_flags.txt`, keeping
 large repositories sharded when component-local markers exist.
+
+Workspace definitions pass no-database compiler options through
+`initializationOptions.fallbackFlags`. clangd gives an in-tree compilation
+database priority; `--compile-commands-dir=<directory>` selects an external one.
+MSVC fallback flags use `--driver-mode=cl` and include the MSVC standard library
+and Windows SDK `/I` paths. CoC does not generate databases or modify user clangd
+configuration.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.
