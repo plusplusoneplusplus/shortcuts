@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex};
 use std::time::UNIX_EPOCH;
 
+use rayon::prelude::*;
 use rusqlite::{params, Connection, Transaction};
 
 use super::{
@@ -44,6 +45,12 @@ pub struct SyncProgress {
 
 pub struct SymbolStore {
     connection: Mutex<Connection>,
+}
+
+enum PreparedFile {
+    ManifestOnly(FileManifestEntry),
+    Parsed(FileManifestEntry, Vec<Symbol>),
+    Failed(SymbolFileFailure),
 }
 
 impl SymbolStore {
@@ -165,93 +172,102 @@ impl SymbolStore {
         let paths: Vec<String> = paths.into_iter().filter(|path| is_c_family_path(path)).collect();
         let seen: HashSet<&str> = paths.iter().map(String::as_str).collect();
         let mut stats = SyncStats { scanned: paths.len(), ..SyncStats::default() };
-        let progress_stride = paths.len().div_ceil(100).max(1);
+        let scan_stride = paths.len().div_ceil(50).max(1);
+        let mut changed = Vec::new();
+        for (position, relative) in paths.iter().enumerate() {
+            let result = std::fs::metadata(root.join(relative))
+                .and_then(|metadata| manifest_metadata(&metadata));
+            match result {
+                Ok((size, mtime))
+                    if previous
+                        .get(relative)
+                        .is_some_and(|entry| entry.size == size && entry.mtime == mtime) =>
+                {
+                    stats.unchanged += 1;
+                }
+                Ok((size, mtime)) => changed.push((relative.clone(), size, mtime)),
+                Err(error) => stats
+                    .failures
+                    .push(SymbolFileFailure { path: relative.clone(), reason: error.to_string() }),
+            }
+            report_progress(
+                &mut on_progress,
+                SyncProgressPhase::Scanning,
+                position + 1,
+                paths.len(),
+                scan_stride,
+            );
+        }
+        let progress_stride = changed.len().div_ceil(50).max(1);
         on_progress(SyncProgress {
             phase: SyncProgressPhase::Indexing,
             processed: 0,
-            total: paths.len(),
+            total: changed.len(),
         });
+        let mut processed = 0usize;
         let mut connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
         let transaction = connection.transaction()?;
-
-        for (position, relative) in paths.iter().enumerate() {
-            let absolute = root.join(relative);
-            let metadata = match std::fs::metadata(&absolute) {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    stats.failures.push(SymbolFileFailure {
-                        path: relative.clone(),
-                        reason: error.to_string(),
-                    });
-                    report_indexing_progress(
-                        &mut on_progress,
-                        position,
-                        paths.len(),
-                        progress_stride,
-                    );
-                    continue;
-                }
-            };
-            let (size, mtime) = match manifest_metadata(&metadata) {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    stats.failures.push(SymbolFileFailure {
-                        path: relative.clone(),
-                        reason: error.to_string(),
-                    });
-                    report_indexing_progress(
-                        &mut on_progress,
-                        position,
-                        paths.len(),
-                        progress_stride,
-                    );
-                    continue;
-                }
-            };
-            let old = previous.get(relative);
-            if old.is_some_and(|entry| entry.size == size && entry.mtime == mtime) {
-                stats.unchanged += 1;
-                report_indexing_progress(&mut on_progress, position, paths.len(), progress_stride);
-                continue;
-            }
-            let source = match read_bounded(&absolute, limits.max_file_bytes) {
-                Ok(source) => source,
-                Err(error) => {
-                    stats.failures.push(SymbolFileFailure {
-                        path: relative.clone(),
-                        reason: error.to_string(),
-                    });
-                    report_indexing_progress(
-                        &mut on_progress,
-                        position,
-                        paths.len(),
-                        progress_stride,
-                    );
-                    continue;
-                }
-            };
-            let entry = FileManifestEntry {
-                path: relative.clone(),
-                size,
-                mtime,
-                hash: blake3::hash(&source).to_hex().to_string(),
-            };
-            if old.is_some_and(|previous| previous.hash == entry.hash) {
-                update_file_manifest(&transaction, &entry)?;
-                stats.unchanged += 1;
-            } else {
-                match extractor.extract(relative, &source) {
-                    Ok(symbols) => {
-                        replace_file_in_transaction(&transaction, &entry, &symbols)?;
-                        stats.parsed += 1;
+        let channel_capacity = rayon::current_num_threads().max(1);
+        let (result_sender, result_receiver) = mpsc::sync_channel(channel_capacity);
+        let previous_ref = &previous;
+        let changed_ref = &changed;
+        let mut write_error = None;
+        std::thread::scope(|scope| {
+            let worker = scope.spawn(move || {
+                changed_ref.par_iter().for_each_with(
+                    result_sender,
+                    |sender, (relative, size, mtime)| {
+                        let result = prepare_changed_file(
+                            root,
+                            relative,
+                            *size,
+                            *mtime,
+                            previous_ref.get(relative),
+                            &extractor,
+                            limits,
+                        );
+                        let _ = sender.send(result);
+                    },
+                );
+            });
+            for result in result_receiver {
+                if write_error.is_none() {
+                    let result = match result {
+                        PreparedFile::ManifestOnly(entry) => {
+                            update_file_manifest(&transaction, &entry).map(|()| {
+                                stats.unchanged += 1;
+                            })
+                        }
+                        PreparedFile::Parsed(entry, symbols) => {
+                            replace_file_in_transaction(&transaction, &entry, &symbols).map(|()| {
+                                stats.parsed += 1;
+                            })
+                        }
+                        PreparedFile::Failed(failure) => {
+                            stats.failures.push(failure);
+                            Ok(())
+                        }
+                    };
+                    if let Err(error) = result {
+                        write_error = Some(error);
                     }
-                    Err(error) => stats.failures.push(SymbolFileFailure {
-                        path: relative.clone(),
-                        reason: error.to_string(),
-                    }),
                 }
+                processed += 1;
+                report_progress(
+                    &mut on_progress,
+                    SyncProgressPhase::Indexing,
+                    processed,
+                    changed.len(),
+                    progress_stride,
+                );
             }
-            report_indexing_progress(&mut on_progress, position, paths.len(), progress_stride);
+            match worker.join() {
+                Ok(()) => {}
+                Err(payload) => std::panic::resume_unwind(payload),
+            }
+        });
+        if let Some(error) = write_error {
+            return Err(Box::new(error));
         }
 
         for removed in previous.keys().filter(|path| !seen.contains(path.as_str())) {
@@ -376,15 +392,52 @@ impl SymbolStore {
     }
 }
 
-fn report_indexing_progress(
+fn report_progress(
     on_progress: &mut impl FnMut(SyncProgress),
-    position: usize,
+    phase: SyncProgressPhase,
+    processed: usize,
     total: usize,
     stride: usize,
 ) {
-    let processed = position + 1;
     if processed == total || processed.is_multiple_of(stride) {
-        on_progress(SyncProgress { phase: SyncProgressPhase::Indexing, processed, total });
+        on_progress(SyncProgress { phase, processed, total });
+    }
+}
+
+fn prepare_changed_file(
+    root: &Path,
+    relative: &str,
+    size: i64,
+    mtime: i64,
+    previous: Option<&FileManifestEntry>,
+    extractor: &SymbolExtractor,
+    limits: ExtractionLimits,
+) -> PreparedFile {
+    let absolute = root.join(relative);
+    let source = match read_bounded(&absolute, limits.max_file_bytes) {
+        Ok(source) => source,
+        Err(error) => {
+            return PreparedFile::Failed(SymbolFileFailure {
+                path: relative.to_owned(),
+                reason: error.to_string(),
+            });
+        }
+    };
+    let entry = FileManifestEntry {
+        path: relative.to_owned(),
+        size,
+        mtime,
+        hash: blake3::hash(&source).to_hex().to_string(),
+    };
+    if previous.is_some_and(|old| old.hash == entry.hash) {
+        return PreparedFile::ManifestOnly(entry);
+    }
+    match extractor.extract(relative, &source) {
+        Ok(symbols) => PreparedFile::Parsed(entry, symbols),
+        Err(error) => PreparedFile::Failed(SymbolFileFailure {
+            path: relative.to_owned(),
+            reason: error.to_string(),
+        }),
     }
 }
 
