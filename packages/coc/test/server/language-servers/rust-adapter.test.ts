@@ -4,6 +4,7 @@ import { prepareDefinitionForRoot } from '../../../src/server/language-servers/a
 import { RUST_PRESET } from '../../../src/server/language-servers/presets';
 import {
     RUST_ANALYZER_INSTALL_GUIDANCE,
+    RUST_ANALYZER_RECOVERY_COMMAND,
     RUSTUP_RESOLUTION_TIMEOUT_MS,
     findExecutableOnPath,
     resolveRustRuntime,
@@ -54,6 +55,7 @@ describe('resolveRustRuntime', () => {
         const runtime = resolveRustRuntime(preset(), rootPath, {
             runRustupWhich: () => undefined,
             resolveOnPath: () => pathAnalyzer,
+            isRustupProxy: () => false,
         });
 
         expect(runtime).toEqual({
@@ -62,6 +64,23 @@ describe('resolveRustRuntime', () => {
             origin: 'path',
             label: 'Server: system PATH',
             notes: [],
+        });
+    });
+
+    it('classifies a rustup proxy on PATH as a missing component', () => {
+        const runtime = resolveRustRuntime(preset(), rootPath, {
+            runRustupWhich: () => undefined,
+            resolveOnPath: () => pathAnalyzer,
+            isRustupProxy: () => true,
+        });
+
+        expect(runtime).toEqual({
+            command: pathAnalyzer,
+            args: [],
+            origin: 'rustup',
+            label: 'Server: rustup proxy',
+            notes: [RUST_ANALYZER_INSTALL_GUIDANCE],
+            recoveryCommand: RUST_ANALYZER_RECOVERY_COMMAND,
         });
     });
 
@@ -130,6 +149,7 @@ describe('resolveRustRuntime', () => {
             origin: 'unavailable',
             label: 'Server: unavailable',
             notes: [RUST_ANALYZER_INSTALL_GUIDANCE],
+            recoveryCommand: RUST_ANALYZER_RECOVERY_COMMAND,
         });
     });
 });

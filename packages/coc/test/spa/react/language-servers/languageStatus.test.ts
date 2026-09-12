@@ -110,13 +110,28 @@ describe('describeLanguageStatus', () => {
         expect(description.title).toContain('Handshake failed: timed out');
     });
 
+    it('keeps timeout classification and recovery guidance actionable', () => {
+        const description = describeLanguageStatus(snapshot({
+            status: 'detached',
+            state: state({
+                status: 'timeout',
+                detail: 'rust-analyzer did not initialize in time',
+                recoveryCommand: 'rustup component add rust-analyzer',
+            }),
+        }));
+
+        expect(description.label).toBe('TypeScript timed out');
+        expect(description.recoveryCommand).toBe('rustup component add rust-analyzer');
+        expect(description.canRestart).toBe(true);
+    });
+
     it('says the executable is missing rather than blaming the handshake', () => {
         const description = describeLanguageStatus(snapshot({
             status: 'detached',
             state: state({ status: 'unavailable', detail: 'Executable not found: typescript-language-server' }),
         }));
 
-        expect(description.label).toBe('TypeScript not found');
+        expect(description.label).toBe('TypeScript unavailable');
         expect(description.tone).toBe('error');
         expect(description.canRestart).toBe(true);
     });

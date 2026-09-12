@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { LanguageServerDefinition } from '@plusplusoneplusplus/coc-client';
+import type { LanguageServerDefinition, LanguageServerRuntimeState } from '@plusplusoneplusplus/coc-client';
 import { languageServersApi, parseLanguageServerRejection } from './languageServersApi';
 
 interface LanguageServersPanelProps {
@@ -114,22 +114,48 @@ function fieldErrorsFor(
 const INPUT_CLASS =
     'w-full text-xs font-mono border border-[#e0e0e0] dark:border-[#3c3c3c] rounded px-2 py-1 bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] placeholder-[#999]';
 
+function runtimeSummary(runtimes: LanguageServerRuntimeState[]): string {
+    if (runtimes.length === 0) return 'Not started';
+    const counts = { ready: 0, starting: 0, setup: 0, failed: 0, notStarted: 0 };
+    for (const runtime of runtimes) {
+        if (runtime.status === 'ready') counts.ready++;
+        else if (runtime.status === 'starting' || runtime.status === 'reconnecting' || runtime.status === 'indexing') counts.starting++;
+        else if (runtime.status === 'unavailable') counts.setup++;
+        else if (runtime.status === 'failed' || runtime.status === 'timeout') counts.failed++;
+        else counts.notStarted++;
+    }
+    const parts: string[] = [];
+    const add = (label: string, count: number) => {
+        if (count > 0) parts.push(`${label} in ${count} root${count === 1 ? '' : 's'}`);
+    };
+    add('Ready', counts.ready);
+    add('Starting', counts.starting);
+    add('Needs setup', counts.setup);
+    add('Failed', counts.failed);
+    add('Not started', counts.notStarted);
+    return parts.join(' · ') || 'Not started';
+}
+
 export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps) {
     const [enabled, setEnabled] = useState(false);
     const [stored, setStored] = useState<LanguageServerDefinition[]>([]);
     const [effective, setEffective] = useState<LanguageServerDefinition[]>([]);
     const [warnings, setWarnings] = useState<string[]>([]);
+    const [runtimes, setRuntimes] = useState<LanguageServerRuntimeState[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [draft, setDraft] = useState<DefinitionDraft | null>(null);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const [expandedServer, setExpandedServer] = useState<string | null>(null);
+    const [retrying, setRetrying] = useState<Set<string>>(new Set());
 
     const applyResponse = useCallback((res: Awaited<ReturnType<typeof languageServersApi.get>>) => {
         setEnabled(res.enabled);
         setStored(res.definitions);
         setEffective(res.effective);
         setWarnings(res.warnings.map(w => w.message));
+        setRuntimes(res.runtimes ?? []);
     }, []);
 
     useEffect(() => {
@@ -222,6 +248,33 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
     }, [draft, effective, stored, save]);
 
     const storedIds = useMemo(() => new Set(stored.map(d => d.id)), [stored]);
+    const runtimesByDefinition = useMemo(() => {
+        const grouped = new Map<string, LanguageServerRuntimeState[]>();
+        for (const runtime of runtimes) {
+            const existing = grouped.get(runtime.definitionId) ?? [];
+            const duplicate = existing.findIndex(item => item.projectRoot === runtime.projectRoot);
+            if (duplicate < 0) existing.push(runtime);
+            else if ((runtime.lastAttemptAt ?? '') > (existing[duplicate].lastAttemptAt ?? '')) existing[duplicate] = runtime;
+            grouped.set(runtime.definitionId, existing);
+        }
+        return grouped;
+    }, [runtimes]);
+
+    const retryRuntime = useCallback(async (runtime: LanguageServerRuntimeState) => {
+        setRetrying(current => new Set(current).add(runtime.sessionId));
+        setError(null);
+        try {
+            applyResponse(await languageServersApi.retry(workspaceId, runtime.sessionId));
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to retry language server');
+        } finally {
+            setRetrying(current => {
+                const next = new Set(current);
+                next.delete(runtime.sessionId);
+                return next;
+            });
+        }
+    }, [applyResponse, workspaceId]);
 
     if (loading) {
         return <div className="text-xs text-[#848484]" data-testid="language-servers-loading">Loading…</div>;
@@ -252,47 +305,96 @@ export function LanguageServersPanel({ workspaceId }: LanguageServersPanelProps)
                 <div className="text-xs text-[#848484] mb-2" data-testid="no-language-servers">No language servers configured.</div>
             ) : (
                 <div className="flex flex-col gap-1.5 mb-3">
-                    {effective.map(def => (
+                    {effective.map(def => {
+                        const serverRuntimes = runtimesByDefinition.get(def.id) ?? [];
+                        const hasFailure = serverRuntimes.some(runtime =>
+                            runtime.status === 'unavailable' || runtime.status === 'failed' || runtime.status === 'timeout'
+                        );
+                        const expanded = expandedServer === def.id;
+                        return (
                         <div
                             key={def.id}
-                            className="flex items-center gap-2 px-2 py-1.5 text-xs border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#1e1e1e]"
+                            className="px-2 py-1.5 text-xs border border-[#e0e0e0] dark:border-[#3c3c3c] rounded bg-white dark:bg-[#1e1e1e]"
                             data-testid="language-server-row"
                             data-server-id={def.id}
                         >
-                            <input
-                                type="checkbox"
-                                checked={def.enabled ?? false}
-                                disabled={saving}
-                                onChange={() => toggleDefinition(def)}
-                                aria-label={`Enable ${def.displayName}`}
-                                data-testid="language-server-enabled"
-                            />
-                            <span className="flex-1 min-w-0">
-                                <span className="text-[#1e1e1e] dark:text-[#cccccc]">{def.displayName}</span>
-                                <span className="block truncate font-mono text-[10px] text-[#848484]">
-                                    {[def.command, ...def.args].join(' ')} · {def.filePatterns.join(' ')}
-                                </span>
-                            </span>
-                            {def.builtIn && (
-                                <span className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] text-[#848484] rounded px-1" data-testid="built-in-badge">preset</span>
-                            )}
-                            <button
-                                className="text-[#0078d4] hover:underline px-1"
-                                disabled={saving}
-                                onClick={() => startEdit(def)}
-                                data-testid="edit-server-btn"
-                            >Edit</button>
-                            {!def.builtIn && storedIds.has(def.id) && (
-                                <button
-                                    className="text-[#cc3333] hover:text-red-700 px-1"
-                                    title="Remove"
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={def.enabled ?? false}
                                     disabled={saving}
-                                    onClick={() => removeDefinition(def)}
-                                    data-testid="remove-server-btn"
-                                >✕</button>
+                                    onChange={() => toggleDefinition(def)}
+                                    aria-label={`Enable ${def.displayName}`}
+                                    data-testid="language-server-enabled"
+                                />
+                                <span className="flex-1 min-w-0">
+                                    <span className="text-[#1e1e1e] dark:text-[#cccccc]">{def.displayName}</span>
+                                    <span className="block truncate font-mono text-[10px] text-[#848484]">
+                                        {[def.command, ...def.args].join(' ')} · {def.filePatterns.join(' ')}
+                                    </span>
+                                </span>
+                                <button
+                                    type="button"
+                                    className={hasFailure ? 'text-[#cc3333] dark:text-[#f48771]' : 'text-[#848484]'}
+                                    onClick={() => hasFailure && setExpandedServer(expanded ? null : def.id)}
+                                    data-testid="language-server-runtime-status"
+                                    aria-expanded={hasFailure ? expanded : undefined}
+                                >
+                                    {runtimeSummary(serverRuntimes)}
+                                </button>
+                                {def.builtIn && (
+                                    <span className="text-[10px] bg-[#f0f0f0] dark:bg-[#3c3c3c] text-[#848484] rounded px-1" data-testid="built-in-badge">preset</span>
+                                )}
+                                <button
+                                    className="text-[#0078d4] hover:underline px-1"
+                                    disabled={saving}
+                                    onClick={() => startEdit(def)}
+                                    data-testid="edit-server-btn"
+                                >Edit</button>
+                                {!def.builtIn && storedIds.has(def.id) && (
+                                    <button
+                                        className="text-[#cc3333] hover:text-red-700 px-1"
+                                        title="Remove"
+                                        disabled={saving}
+                                        onClick={() => removeDefinition(def)}
+                                        data-testid="remove-server-btn"
+                                    >✕</button>
+                                )}
+                            </div>
+                            {expanded && hasFailure && (
+                                <div className="mt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-2" data-testid="language-server-runtime-details">
+                                    {serverRuntimes.filter(runtime =>
+                                        runtime.status === 'unavailable' || runtime.status === 'failed' || runtime.status === 'timeout'
+                                    ).map(runtime => (
+                                        <div key={runtime.sessionId} className="mb-2 last:mb-0">
+                                            <div className="font-medium">{runtime.projectRoot}</div>
+                                            {runtime.lastAttemptAt && <div className="text-[10px] text-[#848484]">Last attempt: {new Date(runtime.lastAttemptAt).toLocaleString()}</div>}
+                                            {runtime.runtime && <div className="text-[10px] text-[#848484]">{runtime.runtime}</div>}
+                                            {runtime.detail && <div className="my-1">{runtime.detail}</div>}
+                                            {runtime.recoveryCommand && (
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <code className="rounded bg-black/5 dark:bg-white/10 px-1.5 py-0.5">{runtime.recoveryCommand}</code>
+                                                    <button
+                                                        type="button"
+                                                        className="text-[#0078d4] hover:underline"
+                                                        onClick={() => { void navigator.clipboard?.writeText(runtime.recoveryCommand!); }}
+                                                        data-testid="language-server-copy-command"
+                                                    >Copy command</button>
+                                                </div>
+                                            )}
+                                            <button
+                                                type="button"
+                                                className="text-[#0078d4] hover:underline disabled:opacity-50"
+                                                disabled={retrying.has(runtime.sessionId) || runtime.status === 'starting' || runtime.status === 'reconnecting'}
+                                                onClick={() => { void retryRuntime(runtime); }}
+                                                data-testid="language-server-retry"
+                                            >{retrying.has(runtime.sessionId) ? 'Retrying…' : 'Retry'}</button>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
-                    ))}
+                    );})}
                 </div>
             )}
 

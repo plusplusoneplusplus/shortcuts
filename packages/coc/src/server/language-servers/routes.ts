@@ -9,6 +9,8 @@
 import { sendJSON } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
+import { getActiveLanguageServerManager } from './active';
+import type { LanguageServerManager } from './manager';
 import { mergeWithBuiltIns } from './presets';
 import type { LanguageServerConfig } from './repository';
 import {
@@ -29,9 +31,24 @@ interface LanguageServerConfigResponse {
     startable: LanguageServerDefinition[];
     status: 'ok' | 'missing' | 'invalid';
     warnings: { kind: string; message: string }[];
+    runtimes: Array<{
+        sessionId: string;
+        definitionId: string;
+        displayName: string;
+        projectRoot: string;
+        status: ReturnType<LanguageServerManager['listStates']>[number]['status'];
+        detail?: string;
+        runtime?: string;
+        recoveryCommand?: string;
+        lastAttemptAt?: string;
+    }>;
 }
 
-function buildResponse(dataDir: string, workspaceId: string): LanguageServerConfigResponse {
+function buildResponse(
+    dataDir: string,
+    workspaceId: string,
+    manager = getActiveLanguageServerManager(),
+): LanguageServerConfigResponse {
     const { value, status, warnings } = readLanguageServerConfigWithStatus(dataDir, workspaceId);
     return {
         enabled: value.enabled,
@@ -41,6 +58,17 @@ function buildResponse(dataDir: string, workspaceId: string): LanguageServerConf
         status,
         // The on-disk path is a server detail and stays out of the browser payload.
         warnings: warnings.map(({ kind, message }) => ({ kind, message })),
+        runtimes: (manager?.listStates(workspaceId) ?? []).map((runtime) => ({
+            sessionId: runtime.sessionId,
+            definitionId: runtime.definitionId,
+            displayName: runtime.displayName,
+            projectRoot: runtime.projectRoot,
+            status: runtime.status,
+            detail: runtime.detail,
+            runtime: runtime.runtime,
+            recoveryCommand: runtime.recoveryCommand,
+            lastAttemptAt: runtime.lastAttemptAt,
+        })),
     };
 }
 
@@ -50,7 +78,11 @@ function buildResponse(dataDir: string, workspaceId: string): LanguageServerConf
  * @param dataDir - Resolved CoC data directory; config lives under
  *   `repos/<workspaceId>/language-servers.json`.
  */
-export function registerLanguageServerRoutes(routes: Route[], dataDir: string): void {
+export function registerLanguageServerRoutes(
+    routes: Route[],
+    dataDir: string,
+    getManager: () => LanguageServerManager | undefined = getActiveLanguageServerManager,
+): void {
     // ------------------------------------------------------------------
     // GET /api/workspaces/:id/language-servers — Read the workspace config
     // ------------------------------------------------------------------
@@ -59,7 +91,33 @@ export function registerLanguageServerRoutes(routes: Route[], dataDir: string): 
         pattern: /^\/api\/workspaces\/([^/]+)\/language-servers$/,
         handler: async (_req, res, match) => {
             const workspaceId = decodeURIComponent(match![1]);
-            sendJSON(res, 200, buildResponse(dataDir, workspaceId));
+            sendJSON(res, 200, buildResponse(dataDir, workspaceId, getManager()));
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/language-servers\/retry$/,
+        handler: async (req, res, match) => {
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) {
+                return;
+            }
+            const workspaceId = decodeURIComponent(match![1]);
+            const sessionId = typeof body === 'object' && body !== null && !Array.isArray(body)
+                ? (body as { sessionId?: unknown }).sessionId
+                : undefined;
+            if (typeof sessionId !== 'string' || !sessionId) {
+                return sendJSON(res, 400, { error: 'sessionId is required' });
+            }
+            const manager = getManager();
+            if (!manager) {
+                return sendJSON(res, 503, { error: 'Language-server runtime is unavailable' });
+            }
+            if (!await manager.retry(workspaceId, sessionId)) {
+                return sendJSON(res, 404, { error: 'Language-server session was not found' });
+            }
+            sendJSON(res, 200, buildResponse(dataDir, workspaceId, manager));
         },
     });
 
@@ -75,7 +133,7 @@ export function registerLanguageServerRoutes(routes: Route[], dataDir: string): 
                 return;
             }
             const workspaceId = decodeURIComponent(match![1]);
-            save(res, dataDir, workspaceId, body, 'replace');
+            save(res, dataDir, workspaceId, body, 'replace', getManager());
         },
     });
 
@@ -91,7 +149,7 @@ export function registerLanguageServerRoutes(routes: Route[], dataDir: string): 
                 return;
             }
             const workspaceId = decodeURIComponent(match![1]);
-            save(res, dataDir, workspaceId, body, 'patch');
+            save(res, dataDir, workspaceId, body, 'patch', getManager());
         },
     });
 }
@@ -109,6 +167,7 @@ function save(
     workspaceId: string,
     body: unknown,
     mode: 'replace' | 'patch',
+    manager?: LanguageServerManager,
 ): void {
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
         return sendJSON(res, 400, { error: 'Request body must be a JSON object', errors: [] });
@@ -142,5 +201,5 @@ function save(
             config: { enabled: stored.enabled, definitions: stored.definitions },
         });
     }
-    sendJSON(res, 200, buildResponse(dataDir, workspaceId));
+    sendJSON(res, 200, buildResponse(dataDir, workspaceId, manager));
 }

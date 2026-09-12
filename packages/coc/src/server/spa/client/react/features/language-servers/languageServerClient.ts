@@ -36,7 +36,7 @@ import { getEditingSessionId } from './editingSession';
 
 /** Subset of the host's session state the browser reads. */
 export interface LanguageServerSessionStateView {
-    status: 'disabled' | 'unavailable' | 'starting' | 'indexing' | 'ready' | 'reconnecting' | 'failed';
+    status: 'disabled' | 'unavailable' | 'starting' | 'indexing' | 'ready' | 'reconnecting' | 'timeout' | 'failed';
     definitionId: string;
     displayName: string;
     detail?: string;
@@ -44,6 +44,8 @@ export interface LanguageServerSessionStateView {
     serverVersion?: string;
     /** Which executable and toolchain the host resolved. Never a host path. */
     runtime?: string;
+    recoveryCommand?: string;
+    lastAttemptAt?: string;
     restarts?: number;
     /**
      * Counts the host session's successful handshakes. A change means the

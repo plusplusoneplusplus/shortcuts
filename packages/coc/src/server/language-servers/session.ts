@@ -34,6 +34,7 @@ export type LanguageServerStatus =
     | 'indexing'
     | 'ready'
     | 'reconnecting'
+    | 'timeout'
     | 'failed';
 
 export interface LanguageServerSessionState {
@@ -54,6 +55,10 @@ export interface LanguageServerSessionState {
      * TypeScript versus the packaged one. Short text only, never a host path.
      */
     runtime?: string;
+    /** Safe recovery command supplied by a language adapter. */
+    recoveryCommand?: string;
+    /** ISO timestamp for the most recent process start attempt. */
+    lastAttemptAt?: string;
     /** Restarts already attempted since the last successful start. */
     restarts: number;
     /**
@@ -81,6 +86,13 @@ export interface LanguageServerSessionOptions {
     commandLabel?: string;
     /** Safe guidance appended when the executable cannot be found. */
     unavailableDetail?: string;
+    /** Safe command the UI may offer to copy. It is never executed by CoC. */
+    recoveryCommand?: string;
+    /** Re-resolves executable and toolchain before every explicit start or retry. */
+    prepareForStart?: () => Pick<
+        LanguageServerSessionOptions,
+        'definition' | 'runtimeLabel' | 'commandLabel' | 'unavailableDetail' | 'recoveryCommand'
+    >;
     /** Client capabilities sent in `initialize`. Defaults to `DEFAULT_CLIENT_CAPABILITIES`. */
     clientCapabilities?: JsonValue;
     /** Bound on the initialize handshake. Defaults to 20 seconds. */
@@ -112,7 +124,10 @@ const MAX_STDERR_CHARS = 4_000;
 
 export class LanguageServerSession {
     private readonly options: LanguageServerSessionOptions;
-    private readonly definition: LanguageServerDefinition;
+    private definition: LanguageServerDefinition;
+    private commandLabel?: string;
+    private unavailableDetail?: string;
+    private recoveryCommand?: string;
     private readonly readyHandlers = new Set<(connection: LanguageServerConnection) => void>();
     private readonly stateHandlers = new Set<(state: LanguageServerSessionState) => void>();
     private readonly notificationHandlers = new Map<string, Set<ServerNotificationHandler>>();
@@ -127,6 +142,8 @@ export class LanguageServerSession {
     private references = 0;
     private restarts = 0;
     private generation = 0;
+    private reachedReady = false;
+    private lastCrashDetail?: string;
     private readonly progressTokens = new Set<string | number>();
     private disposed = false;
     private state: LanguageServerSessionState;
@@ -134,6 +151,9 @@ export class LanguageServerSession {
     constructor(options: LanguageServerSessionOptions) {
         this.options = options;
         this.definition = options.definition;
+        this.commandLabel = options.commandLabel;
+        this.unavailableDetail = options.unavailableDetail;
+        this.recoveryCommand = options.recoveryCommand;
         this.clientRequests = new LanguageServerClientRequests({
             settings: this.definition.settings,
             workspaceFolders: () => [this.workspaceFolder()],
@@ -413,7 +433,23 @@ export class LanguageServerSession {
     }
 
     private async launch(): Promise<void> {
-        this.setState({ status: this.restarts > 0 ? 'reconnecting' : 'starting', detail: undefined });
+        const prepared = this.options.prepareForStart?.();
+        if (prepared) {
+            this.definition = prepared.definition;
+            this.commandLabel = prepared.commandLabel;
+            this.unavailableDetail = prepared.unavailableDetail;
+            this.recoveryCommand = prepared.recoveryCommand;
+            this.state = {
+                ...this.state,
+                runtime: prepared.runtimeLabel,
+                recoveryCommand: undefined,
+            };
+        }
+        this.setState({
+            status: this.restarts > 0 ? 'reconnecting' : 'starting',
+            detail: this.lastCrashDetail,
+            lastAttemptAt: new Date().toISOString(),
+        });
         this.stderrTail = '';
         let child: ChildProcessWithoutNullStreams;
         try {
@@ -472,6 +508,8 @@ export class LanguageServerSession {
             }
             this.restarts = 0;
             this.generation += 1;
+            this.reachedReady = true;
+            this.lastCrashDetail = undefined;
             this.setState({
                 status: this.progressTokens.size > 0 ? 'indexing' : 'ready',
                 detail: undefined,
@@ -479,6 +517,7 @@ export class LanguageServerSession {
                 dynamicRegistrations: this.clientRequests.getRegistrations(),
                 serverName: result?.serverInfo?.name,
                 serverVersion: result?.serverInfo?.version,
+                recoveryCommand: undefined,
                 restarts: 0,
                 generation: this.generation,
             });
@@ -501,7 +540,18 @@ export class LanguageServerSession {
             // A spawn `error` event already classified this as `unavailable`;
             // the handshake rejection it caused must not overwrite that.
             if (this.state.status !== 'unavailable') {
-                this.setState({ status: 'failed', detail: this.describeFailure('Handshake failed', error) });
+                const timeout = error instanceof LanguageServerRequestError && error.failure === 'timeout';
+                const rustupMissing = this.recoveryCommand && /(?:not installed|does not contain|unknown proxy)/i.test(this.stderrTail);
+                const prefix = this.lastCrashDetail
+                    ? `${this.lastCrashDetail}; restart failed`
+                    : timeout ? 'Language server initialization timed out' : 'Language server initialization failed';
+                this.setState({
+                    status: rustupMissing ? 'unavailable' : timeout ? 'timeout' : 'failed',
+                    detail: rustupMissing
+                        ? `${this.unavailableDetail ?? 'Required component is unavailable'}.`
+                        : this.describeFailure(prefix, error),
+                    recoveryCommand: rustupMissing ? this.recoveryCommand : undefined,
+                });
             }
             throw toError(error);
         }
@@ -545,6 +595,9 @@ export class LanguageServerSession {
         this.connection = undefined;
         this.progressTokens.clear();
         const how = signal ? `signal ${signal}` : `exit code ${code}`;
+        this.lastCrashDetail = this.reachedReady
+            ? `Language server crashed (${how})`
+            : `Language server exited during initialization (${how})`;
         this.clientRequests.reset();
         if (this.references === 0) {
             this.setState({
@@ -567,9 +620,9 @@ export class LanguageServerSession {
         if (this.restarts >= maxRestarts) {
             this.setState({
                 status: 'failed',
-                detail: this.describeFailure(`Language server exited (${how}) and did not recover`),
+                detail: this.describeFailure(`${this.lastCrashDetail} and did not recover`),
                 capabilities: undefined,
-            dynamicRegistrations: [],
+                dynamicRegistrations: [],
             });
             return;
         }
@@ -578,7 +631,7 @@ export class LanguageServerSession {
         this.restarts++;
         this.setState({
             status: 'reconnecting',
-            detail: `Language server exited (${how}); restarting`,
+            detail: `${this.lastCrashDetail}; restarting`,
             capabilities: undefined,
             dynamicRegistrations: [],
             restarts: this.restarts,
@@ -634,27 +687,40 @@ export class LanguageServerSession {
             status: missing ? 'unavailable' : 'failed',
             detail: missing
                 ? [
-                      `Executable not found: ${this.options.commandLabel ?? this.definition.command}`,
-                      this.options.unavailableDetail,
+                      `Executable not found: ${this.commandLabel ?? this.definition.command}`,
+                      this.unavailableDetail,
                   ]
                       .filter(Boolean)
                       .join('. ')
                 : this.describeFailure('Language server could not start', error),
             capabilities: undefined,
             dynamicRegistrations: [],
+            recoveryCommand: missing ? this.recoveryCommand : undefined,
         });
     }
 
     private describeFailure(prefix: string, error?: unknown): string {
         const parts = [prefix];
         if (error) {
-            parts.push(toError(error).message);
+            parts.push(this.sanitizeDetail(toError(error).message));
         }
         const stderr = this.stderrTail.trim();
         if (stderr) {
-            parts.push(stderr.split('\n').slice(-3).join(' '));
+            parts.push(this.sanitizeDetail(stderr.split('\n').slice(-3).join(' ')));
         }
         return parts.join(': ');
+    }
+
+    private sanitizeDetail(value: string): string {
+        let sanitized = value;
+        for (const secret of [this.options.rootPath, this.definition.command]) {
+            if (path.isAbsolute(secret)) {
+                sanitized = sanitized.split(secret).join(path.basename(secret));
+            }
+        }
+        return sanitized
+            .replace(/\b[A-Z_][A-Z0-9_]*=[^\s]+/g, '[environment value]')
+            .replace(/(?:[A-Za-z]:[\\/]|\/)(?:[^\s:;,.()[\]]+[\\/])+[^\s:;,.()[\]]*/g, '[path]');
     }
 
     /** Keeps a bounded tail of stderr for failure messages, never the whole log. */

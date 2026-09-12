@@ -28,6 +28,8 @@ export interface PreparedDefinition {
     commandLabel?: string;
     /** User-facing notes, e.g. why a workspace toolchain was rejected. */
     notes?: string[];
+    /** Safe command the user may copy and run themselves. */
+    recoveryCommand?: string;
 }
 
 export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps;
@@ -69,6 +71,7 @@ export function prepareDefinitionForRoot(
             runtimeLabel: runtime.label,
             commandLabel: RUST_PRESET.command,
             notes: runtime.notes,
+            recoveryCommand: runtime.recoveryCommand,
         };
     }
     return { definition };

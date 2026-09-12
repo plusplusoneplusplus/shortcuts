@@ -268,6 +268,10 @@ describe('LanguageServerManager session identity', () => {
         expect(separate.handle.rootPath).toBe(standalone);
         expect(separate.handle.session).not.toBe(first.handle.session);
         expect(harness.manager.size).toBe(2);
+        expect(harness.manager.listStates('ws-a').map(state => state.projectRoot).sort()).toEqual([
+            'rust-workspace',
+            'standalone',
+        ]);
     });
 
     it('keeps workspaces apart even when the relative path matches', () => {

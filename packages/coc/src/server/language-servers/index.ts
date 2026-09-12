@@ -41,6 +41,7 @@ export {
 export type { RustRuntime, RustRuntimeDeps, RustRuntimeOrigin } from './rust-adapter';
 export {
     RUST_ANALYZER_INSTALL_GUIDANCE,
+    RUST_ANALYZER_RECOVERY_COMMAND,
     RUSTUP_RESOLUTION_TIMEOUT_MS,
     applyRustRuntime,
     findExecutableOnPath,

@@ -9,7 +9,7 @@
  * `describeLanguageStatus`, so this file only renders.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { LanguageDocumentSnapshot } from './documentStore';
 import { describeLanguageStatus, type LanguageStatusTone } from './languageStatus';
 
@@ -41,33 +41,69 @@ export function LanguageStatusBadge({
 }: LanguageStatusBadgeProps): React.ReactElement {
     const status = describeLanguageStatus(snapshot);
     const isCorner = variant === 'corner';
+    const [open, setOpen] = useState(false);
+    const showDetails = status.tone === 'error';
 
     return (
-        <span
-            className={[
-                'flex items-center gap-1 text-[10px] text-[#848484]',
-                isCorner
-                    ? `min-w-0 max-w-full pointer-events-auto rounded bg-white/85 dark:bg-[#1e1e1e]/85 backdrop-blur-sm shadow-sm px-1.5 py-0.5 transition-opacity ${CORNER_OPACITY_CLASS[status.tone]}`
-                    : '',
-            ].join(' ')}
-            title={status.title}
-            data-testid="language-status"
-            data-tone={status.tone}
-        >
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${DOT_CLASS[status.tone]}`} aria-hidden="true" />
-            <span className={isCorner ? 'min-w-0 truncate' : undefined} data-testid="language-status-label">
-                {status.label}
-            </span>
-            {status.canRestart && (
+        <span className="relative inline-flex pointer-events-auto">
+            <span
+                className={[
+                    'flex items-center gap-1 text-[10px] text-[#848484]',
+                    isCorner
+                        ? `min-w-0 max-w-full rounded bg-white/85 dark:bg-[#1e1e1e]/85 backdrop-blur-sm shadow-sm px-1.5 py-0.5 transition-opacity ${CORNER_OPACITY_CLASS[status.tone]}`
+                        : '',
+                ].join(' ')}
+                title={status.title}
+                data-testid="language-status"
+                data-tone={status.tone}
+            >
                 <button
-                    className="flex-shrink-0 px-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 transition-colors"
-                    onClick={onRestart}
-                    disabled={status.busy}
-                    title="Restart the language server"
-                    data-testid="language-restart-btn"
+                    type="button"
+                    className="flex min-w-0 items-center gap-1"
+                    onClick={() => showDetails && setOpen(value => !value)}
+                    aria-expanded={showDetails ? open : undefined}
+                    data-testid="language-status-summary"
                 >
-                    Restart
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${DOT_CLASS[status.tone]}`} aria-hidden="true" />
+                    <span className={isCorner ? 'min-w-0 truncate' : undefined} data-testid="language-status-label">
+                        {status.label}
+                    </span>
                 </button>
+                {status.canRestart && (
+                    <button
+                        type="button"
+                        className="flex-shrink-0 px-1 rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-50 transition-colors"
+                        onClick={onRestart}
+                        disabled={status.busy}
+                        title="Restart the language server"
+                        data-testid="language-restart-btn"
+                    >
+                        {showDetails ? 'Retry' : 'Restart'}
+                    </button>
+                )}
+            </span>
+            {showDetails && open && (
+                <span
+                    className="absolute bottom-full right-0 mb-1 w-72 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] p-2 text-xs text-[#1e1e1e] dark:text-[#cccccc] shadow-lg"
+                    data-testid="language-status-details"
+                >
+                    <strong className="block mb-1">{status.label}</strong>
+                    {status.runtime && <span className="block text-[#848484] mb-1">{status.runtime}</span>}
+                    {status.detail && <span className="block mb-2">{status.detail}</span>}
+                    {status.recoveryCommand && (
+                        <span className="block">
+                            <code className="block rounded bg-black/5 dark:bg-white/10 px-1.5 py-1 mb-1">{status.recoveryCommand}</code>
+                            <button
+                                type="button"
+                                className="text-[#0078d4] hover:underline"
+                                onClick={() => { void navigator.clipboard?.writeText(status.recoveryCommand!); }}
+                                data-testid="language-copy-recovery"
+                            >
+                                Copy command
+                            </button>
+                        </span>
+                    )}
+                </span>
             )}
         </span>
     );

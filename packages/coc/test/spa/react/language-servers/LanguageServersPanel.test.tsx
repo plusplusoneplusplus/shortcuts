@@ -13,12 +13,14 @@ import type { LanguageServerDefinition } from '@plusplusoneplusplus/coc-client';
 
 const get = vi.fn();
 const update = vi.fn();
+const retry = vi.fn();
 const parseLanguageServerRejection = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/features/language-servers/languageServersApi', () => ({
     languageServersApi: {
         get: (...args: unknown[]) => get(...args),
         update: (...args: unknown[]) => update(...args),
+        retry: (...args: unknown[]) => retry(...args),
         replace: vi.fn(),
     },
     parseLanguageServerRejection: (...args: unknown[]) => parseLanguageServerRejection(...args),
@@ -53,6 +55,7 @@ function response(overrides: Record<string, unknown> = {}) {
         startable: [],
         status: 'missing' as const,
         warnings: [],
+        runtimes: [],
         ...overrides,
     };
 }
@@ -73,6 +76,7 @@ describe('LanguageServersPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         parseLanguageServerRejection.mockReturnValue(null);
+        retry.mockReset();
     });
 
     it('loads the owning workspace configuration', async () => {
@@ -80,6 +84,7 @@ describe('LanguageServersPanel', () => {
         expect(get).toHaveBeenCalledWith(WS);
         expect(screen.getByText('TypeScript')).toBeDefined();
         expect(screen.getByTestId('built-in-badge')).toBeDefined();
+        expect(screen.getByTestId('language-server-runtime-status').textContent).toBe('Not started');
     });
 
     it('shows a loading placeholder before the config arrives', () => {
@@ -122,6 +127,63 @@ describe('LanguageServersPanel', () => {
     it('surfaces config warnings from the server', async () => {
         await renderPanel(response({ warnings: [{ kind: 'invalid-entry', message: 'Dropped one invalid definition' }] }));
         expect(screen.getByTestId('language-servers-warning').textContent).toBe('Dropped one invalid definition');
+    });
+
+    it('aggregates mixed root states without claiming the whole server is healthy', async () => {
+        await renderPanel(response({
+            enabled: true,
+            effective: [def({ id: 'rust', displayName: 'Rust', enabled: true })],
+            runtimes: [
+                {
+                    sessionId: 'ready',
+                    workspaceId: WS,
+                    definitionId: 'rust',
+                    displayName: 'Rust',
+                    projectRoot: 'crates/one',
+                    status: 'ready',
+                },
+                {
+                    sessionId: 'missing',
+                    workspaceId: WS,
+                    definitionId: 'rust',
+                    displayName: 'Rust',
+                    projectRoot: 'crates/two',
+                    status: 'unavailable',
+                    detail: 'rust-analyzer is not installed',
+                    recoveryCommand: 'rustup component add rust-analyzer',
+                    lastAttemptAt: '2026-09-12T05:00:00.000Z',
+                },
+            ],
+        }));
+
+        expect(screen.getByTestId('language-server-runtime-status').textContent)
+            .toBe('Ready in 1 root · Needs setup in 1 root');
+        fireEvent.click(screen.getByTestId('language-server-runtime-status'));
+        expect(screen.getByTestId('language-server-runtime-details').textContent).toContain('crates/two');
+    });
+
+    it('retries the failed root and replaces the runtime summary', async () => {
+        const failed = {
+            sessionId: 'failed-root',
+            workspaceId: WS,
+            definitionId: 'typescript',
+            displayName: 'TypeScript',
+            projectRoot: '.',
+            status: 'failed' as const,
+            detail: 'Initialization rejected',
+        };
+        await renderPanel(response({ enabled: true, effective: [def({ enabled: true })], runtimes: [failed] }));
+        retry.mockResolvedValue(response({
+            enabled: true,
+            effective: [def({ enabled: true })],
+            runtimes: [{ ...failed, status: 'ready', detail: undefined }],
+        }));
+
+        fireEvent.click(screen.getByTestId('language-server-runtime-status'));
+        fireEvent.click(screen.getByTestId('language-server-retry'));
+
+        await waitFor(() => expect(retry).toHaveBeenCalledWith(WS, 'failed-root'));
+        await waitFor(() => expect(screen.getByTestId('language-server-runtime-status').textContent).toBe('Ready in 1 root'));
     });
 
     it('saves a custom definition with list fields split from comma text', async () => {

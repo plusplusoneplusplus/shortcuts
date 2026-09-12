@@ -17,6 +17,7 @@ import {
     readLanguageServerConfig,
 } from '../../../src/server/language-servers/repository';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
+import type { LanguageServerManager } from '../../../src/server/language-servers/manager';
 import type { Route } from '../../../src/server/types';
 
 const WORKSPACE = 'ws-lang';
@@ -78,11 +79,13 @@ function customDefinition(overrides: Partial<LanguageServerDefinition> = {}): La
 describe('registerLanguageServerRoutes', () => {
     let dataDir: string;
     let routes: Route[];
+    let runtimeManager: Pick<LanguageServerManager, 'listStates' | 'retry'> | undefined;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-lsp-routes-'));
         routes = [];
-        registerLanguageServerRoutes(routes, dataDir);
+        runtimeManager = undefined;
+        registerLanguageServerRoutes(routes, dataDir, () => runtimeManager as LanguageServerManager | undefined);
     });
 
     afterEach(() => {
@@ -107,6 +110,51 @@ describe('registerLanguageServerRoutes', () => {
         expect(json.effective.map((d: LanguageServerDefinition) => d.id)).toContain('typescript');
         // Nothing may start while support is off, preset included.
         expect(json.startable).toEqual([]);
+        expect(json.runtimes).toEqual([]);
+    });
+
+    it('GET exposes safe per-root runtime state without host paths', async () => {
+        runtimeManager = {
+            listStates: vi.fn(() => [{
+                sessionId: 'session-1',
+                workspaceId: WORKSPACE,
+                projectRoot: 'crates/api',
+                status: 'unavailable',
+                definitionId: 'rust',
+                displayName: 'Rust',
+                detail: 'rust-analyzer is not installed',
+                runtime: 'Server: rustup (stable)',
+                recoveryCommand: 'rustup component add rust-analyzer',
+                lastAttemptAt: '2026-09-12T05:00:00.000Z',
+                restarts: 0,
+                generation: 0,
+                capabilities: { workspace: { privateFeature: true } },
+            }]),
+            retry: vi.fn(),
+        };
+
+        const { json } = await call('GET', WORKSPACE);
+
+        expect(json.runtimes[0]).toMatchObject({
+            projectRoot: 'crates/api',
+            status: 'unavailable',
+            recoveryCommand: 'rustup component add rust-analyzer',
+        });
+        expect(JSON.stringify(json.runtimes)).not.toContain(dataDir);
+        expect(json.runtimes[0]).not.toHaveProperty('capabilities');
+    });
+
+    it('retries a workspace-owned session and returns its updated state', async () => {
+        const retry = vi.fn().mockResolvedValue(true);
+        runtimeManager = { listStates: vi.fn(() => []), retry };
+        const url = `/api/workspaces/${WORKSPACE}/language-servers/retry`;
+        const found = findRoute(routes, 'POST', url);
+        const res = fakeRes();
+
+        await found.route.handler(fakeReq('POST', { sessionId: 'session-1' }), res, found.match);
+
+        expect(retry).toHaveBeenCalledWith(WORKSPACE, 'session-1');
+        expect(res.statusCode).toBe(200);
     });
 
     it('PUT persists a custom definition for the target workspace only', async () => {

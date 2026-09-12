@@ -29,6 +29,9 @@ export interface LanguageStatusDescription {
     canRestart: boolean;
     /** True while a restart or a first start is already under way. */
     busy: boolean;
+    detail?: string;
+    runtime?: string;
+    recoveryCommand?: string;
 }
 
 /**
@@ -82,11 +85,30 @@ export function describeLanguageStatus(
         case 'indexing':
             return { label: `Indexing with ${name}…`, title: detailed(`${name} is indexing`, state), tone: 'pending', canRestart: false, busy: true };
         case 'unavailable':
-            return { label: `${name} not found`, title: detailed(`${name} could not be started`, state), tone: 'error', canRestart: true, busy: false };
+            return failureDescription(`${name} unavailable`, `${name} could not be started`, state);
+        case 'timeout':
+            return failureDescription(`${name} timed out`, `${name} initialization timed out`, state);
         case 'failed':
-            return { label: `${name} failed`, title: detailed(`${name} failed`, state), tone: 'error', canRestart: true, busy: false };
+            return failureDescription(`${name} failed`, `${name} failed`, state);
         default:
             break;
+    }
+
+    function failureDescription(
+        label: string,
+        headline: string,
+        state: LanguageServerSessionStateView,
+    ): LanguageStatusDescription {
+        return {
+            label,
+            title: detailed(headline, state),
+            tone: 'error',
+            canRestart: true,
+            busy: false,
+            detail: state.detail,
+            runtime: state.runtime,
+            recoveryCommand: state.recoveryCommand,
+        };
     }
 
     if (snapshot.status === 'ready') {
