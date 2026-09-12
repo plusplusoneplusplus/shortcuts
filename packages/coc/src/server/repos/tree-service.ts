@@ -4,13 +4,20 @@ import * as childProcess from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
-import { loadNativeContentSearch, loadNativeFileIndex } from '@plusplusoneplusplus/coc-native';
+import {
+    loadNativeContentSearch,
+    loadNativeFileIndex,
+    loadNativeSymbolIndex,
+} from '@plusplusoneplusplus/coc-native';
 import type {
     NativeContentSearchAddon,
     NativeFileIndex,
     NativeFileIndexAddon,
     NativeRankedFileMatch,
+    NativeSymbolIndex,
+    NativeSymbolIndexAddon,
 } from '@plusplusoneplusplus/coc-native';
+import { getRepoDataPath } from '../paths';
 
 const execFileAsync = promisify(execFile);
 import type {
@@ -21,6 +28,7 @@ import type {
     SearchFilesResult,
     ContentSearchOptions,
     ContentSearchResult,
+    SearchSymbolsResult,
 } from './types';
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
 import { applyReplacements, buildReplaceMatcher } from './content-replace';
@@ -72,6 +80,9 @@ export interface RepoTreeServiceOptions {
      * binary too. Tests inject a stub here.
      */
     nativeContentSearch?: NativeContentSearchAddon;
+
+    /** The native persistent C-family symbol-index addon. Tests inject a stub. */
+    nativeSymbolIndex?: NativeSymbolIndexAddon;
 }
 
 /** A native index kept warm for one repo + showIgnored combination. */
@@ -82,6 +93,14 @@ interface NativeIndexEntry {
     at: number;
     /** In-flight background refresh, so only one runs per entry. */
     refreshing?: Promise<void>;
+}
+
+interface NativeSymbolIndexEntry {
+    root: string;
+    index?: NativeSymbolIndex;
+    error?: unknown;
+    refreshing?: Promise<void>;
+    refreshQueued?: boolean;
 }
 
 /** Extension → MIME type map for common file types. */
@@ -280,6 +299,8 @@ export class RepoTreeService {
      * fresh walk — so this holds the addon itself, not per-repo state.
      */
     private nativeContent?: NativeContentSearchAddon;
+    private nativeSymbols?: NativeSymbolIndexAddon;
+    private readonly nativeSymbolIndexes = new Map<string, NativeSymbolIndexEntry>();
 
     private static rgAvailable: boolean | undefined;
 
@@ -363,6 +384,7 @@ export class RepoTreeService {
         this.store = store;
         this.native = options?.nativeFileIndex ?? loadNativeFileIndex();
         this.nativeContent = options?.nativeContentSearch;
+        this.nativeSymbols = options?.nativeSymbolIndex;
     }
 
     /**
@@ -503,6 +525,96 @@ export class RepoTreeService {
     async resolveRepoRoot(repoId: string): Promise<string | undefined> {
         const workspaces = await this.readWorkspaces();
         return workspaces.find(w => w.id === repoId)?.rootPath;
+    }
+
+    /**
+     * Query the persistent C-family symbol index.
+     *
+     * The first query starts the cold or incremental build and returns
+     * `indexed: false`; callers can retry while progress reporting owns the
+     * longer-running build lifecycle.
+     */
+    async searchSymbols(
+        repoId: string,
+        query: string,
+        options?: { prefix?: boolean; limit?: number },
+    ): Promise<SearchSymbolsResult> {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) throw new Error(`Repo not found: ${repoId}`);
+
+        let existing = this.nativeSymbolIndexes.get(repoId);
+        if (existing && existing.root !== repoRoot) {
+            if (!existing.index && existing.error === undefined) {
+                return { indexed: false, results: [] };
+            }
+            this.nativeSymbolIndexes.delete(repoId);
+            existing = undefined;
+        }
+        if (!existing) {
+            const addon = this.nativeSymbols ??= loadNativeSymbolIndex();
+            const entry: NativeSymbolIndexEntry = { root: repoRoot };
+            const database = getRepoDataPath(this.dataDir, repoId, 'symbol-index.sqlite');
+            const build = addon.buildSymbolIndex(repoRoot, database);
+            this.nativeSymbolIndexes.set(repoId, entry);
+            void build.then(
+                index => {
+                    if (this.nativeSymbolIndexes.get(repoId) !== entry) return;
+                    entry.index = index;
+                    if (entry.refreshQueued) {
+                        entry.refreshQueued = false;
+                        this.refreshSymbolIndex(repoId, repoRoot);
+                    }
+                },
+                error => {
+                    entry.error = error;
+                },
+            );
+            return { indexed: false, results: [] };
+        }
+        if (existing.error !== undefined) {
+            this.nativeSymbolIndexes.delete(repoId);
+            throw existing.error;
+        }
+        if (!existing.index) return { indexed: false, results: [] };
+
+        const results = await existing.index.search(query, {
+            prefix: options?.prefix ?? false,
+            limit: options?.limit ?? 100,
+        });
+        return { indexed: true, results };
+    }
+
+    private refreshSymbolIndex(repoId: string, repoRoot?: string): void {
+        const entry = this.nativeSymbolIndexes.get(repoId);
+        if (!entry) return;
+        if (repoRoot !== undefined && entry.root !== repoRoot) {
+            if (!entry.index && entry.error === undefined) return;
+            this.nativeSymbolIndexes.delete(repoId);
+            return;
+        }
+        if (!entry.index) {
+            entry.refreshQueued = true;
+            return;
+        }
+        if (entry.refreshing) {
+            entry.refreshQueued = true;
+            return;
+        }
+        const refresh = entry.index.refresh().catch(error => {
+            console.warn(
+                `[symbol-index] incremental refresh failed for workspace ${repoId}: ${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
+        });
+        entry.refreshing = refresh;
+        void refresh.finally(() => {
+            if (entry.refreshing === refresh) entry.refreshing = undefined;
+            if (entry.refreshQueued) {
+                entry.refreshQueued = false;
+                this.refreshSymbolIndex(repoId, entry.root);
+            }
+        });
     }
 
     /**
@@ -809,6 +921,7 @@ export class RepoTreeService {
 
         // A write may have created a file that is not in the cached listing.
         await this.invalidateFileListCacheAndWait(repoId);
+        this.refreshSymbolIndex(repoId, repoRoot);
     }
 
     /**
@@ -994,6 +1107,7 @@ export class RepoTreeService {
             replacedFiles++;
         }
 
+        if (replacedFiles > 0) this.refreshSymbolIndex(repoId, repoRoot);
         return { replacedMatches, replacedFiles, skipped };
     }
 

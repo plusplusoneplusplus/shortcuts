@@ -113,7 +113,7 @@ function main() {
         // A cached crate never reruns the proc macro and so emits no type defs.
         // Writing that emptiness over the committed file would quietly delete
         // the package's whole type surface, so refuse it.
-        const missingExports = ['buildFileIndex', 'buildNotesIndex'].filter(
+        const missingExports = ['buildFileIndex', 'buildNotesIndex', 'buildSymbolIndex'].filter(
             exportName => !generated.includes(exportName),
         );
         if (missingExports.length > 0) {

@@ -10,6 +10,8 @@ import type {
   ExplorerRepoGroupSearchResponse,
   ExplorerSearchOptions,
   ExplorerSearchResponse,
+  ExplorerSymbolSearchOptions,
+  ExplorerSymbolSearchResponse,
   ExplorerTreeOptions,
   ExplorerTreeResponse,
   RepoInfo,
@@ -88,6 +90,21 @@ export class ExplorerClient {
   searchFiles(repoId: string, query: string, options?: ExplorerSearchOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerSearchResponse> {
     return this.transport.request<ExplorerSearchResponse>(repoPath(repoId, '/search'), {
       query: serializeSearchOptions(query, options),
+      signal: options?.signal,
+    });
+  }
+
+  searchSymbols(
+    repoId: string,
+    query: string,
+    options?: ExplorerSymbolSearchOptions & Pick<CocRequestOptions, 'signal'>,
+  ): Promise<ExplorerSymbolSearchResponse> {
+    return this.transport.request<ExplorerSymbolSearchResponse>(repoPath(repoId, '/search/symbols'), {
+      query: {
+        q: query,
+        prefix: options?.prefix,
+        limit: options?.limit,
+      },
       signal: options?.signal,
     });
   }

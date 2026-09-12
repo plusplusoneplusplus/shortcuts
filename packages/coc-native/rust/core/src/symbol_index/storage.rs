@@ -99,6 +99,36 @@ impl SymbolStore {
         rows
     }
 
+    pub fn search(&self, name: &str, prefix: bool, limit: usize) -> rusqlite::Result<Vec<Symbol>> {
+        let connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
+        let sql = if prefix {
+            "SELECT s.name, s.kind, f.path, s.line, s.col, s.parent
+             FROM symbols s JOIN files f ON f.id = s.file_id
+             WHERE s.name >= ?1 AND s.name < (?1 || char(1114111))
+             ORDER BY s.name, f.path, s.line, s.col LIMIT ?2"
+        } else {
+            "SELECT s.name, s.kind, f.path, s.line, s.col, s.parent
+             FROM symbols s JOIN files f ON f.id = s.file_id
+             WHERE s.name = ?1
+             ORDER BY f.path, s.line, s.col LIMIT ?2"
+        };
+        let mut statement = connection.prepare(sql)?;
+        let rows = statement
+            .query_map(params![name, i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
+                Ok(Symbol {
+                    name: row.get(0)?,
+                    kind: row.get(1)?,
+                    path: row.get(2)?,
+                    line: row.get(3)?,
+                    column: row.get(4)?,
+                    parent: row.get(5)?,
+                    docs: None,
+                })
+            })?
+            .collect();
+        rows
+    }
+
     pub fn sync_repository(
         &self,
         root: &Path,
@@ -247,5 +277,32 @@ mod tests {
 
         assert_eq!(stats.failures.len(), 1);
         assert_eq!(store.symbols_for_file("one.c").expect("readable")[0].name, "stable");
+    }
+
+    #[test]
+    fn searches_exact_names_and_prefixes_in_stable_order() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(
+            root.path().join("symbols.cpp"),
+            "int alpha() { return 1; }\nint alphabet() { return 2; }\nint alpha() { return 3; }\n",
+        )
+        .expect("symbols");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("sync");
+
+        let exact = store.search("alpha", false, 10).expect("exact");
+        assert_eq!(
+            exact.iter().map(|symbol| symbol.name.as_str()).collect::<Vec<_>>(),
+            ["alpha", "alpha"]
+        );
+
+        let prefix = store.search("alph", true, 10).expect("prefix");
+        assert_eq!(
+            prefix.iter().map(|symbol| symbol.name.as_str()).collect::<Vec<_>>(),
+            ["alpha", "alpha", "alphabet"]
+        );
+        assert!(store.search("missing", false, 10).expect("miss").is_empty());
+        assert_eq!(store.search("alph", true, 1).expect("limited").len(), 1);
     }
 }

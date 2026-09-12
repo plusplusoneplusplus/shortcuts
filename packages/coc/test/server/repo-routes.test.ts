@@ -10,7 +10,13 @@ import * as path from 'path';
 import * as childProcess from 'child_process';
 import { createRouter } from '../../src/server/shared/router';
 import { registerRepoRoutes } from '../../src/server/repos/repo-routes';
+import { RepoTreeService } from '../../src/server/repos/tree-service';
 import type { Route } from '../../src/server/types';
+import type {
+    NativeFileIndexAddon,
+    NativeSymbolIndex,
+    NativeSymbolIndexAddon,
+} from '@plusplusoneplusplus/coc-native';
 import { safeRmSync } from '../helpers/safe-rm';
 
 // Partially mock child_process: intercept only OS reveal commands (explorer.exe,
@@ -44,12 +50,31 @@ let baseUrl: string;
 const REPO_ID = 'test-repo-id';
 const REPO_NAME = 'test-repo';
 
-function makeServer(dir: string): http.Server {
+function makeServer(dir: string, service?: RepoTreeService): http.Server {
     const routes: Route[] = [];
-    registerRepoRoutes(routes, dir);
+    registerRepoRoutes(routes, dir, service);
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
+
+async function replaceServer(service: RepoTreeService): Promise<void> {
+    await stopServer();
+    server = makeServer(dataDir, service);
+    await startServer();
+}
+
+const unusedFileIndex: NativeFileIndexAddon = {
+    async buildFileIndex() {
+        return {
+            len: () => 0,
+            truncated: () => false,
+            files: () => [],
+            search: async () => [],
+            searchRanked: async () => [],
+            refresh: async () => {},
+        };
+    },
+};
 
 async function startServer(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -684,6 +709,201 @@ describe('GET /api/repos/:repoId/search/content', () => {
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=zzzznotpresent`);
         expect(res.status).toBe(200);
         expect(await res.json()).toEqual({ matches: [], truncated: false });
+    });
+});
+
+describe('GET /api/repos/:repoId/search/symbols', () => {
+    function serviceWithSymbols(addon: NativeSymbolIndexAddon): RepoTreeService {
+        return new RepoTreeService(dataDir, {
+            nativeFileIndex: unusedFileIndex,
+            nativeSymbolIndex: addon,
+        });
+    }
+
+    it('starts a repo-scoped index and returns exact hits once ready', async () => {
+        seedDefaultRepo();
+        const index: NativeSymbolIndex = {
+            search: vi.fn(async () => [{
+                name: 'Widget',
+                kind: 'class',
+                path: 'src/widget.hpp',
+                line: 7,
+                column: 3,
+                parent: 'demo',
+            }]),
+            refresh: vi.fn(async () => {}),
+        };
+        const buildSymbolIndex = vi.fn(async () => index);
+        await replaceServer(serviceWithSymbols({ buildSymbolIndex }));
+
+        const cold = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/symbols?q=Widget`);
+        expect(cold.status).toBe(200);
+        expect(await cold.json()).toEqual({ indexed: false, results: [] });
+
+        await vi.waitFor(() => expect(buildSymbolIndex).toHaveBeenCalledOnce());
+        const ready = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/symbols?q=Widget`);
+        expect(ready.status).toBe(200);
+        expect(await ready.json()).toEqual({
+            indexed: true,
+            results: [{
+                name: 'Widget',
+                kind: 'class',
+                path: 'src/widget.hpp',
+                line: 7,
+                column: 3,
+                parent: 'demo',
+            }],
+        });
+        expect(buildSymbolIndex).toHaveBeenCalledWith(
+            repoDir,
+            path.join(dataDir, 'repos', REPO_ID, 'symbol-index.sqlite'),
+        );
+        expect(index.search).toHaveBeenCalledWith('Widget', { prefix: false, limit: 100 });
+
+        const saved = await fetch(
+            `${baseUrl}/api/repos/${REPO_ID}/blob?path=${encodeURIComponent('src/widget.cpp')}`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: 'int Widget();\n' }),
+            },
+        );
+        expect(saved.status).toBe(200);
+        await vi.waitFor(() => expect(index.refresh).toHaveBeenCalledOnce());
+    });
+
+    it('returns an indexed miss and forwards prefix mode', async () => {
+        seedDefaultRepo();
+        const index: NativeSymbolIndex = {
+            search: vi.fn(async () => []),
+            refresh: vi.fn(async () => {}),
+        };
+        await replaceServer(serviceWithSymbols({
+            buildSymbolIndex: async () => index,
+        }));
+
+        await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/symbols?q=Missing`);
+        await vi.waitFor(() => expect(index.search).not.toHaveBeenCalled());
+        const ready = await fetch(
+            `${baseUrl}/api/repos/${REPO_ID}/search/symbols?q=Missing&prefix=true&limit=12`,
+        );
+
+        expect(await ready.json()).toEqual({ indexed: true, results: [] });
+        expect(index.search).toHaveBeenCalledWith('Missing', { prefix: true, limit: 12 });
+    });
+
+    it('reports an unindexed repo while its first build is running', async () => {
+        seedDefaultRepo();
+        const buildSymbolIndex = vi.fn(
+            () => new Promise<NativeSymbolIndex>(() => {}),
+        );
+        await replaceServer(serviceWithSymbols({ buildSymbolIndex }));
+
+        const response = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/symbols?q=Widget`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ indexed: false, results: [] });
+    });
+
+    it('queues a refresh when a write lands during the cold build', async () => {
+        seedDefaultRepo();
+        let finishBuild!: (index: NativeSymbolIndex) => void;
+        const index: NativeSymbolIndex = {
+            search: vi.fn(async () => []),
+            refresh: vi.fn(async () => {}),
+        };
+        const service = serviceWithSymbols({
+            buildSymbolIndex: () => new Promise(resolve => {
+                finishBuild = resolve;
+            }),
+        });
+
+        await service.searchSymbols(REPO_ID, 'Widget');
+        await service.writeBlob(REPO_ID, 'src/widget.cpp', 'int Widget();\n');
+        finishBuild(index);
+
+        await vi.waitFor(() => expect(index.refresh).toHaveBeenCalledOnce());
+    });
+
+    it('refreshes after content replacement writes', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'widget.cpp'), 'int OldName();\n');
+        const index: NativeSymbolIndex = {
+            search: vi.fn(async () => []),
+            refresh: vi.fn(async () => {}),
+        };
+        const service = serviceWithSymbols({
+            buildSymbolIndex: async () => index,
+        });
+        await service.searchSymbols(REPO_ID, 'OldName');
+        await vi.waitFor(async () => {
+            expect((await service.searchSymbols(REPO_ID, 'OldName')).indexed).toBe(true);
+        });
+
+        await service.replaceContent(
+            REPO_ID,
+            'OldName',
+            'NewName',
+            [{
+                path: 'widget.cpp',
+                targets: [{ line: 1, text: 'int OldName();', startColumn: 4, endColumn: 11 }],
+            }],
+        );
+
+        await vi.waitFor(() => expect(index.refresh).toHaveBeenCalledOnce());
+    });
+
+    it('does not cache a synchronous native build failure as indexing forever', async () => {
+        seedDefaultRepo();
+        const buildSymbolIndex = vi.fn(() => {
+            throw new Error('native unavailable');
+        });
+        const service = serviceWithSymbols({ buildSymbolIndex });
+
+        await expect(service.searchSymbols(REPO_ID, 'Widget')).rejects.toThrow('native unavailable');
+        await expect(service.searchSymbols(REPO_ID, 'Widget')).rejects.toThrow('native unavailable');
+        expect(buildSymbolIndex).toHaveBeenCalledTimes(2);
+    });
+
+    it('rebuilds when a workspace id is repointed to another root', async () => {
+        seedDefaultRepo();
+        const secondRoot = path.join(tmpDir, 'second-repo');
+        fs.mkdirSync(secondRoot);
+        const index: NativeSymbolIndex = {
+            search: vi.fn(async () => []),
+            refresh: vi.fn(async () => {}),
+        };
+        const buildSymbolIndex = vi.fn(async () => index);
+        const service = serviceWithSymbols({ buildSymbolIndex });
+
+        await service.searchSymbols(REPO_ID, 'Widget');
+        await vi.waitFor(() => expect(buildSymbolIndex).toHaveBeenCalledOnce());
+        await vi.waitFor(async () => {
+            expect((await service.searchSymbols(REPO_ID, 'Widget')).indexed).toBe(true);
+        });
+
+        seedWorkspacesJson([{ id: REPO_ID, name: REPO_NAME, rootPath: secondRoot }]);
+        await expect(service.searchSymbols(REPO_ID, 'Widget')).resolves.toEqual({
+            indexed: false,
+            results: [],
+        });
+        expect(buildSymbolIndex).toHaveBeenLastCalledWith(
+            secondRoot,
+            path.join(dataDir, 'repos', REPO_ID, 'symbol-index.sqlite'),
+        );
+    });
+
+    it('rejects malformed queries and unknown repos', async () => {
+        const missing = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/symbols`);
+        expect(missing.status).toBe(400);
+
+        const badPrefix = await fetch(
+            `${baseUrl}/api/repos/${REPO_ID}/search/symbols?q=Widget&prefix=maybe`,
+        );
+        expect(badPrefix.status).toBe(400);
+
+        const unknown = await fetch(`${baseUrl}/api/repos/missing/search/symbols?q=Widget`);
+        expect(unknown.status).toBe(404);
     });
 });
 

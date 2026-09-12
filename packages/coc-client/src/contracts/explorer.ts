@@ -40,6 +40,30 @@ export interface ExplorerSearchResponse {
   truncated: boolean;
 }
 
+export interface ExplorerSymbolSearchResult {
+  name: string;
+  kind: string;
+  path: string;
+  /** One-based source line. */
+  line: number;
+  /** One-based UTF-16 source column. */
+  column: number;
+  parent?: string;
+}
+
+export interface ExplorerSymbolSearchResponse {
+  /** False while the repository's first persistent index build is running. */
+  indexed: boolean;
+  results: ExplorerSymbolSearchResult[];
+}
+
+export interface ExplorerSymbolSearchOptions {
+  /** Match names beginning with the query instead of exact names only. */
+  prefix?: boolean;
+  /** Maximum results, clamped server-side to 1..200. */
+  limit?: number;
+}
+
 export interface ExplorerRepoGroupSearchResult extends ExplorerSearchResult {
   /** Member workspace that owns the file. */
   workspaceId: string;

@@ -7,6 +7,7 @@
  * GET  /api/repos/:repoId/files          — list all files recursively
  * GET  /api/repos/:repoId/search         — fuzzy file-path search
  * GET  /api/repos/:repoId/search/content — full-text search across file contents
+ * GET  /api/repos/:repoId/search/symbols — exact or prefix C-family symbols
  * POST /api/repos/:repoId/search/replace — rewrite matched spans from a search
  * GET  /api/repos/:repoId/blob           — read file content
  * PUT  /api/repos/:repoId/blob           — write file content
@@ -326,6 +327,48 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 } else {
                     send500(res, message);
                 }
+            }
+        },
+    });
+
+    // -- Search C-family symbols ---------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/search\/symbols$/,
+        handler: async (req, res, match) => {
+            try {
+                const parsedUrl = url.parse(req.url ?? '', true);
+                const repoId = decodeURIComponent(match![1]);
+                const q = typeof parsedUrl.query.q === 'string' ? parsedUrl.query.q : '';
+                if (!q) {
+                    send400(res, 'Missing required query parameter: q');
+                    return;
+                }
+                const prefixParam = parsedUrl.query.prefix;
+                if (
+                    prefixParam !== undefined
+                    && prefixParam !== 'true'
+                    && prefixParam !== 'false'
+                ) {
+                    send400(res, 'Query parameter "prefix" must be true or false');
+                    return;
+                }
+                const rawLimit = parseInt(String(parsedUrl.query.limit ?? '100'), 10);
+                const limit = isNaN(rawLimit) ? 100 : Math.min(Math.max(rawLimit, 1), 200);
+
+                const repoRoot = await svc.resolveRepoRoot(repoId);
+                if (!repoRoot) {
+                    send404(res, `Unknown repo: ${repoId}`);
+                    return;
+                }
+                const result = await svc.searchSymbols(repoId, q, {
+                    prefix: prefixParam === 'true',
+                    limit,
+                });
+                sendJson(res, result);
+            } catch (err) {
+                send500(res, err instanceof Error ? err.message : String(err));
             }
         },
     });

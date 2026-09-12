@@ -11,6 +11,7 @@ describe('ExplorerClient', () => {
     await client.tree('repo/a', { path: '/', depth: 2, showIgnored: true });
     await client.listFiles('repo/a', { path: 'src', showIgnored: false });
     await client.searchFiles('repo/a', 'main ts', { limit: 100 });
+    await client.searchSymbols('repo/a', 'main', { prefix: true, limit: 25 });
     await client.searchRepoGroupFiles('group/a', 'main ts', { limit: 75, showIgnored: true });
     await client.readBlob('repo/a', 'src/main.ts');
     await client.writeBlob('repo/a', 'src/main.ts', 'const x = 1;');
@@ -22,6 +23,10 @@ describe('ExplorerClient', () => {
       { path: '/repos/repo%2Fa/tree', options: { query: { path: '/', depth: 2, showIgnored: true } } },
       { path: '/repos/repo%2Fa/files', options: { query: { path: 'src', showIgnored: false } } },
       { path: '/repos/repo%2Fa/search', options: { query: { q: 'main ts', limit: 100 } } },
+      {
+        path: '/repos/repo%2Fa/search/symbols',
+        options: { query: { q: 'main', prefix: true, limit: 25 } },
+      },
       {
         path: '/repo-groups/group%2Fa/search',
         options: { query: { q: 'main ts', limit: 75, showIgnored: true } },

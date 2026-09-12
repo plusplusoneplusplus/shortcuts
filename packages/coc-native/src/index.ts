@@ -42,6 +42,14 @@ export type {
     NativeContentSearchResult,
 } from './content-search';
 
+export { loadNativeSymbolIndex, nativeSymbolIndexStatus } from './symbol-index';
+export type {
+    NativeSymbolIndex,
+    NativeSymbolIndexAddon,
+    NativeSymbolMatch,
+    NativeSymbolSearchOptions,
+} from './symbol-index';
+
 export {
     loadNativeDangerousCommandGuard,
     nativeDangerousCommandGuardStatus,

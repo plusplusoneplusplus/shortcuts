@@ -48,6 +48,12 @@ all have their own `references/*.md`.
   open, debounces keystrokes, and highlights using the `indices` the server's
   scorer returned — never by re-deriving the match in the browser, which used to
   let highlight and ranking disagree.
+- **C-family symbol search is repo-scoped persistent state.** `RepoTreeService`
+  lazily builds `repos/<workspaceId>/symbol-index.sqlite` through
+  `loadNativeSymbolIndex()`. The first `/api/repos/:repoId/search/symbols`
+  request returns `{ indexed: false, results: [] }` while the build runs; later
+  exact-name or prefix requests query SQLite. Repository writes trigger a
+  coalesced background incremental refresh.
 - **Repo-group file search is group-owner scoped.** `GET
   /api/repo-groups/:id/search` resolves `group.json` against the owning server's
   live workspace registry on every request, skips stale members and the virtual
