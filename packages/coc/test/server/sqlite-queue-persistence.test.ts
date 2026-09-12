@@ -260,6 +260,9 @@ describe('SqliteQueuePersistence', () => {
             });
             const task = qm.markStarted(taskId)!;
             qm.markCompleted(task.id, { ok: true });
+            qm.enqueue({
+                type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId,
+            });
             expect(qm.getStats().taskDelayUntil).toBeDefined();
 
             qm.skipTaskDelay('all');

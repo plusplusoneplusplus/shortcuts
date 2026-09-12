@@ -974,8 +974,8 @@ export class TaskQueueManager extends EventEmitter {
 
     /**
      * Epoch milliseconds when the scope's cooldown elapses, or undefined when
-     * nothing is being held back — no cooldown configured, no task has ended
-     * yet, or the deadline already passed while the queue sat idle.
+     * nothing is being held back — no matching task is queued, no cooldown is
+     * configured, no task has ended yet, or the deadline already passed.
      *
      * The deadline is measured from the last task end, not from the moment the
      * next task is considered, so idle time counts toward the wait.
@@ -984,6 +984,13 @@ export class TaskQueueManager extends EventEmitter {
         const minutes = this.taskDelayMinutes.get(scope);
         const lastEnd = this.lastTaskEndAt.get(scope);
         if (minutes === undefined || lastEnd === undefined) {
+            return undefined;
+        }
+        const hasQueuedTaskInScope = this.queue.some(item =>
+            !isPauseMarker(item)
+            && (scope === 'all' || this.isExclusiveFn?.(item))
+        );
+        if (!hasQueuedTaskInScope) {
             return undefined;
         }
         const until = lastEnd + minutes * 60_000;

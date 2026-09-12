@@ -3459,6 +3459,7 @@ describe('delay between tasks', () => {
         manager.setTaskDelayMinutes('all', 5); // unchanged — no event
         const id = manager.enqueue(createTestTask());
         runAndComplete(id);
+        manager.enqueue(createTestTask());
         manager.skipTaskDelay('all');
         manager.setTaskDelayMinutes('all', null);
 
@@ -3472,6 +3473,7 @@ describe('delay between tasks', () => {
         manager.setTaskDelayMinutes('autopilot', 15);
         runAndComplete(first);
         const endedAt = Date.now();
+        manager.enqueue(createTestTask());
 
         const stats = manager.getStats();
         expect(stats.taskDelayMinutes).toBe(5);
@@ -3482,6 +3484,17 @@ describe('delay between tasks', () => {
         const later = manager.getStats();
         expect(later.taskDelayMinutes).toBe(5);
         expect(later.taskDelayUntil).toBeUndefined();
+    });
+
+    it('reports no active deadline while the queue is idle', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 5);
+        runAndComplete(first);
+
+        expect(manager.getStats().taskDelayUntil).toBeUndefined();
+
+        manager.enqueue(createTestTask());
+        expect(manager.getStats().taskDelayUntil).toBe(Date.now() + 5 * MINUTE);
     });
 
     it('omits the delay fields from getStats when no cooldown is configured', () => {
@@ -3526,6 +3539,18 @@ describe('delay between tasks', () => {
 
             expect(manager.getTaskDelayUntil('autopilot')).toBeUndefined();
             expect(manager.peek()!.id).toBe(autopilot);
+        });
+
+        it('reports an autopilot deadline only while autopilot work is queued', () => {
+            const first = manager.enqueue(createTestTask({ type: 'autopilot' }));
+            manager.setTaskDelayMinutes('autopilot', 5);
+            runAndComplete(first);
+
+            expect(manager.getStats().autopilotTaskDelayUntil).toBeUndefined();
+            manager.enqueue(createTestTask({ type: 'chat' }));
+            expect(manager.getStats().autopilotTaskDelayUntil).toBeUndefined();
+            manager.enqueue(createTestTask({ type: 'autopilot' }));
+            expect(manager.getStats().autopilotTaskDelayUntil).toBe(Date.now() + 5 * MINUTE);
         });
 
         it('makes autopilot work satisfy both the global and autopilot deadlines', () => {
