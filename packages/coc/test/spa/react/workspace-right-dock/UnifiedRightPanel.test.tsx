@@ -76,6 +76,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import {
     clearUnifiedPanelState,
+    readUnifiedPanelState,
     writeUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import {
@@ -88,6 +89,10 @@ import {
     writeUnifiedTreeState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
+import {
+    openWorkspaceDock,
+    workspaceDockOpenStorageKey,
+} from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 
 const WS = 'ws-1';
 
@@ -137,7 +142,9 @@ describe('UnifiedRightPanel', () => {
     });
 
     it('starts empty, and its empty state creates nothing on its own', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
         renderPanel();
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('0');
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
         // The selected Explorer mode is panel chrome, not a resource tab.
         expect(screen.queryByTestId('mock-terminal')).toBeNull();
@@ -147,6 +154,74 @@ describe('UnifiedRightPanel', () => {
         fireEvent.click(screen.getByTestId('unified-panel-empty-open'));
         expect(screen.getByTestId('unified-panel-open-menu-popover')).toBeTruthy();
         expect(screen.queryByTestId('mock-terminal')).toBeNull();
+    });
+
+    it('reconciles initial visibility from the selected chat and restores its active tab', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/a.ts', label: 'a.ts',
+        });
+        state = openTab(state, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/b.ts', label: 'b.ts',
+        });
+        writeUnifiedPanelState(WS, state);
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '0');
+
+        renderPanel({ chatId: 'chat-a', dock: dockStub({ isOpen: false }) });
+
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('1');
+        const activeId = unifiedTabId({
+            kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/b.ts',
+        });
+        expect(screen.getByTestId(`unified-panel-tab-${activeId}`).getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('closes for an empty destination chat and reopens the remembered source chat unchanged', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'src/a.ts', label: 'a.ts',
+        });
+        state = openTab(state, {
+            kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'canvas-1', label: 'Canvas',
+        });
+        writeUnifiedPanelState(WS, state);
+        const rememberedState = readUnifiedPanelState(WS);
+
+        const { rerender } = renderPanel({ chatId: 'chat-a' });
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('1');
+
+        rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-b" dock={dockStub()} />);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('0');
+        expect(readUnifiedPanelState(WS)).toEqual(rememberedState);
+
+        rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-a" dock={dockStub({ isOpen: false })} />);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('1');
+        expect(readUnifiedPanelState(WS)).toEqual(rememberedState);
+        const canvasId = unifiedTabId({
+            kind: 'canvas', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'canvas-1',
+        });
+        expect(screen.getByTestId(`unified-panel-tab-${canvasId}`).getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('counts workspace-owned tabs as visible in every selected chat', () => {
+        writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: 'chat-a', resourceId: 'terminal', label: 'Terminal',
+        }));
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '0');
+
+        renderPanel({ chatId: 'chat-b', dock: dockStub({ isOpen: false }) });
+
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('1');
+    });
+
+    it('allows an explicitly opened empty panel to remain open for the current chat', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
+        const { rerender } = renderPanel({ chatId: 'chat-a' });
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('0');
+
+        openWorkspaceDock(WS);
+        rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-a" dock={dockStub()} />);
+
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('1');
+        expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
     });
 
     it('shows exactly one panel with one visible view per selected tab', () => {

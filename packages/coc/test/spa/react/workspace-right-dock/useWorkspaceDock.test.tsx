@@ -20,6 +20,7 @@ import {
     type WorkspaceDockController,
 } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 import {
+    setWorkspaceDockOpen,
     workspaceDockModeStorageKey,
     workspaceDockOpenStorageKey,
     workspaceDockTargetStorageKey,
@@ -134,6 +135,25 @@ describe('useWorkspaceDock mode selection', () => {
 
         rerender(<Harness workspaceId="ws-invalid" />);
         expect(dock.mode).toBe('explorer');
+    });
+
+    it('sets visibility idempotently without changing the selected mode', () => {
+        render(<Harness workspaceId="ws1" />);
+
+        act(() => {
+            setWorkspaceDockOpen('ws1', true);
+            setWorkspaceDockOpen('ws1', true);
+        });
+        expect(dock.isOpen).toBe(true);
+        expect(dock.mode).toBe('explorer');
+
+        act(() => {
+            setWorkspaceDockOpen('ws1', false);
+            setWorkspaceDockOpen('ws1', false);
+        });
+        expect(dock.isOpen).toBe(false);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey('ws1'))).toBe('0');
+        expect(localStorage.getItem(workspaceDockModeStorageKey('ws1'))).toBeNull();
     });
 });
 

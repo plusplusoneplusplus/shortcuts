@@ -119,6 +119,14 @@ The workspace header has one visibility toggle for the whole right panel. Search
 and Explorer live inside the panel as peer navigator controls, so changing or
 collapsing a navigator mode never closes the resource panel.
 
+On initial mount and whenever the panel scope's selected chat changes,
+`UnifiedRightPanel` sets the dock open exactly when `visibleTabs` is non-empty.
+Workspace-owned tabs therefore keep the panel visible across chats, while an
+empty destination closes it. This changes only the dock open bit: descriptors,
+active-tab memory, target, mode, width, ordering, and mounted resource state stay
+untouched. The reconciliation does not rerun when tabs change, so explicitly
+opening an empty panel remains possible until the next chat selection or reload.
+
 It **follows the host's active file**: `ExplorerPanel`'s `activeFilePath` prop
 is a tri-state, and the panel derives it from the same `unifiedToolbarBreadcrumbs`
 answer the breadcrumbs use. A path (a file tab whose owner is the tree's target)

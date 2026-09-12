@@ -76,8 +76,8 @@ export const DOCK_MIN_CHAT_WIDTH = 360;
  * live in separate component subtrees, so a plain `useState` in each would drift.
  * A tiny module-level pub/sub over localStorage — surfaced via
  * `useSyncExternalStore` — keeps every consumer of the same workspace in sync and
- * still persists across reloads. Only an explicit toggle writes (never mount or a
- * workspace switch), matching the old `useCollapsedState` semantics.
+ * still persists across reloads. Explicit controls toggle it, while the unified
+ * panel reconciles it idempotently when its selected chat changes.
  */
 const dockOpenListeners = new Map<string, Set<() => void>>();
 const dockModeListeners = new Map<string, Set<() => void>>();
@@ -152,9 +152,17 @@ function subscribeDockMode(storageKey: string, listener: () => void): () => void
  * stream of canvas updates does not notify every subscriber per event.
  */
 export function openWorkspaceDock(workspaceId: string): void {
+    setWorkspaceDockOpen(workspaceId, true);
+}
+
+/**
+ * Set a workspace dock's visibility without toggling it. Repeated reconciliation
+ * effects are no-ops, so React effect replay cannot invert the requested state.
+ */
+export function setWorkspaceDockOpen(workspaceId: string, open: boolean): void {
     const storageKey = workspaceDockOpenStorageKey(workspaceId);
-    if (readDockOpen(storageKey)) return;
-    writeDockOpen(storageKey, true);
+    if (readDockOpen(storageKey) === open) return;
+    writeDockOpen(storageKey, open);
 }
 
 /** Persisted, cross-tree open/closed flag for a dock, scoped by `storageKey`. */
