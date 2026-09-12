@@ -250,6 +250,10 @@ page retains it. Tab descriptors (never document bodies, terminal output, or
 credentials) persist per panel scope in localStorage. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
+Explorer editor tabs render the same filename-classified badge or generic
+document icon as the file tree. Search-result editor tabs render a decorative
+search icon.
+
 Remote-target dialogs additionally fetch the selected server's `/config/runtime`
 `gitWorktreeExecutionEnabled` as a **per-target capability signal**, since the local flag
 says nothing about a remote host.

@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { cn } from '../../../ui/cn';
 import type { ExplorerTab } from './explorerTabsModel';
+import { FileNameIcon } from './FileTypeIcon';
 
 /** The full-path tooltip a tab shows on hover. */
 export function tabTooltip(tab: ExplorerTab): string {
@@ -59,6 +60,31 @@ interface MenuState {
     tabId: string;
     x: number;
     y: number;
+}
+
+function SearchTabIcon({ testId }: { testId: string }) {
+    return (
+        <span
+            aria-hidden="true"
+            className="inline-flex h-4 w-5 flex-shrink-0 items-center justify-center"
+            style={{ color: '#8a8a8a' }}
+            data-testid={testId}
+            data-icon-label="search"
+        >
+            <svg
+                viewBox="0 0 20 20"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                data-icon-kind="search"
+            >
+                <circle cx="8.5" cy="8.5" r="5" />
+                <path d="m12.2 12.2 4 4" />
+            </svg>
+        </span>
+    );
 }
 
 export function ExplorerTabStrip({
@@ -225,8 +251,17 @@ export function ExplorerTabStrip({
                                     ⚠
                                 </span>
                             )}
+                            {tab.kind === 'search'
+                                ? <SearchTabIcon testId={`explorer-tab-icon-${tab.id}`} />
+                                : (
+                                    <FileNameIcon
+                                        fileName={tab.name}
+                                        showTitle={false}
+                                        testId={`explorer-tab-icon-${tab.id}`}
+                                    />
+                                )}
                             <span
-                                className={cn('truncate', tab.preview && 'italic', isLoading && 'opacity-60')}
+                                className={cn('min-w-0 truncate', tab.preview && 'italic', isLoading && 'opacity-60')}
                                 data-testid={`explorer-tab-label-${tab.id}`}
                             >
                                 {label}

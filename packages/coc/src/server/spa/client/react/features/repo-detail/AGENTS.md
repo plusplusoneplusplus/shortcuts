@@ -136,8 +136,10 @@ path to the composer.
 `explorer/FileTypeIcon.tsx` owns Explorer file and folder icons. It maps common
 language, config, data, media, archive, and tool-specific filenames to compact
 colored badges, uses open/closed SVG folder states, and falls back to a neutral
-document icon. Keep classification in `getFileIconDescriptor` so standalone and
-docked Explorer trees render the same icon for a path.
+document icon. Keep classification in `getFileIconDescriptor` and render files
+through `FileNameIcon` so standalone and docked Explorer trees and editor tabs
+show the same icon for a filename. Search-result editor tabs use a separate
+decorative search icon.
 
 `explorer/TreeNode.tsx` derives its spinner — `isDir && isExpanded && children ===
 undefined && !loadError` — instead of tracking a `loading` flag. `childrenMap`
