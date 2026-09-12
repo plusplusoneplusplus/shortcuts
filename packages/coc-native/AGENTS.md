@@ -10,8 +10,9 @@ grammar, and tags crate versions stay pinned as one compatibility set.
 
 `SymbolStore` persists the index in a caller-supplied per-workspace SQLite path.
 It uses WAL plus `files(path, size, mtime, hash)` and `symbols` tables, compares
-the manifest before parsing, replaces one file's rows transactionally, removes
-deleted files, and retains the previous committed rows when extraction fails.
+the manifest before parsing, applies a full sync in one atomic transaction,
+replaces a targeted file's rows transactionally, removes deleted files, and
+retains the previous committed rows when extraction or storage fails.
 `refreshChanged(paths)` validates and deduplicates repository-relative paths,
 then reads and updates only those files. Server-side writes debounce and
 coalesce their paths before calling it.
@@ -24,13 +25,15 @@ configurations, and uses the ctags baseline's extension set while excluding its
 crashing parser fixture so the corpus policy is directly comparable.
 `--threads 1,4,8`,
 `--extensions c,cpp,h`, `--drop-linux-page-cache`, and `--json` support corpus
-control, scaling, and reproducible reports.
+control, scaling, and reproducible reports. On the 75,615-file LLVM C-family
+corpus, a 2-core Linux ARM64 host measures 11.67 MB/s cold and 13.63 MB/s warm,
+with three files reaching the per-file parse deadline without aborting the run.
 `npm run bench:symbol-storage` generates 100,000 sharded C-family files, warms
 the production SQLite store, and reports median warm manifest-diff and
 32,000-line targeted-update times. `--files`, `--runs`, `--target-lines`, and
 `--json` support quick harness checks and host-specific measurement runs. On a
 2-core Linux ARM64 host, five warm runs over files containing declarations
-measure a 591 ms manifest diff and a 52.6 ms targeted update; Windows
+measure a 573 ms manifest diff and a 51.9 ms targeted update; Windows
 measurements remain host-specific.
 
 **The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Its own `walkFiles` still serves *per-directory* listings, and `.git` is excluded by both regardless of `includeIgnored`/`showIgnored`.

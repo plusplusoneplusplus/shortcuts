@@ -171,6 +171,8 @@ impl SymbolStore {
             processed: 0,
             total: paths.len(),
         });
+        let mut connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
+        let transaction = connection.transaction()?;
 
         for (position, relative) in paths.iter().enumerate() {
             let absolute = root.join(relative);
@@ -187,7 +189,7 @@ impl SymbolStore {
             } else {
                 match extractor.extract(relative, &source) {
                     Ok(symbols) => {
-                        self.replace_file(&entry, &symbols)?;
+                        replace_file_in_transaction(&transaction, &entry, &symbols)?;
                         stats.parsed += 1;
                     }
                     Err(error) => stats.failures.push(SymbolFileFailure {
@@ -207,9 +209,9 @@ impl SymbolStore {
         }
 
         for removed in previous.keys().filter(|path| !seen.contains(path.as_str())) {
-            self.remove_file(removed)?;
-            stats.removed += 1;
+            stats.removed += transaction.execute("DELETE FROM files WHERE path = ?1", [removed])?;
         }
+        transaction.commit()?;
         on_progress(SyncProgress {
             phase: SyncProgressPhase::Complete,
             processed: paths.len(),
@@ -295,23 +297,8 @@ impl SymbolStore {
     fn replace_file(&self, file: &FileManifestEntry, symbols: &[Symbol]) -> rusqlite::Result<()> {
         let mut connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
         let transaction = connection.transaction()?;
-        transaction.execute(
-            "INSERT INTO files(path, size, mtime, hash) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(path) DO UPDATE SET size=excluded.size, mtime=excluded.mtime, hash=excluded.hash",
-            params![file.path, file.size, file.mtime, file.hash],
-        )?;
-        let file_id: i64 =
-            transaction.query_row("SELECT id FROM files WHERE path = ?1", [&file.path], |row| {
-                row.get(0)
-            })?;
-        transaction.execute("DELETE FROM symbols WHERE file_id = ?1", [file_id])?;
-        insert_symbols(&transaction, file_id, symbols)?;
+        replace_file_in_transaction(&transaction, file, symbols)?;
         transaction.commit()
-    }
-
-    fn remove_file(&self, path: &str) -> rusqlite::Result<usize> {
-        let connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
-        connection.execute("DELETE FROM files WHERE path = ?1", [path])
     }
 
     fn remove_changed_file(&self, path: &str) -> rusqlite::Result<usize> {
@@ -323,6 +310,23 @@ impl SymbolStore {
         };
         connection.execute(sql, [path])
     }
+}
+
+fn replace_file_in_transaction(
+    transaction: &Transaction<'_>,
+    file: &FileManifestEntry,
+    symbols: &[Symbol],
+) -> rusqlite::Result<()> {
+    transaction.execute(
+        "INSERT INTO files(path, size, mtime, hash) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(path) DO UPDATE SET size=excluded.size, mtime=excluded.mtime, hash=excluded.hash",
+        params![file.path, file.size, file.mtime, file.hash],
+    )?;
+    let file_id: i64 =
+        transaction
+            .query_row("SELECT id FROM files WHERE path = ?1", [&file.path], |row| row.get(0))?;
+    transaction.execute("DELETE FROM symbols WHERE file_id = ?1", [file_id])?;
+    insert_symbols(transaction, file_id, symbols)
 }
 
 fn normalize_relative_path(path: &str) -> io::Result<String> {
@@ -506,6 +510,36 @@ mod tests {
 
         assert_eq!(stats.failures.len(), 1);
         assert_eq!(store.symbols_for_file("one.c").expect("readable")[0].name, "stable");
+    }
+
+    #[test]
+    fn full_sync_rolls_back_every_file_when_a_database_write_fails() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(root.path().join("one.c"), "int one();\n").expect("one");
+        std::fs::write(root.path().join("two.c"), "int two();\n").expect("two");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("initial");
+        store
+            .connection
+            .lock()
+            .expect("connection")
+            .execute_batch(
+                "CREATE TRIGGER fail_second_file BEFORE UPDATE ON files
+                 WHEN NEW.path = 'two.c'
+                 BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END;",
+            )
+            .expect("trigger");
+        std::fs::write(root.path().join("one.c"), "int changed_one();\n").expect("change one");
+        std::fs::write(root.path().join("two.c"), "int changed_two();\n").expect("change two");
+
+        let error = store
+            .sync_repository(root.path(), ExtractionLimits::default())
+            .expect_err("second write fails");
+
+        assert!(error.to_string().contains("simulated write failure"));
+        assert_eq!(store.symbols_for_file("one.c").expect("one symbols")[0].name, "one");
+        assert_eq!(store.symbols_for_file("two.c").expect("two symbols")[0].name, "two");
     }
 
     #[test]
