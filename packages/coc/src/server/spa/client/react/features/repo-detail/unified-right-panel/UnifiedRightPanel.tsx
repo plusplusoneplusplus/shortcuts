@@ -316,16 +316,16 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         [dock, explorerToggle, mode, tree],
     );
 
-    // What the tree column should track (AC-06). The toolbar model already
-    // decides whether the active file's path resolves inside the tree on screen,
-    // so tracking reuses that answer rather than restating the rule: a file tab
+    // What the tree column should track (AC-06). Breadcrumbs may browse through
+    // the active file's owner even when that is not the tree on screen, but the
+    // tree highlight must stay scoped to the dock's current target: a file tab
     // the tree can show reveals it, a file tab it cannot (another clone, a
     // trusted absolute path) drops the highlight, and any other kind — or no
     // tabs at all — leaves the tree exactly where it is.
     const trackedTreeFile = useMemo<string | null | undefined>(() => {
         if (toolbar === null) return undefined;
-        return toolbar.interactive ? toolbar.path : null;
-    }, [toolbar]);
+        return toolbar.interactive && active?.ownerWorkspaceId === target ? toolbar.path : null;
+    }, [active?.ownerWorkspaceId, target, toolbar]);
 
     // Per-tab dirty / error state, reported by the views. It lives here rather
     // than in each view because the strip has to show it for tabs that are not
