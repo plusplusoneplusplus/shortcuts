@@ -822,6 +822,12 @@ export interface ChatListPaneProps {
     pauseSource?: 'manual' | 'quota';
     /** Why the autopilot queue is currently paused — 'manual' (user) or 'quota' (watcher). */
     autopilotPauseSource?: 'manual' | 'quota';
+    /** Configured repeating cooldown for the whole queue, in minutes. */
+    taskDelayMinutes?: number;
+    /** Configured repeating cooldown for autopilot tasks, in minutes. */
+    autopilotTaskDelayMinutes?: number;
+    /** Persist a repeating cooldown for the selected scope; null turns it off. */
+    onSetTaskDelay: (scope: PauseMenuScope, minutes: number | null) => Promise<void>;
     onRefresh: () => void;
     onOpenDialog: () => void;
     fetchQueue: () => Promise<void>;
@@ -935,6 +941,124 @@ type PauseMenuSectionSpec = {
     testIdScope: string;
     onSelect: (options?: QueuePauseOptions) => void;
 };
+
+const TASK_DELAY_PRESETS = [
+    { value: null, label: 'Off', testId: 'off' },
+    { value: 1, label: '1m', testId: '1' },
+    { value: 5, label: '5m', testId: '5' },
+    { value: 15, label: '15m', testId: '15' },
+    { value: 30, label: '30m', testId: '30' },
+    { value: 60, label: '1h', testId: '60' },
+] as const;
+
+function TaskDelaySection({
+    scope,
+    activeMinutes,
+    onSelect,
+}: {
+    scope: PauseMenuScope;
+    activeMinutes?: number;
+    onSelect: (minutes: number | null) => Promise<void>;
+}) {
+    const [customOpen, setCustomOpen] = useState(false);
+    const [customValue, setCustomValue] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
+    const isCustomActive = activeMinutes !== undefined
+        && !TASK_DELAY_PRESETS.some(preset => preset.value === activeMinutes);
+
+    const apply = async (minutes: number | null) => {
+        setSubmitting(true);
+        setError(null);
+        try {
+            await onSelect(minutes);
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'Could not update task delay');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const submitCustom = () => {
+        const parsed = Number(customValue.trim() || NaN);
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1440) {
+            setError('Enter a whole number of minutes from 1 to 1440');
+            return;
+        }
+        void apply(parsed);
+    };
+
+    return (
+        <div className="mt-1 pt-1 border-t border-[#e8e8e8] dark:border-[#3f3f46]">
+            <div className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#6e6e6e] dark:text-[#999]">
+                Delay between tasks
+            </div>
+            {TASK_DELAY_PRESETS.map(preset => {
+                const active = preset.value === (activeMinutes ?? null);
+                return (
+                    <button
+                        key={preset.testId}
+                        type="button"
+                        disabled={submitting}
+                        className="flex w-full items-center justify-between px-2 py-1.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => void apply(preset.value)}
+                        data-testid={`task-delay-${scope}-${preset.testId}`}
+                    >
+                        <span>{preset.label}</span>
+                        {active && <span aria-label="Active task delay">✓</span>}
+                    </button>
+                );
+            })}
+            {!customOpen ? (
+                <button
+                    type="button"
+                    disabled={submitting}
+                    className="flex w-full items-center justify-between px-2 py-1.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => setCustomOpen(true)}
+                    data-testid={`task-delay-${scope}-custom`}
+                >
+                    <span>{isCustomActive ? `Custom… (${activeMinutes}m)` : 'Custom…'}</span>
+                    {isCustomActive && <span aria-label="Active task delay">✓</span>}
+                </button>
+            ) : (
+                <div className="px-2 py-1.5" data-testid={`task-delay-${scope}-custom-editor`}>
+                    <div className="flex items-center gap-1.5">
+                        <input
+                            type="number"
+                            min={1}
+                            max={1440}
+                            step={1}
+                            autoFocus
+                            disabled={submitting}
+                            value={customValue}
+                            onChange={(event) => { setCustomValue(event.target.value); setError(null); }}
+                            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); submitCustom(); } }}
+                            placeholder="Minutes"
+                            className="w-20 px-1.5 py-0.5 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] disabled:opacity-50"
+                            data-testid={`task-delay-${scope}-custom-input`}
+                        />
+                        <span className="text-[#6e6e6e] dark:text-[#999]">minutes</span>
+                        <button
+                            type="button"
+                            disabled={submitting}
+                            className="px-1.5 py-0.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] disabled:opacity-50"
+                            onClick={submitCustom}
+                            title="Apply task delay"
+                            data-testid={`task-delay-${scope}-custom-submit`}
+                        >
+                            ✓
+                        </button>
+                    </div>
+                </div>
+            )}
+            {error && (
+                <div className="px-2 mt-1 text-[10px] text-[#d1242f] dark:text-[#f85149]" data-testid={`task-delay-${scope}-custom-error`}>
+                    {error}
+                </div>
+            )}
+        </div>
+    );
+}
 
 /**
  * One labelled group inside {@link PauseDurationMenu}: "Until resumed", the hour
@@ -1091,10 +1215,16 @@ function PauseDurationMenu({
     testIdScope,
     sections,
     quotaData,
+    taskDelay,
 }: {
     testIdScope: string;
     sections: PauseMenuSectionSpec[];
     quotaData?: AgentProvidersQuotaResponse | null;
+    taskDelay?: {
+        scope: PauseMenuScope;
+        activeMinutes?: number;
+        onSelect: (minutes: number | null) => Promise<void>;
+    };
 }) {
     const now = Date.now();
 
@@ -1164,6 +1294,7 @@ function PauseDurationMenu({
                     />
                 </React.Fragment>
             ))}
+            {taskDelay && <TaskDelaySection {...taskDelay} />}
         </div>
     );
 }
@@ -1193,6 +1324,9 @@ export function ChatListPane({
     onPauseResumeAutopilot,
     pauseSource,
     autopilotPauseSource,
+    taskDelayMinutes,
+    autopilotTaskDelayMinutes,
+    onSetTaskDelay,
     onRefresh,
     onOpenDialog,
     fetchQueue,
@@ -1705,6 +1839,11 @@ export function ChatListPane({
         }
         setPauseMenuScope(null);
     }, [onPauseResume, onPauseResumeAutopilot]);
+
+    const selectTaskDelay = useCallback(async (scope: PauseMenuScope, minutes: number | null) => {
+        await onSetTaskDelay(scope, minutes);
+        setPauseMenuScope(null);
+    }, [onSetTaskDelay]);
 
     useEffect(() => {
         if (!pauseMenuScope) return;
@@ -4596,6 +4735,11 @@ export function ChatListPane({
                                     onSelect: (options) => selectPauseDuration(pauseMenuScope, options),
                                 }]}
                                 quotaData={quotaData}
+                                taskDelay={{
+                                    scope: pauseMenuScope,
+                                    activeMinutes: pauseMenuScope === 'all' ? taskDelayMinutes : autopilotTaskDelayMinutes,
+                                    onSelect: (minutes) => selectTaskDelay(pauseMenuScope, minutes),
+                                }}
                             />
                         )}
                     </div>

@@ -165,6 +165,7 @@ function defaultProps(overrides: Partial<any> = {}): any {
         onOpenDialog: vi.fn(),
         fetchQueue: vi.fn().mockResolvedValue(undefined),
         onPauseResumeAutopilot: vi.fn(),
+        onSetTaskDelay: vi.fn().mockResolvedValue(undefined),
         ...overrides,
     };
 }
@@ -285,6 +286,103 @@ describe('PauseDurationMenu — Custom… float-hours row', () => {
         expect(screen.getByTestId('pause-duration-all-custom-error')).toBeTruthy();
         fireEvent.change(screen.getByTestId('pause-duration-all-custom-input'), { target: { value: '2' } });
         expect(screen.queryByTestId('pause-duration-all-custom-error')).toBeNull();
+    });
+});
+
+describe('PauseDurationMenu — delay between tasks', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockQuotaData = null;
+        globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    it('renders the shared presets and marks Off active by default', () => {
+        renderPane();
+        openAllMenu();
+
+        for (const value of ['off', '1', '5', '15', '30', '60']) {
+            expect(screen.getByTestId(`task-delay-all-${value}`)).toBeTruthy();
+        }
+        expect(screen.getByTestId('task-delay-all-off').textContent).toContain('✓');
+    });
+
+    it('applies a preset to the scope that opened the menu and closes on success', async () => {
+        const onSetTaskDelay = vi.fn().mockResolvedValue(undefined);
+        renderPane({ onSetTaskDelay });
+        openAutopilotMenu();
+        fireEvent.click(screen.getByTestId('task-delay-autopilot-15'));
+
+        await waitFor(() => expect(onSetTaskDelay).toHaveBeenCalledWith('autopilot', 15));
+        await waitFor(() => expect(screen.queryByTestId('pause-duration-menu-autopilot')).toBeNull());
+    });
+
+    it('marks the matching configured preset active independently by scope', () => {
+        renderPane({ taskDelayMinutes: 5, autopilotTaskDelayMinutes: 30 });
+        openAllMenu();
+        expect(screen.getByTestId('task-delay-all-5').textContent).toContain('✓');
+        expect(screen.getByTestId('task-delay-all-30').textContent).not.toContain('✓');
+    });
+
+    it('shows a non-preset active value on the Custom row', () => {
+        renderPane({ taskDelayMinutes: 7 });
+        openAllMenu();
+        expect(screen.getByTestId('task-delay-all-custom').textContent).toContain('Custom… (7m)');
+        expect(screen.getByTestId('task-delay-all-custom').textContent).toContain('✓');
+    });
+
+    it('submits custom integer minutes and supports turning the delay off', async () => {
+        const onSetTaskDelay = vi.fn().mockResolvedValue(undefined);
+        renderPane({ taskDelayMinutes: 5, onSetTaskDelay });
+        openAllMenu();
+        fireEvent.click(screen.getByTestId('task-delay-all-custom'));
+        const input = screen.getByTestId('task-delay-all-custom-input');
+        fireEvent.change(input, { target: { value: '1440' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        await waitFor(() => expect(onSetTaskDelay).toHaveBeenCalledWith('all', 1440));
+
+        openAllMenu();
+        fireEvent.click(screen.getByTestId('task-delay-all-off'));
+        await waitFor(() => expect(onSetTaskDelay).toHaveBeenLastCalledWith('all', null));
+    });
+
+    for (const invalid of ['0', '1.5', '1441', '']) {
+        it(`rejects invalid custom minutes "${invalid}" inline`, () => {
+            const onSetTaskDelay = vi.fn().mockResolvedValue(undefined);
+            renderPane({ onSetTaskDelay });
+            openAllMenu();
+            fireEvent.click(screen.getByTestId('task-delay-all-custom'));
+            const input = screen.getByTestId('task-delay-all-custom-input');
+            fireEvent.change(input, { target: { value: invalid } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            expect(onSetTaskDelay).not.toHaveBeenCalled();
+            expect(screen.getByTestId('task-delay-all-custom-error').textContent)
+                .toContain('whole number of minutes from 1 to 1440');
+        });
+    }
+
+    it('disables the section while a request is pending', async () => {
+        let resolveRequest!: () => void;
+        const onSetTaskDelay = vi.fn(() => new Promise<void>(resolve => { resolveRequest = resolve; }));
+        renderPane({ onSetTaskDelay });
+        openAllMenu();
+        fireEvent.click(screen.getByTestId('task-delay-all-5'));
+
+        expect(screen.getByTestId('task-delay-all-off')).toBeDisabled();
+        expect(screen.getByTestId('task-delay-all-custom')).toBeDisabled();
+        resolveRequest();
+        await waitFor(() => expect(screen.queryByTestId('pause-duration-menu-all')).toBeNull());
+    });
+
+    it('keeps the prior value checked and shows an inline request error', async () => {
+        const onSetTaskDelay = vi.fn().mockRejectedValue(new Error('Could not save delay'));
+        renderPane({ taskDelayMinutes: 5, onSetTaskDelay });
+        openAllMenu();
+        fireEvent.click(screen.getByTestId('task-delay-all-15'));
+
+        await waitFor(() => expect(screen.getByTestId('task-delay-all-custom-error').textContent).toContain('Could not save delay'));
+        expect(screen.getByTestId('task-delay-all-5').textContent).toContain('✓');
+        expect(screen.getByTestId('pause-duration-menu-all')).toBeTruthy();
     });
 });
 

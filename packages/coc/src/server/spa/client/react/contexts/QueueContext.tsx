@@ -23,6 +23,10 @@ export interface QueueStats {
     pauseSource?: 'manual' | 'quota';
     /** Why the autopilot queue is currently paused — present only when autopilot is paused. */
     autopilotPauseSource?: 'manual' | 'quota';
+    taskDelayMinutes?: number;
+    taskDelayUntil?: number;
+    autopilotTaskDelayMinutes?: number;
+    autopilotTaskDelayUntil?: number;
 }
 
 export interface QueueContextState {

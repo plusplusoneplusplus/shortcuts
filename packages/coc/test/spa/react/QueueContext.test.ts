@@ -138,6 +138,7 @@ describe('QueueContext reducer', () => {
                     queued: 3,
                     running: 2,
                     isPaused: true,
+                    taskDelayMinutes: 15,
                 },
             });
 
@@ -146,6 +147,7 @@ describe('QueueContext reducer', () => {
             expect(result.repoQueueMap['ws-1'].stats.queued).toBe(3);
             expect(result.repoQueueMap['ws-1'].stats.running).toBe(2);
             expect(result.repoQueueMap['ws-1'].stats.isPaused).toBe(true);
+            expect(result.repoQueueMap['ws-1'].stats.taskDelayMinutes).toBe(15);
         });
 
         it('creates a repo entry when only stats are known', () => {
