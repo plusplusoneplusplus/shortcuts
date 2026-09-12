@@ -4,12 +4,15 @@
 //! its `Arc` atomically. A bad or over-budget file is recorded as a failure and
 //! does not abort extraction of the rest of the repository.
 
+mod storage;
+
 use std::fmt;
 use std::io::{self, Read};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+pub use storage::{FileManifestEntry, SymbolStore, SyncStats};
 
 use rayon::prelude::*;
 use streaming_iterator::StreamingIterator;

@@ -8,6 +8,11 @@ file reads, processes files through rayon, records per-file failures instead of
 aborting a build, and atomically swaps immutable snapshots on refresh. Parser,
 grammar, and tags crate versions stay pinned as one compatibility set.
 
+`SymbolStore` persists the index in a caller-supplied per-workspace SQLite path.
+It uses WAL plus `files(path, size, mtime, hash)` and `symbols` tables, compares
+the manifest before parsing, replaces one file's rows transactionally, removes
+deleted files, and retains the previous committed rows when extraction fails.
+
 **The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Its own `walkFiles` still serves *per-directory* listings, and `.git` is excluded by both regardless of `includeIgnored`/`showIgnored`.
 
 **Required, not optional, with no opt-out.** A binary that is missing, will not load, or lacks the capability a newer server expects is a hard failure: `loadNativeAddon()` and each `loadNative<X>()` throw `NativeAddonLoadError`, naming the expected triple, every path tried and the fix. Failing at first use beats silently serving a slower, subtly different implementation for the life of the process. No environment variable turns the addon off; `COC_NATIVE_PATH` only says *which* binary to load.
