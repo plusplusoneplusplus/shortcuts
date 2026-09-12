@@ -1,7 +1,7 @@
 /**
  * Language support in the Explorer, with every layer real: a browser running
  * the production SPA bundle, the Monaco that ships in it, the CoC server, and a
- * `typescript-language-server` child process reading a project off disk.
+ * language-server child processes reading projects off disk.
  *
  * Every other suite in this feature stops short of one of those. The jsdom
  * tests drive the real store and the real providers against a fake socket; the
@@ -29,6 +29,7 @@ import {
 } from './fixtures/explorer-tabs-seed';
 import {
     createDecoyRepoFixture,
+    createPythonRepoFixture,
     createRustRepoFixture,
     createTypeScriptRepoFixture,
     enableLanguageServers,
@@ -49,6 +50,9 @@ const APP_PANEL = `[data-testid="explorer-tab-panel-${APP_TAB}"]`;
 const RUST_APP_TAB = 'file:src/app.rs';
 const RUST_CORE_TAB = 'file:core-fixture/src/lib.rs';
 const RUST_APP_PANEL = `[data-testid="explorer-tab-panel-${RUST_APP_TAB}"]`;
+const PYTHON_APP_TAB = 'file:src/app.py';
+const PYTHON_STUB_TAB = 'file:src/helpers.pyi';
+const PYTHON_APP_PANEL = `[data-testid="explorer-tab-panel-${PYTHON_APP_TAB}"]`;
 
 /**
  * Starting a Node process, handshaking with it and letting it read a project is
@@ -648,7 +652,143 @@ test.describe('Explorer language support – recovery', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Rust language support
+// 4. Python language support
+// ---------------------------------------------------------------------------
+
+test.describe('Explorer language support – Python', () => {
+    test.describe.configure({ mode: 'serial' });
+
+    test('LSP.P1 packaged Pyright powers Explorer features and dirty-buffer replay', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createPythonRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'python-lsp-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+            await enableLanguageServers(serverUrl, WORKSPACE_ID, 'python');
+
+            await gotoExplorer(page, serverUrl);
+            await openSourceFile(page, 'app.py');
+            await waitForLanguageServer(page, PYTHON_APP_PANEL);
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="language-status-label"]`))
+                .toHaveText('Python');
+
+            await expect
+                .poll(
+                    () => hoverTextFor(
+                        page,
+                        'label = format_widget',
+                        'label',
+                        PYTHON_APP_PANEL,
+                    ),
+                    { timeout: 90_000 },
+                )
+                .toContain('label: str');
+
+            const broken = 'broken: int = label';
+            await focusMonacoBuffer(page, PYTHON_APP_PANEL);
+            await page.keyboard.press('Control+End');
+            await page.keyboard.type(broken);
+            await expect
+                .poll(() => squigglyLines(page, PYTHON_APP_PANEL), { timeout: 30_000 })
+                .toContain(broken);
+            await page.keyboard.press('Escape');
+            await page.keyboard.press('Shift+Home');
+            await page.keyboard.press('Delete');
+            await expect
+                .poll(() => squigglyLines(page, PYTHON_APP_PANEL), { timeout: 30_000 })
+                .toEqual([]);
+
+            await ctrlClickWord(
+                page,
+                'label = format_widget',
+                'format_widget',
+                PYTHON_APP_PANEL,
+            );
+            await expectEditorTabs(page, [PYTHON_APP_TAB, PYTHON_STUB_TAB]);
+            const stubPanel = `[data-testid="explorer-tab-panel-${PYTHON_STUB_TAB}"]`;
+            await expect
+                .poll(() => caretLineText(page, stubPanel), { timeout: 15_000 })
+                .toContain('def format_widget');
+
+            await editorTab(page, PYTHON_APP_TAB).click();
+            const unsaved = 'unsaved_marker = label';
+            await focusMonacoBuffer(page, PYTHON_APP_PANEL);
+            await page.keyboard.press('Control+End');
+            await page.keyboard.type(unsaved);
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toBeVisible({ timeout: 10_000 });
+
+            await page.locator(`${PYTHON_APP_PANEL} [data-testid="language-restart-btn"]`).click();
+            await waitForLanguageServer(page, PYTHON_APP_PANEL);
+            await expect
+                .poll(
+                    () => hoverTextFor(
+                        page,
+                        'unsaved_marker = label',
+                        'unsaved_marker',
+                        PYTHON_APP_PANEL,
+                    ),
+                    { timeout: 90_000 },
+                )
+                .toContain('unsaved_marker: str');
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toBeVisible();
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('LSP.P2 Pyright definition navigation stays in unified right-panel tabs', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createPythonRepoFixture(tmpDir, 'python-panel-repo');
+            await seedWorkspace(serverUrl, PANEL_WORKSPACE_ID, 'Python Panel Repo', repoDir);
+            await enableSplitWorkspacePanel(serverUrl);
+            await enableLanguageServers(serverUrl, PANEL_WORKSPACE_ID, 'python');
+
+            await page.goto(serverUrl);
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, {
+                timeout: 10_000,
+            });
+            await page.locator('[data-testid="repo-tab"]').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 8_000 });
+            await openUnifiedSourceFile(page, 'app.py');
+
+            await waitForLanguageServer(page, UNIFIED_ACTIVE_FILE);
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="language-status-label"]`))
+                .toHaveText('Python');
+
+            const tabLabels = page.locator(
+                `${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`,
+            );
+            await ctrlClickWord(
+                page,
+                'format_widget',
+                'format_widget',
+                UNIFIED_ACTIVE_FILE,
+                true,
+            );
+            await expect(tabLabels.filter({ hasText: 'app.py' })).toHaveCount(1);
+            await expect(tabLabels.filter({ hasText: 'helpers.pyi' })).toHaveCount(1, {
+                timeout: 15_000,
+            });
+            await expect
+                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
+                .toContain('def format_widget');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 5. Rust language support
 // ---------------------------------------------------------------------------
 
 test.describe('Explorer language support – Rust', () => {
@@ -773,7 +913,7 @@ test.describe('Explorer language support – Rust', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. A clone that lives on another CoC server
+// 6. A clone that lives on another CoC server
 // ---------------------------------------------------------------------------
 
 /**

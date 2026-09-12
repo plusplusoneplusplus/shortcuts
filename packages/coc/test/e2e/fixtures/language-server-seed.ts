@@ -108,6 +108,44 @@ export function createRustRepoFixture(tmpDir: string, dirName = 'rust-lsp-repo')
     return repoDir;
 }
 
+/**
+ * A small Python project whose implementation is described by a stub. The app
+ * gives Pyright a cross-file hover and definition target without relying on
+ * packages installed in the host Python environment.
+ */
+export function createPythonRepoFixture(tmpDir: string, dirName = 'python-lsp-repo'): string {
+    const repoDir = path.join(tmpDir, dirName);
+    fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+
+    fs.writeFileSync(
+        path.join(repoDir, 'pyproject.toml'),
+        [
+            '[project]',
+            'name = "python-lsp-fixture"',
+            'version = "1.0.0"',
+            '',
+        ].join('\n'),
+    );
+    fs.writeFileSync(
+        path.join(repoDir, 'src', 'helpers.pyi'),
+        [
+            'def format_widget(name: str, size: int) -> str: ...',
+            '',
+        ].join('\n'),
+    );
+    fs.writeFileSync(
+        path.join(repoDir, 'src', 'app.py'),
+        [
+            'from helpers import format_widget',
+            '',
+            'label = format_widget("gadget", 3)',
+            '',
+        ].join('\n'),
+    );
+
+    return repoDir;
+}
+
 /** How one checkout of the shared TypeScript fixture differs from another. */
 export interface TypeScriptRepoFixtureOptions {
     /** Directory name under `tmpDir`. Defaults to `lsp-repo`. */
