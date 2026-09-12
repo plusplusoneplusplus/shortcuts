@@ -1,0 +1,40 @@
+{
+  "tasks": [
+    {
+      "id": "refactor-admin-config-registry",
+      "prompt": "/impl for the current admin configuration, when we add a setting, many places need to be updated as well. can we refactor to have only a minimum place for updating the setting and its test and it's exposure from the admin ui?",
+      "seedRef": "50ee20b34e35c58066b097c1c8bfde86c6db1738",
+      "referenceResultRef": [
+        {
+          "model": "claude-fable-5",
+          "commit": "f98bd61509379cd48acf4f9f656f5e8b66bf4001"
+        }
+      ],
+      "split": "train"
+    },
+    {
+      "id": "upgrade-copilot-sdk-v1",
+      "prompt": "/impl upgrade the copilot-sdk to v1.0.0 and then make sure there's no regression",
+      "seedRef": "77967a3551fda27f2501764c7aba5598503b3a48",
+      "referenceResultRef": [
+        {
+          "model": "claude-fable-5",
+          "commit": "1aa53b80b5826f6d7676c5f007058d2c1efda02a"
+        }
+      ],
+      "split": "train"
+    },
+    {
+      "id": "fix-claude-effort-tier-validation",
+      "prompt": "/impl can you check the effort tier setting for the claude agent provider and see if that's the right way to get the model list and supported reasoning effort? current when i am using the claude for high effort tier, it would give `Unsupported reasoning effort \"xhigh\" requested for model \"unknown\". Supported efforts: unknown`",
+      "seedRef": "bbb28604186e7fca6261838ecb554e551a60393d",
+      "referenceResultRef": [
+        {
+          "model": "claude-fable-5",
+          "commit": "c574393a98d3e9531f13256d5ccd78f477756a4a"
+        }
+      ],
+      "split": "selection"
+    }
+  ]
+}
