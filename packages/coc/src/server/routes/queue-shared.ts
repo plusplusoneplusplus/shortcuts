@@ -13,6 +13,7 @@ import type {
     ConversationTurn,
     PauseMarker,
     StoredEffortTiersMap,
+    TaskDelayMinutes,
 } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, resolveModelForProvider } from '@plusplusoneplusplus/forge';
 import { CHAT_STYLES, isChatStyle } from '@plusplusoneplusplus/coc-client';
@@ -60,6 +61,10 @@ export interface QueueGlobalState {
     globalAutopilotPausedUntil?: number;
     /** Who set the global Autopilot pause. */
     globalAutopilotPauseSource?: 'manual' | 'quota';
+    /** Server-wide default for the All-tasks cooldown, applied to every repo queue. */
+    globalTaskDelayMinutes?: TaskDelayMinutes;
+    /** Server-wide default for the Autopilot cooldown, applied to every repo queue. */
+    globalAutopilotTaskDelayMinutes?: TaskDelayMinutes;
     resumeInProgress: Set<string>;
 }
 
@@ -511,6 +516,10 @@ export function aggregateStats(bridge: MultiRepoQueueRouter): QueueStats {
     let allPaused = true, allAutopilotPaused = true, any = false, anyDraining = false;
     let pausedUntil: number | undefined;
     let autopilotPausedUntil: number | undefined;
+    const taskDelayMinutes = new Set<number | undefined>();
+    const autopilotTaskDelayMinutes = new Set<number | undefined>();
+    let taskDelayUntil: number | undefined;
+    let autopilotTaskDelayUntil: number | undefined;
     for (const m of bridge.registry.getAllQueues().values()) {
         const s = m.getStats();
         queued += s.queued;
@@ -527,6 +536,16 @@ export function aggregateStats(bridge: MultiRepoQueueRouter): QueueStats {
         }
         if (s.autopilotPausedUntil !== undefined) {
             autopilotPausedUntil = autopilotPausedUntil === undefined ? s.autopilotPausedUntil : Math.max(autopilotPausedUntil, s.autopilotPausedUntil);
+        }
+        taskDelayMinutes.add(s.taskDelayMinutes);
+        autopilotTaskDelayMinutes.add(s.autopilotTaskDelayMinutes);
+        if (s.taskDelayUntil !== undefined) {
+            taskDelayUntil = taskDelayUntil === undefined ? s.taskDelayUntil : Math.max(taskDelayUntil, s.taskDelayUntil);
+        }
+        if (s.autopilotTaskDelayUntil !== undefined) {
+            autopilotTaskDelayUntil = autopilotTaskDelayUntil === undefined
+                ? s.autopilotTaskDelayUntil
+                : Math.max(autopilotTaskDelayUntil, s.autopilotTaskDelayUntil);
         }
         any = true;
     }
@@ -547,6 +566,16 @@ export function aggregateStats(bridge: MultiRepoQueueRouter): QueueStats {
     if (stats.isAutopilotPaused && autopilotPausedUntil !== undefined) {
         stats.autopilotPausedUntil = autopilotPausedUntil;
     }
+    const [configuredTaskDelayMinutes] = taskDelayMinutes;
+    if (taskDelayMinutes.size === 1 && configuredTaskDelayMinutes !== undefined) {
+        stats.taskDelayMinutes = configuredTaskDelayMinutes;
+        stats.taskDelayUntil = taskDelayUntil;
+    }
+    const [configuredAutopilotTaskDelayMinutes] = autopilotTaskDelayMinutes;
+    if (autopilotTaskDelayMinutes.size === 1 && configuredAutopilotTaskDelayMinutes !== undefined) {
+        stats.autopilotTaskDelayMinutes = configuredAutopilotTaskDelayMinutes;
+        stats.autopilotTaskDelayUntil = autopilotTaskDelayUntil;
+    }
     return stats;
 }
 
@@ -564,6 +593,10 @@ export function getAggregateStats(bridge: MultiRepoQueueRouter, state: QueueGlob
     if (state.globalAutopilotPaused && bridge.registry.getAllQueues().size === 0) {
         stats.isAutopilotPaused = true;
         stats.autopilotPausedUntil = state.globalAutopilotPausedUntil;
+    }
+    if (bridge.registry.getAllQueues().size === 0) {
+        stats.taskDelayMinutes = state.globalTaskDelayMinutes;
+        stats.autopilotTaskDelayMinutes = state.globalAutopilotTaskDelayMinutes;
     }
     if (stats.isPaused && state.globalPauseSource !== undefined) {
         stats.pauseSource = state.globalPauseSource;
@@ -619,6 +652,12 @@ export async function enqueueViaBridge(
     }
     if (state.globalAutopilotPaused && !queueManager.getStats().isAutopilotPaused) {
         queueManager.pauseAutopilot(state.globalAutopilotPausedUntil);
+    }
+    if (state.globalTaskDelayMinutes !== undefined) {
+        queueManager.setTaskDelayMinutes('all', state.globalTaskDelayMinutes);
+    }
+    if (state.globalAutopilotTaskDelayMinutes !== undefined) {
+        queueManager.setTaskDelayMinutes('autopilot', state.globalAutopilotTaskDelayMinutes);
     }
     return queueManager.enqueue(input);
 }
@@ -699,6 +738,12 @@ export async function getOrCreateManagerByRepoIdentifier(
     }
     if (state.globalAutopilotPaused && !manager.getStats().isAutopilotPaused) {
         manager.pauseAutopilot(state.globalAutopilotPausedUntil);
+    }
+    if (state.globalTaskDelayMinutes !== undefined) {
+        manager.setTaskDelayMinutes('all', state.globalTaskDelayMinutes);
+    }
+    if (state.globalAutopilotTaskDelayMinutes !== undefined) {
+        manager.setTaskDelayMinutes('autopilot', state.globalAutopilotTaskDelayMinutes);
     }
 
     return manager;

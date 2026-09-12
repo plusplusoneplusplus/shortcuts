@@ -199,6 +199,8 @@ Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dr
 | POST | `/api/queue/resume` | Resume queue processing globally or per repo |
 | POST | `/api/queue/pause-autopilot` | Pause automatic autopilot admission globally or per repo; same timed-pause body as `/api/queue/pause` |
 | POST | `/api/queue/resume-autopilot` | Resume automatic autopilot admission globally or per repo |
+| POST | `/api/queue/task-delay` | Set or clear the repeating task cooldown globally or per repo (`workspace`/`repoId` query). Body `{ scope: 'all'\|'autopilot', delayMinutes: <integer 1..1440>\|null }`; returns the configured value and updated queue stats |
+| POST | `/api/queue/task-delay/skip` | Release the active cooldown without changing its configured value, globally or per repo. Body `{ scope: 'all'\|'autopilot' }` |
 | POST | `/api/queue/pause-marker` | Insert a pause marker between queued items. Body `{ afterIndex?, repoId?, durationHours? }` (`durationHours` in `(0, 24]`). Indefinite markers pause until manual resume; timed markers start counting when the executor consumes the marker. `201 { markerId, afterIndex, durationHours? }` |
 | DELETE | `/api/queue/pause-marker/:markerId` | Remove a queued pause marker before the executor reaches it |
 | DELETE | `/api/queue/:id` | Cancel a queued or running task |
