@@ -11,6 +11,8 @@ export interface ClangdRuntime {
     args: string[];
     origin: ClangdRuntimeOrigin;
     label: string;
+    notes?: string[];
+    recoveryCommand?: string;
 }
 
 export interface ClangdRuntimeDeps {
@@ -51,7 +53,19 @@ export function resolveClangdRuntime(
         args: definition.args,
         origin: 'unavailable',
         label: 'Server: unavailable',
+        notes: [`Install with: ${clangdInstallCommand(deps.platform ?? process.platform)}`],
+        recoveryCommand: clangdInstallCommand(deps.platform ?? process.platform),
     };
+}
+
+export function clangdInstallCommand(platform: NodeJS.Platform): string {
+    if (platform === 'darwin') {
+        return 'brew install llvm';
+    }
+    if (platform === 'win32') {
+        return 'winget install LLVM.LLVM';
+    }
+    return 'apt install clangd';
 }
 
 export function applyClangdRuntime(

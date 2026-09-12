@@ -186,7 +186,9 @@ and transport code stays generic.
 - `clangd-adapter.ts` resolves `clangd` from PATH before Homebrew LLVM prefixes,
   versioned `/usr/lib/llvm-*` directories, or `%ProgramFiles%\LLVM`. Its preset
   disables background indexing and roots only at `compile_commands.json`,
-  `.clangd`, or `compile_flags.txt`; repointed commands remain untouched.
+  `.clangd`, or `compile_flags.txt`; repointed commands remain untouched. Missing
+  discovery supplies the Settings runtime error with `apt install clangd`,
+  `brew install llvm`, or `winget install LLVM.LLVM` for the owning host.
 - clangd compilation fallback is configured per workspace through
   `initializationOptions.fallbackFlags`; the adapter passes the array through
   unchanged. An in-tree compilation database takes precedence automatically.

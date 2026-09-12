@@ -37,7 +37,9 @@ The built-in clangd preset is disabled by default and serves C, C++, Objective-C
 Objective-C++, and CUDA files with `--background-index=false`. Its adapter checks
 the owning host's PATH before platform-specific LLVM install locations. Project
 roots use only `compile_commands.json`, `.clangd`, and `compile_flags.txt`, keeping
-large repositories sharded when component-local markers exist.
+large repositories sharded when component-local markers exist. Missing discovery
+surfaces a platform-specific apt, Homebrew, or winget install command through the
+existing runtime error state.
 
 Workspace definitions pass no-database compiler options through
 `initializationOptions.fallbackFlags`. clangd gives an in-tree compilation

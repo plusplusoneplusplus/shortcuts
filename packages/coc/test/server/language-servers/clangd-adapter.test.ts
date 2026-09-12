@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from '../../../src/server/language-servers/adapters';
-import { resolveClangdRuntime } from '../../../src/server/language-servers/clangd-adapter';
+import { clangdInstallCommand, resolveClangdRuntime } from '../../../src/server/language-servers/clangd-adapter';
 import { CLANGD_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 
@@ -62,9 +62,14 @@ describe('resolveClangdRuntime', () => {
         expect(runtime.label).not.toContain(expected);
     });
 
-    it('keeps the executable label when clangd is unavailable', () => {
+    it.each([
+        ['linux' as const, 'apt install clangd'],
+        ['darwin' as const, 'brew install llvm'],
+        ['win32' as const, 'winget install LLVM.LLVM'],
+    ])('provides %s install guidance when clangd is unavailable', (platform, installCommand) => {
+        expect(clangdInstallCommand(platform)).toBe(installCommand);
         expect(resolveClangdRuntime(preset(), {
-            platform: 'linux',
+            platform,
             readDir: () => { throw new Error('EACCES'); },
             resolveOnPath: () => undefined,
             isExecutable: () => false,
@@ -73,6 +78,8 @@ describe('resolveClangdRuntime', () => {
             args: ['--background-index=false'],
             origin: 'unavailable',
             label: 'Server: unavailable',
+            notes: [`Install with: ${installCommand}`],
+            recoveryCommand: installCommand,
         });
     });
 });
@@ -104,6 +111,23 @@ describe('clangd adapter wiring', () => {
             runtimeLabel: prepared.runtimeLabel,
             commandLabel: prepared.commandLabel,
         })).not.toContain(executable);
+    });
+
+    it('prepares platform install guidance without exposing attempted host paths', () => {
+        const prepared = prepareDefinitionForRoot(preset(), 'C:\\private\\repo', {
+            platform: 'win32',
+            env: { ProgramFiles: 'C:\\private\\Program Files' },
+            resolveOnPath: () => undefined,
+            isExecutable: () => false,
+        });
+
+        expect(prepared).toMatchObject({
+            runtimeLabel: 'Server: unavailable',
+            commandLabel: 'clangd',
+            notes: ['Install with: winget install LLVM.LLVM'],
+            recoveryCommand: 'winget install LLVM.LLVM',
+        });
+        expect(JSON.stringify(prepared.notes)).not.toContain('C:\\private');
     });
 
     it('preserves user-supplied fallback flags and compile database arguments', () => {

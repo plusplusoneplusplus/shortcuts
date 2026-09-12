@@ -182,6 +182,44 @@ describe('LanguageServersPanel', () => {
         expect(screen.getByTestId('language-server-runtime-details').textContent).toContain('crates/two');
     });
 
+    it.each([
+        ['Linux', 'apt install clangd'],
+        ['macOS', 'brew install llvm'],
+        ['Windows', 'winget install LLVM.LLVM'],
+    ])('renders the %s clangd install hint without a host path', async (_platform, installCommand) => {
+        const clangd = def({
+            id: 'clangd',
+            displayName: 'C / C++ (clangd)',
+            languageIds: ['c', 'cpp'],
+            filePatterns: ['**/*.{c,cpp,h,hpp}'],
+            command: 'clangd',
+            args: ['--background-index=false'],
+            rootMarkers: ['compile_commands.json', '.clangd', 'compile_flags.txt'],
+            enabled: true,
+        });
+        await renderPanel(response({
+            enabled: true,
+            effective: [clangd],
+            runtimes: [{
+                sessionId: `missing-${_platform}`,
+                workspaceId: WS,
+                definitionId: 'clangd',
+                displayName: 'C / C++ (clangd)',
+                projectRoot: '.',
+                status: 'unavailable',
+                detail: `Executable not found: clangd. Install with: ${installCommand}`,
+                runtime: 'Server: unavailable',
+                recoveryCommand: installCommand,
+            }],
+        }));
+
+        fireEvent.click(screen.getByTestId('language-server-runtime-status'));
+        const details = screen.getByTestId('language-server-runtime-details').textContent ?? '';
+        expect(details).toContain(`Executable not found: clangd. Install with: ${installCommand}`);
+        expect(details).not.toContain('/opt/private/clangd');
+        expect(details).not.toContain('C:\\private\\clangd.exe');
+    });
+
     it('retries the failed root and replaces the runtime summary', async () => {
         const failed = {
             sessionId: 'failed-root',

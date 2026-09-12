@@ -98,6 +98,8 @@ export function prepareDefinitionForRoot(
             definition: applyClangdRuntime(definition, runtime),
             runtimeLabel: runtime.label,
             commandLabel: CLANGD_PRESET.command,
+            notes: runtime.notes,
+            recoveryCommand: runtime.recoveryCommand,
         };
     }
     return { definition };
