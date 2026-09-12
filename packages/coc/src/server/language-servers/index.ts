@@ -12,7 +12,13 @@ export {
     resolveServerRoot,
     selectDefinitionForFile,
 } from './selection';
-export { RUST_PRESET, TYPESCRIPT_PRESET, builtInLanguageServerDefinitions, mergeWithBuiltIns } from './presets';
+export {
+    PYTHON_PRESET,
+    RUST_PRESET,
+    TYPESCRIPT_PRESET,
+    builtInLanguageServerDefinitions,
+    mergeWithBuiltIns,
+} from './presets';
 export type {
     LanguageServerConfig,
     LanguageServerConfigChangedEvent,
@@ -41,12 +47,20 @@ export {
 export type { RustRuntime, RustRuntimeDeps, RustRuntimeOrigin } from './rust-adapter';
 export {
     RUST_ANALYZER_INSTALL_GUIDANCE,
+    RUST_ANALYZER_RECOVERY_COMMAND,
     RUSTUP_RESOLUTION_TIMEOUT_MS,
     applyRustRuntime,
     findExecutableOnPath,
     resolveRustRuntime,
     resolveRustServerRoot,
 } from './rust-adapter';
+export type { PythonRuntime, PythonRuntimeDeps, PythonRuntimeOrigin } from './python-adapter';
+export {
+    applyPythonRuntime,
+    resolvePythonInterpreter,
+    resolvePythonRuntime,
+    resolvePythonServerRoot,
+} from './python-adapter';
 export { registerLanguageServerRoutes } from './routes';
 export type {
     JsonRpcErrorBody,

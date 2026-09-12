@@ -51,6 +51,29 @@ export interface LanguageServerConfigWarning {
   message: string;
 }
 
+export type LanguageServerRuntimeStatus =
+  | 'disabled'
+  | 'unavailable'
+  | 'starting'
+  | 'indexing'
+  | 'ready'
+  | 'reconnecting'
+  | 'timeout'
+  | 'failed';
+
+export interface LanguageServerRuntimeState {
+  sessionId: string;
+  workspaceId: string;
+  definitionId: string;
+  displayName: string;
+  projectRoot: string;
+  status: LanguageServerRuntimeStatus;
+  detail?: string;
+  runtime?: string;
+  recoveryCommand?: string;
+  lastAttemptAt?: string;
+}
+
 /** Read/write response for `/workspaces/:id/language-servers`. */
 export interface LanguageServerConfigResponse {
   enabled: boolean;
@@ -62,6 +85,8 @@ export interface LanguageServerConfigResponse {
   startable: LanguageServerDefinition[];
   status: 'ok' | 'missing' | 'invalid';
   warnings: LanguageServerConfigWarning[];
+  /** Live per-project-root sessions. Untested roots are intentionally absent. */
+  runtimes: LanguageServerRuntimeState[];
 }
 
 export interface LanguageServerConfigUpdate {

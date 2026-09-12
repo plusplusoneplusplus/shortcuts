@@ -17,7 +17,12 @@ import {
     resolveServerRoot,
     selectDefinitionForFile,
 } from '../../../src/server/language-servers/selection';
-import { RUST_PRESET, TYPESCRIPT_PRESET, mergeWithBuiltIns } from '../../../src/server/language-servers/presets';
+import {
+    PYTHON_PRESET,
+    RUST_PRESET,
+    TYPESCRIPT_PRESET,
+    mergeWithBuiltIns,
+} from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 
 function definition(overrides: Partial<LanguageServerDefinition>): LanguageServerDefinition {
@@ -192,12 +197,13 @@ describe('resolveServerRoot', () => {
 
 describe('mergeWithBuiltIns', () => {
     it('exposes the built-in presets when nothing is configured', () => {
-        expect(mergeWithBuiltIns([]).map(d => d.id)).toEqual(['typescript', 'rust']);
+        expect(mergeWithBuiltIns([]).map(d => d.id)).toEqual(['typescript', 'rust', 'python']);
     });
 
     it('ships every preset disabled so language support starts off', () => {
         expect(TYPESCRIPT_PRESET.enabled).toBe(false);
         expect(RUST_PRESET.enabled).toBe(false);
+        expect(PYTHON_PRESET.enabled).toBe(false);
     });
 
     it('defines Rust defaults for fast diagnostics and macro expansion', () => {
@@ -227,7 +233,7 @@ describe('mergeWithBuiltIns', () => {
 
     it('appends custom definitions after the built-ins', () => {
         const merged = mergeWithBuiltIns([definition({ id: 'custom' })]);
-        expect(merged.map(d => d.id)).toEqual(['typescript', 'rust', 'custom']);
+        expect(merged.map(d => d.id)).toEqual(['typescript', 'rust', 'python', 'custom']);
         expect(merged.find(d => d.id === 'custom')?.builtIn).toBeUndefined();
     });
 
@@ -241,5 +247,32 @@ describe('mergeWithBuiltIns', () => {
         expect(selectDefinitionForFile(merged, 'crates/app/src/main.rs')?.id).toBe('rust');
         expect(selectDefinitionForFile(merged, 'Cargo.toml')).toBeUndefined();
         expect(resolveLanguageId(RUST_PRESET, 'src/lib.rs')).toBe('rust');
+    });
+
+    it('defines and routes Python source and stub files but not notebooks', () => {
+        expect(PYTHON_PRESET).toMatchObject({
+            displayName: 'Python',
+            languageIds: ['python'],
+            command: 'pyright-langserver',
+            args: ['--stdio'],
+            rootMarkers: ['pyrightconfig.json', 'pyproject.toml', 'setup.cfg', 'setup.py', 'requirements.txt'],
+            extensionLanguageIds: { '.py': 'python', '.pyi': 'python', '.pyw': 'python' },
+            priority: 100,
+            settings: {
+                python: {
+                    analysis: {
+                        typeCheckingMode: 'basic',
+                        diagnosticMode: 'openFilesOnly',
+                    },
+                },
+            },
+            builtIn: true,
+        });
+        const merged = mergeWithBuiltIns([{ ...PYTHON_PRESET, enabled: true }]);
+        for (const file of ['src/main.py', 'src/types.pyi', 'src/window.pyw']) {
+            expect(selectDefinitionForFile(merged, file)?.id).toBe('python');
+            expect(resolveLanguageId(PYTHON_PRESET, file)).toBe('python');
+        }
+        expect(selectDefinitionForFile(merged, 'notebook.ipynb')).toBeUndefined();
     });
 });

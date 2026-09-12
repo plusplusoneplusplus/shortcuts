@@ -23,6 +23,7 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 |--------|-----------|---------|
 | Monorepo | [monorepo.md](references/monorepo.md) | Cross-package layout, build/test commands, changesets release flow, shared conventions |
 | Server Architecture | [server-architecture.md](references/server-architecture.md) | Module layout, feature domains, route registration, config schema |
+| Language Servers | [language-servers.md](references/language-servers.md) | LSP session lifecycle, runtime discovery, status surfaces, multi-root aggregation, retry |
 | Admin Config | [admin-config.md](references/admin-config.md) | `ADMIN_CONFIG_FIELDS` registry, admin REST surface, admin UI styling (`admin-redesign.css`) |
 | MCP Settings | [mcp-settings.md](references/mcp-settings.md) | Workspace MCP merge (global + workspace), allow-list, secrets boundary |
 | EnDev xDPU | [endev.md](references/endev.md) | Workspace eligibility cache, REST status/revalidate, skill surfacing |

@@ -192,10 +192,70 @@ describe('LanguageServerSession startup', () => {
             { rootPath: root, startTimeoutMs: 250 },
         );
         await expect(session.start()).rejects.toThrow();
-        expect(session.status).toBe('failed');
-        expect(session.getState().detail).toMatch(/Handshake failed/);
+        expect(session.status).toBe('timeout');
+        expect(session.getState().detail).toMatch(/initialization timed out/);
         // A failed handshake must not leave a process holding the workspace.
         expect(() => fs.rmSync(root, { recursive: true, force: true })).not.toThrow();
+    });
+
+    it('reports initialization stderr without exposing absolute paths or environment values', async () => {
+        const privatePath = path.join(tempRoot(), 'secret', 'toolchain');
+        const { session } = createSession(
+            fixtureDefinition({
+                command: process.execPath,
+                args: ['-e', `console.error(${JSON.stringify(`failed at ${privatePath} TOKEN=private`)}); process.exit(2)`],
+            }),
+            { startTimeoutMs: 1_000 },
+        );
+
+        await expect(session.start()).rejects.toThrow();
+        expect(session.getState().detail).toContain('failed at [path]');
+        expect(session.getState().detail).toContain('[environment value]');
+        expect(session.getState().detail).not.toContain(privatePath);
+        expect(session.getState().detail).not.toContain('private');
+    });
+
+    it('recovers after a missing Rust component is installed and Retry is used', async () => {
+        const root = tempRoot();
+        const installed = path.join(root, 'installed');
+        const script = [
+            `if (!require('fs').existsSync(${JSON.stringify(installed)})) {`,
+            'console.error("rust-analyzer is not installed for the active toolchain");',
+            'process.exit(1);',
+            '} else {',
+            `import(${JSON.stringify(pathToFileURL(FIXTURE_SERVER).href)});`,
+            '}',
+        ].join('');
+        let discoveries = 0;
+        const definition = fixtureDefinition({ command: process.execPath, args: ['-e', script] });
+        const { session } = createSession(
+            definition,
+            {
+                rootPath: root,
+                unavailableDetail: 'rust-analyzer is not installed for the active toolchain',
+                recoveryCommand: 'rustup component add rust-analyzer',
+                prepareForStart: () => {
+                    discoveries++;
+                    return {
+                        definition,
+                        unavailableDetail: 'rust-analyzer is not installed for the active toolchain',
+                        recoveryCommand: 'rustup component add rust-analyzer',
+                    };
+                },
+            },
+        );
+
+        await expect(session.start()).rejects.toThrow();
+        expect(session.getState()).toMatchObject({
+            status: 'unavailable',
+            recoveryCommand: 'rustup component add rust-analyzer',
+        });
+
+        fs.writeFileSync(installed, '');
+        await session.restart();
+        expect(session.status).toBe('ready');
+        expect(session.getState().detail).toBeUndefined();
+        expect(discoveries).toBe(2);
     });
 });
 
@@ -268,7 +328,7 @@ describe('LanguageServerSession crash recovery', () => {
         session.attach();
         await expect(session.start()).rejects.toThrow();
         await waitFor(() => session.status === 'failed', 10_000);
-        expect(session.getState().detail).toMatch(/did not recover|Handshake failed/);
+        expect(session.getState().detail).toMatch(/did not recover|initialization failed/);
     });
 
     it('does not restart a server that exits once nothing references it', async () => {

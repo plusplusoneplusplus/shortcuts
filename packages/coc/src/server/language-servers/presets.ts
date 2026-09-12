@@ -56,9 +56,35 @@ export const RUST_PRESET: LanguageServerDefinition = {
     builtIn: true,
 };
 
+export const PYTHON_PRESET: LanguageServerDefinition = {
+    id: 'python',
+    displayName: 'Python',
+    languageIds: ['python'],
+    filePatterns: ['**/*.{py,pyi,pyw}'],
+    command: 'pyright-langserver',
+    args: ['--stdio'],
+    rootMarkers: ['pyrightconfig.json', 'pyproject.toml', 'setup.cfg', 'setup.py', 'requirements.txt'],
+    extensionLanguageIds: {
+        '.py': 'python',
+        '.pyi': 'python',
+        '.pyw': 'python',
+    },
+    settings: {
+        python: {
+            analysis: {
+                typeCheckingMode: 'basic',
+                diagnosticMode: 'openFilesOnly',
+            },
+        },
+    },
+    priority: 100,
+    enabled: false,
+    builtIn: true,
+};
+
 /** Definitions shipped with CoC. Callers must not mutate the returned objects. */
 export function builtInLanguageServerDefinitions(): LanguageServerDefinition[] {
-    return [TYPESCRIPT_PRESET, RUST_PRESET];
+    return [TYPESCRIPT_PRESET, RUST_PRESET, PYTHON_PRESET];
 }
 
 /**

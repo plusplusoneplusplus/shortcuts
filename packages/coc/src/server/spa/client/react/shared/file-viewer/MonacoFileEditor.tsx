@@ -145,6 +145,8 @@ const EXT_TO_MONACO_LANG: Record<string, string> = {
     scss: 'scss',
     less: 'less',
     py: 'python',
+    pyi: 'python',
+    pyw: 'python',
     rb: 'ruby',
     go: 'go',
     rs: 'rust',

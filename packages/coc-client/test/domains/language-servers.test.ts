@@ -25,12 +25,14 @@ describe('LanguageServersClient', () => {
     await client.get('repo/a space/雪%done');
     await client.replace('repo/a space/雪%done', { enabled: true, definitions });
     await client.update('repo/a space/雪%done', { enabled: false });
+    await client.retry('repo/a space/雪%done', 'session-key');
 
     const encoded = '/workspaces/repo%2Fa%20space%2F%E9%9B%AA%25done/language-servers';
     expect(adapter.calls).toMatchObject([
       { path: encoded, options: undefined },
       { path: encoded, options: { method: 'PUT', body: { enabled: true, definitions } } },
       { path: encoded, options: { method: 'PATCH', body: { enabled: false } } },
+      { path: `${encoded}/retry`, options: { method: 'POST', body: { sessionId: 'session-key' } } },
     ]);
   });
 

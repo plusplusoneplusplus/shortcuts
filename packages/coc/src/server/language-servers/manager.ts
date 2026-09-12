@@ -12,6 +12,8 @@
  */
 
 import { LanguageServerSession } from './session';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
 import type { LanguageServerSessionOptions, LanguageServerSessionState } from './session';
 import { onLanguageServerConfigChanged, resolveLanguageServerDefinitions } from './repository';
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
@@ -87,10 +89,12 @@ const DEFAULT_MAX_SESSIONS = 12;
 
 interface SessionEntry {
     key: string;
+    publicId: string;
     workspaceId: string;
     editingSessionId: string;
     definition: LanguageServerDefinition;
     rootPath: string;
+    rootLabel: string;
     session: LanguageServerSession;
     references: number;
     lastUsedAt: number;
@@ -162,11 +166,37 @@ export class LanguageServerManager {
     }
 
     /** Current state of every live session, newest use first. */
-    listStates(workspaceId?: string): (LanguageServerSessionState & { key: string; workspaceId: string })[] {
+    listStates(workspaceId?: string): (LanguageServerSessionState & {
+        sessionId: string;
+        workspaceId: string;
+        projectRoot: string;
+    })[] {
         return [...this.entries.values()]
             .filter((entry) => workspaceId === undefined || entry.workspaceId === workspaceId)
             .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
-            .map((entry) => ({ ...entry.session.getState(), key: entry.key, workspaceId: entry.workspaceId }));
+            .map((entry) => ({
+                ...entry.session.getState(),
+                sessionId: entry.publicId,
+                workspaceId: entry.workspaceId,
+                projectRoot: entry.rootLabel,
+            }));
+    }
+
+    async retry(workspaceId: string, sessionId: string): Promise<boolean> {
+        const entry = [...this.entries.values()].find(
+            candidate => candidate.publicId === sessionId && candidate.workspaceId === workspaceId,
+        );
+        if (!entry) {
+            return false;
+        }
+        try {
+            await entry.session.restart();
+        } catch (error) {
+            if (!['unavailable', 'failed', 'timeout'].includes(entry.session.status)) {
+                throw error;
+            }
+        }
+        return true;
     }
 
     getSession(key: string): LanguageServerSession | undefined {
@@ -235,6 +265,20 @@ export class LanguageServerManager {
             runtimeLabel: prepared.runtimeLabel,
             commandLabel: prepared.commandLabel,
             unavailableDetail: prepared.notes?.join(' '),
+            recoveryCommand: prepared.recoveryCommand,
+            prepareForStart: () => {
+                const next = prepareDefinitionForRoot(definition, rootPath, {
+                    exists: this.options.exists,
+                    ...this.options.prepareDeps,
+                });
+                return {
+                    definition: next.definition,
+                    runtimeLabel: next.runtimeLabel,
+                    commandLabel: next.commandLabel,
+                    unavailableDetail: next.notes?.join(' '),
+                    recoveryCommand: next.recoveryCommand,
+                };
+            },
             clientCapabilities: this.options.clientCapabilities,
             startTimeoutMs: this.options.startTimeoutMs,
             requestTimeoutMs: this.options.requestTimeoutMs,
@@ -248,10 +292,12 @@ export class LanguageServerManager {
             : new LanguageServerSession(sessionOptions);
         const entry: SessionEntry = {
             key,
+            publicId: randomUUID(),
             workspaceId: request.workspaceId,
             editingSessionId: request.editingSessionId,
             definition,
             rootPath,
+            rootLabel: relativeRootLabel(request.workspaceRoot, rootPath),
             session,
             references: 0,
             lastUsedAt: ++this.clock,
@@ -374,6 +420,17 @@ export class LanguageServerManager {
             }
         }
     }
+}
+
+function relativeRootLabel(workspaceRoot: string, rootPath: string): string {
+    const relative = path.relative(path.resolve(workspaceRoot), path.resolve(rootPath));
+    if (relative === '') {
+        return '.';
+    }
+    if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
+        return path.basename(rootPath);
+    }
+    return relative.split(path.sep).join('/');
 }
 
 /**

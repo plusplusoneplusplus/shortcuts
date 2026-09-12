@@ -174,6 +174,39 @@ describe('PreviewPane — language document (AC-02)', () => {
         expect((changes[changes.length - 1].params as any).contentChanges[0].text).toBe('const b = 1;');
     });
 
+    it.each(['unavailable', 'reconnecting'] as const)(
+        'keeps editing and saving usable while language support is %s',
+        async (languageStatus) => {
+            renderPane({ filePath: 'src/app.pyw', fileName: 'app.pyw' });
+            const attachment = await attachmentFor('src/app.pyw');
+            act(() => {
+                if (languageStatus === 'unavailable') {
+                    attachment.reportUnavailable('missing-executable', 'Pyright unavailable');
+                } else {
+                    attachment.attach({
+                        languageId: 'python',
+                        definitionId: 'python',
+                        displayName: 'Python',
+                        state: {
+                            status: 'reconnecting',
+                            definitionId: 'python',
+                            displayName: 'Python',
+                        },
+                    });
+                }
+            });
+
+            act(() => { editor.onChange('print("still editable")', []); });
+            fireEvent.click(await screen.findByTestId('save-btn'));
+
+            await waitFor(() => expect(mockExplorerApi.writeBlob).toHaveBeenCalledWith(
+                'ws-1',
+                'src/app.pyw',
+                'print("still editable")',
+            ));
+        },
+    );
+
     it('publishes the document diagnostics to the editor as markers', async () => {
         renderPane();
         const attachment = await attachmentFor('src/a.ts');
@@ -200,8 +233,8 @@ describe('PreviewPane — language document (AC-02)', () => {
         const toolbar = screen.getByTestId('preview-toolbar');
         expect(status.closest('[data-testid="preview-pane"]')).toBe(pane);
         expect(status.closest('[data-testid="preview-toolbar"]')).toBeNull();
-        expect(status.parentElement?.classList.contains('pointer-events-none')).toBe(true);
-        expect(status.classList.contains('pointer-events-auto')).toBe(true);
+        expect(status.closest('.pointer-events-none')).not.toBeNull();
+        expect(status.closest('.pointer-events-auto')).not.toBeNull();
         expect(screen.getByTestId('language-status-label').textContent).toBe('TypeScript');
 
         // The server dies. The status follows it, and the retry the user is

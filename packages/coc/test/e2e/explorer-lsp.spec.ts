@@ -1,7 +1,7 @@
 /**
  * Language support in the Explorer, with every layer real: a browser running
  * the production SPA bundle, the Monaco that ships in it, the CoC server, and a
- * `typescript-language-server` child process reading a project off disk.
+ * language-server child processes reading projects off disk.
  *
  * Every other suite in this feature stops short of one of those. The jsdom
  * tests drive the real store and the real providers against a fake socket; the
@@ -29,6 +29,7 @@ import {
 } from './fixtures/explorer-tabs-seed';
 import {
     createDecoyRepoFixture,
+    createPythonRepoFixture,
     createRustRepoFixture,
     createTypeScriptRepoFixture,
     enableLanguageServers,
@@ -38,7 +39,7 @@ import {
     registerRemoteServer,
     startSecondaryServer,
 } from './fixtures/secondary-server';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import type { Locator, Page } from '@playwright/test';
 
 const WORKSPACE_ID = 'ws-lsp';
@@ -49,6 +50,9 @@ const APP_PANEL = `[data-testid="explorer-tab-panel-${APP_TAB}"]`;
 const RUST_APP_TAB = 'file:src/app.rs';
 const RUST_CORE_TAB = 'file:core-fixture/src/lib.rs';
 const RUST_APP_PANEL = `[data-testid="explorer-tab-panel-${RUST_APP_TAB}"]`;
+const PYTHON_APP_TAB = 'file:src/app.py';
+const PYTHON_STUB_TAB = 'file:src/helpers.pyi';
+const PYTHON_APP_PANEL = `[data-testid="explorer-tab-panel-${PYTHON_APP_TAB}"]`;
 
 /**
  * Starting a Node process, handshaking with it and letting it read a project is
@@ -65,6 +69,41 @@ test.describe.configure({ timeout: 120_000 });
  */
 function makeTmpDir(): string {
     return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-lsp-')));
+}
+
+function addEnvironmentOnlyPythonPackage(repoDir: string): void {
+    const candidates = process.platform === 'win32'
+        ? [{ command: 'python', args: [] }, { command: 'py', args: ['-3'] }]
+        : [{ command: 'python3', args: [] }, { command: 'python', args: [] }];
+    const candidate = candidates.find(({ command, args }) => {
+        const result = spawnSync(command, [...args, '-m', 'venv', '--without-pip', '.venv'], {
+            cwd: repoDir,
+            encoding: 'utf8',
+            stdio: 'pipe',
+            timeout: 60_000,
+            windowsHide: true,
+        });
+        return result.status === 0;
+    });
+    if (!candidate) {
+        throw new Error('Python E2E requires python3, python, or py -3 with the standard-library venv module');
+    }
+
+    const interpreter = path.join(
+        repoDir,
+        '.venv',
+        ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']),
+    );
+    const sitePackages = execFileSync(
+        interpreter,
+        ['-c', 'import site; print(site.getsitepackages()[0])'],
+        { cwd: repoDir, encoding: 'utf8', windowsHide: true },
+    ).trim();
+    const packageDir = path.join(sitePackages, 'remote_env_only');
+    fs.mkdirSync(packageDir, { recursive: true });
+    fs.writeFileSync(path.join(packageDir, '__init__.py'), 'def remote_label(name):\n    return f"remote: {name}"\n');
+    fs.writeFileSync(path.join(packageDir, '__init__.pyi'), 'def remote_label(name: str) -> str: ...\n');
+    fs.writeFileSync(path.join(packageDir, 'py.typed'), '');
 }
 
 /** Navigate to the repo detail and click the Explorer sub-tab. */
@@ -648,7 +687,143 @@ test.describe('Explorer language support – recovery', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Rust language support
+// 4. Python language support
+// ---------------------------------------------------------------------------
+
+test.describe('Explorer language support – Python', () => {
+    test.describe.configure({ mode: 'serial' });
+
+    test('LSP.P1 packaged Pyright powers Explorer features and dirty-buffer replay', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createPythonRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'python-lsp-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+            await enableLanguageServers(serverUrl, WORKSPACE_ID, 'python');
+
+            await gotoExplorer(page, serverUrl);
+            await openSourceFile(page, 'app.py');
+            await waitForLanguageServer(page, PYTHON_APP_PANEL);
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="language-status-label"]`))
+                .toHaveText('Python');
+
+            await expect
+                .poll(
+                    () => hoverTextFor(
+                        page,
+                        'label = format_widget',
+                        'label',
+                        PYTHON_APP_PANEL,
+                    ),
+                    { timeout: 90_000 },
+                )
+                .toContain('label: str');
+
+            const broken = 'broken: int = label';
+            await focusMonacoBuffer(page, PYTHON_APP_PANEL);
+            await page.keyboard.press('Control+End');
+            await page.keyboard.type(broken);
+            await expect
+                .poll(() => squigglyLines(page, PYTHON_APP_PANEL), { timeout: 30_000 })
+                .toContain(broken);
+            await page.keyboard.press('Escape');
+            await page.keyboard.press('Shift+Home');
+            await page.keyboard.press('Delete');
+            await expect
+                .poll(() => squigglyLines(page, PYTHON_APP_PANEL), { timeout: 30_000 })
+                .toEqual([]);
+
+            await ctrlClickWord(
+                page,
+                'label = format_widget',
+                'format_widget',
+                PYTHON_APP_PANEL,
+            );
+            await expectEditorTabs(page, [PYTHON_APP_TAB, PYTHON_STUB_TAB]);
+            const stubPanel = `[data-testid="explorer-tab-panel-${PYTHON_STUB_TAB}"]`;
+            await expect
+                .poll(() => caretLineText(page, stubPanel), { timeout: 15_000 })
+                .toContain('def format_widget');
+
+            await editorTab(page, PYTHON_APP_TAB).click();
+            const unsaved = 'unsaved_marker = label';
+            await focusMonacoBuffer(page, PYTHON_APP_PANEL);
+            await page.keyboard.press('Control+End');
+            await page.keyboard.type(unsaved);
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toBeVisible({ timeout: 10_000 });
+
+            await page.locator(`${PYTHON_APP_PANEL} [data-testid="language-restart-btn"]`).click();
+            await waitForLanguageServer(page, PYTHON_APP_PANEL);
+            await expect
+                .poll(
+                    () => hoverTextFor(
+                        page,
+                        'unsaved_marker = label',
+                        'unsaved_marker',
+                        PYTHON_APP_PANEL,
+                    ),
+                    { timeout: 90_000 },
+                )
+                .toContain('unsaved_marker: str');
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toBeVisible();
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('LSP.P2 Pyright definition navigation stays in unified right-panel tabs', async ({
+        page,
+        serverUrl,
+    }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createPythonRepoFixture(tmpDir, 'python-panel-repo');
+            await seedWorkspace(serverUrl, PANEL_WORKSPACE_ID, 'Python Panel Repo', repoDir);
+            await enableSplitWorkspacePanel(serverUrl);
+            await enableLanguageServers(serverUrl, PANEL_WORKSPACE_ID, 'python');
+
+            await page.goto(serverUrl);
+            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, {
+                timeout: 10_000,
+            });
+            await page.locator('[data-testid="repo-tab"]').first().click();
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 8_000 });
+            await openUnifiedSourceFile(page, 'app.py');
+
+            await waitForLanguageServer(page, UNIFIED_ACTIVE_FILE);
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="language-status-label"]`))
+                .toHaveText('Python');
+
+            const tabLabels = page.locator(
+                `${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`,
+            );
+            await ctrlClickWord(
+                page,
+                'format_widget',
+                'format_widget',
+                UNIFIED_ACTIVE_FILE,
+                true,
+            );
+            await expect(tabLabels.filter({ hasText: 'app.py' })).toHaveCount(1);
+            await expect(tabLabels.filter({ hasText: 'helpers.pyi' })).toHaveCount(1, {
+                timeout: 15_000,
+            });
+            await expect
+                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
+                .toContain('def format_widget');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 5. Rust language support
 // ---------------------------------------------------------------------------
 
 test.describe('Explorer language support – Rust', () => {
@@ -773,7 +948,7 @@ test.describe('Explorer language support – Rust', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. A clone that lives on another CoC server
+// 6. A clone that lives on another CoC server
 // ---------------------------------------------------------------------------
 
 /**
@@ -883,7 +1058,7 @@ async function openUnifiedSourceFile(page: Page, name: string): Promise<void> {
 test.describe('Explorer language support – direct remote clone', () => {
     test.describe.configure({ mode: 'serial' });
 
-    test('LSP.7 a remote clone gets its own host\'s language server and definition', async ({
+    test('LSP.P3 a remote Python clone keeps Pyright, its environment, and definitions on its owner', async ({
         page,
         serverUrl,
     }) => {
@@ -892,108 +1067,118 @@ test.describe('Explorer language support – direct remote clone', () => {
         let remoteServerId: string | null = null;
         try {
             // The real project, on the other host.
-            const remoteDir = createTypeScriptRepoFixture(tmpDir, {
-                dirName: 'remote-repo',
-                marker: 'formatting for the remote checkout',
-            });
+            const remoteDir = createPythonRepoFixture(tmpDir, 'remote-python-repo');
+            fs.appendFileSync(
+                path.join(remoteDir, 'src', 'app.py'),
+                '\nfrom remote_env_only import remote_label\nenv_message = remote_label("CoC")\n',
+            );
+            fs.appendFileSync(
+                path.join(remoteDir, 'src', 'helpers.pyi'),
+                '# helper stub from the remote checkout\n',
+            );
+            addEnvironmentOnlyPythonPackage(remoteDir);
             initGitCheckout(remoteDir, 'https://github.com/acme/remote-lsp.git');
-            await seedWorkspace(secondary.url, WORKSPACE_ID, 'Remote LSP Repo', remoteDir);
+            await seedWorkspace(secondary.url, WORKSPACE_ID, 'Remote Python Repo', remoteDir);
 
             // The decoy, on the dashboard host, under the SAME workspace id and
             // the same relative paths.
-            const decoyDir = createDecoyRepoFixture(tmpDir);
+            const decoyDir = createPythonRepoFixture(tmpDir, 'decoy-python-repo');
+            fs.writeFileSync(
+                path.join(decoyDir, 'src', 'app.py'),
+                '# Python decoy on the dashboard host\nlocal_only = "decoy"\n',
+            );
+            fs.appendFileSync(
+                path.join(decoyDir, 'src', 'helpers.pyi'),
+                '# helper stub from the dashboard decoy\n',
+            );
             initGitCheckout(decoyDir, 'https://github.com/acme/decoy-lsp.git');
-            await seedWorkspace(serverUrl, WORKSPACE_ID, 'Decoy Local Repo', decoyDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'Decoy Python Repo', decoyDir);
 
             await enableExplorerEditorTabs(serverUrl);
             // Language support is turned on for the REMOTE workspace only. The
             // dashboard host keeps its shipped-off config, so a document that
             // read its configuration locally would report "Language support off"
             // and never start anything.
-            await enableLanguageServers(secondary.url, WORKSPACE_ID);
+            await enableLanguageServers(secondary.url, WORKSPACE_ID, 'python');
             remoteServerId = (await registerRemoteServer(serverUrl, 'Remote Host', secondary.url)).id;
 
             await enableRemoteShell(page);
             await page.goto(serverUrl);
-            await selectRepoNamed(page, 'Remote LSP Repo');
+            await selectRepoNamed(page, 'Remote Python Repo');
             await openSubTab(page, 'explorer');
-            await openSourceFile(page, 'app.ts');
+            await openSourceFile(page, 'app.py');
 
             // AC-01: the badge can only reach `ready` through the remote host's
             // config and a server process started on that host.
-            await waitForLanguageServer(page);
-            await expect(page.locator(`${APP_PANEL} [data-testid="language-status-label"]`))
-                .toHaveText('TypeScript');
+            await waitForLanguageServer(page, PYTHON_APP_PANEL);
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="language-status-label"]`))
+                .toHaveText('Python');
 
             // The buffer on screen is the remote checkout's, not the decoy that
             // shares its path on the page origin.
-            expect(await paneText(page, APP_PANEL)).toContain('formatWidget');
-            await waitForProjectLoaded(page);
+            expect(await paneText(page, PYTHON_APP_PANEL)).toContain('remote_env_only');
+            expect(await paneText(page, PYTHON_APP_PANEL)).not.toContain('Python decoy');
 
-            await expectEditorTabs(page, [APP_TAB]);
+            // `remote_env_only` exists only in this checkout's .venv. Inferring
+            // `str` proves interpreter discovery happened on the owning host.
+            await expect
+                .poll(
+                    () => hoverTextFor(
+                        page,
+                        'env_message = remote_label',
+                        'env_message',
+                        PYTHON_APP_PANEL,
+                    ),
+                    { timeout: 90_000 },
+                )
+                .toContain('env_message: str');
 
-            const unsavedMarker = 'export const unsavedRemoteBuffer = label;';
-            await focusMonacoBuffer(page);
+            await expectEditorTabs(page, [PYTHON_APP_TAB]);
+
+            const unsavedMarker = 'unsaved_remote_buffer = label';
+            await focusMonacoBuffer(page, PYTHON_APP_PANEL);
             await page.keyboard.press('Control+End');
             await page.keyboard.type(unsavedMarker);
-            await expect(page.locator(`${APP_PANEL} [data-testid="dirty-indicator"]`))
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
                 .toBeVisible({ timeout: 10_000 });
 
             // AC-02: go to definition across files. The answer comes from the
             // remote server, and the file it names has to be read back from the
             // remote host too.
-            await ctrlClickWord(page, 'export const label', 'formatWidget');
+            await ctrlClickWord(page, 'label = format_widget', 'format_widget', PYTHON_APP_PANEL);
 
-            await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
-            const formatPanel = `[data-testid="explorer-tab-panel-${FORMAT_TAB}"]`;
-            await expect(page.locator(`${formatPanel} [data-testid="monaco-container"]`))
+            await expectEditorTabs(page, [PYTHON_APP_TAB, PYTHON_STUB_TAB]);
+            const stubPanel = `[data-testid="explorer-tab-panel-${PYTHON_STUB_TAB}"]`;
+            await expect(page.locator(`${stubPanel} [data-testid="monaco-container"]`))
                 .toBeVisible({ timeout: 15_000 });
 
             // The marker is written into the remote checkout only, so this is
             // the assertion that separates "the right path" from "the right
             // host's copy of that path".
             await expect
-                .poll(() => paneText(page, formatPanel), { timeout: 15_000 })
-                .toContain('formatting for the remote checkout');
-            expect(await paneText(page, formatPanel)).not.toContain('decoy checkout');
+                .poll(() => paneText(page, stubPanel), { timeout: 15_000 })
+                .toContain('helper stub from the remote checkout');
+            expect(await paneText(page, stubPanel)).not.toContain('dashboard decoy');
 
             await expect
-                .poll(() => caretPosition(page, formatPanel), { timeout: 15_000 })
-                .toEqual({
-                    line: 7,
-                    column: 17,
-                    lineText: 'export function formatWidget(widget: Widget): string {',
-                });
+                .poll(() => caretLineText(page, stubPanel), { timeout: 15_000 })
+                .toContain('def format_widget');
 
             await expect(page.locator('[data-testid="clone-switch"]'))
-                .toHaveAttribute('title', 'Remote LSP Repo');
-            await expect(page.locator(`${APP_PANEL} [data-testid="dirty-indicator"]`))
+                .toHaveAttribute('title', 'Remote Python Repo');
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
                 .toHaveCount(1);
 
-            // Monaco handles same-file definitions itself. The gesture must move
-            // to the parameter without creating a third tab or leaving this clone.
-            await ctrlClickWord(page, 'return widget.name', 'widget', formatPanel);
-            await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
-            await expect
-                .poll(() => caretPosition(page, formatPanel), { timeout: 15_000 })
-                .toEqual({
-                    line: 7,
-                    column: 30,
-                    lineText: 'export function formatWidget(widget: Widget): string {',
-                });
-            await expect(page.locator('[data-testid="clone-switch"]'))
-                .toHaveAttribute('title', 'Remote LSP Repo');
-
-            await editorTab(page, APP_TAB).click();
-            await expect(page.locator(`${APP_PANEL} [data-testid="monaco-container"]`))
+            await editorTab(page, PYTHON_APP_TAB).click();
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="monaco-container"]`))
                 .toBeVisible({ timeout: 10_000 });
             await expect
-                .poll(() => paneText(page, APP_PANEL), { timeout: 10_000 })
+                .poll(() => paneText(page, PYTHON_APP_PANEL), { timeout: 10_000 })
                 .toContain(unsavedMarker);
-            await expect(page.locator(`${APP_PANEL} [data-testid="dirty-indicator"]`))
+            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
                 .toBeVisible();
             await expect(page.locator('[data-testid="clone-switch"]'))
-                .toHaveAttribute('title', 'Remote LSP Repo');
+                .toHaveAttribute('title', 'Remote Python Repo');
         } finally {
             if (remoteServerId) {
                 await request(`${serverUrl}/api/servers/${encodeURIComponent(remoteServerId)}`, {

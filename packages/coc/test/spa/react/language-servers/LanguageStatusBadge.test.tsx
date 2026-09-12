@@ -58,6 +58,29 @@ describe('LanguageStatusBadge', () => {
         expect(onRestart).toHaveBeenCalledTimes(1);
     });
 
+    it('opens actionable failure details and copies the recovery command', () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        render(
+            <LanguageStatusBadge
+                snapshot={snapshot('detached', {
+                    status: 'unavailable',
+                    displayName: 'Rust',
+                    runtime: 'Server: rustup (stable)',
+                    detail: 'rust-analyzer is not installed for the active toolchain',
+                    recoveryCommand: 'rustup component add rust-analyzer',
+                })}
+                onRestart={() => {}}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('language-status-summary'));
+        expect(screen.getByTestId('language-status-details').textContent).toContain('active toolchain');
+        fireEvent.click(screen.getByTestId('language-copy-recovery'));
+        expect(writeText).toHaveBeenCalledWith('rustup component add rust-analyzer');
+        expect(screen.getByTestId('language-restart-btn').textContent).toBe('Retry');
+    });
+
     it('offers no retry when the container proxy puts the host out of reach', () => {
         render(
             <LanguageStatusBadge

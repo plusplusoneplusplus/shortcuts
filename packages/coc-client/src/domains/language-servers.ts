@@ -11,6 +11,10 @@ function configPath(workspaceId: string): string {
   return `/workspaces/${encodePathSegment(workspaceId)}/language-servers`;
 }
 
+function retryPath(workspaceId: string): string {
+  return `${configPath(workspaceId)}/retry`;
+}
+
 /**
  * Workspace-scoped language-server configuration.
  *
@@ -37,6 +41,13 @@ export class LanguageServersClient {
     return this.transport.request<LanguageServerConfigResponse>(configPath(workspaceId), {
       method: 'PATCH',
       body: { ...config },
+    });
+  }
+
+  retry(workspaceId: string, sessionId: string): Promise<LanguageServerConfigResponse> {
+    return this.transport.request<LanguageServerConfigResponse>(retryPath(workspaceId), {
+      method: 'POST',
+      body: { sessionId },
     });
   }
 }

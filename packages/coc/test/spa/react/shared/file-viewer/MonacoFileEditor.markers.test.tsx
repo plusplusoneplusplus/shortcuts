@@ -77,7 +77,7 @@ beforeEach(() => {
 
 describe('MonacoFileEditor — markers', () => {
     it('publishes the host markers against the model under the shared owner', async () => {
-        render(<MonacoFileEditor value="a" language="typescript" markers={[marker('boom')]} />);
+        render(<MonacoFileEditor value="a" language="python" markers={[marker('boom')]} />);
         await flushMount();
 
         expect(stub.setModelMarkers).toHaveBeenCalledWith(

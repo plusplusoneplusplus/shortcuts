@@ -11,7 +11,9 @@
  * an explicit choice, and preparation must not undo it.
  */
 
-import { RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { applyPythonRuntime, resolvePythonRuntime, resolvePythonServerRoot } from './python-adapter';
+import type { PythonRuntimeDeps } from './python-adapter';
 import { applyRustRuntime, resolveRustRuntime, resolveRustServerRoot } from './rust-adapter';
 import type { RustRuntimeDeps } from './rust-adapter';
 import { resolveServerRoot } from './selection';
@@ -28,9 +30,11 @@ export interface PreparedDefinition {
     commandLabel?: string;
     /** User-facing notes, e.g. why a workspace toolchain was rejected. */
     notes?: string[];
+    /** Safe command the user may copy and run themselves. */
+    recoveryCommand?: string;
 }
 
-export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps;
+export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps & PythonRuntimeDeps;
 
 export function resolveDefinitionRoot(
     definition: LanguageServerDefinition,
@@ -40,6 +44,9 @@ export function resolveDefinitionRoot(
 ): string {
     if (definition.id === RUST_PRESET.id && definition.builtIn === true) {
         return resolveRustServerRoot(definition, workspaceRoot, relativePath, deps);
+    }
+    if (claimsPython(definition)) {
+        return resolvePythonServerRoot(definition, workspaceRoot, relativePath, deps);
     }
     return resolveServerRoot(definition, workspaceRoot, relativePath, deps.exists);
 }
@@ -69,6 +76,15 @@ export function prepareDefinitionForRoot(
             runtimeLabel: runtime.label,
             commandLabel: RUST_PRESET.command,
             notes: runtime.notes,
+            recoveryCommand: runtime.recoveryCommand,
+        };
+    }
+    if (claimsPython(definition)) {
+        const runtime = resolvePythonRuntime(definition, rootPath, deps);
+        return {
+            definition: applyPythonRuntime(definition, runtime, rootPath, deps),
+            runtimeLabel: runtime.label,
+            commandLabel: PYTHON_PRESET.command,
         };
     }
     return { definition };
@@ -84,4 +100,12 @@ function claimsTypeScript(definition: LanguageServerDefinition): boolean {
 
 function claimsRust(definition: LanguageServerDefinition): boolean {
     return definition.id === RUST_PRESET.id && definition.builtIn === true && definition.command === RUST_PRESET.command;
+}
+
+function claimsPython(definition: LanguageServerDefinition): boolean {
+    return (
+        definition.id === PYTHON_PRESET.id &&
+        definition.builtIn === true &&
+        definition.command === PYTHON_PRESET.command
+    );
 }

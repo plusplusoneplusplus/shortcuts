@@ -17,6 +17,7 @@ import {
     readLanguageServerConfig,
 } from '../../../src/server/language-servers/repository';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
+import type { LanguageServerManager } from '../../../src/server/language-servers/manager';
 import type { Route } from '../../../src/server/types';
 
 const WORKSPACE = 'ws-lang';
@@ -78,11 +79,13 @@ function customDefinition(overrides: Partial<LanguageServerDefinition> = {}): La
 describe('registerLanguageServerRoutes', () => {
     let dataDir: string;
     let routes: Route[];
+    let runtimeManager: Pick<LanguageServerManager, 'listStates' | 'retry'> | undefined;
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-lsp-routes-'));
         routes = [];
-        registerLanguageServerRoutes(routes, dataDir);
+        runtimeManager = undefined;
+        registerLanguageServerRoutes(routes, dataDir, () => runtimeManager as LanguageServerManager | undefined);
     });
 
     afterEach(() => {
@@ -97,16 +100,61 @@ describe('registerLanguageServerRoutes', () => {
         return { status: res.statusCode, json: res.body ? JSON.parse(res.body) : undefined };
     }
 
-    it('GET returns the disabled default with the TypeScript preset before anything is configured', async () => {
+    it('GET returns all disabled built-in presets before anything is configured', async () => {
         const { status, json } = await call('GET', WORKSPACE);
 
         expect(status).toBe(200);
         expect(json.enabled).toBe(false);
         expect(json.definitions).toEqual([]);
         expect(json.status).toBe('missing');
-        expect(json.effective.map((d: LanguageServerDefinition) => d.id)).toContain('typescript');
+        expect(json.effective.map((d: LanguageServerDefinition) => d.id)).toEqual(['typescript', 'rust', 'python']);
         // Nothing may start while support is off, preset included.
         expect(json.startable).toEqual([]);
+        expect(json.runtimes).toEqual([]);
+    });
+
+    it('GET exposes safe per-root runtime state without host paths', async () => {
+        runtimeManager = {
+            listStates: vi.fn(() => [{
+                sessionId: 'session-1',
+                workspaceId: WORKSPACE,
+                projectRoot: 'crates/api',
+                status: 'unavailable',
+                definitionId: 'rust',
+                displayName: 'Rust',
+                detail: 'rust-analyzer is not installed',
+                runtime: 'Server: rustup (stable)',
+                recoveryCommand: 'rustup component add rust-analyzer',
+                lastAttemptAt: '2026-09-12T05:00:00.000Z',
+                restarts: 0,
+                generation: 0,
+                capabilities: { workspace: { privateFeature: true } },
+            }]),
+            retry: vi.fn(),
+        };
+
+        const { json } = await call('GET', WORKSPACE);
+
+        expect(json.runtimes[0]).toMatchObject({
+            projectRoot: 'crates/api',
+            status: 'unavailable',
+            recoveryCommand: 'rustup component add rust-analyzer',
+        });
+        expect(JSON.stringify(json.runtimes)).not.toContain(dataDir);
+        expect(json.runtimes[0]).not.toHaveProperty('capabilities');
+    });
+
+    it('retries a workspace-owned session and returns its updated state', async () => {
+        const retry = vi.fn().mockResolvedValue(true);
+        runtimeManager = { listStates: vi.fn(() => []), retry };
+        const url = `/api/workspaces/${WORKSPACE}/language-servers/retry`;
+        const found = findRoute(routes, 'POST', url);
+        const res = fakeRes();
+
+        await found.route.handler(fakeReq('POST', { sessionId: 'session-1' }), res, found.match);
+
+        expect(retry).toHaveBeenCalledWith(WORKSPACE, 'session-1');
+        expect(res.statusCode).toBe(200);
     });
 
     it('PUT persists a custom definition for the target workspace only', async () => {
@@ -161,6 +209,32 @@ describe('registerLanguageServerRoutes', () => {
         // Overriding a preset keeps it marked as built-in and repoints the command.
         expect(startable[0].builtIn).toBe(true);
         expect(startable[0].command).toBe('node');
+    });
+
+    it('starts Python only when both workspace support and its preset are enabled', async () => {
+        const python = customDefinition({
+            id: 'python',
+            displayName: 'Python',
+            languageIds: ['python'],
+            filePatterns: ['**/*.{py,pyi,pyw}'],
+            command: 'pyright-langserver',
+            args: ['--stdio'],
+            rootMarkers: ['pyproject.toml'],
+            enabled: true,
+        });
+
+        const presetOnly = await call('PUT', WORKSPACE, { enabled: false, definitions: [python] });
+        expect(presetOnly.json.startable).toEqual([]);
+
+        const enabled = await call('PATCH', WORKSPACE, { enabled: true });
+        expect(enabled.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual(['python']);
+        expect(enabled.json.startable[0].builtIn).toBe(true);
+
+        const disabledPreset = await call('PATCH', WORKSPACE, {
+            definitions: [{ ...python, enabled: false }],
+        });
+        expect(disabledPreset.json.startable).toEqual([]);
+        expect(readLanguageServerConfig(dataDir, WORKSPACE).definitions[0].enabled).toBe(false);
     });
 
     it('rejects an invalid definition with field-level errors and keeps the last valid config', async () => {

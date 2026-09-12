@@ -28,6 +28,10 @@ export const languageServersApi = {
     update(workspaceId: string, config: LanguageServerConfigUpdate): Promise<LanguageServerConfigResponse> {
         return getCocClientForWorkspace(workspaceId).languageServers.update(workspaceId, config);
     },
+
+    retry(workspaceId: string, sessionId: string): Promise<LanguageServerConfigResponse> {
+        return getCocClientForWorkspace(workspaceId).languageServers.retry(workspaceId, sessionId);
+    },
 };
 
 export type { LanguageServerConfigRejection };

@@ -7,6 +7,7 @@ import type { LanguageServerDefinition } from './types';
 
 export const RUSTUP_RESOLUTION_TIMEOUT_MS = 3_000;
 export const RUST_ANALYZER_INSTALL_GUIDANCE = 'Install with: rustup component add rust-analyzer';
+export const RUST_ANALYZER_RECOVERY_COMMAND = 'rustup component add rust-analyzer';
 
 export type RustRuntimeOrigin = 'rustup' | 'path' | 'unavailable';
 
@@ -16,11 +17,13 @@ export interface RustRuntime {
     origin: RustRuntimeOrigin;
     label: string;
     notes: string[];
+    recoveryCommand?: string;
 }
 
 export interface RustRuntimeDeps {
     runRustupWhich?: (rootPath: string, timeoutMs: number) => string | undefined;
     resolveOnPath?: (command: string) => string | undefined;
+    isRustupProxy?: (candidate: string) => boolean;
     /** Reads a Cargo manifest for workspace-root discovery. */
     readFile?: (file: string) => string | undefined;
 }
@@ -49,12 +52,14 @@ export function resolveRustRuntime(
 
     const pathCommand = (deps.resolveOnPath ?? findExecutableOnPath)(definition.command);
     if (pathCommand) {
+        const rustupProxy = (deps.isRustupProxy ?? defaultIsRustupProxy)(pathCommand);
         return {
             command: pathCommand,
             args: definition.args,
-            origin: 'path',
-            label: 'Server: system PATH',
-            notes: [],
+            origin: rustupProxy ? 'rustup' : 'path',
+            label: rustupProxy ? 'Server: rustup proxy' : 'Server: system PATH',
+            notes: rustupProxy ? [RUST_ANALYZER_INSTALL_GUIDANCE] : [],
+            ...(rustupProxy ? { recoveryCommand: RUST_ANALYZER_RECOVERY_COMMAND } : {}),
         };
     }
 
@@ -64,6 +69,7 @@ export function resolveRustRuntime(
         origin: 'unavailable',
         label: 'Server: unavailable',
         notes: [RUST_ANALYZER_INSTALL_GUIDANCE],
+        recoveryCommand: RUST_ANALYZER_RECOVERY_COMMAND,
     };
 }
 
@@ -197,6 +203,26 @@ function defaultIsExecutable(candidate: string): boolean {
     try {
         fs.accessSync(candidate, process.platform === 'win32' ? fs.constants.F_OK : fs.constants.X_OK);
         return fs.statSync(candidate).isFile();
+    } catch {
+        return false;
+    }
+}
+
+function defaultIsRustupProxy(candidate: string): boolean {
+    try {
+        const resolved = fs.realpathSync(candidate);
+        if (/^rustup(?:\.exe)?$/i.test(path.basename(resolved))) {
+            return true;
+        }
+        const rustup = findExecutableOnPath('rustup');
+        if (!rustup) {
+            return false;
+        }
+        const candidateStat = fs.statSync(candidate);
+        const rustupStat = fs.statSync(rustup);
+        return candidateStat.ino !== 0
+            && candidateStat.dev === rustupStat.dev
+            && candidateStat.ino === rustupStat.ino;
     } catch {
         return false;
     }
