@@ -25,6 +25,13 @@ crashing parser fixture so the corpus policy is directly comparable.
 `--threads 1,4,8`,
 `--extensions c,cpp,h`, `--drop-linux-page-cache`, and `--json` support corpus
 control, scaling, and reproducible reports.
+`npm run bench:symbol-storage` generates 100,000 sharded C-family files, warms
+the production SQLite store, and reports median warm manifest-diff and
+32,000-line targeted-update times. `--files`, `--runs`, `--target-lines`, and
+`--json` support quick harness checks and host-specific measurement runs. On a
+2-core Linux ARM64 host, five warm runs over files containing declarations
+measure a 591 ms manifest diff and a 52.6 ms targeted update; Windows
+measurements remain host-specific.
 
 **The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Its own `walkFiles` still serves *per-directory* listings, and `.git` is excluded by both regardless of `includeIgnored`/`showIgnored`.
 

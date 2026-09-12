@@ -21,6 +21,7 @@
     "ensure:native": "node scripts/ensure-native.mjs",
     "bench:git": "node scripts/bench-git.mjs",
     "bench:symbol-index": "node scripts/bench-symbol-index.mjs",
+    "bench:symbol-storage": "node scripts/bench-symbol-storage.mjs",
     "test": "vitest",
     "test:run": "vitest run"
   },
