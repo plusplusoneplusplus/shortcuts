@@ -107,12 +107,13 @@ Persisted values are validated on read. The target
 non-`deprioritized` option, then the first enabled one, then the scope. Only an
 explicit `setTarget` writes; mount and workspace switches never persist.
 
-Peer icon-only Search and Explorer controls live outside the panel and share its
-cross-tree open and mode stores. The classic shell renders
-`WorkspaceDockModeControls` in `RepoDetail`'s header; the remote-first shell
-renders the same component in `layout/TopBar.tsx` for a concrete clone or a
-`group-*` selection. My Work / My Life have no panel. Selecting an inactive mode
-opens or switches the panel; selecting its active mode while open closes it.
+One icon-only visibility toggle lives outside the panel and shares its cross-tree
+open store. The classic shell renders `WorkspaceDockToggle` in `RepoDetail`'s
+header; the remote-first shell renders the same component in `layout/TopBar.tsx`
+for a concrete clone or a `group-*` selection. My Work / My Life have no panel.
+Search and Explorer are peer navigator controls inside the panel; selecting one
+opens or switches the navigator, and selecting the active one collapses it
+without closing the resource panel.
 
 On desktop, a repo group's mounted panel also owns Ctrl/Cmd+P while collapsed,
 from every group sub-tab. The Quick Open portal may appear without changing the

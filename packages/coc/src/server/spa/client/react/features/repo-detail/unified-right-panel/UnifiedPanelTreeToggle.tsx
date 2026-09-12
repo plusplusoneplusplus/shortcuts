@@ -1,10 +1,9 @@
 /**
  * UnifiedPanelTreeToggle — opens and closes the panel's navigator column.
  *
- * The control has two possible homes: the file toolbar while it exists, and
- * the tab strip beside "+" for every other active view. Both placements drive
- * the same panel-scoped state, so the Search/Explorer navigator is always one
- * click away without duplicating controls.
+ * The Explorer control has two possible homes: the file toolbar while it
+ * exists, and the tab strip beside "+" for every other active view. It travels
+ * with the Search control and drives the same panel-scoped navigator state.
  */
 
 import { cn } from '../../../ui/cn';
@@ -19,7 +18,7 @@ export interface UnifiedPanelTreeToggleProps {
 }
 
 export function UnifiedPanelTreeToggle({ open, onToggle, placement, className }: UnifiedPanelTreeToggleProps) {
-    const label = open ? 'Hide navigator' : 'Show navigator';
+    const label = open ? 'Hide Explorer' : 'Show Explorer';
     return (
         <button
             type="button"

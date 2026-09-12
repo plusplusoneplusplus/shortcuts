@@ -1,5 +1,4 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import type { ReactNode } from 'react';
 import { cn } from '../../ui';
 
 /**
@@ -8,9 +7,9 @@ import { cn } from '../../ui';
  * only need the toggle — notably the global TopBar — don't transitively pull in
  * the heavy TerminalView / ExplorerPanel (xterm / Monaco) dependency graph.
  *
- * Open and selected mode are backed by cross-tree stores so controls in
- * RepoDetail's chrome header or the remote-first TopBar stay in sync with the
- * panel body across separate component subtrees.
+ * Open and selected mode are backed by cross-tree stores. The single visibility
+ * toggle in RepoDetail's chrome header or the remote-first TopBar stays in sync
+ * with the panel body, while the mode controls live inside the panel itself.
  */
 
 /** localStorage key for whether the dock is open, per workspace. */
@@ -170,10 +169,9 @@ export function useDockOpen(storageKey: string): [boolean, () => void] {
 }
 
 /**
- * Lightweight controller for dock visibility and selected mode — for controls
- * that live apart from the panel (the global TopBar in the remote-first shell).
- * It shares the same cross-tree stores as `useWorkspaceDock`, without pulling in
- * the view/width machinery.
+ * Lightweight controller for dock visibility and selected mode. The header uses
+ * its visibility action, and `useWorkspaceDock` passes its mode actions into the
+ * panel without pulling the view/width machinery into this module.
  */
 export function useWorkspaceDockToggle(workspaceId: string): {
     isOpen: boolean;
@@ -213,7 +211,7 @@ export function DockToggleIcon() {
     );
 }
 
-function SearchIcon() {
+export function SearchIcon() {
     return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <circle cx="11" cy="11" r="7" />
@@ -222,47 +220,26 @@ function SearchIcon() {
     );
 }
 
-const DOCK_MODE_CONTROLS: ReadonlyArray<{
-    mode: WorkspaceDockMode;
-    label: string;
-    icon: ReactNode;
-}> = [
-    { mode: 'search', label: 'Search', icon: <SearchIcon /> },
-    { mode: 'explorer', label: 'Explorer', icon: <DockToggleIcon /> },
-];
-
-/** Peer Search and Explorer controls shared by classic and remote desktop headers. */
-export function WorkspaceDockModeControls({ workspaceId }: { workspaceId: string }) {
-    const { isOpen, mode, selectMode } = useWorkspaceDockToggle(workspaceId);
+/** Single right-panel visibility control shared by classic and remote desktop headers. */
+export function WorkspaceDockToggle({ workspaceId }: { workspaceId: string }) {
+    const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
+    const label = isOpen ? 'Hide right panel' : 'Show right panel';
     return (
-        <div
-            role="group"
-            aria-label="Workspace panel mode"
-            data-testid="workspace-dock-mode-controls"
-            className="hidden items-center gap-1 md:flex"
+        <button
+            type="button"
+            data-testid="workspace-dock-toggle"
+            onClick={toggleOpen}
+            aria-label={label}
+            aria-expanded={isOpen}
+            title={label}
+            className={cn(
+                'hidden h-7 w-7 items-center justify-center rounded-md border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da] md:inline-flex',
+                isOpen
+                    ? 'border-[#0969da]/40 bg-[#ddf4ff] text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]'
+                    : 'border-[#d0d7de] bg-white text-[#656d76] hover:bg-[#f6f8fa] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#999] dark:hover:bg-[#2a2a2a]',
+            )}
         >
-            {DOCK_MODE_CONTROLS.map(control => {
-                const active = isOpen && mode === control.mode;
-                return (
-                    <button
-                        key={control.mode}
-                        type="button"
-                        data-testid={`workspace-dock-${control.mode}-toggle`}
-                        onClick={() => selectMode(control.mode)}
-                        aria-label={control.label}
-                        aria-pressed={active}
-                        title={`${control.label} panel`}
-                        className={cn(
-                            'inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da]',
-                            active
-                                ? 'border-[#0969da]/40 bg-[#ddf4ff] text-[#0969da] dark:bg-[#3794ff]/20 dark:text-[#79c0ff]'
-                                : 'border-[#d0d7de] bg-white text-[#656d76] hover:bg-[#f6f8fa] dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:text-[#999] dark:hover:bg-[#2a2a2a]',
-                        )}
-                    >
-                        {control.icon}
-                    </button>
-                );
-            })}
-        </div>
+            <DockToggleIcon />
+        </button>
     );
 }

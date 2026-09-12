@@ -863,10 +863,10 @@ async function enableSplitWorkspacePanel(serverUrl: string): Promise<void> {
 }
 
 async function openUnifiedSourceFile(page: Page, name: string): Promise<void> {
-    const explorerControl = page.locator('[data-testid="workspace-dock-explorer-toggle"]').first();
-    await expect(explorerControl).toBeVisible({ timeout: 15_000 });
-    if ((await explorerControl.getAttribute('aria-pressed')) !== 'true') {
-        await explorerControl.click();
+    const panelToggle = page.locator('[data-testid="workspace-dock-toggle"]').first();
+    await expect(panelToggle).toBeVisible({ timeout: 15_000 });
+    if ((await page.locator(UNIFIED_PANEL).getAttribute('data-open')) !== 'true') {
+        await panelToggle.click();
     }
     await expect(page.locator(UNIFIED_PANEL)).toHaveAttribute('data-open', 'true', { timeout: 10_000 });
     await page.keyboard.press('Control+p');

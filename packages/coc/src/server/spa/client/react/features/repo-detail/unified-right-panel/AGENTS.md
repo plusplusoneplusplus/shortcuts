@@ -46,8 +46,8 @@ from same-id clones never merge into one tab.
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
 | `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/mode/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — resource views on the left, the selected Search/Explorer mode on the right edge. |
 | `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
-| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab and the navigator toggle. The model decides whether the crumbs may navigate the tree. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
-| `UnifiedPanelTreeToggle.tsx` | The shared navigator toggle. It renders in the file toolbar or, when that toolbar is absent, in the tab strip. |
+| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab and the Search/Explorer navigator controls. The model decides whether the crumbs may navigate the tree. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
+| `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
@@ -83,9 +83,10 @@ the file's path (scrolled to the tail, so a long path truncates from the left
 with the whole thing in the row's tooltip) and the tab's `repoLabel` when it has
 one.
 
-The navigator toggle sits at the row's right edge. When the file toolbar is not
-rendered, the same control moves beside the tab strip's `+`, leaving exactly one
-visible control for collapsing or reopening the navigator.
+The Search and Explorer controls sit at the row's right edge. When the file
+toolbar is not rendered, the same pair moves beside the tab strip's `+`. Each
+selects its navigator mode, opens it when needed, and collapses it when selected
+again.
 
 A breadcrumb click **reveals a folder in the tree** — it never opens, closes, or
 activates a tab. It does that by writing the Explorer's own per-workspace
@@ -115,6 +116,10 @@ on first selection and then hidden with `display:none`, preserving requests,
 results, tree expansion, resource tabs, terminal sessions, and unsaved buffers
 across mode switches and navigator collapse. A panel too narrow for both columns
 hides the navigator until it widens without changing the user's open bit.
+
+The workspace header has one visibility toggle for the whole right panel. Search
+and Explorer live inside the panel as peer navigator controls, so changing or
+collapsing a navigator mode never closes the resource panel.
 
 It **follows the host's active file**: `ExplorerPanel`'s `activeFilePath` prop
 is a tri-state, and the panel derives it from the same `unifiedToolbarBreadcrumbs`

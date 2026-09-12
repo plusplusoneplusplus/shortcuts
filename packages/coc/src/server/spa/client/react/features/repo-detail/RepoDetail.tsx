@@ -18,7 +18,7 @@ import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
 import { useWorkspaceDock } from './useWorkspaceDock';
-import { WorkspaceDockModeControls } from './WorkspaceDockToggle';
+import { WorkspaceDockToggle } from './WorkspaceDockToggle';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
@@ -577,10 +577,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         <div className="w-px self-stretch bg-[#d8dee4] dark:bg-[#3c3c3c] mx-1 my-2 flex-shrink-0" data-testid="repo-header-splitter" />
                         {/* Action buttons */}
                         <div ref={overflowContainerRef} className="flex items-center gap-1 flex-shrink-0 relative">
-                            {/* Search and Explorer are peer controls for the shared right
-                                panel. Chromeless shells render the same component in TopBar. */}
+                            {/* Chromeless shells render the same panel toggle in TopBar. */}
                             {showHeaderDockControls && (
-                                <WorkspaceDockModeControls workspaceId={ws.id} />
+                                <WorkspaceDockToggle workspaceId={ws.id} />
                             )}
                             {/* Classic-mode primary visible buttons (mirror reference layout). */}
                             {uiLayoutMode === 'classic' && (

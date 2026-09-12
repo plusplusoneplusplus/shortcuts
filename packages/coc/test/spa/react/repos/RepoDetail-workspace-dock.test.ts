@@ -45,7 +45,7 @@ describe('Workspace dock — flag gating (AC-01)', () => {
 
     it('gates the header controls on showHeaderDockControls and the panel body on dockAvailable', () => {
         expect(REPO_DETAIL_SOURCE).toContain('{showHeaderDockControls && (');
-        expect(REPO_DETAIL_SOURCE).toContain('<WorkspaceDockModeControls workspaceId={ws.id} />');
+        expect(REPO_DETAIL_SOURCE).toContain('<WorkspaceDockToggle workspaceId={ws.id} />');
         // Panel body — exactly one `dockAvailable` slot.
         expect(REPO_DETAIL_SOURCE.split(DOCK_SLOT_GUARD).length - 1).toBe(1);
     });
@@ -89,15 +89,15 @@ describe('Workspace dock — remote-shell reachability (chromeless)', () => {
     });
 });
 
-describe('Workspace dock — header mode controls', () => {
-    it('has exactly one shared mode-control group in the header', () => {
-        const count = REPO_DETAIL_SOURCE.split('<WorkspaceDockModeControls workspaceId={ws.id} />').length - 1;
+describe('Workspace dock — header toggle', () => {
+    it('has exactly one panel toggle in the header', () => {
+        const count = REPO_DETAIL_SOURCE.split('<WorkspaceDockToggle workspaceId={ws.id} />').length - 1;
         expect(count).toBe(1);
     });
 
     it('lives inside the header action cluster (top-right)', () => {
         const clusterIdx = REPO_DETAIL_SOURCE.indexOf('ref={overflowContainerRef}');
-        const toggleIdx = REPO_DETAIL_SOURCE.indexOf('<WorkspaceDockModeControls workspaceId={ws.id} />');
+        const toggleIdx = REPO_DETAIL_SOURCE.indexOf('<WorkspaceDockToggle workspaceId={ws.id} />');
         expect(clusterIdx).toBeGreaterThan(-1);
         expect(toggleIdx).toBeGreaterThan(clusterIdx);
     });

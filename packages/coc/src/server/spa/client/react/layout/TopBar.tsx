@@ -20,7 +20,7 @@ import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
 import { StatusActions } from './StatusActions';
 import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
-import { WorkspaceDockModeControls } from '../features/repo-detail/WorkspaceDockToggle';
+import { WorkspaceDockToggle } from '../features/repo-detail/WorkspaceDockToggle';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { ScopeSlideSwitcher } from '../features/remote-shell/ScopeSlideSwitcher';
 import { VirtualWorkspaceShellHeader } from '../features/remote-shell/VirtualWorkspaceShellHeader';
@@ -303,13 +303,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         <span>New</span>
                     </button>
                 )}
-                {/* Search / Explorer controls for the shared right panel. A repo group
-                    scopes their mode to the group while routing panel data to its target. */}
+                {/* The shared right panel owns its Search / Explorer controls. */}
                 {showRemoteHeader && !!selectedRepo && splitWorkspacePanelEnabled && (
-                    <WorkspaceDockModeControls workspaceId={String(selectedRepo.workspace.id)} />
+                    <WorkspaceDockToggle workspaceId={String(selectedRepo.workspace.id)} />
                 )}
                 {showVirtualHeader && splitWorkspacePanelEnabled && isRepoGroupWorkspaceId(state.selectedRepoId) && (
-                    <WorkspaceDockModeControls workspaceId={String(state.selectedRepoId)} />
+                    <WorkspaceDockToggle workspaceId={String(state.selectedRepoId)} />
                 )}
                 {/* Status cluster — hidden here when it lives in the global
                     bottom status bar (remote-first shell, desktop). */}

@@ -55,7 +55,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
-import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
+import { DOCK_MIN_WIDTH, SearchIcon, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ContentSearchPanel } from '../explorer/ContentSearchPanel';
@@ -277,15 +277,62 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         setTreeExpandedPaths(prev => new Set([...prev, ...getAncestorPaths(folder), folder]));
     }, [toolbar, setTreeSelectedPath, setTreeExpandedPaths]);
 
-    const treeToggle = useCallback(
+    const explorerToggle = useCallback(
         (placement: 'toolbar' | 'strip') => (
             <UnifiedPanelTreeToggle
-                open={tree.state.open}
-                onToggle={tree.toggleOpen}
+                open={tree.state.open && mode === 'explorer'}
+                onToggle={() => {
+                    if (mode === 'explorer') {
+                        tree.toggleOpen();
+                        return;
+                    }
+                    dock.selectMode('explorer');
+                    tree.setOpen(true);
+                }}
                 placement={placement}
             />
         ),
-        [tree.state.open, tree.toggleOpen],
+        [dock, mode, tree],
+    );
+    const navigatorControls = useCallback(
+        (placement: 'toolbar' | 'strip') => {
+            const active = tree.state.open && mode === 'search';
+            const label = active ? 'Hide Search' : 'Show Search';
+            return (
+                <div className="flex flex-shrink-0 items-center" data-testid="unified-panel-navigator-controls">
+                    <button
+                        type="button"
+                        aria-label={label}
+                        aria-pressed={active}
+                        title={label}
+                        data-testid="unified-panel-search-toggle"
+                        data-placement={placement}
+                        onClick={() => {
+                            if (active) {
+                                tree.setOpen(false);
+                                return;
+                            }
+                            if (mode !== 'search') dock.selectMode('search');
+                            tree.setOpen(true);
+                        }}
+                        className={cn(
+                            'flex flex-shrink-0 cursor-pointer items-center justify-center border-none bg-transparent p-0',
+                            'text-[#616161] hover:text-[#1f1f1f] focus-visible:outline-none focus-visible:ring-1',
+                            'focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:text-[#9d9d9d] dark:hover:text-white',
+                            'dark:focus-visible:ring-[#3794ff]',
+                            placement === 'strip'
+                                ? 'h-[35px] w-8 border-l border-[#e5e5e5] dark:border-[#333]'
+                                : 'h-5 w-5',
+                            active && 'text-[#0078d4] dark:text-[#3794ff]',
+                        )}
+                    >
+                        <SearchIcon />
+                    </button>
+                    {explorerToggle(placement)}
+                </div>
+            );
+        },
+        [dock, explorerToggle, mode, tree],
     );
 
     // What the tree column should track (AC-06). The toolbar model already
@@ -904,7 +951,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                     onMove={move}
                     onPromote={promote}
                     onOpenMenu={toggleMenu}
-                    trailing={toolbar === null ? treeToggle('strip') : undefined}
+                    trailing={toolbar === null ? navigatorControls('strip') : undefined}
                 />
 
                 {menuOpen && (
@@ -940,7 +987,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                         <UnifiedPanelToolbar
                             breadcrumbs={toolbar}
                             onNavigate={revealTreeFolder}
-                            trailing={treeToggle('toolbar')}
+                            trailing={navigatorControls('toolbar')}
                         />
                     )}
                     {tabs.length === 0 ? (

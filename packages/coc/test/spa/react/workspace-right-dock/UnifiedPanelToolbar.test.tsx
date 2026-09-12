@@ -220,7 +220,7 @@ describe('unified panel toolbar row', () => {
         return result;
     }
 
-    it('shows breadcrumbs with one navigator toggle in the toolbar', () => {
+    it('shows breadcrumbs with Search and Explorer controls in the toolbar', () => {
         renderWithTreeFile('app');
 
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
@@ -232,18 +232,45 @@ describe('unified panel toolbar row', () => {
         expect(toggle.getAttribute('data-placement')).toBe('toolbar');
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
         expect(screen.getAllByTestId('unified-panel-tree-toggle')).toHaveLength(1);
+        const search = screen.getByTestId('unified-panel-search-toggle');
+        expect(search.getAttribute('data-placement')).toBe('toolbar');
+        expect(screen.getByTestId('unified-panel-toolbar').contains(search)).toBe(true);
     });
 
-    it('moves the navigator toggle into the strip when the toolbar is absent', () => {
+    it('moves Search and Explorer controls into the strip when the toolbar is absent', () => {
         renderPanel();
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
         expect(screen.getByTestId('unified-panel-tree-toggle').getAttribute('data-placement')).toBe('strip');
+        expect(screen.getByTestId('unified-panel-search-toggle').getAttribute('data-placement')).toBe('strip');
 
         openViaMenu('unified-panel-open-terminal');
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
         const toggle = screen.getByTestId('unified-panel-tree-toggle');
         expect(toggle.getAttribute('data-placement')).toBe('strip');
         expect(screen.getByTestId('unified-panel-tab-strip').contains(toggle)).toBe(true);
+        expect(screen.getByTestId('unified-panel-tab-strip').contains(screen.getByTestId('unified-panel-search-toggle'))).toBe(true);
+    });
+
+    it('opens Search from inside the right panel without closing the panel', () => {
+        const selectMode = vi.fn();
+        renderPanel({ dock: dockStub({ selectMode }) });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show Search' }));
+
+        expect(selectMode).toHaveBeenCalledWith('search');
+        expect(localStorage.getItem('split-workspace:ws-1:dock-open')).toBeNull();
+        expect(screen.getByTestId('unified-panel-navigator-controls')).toBeTruthy();
+    });
+
+    it('collapses Search from its panel-local active control', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 220 });
+        const selectMode = vi.fn();
+        renderPanel({ dock: dockStub({ mode: 'search', selectMode }) });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Hide Search' }));
+
+        expect(selectMode).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', { name: 'Show Search' }).getAttribute('aria-pressed')).toBe('false');
     });
 
     it('reveals a folder in the tree on a breadcrumb click without touching tabs', () => {
