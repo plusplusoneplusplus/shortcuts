@@ -87,6 +87,26 @@ describe('LanguageServersPanel', () => {
         expect(screen.getByTestId('language-server-runtime-status').textContent).toBe('Not started');
     });
 
+    it('shows the Python preset beside the existing built-ins', async () => {
+        await renderPanel(response({
+            effective: [
+                def(),
+                def({
+                    id: 'python',
+                    displayName: 'Python',
+                    languageIds: ['python'],
+                    filePatterns: ['**/*.{py,pyi,pyw}'],
+                    command: 'pyright-langserver',
+                    rootMarkers: ['pyproject.toml'],
+                }),
+            ],
+        }));
+
+        expect(screen.getByText('TypeScript')).toBeDefined();
+        expect(screen.getByText('Python')).toBeDefined();
+        expect(screen.getAllByTestId('built-in-badge')).toHaveLength(2);
+    });
+
     it('shows a loading placeholder before the config arrives', () => {
         get.mockReturnValue(new Promise(() => {}));
         render(<LanguageServersPanel workspaceId={WS} />);

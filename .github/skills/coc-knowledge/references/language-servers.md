@@ -24,6 +24,13 @@ PATH, and recognizes a PATH entry backed by the rustup proxy. A missing componen
 returns the recovery command `rustup component add rust-analyzer`; CoC only offers
 the command for copying and never executes it.
 
+The built-in Python preset is disabled by default and serves `.py`, `.pyi`, and
+`.pyw` through Pyright. Its adapter prefers a project
+`node_modules/pyright/langserver.index.js`, then the `pyright` package shipped
+with CoC, then `pyright-langserver` on the owning host's PATH. Project and
+packaged entry points run through Node with `shell: false`; browser-visible
+runtime labels contain only the source category.
+
 ### User surfaces
 
 The editor badge derives its label, tone, detail, and retry availability from the

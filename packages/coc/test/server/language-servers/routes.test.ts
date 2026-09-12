@@ -100,14 +100,14 @@ describe('registerLanguageServerRoutes', () => {
         return { status: res.statusCode, json: res.body ? JSON.parse(res.body) : undefined };
     }
 
-    it('GET returns the disabled default with the TypeScript preset before anything is configured', async () => {
+    it('GET returns all disabled built-in presets before anything is configured', async () => {
         const { status, json } = await call('GET', WORKSPACE);
 
         expect(status).toBe(200);
         expect(json.enabled).toBe(false);
         expect(json.definitions).toEqual([]);
         expect(json.status).toBe('missing');
-        expect(json.effective.map((d: LanguageServerDefinition) => d.id)).toContain('typescript');
+        expect(json.effective.map((d: LanguageServerDefinition) => d.id)).toEqual(['typescript', 'rust', 'python']);
         // Nothing may start while support is off, preset included.
         expect(json.startable).toEqual([]);
         expect(json.runtimes).toEqual([]);
@@ -209,6 +209,32 @@ describe('registerLanguageServerRoutes', () => {
         // Overriding a preset keeps it marked as built-in and repoints the command.
         expect(startable[0].builtIn).toBe(true);
         expect(startable[0].command).toBe('node');
+    });
+
+    it('starts Python only when both workspace support and its preset are enabled', async () => {
+        const python = customDefinition({
+            id: 'python',
+            displayName: 'Python',
+            languageIds: ['python'],
+            filePatterns: ['**/*.{py,pyi,pyw}'],
+            command: 'pyright-langserver',
+            args: ['--stdio'],
+            rootMarkers: ['pyproject.toml'],
+            enabled: true,
+        });
+
+        const presetOnly = await call('PUT', WORKSPACE, { enabled: false, definitions: [python] });
+        expect(presetOnly.json.startable).toEqual([]);
+
+        const enabled = await call('PATCH', WORKSPACE, { enabled: true });
+        expect(enabled.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual(['python']);
+        expect(enabled.json.startable[0].builtIn).toBe(true);
+
+        const disabledPreset = await call('PATCH', WORKSPACE, {
+            definitions: [{ ...python, enabled: false }],
+        });
+        expect(disabledPreset.json.startable).toEqual([]);
+        expect(readLanguageServerConfig(dataDir, WORKSPACE).definitions[0].enabled).toBe(false);
     });
 
     it('rejects an invalid definition with field-level errors and keeps the last valid config', async () => {

@@ -11,7 +11,9 @@
  * an explicit choice, and preparation must not undo it.
  */
 
-import { RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { applyPythonRuntime, resolvePythonRuntime } from './python-adapter';
+import type { PythonRuntimeDeps } from './python-adapter';
 import { applyRustRuntime, resolveRustRuntime, resolveRustServerRoot } from './rust-adapter';
 import type { RustRuntimeDeps } from './rust-adapter';
 import { resolveServerRoot } from './selection';
@@ -32,7 +34,7 @@ export interface PreparedDefinition {
     recoveryCommand?: string;
 }
 
-export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps;
+export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps & PythonRuntimeDeps;
 
 export function resolveDefinitionRoot(
     definition: LanguageServerDefinition,
@@ -74,6 +76,14 @@ export function prepareDefinitionForRoot(
             recoveryCommand: runtime.recoveryCommand,
         };
     }
+    if (claimsPython(definition)) {
+        const runtime = resolvePythonRuntime(definition, rootPath, deps);
+        return {
+            definition: applyPythonRuntime(definition, runtime),
+            runtimeLabel: runtime.label,
+            commandLabel: PYTHON_PRESET.command,
+        };
+    }
     return { definition };
 }
 
@@ -87,4 +97,12 @@ function claimsTypeScript(definition: LanguageServerDefinition): boolean {
 
 function claimsRust(definition: LanguageServerDefinition): boolean {
     return definition.id === RUST_PRESET.id && definition.builtIn === true && definition.command === RUST_PRESET.command;
+}
+
+function claimsPython(definition: LanguageServerDefinition): boolean {
+    return (
+        definition.id === PYTHON_PRESET.id &&
+        definition.builtIn === true &&
+        definition.command === PYTHON_PRESET.command
+    );
 }
