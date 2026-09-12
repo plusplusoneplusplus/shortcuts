@@ -82,9 +82,40 @@ export const PYTHON_PRESET: LanguageServerDefinition = {
     builtIn: true,
 };
 
+export const CLANGD_PRESET: LanguageServerDefinition = {
+    id: 'clangd',
+    displayName: 'C / C++ (clangd)',
+    languageIds: ['c', 'cpp', 'objective-c', 'objective-cpp', 'cuda'],
+    filePatterns: ['**/*.{c,cc,cpp,cxx,c++,h,hh,hpp,hxx,h++,inl,ipp,cu,cuh,m,mm}'],
+    command: 'clangd',
+    args: ['--background-index=false'],
+    rootMarkers: ['compile_commands.json', '.clangd', 'compile_flags.txt'],
+    extensionLanguageIds: {
+        '.c': 'c',
+        '.cc': 'cpp',
+        '.cpp': 'cpp',
+        '.cxx': 'cpp',
+        '.c++': 'cpp',
+        '.h': 'cpp',
+        '.hh': 'cpp',
+        '.hpp': 'cpp',
+        '.hxx': 'cpp',
+        '.h++': 'cpp',
+        '.inl': 'cpp',
+        '.ipp': 'cpp',
+        '.cu': 'cuda',
+        '.cuh': 'cuda',
+        '.m': 'objective-c',
+        '.mm': 'objective-cpp',
+    },
+    priority: 100,
+    enabled: false,
+    builtIn: true,
+};
+
 /** Definitions shipped with CoC. Callers must not mutate the returned objects. */
 export function builtInLanguageServerDefinitions(): LanguageServerDefinition[] {
-    return [TYPESCRIPT_PRESET, RUST_PRESET, PYTHON_PRESET];
+    return [TYPESCRIPT_PRESET, RUST_PRESET, PYTHON_PRESET, CLANGD_PRESET];
 }
 
 /**

@@ -26,6 +26,8 @@ and transport code stays generic.
 - `python-adapter.ts` — Python's answer to that hook: resolve the nearest
   symlink-bounded project root, discover a project-local interpreter, and resolve
   Pyright from the project, the copy packaged with CoC, or the owning host's PATH.
+- `clangd-adapter.ts` — C-family runtime discovery from the owning host's PATH or
+  platform-specific LLVM install locations, plus nearest clangd project roots.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -181,6 +183,10 @@ and transport code stays generic.
   Missing discovery leaves `rust-analyzer` as the command so startup reports
   `unavailable` with the rustup component install command; user-facing labels
   never contain the resolved absolute path.
+- `clangd-adapter.ts` resolves `clangd` from PATH before Homebrew LLVM prefixes,
+  versioned `/usr/lib/llvm-*` directories, or `%ProgramFiles%\LLVM`. Its preset
+  disables background indexing and roots only at `compile_commands.json`,
+  `.clangd`, or `compile_flags.txt`; repointed commands remain untouched.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The
@@ -340,7 +346,9 @@ and transport code stays generic.
   buffers, and workspace check settings. It hard-fails when rust-analyzer is
   unavailable. `python-integration.test.ts` runs the packaged Pyright entry
   point and hard-fails if the production dependency is missing or cannot reach
-  `ready`. That TypeScript server sends no
+  `ready`. `clangd-integration.test.ts` checks hover, same-file definition, and
+  diagnostics against a real clangd, and skips when clangd is not installed.
+  That TypeScript server sends no
   `serverInfo`, so `state.serverName` is undefined for it and the user is shown
   `displayName` and `runtime` instead. The bridge suite drives a real WebSocket against a real
   manager and that fixture, so it covers upgrade scoping, URI refusal, and

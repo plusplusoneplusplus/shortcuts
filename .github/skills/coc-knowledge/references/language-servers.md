@@ -32,6 +32,12 @@ packaged entry points run through Node with `shell: false`; browser-visible
 runtime labels contain only the source category. Python files use the nearest
 configured project marker with canonical-path containment and the owning
 workspace's path spelling.
+
+The built-in clangd preset is disabled by default and serves C, C++, Objective-C,
+Objective-C++, and CUDA files with `--background-index=false`. Its adapter checks
+the owning host's PATH before platform-specific LLVM install locations. Project
+roots use only `compile_commands.json`, `.clangd`, and `compile_flags.txt`, keeping
+large repositories sharded when component-local markers exist.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.
