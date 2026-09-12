@@ -109,8 +109,10 @@ export class SqliteQueuePersistence {
                 && (state.queuePausedUntil === undefined || state.queuePausedUntil > now);
             const autopilotPauseActive = state.autopilotPaused === true
                 && (state.autopilotPausedUntil === undefined || state.autopilotPausedUntil > now);
+            const hasTaskDelay = state.taskDelayMinutes !== undefined
+                || state.autopilotTaskDelayMinutes !== undefined;
 
-            if (state.isPaused || queuePauseActive || autopilotPauseActive) {
+            if (state.isPaused || queuePauseActive || autopilotPauseActive || hasTaskDelay) {
                 this.bridge.getOrCreateBridge(rootPath);
                 const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
                 if (queueManager) {
@@ -123,6 +125,12 @@ export class SqliteQueuePersistence {
                     if (autopilotPauseActive) {
                         queueManager.pauseAutopilot(state.autopilotPausedUntil);
                     }
+                    if (state.taskDelayMinutes !== undefined) {
+                        queueManager.setTaskDelayMinutes('all', state.taskDelayMinutes);
+                    }
+                    if (state.autopilotTaskDelayMinutes !== undefined) {
+                        queueManager.setTaskDelayMinutes('autopilot', state.autopilotTaskDelayMinutes);
+                    }
                 }
             }
             if (state.queuePaused && !queuePauseActive || state.autopilotPaused && !autopilotPauseActive) {
@@ -131,6 +139,8 @@ export class SqliteQueuePersistence {
                     queuePausedUntil: queuePauseActive ? state.queuePausedUntil : undefined,
                     autopilotPaused: autopilotPauseActive,
                     autopilotPausedUntil: autopilotPauseActive ? state.autopilotPausedUntil : undefined,
+                    taskDelayMinutes: state.taskDelayMinutes,
+                    autopilotTaskDelayMinutes: state.autopilotTaskDelayMinutes,
                 });
             }
         }
@@ -300,7 +310,12 @@ export class SqliteQueuePersistence {
             case 'resumed':
             case 'autopilot-paused':
             case 'autopilot-resumed':
+            case 'task-delay-changed':
                 this.persistQueueControlState(repoId, rootPath);
+                break;
+
+            case 'task-delay-skipped':
+                // Skipping releases only the current wait; the repeating setting remains persisted.
                 break;
 
             case 'repo-paused':
@@ -342,6 +357,8 @@ export class SqliteQueuePersistence {
             queuePausedUntil: stats.pausedUntil,
             autopilotPaused: stats.isAutopilotPaused,
             autopilotPausedUntil: stats.autopilotPausedUntil,
+            taskDelayMinutes: stats.taskDelayMinutes,
+            autopilotTaskDelayMinutes: stats.autopilotTaskDelayMinutes,
         });
     }
 

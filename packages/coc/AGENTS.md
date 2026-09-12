@@ -363,6 +363,12 @@ all have their own `references/*.md`.
   skill folders, and the Ralph final-check cap; all are `live`, so read them at
   the point each setting takes effect rather than caching at composition. CLI
   and test roots inject `createFixedQueueRuntimeConfig(...)`.
+- **Queue control state is repo-scoped.** `SqliteQueuePersistence` stores manual
+  pause state and the configured All/Autopilot task delays in Forge's
+  `queue_repo_state` row. A `task-delay-changed` event writes the setting;
+  `task-delay-skipped` never does, because skip releases one active wait without
+  turning off the repeating delay. Restore applies only configured minutes, not
+  the last-task-end clock, so the first task after restart can start immediately.
 - **Non-admin namespaced config fields** (queue, models, logging, monitoring,
   skills, memoryPromotion, …) keep hand-written descriptors in
   `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.

@@ -172,6 +172,8 @@ Ask and autopilot first turns are the same code path: `buildStandardModeOptions(
 
 `createQueueExecutorBridge()` builds the `QueueExecutor` with `autoStart: false`, wires both queue manager and queue executor references, then calls `executor.start()` only if the caller asked for auto-start. Queue-control methods needing a fully wired runtime fail fast when the bridge has a queue manager but no queue executor reference.
 
+SQLite queue persistence stores manual pause state and repeating All/Autopilot task-delay settings per repo in `queue_repo_state`. Delay changes write immediately through queue events; skipping a current cooldown does not change the stored setting. Restore applies the configured minutes but not the last-task-end timestamp, so the first task after restart is not delayed.
+
 ## Configuration
 
 Configuration file: `~/.coc/config.yaml`. Precedence: CLI flags > config file > defaults. Admin-editable settings, the `features.*` flag table, `dreams.*`, `pullRequests.*`, `forEach`/`mapReduce`, and the `agentProviderRouting.auto` profile are documented in [admin-config.md](admin-config.md).

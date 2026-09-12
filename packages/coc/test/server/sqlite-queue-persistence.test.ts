@@ -3,10 +3,13 @@
  * policies, pause state persistence, repo path tracking, dispose/cleanup,
  * and integration with createQueueInfrastructure.
  *
- * Uses real RepoQueueRegistry and TaskQueueManager (pure in-memory)
- * with an in-memory better-sqlite3 database.
+ * Uses real RepoQueueRegistry and TaskQueueManager with an in-memory
+ * better-sqlite3 database, plus a file-backed restart case.
  */
 
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import {
@@ -44,6 +47,7 @@ let store: SqliteQueueStore;
 let registry: RepoQueueRegistry;
 let bridge: MultiRepoQueueRouter;
 let persistence: SqliteQueuePersistence;
+const tempDirs: string[] = [];
 
 function createBridgeAndDb() {
     db = new Database(':memory:');
@@ -85,7 +89,12 @@ beforeEach(() => {
 
 afterEach(() => {
     persistence?.dispose();
-    db?.close();
+    if (db?.open) {
+        db.close();
+    }
+    for (const tempDir of tempDirs.splice(0)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
 });
 
 // ============================================================================
@@ -237,6 +246,28 @@ describe('SqliteQueuePersistence', () => {
             expect(state!.autopilotPausedUntil).toBe(autopilotUntil);
         });
 
+        it('persists task-delay changes and keeps the setting when a wait is skipped', () => {
+            qm.setTaskDelayMinutes('all', 5);
+            qm.setTaskDelayMinutes('autopilot', 30);
+
+            expect(store.getQueueRepoState(rId)).toMatchObject({
+                taskDelayMinutes: 5,
+                autopilotTaskDelayMinutes: 30,
+            });
+
+            const taskId = qm.enqueue({
+                type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId,
+            });
+            const task = qm.markStarted(taskId)!;
+            qm.markCompleted(task.id, { ok: true });
+            expect(qm.getStats().taskDelayUntil).toBeDefined();
+
+            qm.skipTaskDelay('all');
+
+            expect(qm.getStats().taskDelayUntil).toBeUndefined();
+            expect(store.getQueueRepoState(rId)?.taskDelayMinutes).toBe(5);
+        });
+
         it('handles reordered event — upserts all queued tasks', () => {
             const id1 = qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId });
             const id2 = qm.enqueue({ type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId });
@@ -341,6 +372,53 @@ describe('SqliteQueuePersistence', () => {
             expect(qm.getStats().pausedUntil).toBe(queueUntil);
             expect(qm.getStats().isAutopilotPaused).toBe(true);
             expect(qm.getStats().autopilotPausedUntil).toBe(autopilotUntil);
+        });
+
+        it('restores per-repo task delays from the same SQLite file without active deadlines', () => {
+            persistence?.dispose();
+            db.close();
+
+            const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-queue-delay-'));
+            tempDirs.push(tempDir);
+            const dbPath = path.join(tempDir, 'processes.db');
+
+            db = new Database(dbPath);
+            initializeDatabase(db);
+            store = new SqliteQueueStore(db);
+            registry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
+            bridge = new MultiRepoQueueRouter(registry, createMockProcessStore(), { autoStart: false });
+            persistence = new SqliteQueuePersistence(bridge, db);
+
+            const configs = [
+                { rootPath: '/repo/task-delay-a', all: 15, autopilot: 60 },
+                { rootPath: '/repo/task-delay-b', all: 5, autopilot: 30 },
+            ];
+            for (const config of configs) {
+                bridge.registerRepoId(repoId(config.rootPath), config.rootPath);
+                bridge.getOrCreateBridge(config.rootPath);
+                const manager = registry.getQueueForRepo(config.rootPath);
+                manager.setTaskDelayMinutes('all', config.all);
+                manager.setTaskDelayMinutes('autopilot', config.autopilot);
+            }
+
+            persistence.dispose();
+            db.close();
+
+            db = new Database(dbPath);
+            initializeDatabase(db);
+            store = new SqliteQueueStore(db);
+            registry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
+            bridge = new MultiRepoQueueRouter(registry, createMockProcessStore(), { autoStart: false });
+            persistence = new SqliteQueuePersistence(bridge, db);
+            persistence.restore();
+
+            for (const config of configs) {
+                const restoredStats = registry.getQueueForRepo(config.rootPath).getStats();
+                expect(restoredStats.taskDelayMinutes).toBe(config.all);
+                expect(restoredStats.autopilotTaskDelayMinutes).toBe(config.autopilot);
+                expect(restoredStats.taskDelayUntil).toBeUndefined();
+                expect(restoredStats.autopilotTaskDelayUntil).toBeUndefined();
+            }
         });
 
         it('with running tasks + fail policy — removes from DB', () => {

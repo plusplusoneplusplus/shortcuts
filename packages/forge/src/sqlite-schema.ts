@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 32;
+export const SCHEMA_VERSION = 33;
 
 /**
  * Read the current schema version from the database.
@@ -175,13 +175,17 @@ export function initializeDatabase(db: Database.Database): void {
                 queue_paused             INTEGER DEFAULT 0,
                 queue_paused_until       INTEGER,
                 autopilot_paused         INTEGER DEFAULT 0,
-                autopilot_paused_until   INTEGER
+                autopilot_paused_until   INTEGER,
+                task_delay_minutes       INTEGER,
+                autopilot_task_delay_minutes INTEGER
             )
         `);
         ensureColumn(db, 'queue_repo_state', 'queue_paused', 'INTEGER DEFAULT 0');
         ensureColumn(db, 'queue_repo_state', 'queue_paused_until', 'INTEGER');
         ensureColumn(db, 'queue_repo_state', 'autopilot_paused', 'INTEGER DEFAULT 0');
         ensureColumn(db, 'queue_repo_state', 'autopilot_paused_until', 'INTEGER');
+        ensureColumn(db, 'queue_repo_state', 'task_delay_minutes', 'INTEGER');
+        ensureColumn(db, 'queue_repo_state', 'autopilot_task_delay_minutes', 'INTEGER');
 
         // ── schedule_runs ────────────────────────────────────────────
         db.exec(`
@@ -537,6 +541,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 32) {
             migrateV31toV32(db);
+        }
+        if (versionBefore < 33) {
+            migrateV32toV33(db);
         }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -945,6 +952,16 @@ function migrateV30toV31(db: Database.Database): void {
  */
 function migrateV31toV32(db: Database.Database): void {
     ensureColumn(db, 'queue_tasks', 'frozen_until', 'INTEGER');
+}
+
+/**
+ * V32 -> V33: add the repeating task-delay settings to per-repo queue control
+ * state. NULL means the delay is off. The last-task-end timestamp stays
+ * in-memory, so a restored setting does not delay the first task after restart.
+ */
+function migrateV32toV33(db: Database.Database): void {
+    ensureColumn(db, 'queue_repo_state', 'task_delay_minutes', 'INTEGER');
+    ensureColumn(db, 'queue_repo_state', 'autopilot_task_delay_minutes', 'INTEGER');
 }
 
 /**

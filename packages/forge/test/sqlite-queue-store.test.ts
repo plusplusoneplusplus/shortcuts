@@ -391,6 +391,43 @@ describe('getQueueRepoState', () => {
         expect(state!.isPaused).toBe(true);
         expect(state!.pauseReason).toEqual(reason);
     });
+
+    it('round-trips task delays for both scopes through queue control state', () => {
+        store.setQueueControlState('r1', {
+            queuePaused: false,
+            autopilotPaused: false,
+            taskDelayMinutes: 5,
+            autopilotTaskDelayMinutes: 30,
+        });
+
+        expect(store.getQueueRepoState('r1')).toMatchObject({
+            taskDelayMinutes: 5,
+            autopilotTaskDelayMinutes: 30,
+        });
+    });
+
+    it('stores off task delays as null and reads them as undefined', () => {
+        store.setQueueControlState('r1', {
+            queuePaused: false,
+            autopilotPaused: false,
+            taskDelayMinutes: 15,
+            autopilotTaskDelayMinutes: 60,
+        });
+        store.setQueueControlState('r1', {
+            queuePaused: false,
+            autopilotPaused: false,
+        });
+
+        const row = db.prepare(`
+            SELECT task_delay_minutes, autopilot_task_delay_minutes
+            FROM queue_repo_state WHERE repo_id = ?
+        `).get('r1');
+        expect(row).toEqual({ task_delay_minutes: null, autopilot_task_delay_minutes: null });
+        expect(store.getQueueRepoState('r1')).toMatchObject({
+            taskDelayMinutes: undefined,
+            autopilotTaskDelayMinutes: undefined,
+        });
+    });
 });
 
 // ============================================================================
@@ -461,6 +498,25 @@ describe('getAllQueueRepoStates', () => {
 
     it('returns an empty Map when no states exist', () => {
         expect(store.getAllQueueRepoStates().size).toBe(0);
+    });
+
+    it('keeps task delays independent between repos', () => {
+        store.setQueueControlState('r1', {
+            queuePaused: false,
+            autopilotPaused: false,
+            taskDelayMinutes: 1,
+            autopilotTaskDelayMinutes: 5,
+        });
+        store.setQueueControlState('r2', {
+            queuePaused: false,
+            autopilotPaused: false,
+            taskDelayMinutes: 15,
+            autopilotTaskDelayMinutes: 60,
+        });
+
+        const states = store.getAllQueueRepoStates();
+        expect(states.get('r1')).toMatchObject({ taskDelayMinutes: 1, autopilotTaskDelayMinutes: 5 });
+        expect(states.get('r2')).toMatchObject({ taskDelayMinutes: 15, autopilotTaskDelayMinutes: 60 });
     });
 });
 
