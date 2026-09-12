@@ -6,6 +6,7 @@
 
 mod storage;
 
+use std::collections::HashSet;
 use std::fmt;
 use std::io::{self, Read};
 use std::ops::ControlFlow;
@@ -66,6 +67,17 @@ pub struct SymbolSnapshot {
     symbols: Vec<Symbol>,
     failures: Vec<SymbolFileFailure>,
     files_scanned: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct SymbolBenchmarkStats {
+    pub files_scanned: usize,
+    pub bytes_read: u64,
+    pub symbols_extracted: usize,
+    pub failures: usize,
+    pub failure_paths: Vec<String>,
+    pub walk_time: Duration,
+    pub extraction_time: Duration,
 }
 
 impl SymbolSnapshot {
@@ -271,6 +283,80 @@ fn build_snapshot(root: &Path, limits: ExtractionLimits) -> io::Result<SymbolSna
     Ok(SymbolSnapshot { symbols, failures, files_scanned: paths.len() })
 }
 
+pub fn benchmark_repository(
+    root: &Path,
+    limits: ExtractionLimits,
+    threads: usize,
+    excluded_paths: &HashSet<String>,
+    included_extensions: Option<&HashSet<String>>,
+) -> io::Result<SymbolBenchmarkStats> {
+    if threads == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "benchmark thread count must be positive",
+        ));
+    }
+
+    let walk_started = Instant::now();
+    let (paths, _) = walk(root, &WalkOptions::default())?;
+    let paths: Vec<String> = paths
+        .into_iter()
+        .filter(|path| {
+            configuration_extension(path).is_some_and(|extension| {
+                included_extensions.is_none_or(|included| included.contains(&extension))
+            }) && !excluded_paths.contains(path)
+        })
+        .collect();
+    let walk_time = walk_started.elapsed();
+
+    let extractor = SymbolExtractor::new(limits)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let pool =
+        rayon::ThreadPoolBuilder::new().num_threads(threads).build().map_err(io::Error::other)?;
+    let extraction_started = Instant::now();
+    let results = pool.install(|| {
+        paths
+            .par_iter()
+            .map(|relative| {
+                let source = read_bounded(&root.join(relative), limits.max_file_bytes)
+                    .map_err(|error| (relative.clone(), error))?;
+                let bytes = u64::try_from(source.len()).unwrap_or(u64::MAX);
+                let extracted = extractor.extract(relative, &source);
+                Ok::<_, (String, io::Error)>((relative.clone(), bytes, extracted))
+            })
+            .collect::<Vec<_>>()
+    });
+    let extraction_time = extraction_started.elapsed();
+
+    let mut bytes_read = 0u64;
+    let mut symbols_extracted = 0usize;
+    let mut failure_paths = Vec::new();
+    for result in results {
+        match result {
+            Ok((_path, bytes, Ok(symbols))) => {
+                bytes_read = bytes_read.saturating_add(bytes);
+                symbols_extracted = symbols_extracted.saturating_add(symbols.len());
+            }
+            Ok((path, bytes, Err(_))) => {
+                bytes_read = bytes_read.saturating_add(bytes);
+                failure_paths.push(path);
+            }
+            Err((path, _)) => failure_paths.push(path),
+        }
+    }
+    failure_paths.sort_unstable();
+
+    Ok(SymbolBenchmarkStats {
+        files_scanned: paths.len(),
+        bytes_read,
+        symbols_extracted,
+        failures: failure_paths.len(),
+        failure_paths,
+        walk_time,
+        extraction_time,
+    })
+}
+
 fn configuration(language: Language, tags_query: &str) -> Result<TagsConfiguration, ExtractError> {
     TagsConfiguration::new(language, tags_query, "").map_err(ExtractError::from)
 }
@@ -301,7 +387,7 @@ fn configuration_for_path<'a>(
     match extension.as_str() {
         "c" | "m" => Ok(c),
         "cc" | "cpp" | "cxx" | "c++" | "h" | "hh" | "hpp" | "hxx" | "h++" | "inl" | "ipp"
-        | "cu" | "cuh" | "mm" => Ok(cpp),
+        | "inc" | "tcc" | "def" | "cu" | "cuh" | "mm" => Ok(cpp),
         _ => Err(ExtractError::UnsupportedExtension(extension)),
     }
 }
@@ -325,6 +411,9 @@ fn configuration_extension(path: &str) -> Option<String> {
             | "h++"
             | "inl"
             | "ipp"
+            | "inc"
+            | "tcc"
+            | "def"
             | "cu"
             | "cuh"
             | "m"
@@ -469,6 +558,18 @@ mod tests {
     }
 
     #[test]
+    fn includes_common_cpp_fragment_extensions() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        for extension in ["inc", "tcc", "def"] {
+            let path = format!("include/sample.{extension}");
+            let symbols =
+                extractor.extract(&path, HEADER_FIXTURE.as_bytes()).expect("fragment extraction");
+            assert!(symbols.iter().any(|symbol| symbol.name == "HeaderOnly"));
+        }
+    }
+
+    #[test]
     fn one_pathological_file_does_not_abort_a_repository_build() {
         let root = tempdir().expect("tempdir");
         std::fs::write(root.path().join("good.c"), C_FIXTURE).expect("good fixture");
@@ -563,5 +664,44 @@ mod tests {
             extractor.extract("sample.cpp", CPP_FIXTURE.as_bytes()),
             Err(ExtractError::ParseTimedOut(_))
         ));
+    }
+
+    #[test]
+    fn benchmark_measures_the_filtered_corpus_and_honors_exclusions() {
+        let root = tempdir().expect("tempdir");
+        std::fs::write(root.path().join("first.c"), C_FIXTURE).expect("C fixture");
+        std::fs::write(root.path().join("second.cpp"), CPP_FIXTURE).expect("C++ fixture");
+        std::fs::write(root.path().join("ignored.txt"), "not C").expect("text fixture");
+        let excluded = HashSet::from(["second.cpp".to_owned()]);
+        let included = HashSet::from(["c".to_owned()]);
+
+        let stats = benchmark_repository(
+            root.path(),
+            ExtractionLimits::default(),
+            1,
+            &excluded,
+            Some(&included),
+        )
+        .expect("benchmark");
+
+        assert_eq!(stats.files_scanned, 1);
+        assert_eq!(stats.bytes_read, C_FIXTURE.len() as u64);
+        assert!(stats.symbols_extracted > 0);
+        assert_eq!(stats.failures, 0);
+        assert!(stats.failure_paths.is_empty());
+    }
+
+    #[test]
+    fn benchmark_rejects_zero_threads() {
+        let root = tempdir().expect("tempdir");
+        let error = benchmark_repository(
+            root.path(),
+            ExtractionLimits::default(),
+            0,
+            &HashSet::new(),
+            None,
+        )
+        .expect_err("zero threads");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 }

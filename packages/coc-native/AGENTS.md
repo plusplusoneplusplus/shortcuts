@@ -15,6 +15,13 @@ deleted files, and retains the previous committed rows when extraction fails.
 `buildSymbolIndex(root, database)` runs the initial or incremental sync on a
 libuv worker and returns a `SymbolIndex` whose exact/prefix `search()` and
 incremental `refresh()` methods also stay off the event loop.
+`npm run bench:symbol-index -- --repo <path>` runs the production tree-sitter
+extractor without SQLite, reports extraction MB/s in one-core and all-core
+configurations, and uses the ctags baseline's extension set while excluding its
+crashing parser fixture so the corpus policy is directly comparable.
+`--threads 1,4,8`,
+`--extensions c,cpp,h`, `--drop-linux-page-cache`, and `--json` support corpus
+control, scaling, and reproducible reports.
 
 **The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Its own `walkFiles` still serves *per-directory* listings, and `.git` is excluded by both regardless of `includeIgnored`/`showIgnored`.
 
