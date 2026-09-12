@@ -73,7 +73,9 @@ beforeEach(() => {
 describe('MonacoFileEditor — onModelMount', () => {
     it('hands the monaco namespace and the model to the host once mounted', async () => {
         const onModelMount = vi.fn();
-        render(<MonacoFileEditor value="a" language="typescript" onModelMount={onModelMount} />);
+        const { rerender } = render(
+            <MonacoFileEditor value="a" language="python" onModelMount={onModelMount} />,
+        );
         await flushMount();
 
         expect(onModelMount).toHaveBeenCalledTimes(1);
@@ -82,6 +84,9 @@ describe('MonacoFileEditor — onModelMount', () => {
             monaco: stub.monaco,
             model: { id: 'model-1' },
         });
+
+        rerender(<MonacoFileEditor value="edited" language="python" onModelMount={onModelMount} />);
+        expect(onModelMount).toHaveBeenCalledTimes(1);
     });
 
     it('runs the cleanup and re-registers when Monaco replaces the model', async () => {

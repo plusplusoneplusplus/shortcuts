@@ -19,8 +19,14 @@ describe('getMonacoLanguage', () => {
         expect(getMonacoLanguage('config.cjs')).toBe('javascript');
     });
 
-    it('maps Python', () => {
+    it('maps Python source, stub, and windowed-script extensions', () => {
         expect(getMonacoLanguage('main.py')).toBe('python');
+        expect(getMonacoLanguage('types.pyi')).toBe('python');
+        expect(getMonacoLanguage('app.pyw')).toBe('python');
+    });
+
+    it('does not treat notebooks as live Python documents', () => {
+        expect(getMonacoLanguage('analysis.ipynb')).toBe('plaintext');
     });
 
     it('maps Go', () => {
