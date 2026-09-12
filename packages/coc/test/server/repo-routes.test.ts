@@ -732,6 +732,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
                 parent: 'demo',
             }]),
             refresh: vi.fn(async () => {}),
+            refreshChanged: vi.fn(async () => {}),
         };
         const buildSymbolIndex = vi.fn(async () => index);
         await replaceServer(serviceWithSymbols({ buildSymbolIndex }));
@@ -770,7 +771,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
             },
         );
         expect(saved.status).toBe(200);
-        await vi.waitFor(() => expect(index.refresh).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(index.refreshChanged).toHaveBeenCalledWith(['src/widget.cpp']));
     });
 
     it('returns an indexed miss and forwards prefix mode', async () => {
@@ -778,6 +779,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
         const index: NativeSymbolIndex = {
             search: vi.fn(async () => []),
             refresh: vi.fn(async () => {}),
+            refreshChanged: vi.fn(async () => {}),
         };
         await replaceServer(serviceWithSymbols({
             buildSymbolIndex: async () => index,
@@ -840,6 +842,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
         const index: NativeSymbolIndex = {
             search: vi.fn(async () => []),
             refresh: vi.fn(async () => {}),
+            refreshChanged: vi.fn(async () => {}),
         };
         const service = serviceWithSymbols({
             buildSymbolIndex: () => new Promise(resolve => {
@@ -851,7 +854,46 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
         await service.writeBlob(REPO_ID, 'src/widget.cpp', 'int Widget();\n');
         finishBuild(index);
 
-        await vi.waitFor(() => expect(index.refresh).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(index.refreshChanged).toHaveBeenCalledWith(['src/widget.cpp']));
+    });
+
+    it('requeues failed paths and drains writes queued during a refresh', async () => {
+        seedDefaultRepo();
+        let rejectInFlight!: (error: Error) => void;
+        const refreshChanged = vi.fn()
+            .mockImplementationOnce(() => {
+                throw new Error('temporary refresh failure');
+            })
+            .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+                rejectInFlight = reject;
+            }))
+            .mockResolvedValue(undefined);
+        const index: NativeSymbolIndex = {
+            search: vi.fn(async () => []),
+            refresh: vi.fn(async () => {}),
+            refreshChanged,
+        };
+        const service = serviceWithSymbols({ buildSymbolIndex: async () => index });
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        await service.searchSymbols(REPO_ID, 'Widget');
+        await vi.waitFor(async () => {
+            expect((await service.searchSymbols(REPO_ID, 'Widget')).indexed).toBe(true);
+        });
+
+        await service.writeBlob(REPO_ID, 'src/one.cpp', 'int one();\n');
+        await vi.waitFor(() => expect(refreshChanged).toHaveBeenCalledTimes(1));
+        await service.writeBlob(REPO_ID, 'src/two.cpp', 'int two();\n');
+        await vi.waitFor(() => expect(refreshChanged).toHaveBeenCalledTimes(2));
+        await service.writeBlob(REPO_ID, 'src/three.cpp', 'int three();\n');
+        rejectInFlight(new Error('second temporary failure'));
+        await vi.waitFor(() => expect(refreshChanged).toHaveBeenCalledTimes(3));
+
+        expect(refreshChanged).toHaveBeenLastCalledWith([
+            'src/three.cpp',
+            'src/one.cpp',
+            'src/two.cpp',
+        ]);
+        warning.mockRestore();
     });
 
     it('refreshes after content replacement writes', async () => {
@@ -860,6 +902,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
         const index: NativeSymbolIndex = {
             search: vi.fn(async () => []),
             refresh: vi.fn(async () => {}),
+            refreshChanged: vi.fn(async () => {}),
         };
         const service = serviceWithSymbols({
             buildSymbolIndex: async () => index,
@@ -879,7 +922,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
             }],
         );
 
-        await vi.waitFor(() => expect(index.refresh).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(index.refreshChanged).toHaveBeenCalledWith(['widget.cpp']));
     });
 
     it('does not cache a synchronous native build failure as indexing forever', async () => {
@@ -901,6 +944,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
         const index: NativeSymbolIndex = {
             search: vi.fn(async () => []),
             refresh: vi.fn(async () => {}),
+            refreshChanged: vi.fn(async () => {}),
         };
         const buildSymbolIndex = vi.fn(async () => index);
         const service = serviceWithSymbols({ buildSymbolIndex });

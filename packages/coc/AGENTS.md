@@ -53,8 +53,8 @@ all have their own `references/*.md`.
   `loadNativeSymbolIndex()`. The first `/api/repos/:repoId/search/symbols`
   request returns `indexed: false` while the build runs, with the latest bounded
   scanning/indexing progress when available; later exact-name or prefix requests
-  query SQLite. Repository writes trigger a coalesced background incremental
-  refresh.
+  query SQLite. Repository writes debounce and coalesce their repo-relative
+  paths into targeted background refreshes that avoid another repository walk.
 - **Repo-group file search is group-owner scoped.** `GET
   /api/repo-groups/:id/search` resolves `group.json` against the owning server's
   live workspace registry on every request, skips stale members and the virtual

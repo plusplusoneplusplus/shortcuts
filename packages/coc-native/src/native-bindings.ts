@@ -53,6 +53,8 @@ export declare class SymbolIndex {
   search(query: string, options?: SymbolSearchOptions | undefined | null): Promise<SymbolMatch[]>
   /** Incrementally refresh changed files in the persistent index. */
   refresh(): Promise<void>
+  /** Refresh only the supplied repository-relative paths. */
+  refreshChanged(changedPaths: Array<string>): Promise<void>
 }
 
 /** Walk `root` in parallel and resolve with a ready-to-search index. */

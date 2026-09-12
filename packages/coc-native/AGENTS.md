@@ -12,6 +12,9 @@ grammar, and tags crate versions stay pinned as one compatibility set.
 It uses WAL plus `files(path, size, mtime, hash)` and `symbols` tables, compares
 the manifest before parsing, replaces one file's rows transactionally, removes
 deleted files, and retains the previous committed rows when extraction fails.
+`refreshChanged(paths)` validates and deduplicates repository-relative paths,
+then reads and updates only those files. Server-side writes debounce and
+coalesce their paths before calling it.
 `buildSymbolIndex(root, database)` runs the initial or incremental sync on a
 libuv worker and returns a `SymbolIndex` whose exact/prefix `search()` and
 incremental `refresh()` methods also stay off the event loop.

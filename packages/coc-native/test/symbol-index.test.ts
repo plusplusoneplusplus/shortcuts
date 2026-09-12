@@ -36,11 +36,12 @@ function useAddon(source: string): string {
 
 it('exposes the symbol-index capability independently', async () => {
     useAddon(
-        'module.exports = { buildSymbolIndex: async () => ({ search: async () => [] }) };',
+        'module.exports = { buildSymbolIndex: async () => ({ search: async () => [], refreshChanged: async () => {} }) };',
     );
     const api = loadNativeSymbolIndex();
     const index = await api.buildSymbolIndex('/repo', '/data/symbols.sqlite');
     expect(await index.search('name')).toEqual([]);
+    await expect(index.refreshChanged(['src/name.cpp'])).resolves.toBeUndefined();
     expect(nativeSymbolIndexStatus().loaded).toBe(true);
 });
 

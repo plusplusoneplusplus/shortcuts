@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 
@@ -218,6 +218,80 @@ impl SymbolStore {
         Ok(stats)
     }
 
+    pub fn sync_changed_paths(
+        &self,
+        root: &Path,
+        changed_paths: &[String],
+        limits: ExtractionLimits,
+    ) -> Result<SyncStats, Box<dyn std::error::Error + Send + Sync>> {
+        let extractor = SymbolExtractor::new(limits)?;
+        let paths: HashSet<String> = changed_paths
+            .iter()
+            .map(|path| normalize_relative_path(path))
+            .collect::<Result<_, _>>()?;
+        let mut stats = SyncStats { scanned: paths.len(), ..SyncStats::default() };
+
+        for relative in paths {
+            let absolute = root.join(&relative);
+            let previous = self.manifest_entry(&relative)?;
+            let metadata = match std::fs::metadata(&absolute) {
+                Ok(metadata) if metadata.is_file() && is_c_family_path(&relative) => metadata,
+                Ok(_) => {
+                    stats.removed += usize::from(self.remove_changed_file(&relative)? > 0);
+                    continue;
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    stats.removed += usize::from(self.remove_changed_file(&relative)? > 0);
+                    continue;
+                }
+                Err(error) => return Err(Box::new(error)),
+            };
+            let source = read_bounded(&absolute, limits.max_file_bytes)?;
+            let entry = FileManifestEntry {
+                path: previous
+                    .as_ref()
+                    .map_or_else(|| relative.clone(), |entry| entry.path.clone()),
+                size: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
+                mtime: modified_millis(&metadata)?,
+                hash: blake3::hash(&source).to_hex().to_string(),
+            };
+            if previous.as_ref() == Some(&entry) {
+                stats.unchanged += 1;
+                continue;
+            }
+            match extractor.extract(&relative, &source) {
+                Ok(symbols) => {
+                    self.replace_file(&entry, &symbols)?;
+                    stats.parsed += 1;
+                }
+                Err(error) => stats
+                    .failures
+                    .push(SymbolFileFailure { path: relative, reason: error.to_string() }),
+            }
+        }
+        Ok(stats)
+    }
+
+    fn manifest_entry(&self, path: &str) -> rusqlite::Result<Option<FileManifestEntry>> {
+        let connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
+        let sql = if cfg!(windows) {
+            "SELECT path, size, mtime, hash FROM files WHERE path = ?1 COLLATE NOCASE"
+        } else {
+            "SELECT path, size, mtime, hash FROM files WHERE path = ?1"
+        };
+        let mut statement = connection.prepare(sql)?;
+        let mut rows = statement.query([path])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(FileManifestEntry {
+            path: row.get(0)?,
+            size: row.get(1)?,
+            mtime: row.get(2)?,
+            hash: row.get(3)?,
+        }))
+    }
+
     fn replace_file(&self, file: &FileManifestEntry, symbols: &[Symbol]) -> rusqlite::Result<()> {
         let mut connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
         let transaction = connection.transaction()?;
@@ -235,11 +309,42 @@ impl SymbolStore {
         transaction.commit()
     }
 
-    fn remove_file(&self, path: &str) -> rusqlite::Result<()> {
+    fn remove_file(&self, path: &str) -> rusqlite::Result<usize> {
         let connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
-        connection.execute("DELETE FROM files WHERE path = ?1", [path])?;
-        Ok(())
+        connection.execute("DELETE FROM files WHERE path = ?1", [path])
     }
+
+    fn remove_changed_file(&self, path: &str) -> rusqlite::Result<usize> {
+        let connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
+        let sql = if cfg!(windows) {
+            "DELETE FROM files WHERE path = ?1 COLLATE NOCASE"
+        } else {
+            "DELETE FROM files WHERE path = ?1"
+        };
+        connection.execute(sql, [path])
+    }
+}
+
+fn normalize_relative_path(path: &str) -> io::Result<String> {
+    let portable = if cfg!(windows) { path.replace('\\', "/") } else { path.to_owned() };
+    let mut normalized = PathBuf::new();
+    for component in Path::new(&portable).components() {
+        match component {
+            Component::Normal(part) => normalized.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("symbol index path must be repository-relative: {path}"),
+                ));
+            }
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "symbol index path is empty"));
+    }
+    let normalized = normalized.to_string_lossy();
+    Ok(if cfg!(windows) { normalized.replace('\\', "/") } else { normalized.into_owned() })
 }
 
 fn insert_symbols(
@@ -296,6 +401,86 @@ mod tests {
         assert_eq!((changed.parsed, changed.unchanged, changed.removed), (1, 0, 1));
         assert_eq!(store.symbols_for_file("one.c").expect("symbols")[0].name, "changed");
         assert!(store.symbols_for_file("two.cpp").expect("removed symbols").is_empty());
+    }
+
+    #[test]
+    fn targeted_sync_reads_only_named_paths() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(root.path().join("one.c"), "int one() { return 1; }\n").expect("one");
+        std::fs::write(root.path().join("two.cpp"), "int two() { return 2; }\n").expect("two");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("cold");
+
+        std::fs::write(root.path().join("one.c"), "int changed() { return 3; }\n").expect("change");
+        std::fs::write(root.path().join("two.cpp"), "int ignored() { return 4; }\n")
+            .expect("unlisted change");
+        let changed = store
+            .sync_changed_paths(root.path(), &["one.c".to_owned()], ExtractionLimits::default())
+            .expect("targeted sync");
+
+        assert_eq!((changed.scanned, changed.parsed, changed.unchanged), (1, 1, 0));
+        assert_eq!(store.symbols_for_file("one.c").expect("one symbols")[0].name, "changed");
+        assert_eq!(store.symbols_for_file("two.cpp").expect("two symbols")[0].name, "two");
+    }
+
+    #[test]
+    fn targeted_sync_removes_deleted_files_and_rejects_paths_outside_root() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(root.path().join("gone.h"), "int gone();\n").expect("fixture");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("cold");
+        std::fs::remove_file(root.path().join("gone.h")).expect("remove");
+
+        let removed = store
+            .sync_changed_paths(root.path(), &["gone.h".to_owned()], ExtractionLimits::default())
+            .expect("targeted removal");
+        assert_eq!((removed.scanned, removed.removed), (1, 1));
+        assert!(store.symbols_for_file("gone.h").expect("removed symbols").is_empty());
+
+        let error = store
+            .sync_changed_paths(
+                root.path(),
+                &["../outside.cpp".to_owned()],
+                ExtractionLimits::default(),
+            )
+            .expect_err("path traversal");
+        assert!(error.to_string().contains("repository-relative"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn targeted_sync_preserves_posix_backslashes() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        let relative = r"back\slash.cpp";
+        std::fs::write(root.path().join(relative), "int original();\n").expect("fixture");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store
+            .sync_changed_paths(root.path(), &[relative.to_owned()], ExtractionLimits::default())
+            .expect("targeted sync");
+
+        assert_eq!(store.symbols_for_file(relative).expect("symbols")[0].name, "original");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn full_sync_preserves_a_case_only_rename() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(root.path().join("Before.cpp"), "int before();\n").expect("fixture");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("cold");
+        std::fs::rename(root.path().join("Before.cpp"), root.path().join("before.cpp"))
+            .expect("rename");
+
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("rename sync");
+
+        assert_eq!(
+            store.symbols_for_file("before.cpp").expect("renamed symbols")[0].name,
+            "before"
+        );
     }
 
     #[test]

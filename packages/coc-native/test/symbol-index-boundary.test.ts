@@ -58,11 +58,25 @@ describe('persistent symbol-index boundary', () => {
         await expect(index.search('missing')).resolves.toEqual([]);
     });
 
-    it('incrementally refreshes changed files', async () => {
+    it('incrementally refreshes only named changed files', async () => {
         fs.writeFileSync(path.join(root, 'new.cpp'), 'int refreshed() { return 1; }\n');
-        await index.refresh();
+        fs.writeFileSync(path.join(root, 'unlisted.cpp'), 'int unlisted() { return 1; }\n');
+        await index.refreshChanged(['new.cpp']);
         await expect(index.search('refreshed')).resolves.toEqual([
             expect.objectContaining({ name: 'refreshed', path: 'new.cpp' }),
         ]);
+        await expect(index.search('unlisted')).resolves.toEqual([]);
+    });
+
+    it('removes named deleted files and rejects traversal', async () => {
+        fs.unlinkSync(path.join(root, 'new.cpp'));
+        await index.refreshChanged(['new.cpp']);
+        await expect(index.search('refreshed')).resolves.toEqual([]);
+        await expect(index.refreshChanged(['../outside.cpp'])).rejects.toThrow(/repository-relative/);
+    });
+
+    it('bounds targeted refresh batches', async () => {
+        expect(() => index.refreshChanged(Array.from({ length: 1025 }, (_, i) => `${i}.cpp`)))
+            .toThrow(/at most 1024/);
     });
 });

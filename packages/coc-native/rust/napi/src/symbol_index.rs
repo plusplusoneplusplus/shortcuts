@@ -149,6 +149,30 @@ pub struct RefreshSymbolIndexTask {
     operation: Arc<Mutex<()>>,
 }
 
+pub struct RefreshChangedSymbolIndexTask {
+    root: PathBuf,
+    store: Arc<SymbolStore>,
+    operation: Arc<Mutex<()>>,
+    changed_paths: Vec<String>,
+}
+
+impl Task for RefreshChangedSymbolIndexTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let _guard = self.operation.lock().unwrap_or_else(|error| error.into_inner());
+        self.store
+            .sync_changed_paths(&self.root, &self.changed_paths, ExtractionLimits::default())
+            .map(|_| ())
+            .map_err(|error| to_napi_error("failed to refresh changed symbol-index paths", error))
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
+        Ok(())
+    }
+}
+
 impl Task for RefreshSymbolIndexTask {
     type Output = ();
     type JsValue = ();
@@ -220,5 +244,22 @@ impl SymbolIndex {
             store: Arc::clone(&self.store),
             operation: Arc::clone(&self.operation),
         })
+    }
+
+    /// Refresh only the supplied repository-relative paths.
+    #[napi(ts_return_type = "Promise<void>")]
+    pub fn refresh_changed(
+        &self,
+        changed_paths: Vec<String>,
+    ) -> Result<AsyncTask<RefreshChangedSymbolIndexTask>> {
+        if changed_paths.len() > 1_024 {
+            return Err(Error::new(Status::InvalidArg, "at most 1024 changed paths are allowed"));
+        }
+        Ok(AsyncTask::new(RefreshChangedSymbolIndexTask {
+            root: self.root.clone(),
+            store: Arc::clone(&self.store),
+            operation: Arc::clone(&self.operation),
+            changed_paths,
+        }))
     }
 }
