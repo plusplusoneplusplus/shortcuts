@@ -54,6 +54,12 @@ export interface ExplorerSymbolSearchResult {
 export interface ExplorerSymbolSearchResponse {
   /** False while the repository's first persistent index build is running. */
   indexed: boolean;
+  /** Latest cold-build progress while `indexed` is false. */
+  progress?: {
+    phase: 'scanning' | 'indexing' | 'complete';
+    processed: number;
+    total: number;
+  };
   results: ExplorerSymbolSearchResult[];
 }
 

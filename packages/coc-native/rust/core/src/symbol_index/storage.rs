@@ -28,6 +28,20 @@ pub struct SyncStats {
     pub failures: Vec<SymbolFileFailure>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SyncProgressPhase {
+    Scanning,
+    Indexing,
+    Complete,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SyncProgress {
+    pub phase: SyncProgressPhase,
+    pub processed: usize,
+    pub total: usize,
+}
+
 pub struct SymbolStore {
     connection: Mutex<Connection>,
 }
@@ -134,15 +148,31 @@ impl SymbolStore {
         root: &Path,
         limits: ExtractionLimits,
     ) -> Result<SyncStats, Box<dyn std::error::Error + Send + Sync>> {
+        self.sync_repository_with_progress(root, limits, |_| {})
+    }
+
+    pub fn sync_repository_with_progress(
+        &self,
+        root: &Path,
+        limits: ExtractionLimits,
+        mut on_progress: impl FnMut(SyncProgress),
+    ) -> Result<SyncStats, Box<dyn std::error::Error + Send + Sync>> {
         let extractor = SymbolExtractor::new(limits)?;
         let previous: HashMap<String, FileManifestEntry> =
             self.manifest()?.into_iter().map(|entry| (entry.path.clone(), entry)).collect();
+        on_progress(SyncProgress { phase: SyncProgressPhase::Scanning, processed: 0, total: 0 });
         let (paths, _) = walk(root, &WalkOptions::default())?;
         let paths: Vec<String> = paths.into_iter().filter(|path| is_c_family_path(path)).collect();
         let seen: HashSet<&str> = paths.iter().map(String::as_str).collect();
         let mut stats = SyncStats { scanned: paths.len(), ..SyncStats::default() };
+        let progress_stride = paths.len().div_ceil(100).max(1);
+        on_progress(SyncProgress {
+            phase: SyncProgressPhase::Indexing,
+            processed: 0,
+            total: paths.len(),
+        });
 
-        for relative in &paths {
+        for (position, relative) in paths.iter().enumerate() {
             let absolute = root.join(relative);
             let metadata = std::fs::metadata(&absolute)?;
             let source = read_bounded(&absolute, limits.max_file_bytes)?;
@@ -154,16 +184,25 @@ impl SymbolStore {
             };
             if previous.get(relative) == Some(&entry) {
                 stats.unchanged += 1;
-                continue;
-            }
-            match extractor.extract(relative, &source) {
-                Ok(symbols) => {
-                    self.replace_file(&entry, &symbols)?;
-                    stats.parsed += 1;
+            } else {
+                match extractor.extract(relative, &source) {
+                    Ok(symbols) => {
+                        self.replace_file(&entry, &symbols)?;
+                        stats.parsed += 1;
+                    }
+                    Err(error) => stats.failures.push(SymbolFileFailure {
+                        path: relative.clone(),
+                        reason: error.to_string(),
+                    }),
                 }
-                Err(error) => stats
-                    .failures
-                    .push(SymbolFileFailure { path: relative.clone(), reason: error.to_string() }),
+            }
+            let processed = position + 1;
+            if processed == paths.len() || processed % progress_stride == 0 {
+                on_progress(SyncProgress {
+                    phase: SyncProgressPhase::Indexing,
+                    processed,
+                    total: paths.len(),
+                });
             }
         }
 
@@ -171,6 +210,11 @@ impl SymbolStore {
             self.remove_file(removed)?;
             stats.removed += 1;
         }
+        on_progress(SyncProgress {
+            phase: SyncProgressPhase::Complete,
+            processed: paths.len(),
+            total: paths.len(),
+        });
         Ok(stats)
     }
 
@@ -304,5 +348,42 @@ mod tests {
         );
         assert!(store.search("missing", false, 10).expect("miss").is_empty());
         assert_eq!(store.search("alph", true, 1).expect("limited").len(), 1);
+    }
+
+    #[test]
+    fn reports_bounded_progress_during_a_cold_build() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        for index in 0..250 {
+            std::fs::write(
+                root.path().join(format!("file-{index}.cpp")),
+                format!("int symbol_{index}() {{ return {index}; }}\n"),
+            )
+            .expect("fixture");
+        }
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        let mut progress = Vec::new();
+
+        let stats = store
+            .sync_repository_with_progress(root.path(), ExtractionLimits::default(), |event| {
+                progress.push(event)
+            })
+            .expect("cold build");
+
+        assert_eq!(stats.parsed, 250);
+        assert_eq!(
+            progress.first(),
+            Some(&SyncProgress { phase: SyncProgressPhase::Scanning, processed: 0, total: 0 })
+        );
+        assert!(progress.iter().any(|event| {
+            event.phase == SyncProgressPhase::Indexing
+                && event.processed > 0
+                && event.processed < event.total
+        }));
+        assert_eq!(
+            progress.last(),
+            Some(&SyncProgress { phase: SyncProgressPhase::Complete, processed: 250, total: 250 })
+        );
+        assert!(progress.len() <= 103);
     }
 }

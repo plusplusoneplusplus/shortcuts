@@ -12,7 +12,7 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-pub use storage::{FileManifestEntry, SymbolStore, SyncStats};
+pub use storage::{FileManifestEntry, SymbolStore, SyncProgress, SyncProgressPhase, SyncStats};
 
 use rayon::prelude::*;
 use streaming_iterator::StreamingIterator;

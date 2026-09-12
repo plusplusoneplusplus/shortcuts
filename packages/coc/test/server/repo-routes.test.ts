@@ -757,6 +757,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
         expect(buildSymbolIndex).toHaveBeenCalledWith(
             repoDir,
             path.join(dataDir, 'repos', REPO_ID, 'symbol-index.sqlite'),
+            expect.any(Function),
         );
         expect(index.search).toHaveBeenCalledWith('Widget', { prefix: false, limit: 100 });
 
@@ -803,6 +804,34 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
 
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ indexed: false, results: [] });
+    });
+
+    it('reports cold-build progress while indexing', async () => {
+        seedDefaultRepo();
+        const buildSymbolIndex = vi.fn(
+            (
+                _root: string,
+                _database: string,
+                onProgress?: (progress: {
+                    phase: string;
+                    processed: number;
+                    total: number;
+                }) => void,
+            ) => {
+                onProgress?.({ phase: 'indexing', processed: 25, total: 100 });
+                return new Promise<NativeSymbolIndex>(() => {});
+            },
+        );
+        await replaceServer(serviceWithSymbols({ buildSymbolIndex }));
+
+        const response = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/symbols?q=Widget`);
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({
+            indexed: false,
+            progress: { phase: 'indexing', processed: 25, total: 100 },
+            results: [],
+        });
     });
 
     it('queues a refresh when a write lands during the cold build', async () => {
@@ -890,6 +919,7 @@ describe('GET /api/repos/:repoId/search/symbols', () => {
         expect(buildSymbolIndex).toHaveBeenLastCalledWith(
             secondRoot,
             path.join(dataDir, 'repos', REPO_ID, 'symbol-index.sqlite'),
+            expect.any(Function),
         );
     });
 

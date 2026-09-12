@@ -16,6 +16,7 @@ import type {
     NativeRankedFileMatch,
     NativeSymbolIndex,
     NativeSymbolIndexAddon,
+    NativeSymbolIndexBuildProgress,
 } from '@plusplusoneplusplus/coc-native';
 import { getRepoDataPath } from '../paths';
 
@@ -98,6 +99,7 @@ interface NativeIndexEntry {
 interface NativeSymbolIndexEntry {
     root: string;
     index?: NativeSymbolIndex;
+    progress?: NativeSymbolIndexBuildProgress;
     error?: unknown;
     refreshing?: Promise<void>;
     refreshQueued?: boolean;
@@ -554,8 +556,18 @@ export class RepoTreeService {
             const addon = this.nativeSymbols ??= loadNativeSymbolIndex();
             const entry: NativeSymbolIndexEntry = { root: repoRoot };
             const database = getRepoDataPath(this.dataDir, repoId, 'symbol-index.sqlite');
-            const build = addon.buildSymbolIndex(repoRoot, database);
             this.nativeSymbolIndexes.set(repoId, entry);
+            let build: Promise<NativeSymbolIndex>;
+            try {
+                build = addon.buildSymbolIndex(repoRoot, database, progress => {
+                    if (this.nativeSymbolIndexes.get(repoId) === entry) {
+                        entry.progress = progress;
+                    }
+                });
+            } catch (error) {
+                this.nativeSymbolIndexes.delete(repoId);
+                throw error;
+            }
             void build.then(
                 index => {
                     if (this.nativeSymbolIndexes.get(repoId) !== entry) return;
@@ -569,13 +581,15 @@ export class RepoTreeService {
                     entry.error = error;
                 },
             );
-            return { indexed: false, results: [] };
+            return { indexed: false, progress: entry.progress, results: [] };
         }
         if (existing.error !== undefined) {
             this.nativeSymbolIndexes.delete(repoId);
             throw existing.error;
         }
-        if (!existing.index) return { indexed: false, results: [] };
+        if (!existing.index) {
+            return { indexed: false, progress: existing.progress, results: [] };
+        }
 
         const results = await existing.index.search(query, {
             prefix: options?.prefix ?? false,

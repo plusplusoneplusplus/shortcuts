@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { NativeSymbolIndex } from '../src/symbol-index';
 import { removeDir, symbolIndexAddon } from './helpers';
@@ -9,6 +9,7 @@ import { removeDir, symbolIndexAddon } from './helpers';
 let root: string;
 let data: string;
 let index: NativeSymbolIndex;
+const progress: Array<{ phase: string; processed: number; total: number }> = [];
 
 beforeAll(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-symbol-root-'));
@@ -17,7 +18,11 @@ beforeAll(async () => {
         path.join(root, 'symbols.cpp'),
         'int target() { return 1; }\nint targetHelper() { return target(); }\n',
     );
-    index = await symbolIndexAddon.buildSymbolIndex(root, path.join(data, 'symbols.sqlite'));
+    index = await symbolIndexAddon.buildSymbolIndex(
+        root,
+        path.join(data, 'symbols.sqlite'),
+        event => progress.push(event),
+    );
 });
 
 afterAll(() => {
@@ -26,6 +31,14 @@ afterAll(() => {
 });
 
 describe('persistent symbol-index boundary', () => {
+    it('reports progress throughout a cold build', async () => {
+        expect(progress[0]).toEqual({ phase: 'scanning', processed: 0, total: 0 });
+        expect(progress).toContainEqual({ phase: 'indexing', processed: 0, total: 1 });
+        await vi.waitFor(() => {
+            expect(progress.at(-1)).toEqual({ phase: 'complete', processed: 1, total: 1 });
+        });
+    });
+
     it('marshals exact hits and one-based positions', async () => {
         await expect(index.search('target')).resolves.toEqual([
             expect.objectContaining({

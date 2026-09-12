@@ -10,11 +10,18 @@ import type * as Bindings from './native-bindings';
 import type { NativeAddonStatus } from './types';
 
 export type NativeSymbolIndex = Bindings.SymbolIndex;
+export type NativeSymbolIndexBuildProgress = Omit<Bindings.SymbolIndexBuildProgress, 'phase'> & {
+    phase: 'scanning' | 'indexing' | 'complete';
+};
 export type NativeSymbolMatch = Bindings.SymbolMatch;
 export type NativeSymbolSearchOptions = Bindings.SymbolSearchOptions;
 
 export interface NativeSymbolIndexAddon {
-    buildSymbolIndex: typeof Bindings.buildSymbolIndex;
+    buildSymbolIndex(
+        root: string,
+        database: string,
+        onProgress?: (progress: NativeSymbolIndexBuildProgress) => void,
+    ): Promise<NativeSymbolIndex>;
 }
 
 function isSymbolIndexAddon(addon: unknown): addon is NativeSymbolIndexAddon {

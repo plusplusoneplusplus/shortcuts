@@ -71,10 +71,18 @@ export interface SymbolSearchResult {
     parent?: string;
 }
 
+export interface SymbolIndexProgress {
+    phase: 'scanning' | 'indexing' | 'complete';
+    processed: number;
+    total: number;
+}
+
 /** Result of an exact-name or prefix symbol query. */
 export interface SearchSymbolsResult {
     /** False while the repository's first persistent index build is running. */
     indexed: boolean;
+    /** Latest cold-build progress while `indexed` is false. */
+    progress?: SymbolIndexProgress;
     results: SymbolSearchResult[];
 }
 

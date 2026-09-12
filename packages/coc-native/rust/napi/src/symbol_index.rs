@@ -4,8 +4,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use coc_native_core::symbol_index::{ExtractionLimits, Symbol, SymbolStore};
-use napi::bindgen_prelude::{AsyncTask, Error, Result, Status, Task};
+use coc_native_core::symbol_index::{
+    ExtractionLimits, Symbol, SymbolStore, SyncProgress, SyncProgressPhase,
+};
+use napi::bindgen_prelude::{AsyncTask, Error, Function, Result, Status, Task};
+use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi::Env;
 use napi_derive::napi;
 
@@ -30,6 +33,17 @@ pub struct SymbolSearchOptions {
     pub limit: Option<u32>,
 }
 
+#[napi(object)]
+#[derive(Clone)]
+pub struct SymbolIndexBuildProgress {
+    pub phase: String,
+    pub processed: u32,
+    pub total: u32,
+}
+
+type ProgressCallback =
+    ThreadsafeFunction<(String, u32, u32), (), SymbolIndexBuildProgress, Status, false>;
+
 #[napi]
 pub struct SymbolIndex {
     root: PathBuf,
@@ -44,6 +58,20 @@ fn to_napi_error(context: &str, error: impl std::fmt::Display) -> Error {
 pub struct BuildSymbolIndexTask {
     root: PathBuf,
     database: PathBuf,
+    on_progress: Option<ProgressCallback>,
+}
+
+fn to_build_progress(progress: SyncProgress) -> SymbolIndexBuildProgress {
+    SymbolIndexBuildProgress {
+        phase: match progress.phase {
+            SyncProgressPhase::Scanning => "scanning",
+            SyncProgressPhase::Indexing => "indexing",
+            SyncProgressPhase::Complete => "complete",
+        }
+        .to_owned(),
+        processed: u32::try_from(progress.processed).unwrap_or(u32::MAX),
+        total: u32::try_from(progress.total).unwrap_or(u32::MAX),
+    }
 }
 
 impl Task for BuildSymbolIndexTask {
@@ -57,8 +85,17 @@ impl Task for BuildSymbolIndexTask {
         }
         let store = SymbolStore::open(&self.database)
             .map_err(|error| to_napi_error("failed to open symbol index", error))?;
+        let on_progress = self.on_progress.as_ref();
         store
-            .sync_repository(&self.root, ExtractionLimits::default())
+            .sync_repository_with_progress(&self.root, ExtractionLimits::default(), |progress| {
+                if let Some(callback) = on_progress {
+                    let progress = to_build_progress(progress);
+                    callback.call(
+                        (progress.phase, progress.processed, progress.total),
+                        ThreadsafeFunctionCallMode::NonBlocking,
+                    );
+                }
+            })
             .map_err(|error| to_napi_error("failed to build symbol index", error))?;
         Ok((self.root.clone(), store))
     }
@@ -130,12 +167,30 @@ impl Task for RefreshSymbolIndexTask {
 }
 
 /// Build or incrementally refresh the persistent index for one repository.
-#[napi(ts_return_type = "Promise<SymbolIndex>")]
-pub fn build_symbol_index(root: String, database: String) -> AsyncTask<BuildSymbolIndexTask> {
-    AsyncTask::new(BuildSymbolIndexTask {
+#[napi(
+    ts_args_type = "root: string, database: string, onProgress?: (progress: SymbolIndexBuildProgress) => void",
+    ts_return_type = "Promise<SymbolIndex>"
+)]
+pub fn build_symbol_index(
+    root: String,
+    database: String,
+    on_progress: Option<Function<'_, SymbolIndexBuildProgress, ()>>,
+) -> Result<AsyncTask<BuildSymbolIndexTask>> {
+    let on_progress = on_progress
+        .map(|callback| {
+            callback.build_threadsafe_function().callee_handled::<false>().build_callback(
+                |context| {
+                    let (phase, processed, total) = context.value;
+                    Ok(SymbolIndexBuildProgress { phase, processed, total })
+                },
+            )
+        })
+        .transpose()?;
+    Ok(AsyncTask::new(BuildSymbolIndexTask {
         root: PathBuf::from(root),
         database: PathBuf::from(database),
-    })
+        on_progress,
+    }))
 }
 
 #[napi]
