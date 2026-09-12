@@ -28,9 +28,11 @@ import { useLanguageDocument } from '../../language-servers/useLanguageDocument'
 import { LanguageStatusBadge } from '../../language-servers/LanguageStatusBadge';
 import {
     registerLanguageProviders,
+    supportsFeature,
     type MonacoLike,
     type ProviderModel,
 } from '../../language-servers/languageProviders';
+import { installDefinitionLinkCue } from '../../language-servers/definitionLinkCue';
 import { applyShadowLanguage, type ShadowMonaco } from '../../language-servers/shadowLanguage';
 import {
     registerEditorNavigator,
@@ -198,7 +200,8 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
     // Both casts narrow the real Monaco namespace to the structural slice the
     // provider module describes; `languageProviders.ts` deliberately carries no
     // runtime Monaco dependency, so this boundary is where the two meet.
-    const handleModelMount = useCallback(({ monaco, model }: EditorModelMountContext) => {
+    const definitionSupported = supportsFeature(languageDocument.snapshot?.state, 'definition');
+    const handleModelMount = useCallback(({ editor, monaco, model }: EditorModelMountContext) => {
         if (!languageView) return;
         // Before registering anything, move the model off `typescript` /
         // `javascript` so Monaco's bundled worker stops answering for it. The
@@ -211,15 +214,24 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
         });
+        const definitionLinkCue = definitionSupported
+            ? installDefinitionLinkCue({
+                editor,
+                model,
+                view: languageView,
+                isEnabled: () => supportsFeature(languageView.getSnapshot().state, 'definition'),
+            })
+            : null;
         // Claim the navigations that START in this model, so the global editor
         // opener knows which surface asked and lands the target in its strip.
         const navigation = registerEditorNavigator(model, handleNavigate);
         return () => {
+            definitionLinkCue?.dispose();
             navigation.dispose();
             registration.dispose();
             shadow?.revert();
         };
-    }, [languageView, monacoLanguageId, handleNavigate]);
+    }, [languageView, monacoLanguageId, handleNavigate, definitionSupported]);
 
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted
@@ -286,12 +298,6 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
                     className="absolute top-2 right-6 z-10 flex items-center gap-1.5"
                     data-testid="preview-toolbar"
                 >
-                    {languageEnabled && (
-                        <LanguageStatusBadge
-                            snapshot={languageDocument.snapshot}
-                            onRestart={restartLanguageServer}
-                        />
-                    )}
                     {isDirty && !effectiveReadOnly && (
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"
@@ -341,6 +347,16 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
                     codeTestId="monaco-container"
                 />
             ) : null}
+
+            {!loading && !error && languageEnabled && (
+                <div className="absolute bottom-1 right-3 z-10 max-w-[70%] pointer-events-none">
+                    <LanguageStatusBadge
+                        snapshot={languageDocument.snapshot}
+                        onRestart={restartLanguageServer}
+                        variant="corner"
+                    />
+                </div>
+            )}
         </div>
     );
 }

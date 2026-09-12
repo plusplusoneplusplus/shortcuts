@@ -77,7 +77,11 @@ describe('MonacoFileEditor — onModelMount', () => {
         await flushMount();
 
         expect(onModelMount).toHaveBeenCalledTimes(1);
-        expect(onModelMount.mock.calls[0][0]).toEqual({ monaco: stub.monaco, model: { id: 'model-1' } });
+        expect(onModelMount.mock.calls[0][0]).toEqual({
+            editor: stub.editor,
+            monaco: stub.monaco,
+            model: { id: 'model-1' },
+        });
     });
 
     it('runs the cleanup and re-registers when Monaco replaces the model', async () => {

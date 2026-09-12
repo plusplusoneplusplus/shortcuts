@@ -167,6 +167,34 @@ async function findWord(
     return spot!;
 }
 
+/** Whether Monaco's inline definition decoration currently wraps a word. */
+async function wordHasDefinitionLink(
+    page: Page,
+    lineText: string,
+    word: string,
+    panel = APP_PANEL,
+): Promise<boolean> {
+    return page.evaluate(({ selector, line, needle }) => {
+        const plain = (value: string | null): string => (value ?? '').replace(/\u00a0/g, ' ');
+        const root = document.querySelector(selector);
+        const target = Array.from(root?.querySelectorAll('.view-line') ?? [])
+            .find(node => plain(node.textContent).includes(line));
+        if (!target) return false;
+        const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (plain(node.textContent).includes(needle)) {
+                const owner = node.parentElement;
+                return owner !== null && owner.closest('.goto-definition-link') !== null;
+            }
+        }
+        return false;
+    }, {
+        selector: `${panel} [data-testid="monaco-container"]`,
+        line: lineText,
+        needle: word,
+    });
+}
+
 /** Invoke Monaco's mouse-driven go-to-definition gesture on one rendered word. */
 async function ctrlClickWord(
     page: Page,
@@ -422,6 +450,14 @@ test.describe('Explorer language support – status', () => {
             await waitForLanguageServer(page);
             await expect(page.locator(`${APP_PANEL} [data-testid="language-status-label"]`))
                 .toHaveText('TypeScript');
+
+            const badgeBox = await statusBadge(page).boundingBox();
+            const firstLineBox = await page.locator(
+                `${APP_PANEL} [data-testid="monaco-container"] .view-lines .view-line`,
+            ).first().boundingBox();
+            expect(badgeBox).not.toBeNull();
+            expect(firstLineBox).not.toBeNull();
+            expect(badgeBox!.y).toBeGreaterThanOrEqual(firstLineBox!.y + firstLineBox!.height);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -468,6 +504,35 @@ test.describe('Explorer language support – TypeScript features', () => {
             await waitForProjectLoaded(page);
 
             await expectEditorTabs(page, [APP_TAB]);
+
+            const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+            const linkSpot = await findWord(page, 'export const label', 'formatWidget');
+            await page.mouse.move(4, 4);
+            await page.keyboard.down(modifier);
+            try {
+                await page.mouse.move(linkSpot.x, linkSpot.y);
+                await expect
+                    .poll(
+                        () => wordHasDefinitionLink(page, 'export const label', 'formatWidget'),
+                        { timeout: 10_000 },
+                    )
+                    .toBe(true);
+            } finally {
+                await page.keyboard.up(modifier);
+            }
+
+            // Releasing the modifier has to retire the cue even though the
+            // editor never held focus and so never saw the key release. The
+            // click below depends on it: Monaco resolves a click against the
+            // span the browser named as its target, and a decoration torn down
+            // while the click is in flight detaches that span, which loses the
+            // caret the assertions after it are about.
+            await expect
+                .poll(
+                    () => wordHasDefinitionLink(page, 'export const label', 'formatWidget'),
+                    { timeout: 10_000 },
+                )
+                .toBe(false);
 
             // Click the call, then Monaco's own go-to-definition keybinding —
             // the target is in another file, so it can only land through the

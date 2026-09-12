@@ -195,6 +195,13 @@ describe('PreviewPane — language document (AC-02)', () => {
         const attachment = await attachmentFor('src/a.ts');
         act(() => { attachment.attach({ state: readyState() }); });
 
+        const status = screen.getByTestId('language-status');
+        const pane = screen.getByTestId('preview-pane');
+        const toolbar = screen.getByTestId('preview-toolbar');
+        expect(status.closest('[data-testid="preview-pane"]')).toBe(pane);
+        expect(status.closest('[data-testid="preview-toolbar"]')).toBeNull();
+        expect(status.parentElement?.classList.contains('pointer-events-none')).toBe(true);
+        expect(status.classList.contains('pointer-events-auto')).toBe(true);
         expect(screen.getByTestId('language-status-label').textContent).toBe('TypeScript');
 
         // The server dies. The status follows it, and the retry the user is
