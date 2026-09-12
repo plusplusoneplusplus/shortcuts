@@ -19,6 +19,8 @@ import { safeRm } from '../../helpers/safe-rm';
 
 let root: string;
 let session: LanguageServerSession;
+const diagnostics = new Map<string, Diagnostic[]>();
+let mainVersion = 1;
 
 interface HostPython {
     command: string;
@@ -29,6 +31,39 @@ interface Position {
     line: number;
     character: number;
 }
+
+interface Diagnostic {
+    message: string;
+}
+
+const SOURCE_TEXT = `class Greeter:
+    def greet(self, name: str) -> str:
+        return f"Hello, {name}"
+
+def shared_value() -> str:
+    return "shared"
+`;
+
+const API_STUB_TEXT = `def format_message(name: str, repeat: int = ...) -> str: ...
+`;
+
+const API_TEXT = `def format_message(name: str, repeat: int = 1) -> str:
+    return name * repeat
+`;
+
+const MAIN_TEXT = `from source import Greeter, shared_value
+from typed_api import format_message
+
+greeter = Greeter()
+message = greeter.greet("CoC")
+formatted = format_message("CoC", 2)
+shared = shared_value()
+`;
+
+const WINDOW_TEXT = `from typed_api import format_message
+
+title = format_message("Window", 1)
+`;
 
 function findHostPython(): HostPython | undefined {
     const candidates: HostPython[] = process.platform === 'win32'
@@ -109,10 +144,108 @@ function definitionPaths(result: unknown): string[] {
         .filter((candidate): candidate is string => candidate !== undefined);
 }
 
+function targetUris(result: unknown): string[] {
+    const entries = Array.isArray(result) ? result : result ? [result] : [];
+    return entries.flatMap((entry) => {
+        const location = entry as { uri?: unknown; targetUri?: unknown };
+        const uri = typeof location.targetUri === 'string' ? location.targetUri : location.uri;
+        return typeof uri === 'string' ? [uri] : [];
+    });
+}
+
+function completionLabels(result: unknown): string[] {
+    const items = Array.isArray(result) ? result : ((result as { items?: unknown[] } | null)?.items ?? []);
+    return items.flatMap((item) => {
+        const label = (item as { label?: unknown }).label;
+        return typeof label === 'string' ? [label] : [];
+    });
+}
+
+function uriFor(relative: string): string {
+    return pathToFileURL(path.join(root, ...relative.split('/'))).href;
+}
+
+function fileUriKey(uri: string): string {
+    if (!uri.startsWith('file:')) {
+        return uri;
+    }
+    let resolved: string;
+    try {
+        resolved = fs.realpathSync.native(fileURLToPath(uri));
+    } catch {
+        resolved = path.resolve(fileURLToPath(uri));
+    }
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function openDocument(relative: string, text: string): void {
+    session.sendNotification('textDocument/didOpen', {
+        textDocument: { uri: uriFor(relative), languageId: 'python', version: 1, text },
+    });
+}
+
+function changeMain(text: string): void {
+    mainVersion += 1;
+    session.sendNotification('textDocument/didChange', {
+        textDocument: { uri: uriFor('main.py'), version: mainVersion },
+        contentChanges: [{ text }],
+    });
+}
+
+async function waitFor<T>(
+    produce: () => T | undefined | Promise<T | undefined>,
+    description: string,
+    timeoutMs = 30_000,
+): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        const value = await produce();
+        if (value !== undefined) {
+            return value;
+        }
+        if (Date.now() > deadline) {
+            throw new Error(`Timed out waiting for ${description}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+}
+
+async function waitForRequest<T>(
+    method: string,
+    params: unknown,
+    check: (result: T) => boolean,
+    description: string,
+): Promise<T> {
+    return waitFor(async () => {
+        const result = await session.sendRequest<T>(method, params);
+        return check(result) ? result : undefined;
+    }, description);
+}
+
+async function waitForDiagnostics(
+    relative: string,
+    check: (found: Diagnostic[]) => boolean,
+): Promise<Diagnostic[]> {
+    const key = fileUriKey(uriFor(relative));
+    try {
+        return await waitFor(() => {
+            const found = diagnostics.get(key);
+            return found && check(found) ? found : undefined;
+        }, `Python diagnostics for ${relative}`);
+    } catch (error) {
+        throw new Error(`${String(error)}; received ${JSON.stringify([...diagnostics])}`);
+    }
+}
+
 beforeAll(async () => {
     root = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'coc-lsp-python-'));
     fs.writeFileSync(path.join(root, 'pyproject.toml'), '[project]\nname = "coc-pyright-fixture"\nversion = "1.0.0"\n');
-    fs.writeFileSync(path.join(root, 'main.py'), 'message: str = "ready"\n');
+    fs.writeFileSync(path.join(root, 'source.py'), SOURCE_TEXT);
+    fs.writeFileSync(path.join(root, 'typed_api.py'), API_TEXT);
+    fs.writeFileSync(path.join(root, 'typed_api.pyi'), API_STUB_TEXT);
+    fs.writeFileSync(path.join(root, 'main.py'), MAIN_TEXT);
+    fs.writeFileSync(path.join(root, 'window.pyw'), WINDOW_TEXT);
+    fs.writeFileSync(path.join(root, 'unopened.py'), 'broken: int = "not an int"\n');
 
     const enabled: LanguageServerDefinition = { ...PYTHON_PRESET, enabled: true };
     const prepared = prepareDefinitionForRoot(enabled, root);
@@ -125,8 +258,25 @@ beforeAll(async () => {
         requestTimeoutMs: 30_000,
         idleTimeoutMs: 10 * 60_000,
     });
+    session.onNotification('textDocument/publishDiagnostics', (params) => {
+        const payload = params as { uri?: unknown; diagnostics?: Diagnostic[] };
+        if (typeof payload.uri === 'string') {
+            diagnostics.set(fileUriKey(payload.uri), payload.diagnostics ?? []);
+        }
+    });
     await session.start();
-}, 60_000);
+    openDocument('main.py', MAIN_TEXT);
+    openDocument('window.pyw', WINDOW_TEXT);
+    await waitForRequest(
+        'textDocument/hover',
+        {
+            textDocument: { uri: uriFor('main.py') },
+            position: positionAt(MAIN_TEXT, 'format_message("CoC"', 2),
+        },
+        (result) => hoverText(result).includes('format_message'),
+        'initial Pyright analysis',
+    );
+}, 90_000);
 
 afterAll(async () => {
     await session?.dispose();
@@ -154,6 +304,186 @@ describe('packaged Python runtime', () => {
         expect(state.runtime).toBe('Server: packaged with CoC');
         expect(JSON.stringify(state)).not.toContain(root);
         expect(JSON.stringify(state)).not.toContain(process.execPath);
+    });
+
+    it('negotiates every shipped Python language capability', () => {
+        const capabilities = session.getState().capabilities as Record<string, unknown>;
+        expect(capabilities.hoverProvider).toBeTruthy();
+        expect(capabilities.definitionProvider).toBeTruthy();
+        expect(capabilities.referencesProvider).toBeTruthy();
+        expect(capabilities.completionProvider).toBeTruthy();
+        expect(capabilities.signatureHelpProvider).toBeTruthy();
+        expect(capabilities.textDocumentSync).toBeDefined();
+    });
+
+    it('ships basic type checking for open files by default', () => {
+        expect(PYTHON_PRESET.settings).toEqual({
+            python: {
+                analysis: {
+                    typeCheckingMode: 'basic',
+                    diagnosticMode: 'openFilesOnly',
+                },
+            },
+        });
+    });
+});
+
+describe('Python language features over packaged Pyright', () => {
+    afterAll(async () => {
+        changeMain(MAIN_TEXT);
+        await waitForDiagnostics('main.py', (found) => found.length === 0);
+    });
+
+    it('hovers a symbol imported from another Python file', async () => {
+        const result = await session.sendRequest('textDocument/hover', {
+            textDocument: { uri: uriFor('main.py') },
+            position: positionAt(MAIN_TEXT, 'greeter.greet', 'greeter.'.length + 2),
+        });
+        expect(hoverText(result)).toContain('def greet(name: str) -> str');
+    });
+
+    it('navigates across files to a stub definition', async () => {
+        const result = await session.sendRequest('textDocument/definition', {
+            textDocument: { uri: uriFor('main.py') },
+            position: positionAt(MAIN_TEXT, 'format_message("CoC"', 2),
+        });
+        expect(definitionPaths(result).map(fileUriKey)).toContain(fileUriKey(uriFor('typed_api.pyi')));
+    });
+
+    it('finds references across Python files', async () => {
+        const result = await session.sendRequest('textDocument/references', {
+            textDocument: { uri: uriFor('source.py') },
+            position: positionAt(SOURCE_TEXT, 'shared_value', 2),
+            context: { includeDeclaration: true },
+        });
+        const targets = targetUris(result).map(fileUriKey);
+        expect(targets).toContain(fileUriKey(uriFor('source.py')));
+        expect(targets).toContain(fileUriKey(uriFor('main.py')));
+    });
+
+    it('completes members from an unsaved buffer', async () => {
+        const unsaved = MAIN_TEXT.replace('greeter.greet("CoC")', 'greeter.');
+        changeMain(unsaved);
+        const result = await waitForRequest(
+            'textDocument/completion',
+            {
+                textDocument: { uri: uriFor('main.py') },
+                position: positionAt(unsaved, 'greeter.', 'greeter.'.length),
+                context: { triggerKind: 1 },
+            },
+            (candidate) => completionLabels(candidate).includes('greet'),
+            'Python member completion',
+        );
+        expect(completionLabels(result)).toContain('greet');
+        changeMain(MAIN_TEXT);
+    });
+
+    it('answers signature help for a function declared in a stub', async () => {
+        const result = await waitForRequest<{
+            signatures?: { label?: string }[];
+            activeParameter?: number;
+        } | null>(
+            'textDocument/signatureHelp',
+            {
+                textDocument: { uri: uriFor('main.py') },
+                position: positionAt(MAIN_TEXT, '2)', 1),
+                context: { triggerKind: 1, isRetrigger: false },
+            },
+            (candidate) => candidate?.signatures?.[0]?.label?.includes('repeat: int') === true,
+            'Python signature help',
+        );
+        expect(result?.signatures?.[0]?.label).toMatch(/\(name: str, repeat: int = (?:1|\.\.\.)\) -> str/);
+        expect(result?.activeParameter).toBe(1);
+    });
+
+    it('publishes diagnostics for an unsaved type error without changing the file', async () => {
+        const unsaved = MAIN_TEXT.replace('formatted =', 'formatted: int =');
+        changeMain(unsaved);
+        const found = await waitForDiagnostics(
+            'main.py',
+            (entries) => entries.some((entry) => /not assignable to declared type "int"/i.test(entry.message)),
+        );
+        expect(found.length).toBeGreaterThan(0);
+        expect(diagnostics.has(fileUriKey(uriFor('unopened.py')))).toBe(false);
+        expect(fs.readFileSync(path.join(root, 'main.py'), 'utf8')).toBe(MAIN_TEXT);
+        changeMain(MAIN_TEXT);
+        await waitForDiagnostics('main.py', (entries) => entries.length === 0);
+    });
+
+    it('analyzes .pyw documents and symbols that exist only in memory', async () => {
+        const windowHover = await session.sendRequest('textDocument/hover', {
+            textDocument: { uri: uriFor('window.pyw') },
+            position: positionAt(WINDOW_TEXT, 'format_message("Window"', 2),
+        });
+        expect(hoverText(windowHover)).toContain('format_message');
+
+        const unsaved = `${MAIN_TEXT}\nunsaved_only: int = 42\nprint(unsaved_only)\n`;
+        changeMain(unsaved);
+        const unsavedHover = await session.sendRequest('textDocument/hover', {
+            textDocument: { uri: uriFor('main.py') },
+            position: positionAt(unsaved, 'unsaved_only)', 2),
+        });
+        expect(hoverText(unsavedHover)).toContain('(variable) unsaved_only:');
+        expect(fs.readFileSync(path.join(root, 'main.py'), 'utf8')).not.toContain('unsaved_only');
+        changeMain(MAIN_TEXT);
+    });
+});
+
+describe('Python workspace settings', () => {
+    it('override preset defaults without losing unrelated settings', async () => {
+        const strictRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'coc-lsp-python-strict-'));
+        const strictText = 'def identity(value):\n    return value\n';
+        fs.writeFileSync(path.join(strictRoot, 'pyproject.toml'), '[project]\nname = "strict-fixture"\nversion = "1.0.0"\n');
+        fs.writeFileSync(path.join(strictRoot, 'strict.py'), strictText);
+        const definition: LanguageServerDefinition = {
+            ...PYTHON_PRESET,
+            enabled: true,
+            settings: {
+                python: {
+                    analysis: {
+                        typeCheckingMode: 'strict',
+                        diagnosticMode: 'openFilesOnly',
+                        autoSearchPaths: false,
+                    },
+                },
+                unrelated: { preserved: true },
+            },
+        };
+        const prepared = prepareDefinitionForRoot(definition, strictRoot);
+        expect(prepared.definition.settings).toEqual(definition.settings);
+        const strictDiagnostics: Diagnostic[] = [];
+        const strictSession = new LanguageServerSession({
+            definition: prepared.definition,
+            rootPath: strictRoot,
+            runtimeLabel: prepared.runtimeLabel,
+            commandLabel: prepared.commandLabel,
+            startTimeoutMs: 45_000,
+            requestTimeoutMs: 30_000,
+        });
+        strictSession.onNotification('textDocument/publishDiagnostics', (params) => {
+            const payload = params as { diagnostics?: Diagnostic[] };
+            strictDiagnostics.splice(0, strictDiagnostics.length, ...(payload.diagnostics ?? []));
+        });
+        try {
+            await strictSession.start();
+            strictSession.sendNotification('textDocument/didOpen', {
+                textDocument: {
+                    uri: pathToFileURL(path.join(strictRoot, 'strict.py')).href,
+                    languageId: 'python',
+                    version: 1,
+                    text: strictText,
+                },
+            });
+            await waitFor(
+                () => strictDiagnostics.some((entry) => /type of parameter "value" is unknown/i.test(entry.message))
+                    ? true
+                    : undefined,
+                'strict Pyright diagnostics',
+            );
+        } finally {
+            await strictSession.dispose();
+            await safeRm(strictRoot);
+        }
     });
 });
 
