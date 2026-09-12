@@ -23,8 +23,9 @@ and transport code stays generic.
 - `rust-adapter.ts` — Rust's answer to that hook: choose the outermost Cargo
   workspace root, then discover rust-analyzer from its active rustup toolchain
   or the owning host's PATH.
-- `python-adapter.ts` — Python's answer to that hook: resolve Pyright from the
-  project, the copy packaged with CoC, or the owning host's PATH.
+- `python-adapter.ts` — Python's answer to that hook: resolve the nearest
+  symlink-bounded project root, discover a project-local interpreter, and resolve
+  Pyright from the project, the copy packaged with CoC, or the owning host's PATH.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -136,8 +137,9 @@ and transport code stays generic.
 - `manager.ts` — `LanguageServerManager` owns every live session on this host.
   `acquire({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
   resolves the definition with `selectDefinitionForFile`, the root with
-  the adapter registry (generic definitions use nearest-marker discovery; Rust
-  uses the outermost Cargo workspace), and returns a handle carrying the
+  the adapter registry (generic definitions use nearest-marker discovery, Rust
+  uses the outermost Cargo workspace, and Python canonicalizes its nearest
+  project root), and returns a handle carrying the
   session, the LSP language id, and a `release` function. A failure carries a
   reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
   concise status instead of an error.
@@ -200,7 +202,12 @@ and transport code stays generic.
   `node_modules/pyright/langserver.index.js`, then resolves the copy packaged
   with CoC, then scans the owning host's `PATH`. Project and packaged copies run
   as `node <langserver.index.js> --stdio`, bypassing platform-specific npm
-  shims. The `pyright` dependency is production-owned by `packages/coc`.
+  shims. The `pyright` dependency is production-owned by `packages/coc`. Python
+  roots use the nearest configured marker and canonical-path containment while
+  retaining the workspace's path spelling. A missing `python.pythonPath` is
+  filled from an executable
+  project-root `.venv`, then `venv`, using the host's interpreter layout;
+  explicit and unrelated settings remain unchanged.
 - Resolved paths are host paths. They go into the definition the session
   spawns, never into a browser payload. What the browser sees is
   `state.runtime` (`Server: workspace · TypeScript 5.9.3: workspace`), and

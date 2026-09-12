@@ -20,7 +20,7 @@ import { LanguageServerSession } from '../../../src/server/language-servers/sess
 import type { LanguageServerSessionOptions } from '../../../src/server/language-servers/session';
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
 import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
-import { RUST_PRESET, TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
+import { PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 import { safeRm } from '../../helpers/safe-rm';
 
@@ -229,6 +229,7 @@ describe('LanguageServerManager session identity', () => {
                 resolveOnPath: () => undefined,
             },
         });
+
         const cargoWorkspace = path.join(harness.workspaceRoot, 'rust-workspace');
         const firstCrate = path.join(cargoWorkspace, 'crates', 'first');
         const secondCrate = path.join(cargoWorkspace, 'crates', 'second');
@@ -272,6 +273,93 @@ describe('LanguageServerManager session identity', () => {
             'rust-workspace',
             'standalone',
         ]);
+    });
+
+    it('shares Python sessions within a project and isolates nested projects', () => {
+        const harness = createHarness([{ ...PYTHON_PRESET, enabled: true }], {
+            prepareDeps: {
+                resolveBundled: () => '/coc/pyright/langserver.index.js',
+                nodePath: '/node',
+                realpath: candidate => candidate,
+                isExecutable: () => false,
+            },
+        });
+        const firstProject = path.join(harness.workspaceRoot, 'services', 'first');
+        const secondProject = path.join(harness.workspaceRoot, 'services', 'second');
+        fs.mkdirSync(path.join(firstProject, 'src'), { recursive: true });
+        fs.mkdirSync(path.join(secondProject, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(firstProject, 'pyproject.toml'), '');
+        fs.writeFileSync(path.join(secondProject, 'requirements.txt'), '');
+
+        const first = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'services/first/src/main.py',
+        });
+        const same = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'services/first/src/helpers.py',
+        });
+        const separate = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'services/second/src/main.py',
+        });
+
+        expect(first.ok && same.ok && separate.ok).toBe(true);
+        if (!first.ok || !same.ok || !separate.ok) {
+            return;
+        }
+        expect(first.handle.rootPath).toBe(firstProject);
+        expect(same.handle.session).toBe(first.handle.session);
+        expect(separate.handle.rootPath).toBe(secondProject);
+        expect(separate.handle.session).not.toBe(first.handle.session);
+    });
+
+    it.each([
+        { enabled: false, definition: { ...PYTHON_PRESET, enabled: true } },
+        { enabled: true, definition: { ...PYTHON_PRESET, enabled: false } },
+    ])('does not discover Python tooling when an opt-in switch is disabled', ({ enabled, definition }) => {
+        let discoveries = 0;
+        const discover = (): false => {
+            discoveries++;
+            return false;
+        };
+        const harness = createHarness([definition], {
+            enabled,
+            exists: discover,
+            prepareDeps: {
+                exists: discover,
+                isExecutable: discover,
+                realpath: (candidate) => {
+                    discoveries++;
+                    return candidate;
+                },
+                resolveBundled: () => {
+                    discoveries++;
+                    return undefined;
+                },
+                resolveOnPath: () => {
+                    discoveries++;
+                    return undefined;
+                },
+            },
+        });
+
+        const result = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/main.py',
+        });
+
+        expect(result.ok).toBe(false);
+        expect(discoveries).toBe(0);
+        expect(harness.created).toHaveLength(0);
     });
 
     it('keeps workspaces apart even when the relative path matches', () => {

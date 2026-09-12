@@ -3,7 +3,9 @@ import * as path from 'path';
 import { prepareDefinitionForRoot } from '../../../src/server/language-servers/adapters';
 import {
     applyPythonRuntime,
+    resolvePythonInterpreter,
     resolvePythonRuntime,
+    resolvePythonServerRoot,
 } from '../../../src/server/language-servers/python-adapter';
 import { PYTHON_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
@@ -119,6 +121,188 @@ describe('applyPythonRuntime', () => {
         expect(applied.command).toBe('/usr/bin/node');
         expect(applied.args[0]).toContain('langserver.index.js');
         expect(applied.settings).toEqual({ python: { analysis: { typeCheckingMode: 'strict' } } });
+    });
+
+    it('preserves explicit interpreter and unrelated settings', () => {
+        const definition = preset({
+            settings: {
+                python: {
+                    pythonPath: '/explicit/python',
+                    analysis: { typeCheckingMode: 'strict' },
+                },
+                unrelated: { enabled: true },
+            },
+        });
+        const applied = applyPythonRuntime(definition, {
+            command: '/usr/bin/node',
+            args: ['/opt/coc/pyright/langserver.index.js', '--stdio'],
+            origin: 'bundled',
+            label: 'Server: packaged with CoC',
+        }, '/repo', {
+            isExecutable: () => true,
+        });
+
+        expect(applied.settings).toEqual(definition.settings);
+    });
+
+    it('fills only a missing pythonPath from the project environment', () => {
+        const root = path.resolve('/repo');
+        const interpreter = path.join(root, '.venv', 'bin', 'python');
+        const definition = preset({
+            settings: {
+                python: { analysis: { typeCheckingMode: 'basic' } },
+                unrelated: { enabled: true },
+            },
+        });
+        const applied = applyPythonRuntime(definition, {
+            command: '/usr/bin/node',
+            args: ['/opt/coc/pyright/langserver.index.js', '--stdio'],
+            origin: 'bundled',
+            label: 'Server: packaged with CoC',
+        }, root, {
+            isExecutable: candidate => candidate === interpreter,
+        });
+
+        expect(applied.settings).toEqual({
+            python: {
+                analysis: { typeCheckingMode: 'basic' },
+                pythonPath: interpreter,
+            },
+            unrelated: { enabled: true },
+        });
+    });
+});
+
+describe('resolvePythonServerRoot', () => {
+    it.each(PYTHON_PRESET.rootMarkers)('uses the nearest %s marker', marker => {
+        const root = path.resolve('/repo with spaces/\u9879\u76ee');
+        const project = path.join(root, 'packages', 'api');
+        const resolved = resolvePythonServerRoot(
+            PYTHON_PRESET,
+            root,
+            path.join('packages', 'api', 'src', 'main.py'),
+            {
+                exists: candidate => candidate === path.join(project, marker)
+                    || candidate === path.join(root, 'pyproject.toml'),
+                realpath: candidate => candidate,
+            },
+        );
+
+        expect(resolved).toBe(project);
+    });
+
+    it('falls back to the workspace and refuses traversal outside it', () => {
+        const root = path.resolve('/repo');
+        expect(resolvePythonServerRoot(PYTHON_PRESET, root, 'src/main.py', {
+            exists: () => false,
+            realpath: candidate => candidate,
+        })).toBe(root);
+        expect(resolvePythonServerRoot(PYTHON_PRESET, root, '../outside/main.py', {
+            exists: () => true,
+            realpath: candidate => candidate,
+        })).toBe(root);
+    });
+
+    it('handles Windows separators and case-insensitive containment', () => {
+        const root = 'C:\\Repos\\App';
+        const project = 'C:\\Repos\\App\\packages\\api';
+        const resolved = resolvePythonServerRoot(
+            PYTHON_PRESET,
+            root,
+            'packages\\api\\src\\main.py',
+            {
+                pathApi: path.win32,
+                exists: candidate => candidate.toLowerCase() === `${project}\\pyproject.toml`.toLowerCase(),
+                realpath: candidate => candidate.replace('C:\\Repos\\App', 'c:\\repos\\app'),
+            },
+        );
+
+        expect(resolved.toLowerCase()).toBe(project.toLowerCase());
+    });
+
+    it('supports symlink and real-path workspace spellings without escaping either root', () => {
+        const realRoot = path.resolve('/private/repo');
+        const linkedRoot = path.resolve('/repo-link');
+        const linkedProject = path.join(linkedRoot, 'packages', 'api');
+        const realProject = path.join(realRoot, 'packages', 'api');
+        const realpath = (candidate: string): string => candidate.replace(linkedRoot, realRoot);
+
+        const linked = resolvePythonServerRoot(
+            PYTHON_PRESET,
+            linkedRoot,
+            'packages/api/src/main.py',
+            {
+                exists: candidate => candidate === path.join(linkedProject, 'pyproject.toml'),
+                realpath,
+            },
+        );
+        const direct = resolvePythonServerRoot(
+            PYTHON_PRESET,
+            realRoot,
+            'packages/api/src/main.py',
+            {
+                exists: candidate => candidate === path.join(realProject, 'pyproject.toml'),
+                realpath,
+            },
+        );
+
+        expect(linked).toBe(linkedProject);
+        expect(direct).toBe(realProject);
+    });
+
+    it('rejects a project directory whose symlink resolves outside the workspace', () => {
+        const root = path.resolve('/repo');
+        const linkedProject = path.join(root, 'linked-project');
+        const resolved = resolvePythonServerRoot(
+            PYTHON_PRESET,
+            root,
+            'linked-project/src/main.py',
+            {
+                exists: () => true,
+                realpath: candidate => candidate.startsWith(linkedProject)
+                    ? candidate.replace(linkedProject, path.resolve('/outside/project'))
+                    : candidate,
+            },
+        );
+
+        expect(resolved).toBe(root);
+    });
+});
+
+describe('resolvePythonInterpreter', () => {
+    it('prefers .venv over venv on POSIX', () => {
+        const root = '/repo';
+        const candidates = [
+            '/repo/.venv/bin/python',
+            '/repo/venv/bin/python',
+        ];
+        expect(resolvePythonInterpreter(root, {
+            pathApi: path.posix,
+            platform: 'linux',
+            isExecutable: candidate => candidates.includes(candidate),
+        })).toBe(candidates[0]);
+    });
+
+    it('uses the Windows interpreter layout', () => {
+        const interpreter = 'C:\\repo\\.venv\\Scripts\\python.exe';
+        expect(resolvePythonInterpreter('C:\\repo', {
+            pathApi: path.win32,
+            platform: 'win32',
+            isExecutable: candidate => candidate === interpreter,
+        })).toBe(interpreter);
+    });
+
+    it('falls through invalid candidates to venv and then the host default', () => {
+        expect(resolvePythonInterpreter('/repo', {
+            pathApi: path.posix,
+            platform: 'darwin',
+            isExecutable: candidate => candidate === '/repo/venv/bin/python',
+        })).toBe('/repo/venv/bin/python');
+        expect(resolvePythonInterpreter('/repo', {
+            pathApi: path.posix,
+            platform: 'linux',
+            isExecutable: () => false,
+        })).toBeUndefined();
     });
 });
 

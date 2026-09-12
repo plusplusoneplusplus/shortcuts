@@ -12,7 +12,7 @@
  */
 
 import { PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
-import { applyPythonRuntime, resolvePythonRuntime } from './python-adapter';
+import { applyPythonRuntime, resolvePythonRuntime, resolvePythonServerRoot } from './python-adapter';
 import type { PythonRuntimeDeps } from './python-adapter';
 import { applyRustRuntime, resolveRustRuntime, resolveRustServerRoot } from './rust-adapter';
 import type { RustRuntimeDeps } from './rust-adapter';
@@ -44,6 +44,9 @@ export function resolveDefinitionRoot(
 ): string {
     if (definition.id === RUST_PRESET.id && definition.builtIn === true) {
         return resolveRustServerRoot(definition, workspaceRoot, relativePath, deps);
+    }
+    if (claimsPython(definition)) {
+        return resolvePythonServerRoot(definition, workspaceRoot, relativePath, deps);
     }
     return resolveServerRoot(definition, workspaceRoot, relativePath, deps.exists);
 }
@@ -79,7 +82,7 @@ export function prepareDefinitionForRoot(
     if (claimsPython(definition)) {
         const runtime = resolvePythonRuntime(definition, rootPath, deps);
         return {
-            definition: applyPythonRuntime(definition, runtime),
+            definition: applyPythonRuntime(definition, runtime, rootPath, deps),
             runtimeLabel: runtime.label,
             commandLabel: PYTHON_PRESET.command,
         };

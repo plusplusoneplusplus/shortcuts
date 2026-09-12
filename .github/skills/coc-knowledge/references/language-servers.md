@@ -29,7 +29,12 @@ The built-in Python preset is disabled by default and serves `.py`, `.pyi`, and
 `node_modules/pyright/langserver.index.js`, then the `pyright` package shipped
 with CoC, then `pyright-langserver` on the owning host's PATH. Project and
 packaged entry points run through Node with `shell: false`; browser-visible
-runtime labels contain only the source category.
+runtime labels contain only the source category. Python files use the nearest
+configured project marker with canonical-path containment and the owning
+workspace's path spelling.
+When `python.pythonPath` is absent, the adapter selects an executable interpreter
+from project-root `.venv`, then `venv`, while preserving all explicit and
+unrelated settings.
 
 ### User surfaces
 

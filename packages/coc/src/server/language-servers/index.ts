@@ -55,7 +55,12 @@ export {
     resolveRustServerRoot,
 } from './rust-adapter';
 export type { PythonRuntime, PythonRuntimeDeps, PythonRuntimeOrigin } from './python-adapter';
-export { applyPythonRuntime, resolvePythonRuntime } from './python-adapter';
+export {
+    applyPythonRuntime,
+    resolvePythonInterpreter,
+    resolvePythonRuntime,
+    resolvePythonServerRoot,
+} from './python-adapter';
 export { registerLanguageServerRoutes } from './routes';
 export type {
     JsonRpcErrorBody,
