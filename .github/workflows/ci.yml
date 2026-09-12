@@ -402,6 +402,9 @@ jobs:
           name: coc-native-${{ matrix.os }}
           path: packages/coc-native
 
+      - name: Install rust-analyzer
+        run: rustup component add rust-analyzer
+
       - name: Run coc tests (shard ${{ matrix.shard }}/5)
         if: matrix.os != 'ubuntu-latest'
         run: npm run test:run -- --shard=${{ matrix.shard }}/5
@@ -607,6 +610,11 @@ jobs:
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      - name: Install rust-analyzer
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-analyzer
 
       # e2e boots the real server, so unlike coc-test it needs every workspace
       # dist/ and packages/coc's own. It gets them from this one step: npm runs

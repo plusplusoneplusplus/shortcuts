@@ -1,6 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { bestMatchingPattern, fileExtension, matchesPattern, patternSpecificity } from './file-match';
+import {
+    bestMatchingPattern,
+    fileExtension,
+    matchesPattern,
+    normalizeRelativePath,
+    patternSpecificity,
+} from './file-match';
 import type { LanguageServerDefinition } from './types';
 
 /**
@@ -72,8 +78,8 @@ export function resolveServerRoot(
     exists: (candidate: string) => boolean = fs.existsSync,
 ): string {
     const root = path.resolve(workspaceRoot);
-    let dir = path.dirname(path.resolve(root, relativePath));
-    while (dir.startsWith(root)) {
+    let dir = path.dirname(path.resolve(root, normalizeRelativePath(relativePath)));
+    while (dir === root || dir.startsWith(`${root}${path.sep}`)) {
         for (const marker of definition.rootMarkers) {
             if (exists(path.join(dir, marker))) {
                 return dir;

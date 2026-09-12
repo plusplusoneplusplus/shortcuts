@@ -12,7 +12,7 @@ export {
     resolveServerRoot,
     selectDefinitionForFile,
 } from './selection';
-export { TYPESCRIPT_PRESET, builtInLanguageServerDefinitions, mergeWithBuiltIns } from './presets';
+export { RUST_PRESET, TYPESCRIPT_PRESET, builtInLanguageServerDefinitions, mergeWithBuiltIns } from './presets';
 export type {
     LanguageServerConfig,
     LanguageServerConfigChangedEvent,
@@ -31,13 +31,22 @@ export {
     writeLanguageServerConfig,
 } from './repository';
 export type { PreparedDefinition, PrepareDefinitionDeps } from './adapters';
-export { prepareDefinitionForRoot } from './adapters';
+export { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 export type { TypeScriptRuntime, TypeScriptRuntimeDeps, TypeScriptRuntimeOrigin } from './typescript-adapter';
 export {
     MIN_WORKSPACE_TYPESCRIPT_VERSION,
     applyTypeScriptRuntime,
     resolveTypeScriptRuntime,
 } from './typescript-adapter';
+export type { RustRuntime, RustRuntimeDeps, RustRuntimeOrigin } from './rust-adapter';
+export {
+    RUST_ANALYZER_INSTALL_GUIDANCE,
+    RUSTUP_RESOLUTION_TIMEOUT_MS,
+    applyRustRuntime,
+    findExecutableOnPath,
+    resolveRustRuntime,
+    resolveRustServerRoot,
+} from './rust-adapter';
 export { registerLanguageServerRoutes } from './routes';
 export type {
     JsonRpcErrorBody,

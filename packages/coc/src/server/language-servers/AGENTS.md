@@ -13,13 +13,16 @@ and transport code stays generic.
   `{a,b}`). Patterns match the workspace-relative path, so Windows separators
   are normalized before matching.
 - `selection.ts` — deterministic server selection (priority, then pattern
-  specificity, then id), LSP language-id resolution, and project-root discovery
-  from root markers.
+  specificity, then id), LSP language-id resolution, and nearest-marker
+  project-root discovery.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
-- `adapters.ts` — `prepareDefinitionForRoot`, the one language-neutral hook the
+- `adapters.ts` — the language-neutral root and runtime preparation hooks the
   manager calls before starting a session.
 - `typescript-adapter.ts` — TypeScript's answer to that hook: which
   `typescript-language-server` runs and which TypeScript library it drives.
+- `rust-adapter.ts` — Rust's answer to that hook: choose the outermost Cargo
+  workspace root, then discover rust-analyzer from its active rustup toolchain
+  or the owning host's PATH.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -70,10 +73,13 @@ and transport code stays generic.
   `definition.command` with `definition.args` and `shell: false` in the resolved
   `rootPath`, runs `initialize`/`initialized`/`shutdown`/`exit`, and wraps a
   `LanguageServerConnection`. `getState()` reports the concise status set —
-  `disabled`, `unavailable`, `starting`, `ready`, `reconnecting`, `failed` —
+  `disabled`, `unavailable`, `starting`, `indexing`, `ready`, `reconnecting`,
+  `failed` —
   plus the server name, version, and negotiated capabilities. `disabled` covers
   both a config-disabled definition and one stopped because nothing needs it.
-  A missing executable is `unavailable`, not `failed`.
+  A missing executable is `unavailable`, not `failed`. Runtime adapters may
+  provide path-safe install guidance, which the manager forwards and the session
+  appends only to that unavailable detail.
 - The state also carries `generation`, a count of successful handshakes. Every
   restart, crash recovery and config replacement produces a server that knows no
   documents, and the browser keeps its attachment across all of them, so this
@@ -120,13 +126,19 @@ and transport code stays generic.
   transition fires here before `onReady`, with the connection already live, so
   a subscriber may send on it. A listener that throws is reported through
   `onError` and does not stop the others.
+- Standard `$/progress` begin/end tokens move a handshaken session between
+  `indexing` and `ready`. Multiple tokens keep it indexing until all end.
+  Normal request deadlines pause across that window, including requests already
+  in flight; abort signals and bounded lifecycle requests such as `shutdown`
+  remain active. The browser keeps the document synchronized while indexing.
 - `manager.ts` — `LanguageServerManager` owns every live session on this host.
   `acquire({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
   resolves the definition with `selectDefinitionForFile`, the root with
-  `resolveServerRoot`, and returns a handle carrying the session, the LSP
-  language id, and a `release` function. A failure carries a reason of
-  `disabled`, `no-definition`, or `capacity` so the editor can show a concise
-  status instead of an error.
+  the adapter registry (generic definitions use nearest-marker discovery; Rust
+  uses the outermost Cargo workspace), and returns a handle carrying the
+  session, the LSP language id, and a `release` function. A failure carries a
+  reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
+  concise status instead of an error.
 - Sessions are keyed on workspace, browser editing session, definition id, and
   resolved root. Two browser windows on the same file therefore get two
   processes and cannot see each other's buffers or diagnostics, and a monorepo
@@ -159,6 +171,12 @@ and transport code stays generic.
 - An adapter claims a definition only when it is a built-in preset that still
   points at its own command. Repointing a preset in workspace settings is an
   explicit choice, and preparation must not undo it.
+- `rust-adapter.ts` asks `rustup which rust-analyzer` from the project root with
+  a bounded timeout so `rust-toolchain.toml` overrides are honored, then scans
+  the owning host's `PATH`. CoC does not download or bundle rust-analyzer.
+  Missing discovery leaves `rust-analyzer` as the command so startup reports
+  `unavailable` with the rustup component install command; user-facing labels
+  never contain the resolved absolute path.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The
@@ -222,7 +240,7 @@ and transport code stays generic.
   one too, since no ready handler will fire for it.
 - The socket subscribes to `session.onStateChange` and forwards every
   transition as an `lsp-status`, so the browser's status display sees
-  `starting`, `reconnecting` and `failed` rather than only `ready`.
+  `starting`, `indexing`, `reconnecting` and `failed` rather than only `ready`.
 - `lsp-restart` is the user's retry: it restarts the server behind one
   document without restarting CoC, and the attachment survives it — the same
   session comes back with a new process and a new `generation`, which is the
@@ -302,7 +320,11 @@ and transport code stays generic.
   path alias, a cross-file import and an installed dependency type, then asks
   each shipped feature a question only a working TypeScript service can answer,
   including one about a buffer that was never written to disk. Put TypeScript
-  project-understanding coverage there and nothing else. That server sends no
+  project-understanding coverage there and nothing else. `rust-integration.test.ts`
+  does the same for rust-analyzer with a real Cargo workspace, cross-crate
+  symbols, build-script output, a derive macro, a crates.io dependency, dirty
+  buffers, and workspace check settings. It hard-fails when rust-analyzer is
+  unavailable. That TypeScript server sends no
   `serverInfo`, so `state.serverName` is undefined for it and the user is shown
   `displayName` and `runtime` instead. The bridge suite drives a real WebSocket against a real
   manager and that fixture, so it covers upgrade scoping, URI refusal, and
@@ -313,7 +335,9 @@ and transport code stays generic.
 - `node scripts/run-vitest.mjs --environment jsdom test/spa/react/language-servers`
   from `packages/coc`.
 - `npm run test:e2e -- test/e2e/explorer-lsp.spec.ts` from `packages/coc` drives
-  the real browser, the real Monaco and a real `typescript-language-server`.
+  the real browser and Monaco against real TypeScript and Rust language servers.
+  The Rust cases cover hover, cross-crate definition navigation in both Explorer
+  and unified right-panel tabs, and dirty-buffer replay after restart.
   Its direct-remote case starts a second CoC server in-process
   (`test/e2e/fixtures/secondary-server.ts`), registers it as a `url` remote, and
   turns language support on for the remote workspace only, while the dashboard

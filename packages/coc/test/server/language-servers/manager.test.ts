@@ -20,7 +20,7 @@ import { LanguageServerSession } from '../../../src/server/language-servers/sess
 import type { LanguageServerSessionOptions } from '../../../src/server/language-servers/session';
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
 import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
-import { TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
+import { RUST_PRESET, TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 import { safeRm } from '../../helpers/safe-rm';
 
@@ -219,6 +219,54 @@ describe('LanguageServerManager session identity', () => {
         }
         expect(inner.handle.rootPath).toBe(path.join(path.resolve(harness.workspaceRoot), 'packages', 'app'));
         expect(inner.handle.session).not.toBe(outer.handle.session);
+        expect(harness.manager.size).toBe(2);
+    });
+
+    it('reuses one Rust session across Cargo workspace crates and isolates a standalone crate', () => {
+        const harness = createHarness([{ ...RUST_PRESET, enabled: true }], {
+            prepareDeps: {
+                runRustupWhich: () => undefined,
+                resolveOnPath: () => undefined,
+            },
+        });
+        const cargoWorkspace = path.join(harness.workspaceRoot, 'rust-workspace');
+        const firstCrate = path.join(cargoWorkspace, 'crates', 'first');
+        const secondCrate = path.join(cargoWorkspace, 'crates', 'second');
+        const standalone = path.join(harness.workspaceRoot, 'standalone');
+        for (const directory of [firstCrate, secondCrate, standalone]) {
+            fs.mkdirSync(path.join(directory, 'src'), { recursive: true });
+            fs.writeFileSync(path.join(directory, 'Cargo.toml'), '[package]\nname = "fixture"\n');
+        }
+        fs.writeFileSync(path.join(cargoWorkspace, 'Cargo.toml'), '[workspace]\nmembers = ["crates/*"]\n');
+
+        const first = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'rust-workspace/crates/first/src/lib.rs',
+        });
+        const second = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'rust-workspace\\crates\\second\\src\\lib.rs',
+        });
+        const separate = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'standalone/src/lib.rs',
+        });
+
+        expect(first.ok && second.ok && separate.ok).toBe(true);
+        if (!first.ok || !second.ok || !separate.ok) {
+            return;
+        }
+        expect(first.handle.rootPath).toBe(cargoWorkspace);
+        expect(second.handle.rootPath).toBe(cargoWorkspace);
+        expect(second.handle.session).toBe(first.handle.session);
+        expect(separate.handle.rootPath).toBe(standalone);
+        expect(separate.handle.session).not.toBe(first.handle.session);
         expect(harness.manager.size).toBe(2);
     });
 
@@ -521,6 +569,29 @@ describe('LanguageServerManager runtime preparation', () => {
         expect(JSON.stringify(state)).not.toContain('node_modules');
     });
 
+    it('forwards Rust install guidance without exposing a host path', () => {
+        const harness = createHarness([{ ...RUST_PRESET, enabled: true }], {
+            prepareDeps: {
+                runRustupWhich: () => undefined,
+                resolveOnPath: () => undefined,
+            },
+        });
+        const result = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/lib.rs',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(harness.created[0]).toMatchObject({
+            commandLabel: 'rust-analyzer',
+            runtimeLabel: 'Server: unavailable',
+            unavailableDetail: 'Install with: rustup component add rust-analyzer',
+        });
+        expect(JSON.stringify(harness.manager.listStates())).not.toContain(harness.workspaceRoot);
+    });
+
     it('leaves a non-TypeScript definition exactly as configured', () => {
         const harness = createHarness();
         acquireTxt(harness, 'browser-1');
@@ -530,5 +601,6 @@ describe('LanguageServerManager runtime preparation', () => {
         expect(sessionOptions.definition.args).toEqual([FIXTURE_SERVER]);
         expect(sessionOptions.runtimeLabel).toBeUndefined();
         expect(sessionOptions.commandLabel).toBeUndefined();
+        expect(sessionOptions.unavailableDetail).toBeUndefined();
     });
 });

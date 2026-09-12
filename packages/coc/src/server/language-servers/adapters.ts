@@ -1,18 +1,20 @@
 /**
- * Per-definition runtime preparation.
+ * Per-definition root and runtime preparation.
  *
  * A definition describes what to start; an adapter fills in what only that
- * language knows — which executable and which library actually exist on this
- * host for a given project root. The manager calls one function here and stays
- * language-neutral: no shared session, transport, or editor code branches on
- * TypeScript.
+ * language knows — how to select its project root and which runtime exists on
+ * this host. The manager calls this registry and stays language-neutral: no
+ * shared session, transport, or editor code branches on a language.
  *
  * An adapter runs only for a built-in preset that still points at its own
  * command. Repointing a preset at another executable in workspace settings is
  * an explicit choice, and preparation must not undo it.
  */
 
-import { TYPESCRIPT_PRESET } from './presets';
+import { RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { applyRustRuntime, resolveRustRuntime, resolveRustServerRoot } from './rust-adapter';
+import type { RustRuntimeDeps } from './rust-adapter';
+import { resolveServerRoot } from './selection';
 import { applyTypeScriptRuntime, resolveTypeScriptRuntime } from './typescript-adapter';
 import type { TypeScriptRuntimeDeps } from './typescript-adapter';
 import type { LanguageServerDefinition } from './types';
@@ -28,7 +30,19 @@ export interface PreparedDefinition {
     notes?: string[];
 }
 
-export type PrepareDefinitionDeps = TypeScriptRuntimeDeps;
+export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps;
+
+export function resolveDefinitionRoot(
+    definition: LanguageServerDefinition,
+    workspaceRoot: string,
+    relativePath: string,
+    deps: PrepareDefinitionDeps = {},
+): string {
+    if (definition.id === RUST_PRESET.id && definition.builtIn === true) {
+        return resolveRustServerRoot(definition, workspaceRoot, relativePath, deps);
+    }
+    return resolveServerRoot(definition, workspaceRoot, relativePath, deps.exists);
+}
 
 /**
  * Resolves the runtime for one definition and project root. Returns the
@@ -39,16 +53,25 @@ export function prepareDefinitionForRoot(
     rootPath: string,
     deps: PrepareDefinitionDeps = {},
 ): PreparedDefinition {
-    if (!claimsTypeScript(definition)) {
-        return { definition };
+    if (claimsTypeScript(definition)) {
+        const runtime = resolveTypeScriptRuntime(definition, rootPath, deps);
+        return {
+            definition: applyTypeScriptRuntime(definition, runtime),
+            runtimeLabel: runtime.label,
+            commandLabel: TYPESCRIPT_PRESET.command,
+            notes: runtime.notes,
+        };
     }
-    const runtime = resolveTypeScriptRuntime(definition, rootPath, deps);
-    return {
-        definition: applyTypeScriptRuntime(definition, runtime),
-        runtimeLabel: runtime.label,
-        commandLabel: TYPESCRIPT_PRESET.command,
-        notes: runtime.notes,
-    };
+    if (claimsRust(definition)) {
+        const runtime = resolveRustRuntime(definition, rootPath, deps);
+        return {
+            definition: applyRustRuntime(definition, runtime),
+            runtimeLabel: runtime.label,
+            commandLabel: RUST_PRESET.command,
+            notes: runtime.notes,
+        };
+    }
+    return { definition };
 }
 
 function claimsTypeScript(definition: LanguageServerDefinition): boolean {
@@ -57,4 +80,8 @@ function claimsTypeScript(definition: LanguageServerDefinition): boolean {
         definition.builtIn === true &&
         definition.command === TYPESCRIPT_PRESET.command
     );
+}
+
+function claimsRust(definition: LanguageServerDefinition): boolean {
+    return definition.id === RUST_PRESET.id && definition.builtIn === true && definition.command === RUST_PRESET.command;
 }

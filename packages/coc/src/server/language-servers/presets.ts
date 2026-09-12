@@ -1,12 +1,10 @@
 import type { LanguageServerDefinition } from './types';
 
 /**
- * TypeScript is the first language to ship. It is an ordinary definition: the
- * runtime treats it exactly like a user-supplied one, so nothing downstream
- * needs a TypeScript branch.
+ * Built-in languages are ordinary definitions: the runtime treats them like
+ * user-supplied ones, so language-specific behavior stays in adapters.
  *
- * Disabled by default — language support starts off and is turned on per
- * workspace in settings.
+ * They are disabled by default and enabled per workspace in settings.
  */
 export const TYPESCRIPT_PRESET: LanguageServerDefinition = {
     id: 'typescript',
@@ -31,9 +29,36 @@ export const TYPESCRIPT_PRESET: LanguageServerDefinition = {
     builtIn: true,
 };
 
+export const RUST_PRESET: LanguageServerDefinition = {
+    id: 'rust',
+    displayName: 'Rust',
+    languageIds: ['rust'],
+    filePatterns: ['**/*.rs'],
+    command: 'rust-analyzer',
+    args: [],
+    rootMarkers: ['Cargo.toml'],
+    extensionLanguageIds: {
+        '.rs': 'rust',
+    },
+    initializationOptions: {
+        checkOnSave: false,
+        cargo: {
+            buildScripts: {
+                enable: true,
+            },
+        },
+        procMacro: {
+            enable: true,
+        },
+    },
+    priority: 100,
+    enabled: false,
+    builtIn: true,
+};
+
 /** Definitions shipped with CoC. Callers must not mutate the returned objects. */
 export function builtInLanguageServerDefinitions(): LanguageServerDefinition[] {
-    return [TYPESCRIPT_PRESET];
+    return [TYPESCRIPT_PRESET, RUST_PRESET];
 }
 
 /**

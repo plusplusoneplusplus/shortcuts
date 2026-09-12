@@ -160,6 +160,23 @@ describe('LanguageServerSession startup', () => {
         expect(session.getState().detail).toBe('Executable not found: typescript-language-server');
     });
 
+    it('includes adapter install guidance when the executable is unavailable', async () => {
+        const { session } = createSession(
+            fixtureDefinition({ command: 'coc-language-server-that-does-not-exist', args: [] }),
+            {
+                startTimeoutMs: 2_000,
+                commandLabel: 'rust-analyzer',
+                unavailableDetail: 'Install with: rustup component add rust-analyzer',
+            },
+        );
+        await expect(session.start()).rejects.toThrow();
+        await waitFor(() => session.status !== 'starting');
+        expect(session.getState()).toMatchObject({
+            status: 'unavailable',
+            detail: 'Executable not found: rust-analyzer. Install with: rustup component add rust-analyzer',
+        });
+    });
+
     it('reports the resolved runtime in the state from the first status onwards', () => {
         const { session } = createSession(fixtureDefinition(), {
             runtimeLabel: 'Server: workspace \u00b7 TypeScript 5.9.2: workspace',
@@ -187,6 +204,16 @@ describe('LanguageServerSession requests and notifications', () => {
         const { session } = createSession(fixtureDefinition());
         await expect(session.sendRequest('echo', { hello: 'world' })).resolves.toEqual({ hello: 'world' });
         expect(session.status).toBe('ready');
+    });
+
+    it('reports indexing and does not time out a request across the indexing window', async () => {
+        const { session, states } = createSession(fixtureDefinition(), { requestTimeoutMs: 40 });
+        await session.start();
+
+        await expect(session.sendRequest('indexing', { delayMs: 100 })).resolves.toEqual({ indexed: true });
+
+        expect(states.map((state) => state.status)).toEqual(['starting', 'ready', 'indexing', 'ready']);
+        expect(session.isReady).toBe(true);
     });
 
     it('delivers server notifications to subscribers registered before start', async () => {
