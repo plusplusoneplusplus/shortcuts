@@ -4,15 +4,16 @@
  *
  * Two rules carry the weight here. The row exists only for a file tab, and when
  * it does not exist the toggle moves into the tab strip, so there is always
- * exactly one visible way to open the tree and never two that disagree. And a
- * breadcrumb click drives the *tree*: it reveals a folder and never opens,
- * closes, or switches a tab — which also means it must go quiet whenever the
- * path cannot be located in the tree on screen.
+ * exactly one visible way to open the tree and never two that disagree. A
+ * breadcrumb click lists that directory in place without moving focus or
+ * selection into the tree.
  *
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+const explorerTree = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
     TerminalView: ({ workspaceId }: { workspaceId: string }) => (
@@ -63,6 +64,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: {
+        tree: explorerTree,
         searchFiles: async () => ({ results: [] as { path: string }[] }),
         readBlob: async () => ({ content: '', encoding: 'utf-8', mimeType: 'text/plain' }),
         writeBlob: async () => ({ success: true }),
@@ -157,13 +159,13 @@ function fileTab(overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
 
 describe('unifiedToolbarBreadcrumbs', () => {
     it('renders no row for a kind that brings its own toolbar', () => {
-        expect(unifiedToolbarBreadcrumbs(null, WS)).toBeNull();
-        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'terminal' }), WS)).toBeNull();
-        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'canvas' }), WS)).toBeNull();
+        expect(unifiedToolbarBreadcrumbs(null)).toBeNull();
+        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'terminal' }))).toBeNull();
+        expect(unifiedToolbarBreadcrumbs(fileTab({ kind: 'canvas' }))).toBeNull();
     });
 
     it('splits a repo-relative path into navigable segments', () => {
-        expect(unifiedToolbarBreadcrumbs(fileTab(), WS)).toEqual({
+        expect(unifiedToolbarBreadcrumbs(fileTab())).toEqual({
             path: 'src/app.ts',
             segments: ['src', 'app.ts'],
             interactive: true,
@@ -171,17 +173,12 @@ describe('unifiedToolbarBreadcrumbs', () => {
     });
 
     it('goes non-interactive for a trusted absolute path', () => {
-        const result = unifiedToolbarBreadcrumbs(fileTab({ resourceId: '__trusted__:/etc/hosts' }), WS);
+        const result = unifiedToolbarBreadcrumbs(fileTab({ resourceId: '__trusted__:/etc/hosts' }));
         expect(result).toEqual({ path: '/etc/hosts', segments: [], interactive: false });
     });
 
-    it('goes non-interactive when the file belongs to a repo the tree is not showing', () => {
-        const result = unifiedToolbarBreadcrumbs(fileTab({ ownerWorkspaceId: MEMBER, repoLabel: 'api' }), WS);
-        expect(result).toEqual({ path: 'src/app.ts', segments: [], interactive: false, repoLabel: 'api' });
-    });
-
-    it('keeps the repo label while staying navigable when the tree is on that repo', () => {
-        const result = unifiedToolbarBreadcrumbs(fileTab({ ownerWorkspaceId: MEMBER, repoLabel: 'api' }), MEMBER);
+    it('keeps repo-group member paths navigable through their owning repo', () => {
+        const result = unifiedToolbarBreadcrumbs(fileTab({ ownerWorkspaceId: MEMBER, repoLabel: 'api' }));
         expect(result).toMatchObject({ interactive: true, repoLabel: 'api', segments: ['src', 'app.ts'] });
     });
 });
@@ -200,6 +197,8 @@ describe('unified panel toolbar row', () => {
         localStorage.clear();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
+        explorerTree.mockReset();
+        explorerTree.mockResolvedValue({ entries: [], truncated: false });
     });
     afterEach(() => {
         cleanup();
@@ -220,7 +219,7 @@ describe('unified panel toolbar row', () => {
         return result;
     }
 
-    it('shows breadcrumbs without a nested Explorer mode control', () => {
+    it('shows breadcrumbs with Search and Explorer controls in the toolbar', () => {
         renderWithTreeFile('app');
 
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
@@ -228,42 +227,105 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('breadcrumb-segment-0').textContent).toBe('src');
         expect(screen.getByTestId('breadcrumb-segment-1').textContent).toBe('app.ts');
 
-        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
+        const toggle = screen.getByTestId('unified-panel-tree-toggle');
+        expect(toggle.getAttribute('data-placement')).toBe('toolbar');
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getAllByTestId('unified-panel-tree-toggle')).toHaveLength(1);
+        const search = screen.getByTestId('unified-panel-search-toggle');
+        expect(search.getAttribute('data-placement')).toBe('toolbar');
+        expect(screen.getByTestId('unified-panel-toolbar').contains(search)).toBe(true);
     });
 
-    it('drops the row for a non-file tab without adding nested mode chrome', () => {
+    it('moves Search and Explorer controls into the strip when the toolbar is absent', () => {
         renderPanel();
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
-        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
+        expect(screen.getByTestId('unified-panel-tree-toggle').getAttribute('data-placement')).toBe('strip');
+        expect(screen.getByTestId('unified-panel-search-toggle').getAttribute('data-placement')).toBe('strip');
 
         openViaMenu('unified-panel-open-terminal');
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
-        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
+        const toggle = screen.getByTestId('unified-panel-tree-toggle');
+        expect(toggle.getAttribute('data-placement')).toBe('strip');
+        expect(screen.getByTestId('unified-panel-tab-strip').contains(toggle)).toBe(true);
+        expect(screen.getByTestId('unified-panel-tab-strip').contains(screen.getByTestId('unified-panel-search-toggle'))).toBe(true);
     });
 
-    it('reveals a folder in the tree on a breadcrumb click without touching tabs', () => {
+    it('opens Search from inside the right panel without closing the panel', () => {
+        const selectMode = vi.fn();
+        renderPanel({ dock: dockStub({ selectMode }) });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show Search' }));
+
+        expect(selectMode).toHaveBeenCalledWith('search');
+        expect(localStorage.getItem('split-workspace:ws-1:dock-open')).toBeNull();
+        expect(screen.getByTestId('unified-panel-navigator-controls')).toBeTruthy();
+    });
+
+    it('collapses Search from its panel-local active control', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 220 });
+        const selectMode = vi.fn();
+        renderPanel({ dock: dockStub({ mode: 'search', selectMode }) });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Hide Search' }));
+
+        expect(selectMode).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', { name: 'Show Search' }).getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('lists a folder in place on a breadcrumb click without touching the tree or tabs', async () => {
+        explorerTree.mockResolvedValue({
+            entries: [
+                { name: 'server', path: 'packages/coc/src/server', type: 'dir' },
+                { name: 'app.ts', path: 'packages/coc/src/app.ts', type: 'file' },
+            ],
+            truncated: false,
+        });
         renderWithTreeFile('deep');
         const activeBefore = screen.getByRole('tab', { selected: true }).getAttribute('data-tab-id');
 
         // "src" is index 2 of packages/coc/src/server/spa/client/react/features/deep.ts
         fireEvent.click(screen.getByTestId('breadcrumb-segment-2'));
 
-        expect(selectedPath(WS)).toBe('packages/coc/src');
-        // Ancestors too: a row inside a collapsed parent is not revealed.
-        expect(expandedPaths(WS).sort()).toEqual(['packages', 'packages/coc', 'packages/coc/src']);
-        // The tab set is untouched — this is orientation, not navigation.
+        await waitFor(() => expect(explorerTree).toHaveBeenCalledWith(
+            WS,
+            { path: 'packages/coc/src', depth: 1 },
+            undefined,
+        ));
+        expect(await screen.findByTestId('breadcrumb-directory-entry-packages/coc/src/server')).toBeTruthy();
+        expect(screen.getByTestId('breadcrumb-directory-entry-packages/coc/src/app.ts')).toBeTruthy();
+        expect(selectedPath(WS)).toBeNull();
+        expect(expandedPaths(WS)).toEqual([]);
         expect(screen.getAllByRole('tab')).toHaveLength(1);
         expect(screen.getByRole('tab', { selected: true }).getAttribute('data-tab-id')).toBe(activeBefore);
     });
 
-    it('clears the tree selection on the root crumb and leaves the expansion alone', () => {
+    it('lists the repo root when the root crumb is clicked', async () => {
         renderWithTreeFile('deep');
-        fireEvent.click(screen.getByTestId('breadcrumb-segment-1'));
-        expect(expandedPaths(WS).sort()).toEqual(['packages', 'packages/coc']);
-
         fireEvent.click(screen.getByTestId('breadcrumb-segment-root'));
-        expect(selectedPath(WS)).toBeNull();
-        expect(expandedPaths(WS).sort()).toEqual(['packages', 'packages/coc']);
+        await waitFor(() => expect(explorerTree).toHaveBeenCalledWith(WS, { path: '.', depth: 1 }, undefined));
+        expect(screen.getByRole('dialog', { name: 'Files in root' })).toBeTruthy();
+    });
+
+    it('drills into subfolders and opens a chosen file in the preview slot', async () => {
+        explorerTree
+            .mockResolvedValueOnce({
+                entries: [{ name: 'components', path: 'src/components', type: 'dir' }],
+                truncated: false,
+            })
+            .mockResolvedValueOnce({
+                entries: [{ name: 'Button.tsx', path: 'src/components/Button.tsx', type: 'file' }],
+                truncated: false,
+            });
+        renderWithTreeFile('app');
+
+        fireEvent.click(screen.getByTestId('breadcrumb-segment-0'));
+        fireEvent.click(await screen.findByTestId('breadcrumb-directory-entry-src/components'));
+        const file = await screen.findByTestId('breadcrumb-directory-entry-src/components/Button.tsx');
+        fireEvent.click(file);
+
+        expect(screen.queryByTestId('breadcrumb-directory-picker')).toBeNull();
+        expect(screen.getByRole('tab', { selected: true }).textContent).toContain('Button.tsx');
+        expect(screen.getAllByRole('tab')).toHaveLength(1);
     });
 
     it('degrades to a plain path label for a trusted absolute path', () => {
@@ -272,26 +334,28 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
         expect(screen.queryByTestId('breadcrumb-segment-root')).toBeNull();
         expect(screen.getByTestId('unified-panel-toolbar-path').textContent).toBe('/etc/hosts');
-        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
+        expect(screen.getByTestId('unified-panel-tree-toggle').getAttribute('data-placement')).toBe('toolbar');
     });
 
-    it('attributes a repo-group member file and stops navigating once the tree retargets', () => {
+    it('routes a repo-group member breadcrumb through the tab owner after the tree retargets', async () => {
         const groupDock = dockStub({
             target: MEMBER,
             targets: [{ workspaceId: WS, label: 'group' }, { workspaceId: MEMBER, label: 'api' }],
         });
         const { rerender } = renderWithTreeFile('app', { dock: groupDock });
 
-        // The tree is on the owning member, so the crumbs still navigate it, and
-        // the row names the repo because it is not the panel's own workspace.
         expect(screen.getByTestId('unified-panel-toolbar-repo').textContent).toBe('api');
         expect(screen.getByTestId('breadcrumb-segment-0').textContent).toBe('src');
 
-        // Retarget the dock: the open tab keeps its owner, so its path no longer
-        // resolves in the tree on screen and the crumbs go quiet.
+        // The open tab keeps its owner, so browsing remains on MEMBER even though
+        // the Explorer column now points at WS.
         rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ ...groupDock, target: WS })} />);
-        expect(screen.queryByTestId('breadcrumb-segment-0')).toBeNull();
-        expect(screen.getByTestId('unified-panel-toolbar-path').textContent).toBe('src/app.ts');
+        fireEvent.click(screen.getByTestId('breadcrumb-segment-0'));
+        await waitFor(() => expect(explorerTree).toHaveBeenCalledWith(
+            MEMBER,
+            { path: 'src', depth: 1 },
+            undefined,
+        ));
         expect(screen.getByTestId('unified-panel-toolbar-repo').textContent).toBe('api');
     });
 

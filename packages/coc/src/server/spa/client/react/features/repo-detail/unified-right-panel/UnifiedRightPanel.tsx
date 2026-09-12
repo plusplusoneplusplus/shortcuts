@@ -25,8 +25,9 @@
  *    `useWorkspaceDock` controller, which also owns the header toggle's open
  *    bit — the panel does not persist a width of its own.
  *  - **The toolbar row.** Directly under the strip, and only while a file tab
- *    is active: breadcrumbs for that file. Other kinds keep rendering their
- *    own toolbars inside their own views.
+ *    is active: breadcrumbs for that file plus the navigator toggle. Other
+ *    kinds keep rendering their own toolbars inside their own views, with the
+ *    toggle moving into the tab strip.
  *  - **The preview slot.** A single click in the tree opens into the section's
  *    one replaceable, italic preview tab; every other entry point — `+`, a chat
  *    source link, a note link, a double click — opens a permanent tab. The
@@ -35,7 +36,8 @@
  *  - **The Search/Explorer navigator.** The selected mode is pinned to the
  *    panel's right edge beside the resource view. Both bodies use the dock
  *    target, share one panel-scope width, and stay mounted after first use.
- *    The navigator gives up width before the resource view does.
+ *    The navigator can be collapsed independently of the panel and gives up
+ *    width before the resource view does.
  *
  * Closing is guarded rather than immediate where a close would destroy something
  * (AC-05). A terminal tab with live sessions asks before ending them; a file tab
@@ -53,12 +55,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../../ui/cn';
 import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
-import { DOCK_MIN_WIDTH, type DockTarget } from '../WorkspaceDockToggle';
+import { DOCK_MIN_WIDTH, SearchIcon, type DockTarget } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../useWorkspaceDock';
 import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ContentSearchPanel } from '../explorer/ContentSearchPanel';
-import { ExplorerPanel, getAncestorPaths } from '../explorer/ExplorerPanel';
-import { useExplorerExpandedPaths, useExplorerSelectedPath } from '../explorer/explorerStateStore';
+import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { QuickOpen, type QuickOpenResult } from '../explorer/QuickOpen';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
 import {
@@ -80,7 +81,8 @@ import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
-import { breadcrumbFolderPath, unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
+import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
+import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
@@ -210,7 +212,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     useEffect(() => {
         migrateUnifiedPanelState(workspaceId);
     }, [workspaceId]);
-    const modeColumnVisible = isUnifiedTreeVisible({ ...tree.state, open: true }, width);
+    const modeColumnVisible = isUnifiedTreeVisible(tree.state, width);
 
     // The column's drag. It is deliberately given no `storageKey`: the width
     // lives in the existing panel navigator store, and two localStorage owners
@@ -252,37 +254,78 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     // ------------------------------------------------------------------
 
     // Breadcrumbs exist for file tabs only; every other kind brings its own
-    // toolbar. A null here removes the row entirely.
-    const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active, target), [active, target]);
+    // toolbar. A null here removes the row and moves the navigator toggle into
+    // the tab strip.
+    const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active), [active]);
 
-    // Breadcrumb clicks drive the tree column through the Explorer's own
-    // per-workspace state, the same store the column reads — so a click reveals
-    // the folder without a second selection model and without touching tabs.
-    const [, setTreeSelectedPath] = useExplorerSelectedPath(target);
-    const [, setTreeExpandedPaths] = useExplorerExpandedPaths(target);
-    const revealTreeFolder = useCallback((segmentIndex: number) => {
-        const folder = breadcrumbFolderPath(toolbar?.segments ?? [], segmentIndex);
-        if (folder === null) {
-            // The root crumb: clear the selection, leave the expansion alone.
-            setTreeSelectedPath(null);
-            return;
-        }
-        setTreeSelectedPath(folder);
-        // Expand the folder AND its ancestors: a row nobody can see is not a
-        // reveal, and the tree lazy-loads each level as it renders.
-        setTreeExpandedPaths(prev => new Set([...prev, ...getAncestorPaths(folder), folder]));
-    }, [toolbar, setTreeSelectedPath, setTreeExpandedPaths]);
+    const explorerToggle = useCallback(
+        (placement: 'toolbar' | 'strip') => (
+            <UnifiedPanelTreeToggle
+                open={tree.state.open && mode === 'explorer'}
+                onToggle={() => {
+                    if (mode === 'explorer') {
+                        tree.toggleOpen();
+                        return;
+                    }
+                    dock.selectMode('explorer');
+                    tree.setOpen(true);
+                }}
+                placement={placement}
+            />
+        ),
+        [dock, mode, tree],
+    );
+    const navigatorControls = useCallback(
+        (placement: 'toolbar' | 'strip') => {
+            const active = tree.state.open && mode === 'search';
+            const label = active ? 'Hide Search' : 'Show Search';
+            return (
+                <div className="flex flex-shrink-0 items-center" data-testid="unified-panel-navigator-controls">
+                    <button
+                        type="button"
+                        aria-label={label}
+                        aria-pressed={active}
+                        title={label}
+                        data-testid="unified-panel-search-toggle"
+                        data-placement={placement}
+                        onClick={() => {
+                            if (active) {
+                                tree.setOpen(false);
+                                return;
+                            }
+                            if (mode !== 'search') dock.selectMode('search');
+                            tree.setOpen(true);
+                        }}
+                        className={cn(
+                            'flex flex-shrink-0 cursor-pointer items-center justify-center border-none bg-transparent p-0',
+                            'text-[#616161] hover:text-[#1f1f1f] focus-visible:outline-none focus-visible:ring-1',
+                            'focus-visible:ring-inset focus-visible:ring-[#0078d4] dark:text-[#9d9d9d] dark:hover:text-white',
+                            'dark:focus-visible:ring-[#3794ff]',
+                            placement === 'strip'
+                                ? 'h-[35px] w-8 border-l border-[#e5e5e5] dark:border-[#333]'
+                                : 'h-5 w-5',
+                            active && 'text-[#0078d4] dark:text-[#3794ff]',
+                        )}
+                    >
+                        <SearchIcon />
+                    </button>
+                    {explorerToggle(placement)}
+                </div>
+            );
+        },
+        [dock, explorerToggle, mode, tree],
+    );
 
-    // What the tree column should track (AC-06). The toolbar model already
-    // decides whether the active file's path resolves inside the tree on screen,
-    // so tracking reuses that answer rather than restating the rule: a file tab
+    // What the tree column should track (AC-06). Breadcrumbs may browse through
+    // the active file's owner even when that is not the tree on screen, but the
+    // tree highlight must stay scoped to the dock's current target: a file tab
     // the tree can show reveals it, a file tab it cannot (another clone, a
     // trusted absolute path) drops the highlight, and any other kind — or no
     // tabs at all — leaves the tree exactly where it is.
     const trackedTreeFile = useMemo<string | null | undefined>(() => {
         if (toolbar === null) return undefined;
-        return toolbar.interactive ? toolbar.path : null;
-    }, [toolbar]);
+        return toolbar.interactive && active?.ownerWorkspaceId === target ? toolbar.path : null;
+    }, [active?.ownerWorkspaceId, target, toolbar]);
 
     // Per-tab dirty / error state, reported by the views. It lives here rather
     // than in each view because the strip has to show it for tabs that are not
@@ -466,6 +509,18 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         ) => openFileForOwner(file, options, target, targetRoutingRef, targetLabel),
         [openFileForOwner, target, targetRoutingRef, targetLabel],
     );
+    const openBreadcrumbFile = useCallback((file: { path: string; name: string }) => {
+        if (!active || active.kind !== 'file') {
+            return;
+        }
+        openFileForOwner(
+            file,
+            { preview: true },
+            active.ownerWorkspaceId,
+            active.ownerRoutingRef,
+            active.repoLabel,
+        );
+    }, [active, openFileForOwner]);
     const openSearchMatch = useCallback((path: string, line: number) => {
         const name = path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
         openTreeFile({ path, name, line }, { preview: true });
@@ -629,6 +684,41 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         document.addEventListener('keydown', onKeyDown, true);
         return () => document.removeEventListener('keydown', onKeyDown, true);
     }, [isOpen, quickOpenVisible, exactOpenVisible, repoGroup]);
+
+    // While the visible navigator is the file tree, Ctrl/Cmd+F belongs to its
+    // filter. Claim it in capture phase so Monaco's find widget and the native
+    // browser/Electron find bar do not open first when focus is in a resource
+    // view on the other side of this panel.
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (
+                !(event.ctrlKey || event.metaKey)
+                || event.altKey
+                || event.shiftKey
+                || event.key.toLowerCase() !== 'f'
+                || !isOpen
+                || mode !== 'explorer'
+                || !modeColumnVisible
+            ) return;
+            const root = panelRootRef.current;
+            const focused = document.activeElement;
+            if (
+                root === null
+                || focused === null
+                || focused === document.body
+                || !root.contains(focused)
+            ) return;
+            const filter = root.querySelector<HTMLInputElement>(
+                '[data-testid="unified-panel-explorer-mode"] [data-testid="explorer-search-input"]',
+            );
+            if (filter === null) return;
+            event.preventDefault();
+            event.stopPropagation();
+            filter.focus();
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        return () => document.removeEventListener('keydown', onKeyDown, true);
+    }, [isOpen, mode, modeColumnVisible]);
 
     // ------------------------------------------------------------------
     // Close the active tab (Ctrl/Cmd+W)
@@ -854,6 +944,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                     onMove={move}
                     onPromote={promote}
                     onOpenMenu={toggleMenu}
+                    trailing={toolbar === null ? navigatorControls('strip') : undefined}
                 />
 
                 {menuOpen && (
@@ -871,6 +962,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                                 // Explorer is a panel mode, not a resource tab.
                                 if (kind === 'explorer') {
                                     dock.selectMode('explorer');
+                                    tree.setOpen(true);
                                     return;
                                 }
                                 openWorkspaceResource(kind);
@@ -887,7 +979,10 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                     {toolbar !== null && (
                         <UnifiedPanelToolbar
                             breadcrumbs={toolbar}
-                            onNavigate={revealTreeFolder}
+                            workspaceId={active?.ownerWorkspaceId ?? target}
+                            routingRef={active?.ownerRoutingRef}
+                            onOpenFile={openBreadcrumbFile}
+                            trailing={navigatorControls('toolbar')}
                         />
                     )}
                     {tabs.length === 0 ? (

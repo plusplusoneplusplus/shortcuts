@@ -218,10 +218,10 @@ features default off.
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
-The desktop workspace header exposes peer Search and Explorer icon controls for
-one resource-tabbed right panel. The classic repository header and remote/virtual
-TopBar use the same persisted panel-scope open/mode store: selecting an inactive
-mode opens or switches the panel, while selecting its active mode closes it.
+The desktop workspace header exposes one visibility toggle for the resource-tabbed
+right panel. The classic repository header and remote/virtual TopBar use the same
+persisted panel-scope open store. Search and Explorer are peer controls inside the
+panel; they select or collapse the right-edge navigator without closing the panel.
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
@@ -236,10 +236,11 @@ The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs,
 with a searchable `+` menu and one right-edge navigator that switches between
 the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
 first use, share the panel-scope navigator width, and route through the selected
-dock target. The docked Explorer omits its internal Files/Search switch; the
-standalone Explorer page retains it. Tab descriptors (never document bodies,
-terminal output, or credentials) persist per panel scope in localStorage. The
-full contract lives in
+dock target. The Search/Explorer pair moves between the file toolbar and tab strip,
+and the navigator open state persists per panel scope. The
+docked Explorer omits its internal Files/Search switch; the standalone Explorer
+page retains it. Tab descriptors (never document bodies, terminal output, or
+credentials) persist per panel scope in localStorage. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Remote-target dialogs additionally fetch the selected server's `/config/runtime`

@@ -9,21 +9,15 @@
  * job is to say "not a file tab, no row".
  *
  * Its second job is deciding whether those breadcrumbs are *navigable*. A
- * breadcrumb segment here drives the file-tree column: it reveals and expands
- * that folder. That only means something when the path is a repo-relative path
- * inside the tree the column is showing, which fails in two ways:
+ * breadcrumb segment opens a directory picker for that folder. That only means
+ * something when the path is repo-relative, which fails for one case:
  *
  *  - A trusted absolute path (`__trusted__:`) is not repo-relative at all. It
  *    has no row in any tree, so its segments would navigate to folders that do
  *    not exist.
- *  - A file owned by a different clone than the tree's current target — a
- *    repo-group member, a remote clone — has a path that resolves inside *its*
- *    repo, not the one on screen. Revealing `src/app.ts` in the wrong repo is
- *    worse than not revealing it.
- *
- * Both degrade to the same thing: a plain, non-interactive path label. Nothing
- * here opens, closes, or changes a tab — the toolbar is orientation, not
- * navigation between tabs.
+ * It degrades to a plain, non-interactive path label. Repo-group member and
+ * remote-clone paths stay interactive because the picker routes through the
+ * active tab's owner rather than the Explorer's current target.
  */
 
 import { TRUSTED_PATH_PREFIX } from '../explorer/ExactOpen';
@@ -39,7 +33,7 @@ export interface UnifiedToolbarBreadcrumbs {
      * so only the folder segments are ever clickable.
      */
     segments: readonly string[];
-    /** Whether a segment click may reveal that folder in the tree column. */
+    /** Whether a segment click may browse that repo-relative folder. */
     interactive: boolean;
     /** Repo attribution, carried over from the tab, when it has one. */
     repoLabel?: string;
@@ -49,18 +43,15 @@ export interface UnifiedToolbarBreadcrumbs {
  * The toolbar row's content for the active tab, or null when there should be no
  * row at all — no tab, or a kind that brings its own toolbar.
  *
- * `treeWorkspaceId` is the clone the tree column is currently showing (the dock
- * target), which is what decides whether the breadcrumbs can navigate it.
  */
 export function unifiedToolbarBreadcrumbs(
     tab: UnifiedPanelTab | null | undefined,
-    treeWorkspaceId: string,
 ): UnifiedToolbarBreadcrumbs | null {
     if (!tab || tab.kind !== 'file') return null;
 
     const trusted = tab.resourceId.startsWith(TRUSTED_PATH_PREFIX);
     const path = trusted ? tab.resourceId.slice(TRUSTED_PATH_PREFIX.length) : tab.resourceId;
-    const interactive = !trusted && tab.ownerWorkspaceId === treeWorkspaceId;
+    const interactive = !trusted;
 
     return {
         path,

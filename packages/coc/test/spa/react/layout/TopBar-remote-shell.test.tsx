@@ -243,41 +243,28 @@ describe('TopBar remote-shell header', () => {
 });
 
 describe('TopBar remote-shell — workspace dock toggle', () => {
-    it('renders Search and Explorer controls immediately after + New when splitWorkspacePanel is on', () => {
+    it('renders one right-panel toggle immediately after + New when splitWorkspacePanel is on', () => {
         mockSplitPanel = true;
         render(<TopBar />);
 
         const actions = screen.getByTestId('topbar-actions');
         const kids = Array.from(actions.children).map(c => c.getAttribute('data-testid'));
-        // Order: [+ New][Search / Explorer controls][…status cluster]
+        // Order: [+ New][right-panel toggle][…status cluster]
         expect(kids[0]).toBe('header-new-btn');
-        expect(kids[1]).toBe('workspace-dock-mode-controls');
-        expect(screen.getByRole('button', { name: 'Search' }).getAttribute('title')).toBe('Search panel');
-        expect(screen.getByRole('button', { name: 'Explorer' }).getAttribute('title')).toBe('Explorer panel');
+        expect(kids[1]).toBe('workspace-dock-toggle');
+        expect(screen.getByRole('button', { name: 'Show right panel' }).getAttribute('title')).toBe('Show right panel');
+        expect(screen.queryByRole('button', { name: 'Show Search' })).toBeNull();
     });
 
-    it('opens, switches, and closes modes for the active clone', () => {
+    it('opens and closes the panel for the active clone', () => {
         mockSplitPanel = true;
         render(<TopBar />);
 
-        const search = screen.getByRole('button', { name: 'Search' });
-        const explorer = screen.getByRole('button', { name: 'Explorer' });
-        expect(search.getAttribute('aria-pressed')).toBe('false');
-        expect(explorer.getAttribute('aria-pressed')).toBe('false');
-
-        fireEvent.click(search);
-        expect(search.getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(screen.getByRole('button', { name: 'Show right panel' }));
+        expect(screen.getByRole('button', { name: 'Hide right panel' }).getAttribute('aria-expanded')).toBe('true');
         expect(localStorage.getItem('split-workspace:a:dock-open')).toBe('1');
-        expect(localStorage.getItem('split-workspace:a:dock-mode')).toBe('search');
 
-        fireEvent.click(explorer);
-        expect(search.getAttribute('aria-pressed')).toBe('false');
-        expect(explorer.getAttribute('aria-pressed')).toBe('true');
-        expect(localStorage.getItem('split-workspace:a:dock-open')).toBe('1');
-        expect(localStorage.getItem('split-workspace:a:dock-mode')).toBe('explorer');
-
-        fireEvent.click(explorer);
-        expect(explorer.getAttribute('aria-pressed')).toBe('false');
+        fireEvent.click(screen.getByRole('button', { name: 'Hide right panel' }));
         expect(localStorage.getItem('split-workspace:a:dock-open')).toBe('0');
     });
 
@@ -285,7 +272,7 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
         mockSplitPanel = false;
         render(<TopBar />);
         expect(screen.getByTestId('header-new-btn')).toBeTruthy();
-        expect(screen.queryByTestId('workspace-dock-mode-controls')).toBeNull();
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
     });
 
     it('hides the dock toggle outside the remote-first shell', () => {
@@ -294,6 +281,6 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
         render(<TopBar />);
         // No remote header → no + New and no dock toggle in the TopBar (the classic
         // shell keeps its dock toggle in RepoDetail's own header).
-        expect(screen.queryByTestId('workspace-dock-mode-controls')).toBeNull();
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
     });
 });

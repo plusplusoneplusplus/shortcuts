@@ -132,11 +132,27 @@ describe('unified panel file-tree column', () => {
         clearUnifiedTreeState();
     });
 
-    it('shows Explorer mode even before the legacy tree toggle is opened', () => {
+    it('starts collapsed and keeps the mounted Explorer hidden until opened', () => {
         renderPanel();
         expect(screen.queryByTestId('unified-panel-tree')).toBeNull();
-        expect(screen.getByTestId('unified-panel-mode-column')).toBeTruthy();
+        expect(screen.getByTestId('unified-panel-mode-column').style.display).toBe('none');
         expect(screen.getByTestId('mock-explorer')).toBeTruthy();
+    });
+
+    it('collapses and reopens the navigator without closing the panel or remounting Explorer', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 220 });
+        renderPanel();
+        const explorer = screen.getByTestId('mock-explorer');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Hide Explorer' }));
+        expect(readUnifiedTreeState(WS).open).toBe(false);
+        expect(screen.getByTestId('unified-panel-mode-column').style.display).toBe('none');
+        expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Show Explorer' }));
+        expect(readUnifiedTreeState(WS).open).toBe(true);
+        expect(screen.getByTestId('unified-panel-tree').style.display).toBe('');
+        expect(screen.getByTestId('mock-explorer')).toBe(explorer);
     });
 
     it('renders beside the empty state, so closing the last tab leaves the panel open', () => {
