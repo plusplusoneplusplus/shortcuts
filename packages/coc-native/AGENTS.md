@@ -2,6 +2,12 @@
 
 Rust/N-API native capabilities for the CoC server. The package is a home for CPU- or filesystem-bound work worth moving out of Node: one binary, one module per capability on both the Rust and TypeScript sides. It ships the file index behind quick-open search (`Ctrl+P`), the repo content search behind the Explorer's Search view, the bounded content index for Notes search, and the `git` runner every git-backed feature goes through.
 
+The core `symbol_index` module extracts C-family definitions with the bundled
+`tree-sitter-c` and `tree-sitter-cpp` tag queries. It filters extensions before
+file reads, processes files through rayon, records per-file failures instead of
+aborting a build, and atomically swaps immutable snapshots on refresh. Parser,
+grammar, and tags crate versions stay pinned as one compatibility set.
+
 **The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Its own `walkFiles` still serves *per-directory* listings, and `.git` is excluded by both regardless of `includeIgnored`/`showIgnored`.
 
 **Required, not optional, with no opt-out.** A binary that is missing, will not load, or lacks the capability a newer server expects is a hard failure: `loadNativeAddon()` and each `loadNative<X>()` throw `NativeAddonLoadError`, naming the expected triple, every path tried and the fix. Failing at first use beats silently serving a slower, subtly different implementation for the life of the process. No environment variable turns the addon off; `COC_NATIVE_PATH` only says *which* binary to load.
