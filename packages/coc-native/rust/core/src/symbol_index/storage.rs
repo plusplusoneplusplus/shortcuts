@@ -176,35 +176,82 @@ impl SymbolStore {
 
         for (position, relative) in paths.iter().enumerate() {
             let absolute = root.join(relative);
-            match read_manifest_source(&absolute, relative, limits.max_file_bytes) {
-                Ok((entry, source)) => {
-                    if previous.get(relative) == Some(&entry) {
-                        stats.unchanged += 1;
-                    } else {
-                        match extractor.extract(relative, &source) {
-                            Ok(symbols) => {
-                                replace_file_in_transaction(&transaction, &entry, &symbols)?;
-                                stats.parsed += 1;
-                            }
-                            Err(error) => stats.failures.push(SymbolFileFailure {
-                                path: relative.clone(),
-                                reason: error.to_string(),
-                            }),
-                        }
-                    }
+            let metadata = match std::fs::metadata(&absolute) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    stats.failures.push(SymbolFileFailure {
+                        path: relative.clone(),
+                        reason: error.to_string(),
+                    });
+                    report_indexing_progress(
+                        &mut on_progress,
+                        position,
+                        paths.len(),
+                        progress_stride,
+                    );
+                    continue;
                 }
-                Err(error) => stats
-                    .failures
-                    .push(SymbolFileFailure { path: relative.clone(), reason: error.to_string() }),
+            };
+            let (size, mtime) = match manifest_metadata(&metadata) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    stats.failures.push(SymbolFileFailure {
+                        path: relative.clone(),
+                        reason: error.to_string(),
+                    });
+                    report_indexing_progress(
+                        &mut on_progress,
+                        position,
+                        paths.len(),
+                        progress_stride,
+                    );
+                    continue;
+                }
+            };
+            let old = previous.get(relative);
+            if old.is_some_and(|entry| entry.size == size && entry.mtime == mtime) {
+                stats.unchanged += 1;
+                report_indexing_progress(&mut on_progress, position, paths.len(), progress_stride);
+                continue;
             }
-            let processed = position + 1;
-            if processed == paths.len() || processed % progress_stride == 0 {
-                on_progress(SyncProgress {
-                    phase: SyncProgressPhase::Indexing,
-                    processed,
-                    total: paths.len(),
-                });
+            let source = match read_bounded(&absolute, limits.max_file_bytes) {
+                Ok(source) => source,
+                Err(error) => {
+                    stats.failures.push(SymbolFileFailure {
+                        path: relative.clone(),
+                        reason: error.to_string(),
+                    });
+                    report_indexing_progress(
+                        &mut on_progress,
+                        position,
+                        paths.len(),
+                        progress_stride,
+                    );
+                    continue;
+                }
+            };
+            let entry = FileManifestEntry {
+                path: relative.clone(),
+                size,
+                mtime,
+                hash: blake3::hash(&source).to_hex().to_string(),
+            };
+            if old.is_some_and(|previous| previous.hash == entry.hash) {
+                update_file_manifest(&transaction, &entry)?;
+                stats.unchanged += 1;
+            } else {
+                match extractor.extract(relative, &source) {
+                    Ok(symbols) => {
+                        replace_file_in_transaction(&transaction, &entry, &symbols)?;
+                        stats.parsed += 1;
+                    }
+                    Err(error) => stats.failures.push(SymbolFileFailure {
+                        path: relative.clone(),
+                        reason: error.to_string(),
+                    }),
+                }
             }
+            report_indexing_progress(&mut on_progress, position, paths.len(), progress_stride);
         }
 
         for removed in previous.keys().filter(|path| !seen.contains(path.as_str())) {
@@ -329,14 +376,16 @@ impl SymbolStore {
     }
 }
 
-fn read_manifest_source(
-    absolute: &Path,
-    relative: &str,
-    max_file_bytes: usize,
-) -> io::Result<(FileManifestEntry, Vec<u8>)> {
-    let metadata = std::fs::metadata(absolute)?;
-    let source = read_bounded(absolute, max_file_bytes)?;
-    Ok((manifest_entry(relative, &metadata, &source)?, source))
+fn report_indexing_progress(
+    on_progress: &mut impl FnMut(SyncProgress),
+    position: usize,
+    total: usize,
+    stride: usize,
+) {
+    let processed = position + 1;
+    if processed == total || processed.is_multiple_of(stride) {
+        on_progress(SyncProgress { phase: SyncProgressPhase::Indexing, processed, total });
+    }
 }
 
 fn manifest_entry(
@@ -344,12 +393,28 @@ fn manifest_entry(
     metadata: &std::fs::Metadata,
     source: &[u8],
 ) -> io::Result<FileManifestEntry> {
+    let (size, mtime) = manifest_metadata(metadata)?;
     Ok(FileManifestEntry {
         path: path.to_owned(),
-        size: i64::try_from(metadata.len()).unwrap_or(i64::MAX),
-        mtime: modified_millis(metadata)?,
+        size,
+        mtime,
         hash: blake3::hash(source).to_hex().to_string(),
     })
+}
+
+fn manifest_metadata(metadata: &std::fs::Metadata) -> io::Result<(i64, i64)> {
+    Ok((i64::try_from(metadata.len()).unwrap_or(i64::MAX), modified_millis(metadata)?))
+}
+
+fn update_file_manifest(
+    transaction: &Transaction<'_>,
+    file: &FileManifestEntry,
+) -> rusqlite::Result<()> {
+    transaction.execute(
+        "UPDATE files SET size = ?2, mtime = ?3, hash = ?4 WHERE path = ?1",
+        params![file.path, file.size, file.mtime, file.hash],
+    )?;
+    Ok(())
 }
 
 fn replace_file_in_transaction(
@@ -445,6 +510,55 @@ mod tests {
         assert_eq!((changed.parsed, changed.unchanged, changed.removed), (1, 0, 1));
         assert_eq!(store.symbols_for_file("one.c").expect("symbols")[0].name, "changed");
         assert!(store.symbols_for_file("two.cpp").expect("removed symbols").is_empty());
+    }
+
+    #[test]
+    fn warm_sync_does_not_read_files_with_unchanged_metadata() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(root.path().join("large.c"), "int retained();\n").expect("fixture");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("initial");
+
+        let warm = store
+            .sync_repository(
+                root.path(),
+                ExtractionLimits { max_file_bytes: 1, ..ExtractionLimits::default() },
+            )
+            .expect("warm sync");
+
+        assert_eq!((warm.parsed, warm.unchanged, warm.failures.len()), (0, 1, 0));
+        assert_eq!(
+            store.symbols_for_file("large.c").expect("retained symbols")[0].name,
+            "retained"
+        );
+    }
+
+    #[test]
+    fn metadata_only_changes_update_the_manifest_without_reparsing() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        let file = root.path().join("stable.c");
+        std::fs::write(&file, "int stable();\n").expect("fixture");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("initial");
+        let before = store.manifest().expect("before manifest").remove(0);
+        let changed_mtime = before.mtime + 10_000;
+        let file_time = std::time::SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_millis(u64::try_from(changed_mtime).expect("mtime"));
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&file)
+            .expect("open fixture")
+            .set_modified(file_time)
+            .expect("touch fixture");
+
+        let warm = store.sync_repository(root.path(), ExtractionLimits::default()).expect("sync");
+        let after = store.manifest().expect("after manifest").remove(0);
+
+        assert_eq!((warm.parsed, warm.unchanged), (0, 1));
+        assert_ne!(after.mtime, before.mtime);
+        assert_eq!(after.hash, before.hash);
     }
 
     #[test]
