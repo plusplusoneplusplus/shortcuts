@@ -314,6 +314,59 @@ export function NoteEditor({
 
     const loadedThreadsRef = useRef<CommentThread[]>([]);
     const contentLoadedRef = useRef(false);
+    const pendingLoadedContentRef = useRef<string | null>(null);
+    const [editor, setEditor] = useState<Editor | null>(null);
+    const editorRef = useRef<Editor | null>(null);
+    const pdfInputRef = useRef<HTMLInputElement | null>(null);
+
+    const hydrateLoadedContent = useCallback((ed: Editor, content: string): boolean => {
+        if (ed.isDestroyed) return false;
+
+        const { html } = markdownToRichEditorHtml({
+            markdown: content,
+            io: ioRef.current,
+            workspaceId: workspaceIdRef.current,
+            root: rootRef.current,
+        });
+        ed.commands.setContent(html, { emitUpdate: false });
+        ed.commands.setTextSelection?.(1);
+        resetEditorHistory(ed);
+        setSourceDirty(false);
+        contentLoadedRef.current = true;
+        setTocEntries(extractHeadings(ed));
+
+        if (commentsEnabled) {
+            if (threadsProp) {
+                loadedThreadsRef.current = threadsProp;
+                for (const thread of threadsProp) {
+                    if (thread.status === 'resolved') continue;
+                    const result = findAnchorInDoc(ed.state.doc, thread.anchor);
+                    if (result) {
+                        applyCommentMark(ed, thread.id, result.from, result.to);
+                    }
+                }
+            } else {
+                commentBackendRef.current.loadThreads(
+                    workspaceIdRef.current,
+                    notePathRef.current ?? '',
+                    rootRef.current,
+                ).then((threads) => {
+                    const edInner = editorRef.current;
+                    if (!edInner || edInner.isDestroyed) return;
+                    loadedThreadsRef.current = threads;
+                    for (const thread of threads) {
+                        if (thread.status === 'resolved') continue;
+                        const result = findAnchorInDoc(edInner.state.doc, thread.anchor);
+                        if (result) {
+                            applyCommentMark(edInner, thread.id, result.from, result.to);
+                        }
+                    }
+                }).catch(() => { /* non-fatal — comments just won't highlight */ });
+            }
+        }
+
+        return true;
+    }, [commentsEnabled, threadsProp]);
 
     const documentSession = useMarkdownDocumentSession({
         workspaceId,
@@ -323,6 +376,7 @@ export function NoteEditor({
         autosaveDebounceMs: 1500,
         flushBeforeLoad: true,
         onBeforeLoad: () => {
+            pendingLoadedContentRef.current = null;
             setViewModeRaw('rich');
             setFrontMatterResult({ kind: 'none' });
             setSourceDirty(false);
@@ -337,55 +391,13 @@ export function NoteEditor({
             setTocActiveIndex(null);
         },
         onLoaded: ({ content }) => {
-            const { html, frontMatter } = markdownToRichEditorHtml({
-                markdown: content,
-                io: ioRef.current,
-                workspaceId: workspaceIdRef.current,
-                root: rootRef.current,
-            });
-            setFrontMatterResult(frontMatter);
+            setFrontMatterResult(parseNoteFrontMatter(content));
 
             const ed = editorRef.current;
             if (ed && !ed.isDestroyed) {
-                ed.commands.setContent(html, { emitUpdate: false });
-                ed.commands.setTextSelection?.(1);
-                resetEditorHistory(ed);
-                setSourceDirty(false);
-                contentLoadedRef.current = true;
-                // setContent used emitUpdate:false, so the change handler never
-                // fires — recompute the TOC from the freshly loaded doc so the
-                // TOC toolbar button is enabled on load without needing an edit.
-                setTocEntries(extractHeadings(ed));
-
-                if (commentsEnabled) {
-                    if (threadsProp) {
-                        loadedThreadsRef.current = threadsProp;
-                        for (const thread of threadsProp) {
-                            if (thread.status === 'resolved') continue;
-                            const result = findAnchorInDoc(ed.state.doc, thread.anchor);
-                            if (result) {
-                                applyCommentMark(ed, thread.id, result.from, result.to);
-                            }
-                        }
-                    } else {
-                        commentBackendRef.current.loadThreads(
-                            workspaceIdRef.current,
-                            notePathRef.current ?? '',
-                            rootRef.current,
-                        ).then((threads) => {
-                            const edInner = editorRef.current;
-                            if (!edInner || edInner.isDestroyed) return;
-                            loadedThreadsRef.current = threads;
-                            for (const thread of threads) {
-                                if (thread.status === 'resolved') continue;
-                                const result = findAnchorInDoc(edInner.state.doc, thread.anchor);
-                                if (result) {
-                                    applyCommentMark(edInner, thread.id, result.from, result.to);
-                                }
-                            }
-                        }).catch(() => { /* non-fatal — comments just won't highlight */ });
-                    }
-                }
+                hydrateLoadedContent(ed, content);
+            } else {
+                pendingLoadedContentRef.current = content;
             }
         },
         onLoadError: (err) => {
@@ -472,16 +484,19 @@ export function NoteEditor({
     const onCommentCreateRef = useRef(onCommentCreate);
     onCommentCreateRef.current = onCommentCreate;
 
-    const [editor, setEditor] = useState<Editor | null>(null);
-    const editorRef = useRef<Editor | null>(null);
-    const pdfInputRef = useRef<HTMLInputElement | null>(null);
-
     const handleEditorReady = useCallback((ed: Editor) => {
         editorRef.current = ed;
         setEditor(ed);
-        setTocEntries(extractHeadings(ed));
+        const pendingContent = pendingLoadedContentRef.current;
+        if (pendingContent !== null) {
+            if (hydrateLoadedContent(ed, pendingContent)) {
+                pendingLoadedContentRef.current = null;
+            }
+        } else {
+            setTocEntries(extractHeadings(ed));
+        }
         onEditorReady?.(ed);
-    }, [onEditorReady]);
+    }, [hydrateLoadedContent, onEditorReady]);
 
     const handleEditorChange = useCallback((ed: Editor) => {
         setDirty(true);

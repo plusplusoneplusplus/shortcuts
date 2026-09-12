@@ -41,6 +41,13 @@ without writing the read value, and scroll restores only after the scoped tree i
 
 ## Rich editor basics
 
+`NoteEditor` keeps `RichEditorCore` mounted while a document loads. Loaded Markdown
+hydrates the editor through one path that sets content without emitting an update,
+resets selection and history, rebuilds the TOC, and restores comment anchors. If the
+load completes before Tiptap is ready, the latest loaded Markdown remains pending
+until `onEditorReady`; starting another load clears that pending value so a prior
+note cannot hydrate the shared editor.
+
 ### Host seams
 
 `NoteEditor` publishes two optional props for a host that owns the note's close
