@@ -144,12 +144,12 @@ describe('unified panel file-tree column', () => {
         renderPanel();
         const explorer = screen.getByTestId('mock-explorer');
 
-        fireEvent.click(screen.getByRole('button', { name: 'Hide navigator' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Hide Explorer' }));
         expect(readUnifiedTreeState(WS).open).toBe(false);
         expect(screen.getByTestId('unified-panel-mode-column').style.display).toBe('none');
         expect(screen.getByTestId('unified-panel-empty')).toBeTruthy();
 
-        fireEvent.click(screen.getByRole('button', { name: 'Show navigator' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Show Explorer' }));
         expect(readUnifiedTreeState(WS).open).toBe(true);
         expect(screen.getByTestId('unified-panel-tree').style.display).toBe('');
         expect(screen.getByTestId('mock-explorer')).toBe(explorer);
