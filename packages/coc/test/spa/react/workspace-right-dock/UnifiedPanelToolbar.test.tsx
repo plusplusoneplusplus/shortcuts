@@ -220,7 +220,7 @@ describe('unified panel toolbar row', () => {
         return result;
     }
 
-    it('shows breadcrumbs without a nested Explorer mode control', () => {
+    it('shows breadcrumbs with one navigator toggle in the toolbar', () => {
         renderWithTreeFile('app');
 
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
@@ -228,17 +228,22 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('breadcrumb-segment-0').textContent).toBe('src');
         expect(screen.getByTestId('breadcrumb-segment-1').textContent).toBe('app.ts');
 
-        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
+        const toggle = screen.getByTestId('unified-panel-tree-toggle');
+        expect(toggle.getAttribute('data-placement')).toBe('toolbar');
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getAllByTestId('unified-panel-tree-toggle')).toHaveLength(1);
     });
 
-    it('drops the row for a non-file tab without adding nested mode chrome', () => {
+    it('moves the navigator toggle into the strip when the toolbar is absent', () => {
         renderPanel();
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
-        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
+        expect(screen.getByTestId('unified-panel-tree-toggle').getAttribute('data-placement')).toBe('strip');
 
         openViaMenu('unified-panel-open-terminal');
         expect(screen.queryByTestId('unified-panel-toolbar')).toBeNull();
-        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
+        const toggle = screen.getByTestId('unified-panel-tree-toggle');
+        expect(toggle.getAttribute('data-placement')).toBe('strip');
+        expect(screen.getByTestId('unified-panel-tab-strip').contains(toggle)).toBe(true);
     });
 
     it('reveals a folder in the tree on a breadcrumb click without touching tabs', () => {
@@ -272,7 +277,7 @@ describe('unified panel toolbar row', () => {
         expect(screen.getByTestId('unified-panel-toolbar')).toBeTruthy();
         expect(screen.queryByTestId('breadcrumb-segment-root')).toBeNull();
         expect(screen.getByTestId('unified-panel-toolbar-path').textContent).toBe('/etc/hosts');
-        expect(screen.queryByTestId('unified-panel-tree-toggle')).toBeNull();
+        expect(screen.getByTestId('unified-panel-tree-toggle').getAttribute('data-placement')).toBe('toolbar');
     });
 
     it('attributes a repo-group member file and stops navigating once the tree retargets', () => {

@@ -25,8 +25,9 @@
  *    `useWorkspaceDock` controller, which also owns the header toggle's open
  *    bit — the panel does not persist a width of its own.
  *  - **The toolbar row.** Directly under the strip, and only while a file tab
- *    is active: breadcrumbs for that file. Other kinds keep rendering their
- *    own toolbars inside their own views.
+ *    is active: breadcrumbs for that file plus the navigator toggle. Other
+ *    kinds keep rendering their own toolbars inside their own views, with the
+ *    toggle moving into the tab strip.
  *  - **The preview slot.** A single click in the tree opens into the section's
  *    one replaceable, italic preview tab; every other entry point — `+`, a chat
  *    source link, a note link, a double click — opens a permanent tab. The
@@ -35,7 +36,8 @@
  *  - **The Search/Explorer navigator.** The selected mode is pinned to the
  *    panel's right edge beside the resource view. Both bodies use the dock
  *    target, share one panel-scope width, and stay mounted after first use.
- *    The navigator gives up width before the resource view does.
+ *    The navigator can be collapsed independently of the panel and gives up
+ *    width before the resource view does.
  *
  * Closing is guarded rather than immediate where a close would destroy something
  * (AC-05). A terminal tab with live sessions asks before ending them; a file tab
@@ -80,6 +82,7 @@ import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
+import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { breadcrumbFolderPath, unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
@@ -210,7 +213,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     useEffect(() => {
         migrateUnifiedPanelState(workspaceId);
     }, [workspaceId]);
-    const modeColumnVisible = isUnifiedTreeVisible({ ...tree.state, open: true }, width);
+    const modeColumnVisible = isUnifiedTreeVisible(tree.state, width);
 
     // The column's drag. It is deliberately given no `storageKey`: the width
     // lives in the existing panel navigator store, and two localStorage owners
@@ -252,7 +255,8 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     // ------------------------------------------------------------------
 
     // Breadcrumbs exist for file tabs only; every other kind brings its own
-    // toolbar. A null here removes the row entirely.
+    // toolbar. A null here removes the row and moves the navigator toggle into
+    // the tab strip.
     const toolbar = useMemo(() => unifiedToolbarBreadcrumbs(active, target), [active, target]);
 
     // Breadcrumb clicks drive the tree column through the Explorer's own
@@ -272,6 +276,17 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         // reveal, and the tree lazy-loads each level as it renders.
         setTreeExpandedPaths(prev => new Set([...prev, ...getAncestorPaths(folder), folder]));
     }, [toolbar, setTreeSelectedPath, setTreeExpandedPaths]);
+
+    const treeToggle = useCallback(
+        (placement: 'toolbar' | 'strip') => (
+            <UnifiedPanelTreeToggle
+                open={tree.state.open}
+                onToggle={tree.toggleOpen}
+                placement={placement}
+            />
+        ),
+        [tree.state.open, tree.toggleOpen],
+    );
 
     // What the tree column should track (AC-06). The toolbar model already
     // decides whether the active file's path resolves inside the tree on screen,
@@ -889,6 +904,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                     onMove={move}
                     onPromote={promote}
                     onOpenMenu={toggleMenu}
+                    trailing={toolbar === null ? treeToggle('strip') : undefined}
                 />
 
                 {menuOpen && (
@@ -906,6 +922,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                                 // Explorer is a panel mode, not a resource tab.
                                 if (kind === 'explorer') {
                                     dock.selectMode('explorer');
+                                    tree.setOpen(true);
                                     return;
                                 }
                                 openWorkspaceResource(kind);
@@ -923,6 +940,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                         <UnifiedPanelToolbar
                             breadcrumbs={toolbar}
                             onNavigate={revealTreeFolder}
+                            trailing={treeToggle('toolbar')}
                         />
                     )}
                     {tabs.length === 0 ? (

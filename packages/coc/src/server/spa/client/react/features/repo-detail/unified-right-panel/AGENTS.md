@@ -40,13 +40,14 @@ from same-id clones never merge into one tab.
 |---|---|
 | `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
-| `unifiedPanelTree.ts` | The navigator column's width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
+| `unifiedPanelTree.ts` | The navigator column's open and width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, panel collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
 | `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted. |
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
 | `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/mode/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — resource views on the left, the selected Search/Explorer mode on the right edge. |
 | `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
-| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab. The model decides whether the crumbs may navigate the tree. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
+| `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab and the navigator toggle. The model decides whether the crumbs may navigate the tree. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
+| `UnifiedPanelTreeToggle.tsx` | The shared navigator toggle. It renders in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
@@ -82,6 +83,10 @@ the file's path (scrolled to the tail, so a long path truncates from the left
 with the whole thing in the row's tooltip) and the tab's `repoLabel` when it has
 one.
 
+The navigator toggle sits at the row's right edge. When the file toolbar is not
+rendered, the same control moves beside the tab strip's `+`, leaving exactly one
+visible control for collapsing or reopening the navigator.
+
 A breadcrumb click **reveals a folder in the tree** — it never opens, closes, or
 activates a tab. It does that by writing the Explorer's own per-workspace
 `explorerStateStore` selection/expansion for the tree's target, which is the
@@ -104,10 +109,12 @@ same panel-scope navigator width and point at the dock target. Explorer uses
 panel's own scope); Search uses `ContentSearchPanel`.
 
 The navigator is panel-level chrome, not a tab: it renders for every tab kind
-and for none at all. Search and Explorer are lazy-mounted on first selection and
-then hidden with `display:none`, preserving requests, results, tree expansion,
-resource tabs, terminal sessions, and unsaved buffers across mode switches.
-A panel too narrow for both columns hides the navigator until it widens.
+and for none at all. Its panel-scoped open bit lets the user collapse it without
+closing resource tabs or the right panel. Search and Explorer are lazy-mounted
+on first selection and then hidden with `display:none`, preserving requests,
+results, tree expansion, resource tabs, terminal sessions, and unsaved buffers
+across mode switches and navigator collapse. A panel too narrow for both columns
+hides the navigator until it widens without changing the user's open bit.
 
 It **follows the host's active file**: `ExplorerPanel`'s `activeFilePath` prop
 is a tri-state, and the panel derives it from the same `unifiedToolbarBreadcrumbs`
@@ -280,8 +287,8 @@ visible tab beats a silently vanished buffer — and a restored preview that is
 not last is moved to the end. A `preview` bit on any kind but `file` is
 discarded: only the tree's single click creates the slot, and it opens files.
 
-The `+` menu keeps its **Explorer** entry, in place and with its label, but the
-action selects Explorer mode instead of opening a tab.
+The `+` menu keeps its **Explorer** entry, in place and with its label. The action
+selects Explorer mode and opens the navigator instead of opening a tab.
 
 ## Permissions ride on one bit
 

@@ -83,7 +83,10 @@ import {
     openTab,
     unifiedTabId,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
-import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
+import {
+    clearUnifiedTreeState,
+    writeUnifiedTreeState,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
@@ -236,10 +239,11 @@ describe('UnifiedRightPanel', () => {
     });
 
     it('renders Search and Explorer as keep-alive modes at the same panel width', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 220 });
         const { rerender } = renderPanel({ dock: dockStub({ mode: 'explorer', width: 500 }) });
         const explorer = screen.getByTestId('unified-panel-explorer-mode');
         expect(screen.getByTestId('unified-panel-body').style.width).toBe('500px');
-        expect(screen.getByTestId('unified-panel-mode-column').style.display).not.toBe('none');
+        expect(screen.getByTestId('unified-panel-tree').style.display).not.toBe('none');
         expect(screen.queryByTestId('mock-content-search')).toBeNull();
 
         rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ mode: 'search', width: 620 })} />);
@@ -281,10 +285,11 @@ describe('UnifiedRightPanel', () => {
                 targets: [{ workspaceId: WS, label: 'group' }, { workspaceId: member, label: 'api' }],
             }),
         });
-        // The menu's Explorer entry toggles the tree column rather than opening
-        // a tab; the column browses the dock target, with deep-linking off for
-        // a member repo.
+        // The menu's Explorer entry selects and opens the navigator rather than
+        // opening a tab; the tree browses the dock target, with deep-linking off
+        // for a member repo.
         openViaMenu('unified-panel-open-explorer');
+        expect(screen.getByTestId('unified-panel-tree').style.display).not.toBe('none');
         expect(screen.getByTestId('mock-explorer').textContent).toBe(`explorer:${member}:false`);
         expect(screen.getByTestId('unified-panel-tab-list').querySelectorAll('[role="tab"]')).toHaveLength(0);
 
