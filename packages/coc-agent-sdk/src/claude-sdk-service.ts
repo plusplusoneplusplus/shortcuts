@@ -620,7 +620,7 @@ const CLAUDE_SUPPORTED_COMMANDS_TIMEOUT_MS = 5_000;
  * This bounds a *wedged* task only. A legitimate drain settles through
  * `settleIfReady` as soon as the last tracked task clears, so the cap should
  * never fire on healthy work. One hour is sized for a full-suite test sweep run
- * in the background while staying well under `StaleTaskDetector`'s ~6h05m
+ * in the background while staying well under `StaleTaskDetector`'s ~8h05m
  * force-fail, which is the next net below it.
  */
 const CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS = 60 * 60_000;

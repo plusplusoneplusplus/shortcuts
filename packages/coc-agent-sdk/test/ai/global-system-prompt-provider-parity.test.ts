@@ -24,7 +24,7 @@ import { SessionManager } from '../../src/session-manager';
 import type { SystemMessageConfig } from '../../src/types';
 import { createMockSession } from '../helpers/mock-sdk';
 
-const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+import { DEFAULT_AI_TIMEOUT_MS } from '../../src/timeout-defaults';
 
 // The admin-configured prompt text and the labeled block the coc builder wraps
 // it in (mirrors `buildGlobalSystemPromptBlock`).
