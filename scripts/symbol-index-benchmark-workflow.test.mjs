@@ -14,6 +14,31 @@ test("symbol benchmark is manually dispatched on Linux and Windows", () => {
     assert.match(workflow, /timeout-minutes: 90/);
 });
 
+test("platform validation builds every released native target", () => {
+    for (const [runner, triple] of [
+        ["ubuntu-latest", "linux-x64-gnu"],
+        ["ubuntu-24.04-arm", "linux-arm64-gnu"],
+        ["macos-latest", "darwin-arm64"],
+        ["macos-15-intel", "darwin-x64"],
+        ["windows-latest", "win32-x64-msvc"],
+        ["windows-11-arm", "win32-arm64-msvc"],
+    ]) {
+        assert.match(workflow, new RegExp(`runner: ${runner}\\n\\s+triple: ${triple}`));
+    }
+    assert.match(workflow, /cargo test --manifest-path packages\/coc-native\/rust\/Cargo\.toml -p coc-native-core/);
+    assert.match(workflow, /npm run build:native -w packages\/coc-native/);
+});
+
+test("platform validation runs real clangd on macOS and Windows", () => {
+    assert.match(workflow, /name: clangd-\$\{\{ matrix\.label \}\}/);
+    assert.match(workflow, /label: macos-arm64[\s\S]*runner: macos-latest/);
+    assert.match(workflow, /label: windows-x64[\s\S]*runner: windows-latest/);
+    assert.match(workflow, /brew install llvm/);
+    assert.match(workflow, /choco install llvm --yes --no-progress/);
+    assert.match(workflow, /clangd --version/);
+    assert.match(workflow, /test\/server\/language-servers\/clangd-integration\.test\.ts/);
+});
+
 test("symbol benchmark uses the acceptance-criterion workloads", () => {
     assert.match(workflow, /--files 100000 --runs 5 --target-lines 32000 --json/);
     assert.match(workflow, /--threads 1,2,4 --warmup 1 --runs 3 \$COLD_ARG --json/);

@@ -13,6 +13,109 @@ permissions:
   contents: read
 
 jobs:
+  native-build:
+    name: native-${{ matrix.triple }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            triple: linux-x64-gnu
+            container: node:24-bookworm
+          - runner: ubuntu-24.04-arm
+            triple: linux-arm64-gnu
+            container: node:24-bookworm
+          - runner: macos-latest
+            triple: darwin-arm64
+          - runner: macos-15-intel
+            triple: darwin-x64
+          - runner: windows-latest
+            triple: win32-x64-msvc
+          - runner: windows-11-arm
+            triple: win32-arm64-msvc
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Trust the workspace
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/coc-native/rust
+          key: platform-validation-${{ matrix.triple }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
+
+      - name: Build the addon
+        run: npm run build:native -w packages/coc-native
+
+      - name: Verify target binary
+        shell: bash
+        run: test -f "packages/coc-native/coc-native.${{ matrix.triple }}.node"
+
+  clangd-integration:
+    name: clangd-${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos-arm64
+            runner: macos-latest
+          - label: windows-x64
+            runner: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install clangd on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+
+      - name: Install clangd on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm --yes --no-progress
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Verify clangd
+        run: clangd --version
+
+      - name: Run real clangd integration tests
+        working-directory: packages/coc
+        run: node scripts/run-vitest.mjs test/server/language-servers/clangd-integration.test.ts
+
   resolve-corpus:
     runs-on: ubuntu-latest
     outputs:
