@@ -237,6 +237,53 @@ describe('LanguageServerManager session identity', () => {
         expect(harness.created).toHaveLength(1);
     });
 
+    it('isolates the same document across editing sessions for a workspace-scoped definition', () => {
+        const definition = echoDefinition({ sessionScope: 'workspace' });
+        const harness = createHarness([definition]);
+        const first = acquireTxt(harness, 'browser-1', 'src/shared.txt');
+        const second = acquireTxt(harness, 'browser-2', `src${path.sep}shared.txt`);
+
+        expect(first.ok && second.ok).toBe(true);
+        if (!first.ok || !second.ok) {
+            return;
+        }
+        expect(second.handle.session).not.toBe(first.handle.session);
+        expect(second.handle.key).not.toBe(first.handle.key);
+        expect(harness.created).toHaveLength(2);
+    });
+
+    it('reuses a workspace-scoped session after the conflicting document is released', () => {
+        const definition = echoDefinition({ sessionScope: 'workspace' });
+        const harness = createHarness([definition]);
+        const first = acquireTxt(harness, 'browser-1', 'src/shared.txt');
+        expect(first.ok).toBe(true);
+        if (!first.ok) {
+            return;
+        }
+        first.handle.release();
+
+        const second = acquireTxt(harness, 'browser-2', 'src/shared.txt');
+        expect(second.ok).toBe(true);
+        if (!second.ok) {
+            return;
+        }
+        expect(second.handle.session).toBe(first.handle.session);
+        expect(harness.created).toHaveLength(1);
+    });
+
+    it.runIf(process.platform === 'win32')('isolates Windows aliases of the same document', () => {
+        const definition = echoDefinition({ sessionScope: 'workspace' });
+        const harness = createHarness([definition]);
+        const first = acquireTxt(harness, 'browser-1', 'src/shared.txt');
+        const second = acquireTxt(harness, 'browser-2', 'SRC./SHARED.TXT. ');
+
+        expect(first.ok && second.ok).toBe(true);
+        if (!first.ok || !second.ok) {
+            return;
+        }
+        expect(second.handle.session).not.toBe(first.handle.session);
+    });
+
     it('gives each project root its own session within one editing session', () => {
         const harness = createHarness([echoDefinition()], {
             exists: (candidate) => candidate.includes(`packages${path.sep}app${path.sep}package.json`),
@@ -641,8 +688,8 @@ describe('LanguageServerManager teardown', () => {
 
     it('keeps a workspace-scoped session while another editing session still uses it', async () => {
         const harness = createHarness([echoDefinition({ sessionScope: 'workspace' })]);
-        const first = acquireTxt(harness, 'browser-1');
-        const second = acquireTxt(harness, 'browser-2');
+        const first = acquireTxt(harness, 'browser-1', 'src/first.txt');
+        const second = acquireTxt(harness, 'browser-2', 'src/second.txt');
         expect(first.ok && second.ok).toBe(true);
 
         await harness.manager.disposeEditingSession('ws-a', 'browser-1');

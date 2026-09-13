@@ -92,6 +92,7 @@ interface SessionEntry {
     workspaceId: string;
     editingSessionIds: Set<string>;
     releasesByEditingSession: Map<string, Set<() => void>>;
+    documentOwners: Map<string, Map<string, number>>;
     definition: LanguageServerDefinition;
     rootPath: string;
     rootLabel: string;
@@ -145,17 +146,30 @@ export class LanguageServerManager {
                 ...this.options.prepareDeps,
             },
         );
-        const key = sessionKey(
+        const sharedKey = sessionKey(
             request.workspaceId,
             definition.sessionScope === 'workspace' ? undefined : request.editingSessionId,
             definition.id,
             rootPath,
         );
+        let key = sharedKey;
         let entry = this.entries.get(key);
         if (entry && entry.fingerprint !== fingerprintOf(definition)) {
             // Configuration moved on while this session was alive.
             this.trackClose(this.closeEntry(entry, 'config-changed'));
             entry = undefined;
+        }
+        if (
+            definition.sessionScope === 'workspace'
+            && entry
+            && hasDocumentOwnerFromAnotherEditingSession(entry, request.relativePath, request.editingSessionId)
+        ) {
+            key = sessionKey(request.workspaceId, request.editingSessionId, definition.id, rootPath);
+            entry = this.entries.get(key);
+            if (entry && entry.fingerprint !== fingerprintOf(definition)) {
+                this.trackClose(this.closeEntry(entry, 'config-changed'));
+                entry = undefined;
+            }
         }
         if (!entry) {
             if (!this.makeRoom(request.workspaceId, definition)) {
@@ -312,6 +326,7 @@ export class LanguageServerManager {
             workspaceId: request.workspaceId,
             editingSessionIds: new Set(),
             releasesByEditingSession: new Map(),
+            documentOwners: new Map(),
             definition,
             rootPath,
             rootLabel: relativeRootLabel(request.workspaceRoot, rootPath),
@@ -328,6 +343,10 @@ export class LanguageServerManager {
         entry.references++;
         entry.lastUsedAt = ++this.clock;
         entry.editingSessionIds.add(editingSessionId);
+        const documentKey = normalizeDocumentPath(relativePath);
+        const owners = entry.documentOwners.get(documentKey) ?? new Map<string, number>();
+        owners.set(editingSessionId, (owners.get(editingSessionId) ?? 0) + 1);
+        entry.documentOwners.set(documentKey, owners);
         const releaseSession = entry.session.attach();
         let released = false;
         const release = (): void => {
@@ -340,6 +359,15 @@ export class LanguageServerManager {
             editingReleases?.delete(release);
             if (editingReleases?.size === 0) {
                 entry.releasesByEditingSession.delete(editingSessionId);
+            }
+            const remainingDocumentReferences = (owners.get(editingSessionId) ?? 1) - 1;
+            if (remainingDocumentReferences === 0) {
+                owners.delete(editingSessionId);
+            } else {
+                owners.set(editingSessionId, remainingDocumentReferences);
+            }
+            if (owners.size === 0) {
+                entry.documentOwners.delete(documentKey);
             }
             releaseSession();
         };
@@ -462,6 +490,27 @@ export class LanguageServerManager {
             }
         }
     }
+}
+
+function hasDocumentOwnerFromAnotherEditingSession(
+    entry: SessionEntry,
+    relativePath: string,
+    editingSessionId: string,
+): boolean {
+    const owners = entry.documentOwners.get(normalizeDocumentPath(relativePath));
+    return owners !== undefined && [...owners.keys()].some(owner => owner !== editingSessionId);
+}
+
+function normalizeDocumentPath(relativePath: string): string {
+    const normalized = path.normalize(relativePath.replace(/[\\/]+/g, path.sep));
+    if (process.platform !== 'win32') {
+        return normalized;
+    }
+    return normalized
+        .split(path.sep)
+        .map(component => component.replace(/[ .]+$/g, ''))
+        .join(path.sep)
+        .toLowerCase();
 }
 
 function relativeRootLabel(workspaceRoot: string, rootPath: string): string {

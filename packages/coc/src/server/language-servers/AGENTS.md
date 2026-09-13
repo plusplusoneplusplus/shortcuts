@@ -146,9 +146,11 @@ and transport code stays generic.
   reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
   concise status instead of an error.
 - Sessions are keyed on workspace, browser editing session, definition id, and
-  resolved root. Two browser windows on the same file therefore get two
-  processes and cannot see each other's buffers or diagnostics, and a monorepo
-  gets one process per project root.
+  resolved root by default. Workspace-scoped definitions reuse one process
+  across editing sessions for different files, but a second editing session
+  opening the same path receives an isolated process so unsaved buffers and
+  diagnostics cannot overwrite each other. A monorepo gets one process per
+  project root.
 - `maxSessions` (default 12) bounds live sessions. Reaching it evicts the least
   recently used unreferenced session; when every session is still referenced the
   acquire fails with `capacity` rather than dropping a buffer someone owns.
@@ -200,9 +202,10 @@ and transport code stays generic.
   its process interception model is not supported there.
 - Definitions can set `sessionScope`, `maxSessions`, `requestTimeoutMs`, and
   `idleTimeoutMs`. clangd uses workspace scope so editing sessions sharing one
-  workspace and resolved root reuse a process, caps itself at four live roots,
-  allows two-minute requests, and remains idle for 30 minutes. The manager and
-  session apply these fields without branching on a language id.
+  workspace and resolved root reuse a process unless they open the same path,
+  caps itself at four live sessions, allows two-minute requests, and remains
+  idle for 30 minutes. The manager and session apply these fields without
+  branching on a language id.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The
@@ -261,8 +264,10 @@ and transport code stays generic.
   server moves off this host.
 - An attachment is one document on one socket; it holds one manager reference
   and its own in-flight request map, so `lsp-cancel` and a closed socket both
-  abort cleanly. Server notifications are subscribed once per session key per
-  socket (`textDocument/publishDiagnostics`, `window/showMessage`,
+  abort cleanly. The bridge tracks successful `didOpen` notifications and sends
+  `didClose` before releasing an abruptly disconnected socket, keeping warm
+  shared sessions free of stale buffers. Server notifications are subscribed
+  once per session key per socket (`textDocument/publishDiagnostics`, `window/showMessage`,
   `window/logMessage`, `$/progress`) and carry `sessionKey`, since diagnostics
   are session-wide rather than per attachment. A manager-initiated close detaches
   every affected attachment with the manager's reason, which is the client's cue

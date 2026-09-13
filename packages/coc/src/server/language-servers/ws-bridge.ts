@@ -16,7 +16,9 @@
 
 import * as http from 'http';
 import * as crypto from 'crypto';
+import * as path from 'path';
 import type { Duplex } from 'stream';
+import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { getServerLogger } from '../logging/server-logger';
 import type { LanguageServerManager, LanguageServerHandle, LanguageServerUnavailableReason } from './manager';
@@ -84,6 +86,9 @@ interface Attachment {
     handle: LanguageServerHandle;
     relativePath: string;
     documentUri: string;
+    /** Host URI currently opened in the server, for abrupt socket cleanup. */
+    openDocumentUri?: string;
+    openDocumentGeneration?: number;
     /** In-flight requests, so a cancel or a socket close can abort them. */
     pending: Map<string, AbortController>;
 }
@@ -355,6 +360,7 @@ export class LanguageServerWebSocketServer {
             controller.abort();
         }
         attachment.pending.clear();
+        this.closeOpenDocument(attachment);
         this.unsubscribe(client, attachment);
         attachment.handle.release();
         this.send(client.socket, { type: 'lsp-detached', attachmentId, reason });
@@ -433,6 +439,30 @@ export class LanguageServerWebSocketServer {
                 message: `Refused a document URI outside this workspace: ${params.uri}`,
             });
             return;
+        }
+        const documentUri = textDocumentUri(params.value);
+        const generation = attachment.handle.session.getState().generation;
+        if (message.method === 'textDocument/didOpen' && documentUri) {
+            const alreadyOpen = this.hasOtherOpenDocument(attachment, documentUri, generation);
+            attachment.openDocumentUri = documentUri;
+            attachment.openDocumentGeneration = generation;
+            if (alreadyOpen) {
+                return;
+            }
+            if (!attachment.handle.session.sendNotification(message.method, params.value)) {
+                attachment.openDocumentUri = undefined;
+                attachment.openDocumentGeneration = undefined;
+            }
+            return;
+        }
+        if (message.method === 'textDocument/didClose' && documentUri) {
+            const wasOpen = sameDocumentUri(attachment.openDocumentUri, documentUri)
+                && attachment.openDocumentGeneration === generation;
+            attachment.openDocumentUri = undefined;
+            attachment.openDocumentGeneration = undefined;
+            if (!wasOpen || this.hasOtherOpenDocument(attachment, documentUri, generation)) {
+                return;
+            }
         }
         attachment.handle.session.sendNotification(message.method, params.value);
     }
@@ -577,6 +607,7 @@ export class LanguageServerWebSocketServer {
                 controller.abort();
             }
             attachment.pending.clear();
+            this.closeOpenDocument(attachment);
             attachment.handle.release();
         }
         client.attachments.clear();
@@ -584,6 +615,44 @@ export class LanguageServerWebSocketServer {
             subscription.dispose();
         }
         client.subscriptions.clear();
+    }
+
+    private closeOpenDocument(attachment: Attachment): void {
+        if (!attachment.openDocumentUri) {
+            return;
+        }
+        const documentUri = attachment.openDocumentUri;
+        const generation = attachment.openDocumentGeneration;
+        attachment.openDocumentUri = undefined;
+        attachment.openDocumentGeneration = undefined;
+        if (
+            generation === attachment.handle.session.getState().generation
+            && !this.hasOtherOpenDocument(attachment, documentUri, generation)
+        ) {
+            attachment.handle.session.sendNotification('textDocument/didClose', {
+                textDocument: { uri: documentUri },
+            });
+        }
+    }
+
+    private hasOtherOpenDocument(
+        attachment: Attachment,
+        documentUri: string,
+        generation: number,
+    ): boolean {
+        for (const client of this.clients.values()) {
+            for (const candidate of client.attachments.values()) {
+                if (
+                    candidate !== attachment
+                    && candidate.handle.session === attachment.handle.session
+                    && sameDocumentUri(candidate.openDocumentUri, documentUri)
+                    && candidate.openDocumentGeneration === generation
+                ) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private send(ws: WebSocket, message: LanguageServerServerMessage): void {
@@ -606,6 +675,43 @@ export class LanguageServerWebSocketServer {
             }
         }, HEARTBEAT_INTERVAL_MS);
         this.heartbeatTimer.unref?.();
+    }
+}
+
+function textDocumentUri(params: unknown): string | undefined {
+    if (!params || typeof params !== 'object' || !('textDocument' in params)) {
+        return undefined;
+    }
+    const textDocument = params.textDocument;
+    if (!textDocument || typeof textDocument !== 'object' || !('uri' in textDocument)) {
+        return undefined;
+    }
+    return typeof textDocument.uri === 'string' ? textDocument.uri : undefined;
+}
+
+function sameDocumentUri(left: string | undefined, right: string): boolean {
+    if (left === undefined) {
+        return false;
+    }
+    return documentUriIdentity(left) === documentUriIdentity(right);
+}
+
+function documentUriIdentity(uri: string): string {
+    if (process.platform !== 'win32') {
+        return uri;
+    }
+    try {
+        const parsed = new URL(uri);
+        if (parsed.protocol !== 'file:') {
+            return uri;
+        }
+        return fileURLToPath(parsed)
+            .split(path.sep)
+            .map(component => component.replace(/[ .]+$/g, ''))
+            .join(path.sep)
+            .toLowerCase();
+    } catch {
+        return uri;
     }
 }
 
