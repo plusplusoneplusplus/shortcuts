@@ -35,6 +35,8 @@ test("platform validation runs real clangd on macOS and Windows", () => {
     assert.match(workflow, /label: windows-x64[\s\S]*runner: windows-latest/);
     assert.match(workflow, /brew install llvm/);
     assert.match(workflow, /choco install llvm --yes --no-progress/);
+    assert.match(workflow, /Microsoft\.VisualStudio\.Component\.VC\.Tools\.x86\.x64/);
+    assert.match(workflow, /COC_CLANGD_TEST_FALLBACK_FLAGS=\$json/);
     assert.match(workflow, /clangd --version/);
     assert.match(workflow, /test\/server\/language-servers\/clangd-integration\.test\.ts/);
 });
