@@ -22,6 +22,14 @@ export interface QueueStats {
   pauseSource?: 'manual' | 'quota';
   /** Who initiated the current Autopilot pause: 'manual' (HTTP caller) or 'quota' (watcher). */
   autopilotPauseSource?: 'manual' | 'quota';
+  /** Configured cooldown between starts for all tasks, in minutes. */
+  taskDelayMinutes?: number;
+  /** Epoch milliseconds when the active all-task cooldown ends. */
+  taskDelayUntil?: number;
+  /** Configured cooldown between starts for autopilot tasks, in minutes. */
+  autopilotTaskDelayMinutes?: number;
+  /** Epoch milliseconds when the active autopilot cooldown ends. */
+  autopilotTaskDelayUntil?: number;
 }
 
 export interface QueuedTask {
@@ -48,6 +56,16 @@ export interface QueueTaskSummary extends Partial<QueuedTask> {
 
 /** Which part of the queue a pause marker holds. Absent means 'all'. */
 export type QueuePauseScope = 'all' | 'autopilot';
+
+export interface QueueTaskDelayRequest {
+  scope: QueuePauseScope;
+  delayMinutes: number | null;
+}
+
+export interface QueueTaskDelayResponse extends QueueStatsResponse {
+  scope: QueuePauseScope;
+  taskDelayMinutes: number | null;
+}
 
 export interface QueuePauseMarker {
   kind: 'pause-marker';

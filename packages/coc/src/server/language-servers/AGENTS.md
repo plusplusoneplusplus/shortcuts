@@ -10,8 +10,9 @@ and transport code stays generic.
 - `definition-schema.ts` — zod validation returning field-level errors, plus
   list validation that reports duplicate ids by index.
 - `file-match.ts` — POSIX path normalization and glob matching (`**`, `*`, `?`,
-  `{a,b}`). Patterns match the workspace-relative path, so Windows separators
-  are normalized before matching.
+  `{a,b}`). Patterns match the workspace-relative path. Windows paths also use
+  case-insensitive identity and trim trailing dots/spaces before selection, URI
+  mapping, and shared-session ownership checks.
 - `selection.ts` — deterministic server selection (priority, then pattern
   specificity, then id), LSP language-id resolution, and nearest-marker
   project-root discovery.
@@ -26,6 +27,8 @@ and transport code stays generic.
 - `python-adapter.ts` — Python's answer to that hook: resolve the nearest
   symlink-bounded project root, discover a project-local interpreter, and resolve
   Pyright from the project, the copy packaged with CoC, or the owning host's PATH.
+- `clangd-adapter.ts` — C-family runtime discovery from the owning host's PATH or
+  platform-specific LLVM install locations, plus nearest clangd project roots.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -144,9 +147,11 @@ and transport code stays generic.
   reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
   concise status instead of an error.
 - Sessions are keyed on workspace, browser editing session, definition id, and
-  resolved root. Two browser windows on the same file therefore get two
-  processes and cannot see each other's buffers or diagnostics, and a monorepo
-  gets one process per project root.
+  resolved root by default. Workspace-scoped definitions reuse one process
+  across editing sessions for different files, but a second editing session
+  opening the same path receives an isolated process so unsaved buffers and
+  diagnostics cannot overwrite each other. A monorepo gets one process per
+  project root.
 - `maxSessions` (default 12) bounds live sessions. Reaching it evicts the least
   recently used unreferenced session; when every session is still referenced the
   acquire fails with `capacity` rather than dropping a buffer someone owns.
@@ -181,6 +186,27 @@ and transport code stays generic.
   Missing discovery leaves `rust-analyzer` as the command so startup reports
   `unavailable` with the rustup component install command; user-facing labels
   never contain the resolved absolute path.
+- `clangd-adapter.ts` resolves `clangd` from PATH before Homebrew LLVM prefixes,
+  versioned `/usr/lib/llvm-*` directories, or `%ProgramFiles%\LLVM`. Its preset
+  disables background indexing and roots only at `compile_commands.json`,
+  `.clangd`, or `compile_flags.txt`; repointed commands remain untouched. Missing
+  discovery supplies the Settings runtime error with `apt install clangd`,
+  `brew install llvm`, or `winget install LLVM.LLVM` for the owning host.
+- clangd compilation fallback is configured per workspace through
+  `initializationOptions.fallbackFlags`; the adapter passes the array through
+  unchanged. An in-tree compilation database takes precedence automatically.
+  A database elsewhere is selected with `--compile-commands-dir=<directory>` in
+  `args`; CoC never writes a database or user-level clangd configuration.
+- MSVC projects should include `--driver-mode=cl`, `/std:c++<version>`, `/I`
+  entries for the MSVC standard library and Windows SDK, and required `/D`
+  defines in `fallbackFlags`. Bear cannot generate a database on Windows because
+  its process interception model is not supported there.
+- Definitions can set `sessionScope`, `maxSessions`, `requestTimeoutMs`, and
+  `idleTimeoutMs`. clangd uses workspace scope so editing sessions sharing one
+  workspace and resolved root reuse a process unless they open the same path,
+  caps itself at four live sessions, allows two-minute requests, and remains
+  idle for 30 minutes. The manager and session apply these fields without
+  branching on a language id.
 - `typescript-adapter.ts` walks up from the project root for
   `node_modules/typescript-language-server/lib/cli.mjs`, then falls back to the
   copy packaged with CoC, then leaves the configured executable for `PATH`. The
@@ -239,8 +265,10 @@ and transport code stays generic.
   server moves off this host.
 - An attachment is one document on one socket; it holds one manager reference
   and its own in-flight request map, so `lsp-cancel` and a closed socket both
-  abort cleanly. Server notifications are subscribed once per session key per
-  socket (`textDocument/publishDiagnostics`, `window/showMessage`,
+  abort cleanly. The bridge tracks successful `didOpen` notifications and sends
+  `didClose` before releasing an abruptly disconnected socket, keeping warm
+  shared sessions free of stale buffers. Server notifications are subscribed
+  once per session key per socket (`textDocument/publishDiagnostics`, `window/showMessage`,
   `window/logMessage`, `$/progress`) and carry `sessionKey`, since diagnostics
   are session-wide rather than per attachment. A manager-initiated close detaches
   every affected attachment with the manager's reason, which is the client's cue
@@ -311,6 +339,13 @@ and transport code stays generic.
   it in tab identity, and forward it through cross-file definition navigation,
   so a dock retarget or an equal workspace id on another host cannot change the
   client, buffer, or blob loader an open tab uses.
+- C and C++ definition requests query clangd and the owning workspace's
+  repository symbol index together. Exact clangd locations sort first; index
+  candidates are deduplicated by file and line and carry a
+  `symbol-index-candidate` URI fragment. Navigation persists that provenance on
+  the destination tab and shows an amber `Symbol candidate` pill until a plain
+  or exact cross-file open replaces it. The index path remains available when
+  clangd is disabled or unavailable.
 - `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
   — the repo Settings tab's `language-servers` section: master enable toggle,
   the `effective` list with a per-definition enable checkbox, and an editor for
@@ -340,7 +375,9 @@ and transport code stays generic.
   buffers, and workspace check settings. It hard-fails when rust-analyzer is
   unavailable. `python-integration.test.ts` runs the packaged Pyright entry
   point and hard-fails if the production dependency is missing or cannot reach
-  `ready`. That TypeScript server sends no
+  `ready`. `clangd-integration.test.ts` checks hover, same-file definition, and
+  diagnostics against a real clangd, and skips when clangd is not installed.
+  That TypeScript server sends no
   `serverInfo`, so `state.serverName` is undefined for it and the user is shown
   `displayName` and `runtime` instead. The bridge suite drives a real WebSocket against a real
   manager and that fixture, so it covers upgrade scoping, URI refusal, and

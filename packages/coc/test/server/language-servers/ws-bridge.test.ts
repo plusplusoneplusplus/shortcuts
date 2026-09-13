@@ -448,6 +448,136 @@ describe('language-server WebSocket bridge', () => {
         expect(harness.manager.size).toBe(2);
     });
 
+    it('isolates unsaved text when workspace-scoped sessions open the same document', async () => {
+        const harness = await createHarness({
+            definitions: [echoDefinition({ sessionScope: 'workspace' })],
+        });
+        const first = await harness.connect();
+        const second = await harness.connect(`workspaceId=${WORKSPACE_ID}&editingSessionId=session-2`);
+        const a = await first.attach('src/shared.txt');
+        const b = await second.attach('src/shared.txt');
+        expect(b.sessionKey).not.toBe(a.sessionKey);
+        await first.next('lsp-status', (msg) => msg.sessionKey === a.sessionKey && msg.state.status === 'ready');
+        await second.next('lsp-status', (msg) => msg.sessionKey === b.sessionKey && msg.state.status === 'ready');
+
+        first.send({
+            type: 'lsp-notify',
+            attachmentId: a.attachmentId,
+            method: 'textDocument/didOpen',
+            params: { textDocument: { uri: a.documentUri, languageId: 'plaintext', version: 1, text: 'first buffer' } },
+        });
+        second.send({
+            type: 'lsp-notify',
+            attachmentId: b.attachmentId,
+            method: 'textDocument/didOpen',
+            params: { textDocument: { uri: b.documentUri, languageId: 'plaintext', version: 1, text: 'second buffer' } },
+        });
+
+        const firstBuffer = await first.request(a.attachmentId, 'first-buffer', 'getDocument', {
+            textDocument: { uri: a.documentUri },
+        });
+        const secondBuffer = await second.request(b.attachmentId, 'second-buffer', 'getDocument', {
+            textDocument: { uri: b.documentUri },
+        });
+        expect(firstBuffer.result).toBe('first buffer');
+        expect(secondBuffer.result).toBe('second buffer');
+    });
+
+    it('closes an open document before reusing its workspace-scoped session after a socket drops', async () => {
+        const harness = await createHarness({
+            definitions: [echoDefinition({ sessionScope: 'workspace' })],
+        });
+        const first = await harness.connect();
+        const a = await first.attach('src/shared.txt');
+        await first.next('lsp-status', (msg) => msg.sessionKey === a.sessionKey && msg.state.status === 'ready');
+        first.send({
+            type: 'lsp-notify',
+            attachmentId: a.attachmentId,
+            method: 'textDocument/didOpen',
+            params: { textDocument: { uri: a.documentUri, languageId: 'plaintext', version: 1, text: 'stale buffer' } },
+        });
+        await first.next('lsp-notification', (msg) => msg.method === 'textDocument/publishDiagnostics');
+        await first.close();
+
+        const second = await harness.connect(`workspaceId=${WORKSPACE_ID}&editingSessionId=session-2`);
+        const b = await second.attach('src/shared.txt');
+        expect(b.sessionKey).toBe(a.sessionKey);
+        const buffer = await second.request(b.attachmentId, 'reused-buffer', 'getDocument', {
+            textDocument: { uri: b.documentUri },
+        });
+        expect(buffer.result).toBeNull();
+    });
+
+    it('keeps a shared document open until its final same-session attachment closes', async () => {
+        const harness = await createHarness({
+            definitions: [echoDefinition({ sessionScope: 'workspace' })],
+        });
+        const first = await harness.connect();
+        const second = await harness.connect();
+        const a = await first.attach('src/shared.txt');
+        const b = await second.attach('src/shared.txt');
+        expect(b.sessionKey).toBe(a.sessionKey);
+        await first.next('lsp-status', (msg) => msg.sessionKey === a.sessionKey && msg.state.status === 'ready');
+
+        for (const [client, attached] of [[first, a], [second, b]] as const) {
+            client.send({
+                type: 'lsp-notify',
+                attachmentId: attached.attachmentId,
+                method: 'textDocument/didOpen',
+                params: {
+                    textDocument: {
+                        uri: attached.documentUri,
+                        languageId: 'plaintext',
+                        version: 1,
+                        text: 'shared buffer',
+                    },
+                },
+            });
+        }
+        await first.next('lsp-notification', (msg) => msg.method === 'textDocument/publishDiagnostics');
+        await first.close();
+
+        const stillOpen = await second.request(b.attachmentId, 'still-open', 'getDocument', {
+            textDocument: { uri: b.documentUri },
+        });
+        expect(stillOpen.result).toBe('shared buffer');
+    });
+
+    it.runIf(process.platform === 'win32')('matches shared document URIs case-insensitively on Windows', async () => {
+        const harness = await createHarness({
+            definitions: [echoDefinition({ sessionScope: 'workspace' })],
+        });
+        const first = await harness.connect();
+        const second = await harness.connect();
+        const a = await first.attach('src/shared.txt');
+        const b = await second.attach('SRC./SHARED.TXT. ');
+        expect(b.sessionKey).toBe(a.sessionKey);
+        await first.next('lsp-status', (msg) => msg.sessionKey === a.sessionKey && msg.state.status === 'ready');
+
+        for (const [client, attached] of [[first, a], [second, b]] as const) {
+            client.send({
+                type: 'lsp-notify',
+                attachmentId: attached.attachmentId,
+                method: 'textDocument/didOpen',
+                params: {
+                    textDocument: {
+                        uri: attached.documentUri,
+                        languageId: 'plaintext',
+                        version: 1,
+                        text: 'shared buffer',
+                    },
+                },
+            });
+        }
+        await first.next('lsp-notification', (msg) => msg.method === 'textDocument/publishDiagnostics');
+        await first.close();
+
+        const stillOpen = await second.request(b.attachmentId, 'windows-case', 'getDocument', {
+            textDocument: { uri: a.documentUri },
+        });
+        expect(stillOpen.result).toBe('shared buffer');
+    });
+
     it('detaches every document when the manager closes their session', async () => {
         const harness = await createHarness();
         const client = await harness.connect();

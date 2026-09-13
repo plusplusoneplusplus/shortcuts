@@ -3290,3 +3290,326 @@ function createTestTask(
         ...overrides,
     };
 }
+
+describe('delay between tasks', () => {
+    const MINUTE = 60 * 1000;
+    let manager: TaskQueueManager;
+
+    beforeEach(() => {
+        manager = createTaskQueueManager();
+        vi.useFakeTimers();
+        vi.setSystemTime(Date.now());
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    /** Run a task to completion so the cooldown clock has a baseline. */
+    function runAndComplete(id: string): void {
+        manager.markStarted(id);
+        manager.markCompleted(id);
+    }
+
+    it('starts the first task with no wait when no task has ended yet', () => {
+        manager.setTaskDelayMinutes('all', 5);
+        const id = manager.enqueue(createTestTask());
+
+        expect(manager.peek()!.id).toBe(id);
+    });
+
+    it('defers the next task until the cooldown elapses', () => {
+        const first = manager.enqueue(createTestTask({ displayName: 'A' }));
+        const second = manager.enqueue(createTestTask({ displayName: 'B' }));
+        manager.setTaskDelayMinutes('all', 1);
+
+        runAndComplete(first);
+        expect(manager.peek()).toBeUndefined();
+
+        vi.setSystemTime(Date.now() + MINUTE + 1);
+        expect(manager.peek()!.id).toBe(second);
+    });
+
+    it('counts idle time since the last task end toward the wait', () => {
+        const first = manager.enqueue(createTestTask());
+        runAndComplete(first);
+
+        // Cooldown set after the task already ended — the recorded end still counts.
+        vi.setSystemTime(Date.now() + 30 * 1000);
+        manager.setTaskDelayMinutes('all', 1);
+        const second = manager.enqueue(createTestTask());
+
+        expect(manager.peek()).toBeUndefined();
+        vi.setSystemTime(Date.now() + 31 * 1000);
+        expect(manager.peek()!.id).toBe(second);
+    });
+
+    it('starts at once when more than the delay already elapsed while idle', () => {
+        const first = manager.enqueue(createTestTask());
+        runAndComplete(first);
+
+        vi.setSystemTime(Date.now() + 10 * MINUTE);
+        manager.setTaskDelayMinutes('all', 5);
+        const second = manager.enqueue(createTestTask());
+
+        expect(manager.getTaskDelayUntil('all')).toBeUndefined();
+        expect(manager.peek()!.id).toBe(second);
+    });
+
+    it('reschedules from the same last-task-end when the delay is shortened mid-wait', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 60);
+        runAndComplete(first);
+        const endedAt = Date.now();
+        const second = manager.enqueue(createTestTask());
+
+        vi.setSystemTime(endedAt + 2 * MINUTE);
+        expect(manager.peek()).toBeUndefined();
+
+        manager.setTaskDelayMinutes('all', 1);
+        expect(manager.getTaskDelayUntil('all')).toBeUndefined();
+        expect(manager.peek()!.id).toBe(second);
+    });
+
+    it('skipTaskDelay releases the wait and keeps the configured delay', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 5);
+        runAndComplete(first);
+        const second = manager.enqueue(createTestTask());
+        expect(manager.peek()).toBeUndefined();
+
+        manager.skipTaskDelay('all');
+
+        expect(manager.peek()!.id).toBe(second);
+        expect(manager.getTaskDelayMinutes('all')).toBe(5);
+        expect(manager.getTaskDelayUntil('all')).toBeUndefined();
+    });
+
+    it('skipTaskDelay is a no-op when nothing is pending', () => {
+        const events: string[] = [];
+        manager.on('change', (e: QueueChangeEvent) => events.push(e.type));
+
+        manager.skipTaskDelay('all');
+
+        expect(events).not.toContain('task-delay-skipped');
+    });
+
+    it('turning the cooldown off releases a pending wait', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 30);
+        runAndComplete(first);
+        const second = manager.enqueue(createTestTask());
+        expect(manager.peek()).toBeUndefined();
+
+        manager.setTaskDelayMinutes('all', null);
+
+        expect(manager.getTaskDelayMinutes('all')).toBeUndefined();
+        expect(manager.peek()!.id).toBe(second);
+    });
+
+    it('starts the clock when a running task is cancelled', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 5);
+        manager.markStarted(first);
+        const second = manager.enqueue(createTestTask());
+
+        manager.cancelTask(first);
+
+        expect(manager.getTaskDelayUntil('all')).toBe(Date.now() + 5 * MINUTE);
+        expect(manager.peek()).toBeUndefined();
+        expect(second).toBeTruthy();
+    });
+
+    it('starts the clock when a task fails', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 5);
+        manager.markStarted(first);
+        manager.enqueue(createTestTask());
+
+        manager.markFailed(first, new Error('boom'));
+
+        expect(manager.peek()).toBeUndefined();
+    });
+
+    it('does not start the clock when a queued task is cancelled', () => {
+        manager.setTaskDelayMinutes('all', 5);
+        const queued = manager.enqueue(createTestTask());
+        const other = manager.enqueue(createTestTask());
+
+        manager.cancelTask(queued);
+
+        expect(manager.getTaskDelayUntil('all')).toBeUndefined();
+        expect(manager.peek()!.id).toBe(other);
+    });
+
+    it('rejects delays outside 1 to 1440 whole minutes', () => {
+        expect(() => manager.setTaskDelayMinutes('all', 0)).toThrow(RangeError);
+        expect(() => manager.setTaskDelayMinutes('all', -1)).toThrow(RangeError);
+        expect(() => manager.setTaskDelayMinutes('all', 1441)).toThrow(RangeError);
+        expect(() => manager.setTaskDelayMinutes('all', 1.5)).toThrow(RangeError);
+        expect(() => manager.setTaskDelayMinutes('all', 1)).not.toThrow();
+        expect(() => manager.setTaskDelayMinutes('all', 1440)).not.toThrow();
+    });
+
+    it('emits a change event when the delay is set, cleared, or skipped', () => {
+        const events: string[] = [];
+        manager.on('change', (e: QueueChangeEvent) => events.push(e.type));
+
+        manager.setTaskDelayMinutes('all', 5);
+        manager.setTaskDelayMinutes('all', 5); // unchanged — no event
+        const id = manager.enqueue(createTestTask());
+        runAndComplete(id);
+        manager.enqueue(createTestTask());
+        manager.skipTaskDelay('all');
+        manager.setTaskDelayMinutes('all', null);
+
+        expect(events.filter(t => t === 'task-delay-changed')).toHaveLength(2);
+        expect(events.filter(t => t === 'task-delay-skipped')).toHaveLength(1);
+    });
+
+    it('reports the delay and deadline in getStats', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 5);
+        manager.setTaskDelayMinutes('autopilot', 15);
+        runAndComplete(first);
+        const endedAt = Date.now();
+        manager.enqueue(createTestTask());
+
+        const stats = manager.getStats();
+        expect(stats.taskDelayMinutes).toBe(5);
+        expect(stats.taskDelayUntil).toBe(endedAt + 5 * MINUTE);
+        expect(stats.autopilotTaskDelayMinutes).toBe(15);
+
+        vi.setSystemTime(endedAt + 6 * MINUTE);
+        const later = manager.getStats();
+        expect(later.taskDelayMinutes).toBe(5);
+        expect(later.taskDelayUntil).toBeUndefined();
+    });
+
+    it('reports no active deadline while the queue is idle', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 5);
+        runAndComplete(first);
+
+        expect(manager.getStats().taskDelayUntil).toBeUndefined();
+
+        manager.enqueue(createTestTask());
+        expect(manager.getStats().taskDelayUntil).toBe(Date.now() + 5 * MINUTE);
+    });
+
+    it('omits the delay fields from getStats when no cooldown is configured', () => {
+        const stats = manager.getStats();
+        expect(stats.taskDelayMinutes).toBeUndefined();
+        expect(stats.taskDelayUntil).toBeUndefined();
+        expect(stats.autopilotTaskDelayMinutes).toBeUndefined();
+        expect(stats.autopilotTaskDelayUntil).toBeUndefined();
+    });
+
+    describe('autopilot scope', () => {
+        /** Autopilot/ralph work is the exclusive half, same as the autopilot pause. */
+        const isExclusive = (task: QueuedTask) => task.type === 'autopilot';
+
+        beforeEach(() => {
+            manager = new TaskQueueManager({ isExclusive });
+        });
+
+        it('holds autopilot work but lets other tasks keep flowing', () => {
+            const autopilot = manager.enqueue(createTestTask({ type: 'autopilot' }));
+            manager.setTaskDelayMinutes('autopilot', 5);
+            runAndComplete(autopilot);
+
+            const nextAutopilot = manager.enqueue(createTestTask({ type: 'autopilot' }));
+            const ask = manager.enqueue(createTestTask({ type: 'chat' }));
+
+            // Non-exclusive work is inserted ahead of the exclusive backlog.
+            expect(manager.peek()!.id).toBe(ask);
+            runAndComplete(ask);
+            expect(manager.peek()).toBeUndefined();
+
+            vi.setSystemTime(Date.now() + 6 * MINUTE);
+            expect(manager.peek()!.id).toBe(nextAutopilot);
+        });
+
+        it('does not move the autopilot clock for non-autopilot work', () => {
+            manager.setTaskDelayMinutes('autopilot', 5);
+            const ask = manager.enqueue(createTestTask({ type: 'chat' }));
+            runAndComplete(ask);
+
+            const autopilot = manager.enqueue(createTestTask({ type: 'autopilot' }));
+
+            expect(manager.getTaskDelayUntil('autopilot')).toBeUndefined();
+            expect(manager.peek()!.id).toBe(autopilot);
+        });
+
+        it('reports an autopilot deadline only while autopilot work is queued', () => {
+            const first = manager.enqueue(createTestTask({ type: 'autopilot' }));
+            manager.setTaskDelayMinutes('autopilot', 5);
+            runAndComplete(first);
+
+            expect(manager.getStats().autopilotTaskDelayUntil).toBeUndefined();
+            manager.enqueue(createTestTask({ type: 'chat' }));
+            expect(manager.getStats().autopilotTaskDelayUntil).toBeUndefined();
+            manager.enqueue(createTestTask({ type: 'autopilot' }));
+            expect(manager.getStats().autopilotTaskDelayUntil).toBe(Date.now() + 5 * MINUTE);
+        });
+
+        it('makes autopilot work satisfy both the global and autopilot deadlines', () => {
+            const first = manager.enqueue(createTestTask({ type: 'autopilot' }));
+            manager.setTaskDelayMinutes('all', 2);
+            manager.setTaskDelayMinutes('autopilot', 10);
+            runAndComplete(first);
+            const endedAt = Date.now();
+            const next = manager.enqueue(createTestTask({ type: 'autopilot' }));
+
+            // Global deadline elapsed, autopilot deadline has not.
+            vi.setSystemTime(endedAt + 3 * MINUTE);
+            expect(manager.peek()).toBeUndefined();
+
+            vi.setSystemTime(endedAt + 11 * MINUTE);
+            expect(manager.peek()!.id).toBe(next);
+        });
+
+        it('skipping one scope leaves the other scope waiting', () => {
+            const first = manager.enqueue(createTestTask({ type: 'autopilot' }));
+            manager.setTaskDelayMinutes('all', 10);
+            manager.setTaskDelayMinutes('autopilot', 10);
+            runAndComplete(first);
+            manager.enqueue(createTestTask({ type: 'autopilot' }));
+
+            manager.skipTaskDelay('all');
+
+            expect(manager.getTaskDelayUntil('all')).toBeUndefined();
+            expect(manager.getTaskDelayUntil('autopilot')).toBeDefined();
+            expect(manager.peek()).toBeUndefined();
+        });
+    });
+
+    it('a manual pause takes precedence and the deadline still applies on resume', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 5);
+        runAndComplete(first);
+        const endedAt = Date.now();
+        const second = manager.enqueue(createTestTask());
+
+        manager.pause();
+        expect(manager.isPaused()).toBe(true);
+
+        vi.setSystemTime(endedAt + MINUTE);
+        manager.resume();
+
+        expect(manager.peek()).toBeUndefined();
+        vi.setSystemTime(endedAt + 6 * MINUTE);
+        expect(manager.peek()!.id).toBe(second);
+    });
+
+    it('reset clears the configured delay and the recorded task end', () => {
+        const first = manager.enqueue(createTestTask());
+        manager.setTaskDelayMinutes('all', 5);
+        runAndComplete(first);
+
+        manager.reset();
+
+        expect(manager.getTaskDelayMinutes('all')).toBeUndefined();
+        expect(manager.getTaskDelayUntil('all')).toBeUndefined();
+    });
+});

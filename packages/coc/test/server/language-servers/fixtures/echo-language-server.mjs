@@ -11,6 +11,7 @@
  *   initialize            -> capabilities, plus the received initializationOptions
  *   echo                  -> returns the params unchanged
  *   getInit               -> the received initialize params plus process.cwd()
+ *   getDocument           -> returns the open text for one document URI
  *   slow                  -> never replies, for timeout and cancellation tests
  *   indexing              -> reports work progress around a delayed reply
  *   fail                  -> replies with a JSON-RPC error
@@ -54,6 +55,7 @@ let nextServerRequestId = 1;
 let lastInitializeParams = null;
 const cancellable = new Map();
 const clientReplies = new Map();
+const openDocuments = new Map();
 
 function send(message) {
     const body = Buffer.from(JSON.stringify(message), 'utf8');
@@ -96,6 +98,13 @@ function handle(message) {
             // Lets a test inspect exactly what the client sent in `initialize`,
             // plus the working directory the process was spawned in.
             send({ jsonrpc: '2.0', id, result: { params: lastInitializeParams, cwd: process.cwd() } });
+            return;
+        case 'getDocument':
+            send({
+                jsonrpc: '2.0',
+                id,
+                result: openDocuments.get(params?.textDocument?.uri) ?? null,
+            });
             return;
         case 'echo':
             send({ jsonrpc: '2.0', id, result: params ?? null });
@@ -158,6 +167,7 @@ function handle(message) {
             return;
         }
         case 'textDocument/didOpen':
+            openDocuments.set(params?.textDocument?.uri, params?.textDocument?.text ?? '');
             send({
                 jsonrpc: '2.0',
                 method: 'textDocument/publishDiagnostics',
@@ -173,6 +183,17 @@ function handle(message) {
                     ],
                 },
             });
+            return;
+        case 'textDocument/didChange': {
+            const uri = params?.textDocument?.uri;
+            const text = params?.contentChanges?.at(-1)?.text;
+            if (uri && typeof text === 'string') {
+                openDocuments.set(uri, text);
+            }
+            return;
+        }
+        case 'textDocument/didClose':
+            openDocuments.delete(params?.textDocument?.uri);
             return;
         default:
             if (id !== undefined) {

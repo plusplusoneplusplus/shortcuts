@@ -19,3 +19,4 @@ mod file_index;
 mod git;
 mod notes_fs;
 mod notes_index;
+mod symbol_index;

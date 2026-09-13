@@ -22,6 +22,8 @@ import { loadNativeNotesFs } from '../src/notes-fs';
 import type { NativeNotesFsAddon } from '../src/notes-fs';
 import { loadNativeNotesIndex } from '../src/notes-index';
 import type { NativeNotesIndexAddon } from '../src/notes-index';
+import { loadNativeSymbolIndex } from '../src/symbol-index';
+import type { NativeSymbolIndexAddon } from '../src/symbol-index';
 
 resetNativeAddonCache();
 
@@ -41,6 +43,9 @@ export const notesAddon: NativeNotesIndexAddon = loadNativeNotesIndex();
 
 /** The required Notes-filesystem slice of the same compiled addon. */
 export const notesFsAddon: NativeNotesFsAddon = loadNativeNotesFs();
+
+/** The required persistent symbol-index slice of the same compiled addon. */
+export const symbolIndexAddon: NativeSymbolIndexAddon = loadNativeSymbolIndex();
 
 /**
  * Remove a temp directory, best effort.

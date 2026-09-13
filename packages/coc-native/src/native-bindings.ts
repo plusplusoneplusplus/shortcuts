@@ -48,6 +48,15 @@ export declare class NotesIndex {
   refreshChanged(changedPaths: Array<string>): Promise<void>
 }
 
+export declare class SymbolIndex {
+  /** Search exact names by default, or prefixes when requested. */
+  search(query: string, options?: SymbolSearchOptions | undefined | null): Promise<SymbolMatch[]>
+  /** Incrementally refresh changed files in the persistent index. */
+  refresh(): Promise<void>
+  /** Refresh only the supplied repository-relative paths. */
+  refreshChanged(changedPaths: Array<string>): Promise<void>
+}
+
 /** Walk `root` in parallel and resolve with a ready-to-search index. */
 export declare function buildFileIndex(root: string, options?: BuildOptions | undefined | null): Promise<FileIndex>
 
@@ -61,6 +70,9 @@ export interface BuildOptions {
   /** Safety cap on indexed paths. Omit for no cap. */
   maxEntries?: number
 }
+
+/** Build or incrementally refresh the persistent index for one repository. */
+export declare function buildSymbolIndex(root: string, database: string, onProgress?: (progress: SymbolIndexBuildProgress) => void): Promise<SymbolIndex>
 
 /** One matching line, with its position inside the line and its neighbours. */
 export interface ContentMatch {
@@ -998,6 +1010,31 @@ export interface SearchContentOptions {
   maxFileSizeBytes?: number
   /** Lines of context on each side of a match. Defaults to 1. */
   contextLines?: number
+}
+
+export interface SymbolIndexBuildProgress {
+  phase: string
+  processed: number
+  total: number
+}
+
+export interface SymbolMatch {
+  name: string
+  kind: string
+  /** Repository-relative path with `/` separators. */
+  path: string
+  /** One-based source line. */
+  line: number
+  /** One-based UTF-16 source column. */
+  column: number
+  parent?: string
+}
+
+export interface SymbolSearchOptions {
+  /** Match names beginning with the query instead of exact names only. */
+  prefix?: boolean
+  /** Maximum matches to return. */
+  limit?: number
 }
 
 /**

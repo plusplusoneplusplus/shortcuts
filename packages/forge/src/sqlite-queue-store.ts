@@ -4,7 +4,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import type { QueuedTask, QueueStatus, PauseReason, QueueItem, PauseMarker, PauseDurationHours, PauseScope } from './queue/types';
+import type { QueuedTask, QueueStatus, PauseReason, QueueItem, PauseMarker, PauseDurationHours, PauseScope, TaskDelayMinutes } from './queue/types';
 
 // ============================================================================
 // Row types (snake_case, matching SQLite columns)
@@ -44,6 +44,8 @@ export interface QueueRepoState {
     queuePausedUntil?: number;
     autopilotPaused?: boolean;
     autopilotPausedUntil?: number;
+    taskDelayMinutes?: TaskDelayMinutes;
+    autopilotTaskDelayMinutes?: TaskDelayMinutes;
 }
 
 interface RepoStateRow {
@@ -54,6 +56,8 @@ interface RepoStateRow {
     queue_paused_until?: number | null;
     autopilot_paused?: number;
     autopilot_paused_until?: number | null;
+    task_delay_minutes?: number | null;
+    autopilot_task_delay_minutes?: number | null;
 }
 
 // ============================================================================
@@ -346,6 +350,8 @@ export class SqliteQueueStore {
             queuePausedUntil: row.queue_paused_until ?? undefined,
             autopilotPaused: row.autopilot_paused === 1,
             autopilotPausedUntil: row.autopilot_paused_until ?? undefined,
+            taskDelayMinutes: row.task_delay_minutes ?? undefined,
+            autopilotTaskDelayMinutes: row.autopilot_task_delay_minutes ?? undefined,
         };
     }
 
@@ -368,6 +374,8 @@ export class SqliteQueueStore {
             queuePausedUntil?: number;
             autopilotPaused: boolean;
             autopilotPausedUntil?: number;
+            taskDelayMinutes?: TaskDelayMinutes;
+            autopilotTaskDelayMinutes?: TaskDelayMinutes;
         }
     ): void {
         this.db.prepare(`
@@ -376,20 +384,26 @@ export class SqliteQueueStore {
                 queue_paused,
                 queue_paused_until,
                 autopilot_paused,
-                autopilot_paused_until
+                autopilot_paused_until,
+                task_delay_minutes,
+                autopilot_task_delay_minutes
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(repo_id) DO UPDATE SET
                 queue_paused = excluded.queue_paused,
                 queue_paused_until = excluded.queue_paused_until,
                 autopilot_paused = excluded.autopilot_paused,
-                autopilot_paused_until = excluded.autopilot_paused_until
+                autopilot_paused_until = excluded.autopilot_paused_until,
+                task_delay_minutes = excluded.task_delay_minutes,
+                autopilot_task_delay_minutes = excluded.autopilot_task_delay_minutes
         `).run(
             repoId,
             state.queuePaused ? 1 : 0,
             state.queuePausedUntil ?? null,
             state.autopilotPaused ? 1 : 0,
             state.autopilotPausedUntil ?? null,
+            state.taskDelayMinutes ?? null,
+            state.autopilotTaskDelayMinutes ?? null,
         );
     }
 
@@ -411,6 +425,8 @@ export class SqliteQueueStore {
                 queuePausedUntil: row.queue_paused_until ?? undefined,
                 autopilotPaused: row.autopilot_paused === 1,
                 autopilotPausedUntil: row.autopilot_paused_until ?? undefined,
+                taskDelayMinutes: row.task_delay_minutes ?? undefined,
+                autopilotTaskDelayMinutes: row.autopilot_task_delay_minutes ?? undefined,
             });
         }
 

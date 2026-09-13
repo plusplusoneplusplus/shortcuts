@@ -1,0 +1,102 @@
+name: Symbol Index Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      llvm_ref:
+        description: LLVM branch or tag to benchmark
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            runner: ubuntu-latest
+            cold_arg: --drop-linux-page-cache
+          - label: windows-x64
+            runner: windows-latest
+            cold_arg: ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: npm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/coc-native/rust
+          key: symbol-index-benchmark-${{ matrix.label }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Clone LLVM corpus
+        shell: bash
+        env:
+          LLVM_REF: ${{ inputs.llvm_ref }}
+        run: |
+          git clone --depth 1 --branch "$LLVM_REF" \
+            https://github.com/llvm/llvm-project.git "$GITHUB_WORKSPACE/llvm-project"
+
+      - name: Run storage benchmark
+        shell: bash
+        run: |
+          mkdir -p benchmark-results
+          npm run bench:symbol-storage -w packages/coc-native -- \
+            --files 100000 --runs 5 --target-lines 32000 --json \
+            > "benchmark-results/storage-${{ matrix.label }}.json"
+
+      - name: Run extraction benchmark
+        shell: bash
+        env:
+          COLD_ARG: ${{ matrix.cold_arg }}
+        run: |
+          npm run bench:symbol-index -w packages/coc-native -- \
+            --repo "$GITHUB_WORKSPACE/llvm-project" \
+            --threads 1,2,4 --warmup 1 --runs 3 $COLD_ARG --json \
+            > "benchmark-results/extraction-${{ matrix.label }}.json"
+          git -C "$GITHUB_WORKSPACE/llvm-project" rev-parse HEAD \
+            > "benchmark-results/llvm-commit.txt"
+
+      - name: Add benchmark summary
+        shell: bash
+        run: |
+          {
+            echo "## Symbol index benchmark (${{ matrix.label }})"
+            echo '### Storage'
+            echo '```json'
+            cat "benchmark-results/storage-${{ matrix.label }}.json"
+            echo '```'
+            echo '### Extraction'
+            echo '```json'
+            cat "benchmark-results/extraction-${{ matrix.label }}.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbol-index-benchmark-${{ matrix.label }}
+          path: benchmark-results/
+          if-no-files-found: error
+          retention-days: 30

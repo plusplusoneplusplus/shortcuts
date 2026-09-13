@@ -6,7 +6,19 @@ dashboard file editor.
 ### Session lifecycle
 
 `LanguageServerManager` keys sessions by workspace, browser editing session,
-definition, and resolved project root. `LanguageServerSession` starts lazily,
+definition, and resolved project root by default. Definitions may select
+workspace scope to share an expensive process across editing sessions when they
+open different files. A second editing session opening the same path receives
+an isolated process so its unsaved buffer and diagnostics remain independent.
+Windows document paths are case-folded and have trailing dots/spaces removed at
+the path boundary, matching Win32 file identity before definition selection,
+URI mapping, and shared-session ownership checks.
+The WebSocket bridge sends `didClose` for tracked open documents when a socket
+drops, allowing the warm shared process to be reused without stale text.
+Definitions may set per-definition process caps, request timeouts, and idle
+timeouts. clangd shares by workspace and root, caps itself at four processes,
+uses a two-minute request timeout, and remains idle for 30 minutes.
+`LanguageServerSession` starts lazily,
 performs the LSP initialize handshake, preserves bounded stderr, and reports
 `starting`, `indexing`, `ready`, `reconnecting`, `unavailable`, `timeout`, or
 `failed`. A successful handshake clears prior failure detail.
@@ -32,6 +44,29 @@ packaged entry points run through Node with `shell: false`; browser-visible
 runtime labels contain only the source category. Python files use the nearest
 configured project marker with canonical-path containment and the owning
 workspace's path spelling.
+
+The built-in clangd preset is disabled by default and serves C, C++, Objective-C,
+Objective-C++, and CUDA files with `--background-index=false`. Its adapter checks
+the owning host's PATH before platform-specific LLVM install locations. Project
+roots use only `compile_commands.json`, `.clangd`, and `compile_flags.txt`, keeping
+large repositories sharded when component-local markers exist. Missing discovery
+surfaces a platform-specific apt, Homebrew, or winget install command through the
+existing runtime error state.
+
+Workspace definitions pass no-database compiler options through
+`initializationOptions.fallbackFlags`. clangd gives an in-tree compilation
+database priority; `--compile-commands-dir=<directory>` selects an external one.
+MSVC fallback flags use `--driver-mode=cl` and include the MSVC standard library
+and Windows SDK `/I` paths. CoC does not generate databases or modify user clangd
+configuration.
+
+C and C++ go-to-definition combines clangd locations with the owning workspace's
+persistent symbol-index candidates in the Monaco provider. Exact locations sort
+first, results are deduplicated by file and line, and candidate URIs carry a
+`symbol-index-candidate` fragment. Explorer and unified-panel tabs preserve that
+provenance and show an amber `Symbol candidate` pill on the destination until a
+plain or exact cross-file open replaces it. The index continues to answer when
+clangd is disabled, unavailable, or does not advertise definition support.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.

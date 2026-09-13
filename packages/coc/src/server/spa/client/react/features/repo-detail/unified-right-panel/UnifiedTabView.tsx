@@ -75,7 +75,7 @@ export interface UnifiedTabViewProps {
      * after the dock has been pointed somewhere else (AC-04).
      */
     onOpenFile?: (
-        file: { path: string; name: string; line: number; column: number },
+        file: { path: string; name: string; line: number; column: number; symbolCandidate?: true },
         origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
     ) => void;
 }
@@ -111,7 +111,7 @@ export function UnifiedTabView({
         [onRegisterSave, tab.id],
     );
     const handleNavigate = useCallback(
-        (file: { path: string; name: string; line: number; column: number }) => onOpenFile?.(file, {
+        (file: { path: string; name: string; line: number; column: number; symbolCandidate?: true }) => onOpenFile?.(file, {
             ownerWorkspaceId: tab.ownerWorkspaceId,
             ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
             ...(tab.repoLabel === undefined ? {} : { repoLabel: tab.repoLabel }),
@@ -136,6 +136,7 @@ export function UnifiedTabView({
                     fileName={fileNameOf(tab)}
                     revealLine={tab.line}
                     revealColumn={tab.column}
+                    symbolCandidate={tab.symbolCandidate}
                     readOnly={tab.readOnly === true}
                     onClose={close}
                     onNavigate={onOpenFile ? handleNavigate : undefined}

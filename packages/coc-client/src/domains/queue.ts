@@ -15,6 +15,8 @@ import type {
   QueueStatsResponse,
   QueueStatus,
   QueueTaskMutationResponse,
+  QueueTaskDelayRequest,
+  QueueTaskDelayResponse,
   QueueTaskResponse,
 } from '../contracts';
 import type { CocRequestOptions, QueryPrimitive, RequestAdapter } from '../types';
@@ -141,6 +143,22 @@ export class QueueClient {
 
   resumeAutopilot(scope?: QueueScope): Promise<QueueStatsResponse & { isAutopilotPaused: boolean; repoId?: string }> {
     return this.transport.request('/queue/resume-autopilot', { method: 'POST', query: serializeQueueScope(scope) });
+  }
+
+  setTaskDelay(request: QueueTaskDelayRequest, scope?: QueueScope): Promise<QueueTaskDelayResponse> {
+    return this.transport.request('/queue/task-delay', {
+      method: 'POST',
+      query: serializeQueueScope(scope),
+      body: request,
+    });
+  }
+
+  skipTaskDelay(scopeName: QueuePauseScope, scope?: QueueScope): Promise<QueueStatsResponse & { scope: QueuePauseScope }> {
+    return this.transport.request('/queue/task-delay/skip', {
+      method: 'POST',
+      query: serializeQueueScope(scope),
+      body: { scope: scopeName },
+    });
   }
 
   insertPauseMarker(request: QueuePauseMarkerRequest = {}): Promise<QueuePauseMarkerResponse> {

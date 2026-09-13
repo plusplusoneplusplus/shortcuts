@@ -1,10 +1,9 @@
 /**
  * Owns every live language-server session on this host.
  *
- * A session is keyed on the workspace, the browser editing session, the
- * definition, and the resolved project root. Two browser windows editing the
- * same file therefore talk to two different processes and can never see each
- * other's unsaved buffers or diagnostics.
+ * A session is keyed on the workspace, definition, resolved project root, and
+ * normally the browser editing session. Definitions may opt into workspace
+ * scope when an expensive server should be shared across editing sessions.
  *
  * The manager stays language-neutral: it resolves which definition serves a
  * file through the shared selection rules and hands the rest to
@@ -18,6 +17,7 @@ import type { LanguageServerSessionOptions, LanguageServerSessionState } from '.
 import { onLanguageServerConfigChanged, resolveLanguageServerDefinitions } from './repository';
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 import type { PrepareDefinitionDeps } from './adapters';
+import { normalizeRelativePath } from './file-match';
 import { resolveLanguageId, selectDefinitionForFile } from './selection';
 import type { JsonValue, LanguageServerDefinition } from './types';
 
@@ -91,7 +91,9 @@ interface SessionEntry {
     key: string;
     publicId: string;
     workspaceId: string;
-    editingSessionId: string;
+    editingSessionIds: Set<string>;
+    releasesByEditingSession: Map<string, Set<() => void>>;
+    documentOwners: Map<string, Map<string, number>>;
     definition: LanguageServerDefinition;
     rootPath: string;
     rootLabel: string;
@@ -125,6 +127,7 @@ export class LanguageServerManager {
      * the document closes.
      */
     acquire(request: AcquireRequest): AcquireResult {
+        const relativePath = normalizeRelativePath(request.relativePath);
         if (this.disposed) {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
@@ -132,28 +135,46 @@ export class LanguageServerManager {
         if (startable.length === 0) {
             return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
         }
-        const definition = selectDefinitionForFile(startable, request.relativePath);
+        const definition = selectDefinitionForFile(startable, relativePath);
         if (!definition) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
         }
         const rootPath = resolveDefinitionRoot(
             definition,
             request.workspaceRoot,
-            request.relativePath,
+            relativePath,
             {
                 exists: this.options.exists,
                 ...this.options.prepareDeps,
             },
         );
-        const key = sessionKey(request.workspaceId, request.editingSessionId, definition.id, rootPath);
+        const sharedKey = sessionKey(
+            request.workspaceId,
+            definition.sessionScope === 'workspace' ? undefined : request.editingSessionId,
+            definition.id,
+            rootPath,
+        );
+        let key = sharedKey;
         let entry = this.entries.get(key);
         if (entry && entry.fingerprint !== fingerprintOf(definition)) {
             // Configuration moved on while this session was alive.
             this.trackClose(this.closeEntry(entry, 'config-changed'));
             entry = undefined;
         }
+        if (
+            definition.sessionScope === 'workspace'
+            && entry
+            && hasDocumentOwnerFromAnotherEditingSession(entry, relativePath, request.editingSessionId)
+        ) {
+            key = sessionKey(request.workspaceId, request.editingSessionId, definition.id, rootPath);
+            entry = this.entries.get(key);
+            if (entry && entry.fingerprint !== fingerprintOf(definition)) {
+                this.trackClose(this.closeEntry(entry, 'config-changed'));
+                entry = undefined;
+            }
+        }
         if (!entry) {
-            if (!this.makeRoom()) {
+            if (!this.makeRoom(request.workspaceId, definition)) {
                 return {
                     ok: false,
                     reason: 'capacity',
@@ -162,7 +183,7 @@ export class LanguageServerManager {
             }
             entry = this.createEntry(key, request, definition, rootPath);
         }
-        return { ok: true, handle: this.attach(entry, request.relativePath) };
+        return { ok: true, handle: this.attach(entry, relativePath, request.editingSessionId) };
     }
 
     /** Current state of every live session, newest use first. */
@@ -227,9 +248,20 @@ export class LanguageServerManager {
 
     /** Drops every session belonging to one browser editing session. */
     async disposeEditingSession(workspaceId: string, editingSessionId: string): Promise<void> {
-        const doomed = [...this.entries.values()].filter(
-            (entry) => entry.workspaceId === workspaceId && entry.editingSessionId === editingSessionId,
-        );
+        const doomed: SessionEntry[] = [];
+        for (const entry of this.entries.values()) {
+            if (entry.workspaceId !== workspaceId || !entry.editingSessionIds.has(editingSessionId)) {
+                continue;
+            }
+            for (const release of [...(entry.releasesByEditingSession.get(editingSessionId) ?? [])]) {
+                release();
+            }
+            if (entry.definition.sessionScope === 'workspace') {
+                entry.editingSessionIds.delete(editingSessionId);
+            } else {
+                doomed.push(entry);
+            }
+        }
         await Promise.all(doomed.map((entry) => this.closeEntry(entry, 'workspace-removed')));
     }
 
@@ -281,9 +313,9 @@ export class LanguageServerManager {
             },
             clientCapabilities: this.options.clientCapabilities,
             startTimeoutMs: this.options.startTimeoutMs,
-            requestTimeoutMs: this.options.requestTimeoutMs,
+            requestTimeoutMs: definition.requestTimeoutMs ?? this.options.requestTimeoutMs,
             maxMessageBytes: this.options.maxMessageBytes,
-            idleTimeoutMs: this.options.idleTimeoutMs,
+            idleTimeoutMs: definition.idleTimeoutMs ?? this.options.idleTimeoutMs,
             killGraceMs: this.options.killGraceMs,
             onError: this.options.onError,
         };
@@ -294,7 +326,9 @@ export class LanguageServerManager {
             key,
             publicId: randomUUID(),
             workspaceId: request.workspaceId,
-            editingSessionId: request.editingSessionId,
+            editingSessionIds: new Set(),
+            releasesByEditingSession: new Map(),
+            documentOwners: new Map(),
             definition,
             rootPath,
             rootLabel: relativeRootLabel(request.workspaceRoot, rootPath),
@@ -307,25 +341,51 @@ export class LanguageServerManager {
         return entry;
     }
 
-    private attach(entry: SessionEntry, relativePath: string): LanguageServerHandle {
+    private attach(entry: SessionEntry, relativePath: string, editingSessionId: string): LanguageServerHandle {
         entry.references++;
         entry.lastUsedAt = ++this.clock;
+        entry.editingSessionIds.add(editingSessionId);
+        const documentKey = normalizeDocumentPath(relativePath);
+        const owners = entry.documentOwners.get(documentKey) ?? new Map<string, number>();
+        owners.set(editingSessionId, (owners.get(editingSessionId) ?? 0) + 1);
+        entry.documentOwners.set(documentKey, owners);
         const releaseSession = entry.session.attach();
         let released = false;
+        const release = (): void => {
+            if (released) {
+                return;
+            }
+            released = true;
+            entry.references = Math.max(0, entry.references - 1);
+            const editingReleases = entry.releasesByEditingSession.get(editingSessionId);
+            editingReleases?.delete(release);
+            if (editingReleases?.size === 0) {
+                entry.releasesByEditingSession.delete(editingSessionId);
+            }
+            const remainingDocumentReferences = (owners.get(editingSessionId) ?? 1) - 1;
+            if (remainingDocumentReferences === 0) {
+                owners.delete(editingSessionId);
+            } else {
+                owners.set(editingSessionId, remainingDocumentReferences);
+            }
+            if (owners.size === 0) {
+                entry.documentOwners.delete(documentKey);
+            }
+            releaseSession();
+        };
+        let editingReleases = entry.releasesByEditingSession.get(editingSessionId);
+        if (!editingReleases) {
+            editingReleases = new Set();
+            entry.releasesByEditingSession.set(editingSessionId, editingReleases);
+        }
+        editingReleases.add(release);
         return {
             key: entry.key,
             session: entry.session,
             definition: entry.definition,
             languageId: resolveLanguageId(entry.definition, relativePath),
             rootPath: entry.rootPath,
-            release: () => {
-                if (released) {
-                    return;
-                }
-                released = true;
-                entry.references = Math.max(0, entry.references - 1);
-                releaseSession();
-            },
+            release,
         };
     }
 
@@ -334,13 +394,23 @@ export class LanguageServerManager {
      * unreferenced session; returns false when every session is still in use,
      * because dropping a session a document depends on would lose its buffer.
      */
-    private makeRoom(): boolean {
-        const max = this.options.maxSessions ?? DEFAULT_MAX_SESSIONS;
-        if (this.entries.size < max) {
-            return true;
+    private makeRoom(workspaceId: string, definition: LanguageServerDefinition): boolean {
+        if (definition.maxSessions !== undefined) {
+            const matching = [...this.entries.values()].filter(
+                entry => entry.workspaceId === workspaceId && entry.definition.id === definition.id,
+            );
+            if (matching.length >= definition.maxSessions && !this.evictOne(matching)) {
+                return false;
+            }
         }
+
+        const max = this.options.maxSessions ?? DEFAULT_MAX_SESSIONS;
+        return this.entries.size < max || this.evictOne(this.entries.values());
+    }
+
+    private evictOne(candidates: Iterable<SessionEntry>): boolean {
         let victim: SessionEntry | undefined;
-        for (const entry of this.entries.values()) {
+        for (const entry of candidates) {
             if (entry.references > 0) {
                 continue;
             }
@@ -397,13 +467,15 @@ export class LanguageServerManager {
             return;
         }
         this.entries.delete(entry.key);
-        this.emitClosed({
-            key: entry.key,
-            workspaceId: entry.workspaceId,
-            editingSessionId: entry.editingSessionId,
-            definitionId: entry.definition.id,
-            reason,
-        });
+        for (const editingSessionId of entry.editingSessionIds.keys()) {
+            this.emitClosed({
+                key: entry.key,
+                workspaceId: entry.workspaceId,
+                editingSessionId,
+                definitionId: entry.definition.id,
+                reason,
+            });
+        }
         try {
             await entry.session.dispose();
         } catch (error) {
@@ -420,6 +492,19 @@ export class LanguageServerManager {
             }
         }
     }
+}
+
+function hasDocumentOwnerFromAnotherEditingSession(
+    entry: SessionEntry,
+    relativePath: string,
+    editingSessionId: string,
+): boolean {
+    const owners = entry.documentOwners.get(normalizeDocumentPath(relativePath));
+    return owners !== undefined && [...owners.keys()].some(owner => owner !== editingSessionId);
+}
+
+function normalizeDocumentPath(relativePath: string): string {
+    return path.normalize(normalizeRelativePath(relativePath));
 }
 
 function relativeRootLabel(workspaceRoot: string, rootPath: string): string {
@@ -439,11 +524,11 @@ function relativeRootLabel(workspaceRoot: string, rootPath: string): string {
  */
 function sessionKey(
     workspaceId: string,
-    editingSessionId: string,
+    editingSessionId: string | undefined,
     definitionId: string,
     rootPath: string,
 ): string {
-    return [workspaceId, editingSessionId, definitionId, rootPath].map(encodeURIComponent).join('|');
+    return [workspaceId, editingSessionId ?? '', definitionId, rootPath].map(encodeURIComponent).join('|');
 }
 
 /** Everything that would change how the process is started or configured. */
@@ -455,5 +540,9 @@ function fingerprintOf(definition: LanguageServerDefinition): string {
         definition.settings ?? null,
         definition.languageIds,
         definition.extensionLanguageIds ?? null,
+        definition.sessionScope ?? null,
+        definition.maxSessions ?? null,
+        definition.requestTimeoutMs ?? null,
+        definition.idleTimeoutMs ?? null,
     ]);
 }

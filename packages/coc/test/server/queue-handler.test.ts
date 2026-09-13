@@ -1663,6 +1663,259 @@ describe('Queue Handler', () => {
     });
 
     // ========================================================================
+    // Delay Between Tasks
+    // ========================================================================
+
+    describe('POST /api/queue/task-delay', () => {
+        it('sets and clears the all-task cooldown and exposes it in queue stats', async () => {
+            const srv = await startServer();
+
+            const setRes = await postJSON(`${srv.url}/api/queue/task-delay`, {
+                scope: 'all',
+                delayMinutes: 5,
+            });
+            expect(setRes.status).toBe(200);
+            expect(JSON.parse(setRes.body)).toMatchObject({
+                scope: 'all',
+                taskDelayMinutes: 5,
+                stats: { taskDelayMinutes: 5 },
+            });
+
+            const statsRes = await request(`${srv.url}/api/queue/stats`);
+            expect(JSON.parse(statsRes.body).stats.taskDelayMinutes).toBe(5);
+
+            const clearRes = await postJSON(`${srv.url}/api/queue/task-delay`, {
+                scope: 'all',
+                delayMinutes: null,
+            });
+            expect(clearRes.status).toBe(200);
+            const clearBody = JSON.parse(clearRes.body);
+            expect(clearBody.taskDelayMinutes).toBeNull();
+            expect(clearBody.stats).not.toHaveProperty('taskDelayMinutes');
+        });
+
+        it('keeps all-task and autopilot cooldown settings independent', async () => {
+            const srv = await startServer();
+
+            await postJSON(`${srv.url}/api/queue/task-delay`, { scope: 'all', delayMinutes: 1 });
+            const res = await postJSON(`${srv.url}/api/queue/task-delay`, {
+                scope: 'autopilot',
+                delayMinutes: 30,
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).stats).toMatchObject({
+                taskDelayMinutes: 1,
+                autopilotTaskDelayMinutes: 30,
+            });
+        });
+
+        it('accepts the inclusive delay boundaries', async () => {
+            const srv = await startServer();
+
+            const minimum = await postJSON(`${srv.url}/api/queue/task-delay`, {
+                scope: 'all',
+                delayMinutes: 1,
+            });
+            const maximum = await postJSON(`${srv.url}/api/queue/task-delay`, {
+                scope: 'autopilot',
+                delayMinutes: 1440,
+            });
+
+            expect(minimum.status).toBe(200);
+            expect(maximum.status).toBe(200);
+            expect(JSON.parse(maximum.body).stats).toMatchObject({
+                taskDelayMinutes: 1,
+                autopilotTaskDelayMinutes: 1440,
+            });
+        });
+
+        it('applies a global cooldown to repo queues created later', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/task-delay`, { scope: 'all', delayMinutes: 5 });
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-delay-later',
+                name: 'delay-later',
+                rootPath: '/repo/delay-later',
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue/task-delay/skip?repoId=ws-delay-later`, {
+                scope: 'all',
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).stats.taskDelayMinutes).toBe(5);
+        });
+
+        it.each([
+            undefined,
+            0,
+            -1,
+            1441,
+            1.5,
+            '5',
+            true,
+        ])('rejects invalid delayMinutes value %s', async (delayMinutes) => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/task-delay`, {
+                scope: 'all',
+                ...(delayMinutes !== undefined ? { delayMinutes } : {}),
+            });
+
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toBe(
+                'delayMinutes must be an integer between 1 and 1440, or null',
+            );
+        });
+
+        it.each([undefined, '', 'manual', null])('rejects invalid scope value %s', async (scope) => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/task-delay`, {
+                ...(scope !== undefined ? { scope } : {}),
+                delayMinutes: 5,
+            });
+
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toBe("scope must be either 'all' or 'autopilot'");
+        });
+
+        it('rejects malformed JSON', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/task-delay`, {
+                method: 'POST',
+                body: '{',
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toBe('Invalid JSON');
+        });
+
+        it('targets registered repos independently', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-delay-a',
+                name: 'delay-a',
+                rootPath: '/repo/delay-a',
+            });
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-delay-b',
+                name: 'delay-b',
+                rootPath: '/repo/delay-b',
+            });
+
+            const allRes = await postJSON(`${srv.url}/api/queue/task-delay?repoId=ws-delay-a`, {
+                scope: 'all',
+                delayMinutes: 15,
+            });
+            const autopilotRes = await postJSON(`${srv.url}/api/queue/task-delay?repoId=ws-delay-b`, {
+                scope: 'autopilot',
+                delayMinutes: 60,
+            });
+
+            expect(allRes.status).toBe(200);
+            expect(JSON.parse(allRes.body)).toMatchObject({
+                repoId: 'ws-delay-a',
+                scope: 'all',
+                taskDelayMinutes: 15,
+            });
+            expect(autopilotRes.status).toBe(200);
+
+            const statsA = JSON.parse((await request(`${srv.url}/api/queue/stats?repoId=ws-delay-a`)).body).stats;
+            const statsB = JSON.parse((await request(`${srv.url}/api/queue/stats?repoId=ws-delay-b`)).body).stats;
+            expect(statsA.taskDelayMinutes).toBe(15);
+            expect(statsA).not.toHaveProperty('autopilotTaskDelayMinutes');
+            expect(statsB.autopilotTaskDelayMinutes).toBe(60);
+            expect(statsB).not.toHaveProperty('taskDelayMinutes');
+        });
+
+        it('returns 404 for an unknown repo', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/task-delay?repoId=no-such-repo`, {
+                scope: 'all',
+                delayMinutes: 5,
+            });
+
+            expect(res.status).toBe(404);
+            expect(JSON.parse(res.body).error).toBe('No queue found for repoId: no-such-repo');
+        });
+    });
+
+    describe('POST /api/queue/task-delay/skip', () => {
+        it('is a no-op without an active deadline and keeps the configured delay', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/task-delay`, {
+                scope: 'autopilot',
+                delayMinutes: 15,
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue/task-delay/skip`, {
+                scope: 'autopilot',
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toMatchObject({
+                scope: 'autopilot',
+                stats: { autopilotTaskDelayMinutes: 15 },
+            });
+        });
+
+        it('targets one registered repo without changing its configured delay', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-delay-skip',
+                name: 'delay-skip',
+                rootPath: '/repo/delay-skip',
+            });
+            await postJSON(`${srv.url}/api/queue/task-delay?repoId=ws-delay-skip`, {
+                scope: 'all',
+                delayMinutes: 10,
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue/task-delay/skip?repoId=ws-delay-skip`, {
+                scope: 'all',
+            });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toMatchObject({
+                repoId: 'ws-delay-skip',
+                scope: 'all',
+                stats: { taskDelayMinutes: 10 },
+            });
+        });
+
+        it('rejects a missing scope', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/task-delay/skip`, {});
+
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toBe("scope must be either 'all' or 'autopilot'");
+        });
+
+        it('rejects malformed JSON', async () => {
+            const srv = await startServer();
+            const res = await request(`${srv.url}/api/queue/task-delay/skip`, {
+                method: 'POST',
+                body: '{',
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toBe('Invalid JSON');
+        });
+
+        it('returns 404 for an unknown repo', async () => {
+            const srv = await startServer();
+            const res = await postJSON(`${srv.url}/api/queue/task-delay/skip?repoId=no-such-repo`, {
+                scope: 'all',
+            });
+
+            expect(res.status).toBe(404);
+            expect(JSON.parse(res.body).error).toBe('No queue found for repoId: no-such-repo');
+        });
+    });
+
+    // ========================================================================
     // Clear queue
     // ========================================================================
 

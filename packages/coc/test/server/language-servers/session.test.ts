@@ -14,6 +14,7 @@ import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { LanguageServerSession } from '../../../src/server/language-servers/session';
 import type { LanguageServerSessionState } from '../../../src/server/language-servers/session';
+import { CLANGD_PRESET } from '../../../src/server/language-servers/presets';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 import { safeRm } from '../../helpers/safe-rm';
 
@@ -119,6 +120,24 @@ describe('LanguageServerSession startup', () => {
         expect(init.params.initializationOptions).toEqual({ flavor: 'generic' });
         // The process runs in the project root, not CoC's working directory.
         expect(fs.realpathSync(init.cwd)).toBe(fs.realpathSync(root));
+    });
+
+    it('forwards clangd fallback flags unchanged in the initialize request', async () => {
+        const fallbackFlags = ['--driver-mode=cl', '/std:c++20', '/I<Windows SDK include>', '/DUNICODE'];
+        const { session } = createSession({
+            ...CLANGD_PRESET,
+            enabled: true,
+            command: process.execPath,
+            args: [FIXTURE_SERVER],
+            initializationOptions: { fallbackFlags },
+        });
+        await session.start();
+
+        const init = await session.sendRequest<{
+            params: { initializationOptions: { fallbackFlags: string[] } };
+        }>('getInit');
+
+        expect(init.params.initializationOptions.fallbackFlags).toEqual(fallbackFlags);
     });
 
     it('is idempotent: concurrent starts share one process', async () => {

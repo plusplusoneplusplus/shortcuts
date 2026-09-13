@@ -73,6 +73,8 @@ export interface ExplorerTab {
      * of the line.
      */
     column?: number;
+    /** Present when a fuzzy repository symbol lookup opened this location. */
+    symbolCandidate?: true;
     /** For `search` tabs only: the query whose results the buffer holds. */
     query?: string;
 }
@@ -206,6 +208,8 @@ export interface OpenFileTabInput {
     line?: number;
     /** One-based column within `line`; carried onto the tab. */
     column?: number;
+    /** Present when a fuzzy repository symbol lookup opened this location. */
+    symbolCandidate?: true;
     /**
      * True for the single replaceable preview tab (a single tree click, a
      * search hit, a Quick Open pick). False pins the tab immediately, which is
@@ -247,13 +251,15 @@ export function openFileTab(state: ExplorerTabsState, input: OpenFileTabInput): 
         // A fresh reveal replaces the previous one outright: a column belongs to
         // the line it was measured on, so carrying it over to a new line would
         // put the cursor at a stale offset.
-        const { column: _staleColumn, ...withoutColumn } = existing;
+        const { symbolCandidate: _staleCandidate, ...withoutCandidate } = existing;
+        const { column: _staleColumn, ...withoutColumn } = withoutCandidate;
         const updated: ExplorerTab = {
-            ...(input.line === undefined ? existing : withoutColumn),
+            ...(input.line === undefined ? withoutCandidate : withoutColumn),
             // A pinned open promotes; a preview open of an already-pinned tab
             // must not knock it back to replaceable.
             preview: existing.preview && input.preview,
             ...revealFields(input),
+            ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
         };
         const tabs = sameTab(existing, updated)
             ? state.tabs
@@ -269,6 +275,7 @@ export function openFileTab(state: ExplorerTabsState, input: OpenFileTabInput): 
         preview: input.preview,
         readOnly: input.readOnly === true,
         ...revealFields(input),
+        ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
     };
 
     if (input.preview) {
@@ -329,6 +336,7 @@ function sameTab(a: ExplorerTab, b: ExplorerTab): boolean {
         && a.readOnly === b.readOnly
         && a.line === b.line
         && a.column === b.column
+        && a.symbolCandidate === b.symbolCandidate
         && a.query === b.query;
 }
 
@@ -587,6 +595,7 @@ function parseTab(entry: unknown): ExplorerTab | null {
                         : {}),
                 }
                 : {}),
+            ...(source.symbolCandidate === true ? { symbolCandidate: true } : {}),
         };
     }
 

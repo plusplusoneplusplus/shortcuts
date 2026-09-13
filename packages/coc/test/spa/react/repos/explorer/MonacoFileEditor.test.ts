@@ -74,9 +74,21 @@ describe('getMonacoLanguage', () => {
 
     it('maps C/C++ variants', () => {
         expect(getMonacoLanguage('main.c')).toBe('c');
-        expect(getMonacoLanguage('header.h')).toBe('c');
+        expect(getMonacoLanguage('objc.m')).toBe('c');
+        expect(getMonacoLanguage('header.h')).toBe('cpp');
         expect(getMonacoLanguage('main.cpp')).toBe('cpp');
         expect(getMonacoLanguage('main.cc')).toBe('cpp');
+        expect(getMonacoLanguage('main.cxx')).toBe('cpp');
+        expect(getMonacoLanguage('main.c++')).toBe('cpp');
+        expect(getMonacoLanguage('header.hh')).toBe('cpp');
+        expect(getMonacoLanguage('header.hpp')).toBe('cpp');
+        expect(getMonacoLanguage('header.hxx')).toBe('cpp');
+        expect(getMonacoLanguage('header.h++')).toBe('cpp');
+        expect(getMonacoLanguage('inline.inl')).toBe('cpp');
+        expect(getMonacoLanguage('template.ipp')).toBe('cpp');
+        expect(getMonacoLanguage('kernel.cu')).toBe('cpp');
+        expect(getMonacoLanguage('kernel.cuh')).toBe('cpp');
+        expect(getMonacoLanguage('objc.mm')).toBe('cpp');
     });
 
     it('maps C#', () => {

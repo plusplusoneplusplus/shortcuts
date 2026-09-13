@@ -35,6 +35,7 @@
  */
 
 import type { LanguageDocumentView } from './documentStore';
+import { SYMBOL_CANDIDATE_FRAGMENT } from './editorNavigation';
 import type { LanguageServerSessionStateView } from './languageServerClient';
 import { toLspPosition, type MonacoPosition, type MonacoRange } from './monacoBridge';
 import {
@@ -63,6 +64,11 @@ export interface ProviderModel {
     uri: ProviderUri;
     /** Monaco's word range at the cursor, used as the completion fallback range. */
     getWordUntilPosition(position: MonacoPosition): { startColumn: number; endColumn: number };
+    getWordAtPosition?(position: MonacoPosition): {
+        word: string;
+        startColumn: number;
+        endColumn: number;
+    } | null;
 }
 
 export interface ProviderCancellationToken {
@@ -270,6 +276,35 @@ export interface RegisterLanguageProvidersOptions {
      * only URIs naming a document in this workspace and drops the rest.
      */
     resolveUri?: (uri: string) => ProviderUri | null;
+    /** Repository-wide definition candidates, available without a live server. */
+    symbolDefinitions?: {
+        workspaceId: string;
+        lookup(name: string, signal: AbortSignal): Promise<readonly {
+            path: string;
+            line: number;
+            column: number;
+        }[]>;
+    };
+}
+
+function definitionKey(link: ProviderLocationLink): string {
+    return `${link.uri.toString().replace(/#.*$/, '')}:${link.range.startLineNumber}`;
+}
+
+function dedupeDefinitionLinks(
+    exact: readonly ProviderLocationLink[],
+    candidates: readonly ProviderLocationLink[],
+): ProviderLocationLink[] {
+    const seen = new Set(exact.map(definitionKey));
+    return [
+        ...exact,
+        ...candidates.filter((candidate) => {
+            const key = definitionKey(candidate);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }),
+    ];
 }
 
 /** Same scheme and authority as the document itself, i.e. this workspace. */
@@ -308,7 +343,7 @@ async function runRequest<T>(
  * would answer out of a document the host has already closed.
  */
 export function registerLanguageProviders(options: RegisterLanguageProvidersOptions): ProviderDisposable {
-    const { monaco, model, view, languageId } = options;
+    const { monaco, model, view, languageId, symbolDefinitions } = options;
     const modelUri = model.uri.toString();
     const resolveUri = options.resolveUri
         ?? ((uri: string) => (sameWorkspace(view.uri, uri) ? monaco.Uri.parse(uri) : null));
@@ -347,19 +382,53 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                 },
             }));
         }
-        if (supportsFeature(state, 'definition')) {
+        if (supportsFeature(state, 'definition') || symbolDefinitions) {
             next.push(monaco.languages.registerDefinitionProvider(languageId, {
                 provideDefinition: async (target, position, token) => {
                     if (!owns(target)) {
                         return null;
                     }
-                    const result = await runRequest(
-                        view,
-                        'textDocument/definition',
-                        view.documentParams({ position: toLspPosition(position) }),
-                        token,
-                    );
-                    return toProviderLinks(result);
+                    const controller = new AbortController();
+                    const subscription = token.onCancellationRequested(() => controller.abort());
+                    try {
+                        const exactPromise = supportsFeature(view.getSnapshot().state, 'definition')
+                            ? runRequest(
+                                view,
+                                'textDocument/definition',
+                                view.documentParams({ position: toLspPosition(position) }),
+                                token,
+                            ).then(toProviderLinks)
+                            : Promise.resolve([]);
+                        const word = target.getWordAtPosition?.(position)?.word;
+                        const candidatePromise = symbolDefinitions && word
+                            && !token.isCancellationRequested && !controller.signal.aborted
+                            ? symbolDefinitions.lookup(word, controller.signal)
+                                .then((results) => results.map((result): ProviderLocationLink | null => {
+                                    const baseUri = `coc-file://${encodeURIComponent(symbolDefinitions.workspaceId)}/${
+                                        result.path.split('/').map(encodeURIComponent).join('/')
+                                    }`;
+                                    const uri = resolveUri(`${baseUri}#${SYMBOL_CANDIDATE_FRAGMENT}`);
+                                    return uri
+                                        ? {
+                                            uri,
+                                            range: {
+                                                startLineNumber: result.line,
+                                                startColumn: result.column,
+                                                endLineNumber: result.line,
+                                                endColumn: result.column,
+                                            },
+                                        }
+                                        : null;
+                                }).filter((link): link is ProviderLocationLink => link !== null))
+                                .catch(() => [])
+                            : Promise.resolve([]);
+                        const [exact, candidates] = await Promise.all([exactPromise, candidatePromise]);
+                        return dedupeDefinitionLinks(exact, candidates);
+                    } finally {
+                        if (subscription && typeof subscription.dispose === 'function') {
+                            subscription.dispose();
+                        }
+                    }
                 },
             }));
         }

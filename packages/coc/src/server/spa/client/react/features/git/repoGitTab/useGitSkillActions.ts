@@ -114,12 +114,14 @@ export function useGitSkillActions({
         skillName?: string;
         aiSelection?: ResolvedModalJobAiSelection;
     }) => {
-        const { aiSelection } = job;
+        const aiSelection = job.aiSelection ?? {};
         const config = {
-            ...(aiSelection?.model ? { model: aiSelection.model } : {}),
-            ...(aiSelection?.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}),
-            ...(aiSelection?.effortTier ? { effortTier: aiSelection.effortTier } : {}),
+            ...(aiSelection.model ? { model: aiSelection.model } : {}),
+            ...(aiSelection.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}),
+            ...(aiSelection.effortTier ? { effortTier: aiSelection.effortTier } : {}),
         };
+        const context = mergeAutoProviderRoutingContext(
+            aiSelection, job.skillName ? { skills: [job.skillName] } : undefined);
         await cloneClient.queue.enqueue({
             type: 'chat',
             priority: 'normal',
@@ -130,12 +132,8 @@ export function useGitSkillActions({
                 prompt: job.prompt,
                 workingDirectory: workspaceRootPath || '',
                 workspaceId,
-                ...(aiSelection?.provider ? { provider: aiSelection.provider } : {}),
-                ...(aiSelection || job.skillName
-                    ? { context: mergeAutoProviderRoutingContext(aiSelection ?? {} as ResolvedModalJobAiSelection, {
-                        ...(job.skillName ? { skills: [job.skillName] } : {}),
-                    }) }
-                    : {}),
+                ...(aiSelection.provider ? { provider: aiSelection.provider } : {}),
+                ...(context && Object.keys(context).length > 0 ? { context } : {}),
             },
             ...(Object.keys(config).length > 0 ? { config } : {}),
         });
@@ -257,6 +255,9 @@ export function useGitSkillActions({
             await enqueueChat({
                 displayName: `Resolve ${repoState.operation} conflicts`,
                 prompt: buildConflictResolutionPrompt(repoState),
+                // Conflict resolution needs real reasoning, so don't leave the
+                // tier unset and fall back to the server's default.
+                aiSelection: { effortTier: 'medium' },
             });
             showToast('Conflict resolution task enqueued');
         } catch (err: any) {

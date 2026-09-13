@@ -5,6 +5,8 @@
  * POST   /api/queue/resume                    — Resume (global or per-repo)
  * POST   /api/queue/pause-autopilot           — Pause autopilot
  * POST   /api/queue/resume-autopilot          — Resume autopilot
+ * POST   /api/queue/task-delay                — Set or clear repeating task delay
+ * POST   /api/queue/task-delay/skip           — Skip the active task delay
  * POST   /api/queue/pause-marker              — Insert pause marker
  * DELETE /api/queue/pause-marker/:markerId    — Remove pause marker
  * POST   /api/queue/force-fail-running        — Force-fail all stale running tasks
@@ -24,7 +26,7 @@
  */
 
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
-import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { isValidTaskDelayMinutes, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { PauseDurationHours, PauseScope } from '@plusplusoneplusplus/forge';
 import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
 import { collectDescendantProcessIds } from './process-subtree';
@@ -41,6 +43,8 @@ import {
 const DURATION_HOURS_ERROR = 'durationHours must be a number greater than 0 and at most 24';
 
 const PAUSE_SCOPE_ERROR = "scope must be either 'all' or 'autopilot'";
+
+const TASK_DELAY_MINUTES_ERROR = 'delayMinutes must be an integer between 1 and 1440, or null';
 
 function parsePauseScope(value: unknown): { scope?: PauseScope; error?: string } {
     if (value === undefined) return {};
@@ -227,6 +231,97 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
                 process.stderr.write(`[Queue] resume-autopilot repoId=global\n`);
                 sendJSON(res, 200, { isAutopilotPaused: false, stats: getAggregateStats(bridge, state) });
             }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/task-delay — Set or clear repeating task delay
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/task-delay',
+        handler: async (req, res) => {
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            const pauseScope = parsePauseScope(body?.scope);
+            if (pauseScope.error || pauseScope.scope === undefined) {
+                return sendError(res, 400, PAUSE_SCOPE_ERROR);
+            }
+            if (body?.delayMinutes !== null && !isValidTaskDelayMinutes(body?.delayMinutes)) {
+                return sendError(res, 400, TASK_DELAY_MINUTES_ERROR);
+            }
+
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
+            const delayMinutes = body.delayMinutes;
+
+            if (repoId) {
+                const mgr = await getOrCreateManagerByRepoIdentifier(repoId, bridge, store, state);
+                if (!mgr) {
+                    return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+                }
+                mgr.setTaskDelayMinutes(pauseScope.scope, delayMinutes);
+                const stats = mgr.getStats();
+                sendJSON(res, 200, { repoId, scope: pauseScope.scope, taskDelayMinutes: delayMinutes, stats });
+                return;
+            }
+
+            if (pauseScope.scope === 'all') {
+                state.globalTaskDelayMinutes = delayMinutes ?? undefined;
+            } else {
+                state.globalAutopilotTaskDelayMinutes = delayMinutes ?? undefined;
+            }
+            for (const mgr of bridge.registry.getAllQueues().values()) {
+                mgr.setTaskDelayMinutes(pauseScope.scope, delayMinutes);
+            }
+            sendJSON(res, 200, {
+                scope: pauseScope.scope,
+                taskDelayMinutes: delayMinutes,
+                stats: getAggregateStats(bridge, state),
+            });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/queue/task-delay/skip — Skip the active task delay
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/task-delay/skip',
+        handler: async (req, res) => {
+            let body: any;
+            try {
+                body = await parseBody(req);
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+
+            const pauseScope = parsePauseScope(body?.scope);
+            if (pauseScope.error || pauseScope.scope === undefined) {
+                return sendError(res, 400, PAUSE_SCOPE_ERROR);
+            }
+
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
+            if (repoId) {
+                const mgr = await getOrCreateManagerByRepoIdentifier(repoId, bridge, store, state);
+                if (!mgr) {
+                    return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+                }
+                mgr.skipTaskDelay(pauseScope.scope);
+                sendJSON(res, 200, { repoId, scope: pauseScope.scope, stats: mgr.getStats() });
+                return;
+            }
+
+            for (const mgr of bridge.registry.getAllQueues().values()) {
+                mgr.skipTaskDelay(pauseScope.scope);
+            }
+            sendJSON(res, 200, { scope: pauseScope.scope, stats: getAggregateStats(bridge, state) });
         },
     });
 

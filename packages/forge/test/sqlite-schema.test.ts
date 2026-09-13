@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(32);
+        expect(SCHEMA_VERSION).toBe(33);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -128,6 +128,8 @@ describe('sqlite-schema', () => {
         expect(colNames).toContain('queue_paused_until');
         expect(colNames).toContain('autopilot_paused');
         expect(colNames).toContain('autopilot_paused_until');
+        expect(colNames).toContain('task_delay_minutes');
+        expect(colNames).toContain('autopilot_task_delay_minutes');
     });
 
     it('creates queue item metadata columns', () => {
@@ -1176,7 +1178,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(32);
+            expect(SCHEMA_VERSION).toBe(33);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1403,7 +1405,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(32);
+            expect(SCHEMA_VERSION).toBe(33);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1576,6 +1578,65 @@ describe('sqlite-schema', () => {
             const frozenUntilCols = (db.prepare("PRAGMA table_info(queue_tasks)").all() as Array<{ name: string }>)
                 .filter(c => c.name === 'frozen_until');
             expect(frozenUntilCols).toHaveLength(1);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+        });
+    });
+
+    describe('V32 -> V33 migration (queue_repo_state task delays)', () => {
+        it('adds nullable task-delay columns without changing existing state', () => {
+            db.exec(`
+                CREATE TABLE queue_repo_state (
+                    repo_id                  TEXT PRIMARY KEY,
+                    is_paused                INTEGER DEFAULT 0,
+                    pause_reason             TEXT,
+                    queue_paused             INTEGER DEFAULT 0,
+                    queue_paused_until       INTEGER,
+                    autopilot_paused         INTEGER DEFAULT 0,
+                    autopilot_paused_until   INTEGER
+                );
+            `);
+            db.prepare(`
+                INSERT INTO queue_repo_state (
+                    repo_id, queue_paused, queue_paused_until,
+                    autopilot_paused, autopilot_paused_until
+                ) VALUES (?, ?, ?, ?, ?)
+            `).run('repo-v32', 1, 5000, 1, 7000);
+            db.pragma('user_version = 32');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            expect(SCHEMA_VERSION).toBe(33);
+            const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
+            expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
+                'task_delay_minutes',
+                'autopilot_task_delay_minutes',
+            ]));
+            expect(db.prepare(`
+                SELECT queue_paused, queue_paused_until, autopilot_paused,
+                       autopilot_paused_until, task_delay_minutes,
+                       autopilot_task_delay_minutes
+                FROM queue_repo_state WHERE repo_id = ?
+            `).get('repo-v32')).toEqual({
+                queue_paused: 1,
+                queue_paused_until: 5000,
+                autopilot_paused: 1,
+                autopilot_paused_until: 7000,
+                task_delay_minutes: null,
+                autopilot_task_delay_minutes: null,
+            });
+        });
+
+        it('is idempotent when initializeDatabase runs twice', () => {
+            initializeDatabase(db);
+            db.pragma('user_version = 32');
+
+            expect(() => initializeDatabase(db)).not.toThrow();
+            expect(() => initializeDatabase(db)).not.toThrow();
+
+            const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
+            expect(columns.filter(column => column.name === 'task_delay_minutes')).toHaveLength(1);
+            expect(columns.filter(column => column.name === 'autopilot_task_delay_minutes')).toHaveLength(1);
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
         });
     });

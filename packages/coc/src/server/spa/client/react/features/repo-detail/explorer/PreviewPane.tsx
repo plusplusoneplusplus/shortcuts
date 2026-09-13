@@ -59,6 +59,8 @@ export interface PreviewPaneProps {
      * unset; a language-server navigation supplies the target symbol's column.
      */
     revealColumn?: number;
+    /** Shows that this location came from the fuzzy repository symbol index. */
+    symbolCandidate?: boolean;
     onClose?: () => void;
     /** When true the editor is non-editable and save/dirty UI is suppressed. */
     readOnly?: boolean;
@@ -96,13 +98,19 @@ export interface PreviewPaneProps {
      * navigates within its own file — Monaco does that itself — but a
      * cross-file jump is declined, so nothing silently disappears.
      */
-    onNavigate?: (target: { path: string; name: string; line: number; column: number }) => void;
+    onNavigate?: (target: {
+        path: string;
+        name: string;
+        line: number;
+        column: number;
+        symbolCandidate?: true;
+    }) => void;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine, revealColumn, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -169,6 +177,22 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
     // The Monaco language the editor will actually use for this file, so the
     // providers are registered under the same id the model carries.
     const monacoLanguageId = getMonacoLanguage(fileName);
+    const symbolDefinitions = useMemo(() => (
+        monacoLanguageId === 'c' || monacoLanguageId === 'cpp'
+            ? {
+                workspaceId: repoId,
+                lookup: async (name: string, signal: AbortSignal) => {
+                    const response = await explorerApi.searchSymbols(
+                        repoId,
+                        name,
+                        { signal },
+                        routingRef,
+                    );
+                    return response.results;
+                },
+            }
+            : undefined
+    ), [monacoLanguageId, repoId, routingRef]);
 
     // A jump that leaves this file. It is answered here rather than in the
     // navigation module because only this pane knows which workspace it is
@@ -187,6 +211,7 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             name: target.path.split('/').pop() || target.path,
             line: target.line,
             column: target.column,
+            ...(target.symbolCandidate ? { symbolCandidate: true } : {}),
         });
         return true;
     }, [repoId]);
@@ -213,6 +238,7 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             model: model as unknown as ProviderModel,
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
+            symbolDefinitions,
         });
         const definitionLinkCue = definitionSupported
             ? installDefinitionLinkCue({
@@ -231,7 +257,7 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             registration.dispose();
             shadow?.revert();
         };
-    }, [languageView, monacoLanguageId, handleNavigate, definitionSupported]);
+    }, [languageView, monacoLanguageId, handleNavigate, definitionSupported, symbolDefinitions]);
 
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted
@@ -355,6 +381,15 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
                         onRestart={restartLanguageServer}
                         variant="corner"
                     />
+                </div>
+            )}
+            {!loading && !error && symbolCandidate && (
+                <div
+                    className="absolute bottom-1 left-3 z-10 rounded border border-amber-500/50 bg-amber-100/95 px-2 py-0.5 text-[10px] font-medium text-amber-900 shadow-sm dark:bg-amber-950/95 dark:text-amber-200"
+                    title="This file was opened from a repository symbol candidate that clangd did not confirm."
+                    data-testid="symbol-candidate-badge"
+                >
+                    Symbol candidate
                 </div>
             )}
         </div>

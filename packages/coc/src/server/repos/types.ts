@@ -58,6 +58,34 @@ export interface SearchFilesResult {
     truncated: boolean;
 }
 
+/** One C-family definition returned by the repository symbol index. */
+export interface SymbolSearchResult {
+    name: string;
+    kind: string;
+    /** Repo-relative path with `/` separators. */
+    path: string;
+    /** One-based source line. */
+    line: number;
+    /** One-based UTF-16 source column. */
+    column: number;
+    parent?: string;
+}
+
+export interface SymbolIndexProgress {
+    phase: 'scanning' | 'indexing' | 'complete';
+    processed: number;
+    total: number;
+}
+
+/** Result of an exact-name or prefix symbol query. */
+export interface SearchSymbolsResult {
+    /** False while the repository's first persistent index build is running. */
+    indexed: boolean;
+    /** Latest cold-build progress while `indexed` is false. */
+    progress?: SymbolIndexProgress;
+    results: SymbolSearchResult[];
+}
+
 /**
  * The hard cap on matches one content search may return.
  *

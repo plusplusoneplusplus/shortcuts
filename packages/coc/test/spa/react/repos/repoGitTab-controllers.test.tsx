@@ -70,6 +70,11 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 }));
 let appState: any = { workspaces: [], selectedGitCommitHash: null, selectedGitFilePath: null };
 
+const queueDispatch = vi.fn();
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({ dispatch: queueDispatch }),
+}));
+
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isGitCommitLookupEnabled: () => lookupEnabled,
     isGitCrossCloneCherryPickEnabled: () => false,
@@ -80,6 +85,7 @@ import { useRepoGitData } from '../../../../src/server/spa/client/react/features
 import { useRepoGitSelection } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useRepoGitSelection';
 import { useGitOperationActions } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitOperationActions';
 import { useGitAutoPullController } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitAutoPullController';
+import { useGitSkillActions } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitSkillActions';
 import { useGitOperationPoller } from '../../../../src/server/spa/client/react/features/git/hooks/useGitOperationPoller';
 import { clearCommitsCache } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitsCache';
 import { clearBranchRangeCache } from '../../../../src/server/spa/client/react/features/git/hooks/useBranchRangeCache';
@@ -109,6 +115,7 @@ function makeBridge() {
 beforeEach(() => {
     clients.clear();
     appDispatch.mockClear();
+    queueDispatch.mockClear();
     appState = { workspaces: [], selectedGitCommitHash: null, selectedGitFilePath: null };
     lookupEnabled = true;
     localStorage.clear();
@@ -816,5 +823,96 @@ describe('useGitAutoPullController', () => {
             await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
             expect(clientFor(WS).git.pull).not.toHaveBeenCalled();
         } finally { vi.useRealTimers(); }
+    });
+});
+
+describe('useGitSkillActions', () => {
+    const repoState = { operation: 'rebase', conflictFiles: ['src/a.ts'] };
+
+    // Squash matches by object identity, so the hook and the test must share
+    // the same commit instances.
+    const commits = [commit('aaaaaaa1'), commit('bbbbbbb2')];
+
+    function renderSkillActions(state: any = repoState) {
+        const showToast = vi.fn();
+        const view = renderHook(() => useGitSkillActions({
+            workspaceId: WS,
+            workspaceRootPath: '/repo',
+            commits,
+            unpushedCount: 2,
+            branchRangeData: null,
+            branchName: 'feature',
+            resolvedBaseRef: 'origin/main',
+            repoState: state,
+            showToast,
+        }));
+        return { view, showToast, enqueue: clientFor(WS).queue.enqueue };
+    }
+
+    // Regression: conflict resolution used to enqueue with no config at all, so
+    // the job silently inherited the server's default tier.
+    it('enqueues conflict resolution at the medium effort tier', async () => {
+        const { view, enqueue } = renderSkillActions();
+
+        await act(async () => { await view.result.current.resolveConflictsWithAI(); });
+
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        expect(enqueue.mock.calls[0][0].config).toEqual({ effortTier: 'medium' });
+    });
+
+    it('skips the enqueue when no operation is in progress', async () => {
+        const { view, enqueue } = renderSkillActions({ ...repoState, operation: 'none' });
+
+        await act(async () => { await view.result.current.resolveConflictsWithAI(); });
+
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('omits config and context when a job carries no AI selection or skill', async () => {
+        const { view, enqueue } = renderSkillActions();
+
+        await act(async () => {
+            await view.result.current.squashCommits(commits);
+        });
+
+        const task = enqueue.mock.calls[0][0];
+        expect(task.config).toBeUndefined();
+        expect(task.payload.context).toBeUndefined();
+        expect(task.payload.workspaceId).toBe(WS);
+    });
+
+    it('passes a confirmed skill run\'s model, tier and skill through to the queue', async () => {
+        const { view, enqueue } = renderSkillActions();
+
+        act(() => {
+            view.result.current.startSkillRun('code-review', { type: 'commit', commit: commits[0] });
+        });
+        await act(async () => {
+            await view.result.current.confirmSkillRun('extra notes', {
+                provider: 'claude', model: 'claude-opus-5', effortTier: 'high',
+            });
+        });
+
+        const task = enqueue.mock.calls[0][0];
+        expect(task.config).toEqual({ model: 'claude-opus-5', effortTier: 'high' });
+        expect(task.payload.provider).toBe('claude');
+        expect(task.payload.context).toEqual({ skills: ['code-review'] });
+        expect(task.payload.prompt).toContain('extra notes');
+    });
+
+    it('flags auto provider routing in the payload context', async () => {
+        const { view, enqueue } = renderSkillActions();
+
+        act(() => {
+            view.result.current.startSkillRun('code-review', { type: 'commit', commit: commits[0] });
+        });
+        await act(async () => {
+            await view.result.current.confirmSkillRun('', { autoProviderRouting: true });
+        });
+
+        expect(enqueue.mock.calls[0][0].payload.context).toEqual({
+            skills: ['code-review'],
+            autoProviderRouting: { requested: true },
+        });
     });
 });

@@ -34,6 +34,14 @@ export interface LanguageServerDefinition {
   settings?: LanguageServerJsonValue;
   /** Higher wins when several definitions match one document. */
   priority?: number;
+  /** Process identity boundary. Defaults to one process per editing session and root. */
+  sessionScope?: 'editing-session' | 'workspace';
+  /** Maximum live processes for this definition in one workspace. */
+  maxSessions?: number;
+  /** Per-request timeout for this definition. */
+  requestTimeoutMs?: number;
+  /** Stop an unreferenced process after this idle interval. */
+  idleTimeoutMs?: number;
   enabled?: boolean;
   /** True for definitions shipped with CoC. Built-ins can be overridden, not deleted. */
   builtIn?: boolean;

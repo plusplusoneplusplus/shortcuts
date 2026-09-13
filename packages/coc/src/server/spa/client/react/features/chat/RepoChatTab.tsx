@@ -175,6 +175,10 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const [autopilotPausedUntil, setAutopilotPausedUntil] = useState<number | string | undefined>();
     const [autopilotPauseSource, setAutopilotPauseSource] = useState<'manual' | 'quota' | undefined>();
     const [isAutopilotPauseLoading, setIsAutopilotPauseLoading] = useState(false);
+    const [taskDelayMinutes, setTaskDelayMinutes] = useState<number | undefined>();
+    const [taskDelayUntil, setTaskDelayUntil] = useState<number | undefined>();
+    const [autopilotTaskDelayMinutes, setAutopilotTaskDelayMinutes] = useState<number | undefined>();
+    const [autopilotTaskDelayUntil, setAutopilotTaskDelayUntil] = useState<number | undefined>();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pauseReason, setPauseReason] = useState<{ taskId: string; displayName: string; failedAt: string } | undefined>();
 
@@ -323,6 +327,10 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 setIsAutopilotPaused(!!nextStats?.isAutopilotPaused);
                 setAutopilotPausedUntil(nextStats?.autopilotPausedUntil);
                 setAutopilotPauseSource(nextStats?.autopilotPauseSource);
+                setTaskDelayMinutes(nextStats?.taskDelayMinutes);
+                setTaskDelayUntil(nextStats?.taskDelayUntil);
+                setAutopilotTaskDelayMinutes(nextStats?.autopilotTaskDelayMinutes);
+                setAutopilotTaskDelayUntil(nextStats?.autopilotTaskDelayUntil);
                 queueDispatch({
                     type: 'REPO_QUEUE_UPDATED',
                     repoId: workspaceId,
@@ -444,6 +452,10 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             setAutopilotPausedUntil(repoQueue.stats.autopilotPausedUntil);
             setAutopilotPauseSource(repoQueue.stats.autopilotPauseSource);
         }
+        setTaskDelayMinutes(repoQueue?.stats?.taskDelayMinutes);
+        setTaskDelayUntil(repoQueue?.stats?.taskDelayUntil);
+        setAutopilotTaskDelayMinutes(repoQueue?.stats?.autopilotTaskDelayMinutes);
+        setAutopilotTaskDelayUntil(repoQueue?.stats?.autopilotTaskDelayUntil);
         setLoading(false);
     }, [repoQueue, history, fetchHistory]);
 
@@ -693,10 +705,14 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         return () => clearTimeout(timer);
     }, [selectedTaskId]);
 
-    // Live timer for running tasks
+    // Live timer for running tasks and active queue deadlines.
     const hasActive = useMemo(
-        () => running.length > 0 || (isPaused && pausedUntil !== undefined) || (isAutopilotPaused && autopilotPausedUntil !== undefined),
-        [autopilotPausedUntil, isAutopilotPaused, isPaused, pausedUntil, running],
+        () => running.length > 0
+            || (isPaused && pausedUntil !== undefined)
+            || (isAutopilotPaused && autopilotPausedUntil !== undefined)
+            || (taskDelayUntil !== undefined && taskDelayUntil > now)
+            || (autopilotTaskDelayUntil !== undefined && autopilotTaskDelayUntil > now),
+        [autopilotPausedUntil, autopilotTaskDelayUntil, isAutopilotPaused, isPaused, now, pausedUntil, running, taskDelayUntil],
     );
     useEffect(() => {
         if (!hasActive) return;
@@ -730,6 +746,19 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         } finally {
             setIsAutopilotPauseLoading(false);
         }
+    }
+
+    async function handleSetTaskDelay(scope: 'all' | 'autopilot', delayMinutes: number | null) {
+        await cloneClient.queue.setTaskDelay(
+            { scope, delayMinutes },
+            { repoId: workspaceId },
+        );
+        await fetchQueue();
+    }
+
+    async function handleSkipTaskDelay(scope: 'all' | 'autopilot') {
+        await cloneClient.queue.skipTaskDelay(scope, { repoId: workspaceId });
+        await fetchQueue();
     }
 
     const handleRefresh = useCallback(async () => {
@@ -1066,6 +1095,12 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             onPauseResumeAutopilot={handlePauseResumeAutopilot}
             pauseSource={pauseSource}
             autopilotPauseSource={autopilotPauseSource}
+            taskDelayMinutes={taskDelayMinutes}
+            taskDelayUntil={taskDelayUntil}
+            autopilotTaskDelayMinutes={autopilotTaskDelayMinutes}
+            autopilotTaskDelayUntil={autopilotTaskDelayUntil}
+            onSetTaskDelay={handleSetTaskDelay}
+            onSkipTaskDelay={handleSkipTaskDelay}
             onRefresh={handleRefresh}
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
             fetchQueue={fetchQueue}

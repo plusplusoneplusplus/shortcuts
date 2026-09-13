@@ -48,6 +48,13 @@ all have their own `references/*.md`.
   open, debounces keystrokes, and highlights using the `indices` the server's
   scorer returned — never by re-deriving the match in the browser, which used to
   let highlight and ranking disagree.
+- **C-family symbol search is repo-scoped persistent state.** `RepoTreeService`
+  lazily builds `repos/<workspaceId>/symbol-index.sqlite` through
+  `loadNativeSymbolIndex()`. The first `/api/repos/:repoId/search/symbols`
+  request returns `indexed: false` while the build runs, with the latest bounded
+  scanning/indexing progress when available; later exact-name or prefix requests
+  query SQLite. Repository writes debounce and coalesce their repo-relative
+  paths into targeted background refreshes that avoid another repository walk.
 - **Repo-group file search is group-owner scoped.** `GET
   /api/repo-groups/:id/search` resolves `group.json` against the owning server's
   live workspace registry on every request, skips stale members and the virtual
@@ -363,6 +370,16 @@ all have their own `references/*.md`.
   skill folders, and the Ralph final-check cap; all are `live`, so read them at
   the point each setting takes effect rather than caching at composition. CLI
   and test roots inject `createFixedQueueRuntimeConfig(...)`.
+- **Queue control state is repo-scoped.** `SqliteQueuePersistence` stores manual
+  pause state and the configured All/Autopilot task delays in Forge's
+  `queue_repo_state` row. A `task-delay-changed` event writes the setting;
+  `task-delay-skipped` never does, because skip releases one active wait without
+  turning off the repeating delay. Restore applies only configured minutes, not
+  the last-task-end clock, so the first task after restart can start immediately.
+  `RepoChatTab` forwards active deadlines to `ChatListPane`, whose existing
+  one-second tick drives the All and Autopilot pill countdowns. The menu's skip
+  action calls the workspace-routed `QueueClient.skipTaskDelay`, releasing only
+  the current wait.
 - **Non-admin namespaced config fields** (queue, models, logging, monitoring,
   skills, memoryPromotion, …) keep hand-written descriptors in
   `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.

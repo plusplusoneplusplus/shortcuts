@@ -142,6 +142,8 @@ export interface UnifiedPanelTab {
      * navigation supplies one; a deep link lands at the start of the line.
      */
     column?: number;
+    /** Present when a fuzzy repository symbol lookup opened this location. */
+    symbolCandidate?: true;
     /**
      * True on the section's single *preview* tab — VS Code's italic slot. A
      * preview tab is a normal tab in every respect except that the next
@@ -291,11 +293,31 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.readOnly === b.readOnly
         && a.line === b.line
         && a.column === b.column
+        && a.symbolCandidate === b.symbolCandidate
         && a.preview === b.preview;
 }
 
 function sameList(a: readonly UnifiedPanelTab[], b: readonly UnifiedPanelTab[]): boolean {
     return a.length === b.length && a.every((tab, index) => sameTab(tab, b[index]));
+}
+
+function clearSymbolCandidate(state: UnifiedPanelState, id: string): UnifiedPanelState {
+    const workspaceIndex = state.workspaceTabs.findIndex(tab => tab.id === id);
+    if (workspaceIndex >= 0 && state.workspaceTabs[workspaceIndex].symbolCandidate) {
+        const { symbolCandidate: _candidate, ...tab } = state.workspaceTabs[workspaceIndex];
+        const workspaceTabs = [...state.workspaceTabs];
+        workspaceTabs[workspaceIndex] = tab;
+        return { ...state, workspaceTabs };
+    }
+    for (const [scopeKey, tabs] of Object.entries(state.chatTabs)) {
+        const index = tabs.findIndex(tab => tab.id === id);
+        if (index < 0 || !tabs[index].symbolCandidate) continue;
+        const { symbolCandidate: _candidate, ...tab } = tabs[index];
+        const nextTabs = [...tabs];
+        nextTabs[index] = tab;
+        return { ...state, chatTabs: { ...state.chatTabs, [scopeKey]: nextTabs } };
+    }
+    return state;
 }
 
 /** Replace one scope's tab list, returning `state` when nothing moved. */
@@ -348,6 +370,8 @@ export interface OpenUnifiedTabInput {
     readOnly?: boolean;
     line?: number;
     column?: number;
+    /** Present when a fuzzy repository symbol lookup opened this location. */
+    symbolCandidate?: true;
 }
 
 /**
@@ -404,6 +428,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
         ...(input.readOnly ? { readOnly: true } : {}),
         ...revealFields(input),
+        ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
     };
 
     let nextList: readonly UnifiedPanelTab[];
@@ -473,7 +498,11 @@ export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPrevi
     // selected still shows in the strip once a chat is, and clicking it in the
     // tree should focus that tab rather than preview a second copy of it.
     if (visibleTabs(state, input.chatId).some(tab => tab.id === id)) {
-        return withActive(state, viewKey, id);
+        return withActive(
+            input.symbolCandidate ? state : clearSymbolCandidate(state, id),
+            viewKey,
+            id,
+        );
     }
 
     const opened: UnifiedPanelTab = {
@@ -487,6 +516,7 @@ export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPrevi
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
         ...(input.readOnly ? { readOnly: true } : {}),
         ...revealFields(input),
+        ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
         preview: true,
     };
 
@@ -738,6 +768,7 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
                     : {}),
             }
             : {}),
+        ...(value.symbolCandidate === true ? { symbolCandidate: true } : {}),
         // Only `file` tabs can hold the preview slot: the tree's single click is
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),

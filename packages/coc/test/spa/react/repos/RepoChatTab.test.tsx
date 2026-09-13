@@ -222,6 +222,8 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             resume: (scope?: { repoId?: string }) => mockFetchApi('/queue/resume?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
             pauseAutopilot: (scope?: { repoId?: string }, options?: any) => mockFetchApi('/queue/pause-autopilot?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST', ...(options ? { body: options } : {}) }),
             resumeAutopilot: (scope?: { repoId?: string }) => mockFetchApi('/queue/resume-autopilot?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST' }),
+            setTaskDelay: (request: any, scope?: { repoId?: string }) => mockFetchApi('/queue/task-delay?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST', body: request }),
+            skipTaskDelay: (scopeName: string, scope?: { repoId?: string }) => mockFetchApi('/queue/task-delay/skip?repoId=' + encodeURIComponent(scope?.repoId ?? ''), { method: 'POST', body: { scope: scopeName } }),
         },
         processes: {
             get: (processId: string) => mockFetchApi(`/processes/${encodeURIComponent(processId)}`),
@@ -529,6 +531,22 @@ describe('RepoChatTab: data fetching', () => {
         await renderTab();
         const lastProps = mockListPane.mock.calls.at(-1)?.[0];
         expect(lastProps?.isAutopilotPaused).toBe(true);
+    });
+
+    it('passes configured task delays from queue stats to the list pane', async () => {
+        setupFetchMock({
+            stats: {
+                isPaused: false,
+                isAutopilotPaused: false,
+                taskDelayMinutes: 5,
+                autopilotTaskDelayMinutes: 30,
+            },
+        });
+        await renderTab();
+
+        const props = mockListPane.mock.calls.at(-1)?.[0];
+        expect(props.taskDelayMinutes).toBe(5);
+        expect(props.autopilotTaskDelayMinutes).toBe(30);
     });
 });
 
@@ -1118,6 +1136,47 @@ describe('RepoChatTab: pause/resume', () => {
                 expect.objectContaining({ method: 'POST', body: { durationHours: 2 } }),
             );
         });
+    });
+
+    it('sets a scoped task delay through the workspace queue client', async () => {
+        setupFetchMock({ stats: { isPaused: false, isAutopilotPaused: false } });
+        await renderTab();
+        const props = mockListPane.mock.calls.at(-1)?.[0];
+
+        await act(async () => {
+            await props.onSetTaskDelay('autopilot', 15);
+        });
+
+        await waitFor(() => {
+            expect(mockFetchApi).toHaveBeenCalledWith(
+                '/queue/task-delay?repoId=ws-1',
+                { method: 'POST', body: { scope: 'autopilot', delayMinutes: 15 } },
+            );
+        });
+    });
+
+    it('passes cooldown deadlines through and skips through the workspace queue client', async () => {
+        setupFetchMock({
+            stats: {
+                isPaused: false,
+                isAutopilotPaused: false,
+                taskDelayUntil: 1_800_000_300_000,
+                autopilotTaskDelayUntil: 1_800_000_600_000,
+            },
+        });
+        await renderTab();
+        const props = mockListPane.mock.calls.at(-1)?.[0];
+
+        expect(props.taskDelayUntil).toBe(1_800_000_300_000);
+        expect(props.autopilotTaskDelayUntil).toBe(1_800_000_600_000);
+        await act(async () => {
+            await props.onSkipTaskDelay('autopilot');
+        });
+
+        expect(mockFetchApi).toHaveBeenCalledWith(
+            '/queue/task-delay/skip?repoId=ws-1',
+            { method: 'POST', body: { scope: 'autopilot' } },
+        );
     });
 
     it('timed autopilot pause passes duration options to queue client', async () => {

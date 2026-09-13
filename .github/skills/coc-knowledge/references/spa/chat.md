@@ -130,6 +130,15 @@ Queue pause insert zones open the shared pause-duration menu: until-resumed, hou
 or a custom float in (0, 24]. `durationHours` is sent only for timed markers, which render
 a duration suffix until the executor consumes them.
 
+The ALL and AP pause pills use the same menu for per-scope repeating task delays. The
+delay section offers fixed minute presets, Off, and integer custom minutes from 1 through
+1440, and marks the configured value from queue stats. `RepoChatTab` sends changes through
+the workspace-routed `QueueClient.setTaskDelay` and refreshes queue state after success;
+request failures remain inline without replacing the last confirmed value. Active cooldown
+deadlines render on their scope pill using the existing one-second clock, with manual pause
+state taking precedence. The menu can skip the current wait through
+`QueueClient.skipTaskDelay` without clearing the configured delay.
+
 `RepoChatTab` persists the Activity chat-list collapsed state and left-panel width under
 `activity-list-collapsed-{workspaceId}` and `activity-left-panel-width-{workspaceId}`.
 

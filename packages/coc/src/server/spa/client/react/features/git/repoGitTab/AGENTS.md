@@ -67,6 +67,14 @@ refresh, and the two layouts. Everything else lives here.
   cross-clone cherry-pick is feature-flagged, and touch selection entries are
   touch-only. `buildGitContextMenuItems` reads no component state and calls no
   API — every action is an injected handler.
+- **Every enqueue names its effort.** `enqueueChat` is the only place a Git-tab
+  queue job is built. A modal-launched run passes the user's resolved
+  `aiSelection`; an unattended launch (conflict resolution) names a tier itself
+  rather than omitting `config` and inheriting the server default. `config` and
+  `payload.context` are omitted only when genuinely empty.
+- **Squash matches by object identity.** `squashCommits` locates each selection
+  with `commits.indexOf`, so callers must pass the same instances the hook was
+  rendered with.
 - **Split-workspace portals.** The hoisted toolbar portal renders OUTSIDE the
   list's `onClickCapture` wrapper: portaled React events still bubble through
   the React tree, so keeping it inside makes every Pull/refresh click steal the
@@ -81,8 +89,9 @@ family via `test/spa/helpers/repo-git-tab-source.ts` — add any new module to
 
 Behavioural coverage lives in `test/spa/react/repos/repoGitTab-*.test.ts(x)`:
 the pure models, the controller hooks (clone routing, workspace-switch cleanup,
-job polling, auto-pull skip/failure, base-mode switching, deep-link lookup),
-and the split-workspace portal contract.
+job polling, auto-pull skip/failure, base-mode switching, deep-link lookup,
+skill-run and conflict-resolution enqueue payloads), and the split-workspace
+portal contract.
 
 When writing hook tests: `waitFor` polls with `setTimeout`, so it never resolves
 under `vi.useFakeTimers()` — advance with `advanceTimersByTimeAsync` (which

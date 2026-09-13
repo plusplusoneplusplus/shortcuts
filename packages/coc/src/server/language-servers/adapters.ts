@@ -11,7 +11,9 @@
  * an explicit choice, and preparation must not undo it.
  */
 
-import { PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { applyClangdRuntime, resolveClangdRuntime, resolveClangdServerRoot } from './clangd-adapter';
+import type { ClangdRuntimeDeps } from './clangd-adapter';
+import { CLANGD_PRESET, PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
 import { applyPythonRuntime, resolvePythonRuntime, resolvePythonServerRoot } from './python-adapter';
 import type { PythonRuntimeDeps } from './python-adapter';
 import { applyRustRuntime, resolveRustRuntime, resolveRustServerRoot } from './rust-adapter';
@@ -34,7 +36,7 @@ export interface PreparedDefinition {
     recoveryCommand?: string;
 }
 
-export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps & PythonRuntimeDeps;
+export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps & PythonRuntimeDeps & ClangdRuntimeDeps;
 
 export function resolveDefinitionRoot(
     definition: LanguageServerDefinition,
@@ -47,6 +49,9 @@ export function resolveDefinitionRoot(
     }
     if (claimsPython(definition)) {
         return resolvePythonServerRoot(definition, workspaceRoot, relativePath, deps);
+    }
+    if (claimsClangd(definition)) {
+        return resolveClangdServerRoot(definition, workspaceRoot, relativePath, deps);
     }
     return resolveServerRoot(definition, workspaceRoot, relativePath, deps.exists);
 }
@@ -87,6 +92,16 @@ export function prepareDefinitionForRoot(
             commandLabel: PYTHON_PRESET.command,
         };
     }
+    if (claimsClangd(definition)) {
+        const runtime = resolveClangdRuntime(definition, deps);
+        return {
+            definition: applyClangdRuntime(definition, runtime),
+            runtimeLabel: runtime.label,
+            commandLabel: CLANGD_PRESET.command,
+            notes: runtime.notes,
+            recoveryCommand: runtime.recoveryCommand,
+        };
+    }
     return { definition };
 }
 
@@ -107,5 +122,13 @@ function claimsPython(definition: LanguageServerDefinition): boolean {
         definition.id === PYTHON_PRESET.id &&
         definition.builtIn === true &&
         definition.command === PYTHON_PRESET.command
+    );
+}
+
+function claimsClangd(definition: LanguageServerDefinition): boolean {
+    return (
+        definition.id === CLANGD_PRESET.id &&
+        definition.builtIn === true &&
+        definition.command === CLANGD_PRESET.command
     );
 }

@@ -107,7 +107,12 @@ describe('registerLanguageServerRoutes', () => {
         expect(json.enabled).toBe(false);
         expect(json.definitions).toEqual([]);
         expect(json.status).toBe('missing');
-        expect(json.effective.map((d: LanguageServerDefinition) => d.id)).toEqual(['typescript', 'rust', 'python']);
+        expect(json.effective.map((d: LanguageServerDefinition) => d.id)).toEqual([
+            'typescript',
+            'rust',
+            'python',
+            'clangd',
+        ]);
         // Nothing may start while support is off, preset included.
         expect(json.startable).toEqual([]);
         expect(json.runtimes).toEqual([]);

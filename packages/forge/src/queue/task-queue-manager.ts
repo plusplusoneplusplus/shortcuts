@@ -16,12 +16,15 @@ import {
     QueueStats,
     PauseReason,
     PauseDurationHours,
+    PauseScope,
     TaskQueueManagerOptions,
     DEFAULT_QUEUE_MANAGER_OPTIONS,
     MAX_PAUSE_DURATION_HOURS,
+    MAX_TASK_DELAY_MINUTES,
     comparePriority,
     generateTaskId,
     isValidPauseDurationHours,
+    isValidTaskDelayMinutes,
 } from './types';
 
 // ============================================================================
@@ -48,6 +51,13 @@ export class TaskQueueManager extends EventEmitter {
     private autopilotPaused = false;
     /** Epoch milliseconds when autopilot pause expires; undefined means manual/indefinite pause. */
     private autopilotPausedUntil: number | undefined;
+    /** Configured cooldown between tasks, in minutes, per scope. Missing means off. */
+    private taskDelayMinutes = new Map<PauseScope, number>();
+    /**
+     * Epoch milliseconds when the most recent task ended, per scope. This is the
+     * baseline for the cooldown deadline, so idle time counts toward the wait.
+     */
+    private lastTaskEndAt = new Map<PauseScope, number>();
     /** Whether the queue is in drain mode (no new tasks accepted) */
     private draining = false;
     /** Callbacks waiting for the queue to become idle */
@@ -145,11 +155,16 @@ export class TaskQueueManager extends EventEmitter {
      * Get the next eligible item without removing it.
      * Pause markers are returned when encountered in order.
      * Skips frozen tasks, tasks from paused repos, and non-admitted
-     * exclusive tasks when autopilot is paused.
+     * exclusive tasks when autopilot is paused. Returns nothing while a
+     * cooldown between tasks is still deferring the next start.
      * @returns The next eligible item, or undefined if none available
      */
     peek(): QueueItem | undefined {
         this.sweepExpiries();
+        // A queue-wide cooldown holds everything back, like a pause.
+        if (this.getTaskDelayUntil('all') !== undefined) {
+            return undefined;
+        }
         for (const item of this.queue) {
             if (isPauseMarker(item)) {
                 return item;
@@ -161,6 +176,9 @@ export class TaskQueueManager extends EventEmitter {
                 if (repoId && this.pausedRepos.has(repoId)) continue;
             }
             if (this.autopilotPaused && this.isExclusiveFn?.(task) && !task.admitted) continue;
+            // An autopilot cooldown holds only autopilot/ralph work, so ask and
+            // script tasks queued behind it keep flowing.
+            if (this.isExclusiveFn?.(task) && this.getTaskDelayUntil('autopilot') !== undefined) continue;
             // Per-process serialization: skip tasks targeting a process that already has a running task
             if (task.processId && this.runningProcessIds.has(task.processId)) continue;
             return task;
@@ -277,6 +295,16 @@ export class TaskQueueManager extends EventEmitter {
             isAutopilotPaused: this.autopilotPaused,
             autopilotPausedUntil: this.autopilotPausedUntil,
         };
+        const taskDelay = this.taskDelayMinutes.get('all');
+        if (taskDelay !== undefined) {
+            stats.taskDelayMinutes = taskDelay;
+            stats.taskDelayUntil = this.getTaskDelayUntil('all');
+        }
+        const autopilotTaskDelay = this.taskDelayMinutes.get('autopilot');
+        if (autopilotTaskDelay !== undefined) {
+            stats.autopilotTaskDelayMinutes = autopilotTaskDelay;
+            stats.autopilotTaskDelayUntil = this.getTaskDelayUntil('autopilot');
+        }
         // Attach the first available pause reason (single-repo manager → at most one).
         if (this.pauseReasons.size > 0) {
             stats.pauseReason = this.pauseReasons.values().next().value;
@@ -390,6 +418,7 @@ export class TaskQueueManager extends EventEmitter {
             this.running.delete(id);
             if (running.processId) this.runningProcessIds.delete(running.processId);
             this.addToHistory(running);
+            this.recordTaskEnd(running);
             this.emitChange('updated', running);
             this.emit('taskCancelled', running);
             this.checkIdle();
@@ -445,6 +474,7 @@ export class TaskQueueManager extends EventEmitter {
         if (task.processId) this.runningProcessIds.delete(task.processId);
         this.addToHistory(task);
 
+        this.recordTaskEnd(task);
         this.emitChange('updated', task);
         this.emit('taskCompleted', task, result);
         this.checkIdle();
@@ -470,6 +500,7 @@ export class TaskQueueManager extends EventEmitter {
         if (task.processId) this.runningProcessIds.delete(task.processId);
         this.addToHistory(task);
 
+        this.recordTaskEnd(task);
         this.emitChange('updated', task);
         this.emit('taskFailed', task, typeof error === 'string' ? new Error(error) : error);
         this.checkIdle();
@@ -906,6 +937,94 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     // ========================================================================
+    // Delay Between Tasks (repeating cooldown)
+    // ========================================================================
+
+    /**
+     * Set the repeating cooldown between tasks for a scope.
+     * `null` turns it off and releases any wait that is currently pending.
+     *
+     * @param scope `'all'` holds the whole queue; `'autopilot'` holds only
+     *              autopilot/ralph work, mirroring the autopilot pause.
+     * @param minutes Whole minutes in [1, 1440], or `null` for off.
+     * @throws RangeError when `minutes` is outside that range.
+     */
+    setTaskDelayMinutes(scope: PauseScope, minutes: number | null): void {
+        if (minutes !== null && !isValidTaskDelayMinutes(minutes)) {
+            throw new RangeError(
+                `Task delay must be an integer between 1 and ${MAX_TASK_DELAY_MINUTES} minutes, or null`
+            );
+        }
+        const previous = this.taskDelayMinutes.get(scope);
+        if (minutes === null) {
+            this.taskDelayMinutes.delete(scope);
+        } else {
+            this.taskDelayMinutes.set(scope, minutes);
+        }
+        if (previous !== (minutes ?? undefined)) {
+            this.emitChange('task-delay-changed');
+            this.emit('task-delay-changed', scope);
+        }
+    }
+
+    /** Configured cooldown for a scope in minutes, or undefined when off. */
+    getTaskDelayMinutes(scope: PauseScope): number | undefined {
+        return this.taskDelayMinutes.get(scope);
+    }
+
+    /**
+     * Epoch milliseconds when the scope's cooldown elapses, or undefined when
+     * nothing is being held back — no matching task is queued, no cooldown is
+     * configured, no task has ended yet, or the deadline already passed.
+     *
+     * The deadline is measured from the last task end, not from the moment the
+     * next task is considered, so idle time counts toward the wait.
+     */
+    getTaskDelayUntil(scope: PauseScope, now = Date.now()): number | undefined {
+        const minutes = this.taskDelayMinutes.get(scope);
+        const lastEnd = this.lastTaskEndAt.get(scope);
+        if (minutes === undefined || lastEnd === undefined) {
+            return undefined;
+        }
+        const hasQueuedTaskInScope = this.queue.some(item =>
+            !isPauseMarker(item)
+            && (scope === 'all' || this.isExclusiveFn?.(item))
+        );
+        if (!hasQueuedTaskInScope) {
+            return undefined;
+        }
+        const until = lastEnd + minutes * 60_000;
+        return until > now ? until : undefined;
+    }
+
+    /**
+     * Release a pending cooldown so the next task starts right away. The
+     * configured delay is untouched and applies again after the next task ends.
+     * No-op when nothing is pending.
+     */
+    skipTaskDelay(scope: PauseScope): void {
+        if (this.getTaskDelayUntil(scope) === undefined) {
+            return;
+        }
+        this.lastTaskEndAt.delete(scope);
+        this.emitChange('task-delay-skipped');
+        this.emit('task-delay-skipped', scope);
+    }
+
+    /**
+     * Start the cooldown clock for a task that just ended, whether it
+     * succeeded, failed, or was cancelled. The autopilot clock only moves for
+     * autopilot/ralph work, matching which tasks an autopilot cooldown holds.
+     */
+    private recordTaskEnd(task: QueuedTask): void {
+        const now = Date.now();
+        this.lastTaskEndAt.set('all', now);
+        if (this.isExclusiveFn?.(task)) {
+            this.lastTaskEndAt.set('autopilot', now);
+        }
+    }
+
+    // ========================================================================
     // Per-Repo Pause Control
     // ========================================================================
 
@@ -1076,6 +1195,7 @@ export class TaskQueueManager extends EventEmitter {
             this.running.delete(task.id);
             if (task.processId) this.runningProcessIds.delete(task.processId);
             this.addToHistory(task);
+            this.recordTaskEnd(task);
             this.emitChange('updated', task);
             this.emit('taskFailed', task, new Error(error));
         }
@@ -1102,6 +1222,7 @@ export class TaskQueueManager extends EventEmitter {
         this.running.delete(id);
         if (task.processId) this.runningProcessIds.delete(task.processId);
         this.addToHistory(task);
+        this.recordTaskEnd(task);
         this.emitChange('updated', task);
         this.emit('taskFailed', task, new Error(error));
         this.checkIdle();
@@ -1120,6 +1241,8 @@ export class TaskQueueManager extends EventEmitter {
         this.pausedUntil = undefined;
         this.autopilotPaused = false;
         this.autopilotPausedUntil = undefined;
+        this.taskDelayMinutes.clear();
+        this.lastTaskEndAt.clear();
         this.draining = false;
         this.pausedRepos.clear();
         // Resolve any pending idle waiters since there's nothing left

@@ -139,6 +139,13 @@ export function SettingsSectionIcon({
                     <path d="M9 5V3M15 5V3M9 21v-2M15 21v-2M5 9H3M5 15H3M21 9h-2M21 15h-2" />
                 </svg>
             );
+        case 'language-servers':
+            return (
+                <svg {...common}>
+                    <path d="M9 8l-4 4 4 4" />
+                    <path d="M15 8l4 4-4 4" />
+                </svg>
+            );
         default:
             return null;
     }

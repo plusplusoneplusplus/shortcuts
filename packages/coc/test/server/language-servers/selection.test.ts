@@ -18,6 +18,7 @@ import {
     selectDefinitionForFile,
 } from '../../../src/server/language-servers/selection';
 import {
+    CLANGD_PRESET,
     PYTHON_PRESET,
     RUST_PRESET,
     TYPESCRIPT_PRESET,
@@ -47,6 +48,18 @@ describe('normalizeRelativePath', () => {
         ['main.ts', 'main.ts'],
     ])('normalizes %s', (input, expected) => {
         expect(normalizeRelativePath(input)).toBe(expected);
+    });
+
+    it('folds Windows case and trailing dot or space aliases', () => {
+        expect(normalizeRelativePath('SRC.\\SHARED.TXT. ', 'win32')).toBe('src/shared.txt');
+    });
+
+    it('preserves Windows traversal segments for containment checks', () => {
+        expect(normalizeRelativePath('src/nested/../../secrets', 'win32')).toBe('src/nested/../../secrets');
+    });
+
+    it('preserves case and trailing characters on POSIX', () => {
+        expect(normalizeRelativePath('SRC./SHARED.TXT. ', 'linux')).toBe('SRC./SHARED.TXT. ');
     });
 });
 
@@ -197,13 +210,14 @@ describe('resolveServerRoot', () => {
 
 describe('mergeWithBuiltIns', () => {
     it('exposes the built-in presets when nothing is configured', () => {
-        expect(mergeWithBuiltIns([]).map(d => d.id)).toEqual(['typescript', 'rust', 'python']);
+        expect(mergeWithBuiltIns([]).map(d => d.id)).toEqual(['typescript', 'rust', 'python', 'clangd']);
     });
 
     it('ships every preset disabled so language support starts off', () => {
         expect(TYPESCRIPT_PRESET.enabled).toBe(false);
         expect(RUST_PRESET.enabled).toBe(false);
         expect(PYTHON_PRESET.enabled).toBe(false);
+        expect(CLANGD_PRESET.enabled).toBe(false);
     });
 
     it('defines Rust defaults for fast diagnostics and macro expansion', () => {
@@ -233,7 +247,7 @@ describe('mergeWithBuiltIns', () => {
 
     it('appends custom definitions after the built-ins', () => {
         const merged = mergeWithBuiltIns([definition({ id: 'custom' })]);
-        expect(merged.map(d => d.id)).toEqual(['typescript', 'rust', 'python', 'custom']);
+        expect(merged.map(d => d.id)).toEqual(['typescript', 'rust', 'python', 'clangd', 'custom']);
         expect(merged.find(d => d.id === 'custom')?.builtIn).toBeUndefined();
     });
 
@@ -274,5 +288,39 @@ describe('mergeWithBuiltIns', () => {
             expect(resolveLanguageId(PYTHON_PRESET, file)).toBe('python');
         }
         expect(selectDefinitionForFile(merged, 'notebook.ipynb')).toBeUndefined();
+    });
+
+    it('defines and routes the clangd C-family preset without broad root markers', () => {
+        expect(CLANGD_PRESET).toMatchObject({
+            id: 'clangd',
+            displayName: 'C / C++ (clangd)',
+            languageIds: ['c', 'cpp', 'objective-c', 'objective-cpp', 'cuda'],
+            command: 'clangd',
+            args: ['--background-index=false'],
+            rootMarkers: ['compile_commands.json', '.clangd', 'compile_flags.txt'],
+            priority: 100,
+            sessionScope: 'workspace',
+            maxSessions: 4,
+            requestTimeoutMs: 120_000,
+            idleTimeoutMs: 30 * 60_000,
+            enabled: false,
+            builtIn: true,
+        });
+        expect(CLANGD_PRESET.rootMarkers).not.toContain('.git');
+        expect(CLANGD_PRESET.rootMarkers).not.toContain('CMakeLists.txt');
+        expect(CLANGD_PRESET.args).not.toContain('--offset-encoding=utf-8');
+
+        const merged = mergeWithBuiltIns([{ ...CLANGD_PRESET, enabled: true }]);
+        for (const [file, languageId] of [
+            ['src/main.c', 'c'],
+            ['src/main.cpp', 'cpp'],
+            ['include/widget.h', 'cpp'],
+            ['src/kernel.cu', 'cuda'],
+            ['src/view.m', 'objective-c'],
+            ['src/view.mm', 'objective-cpp'],
+        ] as const) {
+            expect(selectDefinitionForFile(merged, file)?.id).toBe('clangd');
+            expect(resolveLanguageId(CLANGD_PRESET, file)).toBe(languageId);
+        }
     });
 });

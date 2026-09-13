@@ -81,7 +81,7 @@ src/
 | `infrastructure/` | Server bootstrap (composition root) |
 | `routes/` | Centralized route registration |
 | `providers/` | Provider abstraction for AI/PRs |
-| `repos/` | Repository management endpoints |
+| `repos/` | Repository management endpoints. `RepoTreeService` keeps native file indexes warm and lazily builds one persistent C-family symbol index per workspace at `repos/<workspaceId>/symbol-index.sqlite`; symbol queries report bounded scanning/indexing progress while the first build returns `indexed: false`, later exact/prefix queries read SQLite, and repository writes debounce and coalesce repo-relative paths into targeted background refreshes |
 | `work-items/` | Work-items REST + executors and their command services: `work-item-commands.ts` (create/update), `work-item-execution-command.ts`, `work-item-pr-submission-command.ts`, `work-item-ai-review-command.ts`, `work-item-comment-resolution-command.ts`, `work-item-from-chat-command.ts`. `work-item-execution-settings.ts` parses provider/model/reasoning-effort/effort-tier/auto-routing/execution-mode; `work-item-execution-shared.ts` holds shared context, the explicit `storageRepoId` vs `commandRepoId` scope pair, git runner injection, and cache/broadcast settlement |
 | `preferences/` | Schemas/types, repo-scoped and global JSON repositories, pure PATCH/import merge policy, sync/work-item live effects, route registration. `preferences-handler.ts` is a compatibility barrel |
 | `dreams/` | Workspace-scoped card/run types, deterministic candidate prefiltering, eligible conversation source selection, process-lifecycle-backed read-only analyzer/critic validation, lifecycle storage with provider/model/timeout attribution and analyzer/critic process links, durable dedup/coverage history, queue-backed visible `dream-run` orchestration with quiet-window readiness checks, opt-in idle scheduling, Dreams REST routes |
@@ -171,6 +171,8 @@ Ask and autopilot first turns are the same code path: `buildStandardModeOptions(
 `BaseExecutor` holds process-local execution state in `ProcessSessionRegistry` plus the shared streaming-chunk handler and `capturePartialTurn()`, which both chat paths use to persist an interrupted assistant turn. The registry separates streaming buffers/throttle/finalization, serialized turn writes, pending follow-up suggestions, live ask-user handles, and cross-turn Ralph grill state; `cleanupSession()` clears all but the Ralph grill state. Follow-up cleanup also clears persisted `pendingAskUser` records.
 
 `createQueueExecutorBridge()` builds the `QueueExecutor` with `autoStart: false`, wires both queue manager and queue executor references, then calls `executor.start()` only if the caller asked for auto-start. Queue-control methods needing a fully wired runtime fail fast when the bridge has a queue manager but no queue executor reference.
+
+SQLite queue persistence stores manual pause state and repeating All/Autopilot task-delay settings per repo in `queue_repo_state`. Delay changes write immediately through queue events; skipping a current cooldown does not change the stored setting. Restore applies the configured minutes but not the last-task-end timestamp, so the first task after restart is not delayed.
 
 ## Configuration
 

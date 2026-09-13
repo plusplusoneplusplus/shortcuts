@@ -336,7 +336,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             const id = decodeURIComponent(match![1]);
 
             // Skip known sub-routes
-            if (['stats', 'history', 'pause', 'resume', 'pause-autopilot', 'resume-autopilot', 'force-fail-running', 'bulk', 'repos', 'pause-marker', 'summarize'].includes(id)) {
+            if (['stats', 'history', 'pause', 'resume', 'pause-autopilot', 'resume-autopilot', 'task-delay', 'force-fail-running', 'bulk', 'repos', 'pause-marker', 'summarize'].includes(id)) {
                 return sendError(res, 404, 'Task not found');
             }
 

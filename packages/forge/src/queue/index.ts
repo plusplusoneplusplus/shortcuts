@@ -62,6 +62,7 @@ export {
     // Pause marker
     PauseDurationHours,
     PauseScope,
+    TaskDelayMinutes,
     PauseMarker,
     QueueItem,
 
@@ -104,6 +105,8 @@ export {
 
     // Utilities
     generateTaskId,
+    MAX_TASK_DELAY_MINUTES,
+    isValidTaskDelayMinutes,
 
     // Queue process ID helpers
     QUEUE_PROCESS_PREFIX,
