@@ -1031,6 +1031,9 @@ timeout: 300
                 '  autoClassifyTeam: true',
                 'servers:',
                 '  enabled: true',
+                'languageServers:',
+                '  maxSessions: 40',
+                '  maxSessionsPerWorkspace: 12',
                 'ralph:',
                 '  enabled: true',
                 '  finalCheck:',
@@ -1151,6 +1154,38 @@ timeout: 300
             // CONFIG_SOURCE_KEYS without a matching line in the YAML above.
             const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
             expect(notFromFile).toEqual([]);
+        });
+
+        it('reads the language-server session limits from the config file', () => {
+            const configPath = path.join(tmpDir, 'language-servers.yaml');
+            fs.writeFileSync(configPath, [
+                'languageServers:',
+                '  maxSessions: 40',
+                '  maxSessionsPerWorkspace: 12',
+            ].join('\n'));
+
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.resolved.languageServers).toEqual({
+                maxSessions: 40,
+                maxSessionsPerWorkspace: 12,
+            });
+            expect(result.sources['languageServers.maxSessions']).toBe('file');
+            expect(result.sources['languageServers.maxSessionsPerWorkspace']).toBe('file');
+        });
+
+        it('falls back to the default language-server session limits', () => {
+            const configPath = path.join(tmpDir, 'no-language-servers.yaml');
+            fs.writeFileSync(configPath, 'model: gpt-4\n');
+
+            const result = getResolvedConfigWithSource(configPath);
+
+            expect(result.resolved.languageServers).toEqual({
+                maxSessions: 24,
+                maxSessionsPerWorkspace: 8,
+            });
+            expect(result.sources['languageServers.maxSessions']).toBe('default');
+            expect(result.sources['languageServers.maxSessionsPerWorkspace']).toBe('default');
         });
 
         it('snapshots comprehensive resolved config and sources', () => {
@@ -1375,6 +1410,10 @@ timeout: 300
                   "kusto": {
                     "enabled": false,
                   },
+                  "languageServers": {
+                    "maxSessions": 24,
+                    "maxSessionsPerWorkspace": 8,
+                  },
                   "logging": {
                     "dir": "\${HOME}/logs",
                     "level": "debug",
@@ -1563,6 +1602,8 @@ timeout: 300
                   "groupSingleLineMessages": "file",
                   "idleTimeout": "file",
                   "kusto.enabled": "default",
+                  "languageServers.maxSessions": "default",
+                  "languageServers.maxSessionsPerWorkspace": "default",
                   "mapReduce.enabled": "file",
                   "mcpConfig": "file",
                   "mcpOauth.autoRefresh.enabled": "default",
