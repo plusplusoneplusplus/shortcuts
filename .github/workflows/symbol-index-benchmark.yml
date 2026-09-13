@@ -13,8 +13,30 @@ permissions:
   contents: read
 
 jobs:
+  resolve-corpus:
+    runs-on: ubuntu-latest
+    outputs:
+      llvm_sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Resolve LLVM revision
+        id: resolve
+        shell: bash
+        env:
+          LLVM_REF: ${{ inputs.llvm_ref }}
+        run: |
+          if [[ "$LLVM_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            sha="${LLVM_REF,,}"
+          else
+            sha="$(git ls-remote https://github.com/llvm/llvm-project.git \
+              "$LLVM_REF" "refs/heads/$LLVM_REF" "refs/tags/$LLVM_REF" \
+              "refs/tags/$LLVM_REF^{}" | tail -n 1 | cut -f1)"
+          fi
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   benchmark:
     name: ${{ matrix.label }}
+    needs: resolve-corpus
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -53,10 +75,14 @@ jobs:
       - name: Clone LLVM corpus
         shell: bash
         env:
-          LLVM_REF: ${{ inputs.llvm_ref }}
+          LLVM_SHA: ${{ needs.resolve-corpus.outputs.llvm_sha }}
         run: |
-          git -c core.autocrlf=false clone --depth 1 --branch "$LLVM_REF" \
-            https://github.com/llvm/llvm-project.git "$GITHUB_WORKSPACE/llvm-project"
+          git init "$GITHUB_WORKSPACE/llvm-project"
+          git -C "$GITHUB_WORKSPACE/llvm-project" remote add origin \
+            https://github.com/llvm/llvm-project.git
+          git -C "$GITHUB_WORKSPACE/llvm-project" fetch --depth 1 origin "$LLVM_SHA"
+          git -C "$GITHUB_WORKSPACE/llvm-project" -c core.autocrlf=false \
+            checkout --detach FETCH_HEAD
 
       - name: Run storage benchmark
         shell: bash
