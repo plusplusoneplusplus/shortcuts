@@ -32,6 +32,7 @@ const RELEASED_TRIPLES = [
     'darwin-arm64',
     'darwin-x64',
     'win32-x64-msvc',
+    'win32-arm64-msvc',
 ] as const;
 
 /** Raised when the addon is required but cannot be loaded. */

@@ -50,6 +50,7 @@ describe('binary naming', () => {
         expect(nativeTriple('linux', 'x64')).toBe('linux-x64-gnu');
         expect(nativeTriple('linux', 'arm64')).toBe('linux-arm64-gnu');
         expect(nativeTriple('win32', 'x64')).toBe('win32-x64-msvc');
+        expect(nativeTriple('win32', 'arm64')).toBe('win32-arm64-msvc');
         expect(nativeTriple('darwin', 'arm64')).toBe('darwin-arm64');
         expect(nativeTriple('darwin', 'x64')).toBe('darwin-x64');
     });
@@ -57,6 +58,7 @@ describe('binary naming', () => {
     it('names binaries after the triple', () => {
         expect(nativeBinaryName('linux', 'x64')).toBe('coc-native.linux-x64-gnu.node');
         expect(nativeBinaryName('darwin', 'arm64')).toBe('coc-native.darwin-arm64.node');
+        expect(nativeBinaryName('win32', 'arm64')).toBe('coc-native.win32-arm64-msvc.node');
     });
 
     it('prefers a locally built binary over a prebuilt one', () => {

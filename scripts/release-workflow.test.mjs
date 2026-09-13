@@ -42,12 +42,31 @@ test("release workflow heredoc content stays inside the YAML run block", () => {
     assert.doesNotMatch(workflow, /^EOF$/m);
 });
 
-// The macOS app ships as an arm64-only .dmg, so a darwin-x64 prebuilt has no
-// consumer — building one only burns a macos-13 runner on every release.
-test("release workflow does not build a macOS x64 native binary", () => {
-    assert.doesNotMatch(workflow, /darwin-x64/);
-    assert.doesNotMatch(workflow, /macos-13/);
-    assert.match(workflow, /triple: darwin-arm64/);
+test("release workflow builds the native addon on all six supported targets", () => {
+    const job = jobBlock("build-native");
+    const targets = [
+        ["ubuntu-latest", "linux-x64-gnu"],
+        ["ubuntu-24.04-arm", "linux-arm64-gnu"],
+        ["macos-latest", "darwin-arm64"],
+        ["macos-15-intel", "darwin-x64"],
+        ["windows-latest", "win32-x64-msvc"],
+        ["windows-11-arm", "win32-arm64-msvc"],
+    ];
+
+    for (const [runner, triple] of targets) {
+        assert.match(
+            job,
+            new RegExp(`- runner: ${runner}\\n\\s+triple: ${triple}`),
+            `${triple} must build on ${runner}`,
+        );
+    }
+});
+
+test("desktop builds download only the native addon for their architecture", () => {
+    assert.match(jobBlock("build-mac"), /name: coc-native-darwin-arm64/);
+    assert.doesNotMatch(jobBlock("build-mac"), /pattern: coc-native-darwin-\*/);
+    assert.match(jobBlock("build-win"), /name: coc-native-win32-x64-msvc/);
+    assert.doesNotMatch(jobBlock("build-win"), /pattern: coc-native-win32-\*/);
 });
 
 test("release artifacts cannot bypass the required native addon", () => {

@@ -98,12 +98,14 @@ jobs:
           - runner: ubuntu-24.04-arm
             triple: linux-arm64-gnu
             container: node:24-bookworm
-          # The macOS app ships as an arm64-only .dmg, so an Intel Mac
-          # prebuilt would have no consumer.
           - runner: macos-latest
             triple: darwin-arm64
+          - runner: macos-15-intel
+            triple: darwin-x64
           - runner: windows-latest
             triple: win32-x64-msvc
+          - runner: windows-11-arm
+            triple: win32-arm64-msvc
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -190,7 +192,7 @@ jobs:
       - name: Download native addon binaries
         uses: actions/download-artifact@v4
         with:
-          pattern: coc-native-darwin-*
+          name: coc-native-darwin-arm64
           path: packages/coc-native/artifacts
 
       - name: Stage native addon binaries
@@ -251,7 +253,7 @@ jobs:
       - name: Download native addon binaries
         uses: actions/download-artifact@v4
         with:
-          pattern: coc-native-win32-*
+          name: coc-native-win32-x64-msvc
           path: packages/coc-native/artifacts
 
       - name: Stage native addon binaries
