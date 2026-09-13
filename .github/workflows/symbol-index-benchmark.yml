@@ -108,6 +108,31 @@ jobs:
         run: |
           choco install llvm --yes --no-progress
           "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsRoot = & $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          $vcInclude = Get-ChildItem "$vsRoot\VC\Tools\MSVC" -Directory |
+            Sort-Object Name -Descending |
+            Select-Object -First 1 |
+            ForEach-Object { Join-Path $_.FullName "include" }
+          $sdkRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\Include"
+          $sdkVersion = Get-ChildItem $sdkRoot -Directory |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          $includes = @(
+            $vcInclude,
+            (Join-Path $sdkVersion.FullName "ucrt"),
+            (Join-Path $sdkVersion.FullName "shared"),
+            (Join-Path $sdkVersion.FullName "um"),
+            (Join-Path $sdkVersion.FullName "winrt"),
+            (Join-Path $sdkVersion.FullName "cppwinrt")
+          )
+          $flags = @("--driver-mode=cl", "/std:c++17") +
+            ($includes | ForEach-Object { "/I$_" })
+          $json = ConvertTo-Json -Compress -InputObject $flags
+          "COC_CLANGD_TEST_FALLBACK_FLAGS=$json" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Verify clangd
         run: clangd --version

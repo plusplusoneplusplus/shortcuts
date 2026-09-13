@@ -14,8 +14,10 @@ interface Diagnostic {
     message: string;
 }
 
-const SOURCE = `int answer() {
-    return 42;
+const SOURCE = `#include <vector>
+
+int answer() {
+    return std::vector<int>{42}.front();
 }
 
 int main() {
@@ -28,6 +30,19 @@ const describeWithClangd = discoveredRuntime.origin === 'unavailable' ? describe
 let root: string;
 let session: LanguageServerSession;
 let diagnostics: Diagnostic[] = [];
+let receivedDiagnostics = false;
+
+function fallbackFlags(): string[] {
+    const configured = process.env.COC_CLANGD_TEST_FALLBACK_FLAGS;
+    if (!configured) {
+        return ['-std=c++17'];
+    }
+    const parsed: unknown = JSON.parse(configured);
+    if (!Array.isArray(parsed) || !parsed.every(flag => typeof flag === 'string')) {
+        throw new Error('COC_CLANGD_TEST_FALLBACK_FLAGS must be a JSON string array');
+    }
+    return parsed;
+}
 
 function positionAt(text: string, marker: string): { line: number; character: number } {
     const target = text.indexOf(marker);
@@ -55,9 +70,13 @@ async function waitFor(
 describeWithClangd('real clangd runtime', () => {
     beforeAll(async () => {
         root = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'coc-lsp-clangd-'));
-        fs.writeFileSync(path.join(root, '.clangd'), 'CompileFlags:\n  Add: [-std=c++17]\n');
+        fs.writeFileSync(path.join(root, '.clangd'), '{}\n');
         fs.writeFileSync(path.join(root, 'main.cpp'), SOURCE);
-        const enabled: LanguageServerDefinition = { ...CLANGD_PRESET, enabled: true };
+        const enabled: LanguageServerDefinition = {
+            ...CLANGD_PRESET,
+            enabled: true,
+            initializationOptions: { fallbackFlags: fallbackFlags() },
+        };
         const prepared = prepareDefinitionForRoot(enabled, root);
         session = new LanguageServerSession({
             definition: prepared.definition,
@@ -69,6 +88,7 @@ describeWithClangd('real clangd runtime', () => {
             idleTimeoutMs: 10 * 60_000,
         });
         session.onNotification('textDocument/publishDiagnostics', params => {
+            receivedDiagnostics = true;
             diagnostics = (params as { diagnostics?: Diagnostic[] }).diagnostics ?? [];
         });
         await session.start();
@@ -91,6 +111,8 @@ describeWithClangd('real clangd runtime', () => {
 
     it('provides hover and same-file definition without background indexing', async () => {
         const uri = pathToFileURL(path.join(root, 'main.cpp')).href;
+        await waitFor(() => receivedDiagnostics, 'initial clangd diagnostics');
+        expect(diagnostics).toEqual([]);
         const hover = await session.sendRequest('textDocument/hover', {
             textDocument: { uri },
             position: positionAt(SOURCE, 'answer();'),
