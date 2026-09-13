@@ -139,6 +139,27 @@ describe('explorerTabsModel — opening files', () => {
         })).toBe(state);
     });
 
+    it('shows candidate provenance until a plain open replaces it', () => {
+        let state = openFileTab(EMPTY_EXPLORER_TABS, {
+            path: 'a.hpp',
+            name: 'a.hpp',
+            preview: false,
+            line: 12,
+            column: 4,
+            symbolCandidate: true,
+        });
+        expect(state.tabs[0].symbolCandidate).toBe(true);
+
+        state = openFileTab(state, {
+            path: 'a.hpp',
+            name: 'a.hpp',
+            preview: false,
+            line: 12,
+            column: 4,
+        });
+        expect(state.tabs[0].symbolCandidate).toBeUndefined();
+    });
+
     it('clears a reveal line once the editor has consumed it', () => {
         const state = openFileTab(EMPTY_EXPLORER_TABS, {
             path: 'a.ts', name: 'a.ts', preview: true, line: 3, column: 8,
@@ -399,7 +420,14 @@ describe('explorerTabsModel — labels', () => {
 describe('explorerTabsModel — persistence codec', () => {
     function session(): ExplorerTabsState {
         let state = openPinned(EMPTY_EXPLORER_TABS, 'src/a.ts');
-        state = openFileTab(state, { path: 'src/b.ts', name: 'b.ts', preview: true, line: 7, column: 3 });
+        state = openFileTab(state, {
+            path: 'src/b.ts',
+            name: 'b.ts',
+            preview: true,
+            line: 7,
+            column: 3,
+            symbolCandidate: true,
+        });
         state = openSearchTab(state, { query: 'foo', name: 'Search: foo' });
         state = openFileTab(state, {
             path: 'trusted:/etc/hosts',

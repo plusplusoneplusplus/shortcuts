@@ -59,6 +59,8 @@ export interface PreviewPaneProps {
      * unset; a language-server navigation supplies the target symbol's column.
      */
     revealColumn?: number;
+    /** Shows that this location came from the fuzzy repository symbol index. */
+    symbolCandidate?: boolean;
     onClose?: () => void;
     /** When true the editor is non-editable and save/dirty UI is suppressed. */
     readOnly?: boolean;
@@ -96,13 +98,19 @@ export interface PreviewPaneProps {
      * navigates within its own file — Monaco does that itself — but a
      * cross-file jump is declined, so nothing silently disappears.
      */
-    onNavigate?: (target: { path: string; name: string; line: number; column: number }) => void;
+    onNavigate?: (target: {
+        path: string;
+        name: string;
+        line: number;
+        column: number;
+        symbolCandidate?: true;
+    }) => void;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine, revealColumn, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -203,6 +211,7 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             name: target.path.split('/').pop() || target.path,
             line: target.line,
             column: target.column,
+            ...(target.symbolCandidate ? { symbolCandidate: true } : {}),
         });
         return true;
     }, [repoId]);
@@ -372,6 +381,15 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
                         onRestart={restartLanguageServer}
                         variant="corner"
                     />
+                </div>
+            )}
+            {!loading && !error && symbolCandidate && (
+                <div
+                    className="absolute bottom-1 left-3 z-10 rounded border border-amber-500/50 bg-amber-100/95 px-2 py-0.5 text-[10px] font-medium text-amber-900 shadow-sm dark:bg-amber-950/95 dark:text-amber-200"
+                    title="This file was opened from a repository symbol candidate that clangd did not confirm."
+                    data-testid="symbol-candidate-badge"
+                >
+                    Symbol candidate
                 </div>
             )}
         </div>

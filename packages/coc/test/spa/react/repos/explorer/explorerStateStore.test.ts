@@ -139,6 +139,27 @@ describe('useExplorerPreviewFile', () => {
         expect(result.current[0]).toEqual({ path: 'a/b.ts', name: 'b.ts' });
     });
 
+    it('round-trips symbol-candidate provenance with a preview file', () => {
+        const { result, unmount } = renderHook(() => useExplorerPreviewFile('ws-1'));
+        act(() => result.current[1]({
+            path: 'include/widget.hpp',
+            name: 'widget.hpp',
+            line: 5,
+            column: 3,
+            symbolCandidate: true,
+        }));
+        unmount();
+
+        const restored = renderHook(() => useExplorerPreviewFile('ws-1'));
+        expect(restored.result.current[0]).toEqual({
+            path: 'include/widget.hpp',
+            name: 'widget.hpp',
+            line: 5,
+            column: 3,
+            symbolCandidate: true,
+        });
+    });
+
     it('ignores malformed preview payloads', () => {
         localStorage.setItem(explorerPreviewStorageKey('ws-1'), JSON.stringify({ path: 5 }));
         const { result } = renderHook(() => useExplorerPreviewFile('ws-1'));

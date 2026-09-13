@@ -22,6 +22,8 @@
 
 import { parseBrowserDocumentUri } from './documentStore';
 
+export const SYMBOL_CANDIDATE_FRAGMENT = 'symbol-index-candidate';
+
 /** Where a navigation wants to land: a repo file and a one-based position. */
 export interface LanguageNavigationTarget {
     workspaceId: string;
@@ -31,6 +33,8 @@ export interface LanguageNavigationTarget {
     line: number;
     /** One-based column of the target range's start. */
     column: number;
+    /** Present only when the repository symbol index supplied this target. */
+    symbolCandidate?: true;
 }
 
 /**
@@ -44,8 +48,10 @@ export interface NavigationDisposable {
     dispose(): void;
 }
 
-/** The slice of a text model this module uses — identity is all it needs. */
-export type NavigationModel = object;
+/** The slice of a text model this module uses for identity and same-file checks. */
+export interface NavigationModel {
+    uri?: { toString(): string };
+}
 
 /** The slice of a code editor Monaco hands the opener. */
 export interface NavigationSourceEditor {
@@ -120,10 +126,26 @@ export function installLanguageEditorOpener(monaco: NavigationMonaco): Navigatio
             if (!model) return false;
             const handler = navigators.get(model);
             if (!handler) return false;
-            const document = parseBrowserDocumentUri(resource.toString());
+            const resourceUri = resource.toString();
+            const document = parseBrowserDocumentUri(resourceUri);
             if (!document) return false;
+            const sourceDocument = model.uri
+                ? parseBrowserDocumentUri(model.uri.toString())
+                : null;
+            if (
+                sourceDocument
+                && sourceDocument.workspaceId === document.workspaceId
+                && sourceDocument.path === document.path
+            ) {
+                return false;
+            }
             const { line, column } = toRevealPosition(selectionOrPosition);
-            return handler({ ...document, line, column }) !== false;
+            return handler({
+                ...document,
+                line,
+                column,
+                ...(resourceUri.endsWith(`#${SYMBOL_CANDIDATE_FRAGMENT}`) ? { symbolCandidate: true } : {}),
+            }) !== false;
         },
     });
     const disposable: NavigationDisposable = {

@@ -260,4 +260,14 @@ describe('PreviewPane — surface-aware navigation (AC-03)', () => {
 
         expect(getByTestId('mock-monaco-textarea').getAttribute('data-reveal')).toBe('12:17');
     });
+
+    it('labels a destination opened from the repository symbol index', async () => {
+        const { getByTestId } = await renderPane({ symbolCandidate: true });
+
+        expect(getByTestId('symbol-candidate-badge')).toHaveTextContent('Symbol candidate');
+        expect(getByTestId('symbol-candidate-badge')).toHaveAttribute(
+            'title',
+            'This file was opened from a repository symbol candidate that clangd did not confirm.',
+        );
+    });
 });

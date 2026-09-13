@@ -561,7 +561,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
      */
     const openNavigationFile = useCallback(
         (
-            file: { path: string; name: string; line: number; column: number },
+            file: { path: string; name: string; line: number; column: number; symbolCandidate?: true },
             origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
         ) => {
             const input = explorerFileTabInput(file, {}, {

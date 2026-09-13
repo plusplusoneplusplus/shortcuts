@@ -179,6 +179,27 @@ describe('unifiedPanelTabsModel — identity and deduplication', () => {
         expect(activeTab(state, CHAT_1)?.readOnly).toBe(true);
     });
 
+    it('shows candidate provenance until an exact open replaces it', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, {
+            kind: 'file',
+            resourceId: 'src/a.hpp',
+            chatId: CHAT_1,
+            line: 8,
+            column: 2,
+            symbolCandidate: true,
+        });
+        expect(activeTab(state, CHAT_1)?.symbolCandidate).toBe(true);
+
+        state = open(state, {
+            kind: 'file',
+            resourceId: 'src/a.hpp',
+            chatId: CHAT_1,
+            line: 8,
+            column: 2,
+        });
+        expect(activeTab(state, CHAT_1)?.symbolCandidate).toBeUndefined();
+    });
+
     it('returns the same state reference when an open changes nothing', () => {
         const state = baseState();
         const again = open(state, { kind: 'file', resourceId: 'src/a.ts', label: 'a.ts', chatId: CHAT_1 });
@@ -292,7 +313,17 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
 
     it('round-trips tabs, order and per-chat selections', () => {
         let state = baseState();
-        state = open(state, { kind: 'file', resourceId: 'src/b.ts', label: 'b.ts', chatId: CHAT_2, repoLabel: 'member-b', readOnly: true, line: 7, column: 3 });
+        state = open(state, {
+            kind: 'file',
+            resourceId: 'src/b.ts',
+            label: 'b.ts',
+            chatId: CHAT_2,
+            repoLabel: 'member-b',
+            readOnly: true,
+            line: 7,
+            column: 3,
+            symbolCandidate: true,
+        });
         state = activateTab(state, CHAT_2, state.workspaceTabs[0].id);
 
         const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
@@ -422,6 +453,18 @@ describe('unifiedPanelTabsModel — preview tabs', () => {
         }
         expect(previewTab(state, CHAT_1)?.resourceId).toBe('src/b.ts');
         expect(previewTab(state, CHAT_2)?.resourceId).toBe('src/c.ts');
+    });
+
+    it('clears candidate provenance when a plain preview open focuses the tab', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, {
+            kind: 'file',
+            resourceId: 'src/a.hpp',
+            symbolCandidate: true,
+        });
+        expect(activeTab(state, null)?.symbolCandidate).toBe(true);
+
+        state = preview(state, 'src/a.hpp');
+        expect(activeTab(state, null)?.symbolCandidate).toBeUndefined();
     });
 
     it('drops a selection that pointed at the replaced preview', () => {

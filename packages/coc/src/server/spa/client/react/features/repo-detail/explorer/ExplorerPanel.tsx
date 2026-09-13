@@ -76,7 +76,7 @@ export interface ExplorerPanelProps {
      * shows the file itself and leaves this unset.
      */
     onOpenFile?: (
-        file: { path: string; name: string; line?: number; column?: number },
+        file: { path: string; name: string; line?: number; column?: number; symbolCandidate?: true },
         options: { preview: boolean; readOnly?: boolean },
     ) => void;
     /**
@@ -540,7 +540,7 @@ export function ExplorerPanel({
      * exactly as the Explorer has always done.
      */
     const openFileInEditor = useCallback((
-        file: { path: string; name: string; line?: number; column?: number },
+        file: { path: string; name: string; line?: number; column?: number; symbolCandidate?: true },
         options: { preview: boolean; readOnly?: boolean },
     ) => {
         // Navigator mode hands the open to the host and keeps no buffer of its
@@ -565,7 +565,7 @@ export function ExplorerPanel({
      * preview slot by the next tree click.
      */
     const navigateToFile = useCallback((target: {
-        path: string; name: string; line: number; column: number;
+        path: string; name: string; line: number; column: number; symbolCandidate?: true;
     }) => {
         openFileInEditor(target, { preview: false });
     }, [openFileInEditor]);
@@ -1538,6 +1538,7 @@ export function ExplorerPanel({
                                                     fileName={tab.name}
                                                     revealLine={tab.line}
                                                     revealColumn={tab.column}
+                                                    symbolCandidate={tab.symbolCandidate}
                                                     readOnly={tab.readOnly}
                                                     onNavigate={navigateToFile}
                                                     onClose={isMobile ? undefined : () => handleCloseTab(tab.id)}
@@ -1599,6 +1600,7 @@ export function ExplorerPanel({
                                     fileName={previewFile.name}
                                     revealLine={previewFile.line}
                                     revealColumn={previewFile.column}
+                                    symbolCandidate={previewFile.symbolCandidate}
                                     onClose={isMobile ? undefined : () => setPreviewFile(null)}
                                     onDirtyChange={reportPreviewDirty}
                                     onNavigate={navigateToFile}

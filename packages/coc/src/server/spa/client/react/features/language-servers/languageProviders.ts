@@ -35,6 +35,7 @@
  */
 
 import type { LanguageDocumentView } from './documentStore';
+import { SYMBOL_CANDIDATE_FRAGMENT } from './editorNavigation';
 import type { LanguageServerSessionStateView } from './languageServerClient';
 import { toLspPosition, type MonacoPosition, type MonacoRange } from './monacoBridge';
 import {
@@ -285,8 +286,6 @@ export interface RegisterLanguageProvidersOptions {
         }[]>;
     };
 }
-
-const SYMBOL_CANDIDATE_FRAGMENT = 'symbol-index-candidate';
 
 function definitionKey(link: ProviderLocationLink): string {
     return `${link.uri.toString().replace(/#.*$/, '')}:${link.range.startLineNumber}`;

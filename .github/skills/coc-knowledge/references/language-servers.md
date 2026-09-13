@@ -60,8 +60,10 @@ configuration.
 C and C++ go-to-definition combines clangd locations with the owning workspace's
 persistent symbol-index candidates in the Monaco provider. Exact locations sort
 first, results are deduplicated by file and line, and candidate URIs carry a
-`symbol-index-candidate` fragment. The index continues to answer when clangd is
-disabled, unavailable, or does not advertise definition support.
+`symbol-index-candidate` fragment. Explorer and unified-panel tabs preserve that
+provenance and show an amber `Symbol candidate` pill on the destination until a
+plain or exact cross-file open replaces it. The index continues to answer when
+clangd is disabled, unavailable, or does not advertise definition support.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.

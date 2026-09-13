@@ -132,6 +132,41 @@ describe('editor opener', () => {
         expect(explorerTargets).toEqual([]);
     });
 
+    it('marks repository symbol-index targets as candidates', async () => {
+        const opener = installOpener();
+        const model = { id: 'explorer' };
+        const targets: LanguageNavigationTarget[] = [];
+        registerEditorNavigator(model, target => { targets.push(target); });
+
+        await opener.open(
+            model,
+            `${browserDocumentUri('ws-1', 'src/types.hpp')}#symbol-index-candidate`,
+            { lineNumber: 5, column: 3 },
+        );
+
+        expect(targets).toEqual([{
+            workspaceId: 'ws-1',
+            path: 'src/types.hpp',
+            line: 5,
+            column: 3,
+            symbolCandidate: true,
+        }]);
+    });
+
+    it('leaves same-file navigation to Monaco without changing tab provenance', async () => {
+        const opener = installOpener();
+        const model = { uri: { toString: () => browserDocumentUri('ws-1', 'src/types.hpp') } };
+        const targets: LanguageNavigationTarget[] = [];
+        registerEditorNavigator(model, target => { targets.push(target); });
+
+        expect(await opener.open(
+            model,
+            `${browserDocumentUri('ws-1', 'src/types.hpp')}#symbol-index-candidate`,
+            { lineNumber: 5, column: 3 },
+        )).toBe(false);
+        expect(targets).toEqual([]);
+    });
+
     it('declines a model with no navigator and a source with no model', async () => {
         const opener = installOpener();
         const uri = browserDocumentUri('ws-1', 'src/types.ts');

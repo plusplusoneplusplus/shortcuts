@@ -56,6 +56,8 @@ export interface ExplorerPreviewFile {
      * navigation supplies one.
      */
     column?: number;
+    /** Present when a fuzzy repository symbol lookup opened this location. */
+    symbolCandidate?: true;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,10 +164,11 @@ const PREVIEW_CODEC: Codec<ExplorerPreviewFile | null> = {
     parse(raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.path === 'string' && typeof parsed.name === 'string') {
-            if (typeof parsed.line !== 'number') return { path: parsed.path, name: parsed.name };
+            const candidate = parsed.symbolCandidate === true ? { symbolCandidate: true as const } : {};
+            if (typeof parsed.line !== 'number') return { path: parsed.path, name: parsed.name, ...candidate };
             return typeof parsed.column === 'number'
-                ? { path: parsed.path, name: parsed.name, line: parsed.line, column: parsed.column }
-                : { path: parsed.path, name: parsed.name, line: parsed.line };
+                ? { path: parsed.path, name: parsed.name, line: parsed.line, column: parsed.column, ...candidate }
+                : { path: parsed.path, name: parsed.name, line: parsed.line, ...candidate };
         }
         return null;
     },
