@@ -503,7 +503,7 @@ export interface SendMessageOptions {
      * always grants the system temp directory.
      */
     additionalDirectories?: string[];
-    /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 6 hours) */
+    /** Optional timeout in milliseconds (default: DEFAULT_AI_TIMEOUT_MS = 8 hours) */
     timeoutMs?: number;
     /** Abort signal for cooperative request cancellation. */
     signal?: AbortSignal;

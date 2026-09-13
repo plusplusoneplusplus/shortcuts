@@ -40,9 +40,7 @@ import type { WarmStateChangeListener, WarmStatus } from './warm-client-registry
 import { WarmStatusBroadcaster } from './warm-status-broadcaster';
 import { runWithWarmClient } from './warm-client-runner';
 import { resolveWarmClientTtlMs } from './warm-client-config';
-
-const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
-const DEFAULT_AI_IDLE_TIMEOUT_MS = 60 * 60 * 1000;
+import { DEFAULT_AI_TIMEOUT_MS, DEFAULT_AI_IDLE_TIMEOUT_MS } from './timeout-defaults';
 
 // Re-export types that were previously exported from this file
 export {

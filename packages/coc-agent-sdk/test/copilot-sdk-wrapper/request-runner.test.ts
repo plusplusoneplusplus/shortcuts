@@ -8,7 +8,7 @@ import { RequestRunner } from '../../src/request-runner';
 import { denyAllPermissions } from '../../src/types';
 import { SessionManager } from '../../src/session-manager';
 import { createMockSession, createStreamingMockSession } from '../helpers/mock-sdk';
-const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+import { DEFAULT_AI_TIMEOUT_MS, DEFAULT_AI_IDLE_TIMEOUT_MS } from '../../src/timeout-defaults';
 import { loadEffectiveMcpConfig } from '../../src/mcp-config-loader';
 
 
@@ -42,7 +42,7 @@ function makeRunner(overrides?: {
     const isAvailable = overrides?.isAvailable ?? vi.fn().mockResolvedValue({ available: true, sdkPath: '/fake/sdk' });
     const createClient = overrides?.createClient ?? vi.fn().mockResolvedValue(mockClient);
 
-    const runner = new RequestRunner(isAvailable, createClient, sessionManager, DEFAULT_AI_TIMEOUT_MS, 3_600_000);
+    const runner = new RequestRunner(isAvailable, createClient, sessionManager, DEFAULT_AI_TIMEOUT_MS, DEFAULT_AI_IDLE_TIMEOUT_MS);
     return { runner, sessionManager, mockClient, mockSession, isAvailable, createClient };
 }
 

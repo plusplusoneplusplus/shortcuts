@@ -214,6 +214,11 @@ export {
 } from './warm-client-config';
 
 export {
+    DEFAULT_AI_TIMEOUT_MS,
+    DEFAULT_AI_IDLE_TIMEOUT_MS,
+} from './timeout-defaults';
+
+export {
     modelMetadataStore,
 } from './model-metadata-store';
 

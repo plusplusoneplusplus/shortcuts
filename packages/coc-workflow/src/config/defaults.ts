@@ -8,10 +8,10 @@
 // ============================================================================
 
 /**
- * Default AI request timeout (6 hours).
+ * Default AI request timeout (8 hours).
  * Used for individual AI calls in pipelines, map-reduce, and queue tasks.
  */
-export const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000; // 6 hours
+export const DEFAULT_AI_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 /**
  * Default AI idle timeout (1 hour).

@@ -38,8 +38,7 @@ import {
     type DangerousCommandGuardOptions,
 } from './dangerous-command-guard';
 import { resolveWorkspaceExecutionContext, translatePathForExecution } from './platform/workspace-execution';
-
-const DEFAULT_AI_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+import { DEFAULT_AI_TIMEOUT_MS, DEFAULT_AI_IDLE_TIMEOUT_MS } from './timeout-defaults';
 
 /**
  * Wrap a Copilot permission handler with the dangerous-command guard (AC-07).
@@ -91,7 +90,7 @@ export class RequestRunner {
         private readonly createClient: (cwd?: string) => Promise<CopilotClient>,
         private readonly sessionManager: SessionManager,
         private readonly defaultTimeoutMs: number = DEFAULT_AI_TIMEOUT_MS,
-        private readonly defaultIdleTimeoutMs: number = 3_600_000,
+        private readonly defaultIdleTimeoutMs: number = DEFAULT_AI_IDLE_TIMEOUT_MS,
     ) {}
 
     /**
