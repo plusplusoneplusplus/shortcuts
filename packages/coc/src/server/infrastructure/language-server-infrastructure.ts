@@ -12,6 +12,7 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { LanguageServerManager } from '../language-servers/manager';
+import type { LanguageServerManagerOptions } from '../language-servers/manager';
 import { LanguageServerWebSocketServer } from '../language-servers/ws-bridge';
 import { setActiveLanguageServerManager } from '../language-servers/active';
 import { getServerLogger } from '../logging/server-logger';
@@ -28,8 +29,10 @@ export interface LanguageServerInfrastructure {
 }
 
 export interface LanguageServerInfrastructureOptions {
-    /** Bound on live sessions across all workspaces. */
-    maxSessions?: number;
+    /** Live bound on sessions across all workspaces. */
+    maxSessions?: LanguageServerManagerOptions['maxSessions'];
+    /** Live bound on sessions in one workspace. */
+    maxSessionsPerWorkspace?: LanguageServerManagerOptions['maxSessionsPerWorkspace'];
     /** How long a session survives after its last document detaches. */
     idleTimeoutMs?: number;
 }
@@ -51,6 +54,7 @@ export function createLanguageServerInfrastructure(
     const manager = new LanguageServerManager({
         dataDir,
         maxSessions: options.maxSessions,
+        maxSessionsPerWorkspace: options.maxSessionsPerWorkspace,
         idleTimeoutMs: options.idleTimeoutMs,
         onError: (err) => {
             getServerLogger().warn({ err }, '[LanguageServer] session error');

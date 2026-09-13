@@ -614,6 +614,18 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         default: 3,
         runtime: 'live',
     },
+    {
+        key: 'languageServers.maxSessions',
+        value: { kind: 'number', integer: true, min: 1 },
+        default: 24,
+        runtime: 'live',
+    },
+    {
+        key: 'languageServers.maxSessionsPerWorkspace',
+        value: { kind: 'number', integer: true, min: 1 },
+        default: 8,
+        runtime: 'live',
+    },
     bool({
         key: 'dangerousCommandGuard.enabled', default: false, runtime: 'live', runtimeFlag: 'dangerousCommandGuardEnabled',
         ui: {

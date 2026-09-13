@@ -166,6 +166,13 @@ export interface CLIConfig {
     servers?: {
         enabled?: boolean;
     };
+    /** Language-server process limits. Each live session is a real OS process. */
+    languageServers?: {
+        /** Maximum live language-server processes across all workspaces. Default: 24. */
+        maxSessions?: number;
+        /** Maximum live processes in one workspace. Monorepos may need more than the default 8. */
+        maxSessionsPerWorkspace?: number;
+    };
     /** Ralph mode configuration (autonomous iterative coding loop). Disabled by default. */
     ralph?: {
         enabled?: boolean;
@@ -528,6 +535,13 @@ export interface ResolvedCLIConfig {
     servers: {
         enabled: boolean;
     };
+    /** Language-server process limits. Each live session is a real OS process. */
+    languageServers: {
+        /** Maximum live language-server processes across all workspaces. Default: 24. */
+        maxSessions: number;
+        /** Maximum live processes in one workspace. Monorepos may need more than the default 8. */
+        maxSessionsPerWorkspace: number;
+    };
     /** Ralph orchestration mode configuration. */
     ralph: {
         enabled: boolean;
@@ -822,6 +836,10 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     servers: {
         enabled: true,
+    },
+    languageServers: {
+        maxSessions: 24,
+        maxSessionsPerWorkspace: 8,
     },
     ralph: {
         enabled: false,

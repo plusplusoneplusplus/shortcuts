@@ -152,9 +152,15 @@ and transport code stays generic.
   opening the same path receives an isolated process so unsaved buffers and
   diagnostics cannot overwrite each other. A monorepo gets one process per
   project root.
-- `maxSessions` (default 12) bounds live sessions. Reaching it evicts the least
-  recently used unreferenced session; when every session is still referenced the
-  acquire fails with `capacity` rather than dropping a buffer someone owns.
+- `languageServers.maxSessions` (default 24) bounds live sessions across the
+  host, while `languageServers.maxSessionsPerWorkspace` (default 8) prevents one
+  workspace from consuming the host budget. Each session is a real OS process,
+  and monorepos with many roots or languages may need a higher workspace limit.
+  The manager resolves both settings on every acquire, so admin changes apply
+  without restart and lowering either value never proactively closes a session.
+  Reaching a cap evicts the least recently used unreferenced session from the
+  bounded scope; when every candidate is referenced the acquire fails with
+  `capacity` rather than dropping a buffer someone owns.
 - A config change replaces only the sessions whose definition changed or
   disappeared, compared by a fingerprint of command, args, initialization
   options, settings, and language ids. `onSessionClosed` reports every
@@ -297,8 +303,9 @@ and transport code stays generic.
 ## Composition
 
 - `src/server/infrastructure/language-server-infrastructure.ts` —
-  `createLanguageServerInfrastructure(store, dataDir)` builds the manager and
-  the bridge and returns `dispose()`. `createExecutionServer` calls it before
+  `createLanguageServerInfrastructure(store, dataDir, options)` builds the
+  manager and the bridge and returns `dispose()`. `createExecutionServer` passes
+  a live resolver for the global session cap before
   `createWebSocketInfrastructure`, which passes the bridge as the fourth
   argument of `attachWebSocketUpgradeHandler`, and the close handler awaits
   `dispose()` after the terminal teardown. It is composed unconditionally:
