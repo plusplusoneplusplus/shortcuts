@@ -27,16 +27,17 @@ configurations, and uses the ctags baseline's extension set while excluding its
 crashing parser fixture so the corpus policy is directly comparable.
 `--threads 1,4,8`,
 `--extensions c,cpp,h`, `--drop-linux-page-cache`, and `--json` support corpus
-control, scaling, and reproducible reports. On the 75,615-file LLVM C-family
-corpus, a 2-core Linux ARM64 host measures 11.67 MB/s cold and 13.63 MB/s warm,
-with three files reaching the per-file parse deadline without aborting the run.
+control, scaling, and reproducible reports. A pinned 60,615-file, 688.3 MB LLVM
+corpus on 4-core hosted runners measures 7.33/14.53/16.61 MB/s warm on Linux and
+5.54/10.68/13.55 MB/s warm on Windows at 1/2/4 threads. Linux cold throughput is
+6.41/12.77/16.28 MB/s. Parse deadlines remain isolated per file.
 `npm run bench:symbol-storage` generates 100,000 sharded C-family files, warms
 the production SQLite store, and reports median warm manifest-diff and
 32,000-line targeted-update times. `--files`, `--runs`, `--target-lines`, and
 `--json` support quick harness checks and host-specific measurement runs. On a
-2-core Linux ARM64 host, five warm runs over files containing declarations
-measure a 334 ms manifest diff and a 53.4 ms targeted update; Windows
-measurements remain host-specific.
+4-core hosted Linux and Windows runs over files containing declarations measure
+428.1 ms and 3,208.0 ms manifest diffs, and 53.1 ms and 78.9 ms targeted
+updates, respectively.
 The manually dispatched `Symbol Index Benchmark` workflow clones a pinned LLVM
 revision and runs both benchmarks on Linux and Windows. It fixes extraction
 scaling at 1, 2, and 4 threads, performs the Linux cold-cache pass, and retains
