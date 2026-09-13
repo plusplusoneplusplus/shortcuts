@@ -166,6 +166,11 @@ export interface CLIConfig {
     servers?: {
         enabled?: boolean;
     };
+    /** Host-wide language-server process limits. */
+    languageServers?: {
+        /** Maximum live language-server processes across all workspaces. Default: 24. */
+        maxSessions?: number;
+    };
     /** Ralph mode configuration (autonomous iterative coding loop). Disabled by default. */
     ralph?: {
         enabled?: boolean;
@@ -528,6 +533,11 @@ export interface ResolvedCLIConfig {
     servers: {
         enabled: boolean;
     };
+    /** Host-wide language-server process limits. */
+    languageServers: {
+        /** Maximum live language-server processes across all workspaces. Default: 24. */
+        maxSessions: number;
+    };
     /** Ralph orchestration mode configuration. */
     ralph: {
         enabled: boolean;
@@ -822,6 +832,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     },
     servers: {
         enabled: true,
+    },
+    languageServers: {
+        maxSessions: 24,
     },
     ralph: {
         enabled: false,

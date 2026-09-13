@@ -69,7 +69,7 @@ interface Harness {
 function createHarness(
     definitions: LanguageServerDefinition[] = [echoDefinition()],
     options: {
-        maxSessions?: number;
+        maxSessions?: number | (() => number);
         enabled?: boolean;
         exists?: (candidate: string) => boolean;
         prepareDeps?: PrepareDefinitionDeps;
@@ -464,8 +464,53 @@ describe('LanguageServerManager session identity', () => {
 });
 
 describe('LanguageServerManager capacity', () => {
+    it('enforces the global cap and evicts only after a held session is released', () => {
+        const harness = createHarness([echoDefinition()], { maxSessions: 3 });
+        const first = acquireTxt(harness, 'browser-1');
+        expect(first.ok).toBe(true);
+        expect(acquireTxt(harness, 'browser-2').ok).toBe(true);
+        expect(acquireTxt(harness, 'browser-3').ok).toBe(true);
+
+        const blocked = acquireTxt(harness, 'browser-4');
+        expect(blocked.ok).toBe(false);
+        if (!first.ok || blocked.ok) {
+            return;
+        }
+        expect(blocked.reason).toBe('capacity');
+        expect(harness.manager.size).toBe(3);
+
+        first.handle.release();
+        expect(acquireTxt(harness, 'browser-4').ok).toBe(true);
+        expect(harness.manager.size).toBe(3);
+        expect(harness.closed.map((event) => event.editingSessionId)).toEqual(['browser-1']);
+    });
+
+    it('reads a raised global cap on the next acquire without restarting', () => {
+        let maxSessions = 1;
+        const harness = createHarness([echoDefinition()], { maxSessions: () => maxSessions });
+        expect(acquireTxt(harness, 'browser-1').ok).toBe(true);
+        expect(acquireTxt(harness, 'browser-2').ok).toBe(false);
+
+        maxSessions = 2;
+
+        expect(acquireTxt(harness, 'browser-2').ok).toBe(true);
+        expect(harness.manager.size).toBe(2);
+    });
+
+    it('does not trim live sessions when the global cap is lowered', () => {
+        let maxSessions = 2;
+        const harness = createHarness([echoDefinition()], { maxSessions: () => maxSessions });
+        expect(acquireTxt(harness, 'browser-1').ok).toBe(true);
+        expect(acquireTxt(harness, 'browser-2').ok).toBe(true);
+
+        maxSessions = 1;
+
+        expect(harness.manager.size).toBe(2);
+        expect(harness.closed).toEqual([]);
+    });
+
     it('enforces a definition-specific session limit below the manager limit', () => {
-        const harness = createHarness([echoDefinition({ maxSessions: 1 })], { maxSessions: 12 });
+        const harness = createHarness([echoDefinition({ maxSessions: 1 })], { maxSessions: 24 });
         const first = acquireTxt(harness, 'browser-1');
         expect(first.ok).toBe(true);
         const second = acquireTxt(harness, 'browser-2');
@@ -476,7 +521,7 @@ describe('LanguageServerManager capacity', () => {
     });
 
     it('applies definition-specific limits independently per workspace', () => {
-        const harness = createHarness([echoDefinition({ maxSessions: 1 })], { maxSessions: 12 });
+        const harness = createHarness([echoDefinition({ maxSessions: 1 })], { maxSessions: 24 });
         const otherRoot = tempDir('coc-lsp-manager-limit-repo-');
         writeLanguageServerConfig(harness.dataDir, 'ws-b', {
             enabled: true,

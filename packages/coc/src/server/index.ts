@@ -882,7 +882,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Language-server infrastructure. Always composed: nothing spawns until a
     // browser attaches a document in a workspace that enabled language support.
-    languageServerInfra = createLanguageServerInfrastructure(store, dataDir);
+    languageServerInfra = createLanguageServerInfrastructure(store, dataDir, {
+        maxSessions: () => runtimeConfigService.config.languageServers.maxSessions,
+    });
 
     wsServer = createWebSocketInfrastructure(
         server, store, bridge, registry, scheduleManager,

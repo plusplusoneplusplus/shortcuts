@@ -63,8 +63,8 @@ export interface SessionClosedEvent {
 export interface LanguageServerManagerOptions {
     /** Resolved CoC data directory; per-workspace config lives beneath it. */
     dataDir: string;
-    /** Bound on live sessions across all workspaces. Defaults to 12. */
-    maxSessions?: number;
+    /** Live bound across all workspaces, resolved for every acquire. Defaults to 24. */
+    maxSessions?: number | (() => number);
     /** Passed through to every session. */
     idleTimeoutMs?: number;
     startTimeoutMs?: number;
@@ -85,7 +85,7 @@ export interface LanguageServerManagerOptions {
     prepareDeps?: PrepareDefinitionDeps;
 }
 
-const DEFAULT_MAX_SESSIONS = 12;
+const DEFAULT_MAX_SESSIONS = 24;
 
 interface SessionEntry {
     key: string;
@@ -404,7 +404,10 @@ export class LanguageServerManager {
             }
         }
 
-        const max = this.options.maxSessions ?? DEFAULT_MAX_SESSIONS;
+        const configuredMax = this.options.maxSessions;
+        const max = typeof configuredMax === 'function'
+            ? configuredMax()
+            : configuredMax ?? DEFAULT_MAX_SESSIONS;
         return this.entries.size < max || this.evictOne(this.entries.values());
     }
 

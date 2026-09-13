@@ -18,6 +18,9 @@ drops, allowing the warm shared process to be reused without stale text.
 Definitions may set per-definition process caps, request timeouts, and idle
 timeouts. clangd shares by workspace and root, caps itself at four processes,
 uses a two-minute request timeout, and remains idle for 30 minutes.
+The host-wide `languageServers.maxSessions` setting defaults to 24 and is read on
+every acquire. Lowering it gates future acquisitions without proactively closing
+live sessions; capacity eviction never selects a referenced session.
 `LanguageServerSession` starts lazily,
 performs the LSP initialize handshake, preserves bounded stderr, and reports
 `starting`, `indexing`, `ready`, `reconnecting`, `unavailable`, `timeout`, or
