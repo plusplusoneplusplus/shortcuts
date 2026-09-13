@@ -37,6 +37,10 @@ the production SQLite store, and reports median warm manifest-diff and
 2-core Linux ARM64 host, five warm runs over files containing declarations
 measure a 334 ms manifest diff and a 53.4 ms targeted update; Windows
 measurements remain host-specific.
+The manually dispatched `Symbol Index Benchmark` workflow clones a pinned LLVM
+revision and runs both benchmarks on Linux and Windows. It fixes extraction
+scaling at 1, 2, and 4 threads, performs the Linux cold-cache pass, and retains
+the JSON reports and exact LLVM commit as artifacts.
 
 **The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Its own `walkFiles` still serves *per-directory* listings, and `.git` is excluded by both regardless of `includeIgnored`/`showIgnored`.
 

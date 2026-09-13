@@ -816,7 +816,7 @@ jobs:
           node-version: 24.x
 
       - name: Run workflow policy tests
-        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs scripts/workflow-actions.test.mjs scripts/docker-workflow.test.mjs scripts/native-addon-workflow.test.mjs scripts/e2e-cache-workflow.test.mjs scripts/shared-build-workflow.test.mjs
+        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs scripts/workflow-actions.test.mjs scripts/docker-workflow.test.mjs scripts/native-addon-workflow.test.mjs scripts/e2e-cache-workflow.test.mjs scripts/shared-build-workflow.test.mjs scripts/symbol-index-benchmark-workflow.test.mjs
 
   # Guards the server image (Dockerfile + docker/entrypoint.sh) against rotting
   # between releases: real linux/amd64 build (no push), then health, the
