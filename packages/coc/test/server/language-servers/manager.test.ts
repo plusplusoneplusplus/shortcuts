@@ -70,6 +70,7 @@ function createHarness(
     definitions: LanguageServerDefinition[] = [echoDefinition()],
     options: {
         maxSessions?: number | (() => number);
+        maxSessionsPerWorkspace?: number | (() => number);
         enabled?: boolean;
         exists?: (candidate: string) => boolean;
         prepareDeps?: PrepareDefinitionDeps;
@@ -94,6 +95,7 @@ function createHarness(
     const manager = new LanguageServerManager({
         dataDir,
         maxSessions: options.maxSessions,
+        maxSessionsPerWorkspace: options.maxSessionsPerWorkspace,
         exists: options.exists,
         prepareDeps: options.prepareDeps,
         createSession: (sessionOptions) => {
@@ -505,6 +507,83 @@ describe('LanguageServerManager capacity', () => {
 
         maxSessions = 1;
 
+        expect(harness.manager.size).toBe(2);
+        expect(harness.closed).toEqual([]);
+    });
+
+    it('keeps one workspace from consuming another workspace’s capacity', () => {
+        const harness = createHarness([echoDefinition()], {
+            maxSessions: 4,
+            maxSessionsPerWorkspace: 2,
+        });
+        const otherRoot = tempDir('coc-lsp-manager-capacity-repo-b-');
+        writeLanguageServerConfig(harness.dataDir, 'ws-b', {
+            enabled: true,
+            definitions: [echoDefinition()],
+        });
+
+        expect(acquireTxt(harness, 'browser-a1').ok).toBe(true);
+        expect(acquireTxt(harness, 'browser-a2').ok).toBe(true);
+        expect(acquireTxt(harness, 'browser-a3')).toEqual({
+            ok: false,
+            reason: 'capacity',
+            detail: 'This repo is already running 2 language servers.',
+        });
+        expect(harness.manager.acquire({
+            workspaceId: 'ws-b',
+            workspaceRoot: otherRoot,
+            editingSessionId: 'browser-b1',
+            relativePath: 'src/notes.txt',
+        }).ok).toBe(true);
+        expect(harness.manager.listStates('ws-a')).toHaveLength(2);
+        expect(harness.manager.listStates('ws-b')).toHaveLength(1);
+    });
+
+    it('evicts only an unreferenced session from the workspace at its cap', () => {
+        const harness = createHarness([echoDefinition()], {
+            maxSessions: 4,
+            maxSessionsPerWorkspace: 2,
+        });
+        const otherRoot = tempDir('coc-lsp-manager-victim-repo-b-');
+        writeLanguageServerConfig(harness.dataDir, 'ws-b', {
+            enabled: true,
+            definitions: [echoDefinition()],
+        });
+        const firstA = acquireTxt(harness, 'browser-a1');
+        expect(firstA.ok).toBe(true);
+        expect(acquireTxt(harness, 'browser-a2').ok).toBe(true);
+        expect(harness.manager.acquire({
+            workspaceId: 'ws-b',
+            workspaceRoot: otherRoot,
+            editingSessionId: 'browser-b1',
+            relativePath: 'src/notes.txt',
+        }).ok).toBe(true);
+        if (!firstA.ok) {
+            return;
+        }
+
+        firstA.handle.release();
+        expect(acquireTxt(harness, 'browser-a3').ok).toBe(true);
+
+        expect(harness.closed).toEqual([
+            expect.objectContaining({ workspaceId: 'ws-a', editingSessionId: 'browser-a1', reason: 'evicted' }),
+        ]);
+        expect(harness.manager.listStates('ws-b')).toHaveLength(1);
+    });
+
+    it('reads a changed workspace cap lazily without trimming live sessions', () => {
+        let maxSessionsPerWorkspace = 1;
+        const harness = createHarness([echoDefinition()], {
+            maxSessions: 4,
+            maxSessionsPerWorkspace: () => maxSessionsPerWorkspace,
+        });
+        expect(acquireTxt(harness, 'browser-1').ok).toBe(true);
+        expect(acquireTxt(harness, 'browser-2').ok).toBe(false);
+
+        maxSessionsPerWorkspace = 2;
+        expect(acquireTxt(harness, 'browser-2').ok).toBe(true);
+
+        maxSessionsPerWorkspace = 1;
         expect(harness.manager.size).toBe(2);
         expect(harness.closed).toEqual([]);
     });

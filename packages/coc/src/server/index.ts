@@ -884,6 +884,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // browser attaches a document in a workspace that enabled language support.
     languageServerInfra = createLanguageServerInfrastructure(store, dataDir, {
         maxSessions: () => runtimeConfigService.config.languageServers.maxSessions,
+        maxSessionsPerWorkspace: () => runtimeConfigService.config.languageServers.maxSessionsPerWorkspace,
     });
 
     wsServer = createWebSocketInfrastructure(

@@ -90,6 +90,28 @@ describe('createLanguageServerInfrastructure', () => {
         expect(getActiveLanguageServerManager()).toBe(infra.manager);
     });
 
+    it('passes the per-workspace capacity option to its manager', () => {
+        const dataDir = enabledDataDir(['ws-a']);
+        const workspaceRoot = tempDir('coc-lsp-infra-capacity-');
+        const infra = createLanguageServerInfrastructure(makeStore([]), dataDir, {
+            maxSessionsPerWorkspace: 1,
+        });
+        cleanups.push(() => infra.dispose());
+
+        expect(infra.manager.acquire({
+            workspaceId: 'ws-a', workspaceRoot,
+            editingSessionId: 'session-1', relativePath: 'notes.txt',
+        }).ok).toBe(true);
+        expect(infra.manager.acquire({
+            workspaceId: 'ws-a', workspaceRoot,
+            editingSessionId: 'session-2', relativePath: 'notes.txt',
+        })).toEqual({
+            ok: false,
+            reason: 'capacity',
+            detail: 'This repo is already running 1 language servers.',
+        });
+    });
+
     it('stops only the removed workspace’s sessions', async () => {
         const dataDir = enabledDataDir(['ws-a', 'ws-b']);
         const rootA = tempDir('coc-lsp-infra-a-');

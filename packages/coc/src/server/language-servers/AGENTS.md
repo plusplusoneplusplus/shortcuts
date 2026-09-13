@@ -153,11 +153,14 @@ and transport code stays generic.
   diagnostics cannot overwrite each other. A monorepo gets one process per
   project root.
 - `languageServers.maxSessions` (default 24) bounds live sessions across the
-  host. The manager resolves it on every acquire, so admin changes apply without
-  restart and lowering it never proactively closes a session. Reaching the cap
-  evicts the least recently used unreferenced session; when every session is
-  still referenced the acquire fails with `capacity` rather than dropping a
-  buffer someone owns.
+  host, while `languageServers.maxSessionsPerWorkspace` (default 8) prevents one
+  workspace from consuming the host budget. Each session is a real OS process,
+  and monorepos with many roots or languages may need a higher workspace limit.
+  The manager resolves both settings on every acquire, so admin changes apply
+  without restart and lowering either value never proactively closes a session.
+  Reaching a cap evicts the least recently used unreferenced session from the
+  bounded scope; when every candidate is referenced the acquire fails with
+  `capacity` rather than dropping a buffer someone owns.
 - A config change replaces only the sessions whose definition changed or
   disappeared, compared by a fingerprint of command, args, initialization
   options, settings, and language ids. `onSessionClosed` reports every

@@ -65,6 +65,8 @@ export interface LanguageServerManagerOptions {
     dataDir: string;
     /** Live bound across all workspaces, resolved for every acquire. Defaults to 24. */
     maxSessions?: number | (() => number);
+    /** Live bound for one workspace, resolved for every acquire. Defaults to 8. */
+    maxSessionsPerWorkspace?: number | (() => number);
     /** Passed through to every session. */
     idleTimeoutMs?: number;
     startTimeoutMs?: number;
@@ -86,6 +88,15 @@ export interface LanguageServerManagerOptions {
 }
 
 const DEFAULT_MAX_SESSIONS = 24;
+const DEFAULT_MAX_SESSIONS_PER_WORKSPACE = 8;
+const GLOBAL_CAPACITY_DETAIL = 'Too many language servers are already running.';
+
+function resolveSessionLimit(
+    configured: number | (() => number) | undefined,
+    fallback: number,
+): number {
+    return typeof configured === 'function' ? configured() : configured ?? fallback;
+}
 
 interface SessionEntry {
     key: string;
@@ -174,11 +185,12 @@ export class LanguageServerManager {
             }
         }
         if (!entry) {
-            if (!this.makeRoom(request.workspaceId, definition)) {
+            const capacityDetail = this.makeRoom(request.workspaceId, definition);
+            if (capacityDetail) {
                 return {
                     ok: false,
                     reason: 'capacity',
-                    detail: 'Too many language servers are already running.',
+                    detail: capacityDetail,
                 };
             }
             entry = this.createEntry(key, request, definition, rootPath);
@@ -391,24 +403,33 @@ export class LanguageServerManager {
 
     /**
      * Makes space for one more session. Evicts the least recently used
-     * unreferenced session; returns false when every session is still in use,
+     * unreferenced session; returns a failure detail when every session is still in use,
      * because dropping a session a document depends on would lose its buffer.
      */
-    private makeRoom(workspaceId: string, definition: LanguageServerDefinition): boolean {
+    private makeRoom(workspaceId: string, definition: LanguageServerDefinition): string | undefined {
         if (definition.maxSessions !== undefined) {
             const matching = [...this.entries.values()].filter(
                 entry => entry.workspaceId === workspaceId && entry.definition.id === definition.id,
             );
             if (matching.length >= definition.maxSessions && !this.evictOne(matching)) {
-                return false;
+                return GLOBAL_CAPACITY_DETAIL;
             }
         }
 
-        const configuredMax = this.options.maxSessions;
-        const max = typeof configuredMax === 'function'
-            ? configuredMax()
-            : configuredMax ?? DEFAULT_MAX_SESSIONS;
-        return this.entries.size < max || this.evictOne(this.entries.values());
+        const workspaceEntries = [...this.entries.values()].filter(entry => entry.workspaceId === workspaceId);
+        const workspaceMax = resolveSessionLimit(
+            this.options.maxSessionsPerWorkspace,
+            DEFAULT_MAX_SESSIONS_PER_WORKSPACE,
+        );
+        if (workspaceEntries.length >= workspaceMax && !this.evictOne(workspaceEntries)) {
+            return `This repo is already running ${workspaceEntries.length} language servers.`;
+        }
+
+        const max = resolveSessionLimit(this.options.maxSessions, DEFAULT_MAX_SESSIONS);
+        if (this.entries.size >= max && !this.evictOne(this.entries.values())) {
+            return GLOBAL_CAPACITY_DETAIL;
+        }
+        return undefined;
     }
 
     private evictOne(candidates: Iterable<SessionEntry>): boolean {

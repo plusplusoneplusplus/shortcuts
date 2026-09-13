@@ -31,6 +31,8 @@ export interface LanguageServerInfrastructure {
 export interface LanguageServerInfrastructureOptions {
     /** Live bound on sessions across all workspaces. */
     maxSessions?: LanguageServerManagerOptions['maxSessions'];
+    /** Live bound on sessions in one workspace. */
+    maxSessionsPerWorkspace?: LanguageServerManagerOptions['maxSessionsPerWorkspace'];
     /** How long a session survives after its last document detaches. */
     idleTimeoutMs?: number;
 }
@@ -52,6 +54,7 @@ export function createLanguageServerInfrastructure(
     const manager = new LanguageServerManager({
         dataDir,
         maxSessions: options.maxSessions,
+        maxSessionsPerWorkspace: options.maxSessionsPerWorkspace,
         idleTimeoutMs: options.idleTimeoutMs,
         onError: (err) => {
             getServerLogger().warn({ err }, '[LanguageServer] session error');
