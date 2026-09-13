@@ -43,6 +43,7 @@ export function LanguageStatusBadge({
     const isCorner = variant === 'corner';
     const [open, setOpen] = useState(false);
     const showDetails = status.tone === 'error';
+    const isRetry = snapshot?.status === 'unavailable' || showDetails;
 
     return (
         <span className="relative inline-flex pointer-events-auto">
@@ -78,7 +79,7 @@ export function LanguageStatusBadge({
                         title="Restart the language server"
                         data-testid="language-restart-btn"
                     >
-                        {showDetails ? 'Retry' : 'Restart'}
+                        {isRetry ? 'Retry' : 'Restart'}
                     </button>
                 )}
             </span>

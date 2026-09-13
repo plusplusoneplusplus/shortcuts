@@ -109,6 +109,7 @@ describe('LanguageStatusBadge', () => {
         render(<LanguageStatusBadge snapshot={snapshot('unavailable', null)} onRestart={onRestart} />);
 
         expect(screen.getByTestId('language-status-label').textContent).toBe('Language support off');
+        expect(screen.getByTestId('language-restart-btn').textContent).toBe('Retry');
         fireEvent.click(screen.getByTestId('language-restart-btn'));
         expect(onRestart).toHaveBeenCalledTimes(1);
     });
