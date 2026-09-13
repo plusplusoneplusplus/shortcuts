@@ -4,7 +4,7 @@
  * a crates.io dependency, so every answer depends on Rust project analysis.
  */
 
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -85,6 +85,9 @@ let root: string;
 let session: LanguageServerSession;
 const diagnostics = new Map<string, Diagnostic[]>();
 let appVersion = 1;
+const cargoAvailable = spawnSync('cargo', ['--version'], { stdio: 'ignore' }).status === 0;
+const rustAnalyzerAvailable = resolveRustRuntime(RUST_PRESET, process.cwd()).origin !== 'unavailable';
+const describeWithRustTooling = cargoAvailable && rustAnalyzerAvailable ? describe : describe.skip;
 
 function write(file: string, content: string): void {
     const destination = path.join(root, ...file.split('/'));
@@ -259,6 +262,9 @@ function completionLabels(result: unknown): string[] {
 }
 
 beforeAll(async () => {
+    if (!cargoAvailable || !rustAnalyzerAvailable) {
+        return;
+    }
     root = createProject();
     const runtime = resolveRustRuntime(RUST_PRESET, root);
     if (runtime.origin === 'unavailable') {
@@ -301,7 +307,7 @@ afterAll(async () => {
     }
 });
 
-describe('real rust-analyzer runtime', () => {
+describeWithRustTooling('real rust-analyzer runtime', () => {
     it('uses rustup discovery and keeps host paths out of browser state', () => {
         const runtime = resolveRustRuntime(RUST_PRESET, root);
         expect(runtime.origin).toBe('rustup');
@@ -334,7 +340,7 @@ describe('real rust-analyzer runtime', () => {
     });
 });
 
-describe('Rust language features over a real Cargo workspace', () => {
+describeWithRustTooling('Rust language features over a real Cargo workspace', () => {
     it('hovers a cross-crate function with its resolved signature and docs', async () => {
         const result = await session.sendRequest('textDocument/hover', {
             textDocument: { uri: uriFor('app/src/lib.rs') },
@@ -431,7 +437,7 @@ describe('Rust language features over a real Cargo workspace', () => {
     });
 });
 
-describe('unsaved Rust buffers', () => {
+describeWithRustTooling('unsaved Rust buffers', () => {
     afterAll(async () => {
         changeApp(APP_RS);
         await waitForDiagnostics((found) => found.length === 0, 180_000);
@@ -465,7 +471,7 @@ describe('unsaved Rust buffers', () => {
     });
 });
 
-describe('workspace check settings', () => {
+describeWithRustTooling('workspace check settings', () => {
     it('reach rust-analyzer and can turn checking on', async () => {
         const marker = path.join(root, 'check-ran.txt');
         const script = path.join(root, 'check-command.cjs');
