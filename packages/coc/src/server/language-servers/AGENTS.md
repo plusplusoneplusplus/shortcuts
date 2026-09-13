@@ -10,8 +10,9 @@ and transport code stays generic.
 - `definition-schema.ts` — zod validation returning field-level errors, plus
   list validation that reports duplicate ids by index.
 - `file-match.ts` — POSIX path normalization and glob matching (`**`, `*`, `?`,
-  `{a,b}`). Patterns match the workspace-relative path, so Windows separators
-  are normalized before matching.
+  `{a,b}`). Patterns match the workspace-relative path. Windows paths also use
+  case-insensitive identity and trim trailing dots/spaces before selection, URI
+  mapping, and shared-session ownership checks.
 - `selection.ts` — deterministic server selection (priority, then pattern
   specificity, then id), LSP language-id resolution, and nearest-marker
   project-root discovery.

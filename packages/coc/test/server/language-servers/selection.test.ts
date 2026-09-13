@@ -49,6 +49,14 @@ describe('normalizeRelativePath', () => {
     ])('normalizes %s', (input, expected) => {
         expect(normalizeRelativePath(input)).toBe(expected);
     });
+
+    it('folds Windows case and trailing dot or space aliases', () => {
+        expect(normalizeRelativePath('SRC.\\SHARED.TXT. ', 'win32')).toBe('src/shared.txt');
+    });
+
+    it('preserves case and trailing characters on POSIX', () => {
+        expect(normalizeRelativePath('SRC./SHARED.TXT. ', 'linux')).toBe('SRC./SHARED.TXT. ');
+    });
 });
 
 describe('fileExtension', () => {

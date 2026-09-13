@@ -17,6 +17,7 @@ import type { LanguageServerSessionOptions, LanguageServerSessionState } from '.
 import { onLanguageServerConfigChanged, resolveLanguageServerDefinitions } from './repository';
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 import type { PrepareDefinitionDeps } from './adapters';
+import { normalizeRelativePath } from './file-match';
 import { resolveLanguageId, selectDefinitionForFile } from './selection';
 import type { JsonValue, LanguageServerDefinition } from './types';
 
@@ -126,6 +127,7 @@ export class LanguageServerManager {
      * the document closes.
      */
     acquire(request: AcquireRequest): AcquireResult {
+        const relativePath = normalizeRelativePath(request.relativePath);
         if (this.disposed) {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
@@ -133,14 +135,14 @@ export class LanguageServerManager {
         if (startable.length === 0) {
             return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
         }
-        const definition = selectDefinitionForFile(startable, request.relativePath);
+        const definition = selectDefinitionForFile(startable, relativePath);
         if (!definition) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
         }
         const rootPath = resolveDefinitionRoot(
             definition,
             request.workspaceRoot,
-            request.relativePath,
+            relativePath,
             {
                 exists: this.options.exists,
                 ...this.options.prepareDeps,
@@ -162,7 +164,7 @@ export class LanguageServerManager {
         if (
             definition.sessionScope === 'workspace'
             && entry
-            && hasDocumentOwnerFromAnotherEditingSession(entry, request.relativePath, request.editingSessionId)
+            && hasDocumentOwnerFromAnotherEditingSession(entry, relativePath, request.editingSessionId)
         ) {
             key = sessionKey(request.workspaceId, request.editingSessionId, definition.id, rootPath);
             entry = this.entries.get(key);
@@ -181,7 +183,7 @@ export class LanguageServerManager {
             }
             entry = this.createEntry(key, request, definition, rootPath);
         }
-        return { ok: true, handle: this.attach(entry, request.relativePath, request.editingSessionId) };
+        return { ok: true, handle: this.attach(entry, relativePath, request.editingSessionId) };
     }
 
     /** Current state of every live session, newest use first. */
@@ -502,15 +504,7 @@ function hasDocumentOwnerFromAnotherEditingSession(
 }
 
 function normalizeDocumentPath(relativePath: string): string {
-    const normalized = path.normalize(relativePath.replace(/[\\/]+/g, path.sep));
-    if (process.platform !== 'win32') {
-        return normalized;
-    }
-    return normalized
-        .split(path.sep)
-        .map(component => component.replace(/[ .]+$/g, ''))
-        .join(path.sep)
-        .toLowerCase();
+    return path.normalize(normalizeRelativePath(relativePath));
 }
 
 function relativeRootLabel(workspaceRoot: string, rootPath: string): string {

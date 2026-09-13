@@ -10,6 +10,9 @@ definition, and resolved project root by default. Definitions may select
 workspace scope to share an expensive process across editing sessions when they
 open different files. A second editing session opening the same path receives
 an isolated process so its unsaved buffer and diagnostics remain independent.
+Windows document paths are case-folded and have trailing dots/spaces removed at
+the path boundary, matching Win32 file identity before definition selection,
+URI mapping, and shared-session ownership checks.
 The WebSocket bridge sends `didClose` for tracked open documents when a socket
 drops, allowing the warm shared process to be reused without stale text.
 Definitions may set per-definition process caps, request timeouts, and idle

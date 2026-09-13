@@ -6,16 +6,26 @@
  */
 
 /**
- * Convert a workspace-relative path to the POSIX form used for matching:
- * backslashes become slashes, leading `./` and `/` are dropped, and repeated
- * separators collapse.
+ * Convert a workspace-relative path to the POSIX form used for matching.
+ * Windows aliases are folded to the same identity the filesystem uses.
  */
-export function normalizeRelativePath(filePath: string): string {
-    return filePath
+export function normalizeRelativePath(
+    filePath: string,
+    platform: NodeJS.Platform = process.platform,
+): string {
+    const normalized = filePath
         .replace(/\\/g, '/')
         .replace(/\/+/g, '/')
         .replace(/^\.\//, '')
         .replace(/^\//, '');
+    if (platform !== 'win32') {
+        return normalized;
+    }
+    return normalized
+        .split('/')
+        .map(component => component.replace(/[ .]+$/g, ''))
+        .join('/')
+        .toLowerCase();
 }
 
 /** Lowercase extension including the dot, or `''` when the file has none. */
