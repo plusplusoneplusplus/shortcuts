@@ -55,14 +55,14 @@ jobs:
         env:
           LLVM_REF: ${{ inputs.llvm_ref }}
         run: |
-          git clone --depth 1 --branch "$LLVM_REF" \
+          git -c core.autocrlf=false clone --depth 1 --branch "$LLVM_REF" \
             https://github.com/llvm/llvm-project.git "$GITHUB_WORKSPACE/llvm-project"
 
       - name: Run storage benchmark
         shell: bash
         run: |
           mkdir -p benchmark-results
-          npm run bench:symbol-storage -w packages/coc-native -- \
+          node packages/coc-native/scripts/bench-symbol-storage.mjs \
             --files 100000 --runs 5 --target-lines 32000 --json \
             > "benchmark-results/storage-${{ matrix.label }}.json"
 
@@ -71,7 +71,7 @@ jobs:
         env:
           COLD_ARG: ${{ matrix.cold_arg }}
         run: |
-          npm run bench:symbol-index -w packages/coc-native -- \
+          node packages/coc-native/scripts/bench-symbol-index.mjs \
             --repo "$GITHUB_WORKSPACE/llvm-project" \
             --threads 1,2,4 --warmup 1 --runs 3 $COLD_ARG --json \
             > "benchmark-results/extraction-${{ matrix.label }}.json"

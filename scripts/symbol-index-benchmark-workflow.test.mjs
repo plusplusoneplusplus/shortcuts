@@ -22,7 +22,10 @@ test("symbol benchmark uses the acceptance-criterion workloads", () => {
 });
 
 test("symbol benchmark pins the corpus and retains machine-readable evidence", () => {
-    assert.match(workflow, /git clone --depth 1 --branch "\$LLVM_REF"/);
+    assert.match(workflow, /git -c core\.autocrlf=false clone --depth 1 --branch "\$LLVM_REF"/);
+    assert.match(workflow, /node packages\/coc-native\/scripts\/bench-symbol-storage\.mjs/);
+    assert.match(workflow, /node packages\/coc-native\/scripts\/bench-symbol-index\.mjs/);
+    assert.doesNotMatch(workflow, /npm run bench:symbol/);
     assert.match(workflow, /rev-parse HEAD/);
     assert.match(workflow, /uses: actions\/upload-artifact@v4/);
     assert.match(workflow, /retention-days: 30/);
