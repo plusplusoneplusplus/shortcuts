@@ -9,9 +9,15 @@ import { executeValidate } from './commands/validate';
 import { executeList } from './commands/list';
 import { executeQueueCancel, executeQueueList, executeQueueStatus, executeQueueSubmit } from './commands/queue';
 import { resolveRunOptions, resolveListOptions, resolveServeOptions, resolveWipeDataOptions } from './commands/options-resolver';
-import { resolveConfig } from './config';
+import { loadConfigFile, resolveConfig } from './config';
 import { setColorEnabled } from './logger';
 import { executeSkillList, executeSkillInstallBundled, executeSkillInstall, executeSkillDelete, executeSkillCheckUpdates } from './commands/skills';
+import {
+    executeReliabilityWatchdogResume,
+    executeReliabilityWatchdogStart,
+    executeReliabilityWatchdogStatus,
+    executeReliabilityWatchdogStop,
+} from './commands/reliability-watchdog';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -205,6 +211,70 @@ export function createProgram(): Command {
         .action(async (taskId: string, opts: Record<string, unknown>) => {
             applyGlobalOptions(opts);
             const exitCode = await executeQueueStatus(taskId, opts);
+            process.exit(exitCode);
+        });
+
+    // ========================================================================
+    // coc reliability-watchdog
+    // ========================================================================
+
+    const reliabilityWatchdog = program
+        .command('reliability-watchdog')
+        .description('Run an external recovery watchdog for one long-running writer');
+
+    reliabilityWatchdog
+        .command('start')
+        .description('Validate and start a detached watchdog')
+        .requiredOption('--workspace-id <id>', 'Target workspace ID')
+        .requiredOption('--process-id <id>', 'Target writer process ID')
+        .requiredOption('--worktree <path>', 'Target writer worktree')
+        .requiredOption('--ledger <path>', 'Durable delivery ledger')
+        .requiredOption('--prompt-file <path>', 'Bounded recovery prompt file')
+        .requiredOption('--state-dir <path>', 'External watchdog state directory')
+        .requiredOption('--complete-marker <token>', 'Exact standalone completion marker')
+        .requiredOption('--blocked-marker <token>', 'Exact standalone blocked marker')
+        .option('--mode <mode>', 'Recovery mode: autopilot or ralph', 'autopilot')
+        .option('--ralph-session-id <id>', 'Ralph session ID when mode is ralph')
+        .option('--server-url <url>', 'CoC server URL')
+        .option('--data-dir <path>', 'CoC data directory')
+        .option('--poll-interval <ms>', 'Poll interval in milliseconds', '60000')
+        .option('--idle-polls <count>', 'Consecutive idle polls before recheck', '3')
+        .option('--cooldown <ms>', 'Recovery cooldown in milliseconds', '900000')
+        .option('--ttl <ms>', 'Watchdog TTL in milliseconds', '259200000')
+        .option('--max-resumes <count>', 'Maximum recovery attempts', '12')
+        .option('--heartbeat-interval <ms>', 'Heartbeat interval in milliseconds', '900000')
+        .action(async (opts: Record<string, unknown>) => {
+            const config = resolveConfig();
+            const exitCode = await executeReliabilityWatchdogStart(opts, { config });
+            process.exit(exitCode);
+        });
+
+    reliabilityWatchdog
+        .command('resume')
+        .description('Resume one persisted watchdog after its process exits')
+        .requiredOption('--state-dir <path>', 'External watchdog state directory')
+        .option('--server-url <url>', 'CoC server URL')
+        .action(async (opts: Record<string, unknown>) => {
+            const config = loadConfigFile();
+            const exitCode = await executeReliabilityWatchdogResume(opts, { config });
+            process.exit(exitCode);
+        });
+
+    reliabilityWatchdog
+        .command('status')
+        .description('Read watchdog state and process liveness')
+        .requiredOption('--state-dir <path>', 'External watchdog state directory')
+        .action(async (opts: Record<string, unknown>) => {
+            const exitCode = await executeReliabilityWatchdogStatus(opts);
+            process.exit(exitCode);
+        });
+
+    reliabilityWatchdog
+        .command('stop')
+        .description('Request a graceful instance-bound watchdog stop')
+        .requiredOption('--state-dir <path>', 'External watchdog state directory')
+        .action(async (opts: Record<string, unknown>) => {
+            const exitCode = await executeReliabilityWatchdogStop(opts);
             process.exit(exitCode);
         });
 

@@ -96,6 +96,11 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         relativePath: 'dream',
     },
     {
+        name: 'long-running-reliability',
+        description: 'Use for multi-hour or unattended autonomous delivery, supervised single-writer coding, Ralph execution, long tests/builds/PR completion, recovery from SDK timeout, idle timeout, classifier rejection, queue/process split-brain, and silent completed-without-continuation stalls, or when the user says "I restarted CoC; re-engage the watchdog." Establishes one writer, a durable ledger, scheduled pacing, and an external detached watchdog; do not use for ordinary one-off commands or simple monitoring.',
+        relativePath: 'long-running-reliability',
+    },
+    {
         name: 'handoff',
         description: 'Compact the current conversation into a handoff document for another agent to pick up',
         relativePath: 'handoff',

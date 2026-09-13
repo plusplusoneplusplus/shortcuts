@@ -19,6 +19,7 @@ detailed architecture lives in its `references/*.md` files.
 | `src/server/endev/`, `EnDev-xDpu` skill visibility | [endev.md](../../.github/skills/coc-knowledge/references/endev.md) |
 | Ralph sessions, iteration prompt, promote-to-ralph endpoint | [ralph.md](../../.github/skills/coc-knowledge/references/ralph.md) |
 | `src/server/cron/`, cron tools, tick lifecycle | [cron.md](../../.github/skills/coc-knowledge/references/cron.md) |
+| `reliability-watchdog` CLI, detached recovery, bundled reliability skill | [long-running-reliability.md](../../.github/skills/coc-knowledge/references/long-running-reliability.md) |
 | Process store / SQLite schema / FTS5 / pin / archive | [process-store.md](../../.github/skills/coc-knowledge/references/process-store.md) |
 | Dashboard SPA (`src/server/spa/`) | [spa/shell.md](../../.github/skills/coc-knowledge/references/spa/shell.md) (entry point) |
 | REST endpoints | [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md) |

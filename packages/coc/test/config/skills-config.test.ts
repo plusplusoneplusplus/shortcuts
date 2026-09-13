@@ -49,6 +49,12 @@ describe('skills config', () => {
         expect(config.skills.defaultSkills).toContain('delegate');
     });
 
+    it('includes long-running reliability in default bundled skills', () => {
+        const config = resolveConfig(undefined, undefined);
+        expect(DEFAULT_BUNDLED_SKILLS).toContain('long-running-reliability');
+        expect(config.skills.defaultSkills).toContain('long-running-reliability');
+    });
+
     it('can be disabled via override', () => {
         const config = mergeConfig(DEFAULT_CONFIG, { skills: { autoUpdate: false } });
         expect(config.skills.autoUpdate).toBe(false);
