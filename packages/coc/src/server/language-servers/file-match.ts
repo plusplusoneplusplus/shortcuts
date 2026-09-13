@@ -23,7 +23,9 @@ export function normalizeRelativePath(
     }
     return normalized
         .split('/')
-        .map(component => component.replace(/[ .]+$/g, ''))
+        .map(component => component === '.' || component === '..'
+            ? component
+            : component.replace(/[ .]+$/g, ''))
         .join('/')
         .toLowerCase();
 }

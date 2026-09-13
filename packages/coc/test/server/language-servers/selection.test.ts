@@ -54,6 +54,10 @@ describe('normalizeRelativePath', () => {
         expect(normalizeRelativePath('SRC.\\SHARED.TXT. ', 'win32')).toBe('src/shared.txt');
     });
 
+    it('preserves Windows traversal segments for containment checks', () => {
+        expect(normalizeRelativePath('src/nested/../../secrets', 'win32')).toBe('src/nested/../../secrets');
+    });
+
     it('preserves case and trailing characters on POSIX', () => {
         expect(normalizeRelativePath('SRC./SHARED.TXT. ', 'linux')).toBe('SRC./SHARED.TXT. ');
     });
