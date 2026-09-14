@@ -25,9 +25,9 @@
  *     server behind work nobody will read.
  *   - A request that fails is an empty answer, never a thrown error: a language
  *     server going away must not break typing in the editor.
- *   - A result URI that does not name a document in this workspace is dropped.
- *     Reading a dependency outside the repo needs an explicit read-only path
- *     policy; until then, refusing is the safe half of that decision.
+ *   - The default URI resolver drops results outside this workspace. A
+ *     repo-group host supplies an owner-aware resolver that accepts live members
+ *     and represents rejected targets with an unavailable in-memory model.
  *
  * Runtime-Monaco-free like its neighbours: the `monaco` namespace arrives as an
  * argument, described structurally, so the tests drive real provider code
@@ -275,7 +275,11 @@ export interface RegisterLanguageProvidersOptions {
      * Turns a result URI into something Monaco can open. The default accepts
      * only URIs naming a document in this workspace and drops the rest.
      */
-    resolveUri?: (uri: string, signal: AbortSignal) => ProviderUri | null | Promise<ProviderUri | null>;
+    resolveUri?: (
+        uri: string,
+        signal: AbortSignal,
+        target: { lineNumber: number; column: number; waitForContent: boolean },
+    ) => ProviderUri | null | Promise<ProviderUri | null>;
     /** Repository-wide definition candidates, available without a live server. */
     symbolDefinitions?: {
         workspaceId: string;
@@ -350,12 +354,20 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
 
     const owns = (candidate: ProviderModel): boolean => candidate === model || candidate.uri.toString() === modelUri;
 
-    const toProviderLinks = async (result: unknown, signal: AbortSignal): Promise<ProviderLocationLink[]> => (
-        (await Promise.all(toLocationLinks(result).map(async (link) => {
-            const uri = await resolveUri(link.uri, signal);
-            return uri ? { ...link, uri } : null;
-        }))).filter((link): link is ProviderLocationLink => link !== null)
-    );
+    const toProviderLinks = async (result: unknown, signal: AbortSignal): Promise<ProviderLocationLink[]> => {
+        const links = toLocationLinks(result);
+        return (
+            await Promise.all(links.map(async (link) => {
+                const target = link.targetSelectionRange ?? link.range;
+                const uri = await resolveUri(link.uri, signal, {
+                    lineNumber: target.startLineNumber,
+                    column: target.startColumn,
+                    waitForContent: links.length > 1,
+                });
+                return uri ? { ...link, uri } : null;
+            }))
+        ).filter((link): link is ProviderLocationLink => link !== null);
+    };
 
     let registrations: ProviderDisposable[] = [];
 
@@ -405,6 +417,11 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                                     const uri = await resolveUri(
                                         `${baseUri}#${SYMBOL_CANDIDATE_FRAGMENT}`,
                                         controller.signal,
+                                        {
+                                            lineNumber: result.line,
+                                            column: result.column,
+                                            waitForContent: true,
+                                        },
                                     );
                                     return uri
                                         ? {

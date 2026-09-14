@@ -488,15 +488,26 @@ async function focusMonacoBuffer(page: Page, panel = APP_PANEL): Promise<void> {
         .toBe(true);
 }
 
-async function openPeekDefinition(page: Page, spot: { x: number; y: number }): Promise<Locator> {
+async function startPeekDefinition(
+    page: Page,
+    spot: { x: number; y: number },
+): Promise<{ peek: Locator; completion: Promise<void> }> {
     await page.mouse.click(spot.x, spot.y, { button: 'right' });
     const peekMenu = page.getByRole('menuitem', { name: 'Peek', exact: true });
     await expect(peekMenu).toBeVisible();
     await peekMenu.hover();
     const peekDefinition = page.getByRole('menuitem', { name: /^Peek Definition\b/ });
     await expect(peekDefinition).toBeVisible();
-    await peekDefinition.click();
-    return page.locator('.reference-zone-widget');
+    return {
+        peek: page.locator('.reference-zone-widget'),
+        completion: peekDefinition.click(),
+    };
+}
+
+async function openPeekDefinition(page: Page, spot: { x: number; y: number }): Promise<Locator> {
+    const { peek, completion } = await startPeekDefinition(page, spot);
+    await completion;
+    return peek;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,8 +680,30 @@ test.describe('Explorer language support – TypeScript and definition features'
                 .poll(() => caretLineText(page, APP_PANEL), { timeout: 10_000 })
                 .toContain('export const label');
 
-            const peek = await openPeekDefinition(page, spot);
+            let releasePreviewRead!: () => void;
+            const previewReadBlocked = new Promise<void>((resolve) => {
+                releasePreviewRead = resolve;
+            });
+            await page.route(`**/api/repos/${WORKSPACE_ID}/blob?*`, async route => {
+                const url = new URL(route.request().url());
+                if (url.searchParams.get('path') === 'src/format.ts') {
+                    await previewReadBlocked;
+                }
+                await route.continue();
+            });
+
+            const { peek, completion } = await startPeekDefinition(page, spot);
             await expect(peek).toBeVisible({ timeout: 15_000 });
+            try {
+                await expect(
+                    peek.locator('.preview .view-line')
+                        .filter({ hasText: 'Loading definition source...' })
+                        .first(),
+                ).toBeVisible();
+            } finally {
+                releasePreviewRead();
+            }
+            await completion;
             await expect(peek.locator('.peekview-title .filename')).toHaveText('format.ts');
             await expect
                 .poll(
@@ -760,7 +793,8 @@ test.describe('Explorer language support – TypeScript and definition features'
                 }
                 await route.continue();
             });
-            const unavailablePeek = await openPeekDefinition(page, spot);
+            const unavailableSpot = await findWord(page, 'int main()', 'target', CPP_APP_PANEL);
+            const unavailablePeek = await openPeekDefinition(page, unavailableSpot);
             await expect(unavailablePeek).toBeVisible({ timeout: 15_000 });
             await unavailablePeek.getByRole('treeitem', { name: /^1 symbol in second\.cpp/ }).click();
             await page.keyboard.press('ArrowRight');

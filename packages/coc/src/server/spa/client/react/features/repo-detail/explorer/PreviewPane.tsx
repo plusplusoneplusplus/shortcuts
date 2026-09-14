@@ -271,6 +271,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                         : undefined;
                 }
                 : undefined,
+            showUnavailableForRejectedTarget: definitionPreviewOwners !== undefined,
         });
         // Before registering anything, move the model off `typescript` /
         // `javascript` so Monaco's bundled worker stops answering for it. The
@@ -283,8 +284,8 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
             symbolDefinitions,
-            resolveUri: async (uri, signal) => (
-                await previewSource.prepare(uri, signal)
+            resolveUri: async (uri, signal, target) => (
+                await previewSource.prepare(uri, signal, target, target.waitForContent)
                     ? (monaco as unknown as MonacoLike).Uri.parse(uri)
                     : null
             ),

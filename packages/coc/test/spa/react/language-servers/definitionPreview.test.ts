@@ -19,6 +19,7 @@ function createMonaco() {
                 const model = {
                     uri: resource,
                     content,
+                    setValue: (value: string) => { model.content = value; },
                     isAttachedToEditor: () => attached.has(key),
                     onDidChangeAttached: (listener: () => void) => {
                         attachmentListeners.set(key, listener);
@@ -107,6 +108,23 @@ describe('definition preview source', () => {
         expect(model(uri)).toMatchObject({ content: 'export const shared = true;' });
     });
 
+    it('creates an unavailable model for a rejected repo-group target without reading it', async () => {
+        const { monaco, model } = createMonaco();
+        const load = vi.fn();
+        const source = registerDefinitionPreviewSource({
+            monaco,
+            workspaceId: 'member-1',
+            load,
+            resolveTarget: () => undefined,
+            showUnavailableForRejectedTarget: true,
+        });
+        const uri = browserDocumentUri('outside', 'src/private.ts');
+
+        expect(await source.prepare(uri, new AbortController().signal)).toBe(true);
+        expect(load).not.toHaveBeenCalled();
+        expect(model(uri)).toMatchObject({ content: 'Definition source unavailable.' });
+    });
+
     it('surfaces read failures without poisoning another target', async () => {
         const { monaco, model, attach } = createMonaco();
         const load = vi.fn(async (path: string) => {
@@ -149,11 +167,37 @@ describe('definition preview source', () => {
         const request = new AbortController();
 
         const prepared = source.prepare(uri, request.signal);
+        await expect(prepared).resolves.toBe(true);
+        expect(model(uri)).toMatchObject({ content: 'Loading definition source...' });
         request.abort();
         finish('stale content');
 
-        await expect(prepared).resolves.toBe(false);
+        await vi.waitFor(() => expect(model(uri)).toBeUndefined());
+    });
+
+    it('aborts a pending read when Peek detaches from its loading model', async () => {
+        vi.useFakeTimers();
+        const { monaco, model, attach, detach } = createMonaco();
+        let readSignal: AbortSignal | undefined;
+        const source = registerDefinitionPreviewSource({
+            monaco,
+            workspaceId: 'ws-1',
+            load: (_path, signal) => {
+                readSignal = signal;
+                return new Promise<string>(() => undefined);
+            },
+        });
+        const uri = browserDocumentUri('ws-1', 'src/widget.ts');
+
+        await source.prepare(uri, new AbortController().signal);
+        attach(uri);
+        detach(uri);
+        await vi.runAllTimersAsync();
+
+        expect(readSignal?.aborted).toBe(true);
         expect(model(uri)).toBeUndefined();
+        source.dispose();
+        vi.useRealTimers();
     });
 
     it('disposes every temporary model after Peek detaches', async () => {

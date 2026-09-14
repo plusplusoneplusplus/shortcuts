@@ -12,6 +12,7 @@ export interface DefinitionPreviewUri {
 
 export interface DefinitionPreviewModel {
     uri: DefinitionPreviewUri;
+    setValue(value: string): void;
     dispose?(): void;
     isAttachedToEditor?(): boolean;
     onDidChangeAttached?(listener: () => void): DefinitionPreviewDisposable;
@@ -23,6 +24,11 @@ export interface DefinitionPreviewMonaco {
     };
     editor: {
         getModel?: (resource: DefinitionPreviewUri) => DefinitionPreviewModel | null;
+        getEditors?: () => readonly {
+            getModel?(): DefinitionPreviewModel | null;
+            setPosition?(position: { lineNumber: number; column: number }): void;
+            revealPositionInCenter?(position: { lineNumber: number; column: number }): void;
+        }[];
         createModel?: (
             value: string,
             language: string | undefined,
@@ -32,7 +38,12 @@ export interface DefinitionPreviewMonaco {
 }
 
 export interface DefinitionPreviewSource {
-    prepare(uri: string, signal: AbortSignal): Promise<boolean>;
+    prepare(
+        uri: string,
+        signal: AbortSignal,
+        position?: { lineNumber: number; column: number },
+        waitForContent?: boolean,
+    ): Promise<boolean>;
     dispose(): void;
 }
 
@@ -48,18 +59,21 @@ export function registerDefinitionPreviewSource(options: {
     resolveTarget?: (workspaceId: string) => (
         ((path: string, signal: AbortSignal) => Promise<string>) | undefined
     );
+    showUnavailableForRejectedTarget?: boolean;
 }): DefinitionPreviewSource {
     const controllers = new Set<AbortController>();
     const models = new Map<string, {
         model: DefinitionPreviewModel;
         attachment?: DefinitionPreviewDisposable;
+        controller?: AbortController;
         wasAttached: boolean;
     }>();
     let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
 
     const disposeModels = () => {
-        for (const { model, attachment } of models.values()) {
+        for (const { model, attachment, controller } of models.values()) {
+            controller?.abort();
             attachment?.dispose();
             model.dispose?.();
         }
@@ -85,12 +99,18 @@ export function registerDefinitionPreviewSource(options: {
     };
 
     return {
-        prepare: async (uri, signal) => {
+        prepare: async (
+            uri,
+            signal,
+            position = { lineNumber: 1, column: 1 },
+            waitForContent = false,
+        ) => {
             const target = parseBrowserDocumentUri(uri);
+            if (!target || disposed || signal.aborted) return false;
             const load = target?.workspaceId === options.workspaceId
                 ? options.load
-                : target && options.resolveTarget?.(target.workspaceId);
-            if (!target || !load || disposed || signal.aborted) {
+                : options.resolveTarget?.(target.workspaceId);
+            if (!load && !options.showUnavailableForRejectedTarget) {
                 return false;
             }
 
@@ -99,39 +119,69 @@ export function registerDefinitionPreviewSource(options: {
             const createModel = options.monaco.editor.createModel;
             if (!createModel) return false;
 
-            const controller = new AbortController();
-            const abort = () => controller.abort();
-            signal.addEventListener('abort', abort, { once: true });
-            controllers.add(controller);
-            let content: string;
-            try {
-                content = await load(target.path, controller.signal);
-            } catch {
-                if (controller.signal.aborted || disposed) return false;
-                content = 'Definition source unavailable.';
-            } finally {
-                signal.removeEventListener('abort', abort);
-                controllers.delete(controller);
-            }
-            if (controller.signal.aborted || disposed) return false;
+            const model = createModel(
+                `${'\n'.repeat(Math.max(0, position.lineNumber - 1))}${
+                    ' '.repeat(Math.max(0, position.column - 1))
+                }${load ? 'Loading definition source...' : 'Definition source unavailable.'}`,
+                undefined,
+                resource,
+            );
+            const record: {
+                model: DefinitionPreviewModel;
+                attachment?: DefinitionPreviewDisposable;
+                controller?: AbortController;
+                wasAttached: boolean;
+            } = { model, wasAttached: false };
+            record.attachment = model.onDidChangeAttached?.(() => {
+                if (model.isAttachedToEditor?.()) {
+                    record.wasAttached = true;
+                    clearCleanupTimer();
+                } else if (record.wasAttached) {
+                    scheduleCleanup(0);
+                }
+            });
+            models.set(uri, record);
+            scheduleCleanup(ORPHAN_MODEL_TIMEOUT_MS);
 
-            if (!options.monaco.editor.getModel?.(resource)) {
-                const model = createModel(content, undefined, resource);
-                const record: {
-                    model: DefinitionPreviewModel;
-                    attachment?: DefinitionPreviewDisposable;
-                    wasAttached: boolean;
-                } = { model, wasAttached: false };
-                record.attachment = model.onDidChangeAttached?.(() => {
-                    if (model.isAttachedToEditor?.()) {
-                        record.wasAttached = true;
-                        clearCleanupTimer();
-                    } else if (record.wasAttached) {
-                        scheduleCleanup(0);
-                    }
-                });
-                models.set(uri, record);
-                scheduleCleanup(ORPHAN_MODEL_TIMEOUT_MS);
+            if (load) {
+                const controller = new AbortController();
+                record.controller = controller;
+                const abort = () => {
+                    controller.abort();
+                    if (models.get(uri) !== record) return;
+                    record.attachment?.dispose();
+                    record.model.dispose?.();
+                    models.delete(uri);
+                };
+                signal.addEventListener('abort', abort, { once: true });
+                controllers.add(controller);
+                const loading = load(target.path, controller.signal)
+                    .then(content => {
+                        if (!controller.signal.aborted && !disposed && models.get(uri) === record) {
+                            model.setValue(content);
+                            setTimeout(() => {
+                                if (controller.signal.aborted || disposed || models.get(uri) !== record) return;
+                                for (const candidate of options.monaco.editor.getEditors?.() ?? []) {
+                                    if (candidate.getModel?.() !== model) continue;
+                                    candidate.setPosition?.(position);
+                                    candidate.revealPositionInCenter?.(position);
+                                }
+                            }, 0);
+                        }
+                    })
+                    .catch(() => {
+                        if (!controller.signal.aborted && !disposed && models.get(uri) === record) {
+                            model.setValue('Definition source unavailable.');
+                        }
+                    })
+                    .finally(() => {
+                        signal.removeEventListener('abort', abort);
+                        controllers.delete(controller);
+                    });
+                if (waitForContent) {
+                    await loading;
+                    return !controller.signal.aborted && !disposed && models.get(uri) === record;
+                }
             }
             return true;
         },

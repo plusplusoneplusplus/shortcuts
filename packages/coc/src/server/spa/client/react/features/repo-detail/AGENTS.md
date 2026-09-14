@@ -309,9 +309,11 @@ Peek Definition resolves those same cross-file `coc-file://` locations through
 its own workspace; a repo-group pane accepts each live member and loads through
 the target member's workspace and concrete clone route. It prepares accepted
 language-server or symbol-index targets before returning the location because
-standalone Monaco can resolve only models that already exist. Peek's native title remains in its
-loading state during the read, a failed read gets a readable unavailable model,
-and cancellation drops stale content. Temporary models are disposed after Peek
+standalone Monaco can resolve only models that already exist. Accepted targets
+start with a visible loading model that is updated in place after the routed
+read. Failed reads or rejected outside-group targets get a readable unavailable
+model without reading the rejected target, and cancellation drops stale
+content. Temporary models are disposed after Peek
 detaches or with the initiating pane; a prepared model that never attaches has a
 bounded orphan timeout. Selecting a row does not open an Explorer tab.
 

@@ -108,7 +108,11 @@ const monacoStub = vi.hoisted(() => {
                 },
                 getModel: (resource: { toString(): string }) => previewModels.get(resource.toString()) ?? null,
                 createModel: (content: string, _language: string | undefined, resource: { toString(): string }) => {
-                    const model = { uri: resource, content };
+                    const model = {
+                        uri: resource,
+                        content,
+                        setValue: (value: string) => { model.content = value; },
+                    };
                     previewModels.set(resource.toString(), model);
                     return model;
                 },
@@ -353,6 +357,7 @@ describe('PreviewPane — language providers (AC-03)', () => {
             .toEqual([
                 'coc-file://member-1/src/target.ts',
                 'coc-file://member-2/src/shared.ts',
+                'coc-file://outside/src/private.ts',
             ]);
         expect(monacoStub.resolvePreview('coc-file://member-1/src/target.ts'))
             .toMatchObject({ content: 'const a = 1;' });
@@ -370,7 +375,14 @@ describe('PreviewPane — language providers (AC-03)', () => {
             { signal: expect.any(AbortSignal) },
             'remote:server-a:member-2',
         );
-        expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts')).toBeNull();
+        expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts'))
+            .toMatchObject({ content: 'Definition source unavailable.' });
+        expect(mockExplorerApi.readBlob).not.toHaveBeenCalledWith(
+            'outside',
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+        );
 
         first.unmount();
         const second = renderPane({
