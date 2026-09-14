@@ -304,6 +304,13 @@ endpoint. Surfaces open the target pinned and pass the position back down as
 `revealLine` / `revealColumn`; the column travels with its line through the tab
 descriptors and is dropped whenever the line changes without one.
 
+Peek Definition resolves those same cross-file `coc-file://` locations through
+`features/language-servers/definitionPreview.ts`. The initiating pane claims each
+accepted language-server or symbol-index URI and supplies a clone-routed
+Explorer read. Claims and pending reads end with that pane; selecting a Peek row
+therefore creates only Monaco's temporary model and does not open an Explorer
+tab.
+
 ## Tests
 
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour

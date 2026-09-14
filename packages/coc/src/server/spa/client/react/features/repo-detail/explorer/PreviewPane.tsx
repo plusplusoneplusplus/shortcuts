@@ -35,6 +35,10 @@ import {
 import { installDefinitionLinkCue } from '../../language-servers/definitionLinkCue';
 import { applyShadowLanguage, type ShadowMonaco } from '../../language-servers/shadowLanguage';
 import {
+    registerDefinitionPreviewSource,
+    type DefinitionPreviewMonaco,
+} from '../../language-servers/definitionPreview';
+import {
     registerEditorNavigator,
     type LanguageNavigationTarget,
 } from '../../language-servers/editorNavigation';
@@ -228,6 +232,22 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
     const definitionSupported = supportsFeature(languageDocument.snapshot?.state, 'definition');
     const handleModelMount = useCallback(({ editor, monaco, model }: EditorModelMountContext) => {
         if (!languageView) return;
+        const previewSource = registerDefinitionPreviewSource({
+            monaco: monaco as unknown as DefinitionPreviewMonaco,
+            workspaceId: repoId,
+            load: async (path, signal) => {
+                const response = await explorerApi.readBlob(
+                    repoId,
+                    path,
+                    { signal },
+                    routingRef,
+                );
+                if (response.encoding !== 'utf-8') {
+                    throw new Error('Definition source is not readable text.');
+                }
+                return response.content;
+            },
+        });
         // Before registering anything, move the model off `typescript` /
         // `javascript` so Monaco's bundled worker stops answering for it. The
         // providers below then register under whichever id the model ended up
@@ -239,6 +259,11 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
             symbolDefinitions,
+            resolveUri: (uri) => (
+                previewSource.claim(uri)
+                    ? (monaco as unknown as MonacoLike).Uri.parse(uri)
+                    : null
+            ),
         });
         const definitionLinkCue = definitionSupported
             ? installDefinitionLinkCue({
@@ -255,9 +280,18 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             definitionLinkCue?.dispose();
             navigation.dispose();
             registration.dispose();
+            previewSource.dispose();
             shadow?.revert();
         };
-    }, [languageView, monacoLanguageId, handleNavigate, definitionSupported, symbolDefinitions]);
+    }, [
+        languageView,
+        monacoLanguageId,
+        handleNavigate,
+        definitionSupported,
+        symbolDefinitions,
+        repoId,
+        routingRef,
+    ]);
 
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted

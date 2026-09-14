@@ -77,6 +77,10 @@ first, results are deduplicated by file and line, and candidate URIs carry a
 provenance and show an amber `Symbol candidate` pill on the destination until a
 plain or exact cross-file open replaces it. The index continues to answer when
 clangd is disabled, unavailable, or does not advertise definition support.
+Cross-file locations from either source are claimed by the initiating editor's
+temporary `coc-file` content source. Monaco's Peek resolver reads the target
+through that editor's clone-routed Explorer client and creates an ephemeral
+model; closing the editor removes its claims and aborts outstanding reads.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.
