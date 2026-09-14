@@ -69,8 +69,10 @@ and transport code stays generic.
   later. It owns request-id correlation, per-request timeouts, `$/cancelRequest`
   on timeout or `AbortSignal`, notification fan-out, and answering
   server-to-client requests (unhandled methods get `-32601`, a throwing handler
-  gets `-32603`). A reply whose request already settled is dropped, which is how
-  stale results from a superseded query never reach a caller. `dispose` rejects
+  gets `-32603`). Errors from either stream half close the connection, so a broken
+  stdin pipe rejects in-flight work instead of escaping as an uncaught process
+  error. A reply whose request already settled is dropped, which is how stale
+  results from a superseded query never reach a caller. `dispose` rejects
   everything in flight with a `closed` failure and detaches every stream
   listener; the stream ending does the same.
 - Failures arrive as `LanguageServerRequestError` with a `failure` of `timeout`,

@@ -27,7 +27,9 @@ closing live sessions; capacity eviction never selects a referenced session.
 `LanguageServerSession` starts lazily,
 performs the LSP initialize handshake, preserves bounded stderr, and reports
 `starting`, `indexing`, `ready`, `reconnecting`, `unavailable`, `timeout`, or
-`failed`. A successful handshake clears prior failure detail.
+`failed`. Readable and writable transport errors both close the connection so
+broken server pipes reject in-flight work and enter the normal restart lifecycle.
+A successful handshake clears prior failure detail.
 
 An executable that cannot be spawned is `unavailable`. A process that rejects or
 exits during initialization is `failed`; an initialize request timeout is

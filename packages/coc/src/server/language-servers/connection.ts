@@ -106,6 +106,9 @@ export class LanguageServerConnection {
         this.input.on('end', this.handleEnd);
         this.input.on('close', this.handleEnd);
         this.input.on('error', this.handleStreamError);
+        if (this.output !== (this.input as unknown as Writable)) {
+            this.output.on('error', this.handleStreamError);
+        }
     }
 
     /** True once the connection stopped accepting traffic. */
@@ -238,6 +241,9 @@ export class LanguageServerConnection {
         this.input.off('end', this.handleEnd);
         this.input.off('close', this.handleEnd);
         this.input.off('error', this.handleStreamError);
+        if (this.output !== (this.input as unknown as Writable)) {
+            this.output.off('error', this.handleStreamError);
+        }
         this.reader.reset();
         this.requestHandlers.clear();
         this.notificationHandlers.clear();
