@@ -45,6 +45,9 @@ export function registerDefinitionPreviewSource(options: {
     monaco: DefinitionPreviewMonaco;
     workspaceId: string;
     load(path: string, signal: AbortSignal): Promise<string>;
+    resolveTarget?: (workspaceId: string) => (
+        ((path: string, signal: AbortSignal) => Promise<string>) | undefined
+    );
 }): DefinitionPreviewSource {
     const controllers = new Set<AbortController>();
     const models = new Map<string, {
@@ -84,7 +87,10 @@ export function registerDefinitionPreviewSource(options: {
     return {
         prepare: async (uri, signal) => {
             const target = parseBrowserDocumentUri(uri);
-            if (!target || target.workspaceId !== options.workspaceId || disposed || signal.aborted) {
+            const load = target?.workspaceId === options.workspaceId
+                ? options.load
+                : target && options.resolveTarget?.(target.workspaceId);
+            if (!target || !load || disposed || signal.aborted) {
                 return false;
             }
 
@@ -99,7 +105,7 @@ export function registerDefinitionPreviewSource(options: {
             controllers.add(controller);
             let content: string;
             try {
-                content = await options.load(target.path, controller.signal);
+                content = await load(target.path, controller.signal);
             } catch {
                 if (controller.signal.aborted || disposed) return false;
                 content = 'Definition source unavailable.';

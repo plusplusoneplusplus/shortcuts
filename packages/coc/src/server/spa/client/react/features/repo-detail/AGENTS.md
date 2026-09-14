@@ -305,10 +305,11 @@ endpoint. Surfaces open the target pinned and pass the position back down as
 descriptors and is dropped whenever the line changes without one.
 
 Peek Definition resolves those same cross-file `coc-file://` locations through
-`features/language-servers/definitionPreview.ts`. The initiating pane loads each
-accepted language-server or symbol-index target through its clone-routed
-Explorer reader before returning the location, because standalone Monaco can
-resolve only models that already exist. Peek's native title remains in its
+`features/language-servers/definitionPreview.ts`. A repository pane accepts only
+its own workspace; a repo-group pane accepts each live member and loads through
+the target member's workspace and concrete clone route. It prepares accepted
+language-server or symbol-index targets before returning the location because
+standalone Monaco can resolve only models that already exist. Peek's native title remains in its
 loading state during the read, a failed read gets a readable unavailable model,
 and cancellation drops stale content. Temporary models are disposed after Peek
 detaches or with the initiating pane; a prepared model that never attaches has a

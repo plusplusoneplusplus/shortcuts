@@ -194,6 +194,16 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         () => routingRefForPanelOwner(routingRef, target),
         [routingRef, target],
     );
+    const definitionPreviewOwners = useMemo(() => (
+        repoGroup
+            ? targetOptions
+                .filter(option => !option.disabled && !option.deprioritized)
+                .map(option => ({
+                    workspaceId: option.workspaceId,
+                    routingRef: routingRefForPanelOwner(routingRef, option.workspaceId),
+                }))
+            : undefined
+    ), [repoGroup, targetOptions, routingRef]);
 
     // New workspace resources open against the dock's current target, and carry
     // a repo label when that is not the panel's own workspace (a group member or
@@ -1030,6 +1040,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                                 <UnifiedTabView
                                     tab={tab}
                                     scopeWorkspaceId={workspaceId}
+                                    definitionPreviewOwners={definitionPreviewOwners}
                                     onClose={requestClose}
                                     onDirtyChange={handleDirtyChange}
                                     onErrorChange={handleErrorChange}

@@ -89,6 +89,24 @@ describe('definition preview source', () => {
         expect(load).not.toHaveBeenCalled();
     });
 
+    it('loads an accepted repo-group member through its owner source', async () => {
+        const { monaco, model } = createMonaco();
+        const load = vi.fn();
+        const loadMember = vi.fn().mockResolvedValue('export const shared = true;');
+        const source = registerDefinitionPreviewSource({
+            monaco,
+            workspaceId: 'member-1',
+            load,
+            resolveTarget: workspaceId => workspaceId === 'member-2' ? loadMember : undefined,
+        });
+        const uri = browserDocumentUri('member-2', 'src/shared.ts');
+
+        expect(await source.prepare(uri, new AbortController().signal)).toBe(true);
+        expect(load).not.toHaveBeenCalled();
+        expect(loadMember).toHaveBeenCalledWith('src/shared.ts', expect.any(AbortSignal));
+        expect(model(uri)).toMatchObject({ content: 'export const shared = true;' });
+    });
+
     it('surfaces read failures without poisoning another target', async () => {
         const { monaco, model, attach } = createMonaco();
         const load = vi.fn(async (path: string) => {

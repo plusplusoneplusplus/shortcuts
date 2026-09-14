@@ -50,6 +50,11 @@ export interface UnifiedTabViewProps {
     tab: UnifiedPanelTab;
     /** The panel's own workspace — Notes' owner, and the deep-link test. */
     scopeWorkspaceId: string;
+    /** Live repo-group member owners accepted by Peek Definition. */
+    definitionPreviewOwners?: readonly {
+        workspaceId: string;
+        routingRef?: string | null;
+    }[];
     /** Close this tab (the views' own close affordances route here). */
     onClose: (tabId: string) => void;
     /** Unsaved-edit state for this tab, for the strip's dirty marker. */
@@ -88,7 +93,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
-    onRegisterSave, onTerminalSessionsChange, onOpenFile,
+    onRegisterSave, onTerminalSessionsChange, onOpenFile, definitionPreviewOwners,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
@@ -132,6 +137,7 @@ export function UnifiedTabView({
                 <PreviewPane
                     repoId={tab.ownerWorkspaceId}
                     routingRef={tab.ownerRoutingRef}
+                    definitionPreviewOwners={definitionPreviewOwners}
                     filePath={tab.resourceId}
                     fileName={fileNameOf(tab)}
                     revealLine={tab.line}

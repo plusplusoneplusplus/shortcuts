@@ -315,10 +315,14 @@ describe('PreviewPane — language providers (AC-03)', () => {
         expect(links[0].uri.toString()).toContain('include/widget.hpp#symbol-index-candidate');
     });
 
-    it('routes repo-group definition previews through each member owner and rejects outsiders', async () => {
+    it('routes repo-group definition previews across live members and rejects outsiders', async () => {
         const first = renderPane({
             repoId: 'member-1',
             routingRef: 'remote:server-a:member-1',
+            definitionPreviewOwners: [
+                { workspaceId: 'member-1', routingRef: 'remote:server-a:member-1' },
+                { workspaceId: 'member-2', routingRef: 'remote:server-a:member-2' },
+            ],
             filePath: 'src/first.ts',
             fileName: 'first.ts',
         });
@@ -328,6 +332,10 @@ describe('PreviewPane — language providers (AC-03)', () => {
             {
                 uri: 'coc-file://member-1/src/target.ts',
                 range: { start: { line: 4, character: 2 }, end: { line: 4, character: 8 } },
+            },
+            {
+                uri: 'coc-file://member-2/src/shared.ts',
+                range: { start: { line: 8, character: 5 }, end: { line: 8, character: 11 } },
             },
             {
                 uri: 'coc-file://outside/src/private.ts',
@@ -342,14 +350,25 @@ describe('PreviewPane — language providers (AC-03)', () => {
             token,
         );
         expect(firstLinks.map((link: any) => link.uri.toString()))
-            .toEqual(['coc-file://member-1/src/target.ts']);
+            .toEqual([
+                'coc-file://member-1/src/target.ts',
+                'coc-file://member-2/src/shared.ts',
+            ]);
         expect(monacoStub.resolvePreview('coc-file://member-1/src/target.ts'))
+            .toMatchObject({ content: 'const a = 1;' });
+        expect(monacoStub.resolvePreview('coc-file://member-2/src/shared.ts'))
             .toMatchObject({ content: 'const a = 1;' });
         expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
             'member-1',
             'src/target.ts',
             { signal: expect.any(AbortSignal) },
             'remote:server-a:member-1',
+        );
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'member-2',
+            'src/shared.ts',
+            { signal: expect.any(AbortSignal) },
+            'remote:server-a:member-2',
         );
         expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts')).toBeNull();
 

@@ -78,11 +78,13 @@ provenance and show an amber `Symbol candidate` pill on the destination until a
 plain or exact cross-file open replaces it. The index continues to answer when
 clangd is disabled, unavailable, or does not advertise definition support.
 Cross-file locations from either source are prepared by the initiating editor's
-temporary `coc-file` preview source. It reads each target through that editor's
-clone-routed Explorer client before returning the location because standalone
-Monaco resolves only existing models. Pending reads keep Peek in its loading
-state; failures produce an unavailable model. Cancellation drops stale content,
-and temporary models are disposed when Peek detaches or the editor closes.
+temporary `coc-file` preview source. A repository editor accepts only its own
+workspace; a repo-group editor also accepts every live member and reads through
+the target member's workspace and concrete clone route. Standalone Monaco
+resolves only existing models, so each target is loaded before its location is
+returned. Pending reads keep Peek in its loading state; failures produce an
+unavailable model. Cancellation drops stale content, and temporary models are
+disposed when Peek detaches or the editor closes.
 Prepared models remain available while a slow Peek widget attaches and have a
 bounded orphan timeout when no widget claims them.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter

@@ -49,6 +49,11 @@ export interface PreviewPaneProps {
     repoId: string;
     /** Concrete clone identity for file I/O and language transport routing. */
     routingRef?: string | null;
+    /** Live repo-group members whose definition sources this pane may preview. */
+    definitionPreviewOwners?: readonly {
+        workspaceId: string;
+        routingRef?: string | null;
+    }[];
     /** Relative path from repo root, or prefixed with TRUSTED_PATH_PREFIX for absolute paths */
     filePath: string;
     /** File name for language detection, e.g. "index.ts" */
@@ -114,7 +119,7 @@ export interface PreviewPaneProps {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -232,21 +237,40 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
     const definitionSupported = supportsFeature(languageDocument.snapshot?.state, 'definition');
     const handleModelMount = useCallback(({ editor, monaco, model }: EditorModelMountContext) => {
         if (!languageView) return;
+        const loadDefinitionSource = async (
+            ownerWorkspaceId: string,
+            ownerRoutingRef: string | null | undefined,
+            path: string,
+            signal: AbortSignal,
+        ) => {
+            const response = await explorerApi.readBlob(
+                ownerWorkspaceId,
+                path,
+                { signal },
+                ownerRoutingRef,
+            );
+            if (response.encoding !== 'utf-8') {
+                throw new Error('Definition source is not readable text.');
+            }
+            return response.content;
+        };
         const previewSource = registerDefinitionPreviewSource({
             monaco: monaco as unknown as DefinitionPreviewMonaco,
             workspaceId: repoId,
-            load: async (path, signal) => {
-                const response = await explorerApi.readBlob(
-                    repoId,
-                    path,
-                    { signal },
-                    routingRef,
-                );
-                if (response.encoding !== 'utf-8') {
-                    throw new Error('Definition source is not readable text.');
+            load: (path, signal) => loadDefinitionSource(repoId, routingRef, path, signal),
+            resolveTarget: definitionPreviewOwners
+                ? (workspaceId) => {
+                    const owner = definitionPreviewOwners.find(candidate => candidate.workspaceId === workspaceId);
+                    return owner
+                        ? (path, signal) => loadDefinitionSource(
+                            owner.workspaceId,
+                            owner.routingRef,
+                            path,
+                            signal,
+                        )
+                        : undefined;
                 }
-                return response.content;
-            },
+                : undefined,
         });
         // Before registering anything, move the model off `typescript` /
         // `javascript` so Monaco's bundled worker stops answering for it. The
@@ -291,6 +315,7 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
         symbolDefinitions,
         repoId,
         routingRef,
+        definitionPreviewOwners,
     ]);
 
     // One editor change feeds two consumers: the render buffer, and the
