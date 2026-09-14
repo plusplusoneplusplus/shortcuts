@@ -745,7 +745,7 @@ export type ToolResultInterceptor = (
  * Tool execution lifecycle event emitted during streaming.
  */
 export interface ToolEvent {
-    type: 'tool-start' | 'tool-complete' | 'tool-failed';
+    type: 'tool-start' | 'tool-complete' | 'tool-failed' | 'tool-progress';
     toolCallId: string;
     toolName?: string;
     /**
@@ -759,6 +759,14 @@ export interface ToolEvent {
     result?: string;
     /** Error message (for 'tool-failed' events). */
     error?: string;
+    /**
+     * Latest human-readable progress message (for 'tool-progress' events).
+     *
+     * Provider-neutral: emitted only by providers that report progress while a
+     * tool is still running (today Copilot's `tool.execution_progress`). Only
+     * the newest message is carried — never a history.
+     */
+    progressMessage?: string;
 }
 
 // ============================================================================

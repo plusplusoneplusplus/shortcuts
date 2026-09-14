@@ -163,7 +163,7 @@ the original subscription even if the process ID has acquired a fresh emitter.
 ```
 ProcessStore
 ├── onProcessOutput(processId, event)   → per-process token/tool streaming
-│   Events: chunk, tool-start, tool-complete, tool-failed,
+│   Events: chunk, tool-start, tool-complete, tool-failed, tool-progress,
 │           permission-request, suggestions, ask-user, canvas-updated,
 │           status, done
 │

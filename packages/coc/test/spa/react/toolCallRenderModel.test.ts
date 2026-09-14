@@ -394,3 +394,79 @@ describe('semantic shell display', () => {
         expect(model.summaryIsPath).toBe(false);
     });
 });
+
+// ── read_batch visibility + tool progress ──────────────────────────────────
+
+describe('running tool progress', () => {
+    const START = '2026-01-02T15:04:05.000Z';
+    const running = (overrides: Record<string, any> = {}) => buildToolCallRenderModel({
+        id: 'tc-1',
+        toolName: 'read_batch',
+        args: { paths: ['/a.ts', '/b.ts'] },
+        status: 'running',
+        startTime: START,
+        ...overrides,
+    }, 'whisper-row', new Date(START).getTime() + 12_000);
+
+    it('humanizes read_batch and pills it as a Read', () => {
+        const model = running();
+        expect(model.displayName).toBe('Reading files');
+        expect(model.kindInfo).toEqual({ label: 'Read', cls: 'read' });
+        expect(model.rowSummary).toBe('2 files');
+    });
+
+    it('summarizes a single-path read_batch as the path and an unknown arg shape as nothing', () => {
+        expect(getToolSummary('read_batch', { paths: ['/repo/src/a.ts'] })).toBe('/repo/src/a.ts');
+        expect(getToolSummary('read_batch', { files: ['/a', '/b', '/c'] })).toBe('3 files');
+        expect(getToolSummary('read_batch', { something: 1 })).toBe('');
+    });
+
+    it('explains the wait before any provider progress arrives', () => {
+        expect(running().progressText).toBe('Reading files… This can take a while');
+    });
+
+    it('replaces the fallback with the provider message', () => {
+        expect(running({ progressMessage: 'Reading 28 files…' }).progressText).toBe('Reading 28 files…');
+        expect(running({ progressMessage: '   ' }).progressText).toBe('Reading files… This can take a while');
+    });
+
+    it('shows progress for a non-read_batch tool without inventing a fallback', () => {
+        const withProgress = buildToolCallRenderModel({
+            toolName: 'bash', args: { command: 'npm test' }, status: 'running', progressMessage: 'Running npm test…',
+        }, 'whisper-row');
+        expect(withProgress.progressText).toBe('Running npm test…');
+
+        const without = buildToolCallRenderModel({
+            toolName: 'bash', args: { command: 'npm test' }, status: 'running',
+        }, 'whisper-row');
+        expect(without.progressText).toBe('');
+    });
+
+    it('hides progress once the call settles, even if stale data still carries it', () => {
+        for (const status of ['completed', 'failed']) {
+            const model = buildToolCallRenderModel({
+                toolName: 'read_batch', args: {}, status, progressMessage: 'Reading 28 files…',
+            }, 'whisper-row');
+            expect(model.progressText).toBe('');
+            expect(model.runningStatusLabel).toBe('');
+        }
+    });
+
+    it('names the tool and the state for assistive tech while running', () => {
+        expect(running().runningStatusLabel).toBe('Reading files, in progress');
+    });
+
+    it('measures a running call against the supplied clock and freezes on settlement', () => {
+        expect(running().duration).toBe('12.0s');
+        expect(buildToolCallRenderModel({
+            toolName: 'read_batch', args: {}, status: 'running', startTime: START,
+        }, 'whisper-row', new Date(START).getTime() + 30_000).duration).toBe('30.0s');
+        expect(buildToolCallRenderModel({
+            toolName: 'read_batch',
+            args: {},
+            status: 'completed',
+            startTime: START,
+            endTime: new Date(new Date(START).getTime() + 2_000).toISOString(),
+        }, 'whisper-row', new Date(START).getTime() + 99_000).duration).toBe('2.0s');
+    });
+});

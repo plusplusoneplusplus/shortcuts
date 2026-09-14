@@ -421,6 +421,78 @@ describe('BaseExecutor', () => {
             }));
         });
 
+        it('updates the running tool snapshot in place on tool-progress', () => {
+            const handler = executor.buildToolEventHandlerPublic('proc-progress', () => 0);
+            handler({ type: 'tool-start', toolCallId: 'tc-p', toolName: 'read_batch', parameters: { paths: ['/a'] } } as any);
+            handler({ type: 'tool-progress', toolCallId: 'tc-p', toolName: 'read_batch', progressMessage: 'Reading 28 files…' } as any);
+
+            const session = executor.getStreamingStatePublic('proc-progress');
+            // No extra timeline row — the existing running snapshot is mutated.
+            expect(session.timelineBuffer).toHaveLength(1);
+            expect(session.timelineBuffer[0].toolCall?.progressMessage).toBe('Reading 28 files…');
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-progress', expect.objectContaining({
+                type: 'tool-progress',
+                toolCallId: 'tc-p',
+                toolName: 'read_batch',
+                progressMessage: 'Reading 28 files…',
+            }));
+        });
+
+        it('keeps only the latest progress message on the snapshot', () => {
+            const handler = executor.buildToolEventHandlerPublic('proc-progress-2', () => 0);
+            handler({ type: 'tool-start', toolCallId: 'tc-p', toolName: 'read_batch', parameters: {} } as any);
+            handler({ type: 'tool-progress', toolCallId: 'tc-p', progressMessage: 'Reading 2 files…' } as any);
+            handler({ type: 'tool-progress', toolCallId: 'tc-p', progressMessage: 'Reading 28 files…' } as any);
+
+            const session = executor.getStreamingStatePublic('proc-progress-2');
+            expect(session.timelineBuffer).toHaveLength(1);
+            expect(session.timelineBuffer[0].toolCall?.progressMessage).toBe('Reading 28 files…');
+        });
+
+        it('persists the latest progress message on a forced streaming flush', async () => {
+            const processId = 'proc-progress-flush';
+            await store.addProcess(createTestProcess(processId, [
+                { role: 'user', content: 'hi', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ]));
+            const handler = executor.buildToolEventHandlerPublic(processId, () => 0);
+            handler({ type: 'tool-start', toolCallId: 'tc-p', toolName: 'read_batch', parameters: {} } as any);
+            handler({ type: 'tool-progress', toolCallId: 'tc-p', progressMessage: 'Reading 28 files…' } as any);
+
+            await executor.flushConversationTurnPublic(processId, true);
+
+            const turn = store.processes.get(processId)!.conversationTurns!.at(-1)!;
+            expect(turn.timeline![0].toolCall!.progressMessage).toBe('Reading 28 files…');
+        });
+
+        it('drops progress for an unknown call and for a settled one', () => {
+            const handler = executor.buildToolEventHandlerPublic('proc-progress-late', () => 0);
+            handler({ type: 'tool-start', toolCallId: 'tc-p', toolName: 'read_batch', parameters: {} } as any);
+            handler({ type: 'tool-complete', toolCallId: 'tc-p', toolName: 'read_batch', result: 'done' } as any);
+            handler({ type: 'tool-progress', toolCallId: 'tc-p', progressMessage: 'Reading 28 files…' } as any);
+            handler({ type: 'tool-progress', toolCallId: 'ghost', progressMessage: 'Reading 28 files…' } as any);
+            handler({ type: 'tool-progress', toolCallId: 'tc-p', progressMessage: '   ' } as any);
+
+            const session = executor.getStreamingStatePublic('proc-progress-late');
+            expect(session.timelineBuffer).toHaveLength(2);
+            expect(session.timelineBuffer.some(i => i.toolCall?.progressMessage)).toBe(false);
+            expect(store.emitProcessEvent).not.toHaveBeenCalledWith('proc-progress-late', expect.objectContaining({
+                type: 'tool-progress',
+            }));
+        });
+
+        it('tracks two concurrent calls independently by id', () => {
+            const handler = executor.buildToolEventHandlerPublic('proc-progress-multi', () => 0);
+            handler({ type: 'tool-start', toolCallId: 'a', toolName: 'read_batch', parameters: {} } as any);
+            handler({ type: 'tool-start', toolCallId: 'b', toolName: 'bash', parameters: {} } as any);
+            handler({ type: 'tool-progress', toolCallId: 'a', progressMessage: 'Reading 4 files…' } as any);
+            handler({ type: 'tool-progress', toolCallId: 'b', progressMessage: 'Compiling…' } as any);
+
+            const buffer = executor.getStreamingStatePublic('proc-progress-multi').timelineBuffer;
+            expect(buffer).toHaveLength(2);
+            expect(buffer[0].toolCall?.progressMessage).toBe('Reading 4 files…');
+            expect(buffer[1].toolCall?.progressMessage).toBe('Compiling…');
+        });
+
         it('ignores malformed suggest_follow_ups result without throwing', () => {
             const handler = executor.buildToolEventHandlerPublic('proc-malform', () => 0);
             expect(() => handler({

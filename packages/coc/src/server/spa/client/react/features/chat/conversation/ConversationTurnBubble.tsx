@@ -187,6 +187,8 @@ interface RenderToolCall {
     startTime?: string;
     endTime?: string;
     parentToolCallId?: string;
+    /** Latest provider progress message (running calls only). */
+    progressMessage?: string;
 }
 
 type RenderChunk =
@@ -585,6 +587,7 @@ function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
         startTime: raw?.startTime,
         endTime: raw?.endTime,
         parentToolCallId: raw?.parentToolCallId || raw?.parent_tool_call_id,
+        progressMessage: typeof raw?.progressMessage === 'string' ? raw.progressMessage : undefined,
     };
 }
 
@@ -612,6 +615,8 @@ function mergeToolCall(target: RenderToolCall, incoming: RenderToolCall): void {
     if (incoming.parentToolCallId && !target.parentToolCallId) {
         target.parentToolCallId = incoming.parentToolCallId;
     }
+    // Latest message wins; a settled call hides it at render time anyway.
+    if (incoming.progressMessage) target.progressMessage = incoming.progressMessage;
 }
 
 /**

@@ -55,6 +55,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                 result: tc.result,
                 error: tc.error,
                 ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
+                ...(tc.progressMessage ? { progressMessage: tc.progressMessage } : {}),
                 permissionRequest: tc.permissionRequest ? {
                     kind: tc.permissionRequest.kind,
                     timestamp: tc.permissionRequest.timestamp.toISOString(),
@@ -81,6 +82,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                     result: item.toolCall.result,
                     error: item.toolCall.error,
                     ...(item.toolCall.parentToolCallId ? { parentToolCallId: item.toolCall.parentToolCallId } : {}),
+                    ...(item.toolCall.progressMessage ? { progressMessage: item.toolCall.progressMessage } : {}),
                     permissionRequest: item.toolCall.permissionRequest ? {
                         kind: item.toolCall.permissionRequest.kind,
                         timestamp: item.toolCall.permissionRequest.timestamp.toISOString(),
@@ -169,6 +171,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                 result: tc.result,
                 error: tc.error,
                 parentToolCallId: tc.parentToolCallId,
+                progressMessage: tc.progressMessage,
                 permissionRequest: tc.permissionRequest ? {
                     kind: tc.permissionRequest.kind,
                     timestamp: new Date(tc.permissionRequest.timestamp),
@@ -195,6 +198,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                     result: item.toolCall.result,
                     error: item.toolCall.error,
                     parentToolCallId: item.toolCall.parentToolCallId,
+                    progressMessage: item.toolCall.progressMessage,
                     permissionRequest: item.toolCall.permissionRequest ? {
                         kind: item.toolCall.permissionRequest.kind,
                         timestamp: new Date(item.toolCall.permissionRequest.timestamp),

@@ -39,6 +39,8 @@ export function getToolKindInfo(toolName: string): ToolKindInfo {
     switch (canonicalName) {
         case 'view':
         case 'read':
+        // Copilot's bulk file read — same family as a single read.
+        case 'read_batch':
             return { label: 'Read', cls: 'read' };
         case 'grep':
             return { label: 'Grep', cls: 'grep' };

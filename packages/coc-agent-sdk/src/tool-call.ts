@@ -23,6 +23,11 @@ export interface ToolCall {
     result?: string;
     error?: string;
     parentToolCallId?: string;
+    /**
+     * Latest provider progress message while the call is running. Cleared on
+     * completion/failure; absent for providers that do not report progress.
+     */
+    progressMessage?: string;
     permissionRequest?: ToolCallPermissionRequest;
     permissionResult?: ToolCallPermissionResult;
 }
@@ -37,6 +42,11 @@ export interface SerializedToolCall {
     result?: string;
     error?: string;
     parentToolCallId?: string;
+    /**
+     * Latest provider progress message while the call is running. Cleared on
+     * completion/failure; absent for providers that do not report progress.
+     */
+    progressMessage?: string;
     permissionRequest?: {
         kind: string;
         timestamp: string;

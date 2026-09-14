@@ -164,6 +164,7 @@ interface ToolLike {
     endTime?: string;
     args?: unknown;
     result?: string;
+    progressMessage?: string;
 }
 
 interface ToolChunk {
@@ -215,6 +216,20 @@ function isVisibleAskUserTool(tool: ToolLike | undefined): boolean {
     if (!tool) return false;
     return normalizeToolName(tool.toolName) === 'ask_user'
         && (tool.status === 'completed' || tool.result !== undefined);
+}
+
+/**
+ * Tools whose running row must stay outside the Whisper collapse.
+ *
+ * Whisper's job is to quiet settled history, not to hide the operation that is
+ * currently blocking the response behind a generic "1 tool call" label. Two
+ * cases qualify, both provider-neutral: a call that is reporting live progress,
+ * and a `read_batch` (which can run for a long time before its first progress
+ * message). Once the call settles it collapses like any other history.
+ */
+function isActiveProgressTool(tool: ToolLike | undefined): boolean {
+    if (!tool || tool.status !== 'running') return false;
+    return normalizeToolName(tool.toolName) === 'read_batch' || !!tool.progressMessage?.trim();
 }
 
 /**
@@ -747,9 +762,10 @@ export function filterWhisperChunks(
 
     // Identify tail items:
     //  - The final assistant message (see below)
-    //  - Any chunk whose tool is task_complete
+    //  - Any chunk that must stay visible on its own (task_complete, an
+    //    answered ask_user, or a call that is still actively working)
     let lastContentIndex = -1;
-    const taskCompleteIndices = new Set<number>();
+    const visibleTailIndices = new Set<number>();
 
     for (let i = chunks.length - 1; i >= 0; i--) {
         const c = chunks[i];
@@ -758,8 +774,8 @@ export function filterWhisperChunks(
         }
         if (c.kind === 'tool' && c.toolId) {
             const tool = toolById.get(c.toolId);
-            if (tool && (tool.toolName === 'task_complete' || isVisibleAskUserTool(tool))) {
-                taskCompleteIndices.add(i);
+            if (tool && (tool.toolName === 'task_complete' || isVisibleAskUserTool(tool) || isActiveProgressTool(tool))) {
+                visibleTailIndices.add(i);
             }
         }
     }
@@ -784,7 +800,7 @@ export function filterWhisperChunks(
         }
     }
 
-    const tailIndices = new Set<number>(taskCompleteIndices);
+    const tailIndices = new Set<number>(visibleTailIndices);
     for (const i of finalMessageIndices) tailIndices.add(i);
 
     const preceding: ToolChunk[] = [];

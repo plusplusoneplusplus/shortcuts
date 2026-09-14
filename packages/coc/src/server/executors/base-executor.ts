@@ -404,6 +404,13 @@ export abstract class BaseExecutor {
                 return;
             }
 
+            // Progress is an in-place update of the running call, never a new
+            // timeline row.
+            if (event.type === 'tool-progress') {
+                this.applyToolProgress(processId, event);
+                return;
+            }
+
             // Append tool timeline item
             const timelineType = event.type === 'tool-start' ? 'tool-start'
                 : event.type === 'tool-complete' ? 'tool-complete'
@@ -441,6 +448,43 @@ export abstract class BaseExecutor {
             // Trigger throttled flush so tool-only sessions persist timeline
             this.checkThrottleAndFlush(processId);
         };
+    }
+
+    /**
+     * Applies a `tool-progress` event to the buffered running tool snapshot.
+     *
+     * Updates the latest timeline entry for the tool call in place — no new
+     * timeline item — then emits a live process event for SSE consumers and
+     * lets the normal throttled flush persist the message, so a reconnect
+     * restores the running row with its latest status. A message for an unknown
+     * call, or for one whose latest entry has already settled, is dropped:
+     * terminal state wins.
+     */
+    private applyToolProgress(processId: string, event: ToolEvent): void {
+        const progressMessage = event.progressMessage?.trim();
+        if (!progressMessage) { return; }
+
+        const buffer = this.getTimelineBuffer(processId);
+        if (!buffer) { return; }
+        let snapshot: TimelineItem | undefined;
+        for (let i = buffer.length - 1; i >= 0; i--) {
+            if (buffer[i].toolCall?.id === event.toolCallId) { snapshot = buffer[i]; break; }
+        }
+        if (!snapshot?.toolCall || snapshot.toolCall.status !== 'running') { return; }
+        snapshot.toolCall.progressMessage = progressMessage;
+
+        try {
+            this.store.emitProcessEvent(processId, {
+                type: 'tool-progress',
+                toolCallId: event.toolCallId,
+                toolName: event.toolName,
+                ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+                progressMessage,
+            });
+        } catch {
+            // Non-fatal
+        }
+        this.checkThrottleAndFlush(processId);
     }
 
     /**

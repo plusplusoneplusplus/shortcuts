@@ -12,6 +12,7 @@ import {
     ISessionEvent,
     StreamingSessionRunOptions,
 } from '../../src/streaming-session';
+import type { ToolEvent } from '../../src/types';
 
 // Suppress logger output during tests
 
@@ -548,6 +549,48 @@ describe('StreamingSession — tool call capture', () => {
         expect(result.toolCalls).toHaveLength(1);
         expect(result.toolCalls![0].status).toBe('completed');
         expect(result.toolCalls![0].name).toBe('view');
+    });
+
+    it('forwards tool.execution_progress as a tool-progress event between start and completion', async () => {
+        const { session, emit } = makeMockSession();
+        const toolEvents: ToolEvent[] = [];
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({
+            onToolEvent: e => toolEvents.push(e),
+        }));
+
+        emit({ type: 'tool.execution_start', data: { toolCallId: 'tc1', toolName: 'read_batch', arguments: { paths: ['/a', '/b'] } } });
+        emit({ type: 'tool.execution_progress', data: { toolCallId: 'tc1', progressMessage: 'Reading 2 files…' } });
+        // A repeat of the same message is not a new update.
+        emit({ type: 'tool.execution_progress', data: { toolCallId: 'tc1', progressMessage: 'Reading 2 files…' } });
+        emit({ type: 'tool.execution_progress', data: { toolCallId: 'tc1', progressMessage: 'Reading 9 files…' } });
+        emit({ type: 'tool.execution_complete', data: { toolCallId: 'tc1', toolName: 'read_batch', success: true, result: { content: 'files' } } });
+        // Terminal state wins: a late progress event is dropped.
+        emit({ type: 'tool.execution_progress', data: { toolCallId: 'tc1', progressMessage: 'Reading 12 files…' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(toolEvents.map(e => e.type)).toEqual(['tool-start', 'tool-progress', 'tool-progress', 'tool-complete']);
+        expect(toolEvents.filter(e => e.type === 'tool-progress').map(e => e.progressMessage))
+            .toEqual(['Reading 2 files…', 'Reading 9 files…']);
+        expect(result.toolCalls![0].status).toBe('completed');
+        expect(result.toolCalls![0].progressMessage).toBeUndefined();
+    });
+
+    it('ignores tool.execution_progress for a call that never started', async () => {
+        const { session, emit } = makeMockSession();
+        const toolEvents: ToolEvent[] = [];
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({
+            onToolEvent: e => toolEvents.push(e),
+        }));
+
+        emit({ type: 'tool.execution_progress', data: { toolCallId: 'ghost', progressMessage: 'Reading 2 files…' } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(toolEvents).toEqual([]);
+        expect(result.toolCalls).toBeUndefined();
     });
 
     it('marks tool as failed on tool.execution_complete with success=false', async () => {
