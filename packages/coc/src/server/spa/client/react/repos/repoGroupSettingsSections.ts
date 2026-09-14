@@ -20,9 +20,9 @@ export const REPO_GROUP_SETTINGS_NAV: SettingsNavGroup[] = [
         label: 'Group',
         items: [
             {
-                id: 'repos',
-                label: 'Repos',
-                title: 'Repos',
+                id: 'members',
+                label: 'Member repos',
+                title: 'Member repos',
                 description: 'Descriptions tell the model what each repo is for. Read-only repos stay searchable and previewable, but provider tools cannot modify them. Codex and OpenCode cannot run groups with read-only members.',
             },
         ],
@@ -43,7 +43,7 @@ const GROUP_SETTINGS_SECTIONS = new Set<string>(
 );
 
 /** Landing section when the hash names no section, or one a group does not have. */
-export const REPO_GROUP_DEFAULT_SECTION: SettingsSection = 'repos';
+export const REPO_GROUP_DEFAULT_SECTION: SettingsSection = 'members';
 
 /** Narrow an arbitrary settings section to one a group actually renders. */
 export function resolveRepoGroupSection(section: string | undefined | null): SettingsSection {

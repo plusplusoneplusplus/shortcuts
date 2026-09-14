@@ -41,16 +41,16 @@ beforeEach(() => {
 });
 
 describe('RepoGroupSettingsTab', () => {
-    it('renders the shared settings shell landing on Repos, with a Group and an Agent nav group', async () => {
+    it('renders the shared settings shell landing on Member repos, with a Group and an Agent nav group', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
 
         const tab = screen.getByTestId('repo-group-settings-tab');
         expect(tab.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect(screen.getByTestId('settings-sidebar')).toBeTruthy();
         expect(screen.getByTestId('settings-content-panel')).toBeTruthy();
-        expect(screen.getByTestId('nav-item-repos').textContent).toBe('Repos');
-        expect(screen.getByTestId('nav-item-repos').getAttribute('aria-current')).toBe('page');
-        expect(screen.getByTestId('settings-section-title').textContent).toBe('Repos');
+        expect(screen.getByTestId('nav-item-members').textContent).toBe('Member repos');
+        expect(screen.getByTestId('nav-item-members').getAttribute('aria-current')).toBe('page');
+        expect(screen.getByTestId('settings-section-title').textContent).toBe('Member repos');
         expect(screen.getByTestId('settings-section-description').textContent).toContain('what each repo is for');
         expect(screen.getByTestId('settings-section-description').textContent).toContain('Codex and OpenCode');
         expect(screen.getByTestId('settings-filter-input')).toBeTruthy();
@@ -74,7 +74,7 @@ describe('RepoGroupSettingsTab', () => {
         expect(screen.queryByTestId('repo-group-member-list')).toBeNull();
     });
 
-    it('lists every member in the Repos section with its name, path, stale badge and description', async () => {
+    it('lists every member in the Member repos section with its name, path, stale badge and description', async () => {
         render(<RepoGroupSettingsTab workspaceId={GROUP_ID} active />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, undefined));
 

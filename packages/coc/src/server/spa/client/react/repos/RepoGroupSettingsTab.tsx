@@ -4,7 +4,7 @@
  * A group gets the same split-panel settings surface a real repo gets: the
  * shared `SettingsNavSidebar` on the left, a card content surface on the right,
  * and `#repos/<groupId>/settings/<section>` hash routing. Only the nav entries
- * differ - a group has "Group" (Repos) and "Agent" (MCP Servers, Agent
+ * differ - a group has "Group" (Member repos) and "Agent" (MCP Servers, Agent
  * Skills, LLM Tools); it has no git checkout, so Info / Plans Folder / Notes /
  * Instructions / Memory stay off the list.
  *
@@ -15,7 +15,7 @@
  * read back out of, the member repos.
  *
  * Membership itself (add / remove / rename the group) stays in `RepoGroupDialog`;
- * the Repos section only edits descriptions and the read-only policy,
+ * the Member repos section only edits descriptions and the read-only policy,
  * against the same `PATCH /api/repo-groups/:id`.
  */
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
@@ -104,7 +104,7 @@ function RepoGroupSettingsPane({ workspaceId, baseUrl, active }: RepoGroupSettin
     }, [activeSection]);
 
     const renderBadge = useCallback((id: SettingsSection) => {
-        if (id === 'repos' && members) return <SettingsNavCountBadge count={members.length} />;
+        if (id === 'members' && members) return <SettingsNavCountBadge count={members.length} />;
         if (id === 'mcp' && !mcp.loading) return <SettingsNavCountBadge count={enabledMcpCount} />;
         if (id === 'skills' && !skillsController.skillsLoading) return <SettingsNavCountBadge count={skillsController.skills.length} />;
         return null;
@@ -131,7 +131,7 @@ function RepoGroupSettingsPane({ workspaceId, baseUrl, active }: RepoGroupSettin
                 )}
 
                 <div className={panelsOwnHeader ? '' : 'px-6 pb-8 flex flex-col gap-4'}>
-                    {activeSection === 'repos' && (
+                    {activeSection === 'members' && (
                         members
                             ? <RepoGroupMemberList workspaceId={workspaceId} baseUrl={baseUrl} members={members} />
                             : <div className="text-xs text-[#848484] px-3 py-2" data-testid="repo-group-settings-loading">Loading…</div>
