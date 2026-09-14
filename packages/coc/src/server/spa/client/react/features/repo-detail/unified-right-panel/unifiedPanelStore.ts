@@ -30,6 +30,7 @@ import {
     type UnifiedPanelState,
 } from './unifiedPanelTabsModel';
 import { readUnifiedTreeState, writeUnifiedTreeState } from './unifiedPanelTree';
+import { clearUnifiedPanelNavigationHistory } from './unifiedPanelNavigationStore';
 
 const listeners = new Map<string, Set<() => void>>();
 
@@ -154,6 +155,7 @@ export function useUnifiedPanelState(
  * (used to isolate tests). Subscribers re-render against the empty panel.
  */
 export function clearUnifiedPanelState(workspaceId?: string): void {
+    clearUnifiedPanelNavigationHistory(workspaceId);
     const keys = workspaceId === undefined
         ? [...snapshotCache.keys(), ...listeners.keys()]
         : [unifiedPanelStorageKey(workspaceId)];

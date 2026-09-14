@@ -111,6 +111,14 @@ export function canNavigateHistory(
         : history.index >= 0 && history.index < history.entries.length - 1;
 }
 
+export function navigationHistoryDestination(
+    history: UnifiedPanelNavigationHistory,
+    direction: NavigationDirection,
+): UnifiedPanelNavigationLocation | null {
+    if (!canNavigateHistory(history, direction)) return null;
+    return history.entries[history.index + (direction === 'back' ? -1 : 1)] ?? null;
+}
+
 export function stepNavigationHistory(
     history: UnifiedPanelNavigationHistory,
     direction: NavigationDirection,

@@ -74,6 +74,11 @@ import {
     quickOpenShortcut,
 } from './quickOpenRouting';
 import { closeTabOutcome, closeTabShortcut } from './closeTabRouting';
+import {
+    keyboardNavigationDirection,
+    mouseNavigationDirection,
+    panelOwnsFileNavigation,
+} from './fileNavigationRouting';
 import { explorerFileTabInput } from './unifiedExplorerFiles';
 import {
     UNIFIED_TREE_MIN_WIDTH,
@@ -91,6 +96,24 @@ import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
+import type {
+    EditorNavigationController,
+    EditorNavigationReason,
+    EditorNavigationSnapshot,
+} from '../../../shared/file-viewer/MonacoFileEditor';
+import {
+    finishNavigationReplay,
+    navigationHistoryDestination,
+    pruneClosedNavigationTabs,
+    recordNavigationLocation,
+    stepNavigationHistory,
+    type NavigationDirection,
+    type UnifiedPanelNavigationLocation,
+} from './unifiedPanelNavigationHistory';
+import {
+    readUnifiedPanelNavigationHistory,
+    writeUnifiedPanelNavigationHistory,
+} from './unifiedPanelNavigationStore';
 import {
     liveTerminalSessionIds,
     terminalCloseConfirmMessage,
@@ -102,7 +125,11 @@ import {
     dirtyCloseLabel,
     needsDirtyCloseConfirm,
 } from './unifiedDirtyClose';
-import type { OpenUnifiedPreviewTabInput, OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import {
+    unifiedTabId,
+    type OpenUnifiedPreviewTabInput,
+    type OpenUnifiedTabInput,
+} from './unifiedPanelTabsModel';
 import { getRepoGroup } from '../../../repos/repoGroupService';
 import {
     activateWorkspaceRouteForBaseUrl,
@@ -154,7 +181,7 @@ export interface UnifiedRightPanelProps {
 export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock, targets, repoGroup }: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const {
-        tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
+        state, tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
     } = useUnifiedPanelTabs(workspaceId, chatId);
 
     // Reconcile only at the chat-selection boundary. Resource entry points still
@@ -351,6 +378,155 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         return toolbar.interactive && active?.ownerWorkspaceId === target ? toolbar.path : null;
     }, [active?.ownerWorkspaceId, target, toolbar]);
 
+    // ------------------------------------------------------------------
+    // File location history
+    // ------------------------------------------------------------------
+
+    const navigationHistoryRef = useRef(readUnifiedPanelNavigationHistory(workspaceId));
+    const navigationControllers = useRef(new Map<string, EditorNavigationController>());
+    const pendingNavigationReason = useRef<{ tabId: string; reason: EditorNavigationReason } | null>(null);
+    const pendingReplay = useRef<UnifiedPanelNavigationLocation | null>(null);
+    const navigationScope = useRef(workspaceId);
+    if (navigationScope.current !== workspaceId) {
+        navigationScope.current = workspaceId;
+        navigationHistoryRef.current = readUnifiedPanelNavigationHistory(workspaceId);
+        navigationControllers.current.clear();
+        pendingNavigationReason.current = null;
+        pendingReplay.current = null;
+    }
+    const activeIdRef = useRef(activeId);
+    activeIdRef.current = activeId;
+    const tabsRef = useRef(tabs);
+    tabsRef.current = tabs;
+    const setNavigationHistory = useCallback((history: typeof navigationHistoryRef.current) => {
+        navigationHistoryRef.current = history;
+        writeUnifiedPanelNavigationHistory(workspaceId, history);
+    }, [workspaceId]);
+
+    const recordFileLocation = useCallback((
+        tabId: string,
+        snapshot: EditorNavigationSnapshot,
+        reason: EditorNavigationReason,
+    ) => {
+        setNavigationHistory(recordNavigationLocation(
+            navigationHistoryRef.current,
+            { scopeWorkspaceId: workspaceId, tabId, ...snapshot },
+            reason,
+        ));
+    }, [setNavigationHistory, workspaceId]);
+
+    const captureActiveFileLocation = useCallback((reason: EditorNavigationReason) => {
+        const id = activeIdRef.current;
+        if (id === null || tabsRef.current.find(tab => tab.id === id)?.kind !== 'file') return;
+        const snapshot = navigationControllers.current.get(id)?.capture();
+        if (snapshot) recordFileLocation(id, snapshot, reason);
+    }, [recordFileLocation]);
+
+    const prepareFileNavigation = useCallback((tabId: string, reason: EditorNavigationReason) => {
+        captureActiveFileLocation(reason);
+        pendingNavigationReason.current = { tabId, reason };
+    }, [captureActiveFileLocation]);
+
+    const restoreNavigationLocation = useCallback((
+        location: UnifiedPanelNavigationLocation,
+        controller: EditorNavigationController,
+    ) => {
+        controller.restore({ selection: location.selection, viewState: location.viewState });
+        pendingReplay.current = null;
+        setNavigationHistory(finishNavigationReplay(navigationHistoryRef.current));
+    }, [setNavigationHistory]);
+
+    const handleFileNavigationMount = useCallback((
+        tabId: string,
+        controller: EditorNavigationController | null,
+    ) => {
+        if (controller === null) {
+            navigationControllers.current.delete(tabId);
+            return;
+        }
+        navigationControllers.current.set(tabId, controller);
+        const replay = pendingReplay.current;
+        if (replay?.tabId === tabId) restoreNavigationLocation(replay, controller);
+    }, [restoreNavigationLocation]);
+
+    const handleFileNavigationLocation = useCallback((
+        tabId: string,
+        snapshot: EditorNavigationSnapshot,
+        reason: EditorNavigationReason,
+    ) => {
+        if (activeIdRef.current !== tabId) return;
+        const pending = pendingNavigationReason.current;
+        const effectiveReason = pending?.tabId === tabId ? pending.reason : reason;
+        if (pending?.tabId === tabId) pendingNavigationReason.current = null;
+        recordFileLocation(tabId, snapshot, effectiveReason);
+    }, [recordFileLocation]);
+
+    const navigateFileHistory = useCallback((direction: NavigationDirection): boolean => {
+        const destination = navigationHistoryDestination(navigationHistoryRef.current, direction);
+        if (
+            destination === null
+            || destination.scopeWorkspaceId !== workspaceId
+            || !tabsRef.current.some(tab => tab.kind === 'file' && tab.id === destination.tabId)
+        ) return false;
+
+        const step = stepNavigationHistory(navigationHistoryRef.current, direction);
+        if (step === null) return false;
+        setNavigationHistory(step.history);
+        pendingNavigationReason.current = null;
+        const controller = navigationControllers.current.get(step.location.tabId);
+        if (controller && activeIdRef.current === step.location.tabId) {
+            restoreNavigationLocation(step.location, controller);
+        } else {
+            pendingReplay.current = step.location;
+            activate(step.location.tabId);
+        }
+        return true;
+    }, [activate, restoreNavigationLocation, setNavigationHistory, workspaceId]);
+
+    const activateWithNavigation = useCallback((tabId: string) => {
+        if (tabId === activeIdRef.current) return;
+        const target = tabsRef.current.find(tab => tab.id === tabId);
+        if (target?.kind === 'file') prepareFileNavigation(tabId, 'navigation');
+        else captureActiveFileLocation('navigation');
+        activate(tabId);
+    }, [activate, captureActiveFileLocation, prepareFileNavigation]);
+
+    const previousActiveId = useRef(activeId);
+    useEffect(() => {
+        const previous = previousActiveId.current;
+        previousActiveId.current = activeId;
+        if (previous === activeId) return;
+
+        if (previous !== null && tabsRef.current.find(tab => tab.id === previous)?.kind === 'file') {
+            const source = navigationControllers.current.get(previous)?.capture();
+            if (source) recordFileLocation(previous, source, 'navigation');
+        }
+        if (activeId !== null && active?.kind === 'file') {
+            const destination = navigationControllers.current.get(activeId)?.capture();
+            if (destination) handleFileNavigationLocation(activeId, destination, 'navigation');
+        }
+    }, [active?.kind, activeId, handleFileNavigationLocation, recordFileLocation]);
+
+    useEffect(() => {
+        const replay = pendingReplay.current;
+        if (replay === null || replay.tabId !== activeId) return;
+        const controller = navigationControllers.current.get(replay.tabId);
+        if (controller) restoreNavigationLocation(replay, controller);
+    }, [activeId, restoreNavigationLocation]);
+
+    // Tab descriptors span every chat in the panel scope. Prune only tabs that
+    // are actually closed, not tabs hidden by a chat switch.
+    useEffect(() => {
+        const openFileIds = new Set([
+            ...state.workspaceTabs,
+            ...Object.values(state.chatTabs).flat(),
+        ].filter(tab => tab.kind === 'file').map(tab => tab.id));
+        setNavigationHistory(pruneClosedNavigationTabs(
+            navigationHistoryRef.current,
+            openFileIds,
+        ));
+    }, [setNavigationHistory, state]);
+
     // Per-tab dirty / error state, reported by the views. It lives here rather
     // than in each view because the strip has to show it for tabs that are not
     // the visible one — an unsaved buffer or a failed read behind another tab is
@@ -421,6 +597,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
 
     const closeTab = useCallback((id: string) => {
         close(id);
+        navigationControllers.current.delete(id);
         setMountedIds(prev => {
             if (!prev.has(id)) return prev;
             const next = new Set(prev);
@@ -440,13 +617,14 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         const queued = pendingPreviewOpen.current;
         if (queued !== null && queued.tabId === id) {
             pendingPreviewOpen.current = null;
+            prepareFileNavigation(unifiedTabId({ kind: 'file', ...queued.input }), 'navigation');
             openPreview(queued.input);
         }
         // No flag clearing here on purpose: closing unmounts the view, and the
         // views report clean/ready from their own unmount cleanup, so a second
         // reset would be dead code. Verified by removing the cleanup's effect in
         // the close/reopen case rather than assumed.
-    }, [close]);
+    }, [close, openPreview, prepareFileNavigation]);
 
     const [pendingClose, setPendingClose] = useState<
         { tabId: string; workspaceId: string; sessionIds: readonly string[] } | null
@@ -507,6 +685,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
             // A double click (or any other permanent entry point) opens a normal
             // tab; only the tree's single click takes the preview slot (AC-03).
             if (!options.preview) {
+                prepareFileNavigation(unifiedTabId(input), 'navigation');
                 open(input);
                 return;
             }
@@ -522,9 +701,13 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                 requestClose(outgoing.id);
                 return;
             }
+            prepareFileNavigation(unifiedTabId({ kind: 'file', ...previewInput }), 'navigation');
             openPreview(previewInput);
         },
-        [workspaceId, chatId, open, openPreview, previewToReplace, dirtyIds, requestClose],
+        [
+            workspaceId, chatId, open, openPreview, previewToReplace, dirtyIds,
+            requestClose, prepareFileNavigation,
+        ],
     );
     const openTreeFile = useCallback(
         (
@@ -581,9 +764,12 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                 ownerLabel: origin.repoLabel ?? (origin.ownerWorkspaceId === target ? targetLabel : undefined),
                 chatId,
             });
-            if (input !== null) open(input);
+            if (input !== null) {
+                prepareFileNavigation(unifiedTabId(input), 'jump');
+                open(input);
+            }
         },
-        [open, workspaceId, target, targetLabel, chatId],
+        [open, workspaceId, target, targetLabel, chatId, prepareFileNavigation],
     );
 
     /**
@@ -787,6 +973,66 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         return () => document.removeEventListener('keydown', onKeyDown, true);
     }, [isOpen, active, activeId, requestClose]);
 
+    // Alt+Left/Right belongs to the panel only when focus is inside a visible
+    // file view and the requested history destination can actually be restored.
+    // Calling preventDefault after the successful step preserves browser
+    // navigation at both boundaries and everywhere outside this panel.
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            const direction = keyboardNavigationDirection(event);
+            if (direction === null) return;
+            const root = panelRootRef.current;
+            const focused = document.activeElement;
+            if (!panelOwnsFileNavigation({
+                panelVisible: isOpen && root?.offsetParent !== null,
+                interactionOwned: root !== null
+                    && focused !== null
+                    && focused !== document.body
+                    && root.contains(focused),
+                activeFile: active?.kind === 'file',
+            })) return;
+            if (!navigateFileHistory(direction)) return;
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        return () => document.removeEventListener('keydown', onKeyDown, true);
+    }, [active?.kind, isOpen, navigateFileHistory]);
+
+    // Browser/Electron auxiliary buttons are 3 (Back) and 4 (Forward). A
+    // successful mousedown performs the step and claims its matching mouseup;
+    // an invalid destination never suppresses either native event.
+    useEffect(() => {
+        const claimedButtons = new Set<number>();
+        const onMouseDown = (event: MouseEvent) => {
+            const direction = mouseNavigationDirection(event);
+            if (direction === null) return;
+            const root = panelRootRef.current;
+            if (!panelOwnsFileNavigation({
+                panelVisible: isOpen && root?.offsetParent !== null,
+                interactionOwned: root !== null
+                    && event.target instanceof Node
+                    && root.contains(event.target),
+                activeFile: active?.kind === 'file',
+            })) return;
+            if (!navigateFileHistory(direction)) return;
+            claimedButtons.add(event.button);
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        const onMouseUp = (event: MouseEvent) => {
+            if (!claimedButtons.delete(event.button)) return;
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        document.addEventListener('mousedown', onMouseDown, true);
+        document.addEventListener('mouseup', onMouseUp, true);
+        return () => {
+            document.removeEventListener('mousedown', onMouseDown, true);
+            document.removeEventListener('mouseup', onMouseUp, true);
+        };
+    }, [active?.kind, isOpen, navigateFileHistory]);
+
     // A collapsed panel has no dialog to show: dismiss rather than leave one
     // floating over the chat with nothing behind it.
     useEffect(() => {
@@ -963,7 +1209,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                     activeId={activeId}
                     dirtyIds={dirtyIds}
                     errorIds={errorIds}
-                    onActivate={activate}
+                    onActivate={activateWithNavigation}
                     onClose={requestClose}
                     onMove={move}
                     onPromote={promote}
@@ -1047,6 +1293,8 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                                     onRegisterSave={handleRegisterSave}
                                     onTerminalSessionsChange={handleTerminalSessions}
                                     onOpenFile={openNavigationFile}
+                                    onFileNavigationMount={handleFileNavigationMount}
+                                    onFileNavigationLocation={handleFileNavigationLocation}
                                 />
                             </div>
                         ))

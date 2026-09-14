@@ -3,7 +3,7 @@
 **Document type:** Formal UX Specification  
 **Scope:** CoC Dashboard → Repository Detail → Explorer Tab  
 **Purpose:** Authoritative reference for validating any future UI/UX changes to the Explorer tab.  
-**Version:** 1.1.0
+**Version:** 1.2.0
 
 ---
 
@@ -155,6 +155,19 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 
 ---
 
+### 3.5 Unified Right-Panel File History
+
+**US-13 — Return to an exact file location**
+> As a developer reading files in the unified right panel, I want Back and Forward to restore where I was reading.
+
+- **Given** an open Monaco file tab has recorded cursor, selection, and viewport locations
+- **When** the user presses Alt+Left or Alt+Right, or a supported host sends mouse Back or Forward
+- **Then** the panel activates the destination's still-open file tab and restores its full Monaco selection and view state
+- **And** replay creates no history entry; a new location after Back removes the forward branch
+- **And** hidden panels, non-file tabs, focus or pointer interactions outside the panel, closed destinations, and history boundaries leave native browser behavior untouched
+
+---
+
 ## 4. Feature Inventory & Acceptance Criteria
 
 ### 4.1 Sidebar
@@ -209,6 +222,7 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 | INV-06 | The `/` key focuses the search input when not already in an input or textarea |
 | INV-07 | Deep-link paths that look like files (last segment contains `.`) auto-open the preview |
 | INV-08 | Root tree load uses `depth=2`; subsequent lazy loads use `depth=1` |
+| INV-09 | Unified right-panel file history is in-memory, isolated by panel workspace scope, limited to 50 locations, and never reopens closed tabs |
 
 ---
 
@@ -261,6 +275,8 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 | `Ctrl/Cmd+P` | Explorer tab | Open Quick Open modal |
 | `Ctrl/Cmd+O` | Explorer tab | Open Exact Open modal |
 | `Ctrl+S` | Monaco Editor | Save file |
+| `Alt+Left` / `Alt+Right` | Focus in an active unified right-panel file | Navigate backward/forward through exact file locations |
+| Mouse Back / Forward | Pointer interaction in an active unified right-panel file | Use the same location history when the host emits buttons 3/4 |
 | `↑` / `↓` | Tree area | Navigate tree nodes |
 | `Enter` / `Space` | Tree area | Select/expand node |
 | `Left` / `Right` | Tree area | Collapse/expand directory |
@@ -307,3 +323,4 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 |---|---|---|
 | 1.0.0 | 2026-03-25 | Initial specification |
 | 1.1.0 | 2026-05-29 | Added explicit keyboard shortcut (`Alt+E`), clarified that `dev-workflow` UI layout reorders the surrounding tab strip while keeping Explorer adjacent to Schedules and Workflows, named the implementing component (`ExplorerPanel`) and the API wrapper (`explorerApi` over `getSpaCocClient().explorer`), and noted the deep-link auto-preview heuristic (paths with `.` in the last segment). |
+| 1.2.0 | 2026-09-14 | Specified exact-location Back/Forward navigation for Monaco files in the unified right panel. |

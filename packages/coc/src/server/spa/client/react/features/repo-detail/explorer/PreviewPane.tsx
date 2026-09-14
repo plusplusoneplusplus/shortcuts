@@ -465,7 +465,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     revealLine={revealLine}
                     revealColumn={revealColumn}
                     markers={languageEnabled ? languageDocument.markers : undefined}
-                    onModelMount={languageEnabled ? handleModelMount : undefined}
+                    onModelMount={displayBlob.encoding === 'utf-8' ? handleModelMount : undefined}
                     codeTestId="monaco-container"
                 />
             ) : null}
