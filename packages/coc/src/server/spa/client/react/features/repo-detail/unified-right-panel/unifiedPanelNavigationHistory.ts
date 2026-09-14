@@ -141,15 +141,25 @@ export function pruneClosedNavigationTabs(
     history: UnifiedPanelNavigationHistory,
     openTabIds: ReadonlySet<string>,
 ): UnifiedPanelNavigationHistory {
-    const kept = history.entries.filter(entry => openTabIds.has(entry.tabId));
-    if (kept.length === history.entries.length) return history;
+    if (history.entries.every(entry => openTabIds.has(entry.tabId))) return history;
 
-    const entries = kept.filter((entry, index) => (
-        index === 0 || !hasIdenticalHistoryPosition(kept[index - 1], entry)
-    ));
+    const entries: UnifiedPanelNavigationLocation[] = [];
+    let index = -1;
+    history.entries.forEach((entry, originalIndex) => {
+        if (!openTabIds.has(entry.tabId)) return;
+
+        const previous = entries[entries.length - 1];
+        if (previous && hasIdenticalHistoryPosition(previous, entry)) {
+            entries[entries.length - 1] = entry;
+        } else {
+            entries.push(entry);
+        }
+        if (originalIndex <= history.index) index = entries.length - 1;
+    });
+
     return {
         entries,
-        index: entries.length - 1,
+        index: entries.length === 0 ? -1 : Math.max(index, 0),
         replaying: false,
     };
 }

@@ -151,17 +151,35 @@ describe('unified panel navigation history — replay and pruning', () => {
         expect(stepNavigationHistory(finishNavigationReplay(forward.history), 'forward')).toBeNull();
     });
 
-    it('prunes closed tabs, flattens newly adjacent repeats, and resets to the newest survivor', () => {
+    it('prunes closed tabs and keeps the current exact location when adjacent repeats collapse', () => {
         let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
         history = record(history, location('b', 1));
         history = record(history, location('a', 1, { column: 8 }));
         history = record(history, location('c', 1));
+        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
 
         history = pruneClosedNavigationTabs(history, new Set(['a', 'c']));
 
-        expect(history.entries.map(entry => entry.tabId)).toEqual(['a', 'c']);
-        expect(history.index).toBe(1);
+        expect(history.entries).toEqual([
+            location('a', 1, { column: 8 }),
+            location('c', 1),
+        ]);
+        expect(history.index).toBe(0);
         expect(history.replaying).toBe(false);
+    });
+
+    it('preserves a forward branch when pruning a different closed tab', () => {
+        let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
+        history = record(history, location('b', 1));
+        history = record(history, location('c', 1));
+        history = record(history, location('d', 1));
+        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+
+        history = pruneClosedNavigationTabs(history, new Set(['a', 'b', 'c']));
+
+        expect(history.index).toBe(1);
+        expect(stepNavigationHistory(history, 'forward')?.location).toEqual(location('c', 1));
     });
 
     it('returns the same state when every referenced tab remains open', () => {

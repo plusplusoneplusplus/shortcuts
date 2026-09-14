@@ -86,7 +86,7 @@ view state. The pure model follows VS Code's `EditorNavigationStack` and
 apart replace the current entry, while navigation and jump events at a different
 line create entries. The stack holds at most 50 locations, truncates a forward
 branch on a new record, suppresses records during replay, and drops locations for
-closed tabs.
+closed tabs while preserving the current cursor and any surviving forward branch.
 
 `MonacoFileEditor` exposes a navigation controller that captures and restores a
 full selection plus `ICodeEditorViewState`. `PreviewPane` reports cursor and
