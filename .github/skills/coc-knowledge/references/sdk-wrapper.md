@@ -88,6 +88,8 @@ The resolved spawn mode (`system-node | electron-node | native-binary`) is recor
 
 `SessionTelemetry` normalizes streaming tool events into the shared `ToolCall` / `ToolEvent` contract. `parentToolCallId` is preserved from either the start or terminal SDK event; a terminal event supplying or correcting the parent updates the stored `ToolCall`, keeping sub-agent descendants reconstructable from both live timelines and persisted `toolCalls`.
 
+Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-progress` `ToolEvent`, carrying one `progressMessage` for a call that is still running. `recordToolProgress` drops a blank message, an unknown or already-settled call, and a repeat of the message already shown, keeping only the latest value on the `ToolCall`; completion or failure clears it. Providers without progress events emit neither the event nor the field. `BaseExecutor` applies it to the buffered running tool snapshot in place — no new timeline item — emits the `tool-progress` process event, and lets the throttled flush persist it so a reconnect restores the running row.
+
 ## One-shot `transform` primitive
 
 `ISDKService.transform(input: string, options?: TransformOptions): Promise<TransformResult>` is the provider-agnostic primitive for isolated single-shot text transformations.

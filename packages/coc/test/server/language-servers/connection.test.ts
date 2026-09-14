@@ -260,6 +260,21 @@ describe('LanguageServerConnection over a stream pair', () => {
         expect(connection.isClosed).toBe(true);
     });
 
+    it('rejects pending requests when the writable stream fails', async () => {
+        const { connection, errors, toServer } = createPair();
+        const pending = connection.sendRequest('slow');
+        await flush();
+
+        toServer.emit('error', new Error('write EPIPE'));
+
+        await expect(pending).rejects.toMatchObject({
+            failure: 'closed',
+            message: 'Language server stream failed: write EPIPE',
+        });
+        expect(errors.map(error => error.message)).toEqual(['write EPIPE']);
+        expect(connection.isClosed).toBe(true);
+    });
+
     it('returns false for a notification sent after disposal', () => {
         const { connection } = createPair();
         expect(connection.sendNotification('exit')).toBe(true);

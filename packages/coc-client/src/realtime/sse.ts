@@ -8,6 +8,7 @@ const PROCESS_STREAM_EVENT_TYPES = [
   'tool-start',
   'tool-complete',
   'tool-failed',
+  'tool-progress',
   'permission-request',
   'workflow-phase',
   'workflow-progress',

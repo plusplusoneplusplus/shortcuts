@@ -12,6 +12,7 @@ import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn, ImageLightbox } from '../../../../ui';
 import { ToolResultPopover } from './ToolResultPopover';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
+import { useRunningClock } from '../../../../hooks/ui/useRunningClock';
 import { useToolCallVariant } from './ToolCallVariant';
 import { buildToolCallRenderModel, statusIndicator } from './toolCallRenderModel';
 import { ToolCallDetailSections } from './ToolCallDetailSections';
@@ -27,6 +28,7 @@ interface ToolCallData {
     startTime?: string;
     endTime?: string;
     parentToolCallId?: string;
+    progressMessage?: string;
     children?: ToolCallData[];
 }
 
@@ -48,7 +50,10 @@ export function ToolCallView({
     children,
 }: ToolCallProps) {
     const variant = useToolCallVariant();
-    const model = useMemo(() => buildToolCallRenderModel(toolCall, variant), [toolCall, variant]);
+    // Only a running call ticks, so its elapsed duration stays live while every
+    // settled row re-renders exactly once.
+    const now = useRunningClock(toolCall.status === 'running');
+    const model = useMemo(() => buildToolCallRenderModel(toolCall, variant, now), [toolCall, variant, now]);
     const [expanded, setExpanded] = useState(model.isTaskComplete);
     const [hoverVisible, setHoverVisible] = useState(false);
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -109,6 +114,29 @@ export function ToolCallView({
     const depthLevel = Math.max(0, Math.min(depth, 8));
     const isWhisperRow = variant === 'whisper-row';
 
+    // Status is carried by text as well as motion: the label names the tool and
+    // the state, and reduced-motion users get the same element without spin.
+    const runningSpinner = model.isRunning ? (
+        <span
+            className="tool-call-spinner shrink-0 inline-block h-[9px] w-[9px] animate-spin motion-reduce:animate-none rounded-full border-[1.5px] border-current border-t-transparent text-[#6b7280] dark:text-[#9aa0a6]"
+            role="status"
+            aria-label={model.runningStatusLabel}
+            title={model.runningStatusLabel}
+            data-testid="tool-call-running-spinner"
+        />
+    ) : null;
+
+    const progressNote = model.progressText ? (
+        <span
+            className="tool-call-progress min-w-0 truncate italic text-[#6b7280] dark:text-[#9aa0a6]"
+            title={model.progressText}
+            aria-live="polite"
+            data-testid="tool-call-progress"
+        >
+            {model.progressText}
+        </span>
+    ) : null;
+
     const hoverPopover = hoverVisible && anchorRect && hasHoverResult ? (
         <ToolResultPopover
             result={model.popoverResultText}
@@ -153,6 +181,7 @@ export function ToolCallView({
                     role={hasDetails ? 'button' : undefined}
                     aria-expanded={hasDetails ? expanded : undefined}
                 >
+                    {runningSpinner}
                     <span
                         className={cn(
                             'tool-call-kind shrink-0 inline-block min-w-[42px] text-center px-2 py-px rounded-sm font-mono text-[11px] font-medium',
@@ -187,8 +216,9 @@ export function ToolCallView({
                         title={model.rowSummary}
                         {...(summaryIsPath ? { 'data-full-path': summaryFullPath, 'data-no-preview-hover': '' } : {})}
                     >
-                        {model.rowSummary || <span className="text-[#9aa0a6] italic">{name}</span>}
+                        {model.rowSummary || <span className="text-[#9aa0a6] italic">{model.displayName}</span>}
                     </span>
+                    {progressNote}
                     {model.metric && (
                         <span
                             className="tool-call-row-metric shrink-0 font-mono text-[11.5px] text-[#6b7280] dark:text-[#9aa0a6]"
@@ -268,7 +298,7 @@ export function ToolCallView({
                 onMouseEnter={!isMobile ? handleHeaderMouseEnter : undefined}
                 onMouseLeave={!isMobile ? handleHeaderMouseLeave : undefined}
             >
-                <span>{statusIndicator(model.status)}</span>
+                {model.isRunning ? runningSpinner : <span>{statusIndicator(model.status)}</span>}
                 {hasSubtools && (
                     <button
                         type="button"
@@ -293,6 +323,7 @@ export function ToolCallView({
                         {model.summary}
                     </span>
                 )}
+                {progressNote}
                 {!isMobile && model.startTimeLabel && (
                     <span className="text-[#848484] ml-auto shrink-0">{model.startTimeLabel}</span>
                 )}

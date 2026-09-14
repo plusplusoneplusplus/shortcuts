@@ -139,6 +139,7 @@ export function emitWarmStatus(store: ProcessStore, processId: string, status: W
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
  *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, result }
  *   event: tool-failed        → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, error }
+ *   event: tool-progress      → { toolCallId, parentToolCallId?, toolName?, progressMessage }
  *   event: permission-request → { turnIndex, permissionId, kind, description }
  *   event: workflow-phase    → { phase, status, timestamp, durationMs?, error?, itemCount? }
  *   event: workflow-progress → { phase, totalItems, completedItems, failedItems, percentage, message? }
@@ -283,6 +284,13 @@ export async function handleProcessStream(
                 toolName: event.toolName,
                 parameters: event.parameters,
                 error: event.error,
+            });
+        } else if (event.type === 'tool-progress') {
+            writeNamedEvent(res, 'tool-progress', {
+                toolCallId: event.toolCallId,
+                parentToolCallId: event.parentToolCallId,
+                toolName: event.toolName,
+                progressMessage: event.progressMessage,
             });
         } else if (event.type === 'permission-request') {
             writeNamedEvent(res, 'permission-request', {

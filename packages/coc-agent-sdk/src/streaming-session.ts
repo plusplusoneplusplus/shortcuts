@@ -604,6 +604,9 @@ export class StreamingSession {
             { toolName: tracked?.toolName, toolCallId, progressMessage: event.data?.progressMessage },
             'Tool progress',
         );
-        this.telemetry.recordToolProgress(toolCallId, event.data?.progressMessage);
+        const { event: toolEvent } = this.telemetry.recordToolProgress(toolCallId, event.data?.progressMessage);
+        if (toolEvent && this.options.onToolEvent) {
+            try { this.options.onToolEvent(toolEvent); } catch { /* non-fatal */ }
+        }
     }
 }

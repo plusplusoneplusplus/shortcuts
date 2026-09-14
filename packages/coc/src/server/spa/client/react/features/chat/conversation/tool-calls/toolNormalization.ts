@@ -6,6 +6,8 @@ export interface ToolLikeForNormalization {
     result?: string;
     error?: string;
     status?: string;
+    /** Latest provider progress message (running calls only). */
+    progressMessage?: string;
 }
 
 export interface CodexFileChange {

@@ -186,6 +186,8 @@ export class SessionTelemetry {
             }
             capturedTool.status  = data.success ? 'completed' : 'failed';
             capturedTool.endTime = new Date();
+            // Terminal state wins: progress is running-only status text.
+            capturedTool.progressMessage = undefined;
             if (data.success) {
                 // For the `view` tool on image files, replace the plain-text result
                 // with a base64 data URL so the dashboard can render it inline.
@@ -243,11 +245,32 @@ export class SessionTelemetry {
         }
     }
 
-    recordToolProgress(toolCallId: string, progressMessage?: string): void {
+    /**
+     * Record a tool progress message against a running tool call.
+     *
+     * Progress is display-only status for a call that has not settled yet, so
+     * anything that cannot update a live row is dropped: an empty message,
+     * a call that never started (or already completed/failed), and a repeat of
+     * the message already shown. Only the latest message is kept — never a
+     * history.
+     *
+     * @returns The tool event to emit, or `{}` when there is nothing new.
+     */
+    recordToolProgress(toolCallId: string, progressMessage?: string): { event?: ToolEvent } {
+        const message  = progressMessage?.trim();
         const captured = this.toolCallsMap.get(toolCallId);
-        if (captured && progressMessage) {
-            (captured as any).progressMessage = progressMessage;
-        }
+        if (!message || !captured || captured.status !== 'running') { return {}; }
+        if (captured.progressMessage === message) { return {}; }
+        captured.progressMessage = message;
+        return {
+            event: {
+                type:             'tool-progress',
+                toolCallId:       captured.id,
+                toolName:         captured.name,
+                parentToolCallId: captured.parentToolCallId,
+                progressMessage:  message,
+            },
+        };
     }
 
     /** Get captured tool calls as an array (undefined if none). */

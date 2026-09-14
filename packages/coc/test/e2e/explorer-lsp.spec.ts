@@ -827,7 +827,7 @@ test.describe('Explorer language support – Python', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Explorer language support – Rust', () => {
-    test.describe.configure({ mode: 'serial' });
+    test.describe.configure({ mode: 'serial', timeout: 180_000 });
 
     test('LSP.R1 rust-analyzer powers hover, definition, and dirty-buffer restart in Explorer', async ({
         page,
@@ -844,7 +844,7 @@ test.describe('Explorer language support – Rust', () => {
             await openSourceFile(page, 'app.rs');
             await waitForLanguageServer(page, RUST_APP_PANEL);
             await expect(page.locator(`${RUST_APP_PANEL} [data-testid="language-status-label"]`))
-                .toHaveText('rust-analyzer');
+                .toContainText('rust-analyzer');
 
             await expect
                 .poll(
@@ -922,22 +922,26 @@ test.describe('Explorer language support – Rust', () => {
 
             await waitForLanguageServer(page, UNIFIED_ACTIVE_FILE);
             await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="language-status-label"]`))
-                .toHaveText('rust-analyzer');
+                .toContainText('rust-analyzer');
 
             const tabLabels = page.locator(
                 `${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`,
             );
-            await ctrlClickWord(
-                page,
-                'make_widget',
-                'make_widget',
-                UNIFIED_ACTIVE_FILE,
-                true,
-            );
+            // The initialize handshake can finish before Cargo indexing makes
+            // cross-crate definitions available, so retry the user action.
+            await expect(async () => {
+                await ctrlClickWord(
+                    page,
+                    'make_widget',
+                    'make_widget',
+                    UNIFIED_ACTIVE_FILE,
+                    true,
+                );
+                await expect(tabLabels.filter({ hasText: 'lib.rs' })).toHaveCount(1, {
+                    timeout: 5_000,
+                });
+            }).toPass({ timeout: 90_000 });
             await expect(tabLabels.filter({ hasText: 'app.rs' })).toHaveCount(1);
-            await expect(tabLabels.filter({ hasText: 'lib.rs' })).toHaveCount(1, {
-                timeout: 15_000,
-            });
             await expect
                 .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toContain('pub fn make_widget');

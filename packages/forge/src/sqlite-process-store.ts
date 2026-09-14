@@ -266,6 +266,7 @@ function serializeToolCall(tc: ToolCall): Record<string, unknown> {
         result: tc.result,
         error: tc.error,
         parentToolCallId: tc.parentToolCallId,
+        progressMessage: tc.progressMessage,
         permissionRequest: tc.permissionRequest ? {
             kind: tc.permissionRequest.kind,
             timestamp: tc.permissionRequest.timestamp.toISOString(),
@@ -292,6 +293,7 @@ function deserializeToolCall(raw: Record<string, unknown>): ToolCall {
         result: raw.result as string | undefined,
         error: raw.error as string | undefined,
         parentToolCallId: raw.parentToolCallId as string | undefined,
+        progressMessage: raw.progressMessage as string | undefined,
         permissionRequest: raw.permissionRequest ? {
             kind: (raw.permissionRequest as Record<string, unknown>).kind as string,
             timestamp: safeDate((raw.permissionRequest as Record<string, unknown>).timestamp),

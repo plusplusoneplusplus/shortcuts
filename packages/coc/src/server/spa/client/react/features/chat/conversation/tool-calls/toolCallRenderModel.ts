@@ -23,6 +23,16 @@ import {
     type ToolLikeForNormalization,
 } from './toolNormalization';
 
+/**
+ * Display overrides for tools whose raw name reads poorly and whose runs can be
+ * long. `label` replaces the wire name in the row/card title; `waitingText` is
+ * the status line shown while the call is running and the provider has not
+ * reported progress yet.
+ */
+export const LONG_RUNNING_TOOL_DISPLAY: Record<string, { label: string; waitingText: string }> = {
+    read_batch: { label: 'Reading files', waitingText: 'Reading files… This can take a while' },
+};
+
 export const MAX_RESULT_LENGTH = 5000;
 export const TRUNCATED_RESULT_LENGTH = 4900;
 
@@ -102,6 +112,13 @@ export function getToolSummary(toolName: string, args: any, rawArgs?: any): stri
     if (!args || typeof args !== 'object') return '';
 
     switch (toolName) {
+        case 'read_batch': {
+            const paths = [args.paths, args.files, args.file_paths, args.filePaths]
+                .find(value => Array.isArray(value)) as unknown[] | undefined;
+            if (!paths || paths.length === 0) return '';
+            if (paths.length === 1) return typeof paths[0] === 'string' ? shortenPath(paths[0]) : '1 file';
+            return `${paths.length} files`;
+        }
         case 'grep': {
             const parts: string[] = [];
             if (args.pattern) parts.push(`/${args.pattern}/`);
@@ -232,10 +249,15 @@ export function formatStartTimeDetailed(startTime?: string): string {
     return `${MM}/${dd} ${hh}:${mm}:${ss} ${ampm}`;
 }
 
-export function formatDuration(startTime?: string, endTime?: string): string {
+/**
+ * Elapsed time between start and end. A call that has not ended yet measures
+ * against `now`, so passing a ticking clock renders a live duration (and makes
+ * the value deterministic in tests).
+ */
+export function formatDuration(startTime?: string, endTime?: string, now?: number): string {
     if (!startTime) return '';
     const start = new Date(startTime).getTime();
-    const end = endTime ? new Date(endTime).getTime() : Date.now();
+    const end = endTime ? new Date(endTime).getTime() : (now ?? Date.now());
     const ms = end - start;
     if (!Number.isFinite(ms) || ms < 0) return '';
     if (ms < 1000) return `${ms}ms`;
@@ -327,6 +349,15 @@ export interface ToolCallRenderModel {
     metric: ToolMetric;
     /** Row path text with an 'error' fallback, used by the whisper-row variant. */
     rowSummary: string;
+    /**
+     * Single-line status text for a running call: the latest provider progress
+     * message, or the long-running fallback for tools known to take a while.
+     * Always '' once the call has settled — terminal state wins over any
+     * progress message still present on persisted data.
+     */
+    progressText: string;
+    /** Accessible status for the running indicator ('' when not running). */
+    runningStatusLabel: string;
 }
 
 /** Pull the JSON-stringifiable extra options out of a shell/sql args object. */
@@ -347,6 +378,7 @@ function extractOptionsText(argsObj: Record<string, any> | null, omit: string[])
 export function buildToolCallRenderModel(
     toolCall: ToolCallModelInput,
     variant: ToolCallVariant,
+    now?: number,
 ): ToolCallRenderModel {
     const normalized = normalizeToolForDisplay(toolCall);
     const name = normalized.toolName || 'unknown';
@@ -416,7 +448,13 @@ export function buildToolCallRenderModel(
     // Card title: a semantically-classified shell reads as its family label, and
     // the internal lowercase `shell` (Codex) reads as "Shell"; every other tool
     // keeps its canonical lowercase name unchanged.
-    const displayName = (semantic || name === 'shell') ? kindInfo.label : name;
+    const longRunning = LONG_RUNNING_TOOL_DISPLAY[name];
+    const displayName = longRunning?.label
+        ?? ((semantic || name === 'shell') ? kindInfo.label : name);
+    const isRunning = normalized.status === 'running';
+    const progressText = isRunning
+        ? (normalized.progressMessage?.trim() || longRunning?.waitingText || '')
+        : '';
     const metric = variant === 'whisper-row'
         ? (semantic
             ? getSemanticShellMetric(semantic.metricKind, resultText, error)
@@ -430,7 +468,7 @@ export function buildToolCallRenderModel(
         displayName,
         status: normalized.status,
         error,
-        isRunning: normalized.status === 'running',
+        isRunning,
         isTaskComplete,
         isShellLike,
         isSql,
@@ -439,7 +477,7 @@ export function buildToolCallRenderModel(
         summary,
         summaryIsPath,
         summaryFullPath,
-        duration: formatDuration(normalized.startTime, normalized.endTime),
+        duration: formatDuration(normalized.startTime, normalized.endTime, now),
         startTimeLabel: formatStartTime(normalized.startTime),
         startTimeDetailLabel: formatStartTimeDetailed(normalized.startTime),
         hasDetails,
@@ -462,5 +500,7 @@ export function buildToolCallRenderModel(
         isSemanticShell: !!semantic,
         metric,
         rowSummary,
+        progressText,
+        runningStatusLabel: isRunning ? `${displayName}, in progress` : '',
     };
 }

@@ -878,6 +878,69 @@ describe('filterWhisperChunks', () => {
         expect((result[2] as any).toolId).toBe('tc');
     });
 
+    it('keeps a running read_batch visible before any progress arrives', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-rb', toolId: 'rb' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'grep', status: 'completed' }],
+            ['rb', { toolName: 'read_batch', status: 'running' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        expect(result).toHaveLength(2);
+        expect(result[0].kind).toBe('whisper-group');
+        expect((result[0] as WhisperGroupChunk).summary.toolCallCount).toBe(1);
+        expect((result[1] as any).toolId).toBe('rb');
+    });
+
+    it('keeps any running call that is reporting progress visible', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-sh', toolId: 'sh' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'grep', status: 'completed' }],
+            ['sh', { toolName: 'bash', status: 'running', progressMessage: 'Running npm test…' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        expect(result).toHaveLength(2);
+        expect((result[1] as any).toolId).toBe('sh');
+    });
+
+    it('collapses a read_batch and a progressing call once they settle', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-rb', toolId: 'rb' },
+            { kind: 'tool', key: 'k-sh', toolId: 'sh' },
+        ];
+        const toolById = makeMap([
+            ['rb', { toolName: 'read_batch', status: 'completed' }],
+            ['sh', { toolName: 'bash', status: 'failed', progressMessage: 'Running npm test…' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        expect(result).toHaveLength(1);
+        expect(result[0].kind).toBe('whisper-group');
+        expect((result[0] as WhisperGroupChunk).summary.toolCallCount).toBe(2);
+    });
+
+    it('collapses a running call with no progress and no long-running label', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-sh', toolId: 'sh' },
+        ];
+        const toolById = makeMap([
+            ['t1', { toolName: 'grep', status: 'completed' }],
+            ['sh', { toolName: 'bash', status: 'running' }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        expect(result).toHaveLength(1);
+        expect(result[0].kind).toBe('whisper-group');
+    });
+
     it('keeps the full final message when split by a hidden suggest_follow_ups tool', () => {
         // Regression: in whisper mode the rich final answer was collapsed into
         // the summary because a hidden suggest_follow_ups tool call sat between

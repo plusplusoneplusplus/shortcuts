@@ -251,6 +251,23 @@ call is one flat row. The shared body ends with a muted timing line, `Started <s
 the collapsed card header keeps the minute-precision `startTimeLabel`. Omitted when the
 tool call has no parseable start time.
 
+### Running calls and tool progress
+
+A running call renders a real spinner (reduced-motion safe) in place of the card's status
+emoji, with an accessible `<displayName>, in progress` label, and its duration measures
+against the `now` argument of `buildToolCallRenderModel` — `ToolCallView` feeds that from
+`useRunningClock`, which only ticks while the call is running. `progressText` is the
+running-only status line: the latest provider `progressMessage`, else the `waitingText` of
+`LONG_RUNNING_TOOL_DISPLAY` (today `read_batch` → `Reading files… This can take a while`),
+else ''. The same table humanizes `read_batch` to `Reading files`; its summary is the path
+or `N files` read off a paths-like array arg. A settled call shows no progress text even if
+persisted data still carries a message — terminal state wins.
+
+`progressMessage` arrives over the provider-neutral `tool-progress` SSE event, which
+`useChatSSE` applies in place to the matching running call in the current assistant turn
+(name, args, parent, startTime, and status preserved); an event for an unknown or settled
+call is ignored.
+
 ### Semantic shell classification
 
 Codex routes every command through the canonical `shell` tool, so
@@ -273,7 +290,10 @@ mixed groups keep `N shell operations`. PowerShell is not classified.
 
 In whisper mode (`toolCompactness === 3`), `filterWhisperChunks` keeps a tail of the final
 assistant message plus any `task_complete` / visible `ask_user` chunks and collapses the
-rest into one summary group. The final message is the last `content` chunk plus earlier
+rest into one summary group. A call that is still actively working also stays outside the
+collapse — a running `read_batch`, or any running call with a `progressMessage` — so the
+operation currently blocking the response is never hidden behind `1 tool call`; it joins
+the collapsed history once it settles. The final message is the last `content` chunk plus earlier
 content chunks separated from it only by non-breaking trailing tools (`suggest_follow_ups`,
 `report_intent`, `task_complete`, `ask_user`); the walk-back stops at the first substantive
 tool, so a hidden `suggest_follow_ups` cannot hide a rich answer behind a trivial closing

@@ -621,7 +621,7 @@ describe('ToolCallView', () => {
 
     it('renders status indicator for running', () => {
         render(<Wrap><ToolCallView toolCall={{ toolName: 'bash', status: 'running' }} /></Wrap>);
-        expect(screen.getByText('🔄')).toBeDefined();
+        expect(screen.getByRole('status', { name: 'bash, in progress' })).toBeDefined();
     });
 
     it('shows completed indicator', () => {

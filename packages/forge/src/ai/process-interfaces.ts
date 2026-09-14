@@ -362,6 +362,12 @@ export interface ToolCall {
      * (for example: subagent tools under a `task` tool call).
      */
     parentToolCallId?: string;
+    /**
+     * Latest provider progress message while the call is running (optional —
+     * only providers that report tool progress ever set it). Cleared when the
+     * call completes or fails.
+     */
+    progressMessage?: string;
     /** Permission request details (if applicable) */
     permissionRequest?: ToolCallPermissionRequest;
     /** Permission decision (if applicable) */
@@ -381,6 +387,8 @@ export interface SerializedToolCall {
     result?: string;
     error?: string;
     parentToolCallId?: string;
+    /** Latest provider progress message while the call is running. */
+    progressMessage?: string;
     permissionRequest?: {
         kind: string;
         timestamp: string;  // ISO string

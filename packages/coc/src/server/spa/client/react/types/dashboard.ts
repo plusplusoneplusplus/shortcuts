@@ -81,6 +81,12 @@ export interface ClientToolCall {
     startTime?: string;
     endTime?: string;
     parentToolCallId?: string;
+    /**
+     * Latest provider progress message while the call is running. Only
+     * providers that report tool progress ever set it; shown only while the
+     * call is running.
+     */
+    progressMessage?: string;
 }
 
 /** Timeline event for the SPA client (timestamps are ISO strings) */

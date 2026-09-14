@@ -251,6 +251,92 @@ describe('useChatSSE', () => {
         expect(setTurnsAndRef).toHaveBeenCalledWith(snapshotTurns);
     });
 
+    // ── tool-progress ─────────────────────────────────────────────────────
+    //
+    // Progress must land on the existing running row: same name, args, parent,
+    // startTime, and status. An event for an unknown or settled call cannot
+    // create a phantom row or reopen a terminal one.
+    describe('tool-progress', () => {
+        const runningTurns = (): ClientConversationTurn[] => ([
+            { role: 'user', content: 'read these', turnIndex: 0, timeline: [] },
+            {
+                role: 'assistant',
+                content: '',
+                turnIndex: 1,
+                streaming: true,
+                timeline: [{
+                    type: 'tool-start',
+                    timestamp: '2026-01-15T14:19:02Z',
+                    toolCall: {
+                        id: 'tool-1',
+                        toolName: 'read_batch',
+                        args: { paths: ['/a', '/b'] },
+                        status: 'running',
+                        startTime: '2026-01-15T14:19:02Z',
+                        parentToolCallId: 'task-1',
+                    },
+                }],
+            },
+        ]);
+
+        /** Emit a tool-progress event and return the resulting turns (or null when ignored). */
+        function applyProgress(data: unknown, prev = runningTurns()): ClientConversationTurn[] | null {
+            const setTurnsAndRef = vi.fn();
+            renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+            act(() => { MockEventSource.last._emit('tool-progress', data); });
+            const updater = setTurnsAndRef.mock.calls.at(-1)?.[0];
+            if (typeof updater !== 'function') return null;
+            return updater(prev);
+        }
+
+        it('updates the running call in place without adding a row', () => {
+            const turns = applyProgress({ toolCallId: 'tool-1', progressMessage: 'Reading 28 files…' })!;
+            expect(turns[1].timeline).toHaveLength(1);
+            const toolCall = turns[1].timeline[0].toolCall!;
+            expect(toolCall).toMatchObject({
+                id: 'tool-1',
+                toolName: 'read_batch',
+                args: { paths: ['/a', '/b'] },
+                status: 'running',
+                startTime: '2026-01-15T14:19:02Z',
+                parentToolCallId: 'task-1',
+                progressMessage: 'Reading 28 files…',
+            });
+        });
+
+        it('ignores an unknown call, a blank message, and a missing id', () => {
+            expect(applyProgress({ toolCallId: 'ghost', progressMessage: 'Reading…' })).toEqual(runningTurns());
+            expect(applyProgress({ toolCallId: 'tool-1', progressMessage: '   ' })).toBeNull();
+            expect(applyProgress({ progressMessage: 'Reading…' })).toBeNull();
+        });
+
+        it('ignores a late event for a settled call', () => {
+            const settled = runningTurns();
+            settled[1].timeline.push({
+                type: 'tool-complete',
+                timestamp: '2026-01-15T14:19:09Z',
+                toolCall: {
+                    id: 'tool-1',
+                    toolName: 'read_batch',
+                    args: { paths: ['/a', '/b'] },
+                    status: 'completed',
+                    startTime: '2026-01-15T14:19:02Z',
+                    endTime: '2026-01-15T14:19:09Z',
+                    result: 'files',
+                },
+            });
+
+            expect(applyProgress({ toolCallId: 'tool-1', progressMessage: 'Reading 28 files…' }, settled)).toEqual(settled);
+        });
+
+        it('ignores progress when the last turn is not an assistant turn', () => {
+            const userLast: ClientConversationTurn[] = [
+                { role: 'user', content: 'read these', turnIndex: 0, timeline: [] },
+            ];
+            expect(applyProgress({ toolCallId: 'tool-1', progressMessage: 'Reading…' }, userLast)).toEqual(userLast);
+        });
+    });
+
     it('hydrates context breakdown fields from conversation-snapshot', () => {
         const setSessionSystemTokens = vi.fn();
         const setSessionToolTokens = vi.fn();

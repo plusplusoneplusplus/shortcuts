@@ -79,7 +79,7 @@ export interface HookStepEvent {
 }
 
 export interface ProcessOutputEvent {
-    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit' | 'ask-user' | 'mcp-oauth-required' | 'mcp-oauth-completed';
+    type: 'chunk' | 'complete' | 'tool-start' | 'tool-complete' | 'tool-failed' | 'tool-progress' | 'permission-request' | 'pipeline-phase' | 'pipeline-progress' | 'item-process' | 'suggestions' | 'token-usage' | 'message-queued' | 'message-steering' | 'hook-step' | 'background-tasks' | 'pending-message-added' | 'note-file-edit' | 'ask-user' | 'mcp-oauth-required' | 'mcp-oauth-completed';
     /** Partial output text (for 'chunk' events). */
     content?: string;
     /** Final process status (for 'complete' events). */
@@ -100,6 +100,8 @@ export interface ProcessOutputEvent {
     result?: string;
     /** Error message (for 'tool-failed' events). */
     error?: string;
+    /** Latest provider progress message (for 'tool-progress' events). */
+    progressMessage?: string;
     /** Permission request ID (for 'permission-request' events). */
     permissionId?: string;
     /** Permission kind: 'read' | 'write' | 'shell' | 'url' | 'mcp' (for 'permission-request'). */

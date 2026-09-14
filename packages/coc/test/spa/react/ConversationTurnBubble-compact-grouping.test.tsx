@@ -273,6 +273,52 @@ describe('ConversationTurnBubble — compact tool grouping', () => {
         expect(whisper?.getAttribute('data-tool-count')).toBe('3');
     });
 
+    it('keeps a running read_batch visible in whisper mode before any progress arrives', () => {
+        mockToolCompactness = 3;
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    streaming: true,
+                    timeline: [
+                        ...makeLeafReadTimeline(['t1', 't2']),
+                        {
+                            type: 'tool-start' as const,
+                            toolCall: { id: 'rb', toolName: 'read_batch', args: { paths: ['/a', '/b'] }, status: 'running' },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        // Settled history still collapses; the active call stays on its own row.
+        const whisper = container.querySelector('[data-testid="whisper-collapsed-group"]');
+        expect(whisper?.getAttribute('data-tool-count')).toBe('2');
+        const visible = [...container.querySelectorAll('[data-testid="tool-call-view"]')]
+            .map(el => el.getAttribute('data-tool-id'));
+        expect(visible).toEqual(['rb']);
+    });
+
+    it('collapses a read_batch into the whisper group once it completes', () => {
+        mockToolCompactness = 3;
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({
+                    content: 'Final answer',
+                    timeline: [
+                        ...makeLeafReadTimeline(['t1', 't2']),
+                        {
+                            type: 'tool-start' as const,
+                            toolCall: { id: 'rb', toolName: 'read_batch', args: { paths: ['/a'] }, status: 'completed' },
+                        },
+                    ],
+                })}
+            />
+        );
+
+        expect(container.querySelector('[data-testid="whisper-collapsed-group"]')?.getAttribute('data-tool-count')).toBe('3');
+        expect(container.querySelector('[data-testid="tool-call-view"]')).toBeNull();
+    });
+
     it('renders Copilot SDK sub-agent detail steps in whisper mode while keeping the final result visible', () => {
         mockToolCompactness = 3;
         const sourceTurns: ClientConversationTurn[] = [

@@ -273,6 +273,34 @@ export function useChatSSE({
             } catch { /* ignore */ }
         };
 
+        // Progress updates the existing running call in place: same row, same
+        // name/args/parent/startTime/status. An event for an unknown or already
+        // settled call is ignored so it can never create a phantom row or
+        // reopen a finished one.
+        es.addEventListener('tool-progress', (event: Event) => {
+            try {
+                const data = JSON.parse((event as MessageEvent).data);
+                const progressMessage = typeof data.progressMessage === 'string' ? data.progressMessage.trim() : '';
+                if (!data.toolCallId || !progressMessage) return;
+                setTurnsAndRef((prev) => {
+                    const last = prev[prev.length - 1];
+                    if (!last || last.role !== 'assistant') return prev;
+                    const timeline = last.timeline || [];
+                    let index = -1;
+                    for (let i = timeline.length - 1; i >= 0; i--) {
+                        if ((timeline[i] as any).toolCall?.id === data.toolCallId) { index = i; break; }
+                    }
+                    const item: any = index >= 0 ? timeline[index] : undefined;
+                    if (!item?.toolCall || item.toolCall.status !== 'running') return prev;
+                    const nextTimeline = [...timeline];
+                    nextTimeline[index] = { ...item, toolCall: { ...item.toolCall, progressMessage } };
+                    const turns = [...prev];
+                    turns[turns.length - 1] = { ...last, timeline: nextTimeline };
+                    return turns;
+                });
+            } catch { /* ignore */ }
+        });
+
         es.addEventListener('tool-start', handleToolSSE('tool-start'));
         es.addEventListener('tool-complete', handleToolSSE('tool-complete'));
         es.addEventListener('tool-failed', handleToolSSE('tool-failed'));

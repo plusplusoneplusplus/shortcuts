@@ -150,12 +150,75 @@ describe('SessionTelemetry — tool call tracking', () => {
         expect(t.toolCallsMap.get('orphan')!.error).toBe('Started outside observation window');
     });
 
-    it('records tool progress', () => {
+    it('records tool progress and emits a tool-progress event', () => {
+        const t = new SessionTelemetry();
+        t.recordToolStart({ toolCallId: 'tc3', toolName: 'bash', parentToolCallId: 'parent-1', arguments: {} });
+        const { event } = t.recordToolProgress('tc3', 'Running...');
+
+        expect(t.toolCallsMap.get('tc3')!.progressMessage).toBe('Running...');
+        expect(event).toEqual({
+            type: 'tool-progress',
+            toolCallId: 'tc3',
+            toolName: 'bash',
+            parentToolCallId: 'parent-1',
+            progressMessage: 'Running...',
+        });
+    });
+
+    it('keeps only the latest distinct progress message', () => {
+        const t = new SessionTelemetry();
+        t.recordToolStart({ toolCallId: 'tc3', toolName: 'read_batch', arguments: {} });
+
+        expect(t.recordToolProgress('tc3', 'Reading 2 files…').event).toBeDefined();
+        // A repeat of the message already shown is not a new update.
+        expect(t.recordToolProgress('tc3', 'Reading 2 files…').event).toBeUndefined();
+        expect(t.recordToolProgress('tc3', '  Reading 2 files…  ').event).toBeUndefined();
+        expect(t.recordToolProgress('tc3', 'Reading 9 files…').event).toBeDefined();
+        expect(t.toolCallsMap.get('tc3')!.progressMessage).toBe('Reading 9 files…');
+    });
+
+    it('ignores progress for unknown calls and blank messages', () => {
         const t = new SessionTelemetry();
         t.recordToolStart({ toolCallId: 'tc3', toolName: 'bash', arguments: {} });
-        t.recordToolProgress('tc3', 'Running...');
 
-        expect((t.toolCallsMap.get('tc3') as any).progressMessage).toBe('Running...');
+        expect(t.recordToolProgress('nope', 'Working…').event).toBeUndefined();
+        expect(t.toolCallsMap.has('nope')).toBe(false);
+        expect(t.recordToolProgress('tc3', '   ').event).toBeUndefined();
+        expect(t.recordToolProgress('tc3', undefined).event).toBeUndefined();
+        expect(t.toolCallsMap.get('tc3')!.progressMessage).toBeUndefined();
+    });
+
+    it('clears progress on completion and ignores late progress', () => {
+        const t = new SessionTelemetry();
+        t.recordToolStart({ toolCallId: 'tc3', toolName: 'read_batch', arguments: {} });
+        t.recordToolProgress('tc3', 'Reading 2 files…');
+        t.recordToolComplete({ toolCallId: 'tc3', success: true, result: { content: 'ok' } });
+
+        expect(t.toolCallsMap.get('tc3')!.progressMessage).toBeUndefined();
+        expect(t.recordToolProgress('tc3', 'Reading 9 files…').event).toBeUndefined();
+        expect(t.toolCallsMap.get('tc3')!.status).toBe('completed');
+        expect(t.toolCallsMap.get('tc3')!.progressMessage).toBeUndefined();
+    });
+
+    it('clears progress on failure', () => {
+        const t = new SessionTelemetry();
+        t.recordToolStart({ toolCallId: 'tc3', toolName: 'read_batch', arguments: {} });
+        t.recordToolProgress('tc3', 'Reading 2 files…');
+        t.recordToolComplete({ toolCallId: 'tc3', success: false, error: { message: 'boom' } });
+
+        expect(t.toolCallsMap.get('tc3')!.status).toBe('failed');
+        expect(t.toolCallsMap.get('tc3')!.progressMessage).toBeUndefined();
+    });
+
+    it('tracks progress per tool call id', () => {
+        const t = new SessionTelemetry();
+        t.recordToolStart({ toolCallId: 'a', toolName: 'read_batch', arguments: {} });
+        t.recordToolStart({ toolCallId: 'b', toolName: 'bash', arguments: {} });
+        t.recordToolProgress('a', 'Reading 4 files…');
+        t.recordToolProgress('b', 'Compiling…');
+
+        expect(t.toolCallsMap.get('a')!.progressMessage).toBe('Reading 4 files…');
+        expect(t.toolCallsMap.get('b')!.progressMessage).toBe('Compiling…');
     });
 
     it('uses shared toolCallsMap when provided', () => {
