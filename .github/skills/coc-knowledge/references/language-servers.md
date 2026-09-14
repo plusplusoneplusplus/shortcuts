@@ -83,6 +83,8 @@ clone-routed Explorer client before returning the location because standalone
 Monaco resolves only existing models. Pending reads keep Peek in its loading
 state; failures produce an unavailable model. Cancellation drops stale content,
 and temporary models are disposed when Peek detaches or the editor closes.
+Prepared models remain available while a slow Peek widget attaches and have a
+bounded orphan timeout when no widget claims them.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.

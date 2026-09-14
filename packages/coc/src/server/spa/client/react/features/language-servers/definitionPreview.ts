@@ -1,6 +1,6 @@
 import { parseBrowserDocumentUri } from './documentStore';
 
-const PEEK_ATTACH_GRACE_MS = 1_000;
+const ORPHAN_MODEL_TIMEOUT_MS = 30_000;
 
 export interface DefinitionPreviewDisposable {
     dispose(): void;
@@ -50,6 +50,7 @@ export function registerDefinitionPreviewSource(options: {
     const models = new Map<string, {
         model: DefinitionPreviewModel;
         attachment?: DefinitionPreviewDisposable;
+        wasAttached: boolean;
     }>();
     let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
@@ -62,15 +63,22 @@ export function registerDefinitionPreviewSource(options: {
         models.clear();
     };
 
-    const scheduleDetachedCleanup = () => {
-        if (cleanupTimer || disposed) return;
+    const clearCleanupTimer = () => {
+        if (!cleanupTimer) return;
+        clearTimeout(cleanupTimer);
+        cleanupTimer = null;
+    };
+
+    const scheduleCleanup = (delay: number) => {
+        clearCleanupTimer();
+        if (disposed) return;
         cleanupTimer = setTimeout(() => {
             cleanupTimer = null;
             if ([...models.values()].some(({ model }) => model.isAttachedToEditor?.())) {
                 return;
             }
             disposeModels();
-        }, PEEK_ATTACH_GRACE_MS);
+        }, delay);
     };
 
     return {
@@ -103,9 +111,21 @@ export function registerDefinitionPreviewSource(options: {
 
             if (!options.monaco.editor.getModel?.(resource)) {
                 const model = createModel(content, undefined, resource);
-                const attachment = model.onDidChangeAttached?.(scheduleDetachedCleanup);
-                models.set(uri, { model, attachment });
-                scheduleDetachedCleanup();
+                const record: {
+                    model: DefinitionPreviewModel;
+                    attachment?: DefinitionPreviewDisposable;
+                    wasAttached: boolean;
+                } = { model, wasAttached: false };
+                record.attachment = model.onDidChangeAttached?.(() => {
+                    if (model.isAttachedToEditor?.()) {
+                        record.wasAttached = true;
+                        clearCleanupTimer();
+                    } else if (record.wasAttached) {
+                        scheduleCleanup(0);
+                    }
+                });
+                models.set(uri, record);
+                scheduleCleanup(ORPHAN_MODEL_TIMEOUT_MS);
             }
             return true;
         },
@@ -114,10 +134,7 @@ export function registerDefinitionPreviewSource(options: {
             disposed = true;
             for (const controller of controllers) controller.abort();
             controllers.clear();
-            if (cleanupTimer) {
-                clearTimeout(cleanupTimer);
-                cleanupTimer = null;
-            }
+            clearCleanupTimer();
             disposeModels();
         },
     };

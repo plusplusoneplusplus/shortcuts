@@ -164,4 +164,24 @@ describe('definition preview source', () => {
         source.dispose();
         vi.useRealTimers();
     });
+
+    it('keeps a slow Peek model available and eventually disposes an orphan', async () => {
+        vi.useFakeTimers();
+        const { monaco, disposed } = createMonaco();
+        const source = registerDefinitionPreviewSource({
+            monaco,
+            workspaceId: 'ws-1',
+            load: async () => 'export const slow = true;',
+        });
+        const uri = browserDocumentUri('ws-1', 'src/slow.ts');
+
+        await source.prepare(uri, new AbortController().signal);
+        await vi.advanceTimersByTimeAsync(1_100);
+        expect(disposed.size).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(28_900);
+        expect(disposed).toEqual(new Set([uri]));
+        source.dispose();
+        vi.useRealTimers();
+    });
 });
