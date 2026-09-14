@@ -348,7 +348,7 @@ interface CaretPosition {
     lineText: string;
 }
 
-async function caretPosition(page: Page, panel: string): Promise<CaretPosition | null> {
+async function caretPositionInEditorRoot(page: Page, selector: string): Promise<CaretPosition | null> {
     return page.evaluate((selector: string) => {
         const root = document.querySelector(selector);
         const editor = root?.querySelector('.monaco-editor');
@@ -423,7 +423,11 @@ async function caretPosition(page: Page, panel: string): Promise<CaretPosition |
                 .join('')
                 .replace(/\u00a0/g, ' '),
         };
-    }, `${panel} [data-testid="monaco-container"]`);
+    }, selector);
+}
+
+async function caretPosition(page: Page, panel: string): Promise<CaretPosition | null> {
+    return caretPositionInEditorRoot(page, `${panel} [data-testid="monaco-container"]`);
 }
 
 async function caretLineText(page: Page, panel: string): Promise<string | null> {
@@ -600,6 +604,67 @@ test.describe('Explorer language support – TypeScript features', () => {
             await expect
                 .poll(() => caretLineText(page, formatPanel), { timeout: 15_000 })
                 .toContain('export function formatWidget');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('LSP.4a peek definition previews the other file without opening its tab', async ({ page, serverUrl }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createTypeScriptRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'lsp-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+            await enableLanguageServers(serverUrl, WORKSPACE_ID);
+
+            await gotoExplorer(page, serverUrl);
+            await openSourceFile(page, 'app.ts');
+            await waitForLanguageServer(page);
+            await waitForProjectLoaded(page);
+
+            const spot = await findWord(page, 'export const label', 'formatWidget');
+            await page.mouse.click(spot.x, spot.y);
+            await expect
+                .poll(() => caretLineText(page, APP_PANEL), { timeout: 10_000 })
+                .toContain('export const label');
+
+            await page.mouse.click(spot.x, spot.y, { button: 'right' });
+            const peekMenu = page.getByRole('menuitem', { name: 'Peek', exact: true });
+            await expect(peekMenu).toBeVisible();
+            await peekMenu.hover();
+            const peekDefinition = page.getByRole('menuitem', { name: /^Peek Definition\b/ });
+            await expect(peekDefinition).toBeVisible();
+            await peekDefinition.click();
+
+            const peek = page.locator(`${APP_PANEL} .reference-zone-widget`);
+            await expect(peek).toBeVisible({ timeout: 15_000 });
+            await expect(peek.locator('.peekview-title .filename')).toHaveText('format.ts');
+            await expect
+                .poll(
+                    () => caretPositionInEditorRoot(page, `${APP_PANEL} .reference-zone-widget .preview`),
+                    { timeout: 15_000 },
+                )
+                .toEqual({
+                    line: 6,
+                    column: 17,
+                    lineText: 'export function formatWidget(widget: Widget): string {',
+                });
+            await expectEditorTabs(page, [APP_TAB]);
+
+            await page.keyboard.press('Escape');
+            await expect(peek).toBeHidden();
+            await expectEditorTabs(page, [APP_TAB]);
+
+            await page.keyboard.press('F12');
+            await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
+            const formatPanel = `[data-testid="explorer-tab-panel-${FORMAT_TAB}"]`;
+            await expect
+                .poll(() => caretPosition(page, formatPanel), { timeout: 15_000 })
+                .toEqual({
+                    line: 6,
+                    column: 17,
+                    lineText: 'export function formatWidget(widget: Widget): string {',
+                });
         } finally {
             safeRmSync(tmpDir);
         }
