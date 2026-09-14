@@ -44,6 +44,25 @@ vi.mock('../../../../../src/server/spa/client/react/features/language-servers/la
 const monacoStub = vi.hoisted(() => ({
     editor: {
         createDecorationsCollection: () => ({ clear: () => undefined, set: () => [] }),
+        getSelection: () => ({
+            selectionStartLineNumber: 3,
+            selectionStartColumn: 5,
+            positionLineNumber: 3,
+            positionColumn: 5,
+        }),
+        saveViewState: () => ({
+            cursorState: [],
+            viewState: {
+                scrollLeft: 0,
+                scrollTop: 40,
+                firstPosition: { lineNumber: 2, column: 1 },
+                firstPositionDeltaTop: 0,
+            },
+            contributionsState: {},
+        }),
+        restoreViewState: () => undefined,
+        setSelection: () => undefined,
+        onDidChangeCursorSelection: () => ({ dispose: () => undefined }),
         onDidChangeModelContent: () => ({ dispose: () => undefined }),
         onDidScrollChange: () => ({ dispose: () => undefined }),
         onKeyDown: () => ({ dispose: () => undefined }),
@@ -77,9 +96,11 @@ const monacoStub = vi.hoisted(() => ({
     }),
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', async () => {
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor')>();
     const { useEffect, useMemo } = await import('react');
     return {
+        ...actual,
         MonacoFileEditor: ({ value, onModelMount, revealLine, revealColumn }: any) => {
             const model = useMemo(() => {
                 const created = monacoStub.nextModel('src/a.ts');
@@ -101,7 +122,6 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
             );
         },
         getMonacoLanguage: () => 'plaintext',
-        LANGUAGE_MARKER_OWNER: 'coc-language-server',
     };
 });
 
@@ -172,6 +192,33 @@ describe('PreviewPane — surface-aware navigation (AC-03)', () => {
             line: 12,
             column: 17,
         });
+    });
+
+    it('captures the exact source before handing off a cross-file jump', async () => {
+        const open = installOpener();
+        const calls: string[] = [];
+        const onNavigationLocation = vi.fn(() => calls.push('source'));
+        const onNavigate = vi.fn(() => calls.push('target'));
+        const { model } = await renderPane({ onNavigate, onNavigationLocation });
+        onNavigationLocation.mockClear();
+        calls.length = 0;
+
+        await open(model, browserDocumentUri('ws-1', 'src/types.ts'), {
+            startLineNumber: 12, startColumn: 17,
+        });
+
+        expect(calls).toEqual(['source', 'target']);
+        expect(onNavigationLocation).toHaveBeenCalledWith(expect.objectContaining({
+            selection: {
+                selectionStartLineNumber: 3,
+                selectionStartColumn: 5,
+                positionLineNumber: 3,
+                positionColumn: 5,
+            },
+            viewState: expect.objectContaining({
+                viewState: expect.objectContaining({ scrollTop: 40 }),
+            }),
+        }), 'jump');
     });
 
     it('lands at the top of the target when the server named no position', async () => {

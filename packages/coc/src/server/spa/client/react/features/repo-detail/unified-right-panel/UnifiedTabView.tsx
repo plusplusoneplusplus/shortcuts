@@ -41,6 +41,11 @@ import { useCallback } from 'react';
 import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
 import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
+import type {
+    EditorNavigationController,
+    EditorNavigationReason,
+    EditorNavigationSnapshot,
+} from '../../../shared/file-viewer/MonacoFileEditor';
 import { UnifiedCanvasTab } from './UnifiedCanvasTab';
 import { UnifiedDiffTab } from './UnifiedDiffTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
@@ -83,6 +88,12 @@ export interface UnifiedTabViewProps {
         file: { path: string; name: string; line: number; column: number; symbolCandidate?: true },
         origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
     ) => void;
+    onFileNavigationMount?: (tabId: string, controller: EditorNavigationController | null) => void;
+    onFileNavigationLocation?: (
+        tabId: string,
+        snapshot: EditorNavigationSnapshot,
+        reason: EditorNavigationReason,
+    ) => void;
 }
 
 /** The last path segment — what the editor uses to pick a language. */
@@ -94,6 +105,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onTerminalSessionsChange, onOpenFile, definitionPreviewOwners,
+    onFileNavigationMount, onFileNavigationLocation,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
@@ -127,6 +139,16 @@ export function UnifiedTabView({
         (sessions: readonly TerminalSessionSummary[]) => onTerminalSessionsChange?.(tab.id, sessions),
         [onTerminalSessionsChange, tab.id],
     );
+    const handleNavigationMount = useCallback(
+        (controller: EditorNavigationController | null) => onFileNavigationMount?.(tab.id, controller),
+        [onFileNavigationMount, tab.id],
+    );
+    const handleNavigationLocation = useCallback(
+        (snapshot: EditorNavigationSnapshot, reason: EditorNavigationReason) => {
+            onFileNavigationLocation?.(tab.id, snapshot, reason);
+        },
+        [onFileNavigationLocation, tab.id],
+    );
     switch (tab.kind) {
         case 'terminal':
             return <TerminalView workspaceId={tab.ownerWorkspaceId} onSessionsChange={handleTerminalSessions} />;
@@ -149,6 +171,8 @@ export function UnifiedTabView({
                     onDirtyChange={handleDirty}
                     onRegisterSave={handleRegisterSave}
                     onStatusChange={handleStatus}
+                    onNavigationMount={handleNavigationMount}
+                    onNavigationLocation={handleNavigationLocation}
                 />
             );
         case 'canvas':
