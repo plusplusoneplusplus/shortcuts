@@ -64,6 +64,8 @@ const monacoStub = vi.hoisted(() => {
     const registered: { kind: string; languageId: string; provider: any; disposed: boolean }[] = [];
     const shadowLanguages: string[] = [];
     const clearedMarkers: { owner: string; count: number }[] = [];
+    const previewModels = new Map<string, any>();
+    let contentProvider: { provideTextContent(resource: { toString(): string }): Promise<any> } | null = null;
     const record = (kind: string, languageId: string, provider: any) => {
         const entry = { kind, languageId, provider, disposed: false };
         registered.push(entry);
@@ -77,12 +79,17 @@ const monacoStub = vi.hoisted(() => {
             registered.length = 0;
             shadowLanguages.length = 0;
             clearedMarkers.length = 0;
+            previewModels.clear();
         },
         live: () => registered.filter(entry => !entry.disposed),
         provider: (kind: string) => {
             const entry = [...registered].reverse().find(item => item.kind === kind && !item.disposed);
             if (!entry) throw new Error(`No live ${kind} provider`);
             return entry.provider;
+        },
+        resolvePreview: (uri: string) => {
+            if (!contentProvider) throw new Error('No definition preview provider');
+            return contentProvider.provideTextContent({ toString: () => uri });
         },
         namespace: {
             languages: {
@@ -102,6 +109,16 @@ const monacoStub = vi.hoisted(() => {
                 setModelLanguage: (model: any, languageId: string) => { model.languageId = languageId; },
                 setModelMarkers: (_model: any, owner: string, markers: unknown[]) => {
                     clearedMarkers.push({ owner, count: markers.length });
+                },
+                registerTextModelContentProvider: (_scheme: string, provider: typeof contentProvider) => {
+                    contentProvider = provider;
+                    return { dispose: () => undefined };
+                },
+                getModel: (resource: { toString(): string }) => previewModels.get(resource.toString()) ?? null,
+                createModel: (content: string, _language: string | undefined, resource: { toString(): string }) => {
+                    const model = { uri: resource, content };
+                    previewModels.set(resource.toString(), model);
+                    return model;
                 },
             },
         },
@@ -304,6 +321,75 @@ describe('PreviewPane — language providers (AC-03)', () => {
             'remote:ws-1',
         );
         expect(links[0].uri.toString()).toContain('include/widget.hpp#symbol-index-candidate');
+    });
+
+    it('routes repo-group definition previews through each member owner and rejects outsiders', async () => {
+        const first = renderPane({
+            repoId: 'member-1',
+            routingRef: 'remote:server-a:member-1',
+            filePath: 'src/first.ts',
+            fileName: 'first.ts',
+        });
+        const firstAttachment = await attachmentFor('src/first.ts');
+        attachWith(firstAttachment);
+        firstAttachment.respond('textDocument/definition', () => [
+            {
+                uri: 'coc-file://member-1/src/target.ts',
+                range: { start: { line: 4, character: 2 }, end: { line: 4, character: 8 } },
+            },
+            {
+                uri: 'coc-file://outside/src/private.ts',
+                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+            },
+        ]);
+        await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
+
+        const firstLinks = await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+        expect(firstLinks.map((link: any) => link.uri.toString()))
+            .toEqual(['coc-file://member-1/src/target.ts']);
+        await expect(monacoStub.resolvePreview('coc-file://member-1/src/target.ts'))
+            .resolves.toMatchObject({ content: 'const a = 1;' });
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'member-1',
+            'src/target.ts',
+            { signal: expect.any(AbortSignal) },
+            'remote:server-a:member-1',
+        );
+        await expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts')).resolves.toBeNull();
+
+        first.unmount();
+        const second = renderPane({
+            repoId: 'member-2',
+            routingRef: 'remote:server-a:member-2',
+            filePath: 'src/second.ts',
+            fileName: 'second.ts',
+        });
+        const secondAttachment = await attachmentFor('src/second.ts');
+        attachWith(secondAttachment);
+        secondAttachment.respond('textDocument/definition', () => ({
+            uri: 'coc-file://member-2/src/target.ts',
+            range: { start: { line: 8, character: 5 }, end: { line: 8, character: 11 } },
+        }));
+        await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
+
+        await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+        await expect(monacoStub.resolvePreview('coc-file://member-2/src/target.ts'))
+            .resolves.toMatchObject({ content: 'const a = 1;' });
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'member-2',
+            'src/target.ts',
+            { signal: expect.any(AbortSignal) },
+            'remote:server-a:member-2',
+        );
+        second.unmount();
     });
 
     it('ignores a model that is not this document', async () => {
