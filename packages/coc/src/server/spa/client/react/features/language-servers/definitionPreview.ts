@@ -1,5 +1,7 @@
 import { parseBrowserDocumentUri } from './documentStore';
 
+const PEEK_ATTACH_GRACE_MS = 1_000;
+
 export interface DefinitionPreviewDisposable {
     dispose(): void;
 }
@@ -10,16 +12,16 @@ export interface DefinitionPreviewUri {
 
 export interface DefinitionPreviewModel {
     uri: DefinitionPreviewUri;
+    dispose?(): void;
+    isAttachedToEditor?(): boolean;
+    onDidChangeAttached?(listener: () => void): DefinitionPreviewDisposable;
 }
 
 export interface DefinitionPreviewMonaco {
+    Uri: {
+        parse(value: string): DefinitionPreviewUri;
+    };
     editor: {
-        registerTextModelContentProvider?: (
-            scheme: string,
-            provider: {
-                provideTextContent(resource: DefinitionPreviewUri): Promise<DefinitionPreviewModel | null>;
-            },
-        ) => DefinitionPreviewDisposable;
         getModel?: (resource: DefinitionPreviewUri) => DefinitionPreviewModel | null;
         createModel?: (
             value: string,
@@ -30,103 +32,93 @@ export interface DefinitionPreviewMonaco {
 }
 
 export interface DefinitionPreviewSource {
-    claim(uri: string): boolean;
+    prepare(uri: string, signal: AbortSignal): Promise<boolean>;
     dispose(): void;
 }
 
-interface SourceRegistration {
-    workspaceId: string;
-    load(path: string, signal: AbortSignal): Promise<string>;
-    controllers: Set<AbortController>;
-    disposed: boolean;
-}
-
-interface ProviderState {
-    claims: Map<string, SourceRegistration>;
-    provider: DefinitionPreviewDisposable;
-}
-
-const providers = new WeakMap<object, ProviderState>();
-
-function installProvider(monaco: DefinitionPreviewMonaco): ProviderState | null {
-    const existing = providers.get(monaco as object);
-    if (existing) return existing;
-
-    const register = monaco.editor.registerTextModelContentProvider;
-    const getModel = monaco.editor.getModel;
-    const createModel = monaco.editor.createModel;
-    if (!register || !getModel || !createModel) return null;
-
-    const claims = new Map<string, SourceRegistration>();
-    const provider = register('coc-file', {
-        provideTextContent: async (resource) => {
-            const key = resource.toString();
-            const source = claims.get(key);
-            const target = parseBrowserDocumentUri(key);
-            if (!source || !target || target.workspaceId !== source.workspaceId || source.disposed) {
-                return null;
-            }
-
-            const current = getModel(resource);
-            if (current) return current;
-
-            const controller = new AbortController();
-            source.controllers.add(controller);
-            try {
-                const content = await source.load(target.path, controller.signal);
-                if (controller.signal.aborted || source.disposed || claims.get(key) !== source) {
-                    return null;
-                }
-                return getModel(resource) ?? createModel(content, undefined, resource);
-            } finally {
-                source.controllers.delete(controller);
-            }
-        },
-    });
-    const state = { claims, provider };
-    providers.set(monaco as object, state);
-    return state;
-}
-
 /**
- * Makes definition targets produced by one live editor readable by Monaco's
- * Peek view. Claims are temporary and are removed with the editor registration.
+ * Creates temporary models before Monaco's standalone Peek resolver asks for
+ * them. Models stay alive while Peek has one attached and are released after it
+ * closes, or immediately when the owning editor registration is disposed.
  */
 export function registerDefinitionPreviewSource(options: {
     monaco: DefinitionPreviewMonaco;
     workspaceId: string;
     load(path: string, signal: AbortSignal): Promise<string>;
 }): DefinitionPreviewSource {
-    const state = installProvider(options.monaco);
-    const source: SourceRegistration = {
-        workspaceId: options.workspaceId,
-        load: options.load,
-        controllers: new Set(),
-        disposed: false,
+    const controllers = new Set<AbortController>();
+    const models = new Map<string, {
+        model: DefinitionPreviewModel;
+        attachment?: DefinitionPreviewDisposable;
+    }>();
+    let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
+    const disposeModels = () => {
+        for (const { model, attachment } of models.values()) {
+            attachment?.dispose();
+            model.dispose?.();
+        }
+        models.clear();
     };
-    const claimed = new Set<string>();
+
+    const scheduleDetachedCleanup = () => {
+        if (cleanupTimer || disposed) return;
+        cleanupTimer = setTimeout(() => {
+            cleanupTimer = null;
+            if ([...models.values()].some(({ model }) => model.isAttachedToEditor?.())) {
+                return;
+            }
+            disposeModels();
+        }, PEEK_ATTACH_GRACE_MS);
+    };
 
     return {
-        claim: (uri) => {
+        prepare: async (uri, signal) => {
             const target = parseBrowserDocumentUri(uri);
-            if (!target || target.workspaceId !== source.workspaceId || source.disposed) {
+            if (!target || target.workspaceId !== options.workspaceId || disposed || signal.aborted) {
                 return false;
             }
-            if (!state) return true;
-            state.claims.set(uri, source);
-            claimed.add(uri);
+
+            const resource = options.monaco.Uri.parse(uri);
+            if (options.monaco.editor.getModel?.(resource)) return true;
+            const createModel = options.monaco.editor.createModel;
+            if (!createModel) return false;
+
+            const controller = new AbortController();
+            const abort = () => controller.abort();
+            signal.addEventListener('abort', abort, { once: true });
+            controllers.add(controller);
+            let content: string;
+            try {
+                content = await options.load(target.path, controller.signal);
+            } catch {
+                if (controller.signal.aborted || disposed) return false;
+                content = 'Definition source unavailable.';
+            } finally {
+                signal.removeEventListener('abort', abort);
+                controllers.delete(controller);
+            }
+            if (controller.signal.aborted || disposed) return false;
+
+            if (!options.monaco.editor.getModel?.(resource)) {
+                const model = createModel(content, undefined, resource);
+                const attachment = model.onDidChangeAttached?.(scheduleDetachedCleanup);
+                models.set(uri, { model, attachment });
+                scheduleDetachedCleanup();
+            }
             return true;
         },
         dispose: () => {
-            if (source.disposed) return;
-            source.disposed = true;
-            for (const controller of source.controllers) controller.abort();
-            source.controllers.clear();
-            if (!state) return;
-            for (const uri of claimed) {
-                if (state.claims.get(uri) === source) state.claims.delete(uri);
+            if (disposed) return;
+            disposed = true;
+            for (const controller of controllers) controller.abort();
+            controllers.clear();
+            if (cleanupTimer) {
+                clearTimeout(cleanupTimer);
+                cleanupTimer = null;
             }
-            claimed.clear();
+            disposeModels();
         },
     };
 }

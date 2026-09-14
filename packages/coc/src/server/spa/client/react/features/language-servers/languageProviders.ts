@@ -275,7 +275,7 @@ export interface RegisterLanguageProvidersOptions {
      * Turns a result URI into something Monaco can open. The default accepts
      * only URIs naming a document in this workspace and drops the rest.
      */
-    resolveUri?: (uri: string) => ProviderUri | null;
+    resolveUri?: (uri: string, signal: AbortSignal) => ProviderUri | null | Promise<ProviderUri | null>;
     /** Repository-wide definition candidates, available without a live server. */
     symbolDefinitions?: {
         workspaceId: string;
@@ -350,17 +350,12 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
 
     const owns = (candidate: ProviderModel): boolean => candidate === model || candidate.uri.toString() === modelUri;
 
-    const toProviderLinks = (result: unknown): ProviderLocationLink[] => {
-        const links: ProviderLocationLink[] = [];
-        for (const link of toLocationLinks(result)) {
-            const uri = resolveUri(link.uri);
-            if (!uri) {
-                continue;
-            }
-            links.push({ ...link, uri });
-        }
-        return links;
-    };
+    const toProviderLinks = async (result: unknown, signal: AbortSignal): Promise<ProviderLocationLink[]> => (
+        (await Promise.all(toLocationLinks(result).map(async (link) => {
+            const uri = await resolveUri(link.uri, signal);
+            return uri ? { ...link, uri } : null;
+        }))).filter((link): link is ProviderLocationLink => link !== null)
+    );
 
     let registrations: ProviderDisposable[] = [];
 
@@ -397,17 +392,20 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                                 'textDocument/definition',
                                 view.documentParams({ position: toLspPosition(position) }),
                                 token,
-                            ).then(toProviderLinks)
+                            ).then((result) => toProviderLinks(result, controller.signal))
                             : Promise.resolve([]);
                         const word = target.getWordAtPosition?.(position)?.word;
                         const candidatePromise = symbolDefinitions && word
                             && !token.isCancellationRequested && !controller.signal.aborted
                             ? symbolDefinitions.lookup(word, controller.signal)
-                                .then((results) => results.map((result): ProviderLocationLink | null => {
+                                .then((results) => Promise.all(results.map(async (result): Promise<ProviderLocationLink | null> => {
                                     const baseUri = `coc-file://${encodeURIComponent(symbolDefinitions.workspaceId)}/${
                                         result.path.split('/').map(encodeURIComponent).join('/')
                                     }`;
-                                    const uri = resolveUri(`${baseUri}#${SYMBOL_CANDIDATE_FRAGMENT}`);
+                                    const uri = await resolveUri(
+                                        `${baseUri}#${SYMBOL_CANDIDATE_FRAGMENT}`,
+                                        controller.signal,
+                                    );
                                     return uri
                                         ? {
                                             uri,
@@ -419,7 +417,7 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                                             },
                                         }
                                         : null;
-                                }).filter((link): link is ProviderLocationLink => link !== null))
+                                }))).then((links) => links.filter((link): link is ProviderLocationLink => link !== null))
                                 .catch(() => [])
                             : Promise.resolve([]);
                         const [exact, candidates] = await Promise.all([exactPromise, candidatePromise]);
@@ -447,7 +445,15 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                         }),
                         token,
                     );
-                    return toProviderLinks(result);
+                    const controller = new AbortController();
+                    const subscription = token.onCancellationRequested(() => controller.abort());
+                    try {
+                        return await toProviderLinks(result, controller.signal);
+                    } finally {
+                        if (subscription && typeof subscription.dispose === 'function') {
+                            subscription.dispose();
+                        }
+                    }
                 },
             }));
         }

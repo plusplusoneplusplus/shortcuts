@@ -65,7 +65,6 @@ const monacoStub = vi.hoisted(() => {
     const shadowLanguages: string[] = [];
     const clearedMarkers: { owner: string; count: number }[] = [];
     const previewModels = new Map<string, any>();
-    let contentProvider: { provideTextContent(resource: { toString(): string }): Promise<any> } | null = null;
     const record = (kind: string, languageId: string, provider: any) => {
         const entry = { kind, languageId, provider, disposed: false };
         registered.push(entry);
@@ -87,11 +86,9 @@ const monacoStub = vi.hoisted(() => {
             if (!entry) throw new Error(`No live ${kind} provider`);
             return entry.provider;
         },
-        resolvePreview: (uri: string) => {
-            if (!contentProvider) throw new Error('No definition preview provider');
-            return contentProvider.provideTextContent({ toString: () => uri });
-        },
+        resolvePreview: (uri: string) => previewModels.get(uri) ?? null,
         namespace: {
+            Uri: { parse: (value: string) => ({ toString: () => value }) },
             languages: {
                 registerHoverProvider: (id: string, p: any) => record('hover', id, p),
                 registerDefinitionProvider: (id: string, p: any) => record('definition', id, p),
@@ -104,15 +101,10 @@ const monacoStub = vi.hoisted(() => {
                 setLanguageConfiguration: () => undefined,
                 setMonarchTokensProvider: () => undefined,
             },
-            Uri: { parse: (value: string) => ({ toString: () => value }) },
             editor: {
                 setModelLanguage: (model: any, languageId: string) => { model.languageId = languageId; },
                 setModelMarkers: (_model: any, owner: string, markers: unknown[]) => {
                     clearedMarkers.push({ owner, count: markers.length });
-                },
-                registerTextModelContentProvider: (_scheme: string, provider: typeof contentProvider) => {
-                    contentProvider = provider;
-                    return { dispose: () => undefined };
                 },
                 getModel: (resource: { toString(): string }) => previewModels.get(resource.toString()) ?? null,
                 createModel: (content: string, _language: string | undefined, resource: { toString(): string }) => {
@@ -351,15 +343,15 @@ describe('PreviewPane — language providers (AC-03)', () => {
         );
         expect(firstLinks.map((link: any) => link.uri.toString()))
             .toEqual(['coc-file://member-1/src/target.ts']);
-        await expect(monacoStub.resolvePreview('coc-file://member-1/src/target.ts'))
-            .resolves.toMatchObject({ content: 'const a = 1;' });
+        expect(monacoStub.resolvePreview('coc-file://member-1/src/target.ts'))
+            .toMatchObject({ content: 'const a = 1;' });
         expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
             'member-1',
             'src/target.ts',
             { signal: expect.any(AbortSignal) },
             'remote:server-a:member-1',
         );
-        await expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts')).resolves.toBeNull();
+        expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts')).toBeNull();
 
         first.unmount();
         const second = renderPane({
@@ -381,8 +373,8 @@ describe('PreviewPane — language providers (AC-03)', () => {
             { lineNumber: 1, column: 3 },
             token,
         );
-        await expect(monacoStub.resolvePreview('coc-file://member-2/src/target.ts'))
-            .resolves.toMatchObject({ content: 'const a = 1;' });
+        expect(monacoStub.resolvePreview('coc-file://member-2/src/target.ts'))
+            .toMatchObject({ content: 'const a = 1;' });
         expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
             'member-2',
             'src/target.ts',

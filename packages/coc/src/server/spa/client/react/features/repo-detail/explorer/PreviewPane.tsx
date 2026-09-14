@@ -259,8 +259,8 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
             symbolDefinitions,
-            resolveUri: (uri) => (
-                previewSource.claim(uri)
+            resolveUri: async (uri, signal) => (
+                await previewSource.prepare(uri, signal)
                     ? (monaco as unknown as MonacoLike).Uri.parse(uri)
                     : null
             ),

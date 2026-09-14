@@ -8,74 +8,89 @@ import {
 
 function createMonaco() {
     const models = new Map<string, DefinitionPreviewModel>();
-    let provider: {
-        provideTextContent(resource: DefinitionPreviewUri): Promise<DefinitionPreviewModel | null>;
-    } | null = null;
+    const attachmentListeners = new Map<string, () => void>();
+    const attached = new Set<string>();
+    const disposed = new Set<string>();
     const monaco = {
         editor: {
-            registerTextModelContentProvider: (
-                scheme: string,
-                value: typeof provider,
-            ) => {
-                expect(scheme).toBe('coc-file');
-                provider = value;
-                return { dispose: vi.fn() };
-            },
             getModel: (resource: DefinitionPreviewUri) => models.get(resource.toString()) ?? null,
             createModel: (content: string, _language: string | undefined, resource: DefinitionPreviewUri) => {
-                const model = { uri: resource, content };
+                const key = resource.toString();
+                const model = {
+                    uri: resource,
+                    content,
+                    isAttachedToEditor: () => attached.has(key),
+                    onDidChangeAttached: (listener: () => void) => {
+                        attachmentListeners.set(key, listener);
+                        return { dispose: () => attachmentListeners.delete(key) };
+                    },
+                    dispose: () => {
+                        disposed.add(key);
+                        models.delete(key);
+                    },
+                };
                 models.set(resource.toString(), model);
                 return model;
             },
         },
     };
     return {
-        monaco,
-        resolve: (uri: string) => {
-            if (!provider) throw new Error('No content provider installed');
-            return provider.provideTextContent({ toString: () => uri });
+        monaco: {
+            ...monaco,
+            Uri: { parse: (value: string) => ({ toString: () => value }) },
         },
+        model: (uri: string) => models.get(uri) as (DefinitionPreviewModel & { content: string }) | undefined,
+        attach: (uri: string) => {
+            attached.add(uri);
+            attachmentListeners.get(uri)?.();
+        },
+        detach: (uri: string) => {
+            attached.delete(uri);
+            attachmentListeners.get(uri)?.();
+        },
+        disposed,
     };
 }
 
 describe('definition preview source', () => {
     it('loads a claimed cross-file target into a temporary Monaco model', async () => {
-        const { monaco, resolve } = createMonaco();
+        const { monaco, model, attach } = createMonaco();
         const load = vi.fn().mockResolvedValue('export class Widget {}');
         const source = registerDefinitionPreviewSource({ monaco, workspaceId: 'ws-1', load });
         const uri = browserDocumentUri('ws-1', 'include/widget.hpp');
 
-        expect(source.claim(uri)).toBe(true);
-        const model = await resolve(uri);
+        expect(await source.prepare(uri, new AbortController().signal)).toBe(true);
+        attach(uri);
 
         expect(load).toHaveBeenCalledWith('include/widget.hpp', expect.any(AbortSignal));
-        expect(model).toMatchObject({ content: 'export class Widget {}' });
+        expect(model(uri)).toMatchObject({ content: 'export class Widget {}' });
     });
 
     it('uses the same source for symbol-index fragment targets', async () => {
-        const { monaco, resolve } = createMonaco();
+        const { monaco, model, attach } = createMonaco();
         const load = vi.fn().mockResolvedValue('class Widget {};');
         const source = registerDefinitionPreviewSource({ monaco, workspaceId: 'ws-1', load });
         const uri = `${browserDocumentUri('ws-1', 'include/widget.hpp')}#symbol-index-candidate`;
 
-        expect(source.claim(uri)).toBe(true);
-        expect(await resolve(uri)).toMatchObject({ content: 'class Widget {};' });
+        expect(await source.prepare(uri, new AbortController().signal)).toBe(true);
+        attach(uri);
+        expect(model(uri)).toMatchObject({ content: 'class Widget {};' });
         expect(load).toHaveBeenCalledWith('include/widget.hpp', expect.any(AbortSignal));
     });
 
     it('refuses targets outside the source workspace', async () => {
-        const { monaco, resolve } = createMonaco();
+        const { monaco, model } = createMonaco();
         const load = vi.fn();
         const source = registerDefinitionPreviewSource({ monaco, workspaceId: 'ws-1', load });
         const uri = browserDocumentUri('ws-2', 'src/widget.ts');
 
-        expect(source.claim(uri)).toBe(false);
-        expect(await resolve(uri)).toBeNull();
+        expect(await source.prepare(uri, new AbortController().signal)).toBe(false);
+        expect(model(uri)).toBeUndefined();
         expect(load).not.toHaveBeenCalled();
     });
 
     it('surfaces read failures without poisoning another target', async () => {
-        const { monaco, resolve } = createMonaco();
+        const { monaco, model, attach } = createMonaco();
         const load = vi.fn(async (path: string) => {
             if (path === 'src/missing.ts') throw new Error('Definition source unavailable');
             return 'export const ok = true;';
@@ -83,15 +98,15 @@ describe('definition preview source', () => {
         const source = registerDefinitionPreviewSource({ monaco, workspaceId: 'ws-1', load });
         const missing = browserDocumentUri('ws-1', 'src/missing.ts');
         const valid = browserDocumentUri('ws-1', 'src/valid.ts');
-        source.claim(missing);
-        source.claim(valid);
-
-        await expect(resolve(missing)).rejects.toThrow('Definition source unavailable');
-        await expect(resolve(valid)).resolves.toMatchObject({ content: 'export const ok = true;' });
+        await expect(source.prepare(missing, new AbortController().signal)).resolves.toBe(true);
+        attach(missing);
+        await expect(source.prepare(valid, new AbortController().signal)).resolves.toBe(true);
+        expect(model(missing)).toMatchObject({ content: 'Definition source unavailable.' });
+        expect(model(valid)).toMatchObject({ content: 'export const ok = true;' });
     });
 
     it('aborts pending reads and removes claims when the source is disposed', async () => {
-        const { monaco, resolve } = createMonaco();
+        const { monaco } = createMonaco();
         let readSignal: AbortSignal | undefined;
         const load = vi.fn((_path: string, signal: AbortSignal) => {
             readSignal = signal;
@@ -99,13 +114,54 @@ describe('definition preview source', () => {
         });
         const source = registerDefinitionPreviewSource({ monaco, workspaceId: 'ws-1', load });
         const uri = browserDocumentUri('ws-1', 'src/widget.ts');
-        source.claim(uri);
-
-        void resolve(uri);
+        void source.prepare(uri, new AbortController().signal);
         await vi.waitFor(() => expect(readSignal).toBeDefined());
         source.dispose();
 
         expect(readSignal?.aborted).toBe(true);
-        expect(await resolve(uri)).toBeNull();
+        expect(await source.prepare(uri, new AbortController().signal)).toBe(false);
+    });
+
+    it('drops a stale read when the definition request is cancelled', async () => {
+        const { monaco, model } = createMonaco();
+        let finish!: (content: string) => void;
+        const load = vi.fn(() => new Promise<string>((resolve) => { finish = resolve; }));
+        const source = registerDefinitionPreviewSource({ monaco, workspaceId: 'ws-1', load });
+        const uri = browserDocumentUri('ws-1', 'src/widget.ts');
+        const request = new AbortController();
+
+        const prepared = source.prepare(uri, request.signal);
+        request.abort();
+        finish('stale content');
+
+        await expect(prepared).resolves.toBe(false);
+        expect(model(uri)).toBeUndefined();
+    });
+
+    it('disposes every temporary model after Peek detaches', async () => {
+        vi.useFakeTimers();
+        const { monaco, attach, detach, disposed } = createMonaco();
+        const source = registerDefinitionPreviewSource({
+            monaco,
+            workspaceId: 'ws-1',
+            load: async (path) => `source for ${path}`,
+        });
+        const first = browserDocumentUri('ws-1', 'src/first.ts');
+        const second = browserDocumentUri('ws-1', 'src/second.ts');
+
+        await Promise.all([
+            source.prepare(first, new AbortController().signal),
+            source.prepare(second, new AbortController().signal),
+        ]);
+        attach(first);
+        await vi.runAllTimersAsync();
+        expect(disposed.size).toBe(0);
+
+        detach(first);
+        await vi.runAllTimersAsync();
+
+        expect(disposed).toEqual(new Set([first, second]));
+        source.dispose();
+        vi.useRealTimers();
     });
 });
