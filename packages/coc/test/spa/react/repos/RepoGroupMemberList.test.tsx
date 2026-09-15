@@ -26,15 +26,15 @@ import { RepoGroupMemberList } from '../../../../src/server/spa/client/react/rep
 const GROUP_ID = 'group-frontend';
 
 const MEMBERS = [
-    { workspaceId: 'r1', stale: false, name: 'api', rootPath: '/r/api' },
-    { workspaceId: 'r2', stale: false, name: 'web', rootPath: '/r/web', description: 'The dashboard SPA' },
+    { workspaceId: 'r1', stale: false, name: 'api', rootPath: '/r/api', readOnly: false },
+    { workspaceId: 'r2', stale: false, name: 'web', rootPath: '/r/web', description: 'The dashboard SPA', readOnly: true },
 ];
 
 function field(memberId: string): HTMLInputElement {
     return screen.getByTestId(`repo-group-member-description-${memberId}`) as HTMLInputElement;
 }
 
-function readOnlyBox(memberId: string): HTMLInputElement {
+function readOnlyToggle(memberId: string): HTMLInputElement {
     return screen.getByTestId(`repo-group-member-read-only-${memberId}`) as HTMLInputElement;
 }
 
@@ -145,48 +145,37 @@ describe('RepoGroupMemberList', () => {
         expect(field('r1').maxLength).toBe(280);
     });
 
-    it('ticks read-only, PATCHing the flag for that member only and badging the row', async () => {
+    it('shows and saves each member read-only policy independently', async () => {
         renderList();
+        expect(readOnlyToggle('r1').checked).toBe(false);
+        expect(readOnlyToggle('r2').checked).toBe(true);
 
-        expect(readOnlyBox('r1').checked).toBe(false);
-        expect(screen.queryByTestId('repo-group-read-only-badge-r1')).toBeNull();
-
-        fireEvent.click(readOnlyBox('r1'));
-
-        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledTimes(1));
-        expect(mockUpdateRepoGroup).toHaveBeenCalledWith(GROUP_ID, { readOnly: { r1: true } }, undefined);
-        expect(readOnlyBox('r1').checked).toBe(true);
-        expect(readOnlyBox('r2').checked).toBe(false);
-        expect(screen.getByTestId('repo-group-read-only-badge-r1')).toBeTruthy();
-    });
-
-    it('unticks read-only by sending an explicit false, routed to the group\'s server', async () => {
-        renderList([
-            { workspaceId: 'r1', stale: false, name: 'api', rootPath: '/r/api', readOnly: true },
-        ], 'http://remote:3000');
-
-        expect(readOnlyBox('r1').checked).toBe(true);
-        fireEvent.click(readOnlyBox('r1'));
+        fireEvent.click(readOnlyToggle('r1'));
 
         await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith(
             GROUP_ID,
-            { readOnly: { r1: false } },
-            'http://remote:3000',
+            { readOnly: { r1: true } },
+            undefined,
         ));
-        expect(readOnlyBox('r1').checked).toBe(false);
-        expect(screen.queryByTestId('repo-group-read-only-badge-r1')).toBeNull();
+        expect(readOnlyToggle('r1').checked).toBe(true);
+        expect(readOnlyToggle('r2').checked).toBe(true);
     });
 
-    it('reverts the checkbox and surfaces the error when the read-only PATCH fails', async () => {
-        mockUpdateRepoGroup.mockRejectedValue(new Error('group is not writable'));
-        renderList();
+    it('routes policy changes to the group server and rolls back failures', async () => {
+        mockUpdateRepoGroup.mockRejectedValueOnce(new Error('sandbox policy rejected'));
+        renderList(MEMBERS, 'http://remote:3000');
 
-        fireEvent.click(readOnlyBox('r1'));
+        fireEvent.click(readOnlyToggle('r1'));
 
-        await waitFor(() => expect(screen.getByTestId('repo-group-member-description-error-r1')).toBeTruthy());
-        expect(screen.getByTestId('repo-group-member-description-error-r1').textContent)
-            .toContain('group is not writable');
-        expect(readOnlyBox('r1').checked).toBe(false);
-        expect(screen.queryByTestId('repo-group-read-only-badge-r1')).toBeNull();
+        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith(
+            GROUP_ID,
+            { readOnly: { r1: true } },
+            'http://remote:3000',
+        ));
+        await waitFor(() => expect(
+            screen.getByTestId('repo-group-member-read-only-error-r1').textContent,
+        ).toContain('sandbox policy rejected'));
+        expect(readOnlyToggle('r1').checked).toBe(false);
+        expect(field('r1').value).toBe('');
     });
 });

@@ -265,10 +265,19 @@ describe('buildChatTurnSendOptions', () => {
             .toBe(handler);
     });
 
-    it('omits additionalDirectories outside a repo group', () => {
+    it('forwards writable and read-only repo-group directories', () => {
         expect('additionalDirectories' in buildChatTurnSendOptions(sendInput())).toBe(false);
-        expect(buildChatTurnSendOptions(sendInput({ additionalDirectories: ['/member'] })).additionalDirectories)
-            .toEqual(['/member']);
+        expect('readOnlyDirectories' in buildChatTurnSendOptions(sendInput())).toBe(false);
+
+        const options = buildChatTurnSendOptions(sendInput({
+            additionalDirectories: ['/writable'],
+            readOnlyDirectories: ['/protected'],
+        }));
+        expect(options.additionalDirectories).toEqual(['/writable']);
+        expect(options.readOnlyDirectories).toEqual(['/protected']);
+        expect('readOnlyDirectories' in buildChatTurnSendOptions(sendInput({
+            readOnlyDirectories: [],
+        }))).toBe(false);
     });
 
     it('lets a caller override the core with its path-specific extras', () => {

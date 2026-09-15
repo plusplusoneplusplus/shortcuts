@@ -1124,6 +1124,13 @@ export class CodexSDKService implements ISDKService {
 
     public async sendMessage(options: SendMessageOptions): Promise<IInvocationResult> {
         if (this.disposed) return { success: false, error: 'CodexSDKService has been disposed' };
+        if (options.readOnlyDirectories?.length) {
+            return {
+                success: false,
+                error: 'Codex cannot enforce mixed read-only and read-write Repo Group members. Switch to Copilot or Claude.',
+                sessionId: options.sessionId,
+            };
+        }
 
         // AC-08: Check authentication before proceeding. When the auth checker
         // reports unauthenticated, return a structured error with an authUrl so

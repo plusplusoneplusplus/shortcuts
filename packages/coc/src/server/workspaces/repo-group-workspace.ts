@@ -38,16 +38,8 @@ export interface RepoGroupFile {
      * membership, so the same repo can read differently in two groups.
      */
     descriptions?: Record<string, string>;
-    /**
-     * Optional per-member read-only marker, keyed by member workspace ID.
-     *
-     * A sibling map to {@link descriptions} and stored under the same rules:
-     * only `true` entries are kept, keys must be current members, and the key
-     * is omitted entirely when empty so a group with no read-only members
-     * serializes byte-identically to what earlier versions wrote. The flag is
-     * a prompt hint rendered into the group chat context — nothing enforces it.
-     */
-    readOnly?: Record<string, boolean>;
+    /** Members whose roots must be readable but not writable by provider tools. */
+    readOnlyMembers?: string[];
 }
 
 /** A group member resolved against the live workspace registry. */
@@ -63,8 +55,8 @@ export interface RepoGroupMember {
     rootPath?: string;
     /** This group's note about the member; absent when unset. */
     description?: string;
-    /** True when this group marks the member as read-only; absent otherwise. */
-    readOnly?: boolean;
+    /** Whether provider tools must enforce this member root as read-only. */
+    readOnly: boolean;
 }
 
 /** Raised when create/update input fails shape or registry validation. */
@@ -168,40 +160,32 @@ function pruneDescriptions(
     return kept;
 }
 
-/**
- * Validate a caller-supplied read-only map the same way descriptions are
- * validated: unknown keys are a caller mistake and rejected, values must be
- * booleans, and only `true` survives — `false` means "no entry", which is how
- * a clear is expressed.
- */
-function normalizeReadOnly(
-    readOnly: Record<string, boolean>,
+function pruneReadOnlyMembers(
+    readOnlyMembers: readonly string[] | undefined,
     members: readonly string[],
-): Record<string, boolean> {
-    const memberSet = new Set(members);
-    const normalized: Record<string, boolean> = {};
-    for (const [workspaceId, value] of Object.entries(readOnly)) {
-        if (typeof value !== 'boolean') {
-            throw new RepoGroupValidationError(`Read-only flag for "${workspaceId}" must be a boolean`);
-        }
-        if (!memberSet.has(workspaceId)) {
-            throw new RepoGroupValidationError(`Read-only key "${workspaceId}" is not a member of this repo group`);
-        }
-        if (value) normalized[workspaceId] = true;
-    }
-    return normalized;
+): string[] {
+    const protectedIds = new Set(readOnlyMembers ?? []);
+    return members.filter(workspaceId => protectedIds.has(workspaceId));
 }
 
-/** Keep only the read-only flags whose member is still in the group. */
-function pruneReadOnly(
-    readOnly: Record<string, boolean> | undefined,
+function applyReadOnlyPatch(
+    current: readonly string[] | undefined,
+    patch: Record<string, boolean>,
     members: readonly string[],
-): Record<string, boolean> {
-    const kept: Record<string, boolean> = {};
-    for (const workspaceId of members) {
-        if (readOnly?.[workspaceId]) kept[workspaceId] = true;
+): string[] {
+    const memberIds = new Set(members);
+    const next = new Set(current ?? []);
+    for (const [workspaceId, readOnly] of Object.entries(patch)) {
+        if (typeof readOnly !== 'boolean') {
+            throw new RepoGroupValidationError(`Read-only value for "${workspaceId}" must be a boolean`);
+        }
+        if (!memberIds.has(workspaceId)) {
+            throw new RepoGroupValidationError(`Read-only key "${workspaceId}" is not a member of this repo group`);
+        }
+        if (readOnly) next.add(workspaceId);
+        else next.delete(workspaceId);
     }
-    return kept;
+    return pruneReadOnlyMembers([...next], members);
 }
 
 function normalizeName(name: string): string {
@@ -216,13 +200,13 @@ function writeGroupFile(dataDir: string, groupId: string, file: RepoGroupFile): 
     const root = groupRootPath(dataDir, groupId);
     fs.mkdirSync(root, { recursive: true });
     const descriptions = pruneDescriptions(file.descriptions, file.members);
-    const readOnly = pruneReadOnly(file.readOnly, file.members);
-    // Each optional map is omitted when empty so a group without descriptions
-    // and without read-only members writes exactly the bytes earlier versions
-    // wrote.
-    const payload: RepoGroupFile = { name: file.name, members: file.members };
-    if (Object.keys(descriptions).length > 0) payload.descriptions = descriptions;
-    if (Object.keys(readOnly).length > 0) payload.readOnly = readOnly;
+    const readOnlyMembers = pruneReadOnlyMembers(file.readOnlyMembers, file.members);
+    const payload: RepoGroupFile = {
+        name: file.name,
+        members: file.members,
+        ...(Object.keys(descriptions).length > 0 ? { descriptions } : {}),
+        ...(readOnlyMembers.length > 0 ? { readOnlyMembers } : {}),
+    };
     fs.writeFileSync(groupFilePath(dataDir, groupId), JSON.stringify(payload, null, 2) + '\n', 'utf-8');
 }
 
@@ -236,14 +220,13 @@ function parseDescriptions(value: unknown): Record<string, string> | undefined {
     return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
 
-/** Read-side tolerance: anything that is not a plain map of booleans is empty. */
-function parseReadOnly(value: unknown): Record<string, boolean> | undefined {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-    const parsed: Record<string, boolean> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-        if (entry === true) parsed[key] = true;
-    }
-    return Object.keys(parsed).length > 0 ? parsed : undefined;
+function parseReadOnlyMembers(value: unknown, members: readonly string[]): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const parsed = pruneReadOnlyMembers(
+        value.filter((entry): entry is string => typeof entry === 'string'),
+        members,
+    );
+    return parsed.length > 0 ? parsed : undefined;
 }
 
 /**
@@ -264,11 +247,16 @@ export function readRepoGroup(dataDir: string, groupId: string): RepoGroupFile |
         if (typeof parsed?.name !== 'string' || !Array.isArray(parsed.members)) return undefined;
         const members = parsed.members.filter((m): m is string => typeof m === 'string');
         const descriptions = parseDescriptions((parsed as { descriptions?: unknown }).descriptions);
-        const readOnly = parseReadOnly((parsed as { readOnly?: unknown }).readOnly);
-        const file: RepoGroupFile = { name: parsed.name, members };
-        if (descriptions) file.descriptions = descriptions;
-        if (readOnly) file.readOnly = readOnly;
-        return file;
+        const readOnlyMembers = parseReadOnlyMembers(
+            (parsed as { readOnlyMembers?: unknown }).readOnlyMembers,
+            members,
+        );
+        return {
+            name: parsed.name,
+            members,
+            ...(descriptions ? { descriptions } : {}),
+            ...(readOnlyMembers ? { readOnlyMembers } : {}),
+        };
     } catch {
         return undefined;
     }
@@ -306,9 +294,11 @@ export async function createRepoGroup(
     const name = normalizeName(input.name);
     const members = await normalizeMembers(store, input.members);
     const descriptions = input.descriptions ? normalizeDescriptions(input.descriptions, members) : undefined;
-    const readOnly = input.readOnly ? normalizeReadOnly(input.readOnly, members) : undefined;
+    const readOnlyMembers = input.readOnly
+        ? applyReadOnlyPatch(undefined, input.readOnly, members)
+        : undefined;
     const groupId = await mintGroupId(dataDir, store, name);
-    writeGroupFile(dataDir, groupId, { name, members, descriptions, readOnly });
+    writeGroupFile(dataDir, groupId, { name, members, descriptions, readOnlyMembers });
     const ws: WorkspaceInfo = {
         id: groupId,
         name,
@@ -347,19 +337,14 @@ export async function updateRepoGroup(
         for (const key of Object.keys(updates.descriptions)) delete descriptions[key];
         descriptions = { ...descriptions, ...patch };
     }
-    // Same partial-patch semantics for read-only: keys present are set, and a
-    // `false` value clears the entry rather than persisting it.
-    let readOnly = pruneReadOnly(current.readOnly, members);
-    if (updates.readOnly !== undefined) {
-        const patch = normalizeReadOnly(updates.readOnly, members);
-        for (const key of Object.keys(updates.readOnly)) delete readOnly[key];
-        readOnly = { ...readOnly, ...patch };
-    }
+    const readOnlyMembers = updates.readOnly !== undefined
+        ? applyReadOnlyPatch(current.readOnlyMembers, updates.readOnly, members)
+        : pruneReadOnlyMembers(current.readOnlyMembers, members);
     const next: RepoGroupFile = {
         name: updates.name !== undefined ? normalizeName(updates.name) : current.name,
         members,
         descriptions: Object.keys(descriptions).length > 0 ? descriptions : undefined,
-        readOnly: Object.keys(readOnly).length > 0 ? readOnly : undefined,
+        readOnlyMembers: readOnlyMembers.length > 0 ? readOnlyMembers : undefined,
     };
     writeGroupFile(dataDir, groupId, next);
     if (next.name !== current.name) {
@@ -384,16 +369,16 @@ export async function resolveRepoGroupMembers(
     const registered = new Map((await store.getWorkspaces()).map(w => [w.id, w]));
     return file.members.map((workspaceId): RepoGroupMember => {
         const description = file.descriptions?.[workspaceId];
-        const withDescription: { description?: string; readOnly?: boolean } = description ? { description } : {};
-        if (file.readOnly?.[workspaceId]) withDescription.readOnly = true;
+        const readOnly = file.readOnlyMembers?.includes(workspaceId) ?? false;
+        const policy = { readOnly, ...(description ? { description } : {}) };
         const ws = registered.get(workspaceId);
         if (!ws) {
-            return { workspaceId, stale: true, staleReason: 'workspace-removed', ...withDescription };
+            return { workspaceId, stale: true, staleReason: 'workspace-removed', ...policy };
         }
         if (!fs.existsSync(ws.rootPath)) {
-            return { workspaceId, stale: true, staleReason: 'path-missing', name: ws.name, rootPath: ws.rootPath, ...withDescription };
+            return { workspaceId, stale: true, staleReason: 'path-missing', name: ws.name, rootPath: ws.rootPath, ...policy };
         }
-        return { workspaceId, stale: false, name: ws.name, rootPath: ws.rootPath, ...withDescription };
+        return { workspaceId, stale: false, name: ws.name, rootPath: ws.rootPath, ...policy };
     });
 }
 

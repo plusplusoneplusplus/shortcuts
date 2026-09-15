@@ -19,7 +19,12 @@ export const REPO_GROUP_SETTINGS_NAV: SettingsNavGroup[] = [
         id: 'group',
         label: 'Group',
         items: [
-            { id: 'members', label: 'Member repos', title: 'Member repos', description: 'Repos in this group and what each one is for' },
+            {
+                id: 'members',
+                label: 'Member repos',
+                title: 'Member repos',
+                description: 'Descriptions tell the model what each repo is for. Read-only repos stay searchable and previewable, but provider tools cannot modify them. Codex and OpenCode cannot run groups with read-only members.',
+            },
         ],
     },
     {

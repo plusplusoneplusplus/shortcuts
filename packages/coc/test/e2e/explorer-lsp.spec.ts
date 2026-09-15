@@ -742,6 +742,7 @@ test.describe('Explorer language support – TypeScript and definition features'
             const repoDir = createCppSymbolRepoFixture(tmpDir);
             await seedWorkspace(serverUrl, WORKSPACE_ID, 'cpp-symbol-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
+            await enableLanguageServers(serverUrl, WORKSPACE_ID);
             await waitForSymbolIndex(serverUrl, WORKSPACE_ID, 'target');
 
             await gotoExplorer(page, serverUrl);

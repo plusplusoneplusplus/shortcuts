@@ -262,6 +262,20 @@ describe('OpenCodeSDKService', () => {
     // ── sendMessage ───────────────────────────────────────────────────────
 
     describe('sendMessage', () => {
+        it('fails before creating a session when read-only roots require enforcement', async () => {
+            const client = createMockClient();
+            stubSDKWithClient(client);
+
+            const result = await svc.sendMessage({
+                prompt: 'compare',
+                readOnlyDirectories: ['/reference'],
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('cannot enforce read-only');
+            expect(client.session.create).not.toHaveBeenCalled();
+        });
+
         it('creates a new session and returns text response', async () => {
             const client = createMockClient();
             stubSDKWithClient(client);

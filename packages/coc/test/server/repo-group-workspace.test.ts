@@ -30,7 +30,7 @@ describe('repo-group-workspace', () => {
 
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-repo-group-'));
-        store = new FileProcessStore(tmpDir);
+        store = new FileProcessStore({ dataDir: tmpDir });
         repoA = await registerRepo('ws-v2-aaa', 'Repo A');
         repoB = await registerRepo('ws-v2-bbb', 'Repo B');
     });
@@ -181,8 +181,8 @@ describe('repo-group-workspace', () => {
             const ws = await createRepoGroup(tmpDir, store, { name: 'G', members: ['ws-v2-aaa', 'ws-v2-bbb'] });
             const members = await resolveRepoGroupMembers(tmpDir, store, ws.id);
             expect(members).toEqual([
-                { workspaceId: 'ws-v2-aaa', stale: false, name: 'Repo A', rootPath: repoA },
-                { workspaceId: 'ws-v2-bbb', stale: false, name: 'Repo B', rootPath: repoB },
+                { workspaceId: 'ws-v2-aaa', stale: false, name: 'Repo A', rootPath: repoA, readOnly: false },
+                { workspaceId: 'ws-v2-bbb', stale: false, name: 'Repo B', rootPath: repoB, readOnly: false },
             ]);
         });
 
@@ -192,7 +192,7 @@ describe('repo-group-workspace', () => {
 
             const members = await resolveRepoGroupMembers(tmpDir, store, ws.id);
             expect(members[0]).toMatchObject({ workspaceId: 'ws-v2-aaa', stale: false });
-            expect(members[1]).toEqual({ workspaceId: 'ws-v2-bbb', stale: true, staleReason: 'workspace-removed' });
+            expect(members[1]).toEqual({ workspaceId: 'ws-v2-bbb', stale: true, staleReason: 'workspace-removed', readOnly: false });
         });
 
         it('marks a member stale when its root path no longer exists on disk', async () => {
@@ -206,148 +206,12 @@ describe('repo-group-workspace', () => {
                 staleReason: 'path-missing',
                 name: 'Repo A',
                 rootPath: repoA,
+                readOnly: false,
             });
         });
 
         it('returns an empty list for a nonexistent group', async () => {
             expect(await resolveRepoGroupMembers(tmpDir, store, 'group-missing')).toEqual([]);
-        });
-    });
-
-    describe('member read-only flag', () => {
-        function groupFile(groupId: string): string {
-            return path.join(tmpDir, 'repos', groupId, REPO_GROUP_FILE_NAME);
-        }
-
-        it('round-trips a read-only flag through group.json', async () => {
-            const ws = await createRepoGroup(tmpDir, store, {
-                name: 'Guarded',
-                members: ['ws-v2-aaa', 'ws-v2-bbb'],
-                readOnly: { 'ws-v2-aaa': true },
-            });
-
-            expect(JSON.parse(fs.readFileSync(groupFile(ws.id), 'utf-8')).readOnly)
-                .toEqual({ 'ws-v2-aaa': true });
-            expect(readRepoGroup(tmpDir, ws.id)?.readOnly).toEqual({ 'ws-v2-aaa': true });
-        });
-
-        it('omits the key entirely for a group with no read-only members', async () => {
-            const ws = await createRepoGroup(tmpDir, store, {
-                name: 'Plain RO',
-                members: ['ws-v2-aaa'],
-                readOnly: { 'ws-v2-aaa': false },
-            });
-            const raw = fs.readFileSync(groupFile(ws.id), 'utf-8');
-
-            expect(raw).toBe(JSON.stringify({ name: 'Plain RO', members: ['ws-v2-aaa'] }, null, 2) + '\n');
-            expect(raw).not.toContain('readOnly');
-            expect(readRepoGroup(tmpDir, ws.id)).toEqual({ name: 'Plain RO', members: ['ws-v2-aaa'] });
-        });
-
-        it('keeps descriptions and read-only side by side in the file', async () => {
-            const ws = await createRepoGroup(tmpDir, store, {
-                name: 'Both',
-                members: ['ws-v2-aaa', 'ws-v2-bbb'],
-                descriptions: { 'ws-v2-bbb': 'the UI' },
-                readOnly: { 'ws-v2-aaa': true },
-            });
-            const raw = JSON.parse(fs.readFileSync(groupFile(ws.id), 'utf-8'));
-
-            expect(raw.descriptions).toEqual({ 'ws-v2-bbb': 'the UI' });
-            expect(raw.readOnly).toEqual({ 'ws-v2-aaa': true });
-        });
-
-        it('loads a pre-existing file without a readOnly key unchanged', async () => {
-            const ws = await createRepoGroup(tmpDir, store, { name: 'Legacy RO', members: ['ws-v2-aaa'] });
-            fs.writeFileSync(groupFile(ws.id), JSON.stringify({ name: 'Legacy RO', members: ['ws-v2-aaa'] }), 'utf-8');
-
-            expect(readRepoGroup(tmpDir, ws.id)).toEqual({ name: 'Legacy RO', members: ['ws-v2-aaa'] });
-        });
-
-        it('treats a malformed readOnly map as empty', async () => {
-            const ws = await createRepoGroup(tmpDir, store, { name: 'Broken RO', members: ['ws-v2-aaa'] });
-            for (const readOnly of ['nope', 42, null, [true], { 'ws-v2-aaa': 'yes' }, { 'ws-v2-aaa': false }]) {
-                fs.writeFileSync(
-                    groupFile(ws.id),
-                    JSON.stringify({ name: 'Broken RO', members: ['ws-v2-aaa'], readOnly }),
-                    'utf-8',
-                );
-                expect(readRepoGroup(tmpDir, ws.id)).toEqual({ name: 'Broken RO', members: ['ws-v2-aaa'] });
-            }
-        });
-
-        it('patches only the supplied keys and leaves other members untouched', async () => {
-            const ws = await createRepoGroup(tmpDir, store, {
-                name: 'Patch RO',
-                members: ['ws-v2-aaa', 'ws-v2-bbb'],
-                readOnly: { 'ws-v2-aaa': true },
-            });
-
-            const updated = await updateRepoGroup(tmpDir, store, ws.id, { readOnly: { 'ws-v2-bbb': true } });
-
-            expect(updated?.readOnly).toEqual({ 'ws-v2-aaa': true, 'ws-v2-bbb': true });
-        });
-
-        it('clears a read-only flag when patched with false', async () => {
-            const ws = await createRepoGroup(tmpDir, store, {
-                name: 'Clear RO',
-                members: ['ws-v2-aaa', 'ws-v2-bbb'],
-                readOnly: { 'ws-v2-aaa': true, 'ws-v2-bbb': true },
-            });
-
-            const updated = await updateRepoGroup(tmpDir, store, ws.id, { readOnly: { 'ws-v2-aaa': false } });
-
-            expect(updated?.readOnly).toEqual({ 'ws-v2-bbb': true });
-            expect(readRepoGroup(tmpDir, ws.id)?.readOnly).toEqual({ 'ws-v2-bbb': true });
-        });
-
-        it('drops the read-only flag of a member removed by the same update', async () => {
-            const ws = await createRepoGroup(tmpDir, store, {
-                name: 'Prune RO',
-                members: ['ws-v2-aaa', 'ws-v2-bbb'],
-                readOnly: { 'ws-v2-aaa': true, 'ws-v2-bbb': true },
-            });
-
-            await updateRepoGroup(tmpDir, store, ws.id, { members: ['ws-v2-aaa'] });
-
-            expect(readRepoGroup(tmpDir, ws.id)?.readOnly).toEqual({ 'ws-v2-aaa': true });
-        });
-
-        it('rejects a non-boolean read-only value', async () => {
-            const ws = await createRepoGroup(tmpDir, store, { name: 'Bad RO', members: ['ws-v2-aaa'] });
-            await expect(
-                updateRepoGroup(tmpDir, store, ws.id, {
-                    readOnly: { 'ws-v2-aaa': 'yes' as unknown as boolean },
-                }),
-            ).rejects.toThrow(/must be a boolean/);
-        });
-
-        it('rejects a read-only key that is not a member', async () => {
-            const ws = await createRepoGroup(tmpDir, store, { name: 'Solo RO', members: ['ws-v2-aaa'] });
-            await expect(
-                updateRepoGroup(tmpDir, store, ws.id, { readOnly: { 'ws-v2-bbb': true } }),
-            ).rejects.toThrow(/not a member of this repo group/);
-            await expect(
-                createRepoGroup(tmpDir, store, {
-                    name: 'Solo RO 2', members: ['ws-v2-aaa'], readOnly: { 'ws-v2-bbb': true },
-                }),
-            ).rejects.toThrow(/not a member of this repo group/);
-        });
-
-        it('resolves the flag onto live and stale members only where set', async () => {
-            const ws = await createRepoGroup(tmpDir, store, {
-                name: 'Resolve RO',
-                members: ['ws-v2-aaa', 'ws-v2-bbb'],
-                readOnly: { 'ws-v2-aaa': true },
-            });
-
-            const before = await resolveRepoGroupMembers(tmpDir, store, ws.id);
-            expect(before[0]).toMatchObject({ workspaceId: 'ws-v2-aaa', stale: false, readOnly: true });
-            expect(before[1].readOnly).toBeUndefined();
-
-            fs.rmSync(repoA, { recursive: true, force: true });
-            const after = await resolveRepoGroupMembers(tmpDir, store, ws.id);
-            expect(after[0]).toMatchObject({ stale: true, staleReason: 'path-missing', readOnly: true });
         });
     });
 
@@ -495,6 +359,90 @@ describe('repo-group-workspace', () => {
 
             expect(readRepoGroup(tmpDir, one.id)?.descriptions).toEqual({ 'ws-v2-aaa': 'backend for One' });
             expect(readRepoGroup(tmpDir, two.id)?.descriptions).toEqual({ 'ws-v2-aaa': 'shared lib for Two' });
+        });
+    });
+
+    describe('read-only members', () => {
+        function groupFile(groupId: string): string {
+            return path.join(tmpDir, 'repos', groupId, REPO_GROUP_FILE_NAME);
+        }
+
+        it('defaults existing and newly created members to read-write', async () => {
+            const ws = await createRepoGroup(tmpDir, store, {
+                name: 'Default policy',
+                members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            });
+
+            expect(readRepoGroup(tmpDir, ws.id)?.readOnlyMembers).toBeUndefined();
+            expect(await resolveRepoGroupMembers(tmpDir, store, ws.id)).toEqual([
+                { workspaceId: 'ws-v2-aaa', stale: false, name: 'Repo A', rootPath: repoA, readOnly: false },
+                { workspaceId: 'ws-v2-bbb', stale: false, name: 'Repo B', rootPath: repoB, readOnly: false },
+            ]);
+        });
+
+        it('loads and normalizes read-only IDs from group.json', async () => {
+            const ws = await createRepoGroup(tmpDir, store, {
+                name: 'Policy',
+                members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            });
+            fs.writeFileSync(groupFile(ws.id), JSON.stringify({
+                name: 'Policy',
+                members: ['ws-v2-aaa', 'ws-v2-bbb'],
+                readOnlyMembers: ['ws-v2-bbb', 'ws-v2-bbb', 'unknown', 42],
+            }), 'utf-8');
+
+            expect(readRepoGroup(tmpDir, ws.id)?.readOnlyMembers).toEqual(['ws-v2-bbb']);
+            const members = await resolveRepoGroupMembers(tmpDir, store, ws.id);
+            expect(members[0].readOnly).toBe(false);
+            expect(members[1].readOnly).toBe(true);
+        });
+
+        it('patches only named member policies and omits an empty set', async () => {
+            const ws = await createRepoGroup(tmpDir, store, {
+                name: 'Patch policy',
+                members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            });
+
+            const protectedMembers = await updateRepoGroup(tmpDir, store, ws.id, {
+                readOnly: { 'ws-v2-aaa': true, 'ws-v2-bbb': true },
+            });
+            expect(protectedMembers?.readOnlyMembers).toEqual(['ws-v2-aaa', 'ws-v2-bbb']);
+
+            const oneProtected = await updateRepoGroup(tmpDir, store, ws.id, {
+                readOnly: { 'ws-v2-aaa': false },
+            });
+            expect(oneProtected?.readOnlyMembers).toEqual(['ws-v2-bbb']);
+
+            const noneProtected = await updateRepoGroup(tmpDir, store, ws.id, {
+                readOnly: { 'ws-v2-bbb': false },
+            });
+            expect(noneProtected?.readOnlyMembers).toBeUndefined();
+            expect(JSON.parse(fs.readFileSync(groupFile(ws.id), 'utf-8')).readOnlyMembers).toBeUndefined();
+        });
+
+        it('prunes read-only state when membership is replaced', async () => {
+            const ws = await createRepoGroup(tmpDir, store, {
+                name: 'Shrink policy',
+                members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            });
+            await updateRepoGroup(tmpDir, store, ws.id, {
+                readOnly: { 'ws-v2-aaa': true, 'ws-v2-bbb': true },
+            });
+
+            await updateRepoGroup(tmpDir, store, ws.id, { members: ['ws-v2-aaa'] });
+
+            expect(readRepoGroup(tmpDir, ws.id)?.readOnlyMembers).toEqual(['ws-v2-aaa']);
+        });
+
+        it('rejects policy keys that are not members', async () => {
+            const ws = await createRepoGroup(tmpDir, store, {
+                name: 'Invalid policy',
+                members: ['ws-v2-aaa'],
+            });
+
+            await expect(updateRepoGroup(tmpDir, store, ws.id, {
+                readOnly: { 'ws-v2-bbb': true },
+            })).rejects.toThrow(/is not a member of this repo group/);
         });
     });
 
