@@ -17,6 +17,7 @@ import {
     PauseReason,
     PauseDurationHours,
     PauseScope,
+    RepoGateState,
     TaskQueueManagerOptions,
     DEFAULT_QUEUE_MANAGER_OPTIONS,
     MAX_PAUSE_DURATION_HOURS,
@@ -70,6 +71,8 @@ export class TaskQueueManager extends EventEmitter {
     private runningProcessIds = new Set<string>();
     /** Per-repo pause reason (present when paused due to task failure). */
     private pauseReasons = new Map<string, PauseReason>();
+    /** Active implement-plan chain gate for each repository. */
+    private repoGates = new Map<string, RepoGateState>();
     /** Function to extract repo ID from a task (injected) */
     private readonly getTaskRepoId?: (task: QueuedTask) => string | undefined;
     /** Optional function to classify a task as exclusive (for non-exclusive fast-path insertion) */
@@ -112,6 +115,8 @@ export class TaskQueueManager extends EventEmitter {
 
         this.insertTask(task);
 
+        this.activateGateFromTask(task);
+
         this.emitChange('added', task);
         this.emit('taskAdded', task);
 
@@ -141,6 +146,7 @@ export class TaskQueueManager extends EventEmitter {
             }
             const task = item as QueuedTask;
             if (task.frozen) continue;
+            if (!this.isAllowedByRepoGate(task)) continue;
             if (this.getTaskRepoId && this.pausedRepos.size > 0) {
                 const repoId = this.getTaskRepoId(task);
                 if (repoId && this.pausedRepos.has(repoId)) continue;
@@ -171,6 +177,7 @@ export class TaskQueueManager extends EventEmitter {
             }
             const task = item as QueuedTask;
             if (task.frozen) continue;
+            if (!this.isAllowedByRepoGate(task)) continue;
             if (this.getTaskRepoId && this.pausedRepos.size > 0) {
                 const repoId = this.getTaskRepoId(task);
                 if (repoId && this.pausedRepos.has(repoId)) continue;
@@ -1076,6 +1083,59 @@ export class TaskQueueManager extends EventEmitter {
     }
 
     // ========================================================================
+    // Per-Repo Implement-Plan Gate
+    // ========================================================================
+
+    /** Return the active implement-plan chain gate for a repository. */
+    getRepoGate(repoId: string): RepoGateState | undefined {
+        const gate = this.repoGates.get(repoId);
+        return gate ? { ...gate } : undefined;
+    }
+
+    /** Return all active repository gates. */
+    getRepoGates(): Map<string, RepoGateState> {
+        return new Map(Array.from(this.repoGates, ([repoId, gate]) => [repoId, { ...gate }]));
+    }
+
+    /**
+     * Restore an active gate during startup hydration without emitting a
+     * persistence event.
+     */
+    restoreRepoGate(repoId: string, gate: RepoGateState): void {
+        this.repoGates.set(repoId, { ...gate });
+    }
+
+    /**
+     * Release a repository gate. When another gated launch is already queued,
+     * promote its chain so gated launches in one repository stay serialized.
+     * Supplying chainId prevents a stale watcher from releasing a newer gate.
+     */
+    releaseRepoGate(repoId: string, chainId?: string): boolean {
+        const active = this.repoGates.get(repoId);
+        if (!active || (chainId !== undefined && active.chainId !== chainId)) {
+            return false;
+        }
+
+        this.repoGates.delete(repoId);
+        this.emitChange('repo-gate-released');
+        this.emit('repo-gate-released', repoId, active);
+
+        const next = this.queue.find(item => {
+            if (isPauseMarker(item)) {
+                return false;
+            }
+            const task = item as QueuedTask;
+            return this.resolveTaskRepoId(task) === repoId
+                && task.config?.prGate?.chainId !== undefined
+                && task.config.prGate.chainId !== active.chainId;
+        }) as QueuedTask | undefined;
+        if (next) {
+            this.activateGateFromTask(next);
+        }
+        return true;
+    }
+
+    // ========================================================================
     // Drain Mode
     // ========================================================================
 
@@ -1245,6 +1305,7 @@ export class TaskQueueManager extends EventEmitter {
         this.lastTaskEndAt.clear();
         this.draining = false;
         this.pausedRepos.clear();
+        this.repoGates.clear();
         // Resolve any pending idle waiters since there's nothing left
         const resolvers = this.idleResolvers;
         this.idleResolvers = [];
@@ -1270,6 +1331,32 @@ export class TaskQueueManager extends EventEmitter {
                 resolve();
             }
         }
+    }
+
+    private resolveTaskRepoId(task: QueuedTask): string | undefined {
+        return this.getTaskRepoId?.(task) ?? task.repoId;
+    }
+
+    private activateGateFromTask(task: QueuedTask): void {
+        const chainId = task.config?.prGate?.chainId;
+        const repoId = this.resolveTaskRepoId(task);
+        if (!chainId || !repoId || this.repoGates.has(repoId)) {
+            return;
+        }
+
+        const gate = { chainId };
+        this.repoGates.set(repoId, gate);
+        this.emitChange('repo-gate-activated');
+        this.emit('repo-gate-activated', repoId, gate);
+    }
+
+    private isAllowedByRepoGate(task: QueuedTask): boolean {
+        const repoId = this.resolveTaskRepoId(task);
+        if (!repoId) {
+            return true;
+        }
+        const gate = this.repoGates.get(repoId);
+        return gate === undefined || task.config?.prGate?.chainId === gate.chainId;
     }
 
     /**

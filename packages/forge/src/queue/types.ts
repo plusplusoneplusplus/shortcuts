@@ -106,6 +106,11 @@ export interface TaskExecutionConfig {
     };
 }
 
+/** The active implement-plan chain allowed through a repository queue gate. */
+export interface RepoGateState {
+    chainId: string;
+}
+
 /**
  * Default task execution configuration
  */
@@ -228,7 +233,9 @@ export type QueueChangeType =
     | 'admitted'
     | 'unadmitted'
     | 'task-delay-changed'
-    | 'task-delay-skipped';
+    | 'task-delay-skipped'
+    | 'repo-gate-activated'
+    | 'repo-gate-released';
 
 export interface QueueChangeEvent {
     /** Type of change */

@@ -231,6 +231,20 @@ describe('SqliteQueuePersistence', () => {
             expect(state!.isPaused).toBe(false);
         });
 
+        it('persists repo gate activation and release immediately', () => {
+            qm.enqueue({
+                type: 'autopilot',
+                priority: 'normal',
+                payload: {},
+                config: { prGate: { autoMerge: true, chainId: 'chain-1' } },
+                repoId: rId,
+            });
+            expect(store.getQueueRepoState(rId)?.prGate).toEqual({ chainId: 'chain-1' });
+
+            qm.releaseRepoGate(rId, 'chain-1');
+            expect(store.getQueueRepoState(rId)?.prGate).toBeUndefined();
+        });
+
         it('persists queue and autopilot timed pause state', () => {
             const queueUntil = Date.now() + 60_000;
             const autopilotUntil = Date.now() + 120_000;
@@ -650,6 +664,42 @@ describe('SqliteQueuePersistence', () => {
     // ========================================================================
 
     describe('round-trip', () => {
+        it('restores an active repo gate and keeps non-chain work held', () => {
+            const rootPath = '/repo/gated-roundtrip';
+            const rId = repoId(rootPath);
+            persistence = new SqliteQueuePersistence(bridge, db);
+            bridge.registerRepoId(rId, rootPath);
+            bridge.getOrCreateBridge(rootPath);
+            const qm = registry.getQueueForRepo(rootPath)!;
+
+            const implementId = qm.enqueue({
+                type: 'autopilot',
+                priority: 'normal',
+                payload: {},
+                config: { prGate: { autoMerge: true, chainId: 'chain-1' } },
+                repoId: rId,
+            });
+            qm.enqueue({
+                type: 'autopilot', priority: 'high', payload: {}, config: {}, repoId: rId,
+            });
+            persistence.dispose();
+
+            const freshRegistry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
+            const freshBridge = new MultiRepoQueueRouter(freshRegistry, createMockProcessStore(), { autoStart: false });
+            const freshPersistence = new SqliteQueuePersistence(freshBridge, db);
+            freshPersistence.restore();
+
+            const freshQm = freshRegistry.getQueueForRepo(rootPath)!;
+            expect(freshQm.getRepoGate(rId)).toEqual({ chainId: 'chain-1' });
+            expect(freshQm.peek()?.id).toBe(implementId);
+            freshQm.markStarted(implementId);
+            expect(freshQm.peek()).toBeUndefined();
+
+            freshPersistence.dispose();
+            registry = freshRegistry;
+            bridge = freshBridge;
+        });
+
         it('save then restore preserves queue state', () => {
             const rootPath = '/repo/roundtrip';
             const rId = repoId(rootPath);

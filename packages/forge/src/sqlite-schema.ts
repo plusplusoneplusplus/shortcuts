@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 33;
+export const SCHEMA_VERSION = 34;
 
 /**
  * Read the current schema version from the database.
@@ -177,7 +177,8 @@ export function initializeDatabase(db: Database.Database): void {
                 autopilot_paused         INTEGER DEFAULT 0,
                 autopilot_paused_until   INTEGER,
                 task_delay_minutes       INTEGER,
-                autopilot_task_delay_minutes INTEGER
+                autopilot_task_delay_minutes INTEGER,
+                pr_gate                  TEXT
             )
         `);
         ensureColumn(db, 'queue_repo_state', 'queue_paused', 'INTEGER DEFAULT 0');
@@ -186,6 +187,7 @@ export function initializeDatabase(db: Database.Database): void {
         ensureColumn(db, 'queue_repo_state', 'autopilot_paused_until', 'INTEGER');
         ensureColumn(db, 'queue_repo_state', 'task_delay_minutes', 'INTEGER');
         ensureColumn(db, 'queue_repo_state', 'autopilot_task_delay_minutes', 'INTEGER');
+        ensureColumn(db, 'queue_repo_state', 'pr_gate', 'TEXT');
 
         // ── schedule_runs ────────────────────────────────────────────
         db.exec(`
@@ -544,6 +546,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 33) {
             migrateV32toV33(db);
+        }
+        if (versionBefore < 34) {
+            migrateV33toV34(db);
         }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -962,6 +967,11 @@ function migrateV31toV32(db: Database.Database): void {
 function migrateV32toV33(db: Database.Database): void {
     ensureColumn(db, 'queue_repo_state', 'task_delay_minutes', 'INTEGER');
     ensureColumn(db, 'queue_repo_state', 'autopilot_task_delay_minutes', 'INTEGER');
+}
+
+/** V33 -> V34: persist the active implement-plan chain gate per repository. */
+function migrateV33toV34(db: Database.Database): void {
+    ensureColumn(db, 'queue_repo_state', 'pr_gate', 'TEXT');
 }
 
 /**

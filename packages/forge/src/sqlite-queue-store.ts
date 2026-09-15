@@ -4,7 +4,7 @@
  */
 
 import type Database from 'better-sqlite3';
-import type { QueuedTask, QueueStatus, PauseReason, QueueItem, PauseMarker, PauseDurationHours, PauseScope, TaskDelayMinutes } from './queue/types';
+import type { QueuedTask, QueueStatus, PauseReason, QueueItem, PauseMarker, PauseDurationHours, PauseScope, TaskDelayMinutes, RepoGateState } from './queue/types';
 
 // ============================================================================
 // Row types (snake_case, matching SQLite columns)
@@ -46,6 +46,7 @@ export interface QueueRepoState {
     autopilotPausedUntil?: number;
     taskDelayMinutes?: TaskDelayMinutes;
     autopilotTaskDelayMinutes?: TaskDelayMinutes;
+    prGate?: RepoGateState;
 }
 
 interface RepoStateRow {
@@ -58,6 +59,7 @@ interface RepoStateRow {
     autopilot_paused_until?: number | null;
     task_delay_minutes?: number | null;
     autopilot_task_delay_minutes?: number | null;
+    pr_gate?: string | null;
 }
 
 // ============================================================================
@@ -192,6 +194,14 @@ function pauseReasonToJson(r?: PauseReason): string | null {
 
 function jsonToPauseReason(s: string | null): PauseReason | undefined {
     return s !== null ? (JSON.parse(s) as PauseReason) : undefined;
+}
+
+function repoGateToJson(gate?: RepoGateState): string | null {
+    return gate === undefined ? null : JSON.stringify(gate);
+}
+
+function jsonToRepoGate(value: string | null | undefined): RepoGateState | undefined {
+    return value === null || value === undefined ? undefined : JSON.parse(value) as RepoGateState;
 }
 
 // ============================================================================
@@ -352,6 +362,7 @@ export class SqliteQueueStore {
             autopilotPausedUntil: row.autopilot_paused_until ?? undefined,
             taskDelayMinutes: row.task_delay_minutes ?? undefined,
             autopilotTaskDelayMinutes: row.autopilot_task_delay_minutes ?? undefined,
+            prGate: jsonToRepoGate(row.pr_gate),
         };
     }
 
@@ -407,6 +418,16 @@ export class SqliteQueueStore {
         );
     }
 
+    /** Persist or clear the active implement-plan chain gate for a repository. */
+    setRepoGateState(repoId: string, gate?: RepoGateState): void {
+        this.db.prepare(`
+            INSERT INTO queue_repo_state (repo_id, pr_gate)
+            VALUES (?, ?)
+            ON CONFLICT(repo_id) DO UPDATE SET
+                pr_gate = excluded.pr_gate
+        `).run(repoId, repoGateToJson(gate));
+    }
+
     /** DELETE queue_repo_state row for a repo. No-op if not found. */
     removeQueueRepoState(repoId: string): void {
         this.db.prepare('DELETE FROM queue_repo_state WHERE repo_id = ?').run(repoId);
@@ -427,6 +448,7 @@ export class SqliteQueueStore {
                 autopilotPausedUntil: row.autopilot_paused_until ?? undefined,
                 taskDelayMinutes: row.task_delay_minutes ?? undefined,
                 autopilotTaskDelayMinutes: row.autopilot_task_delay_minutes ?? undefined,
+                prGate: jsonToRepoGate(row.pr_gate),
             });
         }
 

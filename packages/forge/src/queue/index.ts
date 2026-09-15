@@ -68,6 +68,7 @@ export {
 
     // Task configuration
     TaskExecutionConfig,
+    RepoGateState,
     DEFAULT_TASK_CONFIG,
 
     // Queued task

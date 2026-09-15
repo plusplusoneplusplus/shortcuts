@@ -172,7 +172,7 @@ Ask and autopilot first turns are the same code path: `buildStandardModeOptions(
 
 `createQueueExecutorBridge()` builds the `QueueExecutor` with `autoStart: false`, wires both queue manager and queue executor references, then calls `executor.start()` only if the caller asked for auto-start. Queue-control methods needing a fully wired runtime fail fast when the bridge has a queue manager but no queue executor reference.
 
-SQLite queue persistence stores manual pause state and repeating All/Autopilot task-delay settings per repo in `queue_repo_state`. Delay changes write immediately through queue events; skipping a current cooldown does not change the stored setting. Restore applies the configured minutes but not the last-task-end timestamp, so the first task after restart is not delayed.
+SQLite queue persistence stores manual pause state, repeating All/Autopilot task-delay settings, and the active implement-plan chain gate per repo in `queue_repo_state`. Queue-control and gate changes write immediately through queue events. A gate admits only tasks carrying its chain ID in that repo; another repo remains runnable, and release promotes the next queued gated chain. Restore applies the gate and configured delay minutes but not the last-task-end timestamp, so the first task after restart is not delayed.
 
 ## Configuration
 
