@@ -141,6 +141,8 @@ describe('repo-group chat context injection (AC-03)', () => {
         repoB = path.join(tmpDir, 'checkouts', 'ws-v2-bbb');
         fs.mkdirSync(repoA, { recursive: true });
         fs.mkdirSync(repoB, { recursive: true });
+        repoA = fs.realpathSync.native(repoA);
+        repoB = fs.realpathSync.native(repoB);
         await store.registerWorkspace({ id: 'ws-v2-aaa', name: 'Repo A', rootPath: repoA });
         await store.registerWorkspace({ id: 'ws-v2-bbb', name: 'Repo B', rootPath: repoB });
         const groupWs = await createRepoGroup(tmpDir, store, { name: 'My Team', members: ['ws-v2-aaa', 'ws-v2-bbb'] });

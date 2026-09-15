@@ -36,8 +36,9 @@ describe('repo-group-chat-context', () => {
     async function registerRepo(id: string, name: string): Promise<string> {
         const rootPath = path.join(tmpDir, 'checkouts', id);
         fs.mkdirSync(rootPath, { recursive: true });
-        await store.registerWorkspace({ id, name, rootPath });
-        return rootPath;
+        const canonicalRootPath = fs.realpathSync.native(rootPath);
+        await store.registerWorkspace({ id, name, rootPath: canonicalRootPath });
+        return canonicalRootPath;
     }
 
     beforeEach(async () => {
