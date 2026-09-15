@@ -28,6 +28,7 @@
 import { useEffect, useState } from 'react';
 import { getCocClientFor, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient, type CloneRef } from '../../repos/cloneRouting';
+import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { getAgentSelectorProviders, mergeAutoProviderRoutingContext } from '../../utils/providerSelection';
 import type { AgentSelectorProvider } from '../../utils/providerSelection';
@@ -174,6 +175,8 @@ export function ImplementPlanLaunchDialog({
         ?? targets[0]?.workspaceId;
     const [selectedTargetId, setSelectedTargetId] = useState<string | undefined>(defaultTargetId);
     const selectedTarget = targets.find(t => t.workspaceId === selectedTargetId);
+    const selectedTargetIsRepoGroup = isRepoGroupWorkspaceId(selectedTargetId);
+    const [submitPrAndAutoMerge, setSubmitPrAndAutoMerge] = useState(false);
 
     // The plan file the dialog implements. With 0–1 files it is fixed to
     // planFilePath; with 2+ it follows the banner-controlled selection.
@@ -276,6 +279,7 @@ export function ImplementPlanLaunchDialog({
         setError(null);
         setSubmitting(false);
         setSelectedTargetId(defaultTargetId);
+        setSubmitPrAndAutoMerge(false);
     }, [open, defaultTargetId]);
 
     // AC-01/AC-02: load the selected plan's content for the preview. Reruns when
@@ -532,6 +536,26 @@ export function ImplementPlanLaunchDialog({
                             testIdPrefix="implement-launch"
                         />
                     )}
+                </div>
+                <div className="flex-1 min-w-0 pt-0.5">
+                    <label className="flex items-start gap-2 text-xs text-[#1e1e1e] dark:text-[#cccccc]">
+                        <input
+                            type="checkbox"
+                            checked={submitPrAndAutoMerge}
+                            onChange={(event) => setSubmitPrAndAutoMerge(event.target.checked)}
+                            disabled={submitting || selectedTargetIsRepoGroup}
+                            data-testid="implement-launch-pr-automerge"
+                            className="mt-0.5"
+                        />
+                        <span>
+                            <span className="block">Submit PR and auto-merge</span>
+                            <span className="block mt-0.5 text-[11px] text-[#848484]">
+                                {selectedTargetIsRepoGroup
+                                    ? 'Not supported for repo groups.'
+                                    : "Holds this repo's queue until the PR merges."}
+                            </span>
+                        </span>
+                    </label>
                 </div>
             </div>
 
