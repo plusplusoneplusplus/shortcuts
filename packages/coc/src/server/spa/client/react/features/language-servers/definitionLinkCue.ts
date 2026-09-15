@@ -23,7 +23,14 @@ export type DefinitionLinkCueEditor = Pick<
     | 'onKeyUp'
     | 'onMouseLeave'
     | 'onMouseMove'
->;
+> & Partial<Pick<monacoEditor.IStandaloneCodeEditor, 'getContribution'>>;
+
+/** Monaco's own Ctrl/Cmd-hover gesture, which draws this very underline. */
+const MONACO_LINK_CONTRIBUTION_ID = 'editor.contrib.gotodefinitionatposition';
+
+interface MonacoLinkContribution extends monacoEditor.IEditorContribution {
+    removeLinkDecorations?(): void;
+}
 
 /** The slice of `window` the cue watches the modifier on. */
 export type DefinitionLinkCueGlobalEvents = Pick<Window, 'addEventListener' | 'removeEventListener'>;
@@ -145,6 +152,19 @@ export function installDefinitionLinkCue({
         }, DEFINITION_LINK_CUE_DELAY_MS);
     };
 
+    // Monaco draws this same underline itself, and now has what it was missing:
+    // its contribution decorates only once the definition target resolves to a
+    // real model, which the preview source now creates. So the word carries two
+    // cues, and Monaco retires its own on the editor key release — the release
+    // this cue exists because the editor never receives. Dropping it alongside
+    // ours is what keeps the word from staying underlined until the next mouse
+    // move. Absent or renamed upstream, this is a no-op and only Monaco's half
+    // lingers, exactly as it would without the call.
+    const retireMonacoCue = (): void => {
+        editor.getContribution?.<MonacoLinkContribution>(MONACO_LINK_CONTRIBUTION_ID)
+            ?.removeLinkDecorations?.();
+    };
+
     // Monaco only reports a key release while it holds DOM focus, and this cue
     // routinely appears without it: the modifier rides on the mouse event, so
     // hovering decorates the word whatever is focused. Left to the editor alone
@@ -157,12 +177,14 @@ export function installDefinitionLinkCue({
         if (modifierFrom(event)) return;
         modifierHeld = false;
         clear();
+        retireMonacoCue();
     };
     // A window that has lost focus never sees the release at all, so the
     // modifier is treated as dropped rather than held indefinitely.
     const onGlobalBlur = (): void => {
         modifierHeld = false;
         clear();
+        retireMonacoCue();
     };
     globalEvents?.addEventListener('keyup', onGlobalKeyUp, true);
     globalEvents?.addEventListener('blur', onGlobalBlur);
