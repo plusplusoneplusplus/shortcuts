@@ -385,8 +385,12 @@ all have their own `references/*.md`.
   with the original provider/model/reasoning selection; its purpose-built prompt
   requires an isolated temporary worktree, explicit oldest-first cherry-picks,
   and `gh pr merge --auto --squash`. A failed `PR_SUBMIT_RESULT` keeps the gate
-  and pauses the repo with the reported reason. This flow must not call Ralph's
-  submit builder or the `submit-commits-as-pr` skill. A `task-delay-changed`
+  and pauses the repo with the reported reason. A target-server watcher polls
+  submitted PRs every 60 seconds through the provider PR service, releases only
+  the matching gate on merge, and restores submitted watches after restart.
+  Closed or blocked PRs keep the gate and pause reason until merge or manual
+  release. This flow must not call Ralph's submit builder or the
+  `submit-commits-as-pr` skill. A `task-delay-changed`
   event writes the delay setting; `task-delay-skipped` never does, because skip
   releases one active wait without turning off the repeating delay. Restore
   applies only configured minutes, not the last-task-end clock, so the first task
