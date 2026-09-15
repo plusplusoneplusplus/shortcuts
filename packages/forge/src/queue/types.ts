@@ -86,10 +86,15 @@ export type QueueStatus =
 export interface PrGateChainMetadata {
     /** Opaque chain identifier assigned by the server accepting the task. */
     chainId: string;
+    /** Identifies the server-created PR-submit task within the chain. */
+    taskKind?: 'pr-submit';
     baselineSha?: string;
     endSha?: string;
     commitShas?: string[];
     outcome?: 'commits-recorded' | 'no-commits';
+    submissionStatus?: 'pending' | 'submitted' | 'failed';
+    prUrl?: string;
+    prNumber?: number;
     reason?: string;
 }
 

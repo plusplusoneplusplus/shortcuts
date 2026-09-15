@@ -1120,6 +1120,19 @@ export class TaskQueueManager extends EventEmitter {
         return this.updateRepoGate(repoId, chainId, implementTaskId, completion);
     }
 
+    /** Record PR-submit progress while retaining the gate for the merge watcher. */
+    recordRepoGateSubmission(
+        repoId: string,
+        chainId: string,
+        submission: Pick<RepoGateState, 'submissionStatus' | 'prUrl' | 'prNumber' | 'reason'>,
+    ): boolean {
+        const gate = this.repoGates.get(repoId);
+        if (!gate || gate.chainId !== chainId) {
+            return false;
+        }
+        return this.updateRepoGate(repoId, chainId, gate.implementTaskId, submission);
+    }
+
     /**
      * Release a repository gate. When another gated launch is already queued,
      * promote its chain so gated launches in one repository stay serialized.

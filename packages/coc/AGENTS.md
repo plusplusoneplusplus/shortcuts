@@ -378,11 +378,19 @@ all have their own `references/*.md`.
   the point each setting takes effect rather than caching at composition. CLI
   and test roots inject `createFixedQueueRuntimeConfig(...)`.
 - **Queue control state is repo-scoped.** `SqliteQueuePersistence` stores manual
-  pause state and the configured All/Autopilot task delays in Forge's
-  `queue_repo_state` row. A `task-delay-changed` event writes the setting;
-  `task-delay-skipped` never does, because skip releases one active wait without
-  turning off the repeating delay. Restore applies only configured minutes, not
-  the last-task-end clock, so the first task after restart can start immediately.
+  pause state, the configured All/Autopilot task delays, and the active
+  implement-plan PR gate in Forge's `queue_repo_state` row. The gate records the
+  original task's closed commit range and admits only its chain. A successful
+  commit-producing implementation enqueues a same-chain autopilot PR-submit task
+  with the original provider/model/reasoning selection; its purpose-built prompt
+  requires an isolated temporary worktree, explicit oldest-first cherry-picks,
+  and `gh pr merge --auto --squash`. A failed `PR_SUBMIT_RESULT` keeps the gate
+  and pauses the repo with the reported reason. This flow must not call Ralph's
+  submit builder or the `submit-commits-as-pr` skill. A `task-delay-changed`
+  event writes the delay setting; `task-delay-skipped` never does, because skip
+  releases one active wait without turning off the repeating delay. Restore
+  applies only configured minutes, not the last-task-end clock, so the first task
+  after restart can start immediately.
   `RepoChatTab` forwards active deadlines to `ChatListPane`, whose existing
   one-second tick drives the All and Autopilot pill countdowns. The menu's skip
   action calls the workspace-routed `QueueClient.skipTaskDelay`, releasing only
@@ -806,7 +814,9 @@ all have their own `references/*.md`.
   source read / fallback enqueue route to the source server's baseUrl explicitly —
   never enqueue a remote machine's plan path as a path-reference (`context.files`)
   task, which the executor rewrites to `Follow the instruction <path>.` on the
-  wrong server. `buildImplementTargets` carries the caller's
+  wrong server. The optional PR gate is created and executed by that selected
+  target server, never the source server; repo-group targets do not support it.
+  `buildImplementTargets` carries the caller's
   `isRemote`/`baseUrl`/`serverLabel` when synthesizing the missing current repo
   instead of hardcoding a local target. Auto-detected conversations with multiple
   `.plan.md` files keep the full detected set in a shared banner/launch-panel

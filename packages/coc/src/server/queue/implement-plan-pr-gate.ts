@@ -5,6 +5,11 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import { execGitAsync } from '@plusplusoneplusplus/forge';
 import { gitHeadSha } from '../ralph/capture-baseline-sha';
+import {
+    buildImplementPlanPrSubmitPrompt,
+    getImplementPlanReference,
+    parseImplementPlanPrSubmitResult,
+} from './implement-plan-pr-submit';
 
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
 
@@ -52,9 +57,13 @@ export async function executeImplementPlanWithPrGate(
     const marker = input.task.config?.prGate;
     const repoId = input.task.repoId;
     const gate = repoId ? input.queueManager?.getRepoGate(repoId) : undefined;
-    if (!marker || !repoId || !gate
-        || gate.chainId !== marker.chainId
-        || gate.implementTaskId !== input.task.id) {
+    if (!marker || !repoId || !gate || gate.chainId !== marker.chainId) {
+        return input.execute();
+    }
+    if (marker.taskKind === 'pr-submit') {
+        return executePrSubmitTask(input, repoId, marker.chainId);
+    }
+    if (gate.implementTaskId !== input.task.id) {
         return input.execute();
     }
 
@@ -118,8 +127,99 @@ export async function executeImplementPlanWithPrGate(
 
     if (noCommits) {
         input.queueManager!.releaseRepoGate(repoId, marker.chainId);
+    } else {
+        enqueuePrSubmitTask(input.task, input.queueManager!, repoId, baselineSha, endSha, commitShas);
     }
     return result;
+}
+
+async function executePrSubmitTask(
+    input: ExecuteImplementPlanWithPrGateInput,
+    repoId: string,
+    chainId: string,
+): Promise<TaskExecutionResult> {
+    const result = await input.execute();
+    if (!result.success) {
+        return result;
+    }
+
+    const parsed = parseImplementPlanPrSubmitResult(responseText(result.result));
+    input.queueManager!.recordRepoGateSubmission(repoId, chainId, {
+        submissionStatus: parsed.status,
+        ...(parsed.prUrl ? { prUrl: parsed.prUrl } : {}),
+        ...(parsed.prNumber !== undefined ? { prNumber: parsed.prNumber } : {}),
+        ...(parsed.error ? { reason: parsed.error } : {}),
+    });
+    if (parsed.status === 'failed') {
+        input.queueManager!.pauseRepo(repoId, {
+            taskId: input.task.id,
+            displayName: `PR submission failed: ${parsed.error ?? 'unknown error'}`,
+            failedAt: new Date().toISOString(),
+        });
+    }
+    return result;
+}
+
+function enqueuePrSubmitTask(
+    task: QueuedTask,
+    queueManager: TaskQueueManager,
+    repoId: string,
+    baselineSha: string,
+    endSha: string,
+    commitShas: string[],
+): void {
+    const marker = task.config.prGate!;
+    const prompt = buildImplementPlanPrSubmitPrompt({
+        baselineSha,
+        endSha,
+        commitShas,
+        planReference: getImplementPlanReference(task),
+    });
+    queueManager.enqueue({
+        type: 'chat',
+        priority: task.priority,
+        repoId,
+        folderPath: task.folderPath,
+        displayName: 'Submit implementation PR',
+        payload: {
+            kind: 'chat',
+            mode: 'autopilot',
+            prompt,
+            ...copyPayloadSelection(task.payload),
+        },
+        config: {
+            ...task.config,
+            pauseOnFailure: true,
+            prGate: {
+                ...marker,
+                baselineSha,
+                endSha,
+                commitShas,
+                taskKind: 'pr-submit',
+            },
+        },
+    });
+    queueManager.recordRepoGateSubmission(repoId, marker.chainId, {
+        submissionStatus: 'pending',
+    });
+}
+
+function copyPayloadSelection(payload: Record<string, unknown>): Record<string, unknown> {
+    const keys = ['provider', 'model', 'reasoningEffort', 'workingDirectory', 'workspaceId', 'folderPath'] as const;
+    return Object.fromEntries(
+        keys.flatMap(key => payload[key] === undefined ? [] : [[key, payload[key]]]),
+    );
+}
+
+function responseText(result: unknown): string {
+    if (typeof result === 'string') {
+        return result;
+    }
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+        const response = (result as Record<string, unknown>).response;
+        return typeof response === 'string' ? response : '';
+    }
+    return '';
 }
 
 function captureFailure(startedAt: number, message: string): TaskExecutionResult {
