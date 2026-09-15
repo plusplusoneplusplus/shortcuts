@@ -1105,6 +1105,21 @@ export class TaskQueueManager extends EventEmitter {
         this.repoGates.set(repoId, { ...gate });
     }
 
+    /** Record the checkout HEAD observed immediately before the implement task. */
+    recordRepoGateBaseline(repoId: string, chainId: string, implementTaskId: string, baselineSha: string): boolean {
+        return this.updateRepoGate(repoId, chainId, implementTaskId, { baselineSha });
+    }
+
+    /** Record the exact commit range observed immediately after the implement task. */
+    recordRepoGateCompletion(
+        repoId: string,
+        chainId: string,
+        implementTaskId: string,
+        completion: Pick<RepoGateState, 'endSha' | 'commitShas' | 'outcome' | 'reason'>,
+    ): boolean {
+        return this.updateRepoGate(repoId, chainId, implementTaskId, completion);
+    }
+
     /**
      * Release a repository gate. When another gated launch is already queued,
      * promote its chain so gated launches in one repository stay serialized.
@@ -1344,10 +1359,26 @@ export class TaskQueueManager extends EventEmitter {
             return;
         }
 
-        const gate = { chainId };
+        const gate = { chainId, implementTaskId: task.id };
         this.repoGates.set(repoId, gate);
         this.emitChange('repo-gate-activated');
         this.emit('repo-gate-activated', repoId, gate);
+    }
+
+    private updateRepoGate(
+        repoId: string,
+        chainId: string,
+        implementTaskId: string,
+        updates: Partial<RepoGateState>,
+    ): boolean {
+        const gate = this.repoGates.get(repoId);
+        if (!gate || gate.chainId !== chainId || gate.implementTaskId !== implementTaskId) {
+            return false;
+        }
+        Object.assign(gate, updates);
+        this.emitChange('repo-gate-updated');
+        this.emit('repo-gate-updated', repoId, { ...gate });
+        return true;
     }
 
     private isAllowedByRepoGate(task: QueuedTask): boolean {

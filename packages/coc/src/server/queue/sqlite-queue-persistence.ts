@@ -322,6 +322,7 @@ export class SqliteQueuePersistence {
                 break;
 
             case 'repo-gate-activated':
+            case 'repo-gate-updated':
             case 'repo-gate-released': {
                 const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
                 this.store.setRepoGateState(repoId, queueManager?.getRepoGate(repoId));

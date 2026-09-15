@@ -232,14 +232,27 @@ describe('SqliteQueuePersistence', () => {
         });
 
         it('persists repo gate activation and release immediately', () => {
-            qm.enqueue({
+            const implementTaskId = qm.enqueue({
                 type: 'autopilot',
                 priority: 'normal',
                 payload: {},
                 config: { prGate: { autoMerge: true, chainId: 'chain-1' } },
                 repoId: rId,
             });
-            expect(store.getQueueRepoState(rId)?.prGate).toEqual({ chainId: 'chain-1' });
+            qm.recordRepoGateBaseline(rId, 'chain-1', implementTaskId, 'a'.repeat(40));
+            qm.recordRepoGateCompletion(rId, 'chain-1', implementTaskId, {
+                endSha: 'b'.repeat(40),
+                commitShas: ['b'.repeat(40)],
+                outcome: 'commits-recorded',
+            });
+            expect(store.getQueueRepoState(rId)?.prGate).toEqual({
+                chainId: 'chain-1',
+                implementTaskId,
+                baselineSha: 'a'.repeat(40),
+                endSha: 'b'.repeat(40),
+                commitShas: ['b'.repeat(40)],
+                outcome: 'commits-recorded',
+            });
 
             qm.releaseRepoGate(rId, 'chain-1');
             expect(store.getQueueRepoState(rId)?.prGate).toBeUndefined();
@@ -690,7 +703,10 @@ describe('SqliteQueuePersistence', () => {
             freshPersistence.restore();
 
             const freshQm = freshRegistry.getQueueForRepo(rootPath)!;
-            expect(freshQm.getRepoGate(rId)).toEqual({ chainId: 'chain-1' });
+            expect(freshQm.getRepoGate(rId)).toEqual({
+                chainId: 'chain-1',
+                implementTaskId: implementId,
+            });
             expect(freshQm.peek()?.id).toBe(implementId);
             freshQm.markStarted(implementId);
             expect(freshQm.peek()).toBeUndefined();

@@ -3294,7 +3294,7 @@ describe('implement-plan repo gates', () => {
         manager.enqueue(createTestTask({ repoId: 'repo-A', priority: 'high', displayName: 'held' }));
         const followUp = manager.enqueue(gatedTask('repo-A', 'chain-1', 'submit-pr'));
 
-        expect(manager.getRepoGate('repo-A')).toEqual({ chainId: 'chain-1' });
+        expect(manager.getRepoGate('repo-A')).toEqual({ chainId: 'chain-1', implementTaskId: implement });
         expect(manager.peek()?.id).toBe(implement);
         manager.markStarted(implement);
         expect(manager.peek()?.id).toBe(followUp);
@@ -3331,7 +3331,7 @@ describe('implement-plan repo gates', () => {
         expect(manager.peek()).toBeUndefined();
 
         expect(manager.releaseRepoGate('repo-A', 'chain-1')).toBe(true);
-        expect(manager.getRepoGate('repo-A')).toEqual({ chainId: 'chain-2' });
+        expect(manager.getRepoGate('repo-A')).toEqual({ chainId: 'chain-2', implementTaskId: second });
         expect(manager.peek()?.id).toBe(second);
     });
 
@@ -3339,7 +3339,32 @@ describe('implement-plan repo gates', () => {
         manager.enqueue(gatedTask('repo-A', 'chain-1', 'first'));
 
         expect(manager.releaseRepoGate('repo-A', 'other-chain')).toBe(false);
-        expect(manager.getRepoGate('repo-A')).toEqual({ chainId: 'chain-1' });
+        expect(manager.getRepoGate('repo-A')).toEqual({
+            chainId: 'chain-1',
+            implementTaskId: expect.any(String),
+        });
+    });
+
+    it('records the exact implement task SHA range on the active chain', () => {
+        const implement = manager.enqueue(gatedTask('repo-A', 'chain-1', 'implement'));
+        const baselineSha = 'a'.repeat(40);
+        const endSha = 'c'.repeat(40);
+        const commitShas = ['b'.repeat(40), endSha];
+
+        expect(manager.recordRepoGateBaseline('repo-A', 'chain-1', implement, baselineSha)).toBe(true);
+        expect(manager.recordRepoGateCompletion('repo-A', 'chain-1', implement, {
+            endSha,
+            commitShas,
+            outcome: 'commits-recorded',
+        })).toBe(true);
+        expect(manager.getRepoGate('repo-A')).toEqual({
+            chainId: 'chain-1',
+            implementTaskId: implement,
+            baselineSha,
+            endSha,
+            commitShas,
+            outcome: 'commits-recorded',
+        });
     });
 
     it('keeps accepting older ungated inputs without a config object', () => {

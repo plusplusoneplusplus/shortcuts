@@ -83,6 +83,16 @@ export type QueueStatus =
 // Task Configuration
 // ============================================================================
 
+export interface PrGateChainMetadata {
+    /** Opaque chain identifier assigned by the server accepting the task. */
+    chainId: string;
+    baselineSha?: string;
+    endSha?: string;
+    commitShas?: string[];
+    outcome?: 'commits-recorded' | 'no-commits';
+    reason?: string;
+}
+
 export interface TaskExecutionConfig {
     /** AI model to use */
     model?: string;
@@ -99,16 +109,15 @@ export interface TaskExecutionConfig {
     /** When true, the repo queue is paused automatically if this task fails. */
     pauseOnFailure?: boolean;
     /** Metadata for an implement-plan chain that holds its repository queue. */
-    prGate?: {
+    prGate?: PrGateChainMetadata & {
         autoMerge: true;
-        /** Opaque chain identifier assigned by the server accepting the task. */
-        chainId: string;
     };
 }
 
 /** The active implement-plan chain allowed through a repository queue gate. */
-export interface RepoGateState {
-    chainId: string;
+export interface RepoGateState extends PrGateChainMetadata {
+    /** The first task in the chain, whose execution defines the PR commit range. */
+    implementTaskId: string;
 }
 
 /**
@@ -235,6 +244,7 @@ export type QueueChangeType =
     | 'task-delay-changed'
     | 'task-delay-skipped'
     | 'repo-gate-activated'
+    | 'repo-gate-updated'
     | 'repo-gate-released';
 
 export interface QueueChangeEvent {
