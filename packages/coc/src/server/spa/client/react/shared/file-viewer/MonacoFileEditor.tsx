@@ -302,7 +302,14 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
     scrollBeyondLastLine: false,
     fontSize: 13,
     wordWrap: 'on',
-    automaticLayout: true,
+    // Off deliberately, and stated rather than omitted, because
+    // `@monaco-editor/react` passes `automaticLayout: true` as its own default.
+    // Every embedded editor Monaco spawns from this one — the Peek Definition
+    // preview above all — is built from `parentEditor.getRawOptions()`, and its
+    // host already sizes it; an inherited size observer fights that host over
+    // the same element and collapses the preview to its content height. This
+    // editor is laid out from the wrapper measurement below instead.
+    automaticLayout: false,
     readOnly: false,
     padding: { top: 0, bottom: 0 },
     glyphMargin: false,
@@ -357,6 +364,15 @@ export function MonacoFileEditor({
         ro.observe(el);
         return () => ro.disconnect();
     }, []);
+
+    // `automaticLayout` is off, and `@monaco-editor/react` only writes the
+    // width/height props onto its wrapper element without ever calling
+    // `layout()`, so the measurement above has to be handed to Monaco here or
+    // the editor never reacts to its container resizing.
+    useEffect(() => {
+        if (!mounted || !dimensions) return;
+        mounted.editor.layout(dimensions);
+    }, [mounted, dimensions]);
 
     // Scalars, not the object: callers build a fresh `{ start, end }` each render,
     // so depending on the object identity would re-apply the highlight endlessly.

@@ -32,6 +32,7 @@ const stub = vi.hoisted(() => ({
         setPosition: vi.fn(),
         setSelection: vi.fn(),
         addAction: vi.fn(),
+        layout: vi.fn(),
     },
 }));
 

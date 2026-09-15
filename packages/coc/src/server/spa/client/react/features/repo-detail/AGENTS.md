@@ -317,6 +317,14 @@ content. Temporary models are disposed after Peek
 detaches or with the initiating pane; a prepared model that never attaches has a
 bounded orphan timeout. Selecting a row does not open an Explorer tab.
 
+Peek's preview editor is an `EmbeddedCodeEditorWidget`, which Monaco builds from
+`parentEditor.getRawOptions()`, so `EXPLORER_EDITOR_OPTIONS` keeps
+`automaticLayout` explicitly `false` — omitting the key is not equivalent,
+because `@monaco-editor/react` defaults it to `true`. An inherited size observer
+would compete with the Peek widget's own `layout()` call over the same element
+and shrink the preview to its content height. `MonacoFileEditor` measures its
+wrapper and calls `editor.layout()` itself instead; the library never does.
+
 ## Tests
 
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour
