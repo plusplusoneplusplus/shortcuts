@@ -86,6 +86,8 @@ export type QueueStatus =
 export interface PrGateChainMetadata {
     /** Opaque chain identifier assigned by the server accepting the task. */
     chainId: string;
+    /** Process created for the original implement task, persisted for PR record updates. */
+    implementProcessId?: string;
     /** Identifies the server-created PR-submit task within the chain. */
     taskKind?: 'pr-submit';
     baselineSha?: string;

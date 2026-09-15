@@ -7,6 +7,7 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import { resolveWorkspaceOriginId } from '../repos/origin-scope';
 import { fetchOriginPullRequestChecksHeadless } from '../repos/pr-routes';
+import { recordImplementationPrAnnotation } from './implement-plan-pr-record';
 
 export const IMPLEMENT_PLAN_PR_MERGE_POLL_INTERVAL_MS = 60_000;
 
@@ -35,6 +36,7 @@ export class ImplementPlanPrMergeWatcher {
     constructor(
         fetchStatus: FetchImplementPlanPrMergeStatus,
         pollIntervalMs = IMPLEMENT_PLAN_PR_MERGE_POLL_INTERVAL_MS,
+        private readonly processStore?: ProcessStore,
     ) {
         this.fetchStatus = fetchStatus;
         this.pollIntervalMs = pollIntervalMs;
@@ -94,6 +96,14 @@ export class ImplementPlanPrMergeWatcher {
         try {
             const snapshot = await this.fetchStatus({ workspaceId: repoId, prNumber });
             if (snapshot.status === 'merged') {
+                if (this.processStore && gate.prUrl) {
+                    await recordImplementationPrAnnotation(this.processStore, gate.implementProcessId, {
+                        chainId,
+                        prUrl: gate.prUrl,
+                        prNumber,
+                        prState: 'merged',
+                    });
+                }
                 queueManager.releaseRepoGate(repoId, chainId);
                 queueManager.resumeRepo(repoId);
                 return;

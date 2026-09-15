@@ -89,6 +89,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
             this.prMergeWatcher = new ImplementPlanPrMergeWatcher(
                 fetchStatus,
                 defaultOptions.prMergePollIntervalMs,
+                store,
             );
         }
 

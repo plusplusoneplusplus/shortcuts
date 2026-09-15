@@ -1115,7 +1115,7 @@ export class TaskQueueManager extends EventEmitter {
         repoId: string,
         chainId: string,
         implementTaskId: string,
-        completion: Pick<RepoGateState, 'endSha' | 'commitShas' | 'outcome' | 'reason'>,
+        completion: Pick<RepoGateState, 'endSha' | 'commitShas' | 'implementProcessId' | 'outcome' | 'reason'>,
     ): boolean {
         return this.updateRepoGate(repoId, chainId, implementTaskId, completion);
     }

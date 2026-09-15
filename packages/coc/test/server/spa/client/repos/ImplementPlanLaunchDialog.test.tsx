@@ -480,6 +480,34 @@ describe('ImplementPlanLaunchDialog', () => {
         expect(onRecordPersisted).toHaveBeenCalledTimes(1);
     });
 
+    it('persists the server-assigned PR gate chain on the source record', async () => {
+        mockEnqueue.mockResolvedValue({
+            task: {
+                id: 'task-gated-record',
+                config: { prGate: { autoMerge: true, chainId: 'chain-server' } },
+            },
+        });
+        mockProcessUpdate.mockResolvedValue({ process: {} });
+        renderDialog({
+            sourceProcessId: 'queue_source-1',
+            sourceMetadata: { type: 'chat' },
+            onRecordPersisted,
+        });
+        await waitReady();
+
+        fireEvent.click(screen.getByTestId('implement-launch-pr-automerge'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
+        });
+
+        await waitFor(() => expect(mockProcessUpdate).toHaveBeenCalledTimes(1));
+        expect(mockProcessUpdate.mock.calls[0][1].set.implementations[0]).toMatchObject({
+            processId: 'queue_task-gated-record',
+            prGateChainId: 'chain-server',
+            prState: 'pending',
+        });
+    });
+
     it('records remote target identity via the source client', async () => {
         mockReadTrustedBlob.mockResolvedValue({ content: 'plan body', encoding: 'utf-8' });
         mockRemoteEnqueue.mockResolvedValue({ task: { id: 'task-remote' } });

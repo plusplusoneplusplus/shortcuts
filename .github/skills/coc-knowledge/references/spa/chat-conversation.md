@@ -158,10 +158,13 @@ Three enqueue paths:
   synthesizing a missing current repo.
 
 Each run writes an `ImplementationRecord` (process id, plan path, enqueue time,
-`targetWorkspaceId`, `targetLabel`, `targetServerLabel`, `isRemoteTarget`) into
-`task.metadata.implementations` on the **source** task via the source client.
-`onViewRun(processId, targetWorkspaceId)` opens the run on the server it was dispatched
-to, resolving remote status through `getCocClientForWorkspace(run.targetWorkspaceId)`.
+target identity, and optional AI selection) into `task.metadata.implementations` on the
+**source** task via the source client. PR-gated records also retain the server-assigned
+chain id. The target implementation process records the submitted or merged PR annotation;
+`ChatDetail` polls through the target-routed client and mirrors only a chain-matched
+annotation into the source record's optional `prUrl`, `prNumber`, and `prState` fields.
+This keeps remote targets from calling back into the source server. The card links the PR,
+and `onViewRun(processId, targetWorkspaceId)` opens the run on its target server.
 
 ## Agents view (sub-agent canvas)
 

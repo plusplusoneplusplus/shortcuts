@@ -56,6 +56,11 @@ export interface ImplementationRecord {
     model?: string;
     reasoningEffort?: string;
     autoProviderRouting?: boolean;
+    /** Target-server chain identity used to mirror PR state back to this source record. */
+    prGateChainId?: string;
+    prUrl?: string;
+    prNumber?: number;
+    prState?: 'pending' | 'open' | 'merged';
 }
 
 export type RunLiveStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
@@ -282,6 +287,17 @@ export function ImplementPlanCard({
                             </span>
                         </button>
                     )}
+                    {latestRun?.prUrl && (
+                        <a
+                            href={latestRun.prUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid="implement-plan-card-pr-link"
+                            className="shrink-0 text-[11px] font-medium text-[#0969da] dark:text-[#58a6ff] hover:underline"
+                        >
+                            {latestRun.prNumber !== undefined ? `PR #${latestRun.prNumber}` : 'PR'}
+                        </a>
+                    )}
 
                     <button
                         type="button"
@@ -316,6 +332,16 @@ export function ImplementPlanCard({
                                         <span>{STATUS_CONFIG[run.liveStatus].emoji} {STATUS_CONFIG[run.liveStatus].label}</span>
                                         <span>· {formatRelativeTime(run.enqueuedAt)}</span>
                                         {describeRunTarget(run) && <span>· {run.isRemoteTarget ? '☁️ ' : ''}{describeRunTarget(run)}</span>}
+                                        {run.prUrl && (
+                                            <a
+                                                href={run.prUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-blue-600 dark:text-blue-400 hover:underline"
+                                            >
+                                                {run.prNumber !== undefined ? `PR #${run.prNumber}` : 'PR'}
+                                            </a>
+                                        )}
                                         <button type="button" onClick={() => onViewRun?.(run.processId, run.targetWorkspaceId)} className="ml-auto text-blue-600 dark:text-blue-400 hover:underline">View</button>
                                     </div>
                                 ))}

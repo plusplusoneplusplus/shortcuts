@@ -389,7 +389,10 @@ all have their own `references/*.md`.
   submitted PRs every 60 seconds through the provider PR service, releases only
   the matching gate on merge, and restores submitted watches after restart.
   Closed or blocked PRs keep the gate and pause reason until merge or manual
-  release. This flow must not call Ralph's submit builder or the
+  release. Submission and merge also annotate the target implementation process;
+  the source chat mirrors that chain-matched annotation into its persisted
+  implementation record, so remote targets never need to call back into the
+  source server. This flow must not call Ralph's submit builder or the
   `submit-commits-as-pr` skill. A `task-delay-changed`
   event writes the delay setting; `task-delay-skipped` never does, because skip
   releases one active wait without turning off the repeating delay. Restore

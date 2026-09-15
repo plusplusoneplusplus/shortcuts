@@ -157,6 +157,24 @@ describe('ImplementPlanCard', () => {
         expect(screen.getByTestId('implement-plan-card-view-btn')).toBeTruthy();
     });
 
+    it('renders the implementation record PR number as a link', () => {
+        const runs: ExistingRun[] = [{
+            processId: 'queue_impl-pr',
+            planFilePath: '/plan.md',
+            enqueuedAt: new Date().toISOString(),
+            liveStatus: 'completed',
+            prUrl: 'https://github.com/acme/repo/pull/123',
+            prNumber: 123,
+            prState: 'merged',
+        }];
+
+        render(<ImplementPlanCard planFilePath="/plan.md" onImplemented={onImplemented} existingRuns={runs} />);
+
+        const link = screen.getByTestId('implement-plan-card-pr-link');
+        expect(link.textContent).toBe('PR #123');
+        expect(link.getAttribute('href')).toBe('https://github.com/acme/repo/pull/123');
+    });
+
     it('shows "Implement again" with secondary style when latest run is active', () => {
         const runs: ExistingRun[] = [{
             processId: 'queue_impl-1', planFilePath: '/plan.md', enqueuedAt: new Date().toISOString(), liveStatus: 'running',

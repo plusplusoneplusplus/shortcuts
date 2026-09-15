@@ -5,6 +5,7 @@ import {
     buildImplementPlanPrSubmitPrompt,
     parseImplementPlanPrSubmitResult,
 } from '../../src/server/queue/implement-plan-pr-submit';
+import { createMockProcessStore } from '../helpers/mock-process-store';
 
 const BASELINE_SHA = 'a'.repeat(40);
 const FIRST_COMMIT_SHA = 'b'.repeat(40);
@@ -67,6 +68,7 @@ describe('executeImplementPlanWithPrGate', () => {
             baselineSha: BASELINE_SHA,
             endSha: END_SHA,
             commitShas: [FIRST_COMMIT_SHA, END_SHA],
+            implementProcessId: `queue_${task.id}`,
             outcome: 'commits-recorded',
             submissionStatus: 'pending',
         });
@@ -74,6 +76,7 @@ describe('executeImplementPlanWithPrGate', () => {
             baselineSha: BASELINE_SHA,
             endSha: END_SHA,
             commitShas: [FIRST_COMMIT_SHA, END_SHA],
+            implementProcessId: `queue_${task.id}`,
         });
         expect(manager.getQueued()).toEqual([
             expect.objectContaining({
@@ -134,6 +137,7 @@ describe('executeImplementPlanWithPrGate', () => {
             commitShas: [END_SHA],
             outcome: 'commits-recorded',
         });
+
         const followUpId = manager.enqueue({
             type: 'chat',
             priority: 'normal',
@@ -162,6 +166,54 @@ describe('executeImplementPlanWithPrGate', () => {
         });
         expect(manager.isRepoPaused('repo-A')).toBe(true);
         expect(manager.getPauseReason('repo-A')?.displayName).toContain('checks unavailable');
+    });
+
+    it('records a submitted PR on the target implementation process', async () => {
+        const { manager, task } = startGatedTask();
+        const processId = `queue_${task.id}`;
+        const processStore = createMockProcessStore({
+            initialProcesses: [{
+                id: processId,
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                metadata: { type: 'chat' },
+            } as any],
+        });
+        manager.recordRepoGateBaseline('repo-A', 'chain-1', task.id, BASELINE_SHA);
+        manager.recordRepoGateCompletion('repo-A', 'chain-1', task.id, {
+            endSha: END_SHA,
+            commitShas: [END_SHA],
+            implementProcessId: processId,
+            outcome: 'commits-recorded',
+        });
+        const followUpId = manager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: 'repo-A',
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'submit' },
+            config: { prGate: { autoMerge: true, chainId: 'chain-1', taskKind: 'pr-submit' } },
+        });
+
+        await executeImplementPlanWithPrGate({
+            task: manager.markStarted(followUpId)!,
+            queueManager: manager,
+            processStore,
+            execute: async () => ({
+                success: true,
+                result: {
+                    response: 'PR_SUBMIT_RESULT\n```json\n{"status":"submitted","prUrl":"https://github.com/acme/repo/pull/7","prNumber":7,"commitShas":[]}\n```',
+                },
+                durationMs: 1,
+            }),
+        });
+
+        expect(processStore.processes.get(processId)?.metadata?.implementationPr).toEqual({
+            chainId: 'chain-1',
+            prUrl: 'https://github.com/acme/repo/pull/7',
+            prNumber: 7,
+            prState: 'open',
+        });
     });
 
     describe('implement-plan PR submit contract', () => {

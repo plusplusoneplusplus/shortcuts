@@ -56,6 +56,40 @@ describe('ImplementPlanPrMergeWatcher', () => {
         watcher.dispose();
     });
 
+    it('records merged state on the target implementation process before release', async () => {
+        vi.useFakeTimers();
+        const manager = restoredSubmittedGate();
+        manager.recordRepoGateCompletion('repo-A', 'chain-1', 'implement-1', {
+            implementProcessId: 'queue_implement-1',
+        });
+        const processStore = createMockProcessStore({
+            initialProcesses: [{
+                id: 'queue_implement-1',
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                metadata: { type: 'chat' },
+            } as any],
+        });
+        const watcher = new ImplementPlanPrMergeWatcher(
+            vi.fn().mockResolvedValue(snapshot('merged')),
+            IMPLEMENT_PLAN_PR_MERGE_POLL_INTERVAL_MS,
+            processStore,
+        );
+
+        watcher.sync('repo-A', manager);
+        await vi.advanceTimersByTimeAsync(IMPLEMENT_PLAN_PR_MERGE_POLL_INTERVAL_MS);
+
+        expect(processStore.processes.get('queue_implement-1')?.metadata?.implementationPr).toEqual({
+            chainId: 'chain-1',
+            prUrl: 'https://github.com/acme/repo/pull/123',
+            prNumber: 123,
+            prState: 'merged',
+        });
+        expect(manager.getRepoGate('repo-A')).toBeUndefined();
+        watcher.dispose();
+    });
+
     it('keeps the gate and pauses the repo when the PR closes without merging', async () => {
         vi.useFakeTimers();
         const manager = restoredSubmittedGate();

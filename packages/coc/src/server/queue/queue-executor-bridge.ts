@@ -539,6 +539,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 task,
                 queueManager: this.queueManager,
                 workingDirectory: this.executors.getWorkingDirectory(task),
+                processStore: this.store,
                 execute: runTask,
             });
         } finally {

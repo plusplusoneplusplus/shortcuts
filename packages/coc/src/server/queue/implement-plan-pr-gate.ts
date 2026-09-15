@@ -1,15 +1,17 @@
 import type {
+    ProcessStore,
     QueuedTask,
     TaskExecutionResult,
     TaskQueueManager,
 } from '@plusplusoneplusplus/forge';
-import { execGitAsync } from '@plusplusoneplusplus/forge';
+import { execGitAsync, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { gitHeadSha } from '../ralph/capture-baseline-sha';
 import {
     buildImplementPlanPrSubmitPrompt,
     getImplementPlanReference,
     parseImplementPlanPrSubmitResult,
 } from './implement-plan-pr-submit';
+import { recordImplementationPrAnnotation } from './implement-plan-pr-record';
 
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
 
@@ -27,6 +29,7 @@ export interface ExecuteImplementPlanWithPrGateInput {
     execute: () => Promise<TaskExecutionResult>;
     captureHeadSha?: CaptureHeadSha;
     listCommitShas?: ListCommitShas;
+    processStore?: ProcessStore;
 }
 
 /** Return the exact oldest-first commits in the closed baseline-to-end range. */
@@ -114,6 +117,7 @@ export async function executeImplementPlanWithPrGate(
     const completion = {
         endSha,
         commitShas,
+        implementProcessId: input.task.processId ?? toQueueProcessId(input.task.id),
         outcome: noCommits ? 'no-commits' as const : 'commits-recorded' as const,
         ...(noCommits ? { reason: 'no commits produced' } : {}),
     };
@@ -150,6 +154,15 @@ async function executePrSubmitTask(
         ...(parsed.prNumber !== undefined ? { prNumber: parsed.prNumber } : {}),
         ...(parsed.error ? { reason: parsed.error } : {}),
     });
+    const gate = input.queueManager!.getRepoGate(repoId);
+    if (parsed.status === 'submitted' && parsed.prUrl && input.processStore) {
+        await recordImplementationPrAnnotation(input.processStore, gate?.implementProcessId, {
+            chainId,
+            prUrl: parsed.prUrl,
+            ...(parsed.prNumber !== undefined ? { prNumber: parsed.prNumber } : {}),
+            prState: 'open',
+        });
+    }
     if (parsed.status === 'failed') {
         input.queueManager!.pauseRepo(repoId, {
             taskId: input.task.id,

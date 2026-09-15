@@ -412,6 +412,10 @@ export function ImplementPlanLaunchDialog({
             const rawId = (result as any).task?.id ?? (result as any).id;
             if (!rawId) throw new Error('No task id returned from enqueue');
             const processId = isQueueProcessId(rawId) ? rawId : toQueueProcessId(rawId);
+            const returnedChainId = (result as any).task?.config?.prGate?.chainId;
+            const prGateChainId = submitPrAndAutoMerge && typeof returnedChainId === 'string' && returnedChainId
+                ? returnedChainId
+                : undefined;
 
             if (sourceProcessId) {
                 const record: ImplementationRecord = {
@@ -429,6 +433,7 @@ export function ImplementPlanLaunchDialog({
                     model: resolvedAi.model,
                     reasoningEffort: resolvedAi.reasoningEffort,
                     autoProviderRouting: resolvedAi.autoProviderRouting,
+                    ...(prGateChainId ? { prGateChainId, prState: 'pending' as const } : {}),
                 };
                 const prevImpls = Array.isArray(sourceMetadata?.implementations)
                     ? (sourceMetadata!.implementations as ImplementationRecord[])
