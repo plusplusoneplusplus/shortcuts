@@ -77,6 +77,19 @@ first, results are deduplicated by file and line, and candidate URIs carry a
 provenance and show an amber `Symbol candidate` pill on the destination until a
 plain or exact cross-file open replaces it. The index continues to answer when
 clangd is disabled, unavailable, or does not advertise definition support.
+Cross-file locations from either source are prepared by the initiating editor's
+temporary `coc-file` preview source. A repository editor accepts only its own
+workspace; a repo-group editor also accepts every live member and reads through
+the target member's workspace and concrete clone route. Standalone Monaco
+resolves only existing models, so each accepted target first receives a
+temporary loading model that Peek can display immediately; the routed read
+updates that model in place. A target outside the accepted ownership set is
+never read and receives an unavailable model so Peek explains the rejection.
+Read failures produce the same unavailable state. Cancellation removes stale
+loading models, and temporary models are disposed when Peek detaches or the
+editor closes.
+Prepared models remain available while a slow Peek widget attaches and have a
+bounded orphan timeout when no widget claims them.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.

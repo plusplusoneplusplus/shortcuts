@@ -53,6 +53,8 @@ const RUST_APP_PANEL = `[data-testid="explorer-tab-panel-${RUST_APP_TAB}"]`;
 const PYTHON_APP_TAB = 'file:src/app.py';
 const PYTHON_STUB_TAB = 'file:src/helpers.pyi';
 const PYTHON_APP_PANEL = `[data-testid="explorer-tab-panel-${PYTHON_APP_TAB}"]`;
+const CPP_APP_TAB = 'file:src/app.cpp';
+const CPP_APP_PANEL = `[data-testid="explorer-tab-panel-${CPP_APP_TAB}"]`;
 
 /**
  * Starting a Node process, handshaking with it and letting it read a project is
@@ -104,6 +106,34 @@ function addEnvironmentOnlyPythonPackage(repoDir: string): void {
     fs.writeFileSync(path.join(packageDir, '__init__.py'), 'def remote_label(name):\n    return f"remote: {name}"\n');
     fs.writeFileSync(path.join(packageDir, '__init__.pyi'), 'def remote_label(name: str) -> str: ...\n');
     fs.writeFileSync(path.join(packageDir, 'py.typed'), '');
+}
+
+function createCppSymbolRepoFixture(tmpDir: string): string {
+    const repoDir = path.join(tmpDir, 'cpp-symbol-repo');
+    fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+    fs.writeFileSync(
+        path.join(repoDir, 'src', 'app.cpp'),
+        'int main() { return target(); }\n',
+    );
+    fs.writeFileSync(path.join(repoDir, 'src', 'first.cpp'), 'int target() { return 11; }\n');
+    fs.writeFileSync(path.join(repoDir, 'src', 'second.cpp'), 'int target() { return 22; }\n');
+    return repoDir;
+}
+
+async function waitForSymbolIndex(
+    serverUrl: string,
+    workspaceId: string,
+    symbol: string,
+    expectedCount = 2,
+): Promise<void> {
+    await expect.poll(async () => {
+        const response = await request(
+            `${serverUrl}/api/repos/${encodeURIComponent(workspaceId)}/search/symbols?q=${encodeURIComponent(symbol)}`,
+        );
+        if (response.status !== 200) return false;
+        const body = JSON.parse(response.body) as { indexed?: boolean; results?: unknown[] };
+        return body.indexed === true && body.results?.length === expectedCount;
+    }, { timeout: 30_000 }).toBe(true);
 }
 
 /** Navigate to the repo detail and click the Explorer sub-tab. */
@@ -348,7 +378,7 @@ interface CaretPosition {
     lineText: string;
 }
 
-async function caretPosition(page: Page, panel: string): Promise<CaretPosition | null> {
+async function caretPositionInEditorRoot(page: Page, selector: string): Promise<CaretPosition | null> {
     return page.evaluate((selector: string) => {
         const root = document.querySelector(selector);
         const editor = root?.querySelector('.monaco-editor');
@@ -423,7 +453,11 @@ async function caretPosition(page: Page, panel: string): Promise<CaretPosition |
                 .join('')
                 .replace(/\u00a0/g, ' '),
         };
-    }, `${panel} [data-testid="monaco-container"]`);
+    }, selector);
+}
+
+async function caretPosition(page: Page, panel: string): Promise<CaretPosition | null> {
+    return caretPositionInEditorRoot(page, `${panel} [data-testid="monaco-container"]`);
 }
 
 async function caretLineText(page: Page, panel: string): Promise<string | null> {
@@ -452,6 +486,28 @@ async function focusMonacoBuffer(page: Page, panel = APP_PANEL): Promise<void> {
             { timeout: 10_000 },
         )
         .toBe(true);
+}
+
+async function startPeekDefinition(
+    page: Page,
+    spot: { x: number; y: number },
+): Promise<{ peek: Locator; completion: Promise<void> }> {
+    await page.mouse.click(spot.x, spot.y, { button: 'right' });
+    const peekMenu = page.getByRole('menuitem', { name: 'Peek', exact: true });
+    await expect(peekMenu).toBeVisible();
+    await peekMenu.hover();
+    const peekDefinition = page.getByRole('menuitem', { name: /^Peek Definition\b/ });
+    await expect(peekDefinition).toBeVisible();
+    return {
+        peek: page.locator('.reference-zone-widget'),
+        completion: peekDefinition.click(),
+    };
+}
+
+async function openPeekDefinition(page: Page, spot: { x: number; y: number }): Promise<Locator> {
+    const { peek, completion } = await startPeekDefinition(page, spot);
+    await completion;
+    return peek;
 }
 
 // ---------------------------------------------------------------------------
@@ -511,7 +567,7 @@ test.describe('Explorer language support – status', () => {
 // 2. Language features over the real editor
 // ---------------------------------------------------------------------------
 
-test.describe('Explorer language support – TypeScript features', () => {
+test.describe('Explorer language support – TypeScript and definition features', () => {
     test('LSP.3 hovering shows a type only the other file could explain', async ({ page, serverUrl }) => {
         const tmpDir = makeTmpDir();
         try {
@@ -600,6 +656,152 @@ test.describe('Explorer language support – TypeScript features', () => {
             await expect
                 .poll(() => caretLineText(page, formatPanel), { timeout: 15_000 })
                 .toContain('export function formatWidget');
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('LSP.4a peek definition previews the other file without opening its tab', async ({ page, serverUrl }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createTypeScriptRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'lsp-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+            await enableLanguageServers(serverUrl, WORKSPACE_ID);
+
+            await gotoExplorer(page, serverUrl);
+            await openSourceFile(page, 'app.ts');
+            await waitForLanguageServer(page);
+            await waitForProjectLoaded(page);
+
+            const spot = await findWord(page, 'export const label', 'formatWidget');
+            await page.mouse.click(spot.x, spot.y);
+            await expect
+                .poll(() => caretLineText(page, APP_PANEL), { timeout: 10_000 })
+                .toContain('export const label');
+
+            let releasePreviewRead!: () => void;
+            const previewReadBlocked = new Promise<void>((resolve) => {
+                releasePreviewRead = resolve;
+            });
+            await page.route(`**/api/repos/${WORKSPACE_ID}/blob?*`, async route => {
+                const url = new URL(route.request().url());
+                if (url.searchParams.get('path') === 'src/format.ts') {
+                    await previewReadBlocked;
+                }
+                await route.continue();
+            });
+
+            const { peek, completion } = await startPeekDefinition(page, spot);
+            await expect(peek).toBeVisible({ timeout: 15_000 });
+            try {
+                await expect(
+                    peek.locator('.preview .view-line')
+                        .filter({ hasText: 'Loading definition source...' })
+                        .first(),
+                ).toBeVisible();
+            } finally {
+                releasePreviewRead();
+            }
+            await completion;
+            await expect(peek.locator('.peekview-title .filename')).toHaveText('format.ts');
+            await expect
+                .poll(
+                    () => caretPositionInEditorRoot(page, `${APP_PANEL} .reference-zone-widget .preview`),
+                    { timeout: 15_000 },
+                )
+                .toEqual({
+                    line: 6,
+                    column: 17,
+                    lineText: 'export function formatWidget(widget: Widget): string {',
+                });
+            await expectEditorTabs(page, [APP_TAB]);
+
+            await page.keyboard.press('Escape');
+            await expect(peek).toBeHidden();
+            await expectEditorTabs(page, [APP_TAB]);
+
+            await page.keyboard.press('F12');
+            await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
+            const formatPanel = `[data-testid="explorer-tab-panel-${FORMAT_TAB}"]`;
+            await expect
+                .poll(() => caretPosition(page, formatPanel), { timeout: 15_000 })
+                .toEqual({
+                    line: 6,
+                    column: 17,
+                    lineText: 'export function formatWidget(widget: Widget): string {',
+                });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('LSP.4b symbol-index Peek switches cross-file previews without opening tabs', async ({ page, serverUrl }) => {
+        const tmpDir = makeTmpDir();
+        try {
+            const repoDir = createCppSymbolRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'cpp-symbol-repo', repoDir);
+            await enableExplorerEditorTabs(serverUrl);
+            await waitForSymbolIndex(serverUrl, WORKSPACE_ID, 'target');
+
+            await gotoExplorer(page, serverUrl);
+            await openSourceFile(page, 'app.cpp');
+
+            const spot = await findWord(page, 'int main()', 'target', CPP_APP_PANEL);
+            await page.mouse.click(spot.x, spot.y);
+            await expect
+                .poll(() => caretLineText(page, CPP_APP_PANEL), { timeout: 10_000 })
+                .toContain('int main()');
+
+            const peek = await openPeekDefinition(page, spot);
+            await expect(peek).toBeVisible({ timeout: 15_000 });
+            await expect(peek.locator('.reference-file')).toHaveCount(2);
+            await expectEditorTabs(page, [CPP_APP_TAB]);
+
+            const first = peek.getByRole('treeitem', { name: /return 11/ });
+            await expect(first).toBeVisible();
+            await first.click();
+
+            await peek.getByRole('treeitem', { name: /^1 symbol in second\.cpp/ }).click();
+            await page.keyboard.press('ArrowRight');
+            const second = peek.getByRole('treeitem', { name: /return 22/ });
+            await expect(second).toBeVisible();
+            await second.click();
+            await expect(peek.locator('.peekview-title .filename')).toHaveText('second.cpp');
+            await expect
+                .poll(
+                    () => caretPositionInEditorRoot(page, `${CPP_APP_PANEL} .reference-zone-widget .preview`),
+                    { timeout: 15_000 },
+                )
+                .toEqual({
+                    line: 1,
+                    column: 5,
+                    lineText: 'int target() { return 22; }',
+                });
+            await expectEditorTabs(page, [CPP_APP_TAB]);
+
+            await page.keyboard.press('Escape');
+            await expect(peek).toBeHidden();
+            await expectEditorTabs(page, [CPP_APP_TAB]);
+
+            await page.waitForTimeout(1_100);
+            await page.route(`**/api/repos/${WORKSPACE_ID}/blob?*`, async route => {
+                const url = new URL(route.request().url());
+                if (url.searchParams.get('path') === 'src/second.cpp') {
+                    await route.fulfill({ status: 403, body: 'outside repository boundary' });
+                    return;
+                }
+                await route.continue();
+            });
+            const unavailableSpot = await findWord(page, 'int main()', 'target', CPP_APP_PANEL);
+            const unavailablePeek = await openPeekDefinition(page, unavailableSpot);
+            await expect(unavailablePeek).toBeVisible({ timeout: 15_000 });
+            await unavailablePeek.getByRole('treeitem', { name: /^1 symbol in second\.cpp/ }).click();
+            await page.keyboard.press('ArrowRight');
+            await expect(unavailablePeek.getByRole('treeitem', {
+                name: /Definition source unavailable\./,
+            })).toBeVisible();
+            await expectEditorTabs(page, [CPP_APP_TAB]);
         } finally {
             safeRmSync(tmpDir);
         }

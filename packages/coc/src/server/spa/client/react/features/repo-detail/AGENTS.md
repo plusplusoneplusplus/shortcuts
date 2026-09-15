@@ -304,6 +304,19 @@ endpoint. Surfaces open the target pinned and pass the position back down as
 `revealLine` / `revealColumn`; the column travels with its line through the tab
 descriptors and is dropped whenever the line changes without one.
 
+Peek Definition resolves those same cross-file `coc-file://` locations through
+`features/language-servers/definitionPreview.ts`. A repository pane accepts only
+its own workspace; a repo-group pane accepts each live member and loads through
+the target member's workspace and concrete clone route. It prepares accepted
+language-server or symbol-index targets before returning the location because
+standalone Monaco can resolve only models that already exist. Accepted targets
+start with a visible loading model that is updated in place after the routed
+read. Failed reads or rejected outside-group targets get a readable unavailable
+model without reading the rejected target, and cancellation drops stale
+content. Temporary models are disposed after Peek
+detaches or with the initiating pane; a prepared model that never attaches has a
+bounded orphan timeout. Selecting a row does not open an Explorer tab.
+
 ## Tests
 
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour

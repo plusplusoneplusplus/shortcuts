@@ -64,6 +64,7 @@ const monacoStub = vi.hoisted(() => {
     const registered: { kind: string; languageId: string; provider: any; disposed: boolean }[] = [];
     const shadowLanguages: string[] = [];
     const clearedMarkers: { owner: string; count: number }[] = [];
+    const previewModels = new Map<string, any>();
     const record = (kind: string, languageId: string, provider: any) => {
         const entry = { kind, languageId, provider, disposed: false };
         registered.push(entry);
@@ -77,6 +78,7 @@ const monacoStub = vi.hoisted(() => {
             registered.length = 0;
             shadowLanguages.length = 0;
             clearedMarkers.length = 0;
+            previewModels.clear();
         },
         live: () => registered.filter(entry => !entry.disposed),
         provider: (kind: string) => {
@@ -84,7 +86,9 @@ const monacoStub = vi.hoisted(() => {
             if (!entry) throw new Error(`No live ${kind} provider`);
             return entry.provider;
         },
+        resolvePreview: (uri: string) => previewModels.get(uri) ?? null,
         namespace: {
+            Uri: { parse: (value: string) => ({ toString: () => value }) },
             languages: {
                 registerHoverProvider: (id: string, p: any) => record('hover', id, p),
                 registerDefinitionProvider: (id: string, p: any) => record('definition', id, p),
@@ -97,15 +101,41 @@ const monacoStub = vi.hoisted(() => {
                 setLanguageConfiguration: () => undefined,
                 setMonarchTokensProvider: () => undefined,
             },
-            Uri: { parse: (value: string) => ({ toString: () => value }) },
             editor: {
                 setModelLanguage: (model: any, languageId: string) => { model.languageId = languageId; },
                 setModelMarkers: (_model: any, owner: string, markers: unknown[]) => {
                     clearedMarkers.push({ owner, count: markers.length });
                 },
+                getModel: (resource: { toString(): string }) => previewModels.get(resource.toString()) ?? null,
+                createModel: (content: string, _language: string | undefined, resource: { toString(): string }) => {
+                    const model = {
+                        uri: resource,
+                        content,
+                        setValue: (value: string) => { model.content = value; },
+                    };
+                    previewModels.set(resource.toString(), model);
+                    return model;
+                },
             },
         },
-        editor: {},
+        // The pane builds a real navigation controller off this editor the
+        // moment a model mounts, so the stub has to answer the six calls that
+        // controller makes. A fixed cursor is enough: this suite is about
+        // providers, and the navigation behaviour itself is pinned in
+        // `PreviewPane.navigation.test.tsx`.
+        editor: {
+            getSelection: () => ({
+                selectionStartLineNumber: 1,
+                selectionStartColumn: 1,
+                positionLineNumber: 1,
+                positionColumn: 1,
+            }),
+            saveViewState: () => ({ cursorState: [], viewState: {}, contributionsState: {} }),
+            restoreViewState: () => undefined,
+            setSelection: () => undefined,
+            onDidChangeCursorSelection: () => ({ dispose: () => undefined }),
+            onDidScrollChange: () => ({ dispose: () => undefined }),
+        },
         model: {
             languageId: 'typescript',
             uri: { toString: () => 'coc-file://ws-1/src/a.ts' },
@@ -116,9 +146,16 @@ const monacoStub = vi.hoisted(() => {
     };
 });
 
-vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', async () => {
+// Only the React component is faked. Everything else the module exports —
+// `createEditorNavigationController` above all — is kept real, because the pane
+// calls it on model mount: replacing the whole module would leave that call
+// reaching for an export the mock never defined, and every test here would die
+// on a bare `<div />`.
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor')>();
     const { useEffect } = await import('react');
     return {
+        ...actual,
         MonacoFileEditor: ({ value, onModelMount }: any) => {
             useEffect(() => {
                 if (!onModelMount) return;
@@ -187,6 +224,34 @@ afterEach(() => {
 });
 
 describe('PreviewPane — language providers (AC-03)', () => {
+    // Regression guard. The pane builds its navigation handle from a
+    // non-component export of the editor module, and this suite fakes that
+    // module. When the fake replaced it wholesale the export went missing, the
+    // mount effect threw before a single provider was registered, and all
+    // fourteen tests below failed against an empty DOM with nothing pointing at
+    // the cause. Asserting the handle here fails first, and says why.
+    it('builds its navigation handle from the real editor module on mount', async () => {
+        const onNavigationMount = vi.fn();
+        const onNavigationLocation = vi.fn();
+        renderPane({ onNavigationMount, onNavigationLocation });
+
+        await waitFor(() => expect(onNavigationMount).toHaveBeenCalled());
+        const controller = onNavigationMount.mock.calls[0][0];
+        expect(controller).not.toBeNull();
+        // The handle answers out of the mounted editor, not out of a stub the
+        // mock invented — that is what the missing export cost us.
+        expect(controller.capture()).toEqual({
+            selection: {
+                selectionStartLineNumber: 1,
+                selectionStartColumn: 1,
+                positionLineNumber: 1,
+                positionColumn: 1,
+            },
+            viewState: { cursorState: [], viewState: {}, contributionsState: {} },
+        });
+        expect(onNavigationLocation).toHaveBeenCalledWith(controller.capture(), 'programmatic');
+    });
+
     it('registers the selected features under the document’s shadow language', async () => {
         renderPane();
         const attachment = await attachmentFor('src/a.ts');
@@ -304,6 +369,102 @@ describe('PreviewPane — language providers (AC-03)', () => {
             'remote:ws-1',
         );
         expect(links[0].uri.toString()).toContain('include/widget.hpp#symbol-index-candidate');
+    });
+
+    it('routes repo-group definition previews across live members and rejects outsiders', async () => {
+        const first = renderPane({
+            repoId: 'member-1',
+            routingRef: 'remote:server-a:member-1',
+            definitionPreviewOwners: [
+                { workspaceId: 'member-1', routingRef: 'remote:server-a:member-1' },
+                { workspaceId: 'member-2', routingRef: 'remote:server-a:member-2' },
+            ],
+            filePath: 'src/first.ts',
+            fileName: 'first.ts',
+        });
+        const firstAttachment = await attachmentFor('src/first.ts');
+        attachWith(firstAttachment);
+        firstAttachment.respond('textDocument/definition', () => [
+            {
+                uri: 'coc-file://member-1/src/target.ts',
+                range: { start: { line: 4, character: 2 }, end: { line: 4, character: 8 } },
+            },
+            {
+                uri: 'coc-file://member-2/src/shared.ts',
+                range: { start: { line: 8, character: 5 }, end: { line: 8, character: 11 } },
+            },
+            {
+                uri: 'coc-file://outside/src/private.ts',
+                range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+            },
+        ]);
+        await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
+
+        const firstLinks = await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+        expect(firstLinks.map((link: any) => link.uri.toString()))
+            .toEqual([
+                'coc-file://member-1/src/target.ts',
+                'coc-file://member-2/src/shared.ts',
+                'coc-file://outside/src/private.ts',
+            ]);
+        expect(monacoStub.resolvePreview('coc-file://member-1/src/target.ts'))
+            .toMatchObject({ content: 'const a = 1;' });
+        expect(monacoStub.resolvePreview('coc-file://member-2/src/shared.ts'))
+            .toMatchObject({ content: 'const a = 1;' });
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'member-1',
+            'src/target.ts',
+            { signal: expect.any(AbortSignal) },
+            'remote:server-a:member-1',
+        );
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'member-2',
+            'src/shared.ts',
+            { signal: expect.any(AbortSignal) },
+            'remote:server-a:member-2',
+        );
+        expect(monacoStub.resolvePreview('coc-file://outside/src/private.ts'))
+            .toMatchObject({ content: 'Definition source unavailable.' });
+        expect(mockExplorerApi.readBlob).not.toHaveBeenCalledWith(
+            'outside',
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+        );
+
+        first.unmount();
+        const second = renderPane({
+            repoId: 'member-2',
+            routingRef: 'remote:server-a:member-2',
+            filePath: 'src/second.ts',
+            fileName: 'second.ts',
+        });
+        const secondAttachment = await attachmentFor('src/second.ts');
+        attachWith(secondAttachment);
+        secondAttachment.respond('textDocument/definition', () => ({
+            uri: 'coc-file://member-2/src/target.ts',
+            range: { start: { line: 8, character: 5 }, end: { line: 8, character: 11 } },
+        }));
+        await waitFor(() => expect(monacoStub.live().some(entry => entry.kind === 'definition')).toBe(true));
+
+        await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+        expect(monacoStub.resolvePreview('coc-file://member-2/src/target.ts'))
+            .toMatchObject({ content: 'const a = 1;' });
+        expect(mockExplorerApi.readBlob).toHaveBeenCalledWith(
+            'member-2',
+            'src/target.ts',
+            { signal: expect.any(AbortSignal) },
+            'remote:server-a:member-2',
+        );
+        second.unmount();
     });
 
     it('ignores a model that is not this document', async () => {

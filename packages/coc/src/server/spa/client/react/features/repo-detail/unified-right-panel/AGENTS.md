@@ -45,6 +45,8 @@ from same-id clones never merge into one tab.
 | `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted. |
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
 | `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/mode/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — resource views on the left, the selected Search/Explorer mode on the right edge. |
+| `unifiedPanelNavigationHistory.ts` | Pure in-memory file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, and closed-tab pruning. |
+| `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | Session-only history keyed by panel scope, plus pure Alt+Arrow and auxiliary mouse-button classification. |
 | `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
@@ -73,6 +75,33 @@ internal Files/Search switch or breadcrumb row). The right panel mounts
 bodies stay mounted after first use; only their visibility changes.
 
 Resource toolbars render *below* the strip.
+
+## File navigation history
+
+The panel owns one session-only history of file locations. A location carries the
+panel scope, concrete file-tab id, full Monaco selection, and serializable editor
+view state. The pure model follows VS Code's `EditorNavigationStack` and
+`TextEditorPaneSelection` behavior at commit
+`bdadf2eb338657fd540c1b38713393b4a5856de1`: ordinary moves less than ten lines
+apart replace the current entry, while navigation and jump events at a different
+line create entries. The stack holds at most 50 locations, truncates a forward
+branch on a new record, suppresses records during replay, and drops locations for
+closed tabs while preserving the current cursor and any surviving forward branch.
+
+`MonacoFileEditor` exposes a navigation controller that captures and restores a
+full selection plus `ICodeEditorViewState`. `PreviewPane` reports cursor and
+scroll changes using Monaco's `api`, `code.navigation`, and `code.jump` source
+labels, and captures the source before a cross-file language jump.
+`UnifiedRightPanel` records only the active file, activates the destination tab,
+and marks replay before restoring so emitted cursor or scroll events cannot fork
+history. Closing a file prunes its locations; remounting the same panel scope
+reuses its in-memory history without writing it to localStorage.
+
+Alt+Left/Alt+Right and mouse buttons 3/4 share that replay operation. Keyboard
+ownership requires focus inside the visible panel; mouse ownership requires the
+button-down target inside it. Both also require an active file and an accessible
+destination. The handler prevents default and stops propagation only after a
+step succeeds, and a claimed mouse-down also claims its matching mouse-up.
 
 ## The toolbar row
 

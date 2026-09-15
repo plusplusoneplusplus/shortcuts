@@ -15,7 +15,16 @@ class FakeEditor {
     };
     private readonly listeners = new Map<ListenerName, Array<(event: unknown) => void>>();
 
+    /**
+     * Monaco's own Ctrl/Cmd-hover contribution, which decorates the same word
+     * once a definition target resolves to a real model.
+     */
+    readonly monacoLinkContribution = { removeLinkDecorations: vi.fn() };
+
     readonly createDecorationsCollection = vi.fn(() => this.collection);
+    readonly getContribution = vi.fn((id: string) => (
+        id === 'editor.contrib.gotodefinitionatposition' ? this.monacoLinkContribution : null
+    ));
     readonly onDidChangeModelContent = this.event<unknown>('change');
     readonly onDidScrollChange = this.event<unknown>('scroll');
     readonly onKeyDown = this.event<{ ctrlKey: boolean; metaKey: boolean }>('keyDown');
@@ -243,6 +252,43 @@ describe('installDefinitionLinkCue', () => {
         globalEvents.emit('keyup', { ctrlKey: true, metaKey: false });
 
         expect(editor.collection.clear.mock.calls.length).toBe(clearsBefore);
+    });
+
+    // Regression guard. Definition results resolve to real preview models now,
+    // which is the one thing Monaco's own link contribution waits for before it
+    // decorates — so the word carries two underlines. Monaco drops its own on
+    // the editor's key release, and this whole window listener exists because
+    // that release never reaches an unfocused editor. Left alone, Monaco's half
+    // survived the release and the word stayed underlined until the next mouse
+    // move.
+    it.each([
+        [
+            'a modifier release the unfocused editor never sees',
+            ({ globalEvents }: ReturnType<typeof setup>) => globalEvents.emit('keyup', {
+                ctrlKey: false,
+                metaKey: false,
+            }),
+        ],
+        ['the window losing focus', ({ globalEvents }: ReturnType<typeof setup>) => globalEvents.emit('blur')],
+    ])('retires Monaco\u2019s own link decoration on %s', async (_label, release) => {
+        const context = setup();
+        context.editor.emitMouse(1);
+        await finishDebounce();
+        expect(context.editor.monacoLinkContribution.removeLinkDecorations).not.toHaveBeenCalled();
+
+        release(context);
+
+        expect(context.editor.monacoLinkContribution.removeLinkDecorations).toHaveBeenCalled();
+    });
+
+    it('leaves Monaco\u2019s link decoration alone while the modifier is still down', async () => {
+        const { editor, globalEvents } = setup();
+        editor.emitMouse(1);
+        await finishDebounce();
+
+        globalEvents.emit('keyup', { ctrlKey: true, metaKey: false });
+
+        expect(editor.monacoLinkContribution.removeLinkDecorations).not.toHaveBeenCalled();
     });
 
     it('stops listening on the window once disposed', () => {

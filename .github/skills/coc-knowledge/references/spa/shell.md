@@ -254,6 +254,16 @@ Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative
 search icon.
 
+The panel's file editors share one session-only navigation history per panel
+scope. Its pure model stores concrete tab identity, Monaco selection and view
+state, coalesces nearby cursor movement, bounds the stack at 50 entries, and
+suppresses location recording while replaying Back or Forward. Closing a file
+prunes its locations without moving the history cursor or discarding a surviving
+forward branch. Alt+Left, Alt+Right, and auxiliary mouse buttons 3/4 use the same
+replay path only when a visible panel owns the interaction, its active tab is a
+file, and the destination is still accessible; otherwise browser behavior is left
+untouched.
+
 Remote-target dialogs additionally fetch the selected server's `/config/runtime`
 `gitWorktreeExecutionEnabled` as a **per-target capability signal**, since the local flag
 says nothing about a remote host.

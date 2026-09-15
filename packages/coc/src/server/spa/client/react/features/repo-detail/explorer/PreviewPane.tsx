@@ -21,7 +21,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { editor as monacoEditor } from 'monaco-editor';
 import { Spinner, Button } from '../../../ui';
 import { FileViewer } from '../../../shared/file-viewer/FileViewer';
-import { getMonacoLanguage, type EditorModelMountContext } from '../../../shared/file-viewer/MonacoFileEditor';
+import {
+    createEditorNavigationController,
+    getMonacoLanguage,
+    type EditorModelMountContext,
+    type EditorNavigationController,
+    type EditorNavigationReason,
+    type EditorNavigationSnapshot,
+} from '../../../shared/file-viewer/MonacoFileEditor';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
 import { toContentChanges } from '../../language-servers/monacoBridge';
 import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
@@ -35,6 +42,10 @@ import {
 import { installDefinitionLinkCue } from '../../language-servers/definitionLinkCue';
 import { applyShadowLanguage, type ShadowMonaco } from '../../language-servers/shadowLanguage';
 import {
+    registerDefinitionPreviewSource,
+    type DefinitionPreviewMonaco,
+} from '../../language-servers/definitionPreview';
+import {
     registerEditorNavigator,
     type LanguageNavigationTarget,
 } from '../../language-servers/editorNavigation';
@@ -45,6 +56,11 @@ export interface PreviewPaneProps {
     repoId: string;
     /** Concrete clone identity for file I/O and language transport routing. */
     routingRef?: string | null;
+    /** Live repo-group members whose definition sources this pane may preview. */
+    definitionPreviewOwners?: readonly {
+        workspaceId: string;
+        routingRef?: string | null;
+    }[];
     /** Relative path from repo root, or prefixed with TRUSTED_PATH_PREFIX for absolute paths */
     filePath: string;
     /** File name for language detection, e.g. "index.ts" */
@@ -105,12 +121,16 @@ export interface PreviewPaneProps {
         column: number;
         symbolCandidate?: true;
     }) => void;
+    /** Registers this file's live Monaco location capture/restore handle. */
+    onNavigationMount?: (controller: EditorNavigationController | null) => void;
+    /** Reports cursor, scroll, search, diagnostic, and language-jump locations. */
+    onNavigationLocation?: (snapshot: EditorNavigationSnapshot, reason: EditorNavigationReason) => void;
 }
 
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -203,9 +223,16 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
     // it.
     const navigateRef = useRef(onNavigate);
     navigateRef.current = onNavigate;
+    const navigationMountRef = useRef(onNavigationMount);
+    navigationMountRef.current = onNavigationMount;
+    const navigationLocationRef = useRef(onNavigationLocation);
+    navigationLocationRef.current = onNavigationLocation;
+    const navigationControllerRef = useRef<EditorNavigationController | null>(null);
     const handleNavigate = useCallback((target: LanguageNavigationTarget) => {
         const navigate = navigateRef.current;
         if (!navigate || target.workspaceId !== repoId) return false;
+        const source = navigationControllerRef.current?.capture();
+        if (source) navigationLocationRef.current?.(source, 'jump');
         navigate({
             path: target.path,
             name: target.path.split('/').pop() || target.path,
@@ -227,7 +254,58 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
     // runtime Monaco dependency, so this boundary is where the two meet.
     const definitionSupported = supportsFeature(languageDocument.snapshot?.state, 'definition');
     const handleModelMount = useCallback(({ editor, monaco, model }: EditorModelMountContext) => {
-        if (!languageView) return;
+        const navigationController = createEditorNavigationController(editor);
+        navigationControllerRef.current = navigationController;
+        navigationMountRef.current?.(navigationController);
+        const initialLocation = navigationController.capture();
+        if (initialLocation) navigationLocationRef.current?.(initialLocation, 'programmatic');
+        const navigationListener = navigationController.subscribe((snapshot, reason) => {
+            navigationLocationRef.current?.(snapshot, reason);
+        });
+
+        if (!languageView) {
+            return () => {
+                navigationListener.dispose();
+                if (navigationControllerRef.current === navigationController) navigationControllerRef.current = null;
+                navigationMountRef.current?.(null);
+            };
+        }
+        const loadDefinitionSource = async (
+            ownerWorkspaceId: string,
+            ownerRoutingRef: string | null | undefined,
+            path: string,
+            signal: AbortSignal,
+        ) => {
+            const response = await explorerApi.readBlob(
+                ownerWorkspaceId,
+                path,
+                { signal },
+                ownerRoutingRef,
+            );
+            if (response.encoding !== 'utf-8') {
+                throw new Error('Definition source is not readable text.');
+            }
+            return response.content;
+        };
+        const previewSource = registerDefinitionPreviewSource({
+            monaco: monaco as unknown as DefinitionPreviewMonaco,
+            workspaceId: repoId,
+            load: (path, signal) => loadDefinitionSource(repoId, routingRef, path, signal),
+            resolveTarget: definitionPreviewOwners
+                ? (workspaceId) => {
+                    const owner = definitionPreviewOwners.find(candidate => candidate.workspaceId === workspaceId);
+                    return owner
+                        ? (path, signal) => loadDefinitionSource(
+                            owner.workspaceId,
+                            owner.routingRef,
+                            path,
+                            signal,
+                        )
+                        : undefined;
+                }
+                : undefined,
+            showUnavailableForRejectedTarget: definitionPreviewOwners !== undefined,
+        });
         // Before registering anything, move the model off `typescript` /
         // `javascript` so Monaco's bundled worker stops answering for it. The
         // providers below then register under whichever id the model ended up
@@ -239,6 +317,11 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
             symbolDefinitions,
+            resolveUri: async (uri, signal, target) => (
+                await previewSource.prepare(uri, signal, target, target.waitForContent)
+                    ? (monaco as unknown as MonacoLike).Uri.parse(uri)
+                    : null
+            ),
         });
         const definitionLinkCue = definitionSupported
             ? installDefinitionLinkCue({
@@ -252,12 +335,25 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
         // opener knows which surface asked and lands the target in its strip.
         const navigation = registerEditorNavigator(model, handleNavigate);
         return () => {
+            navigationListener.dispose();
+            if (navigationControllerRef.current === navigationController) navigationControllerRef.current = null;
+            navigationMountRef.current?.(null);
             definitionLinkCue?.dispose();
             navigation.dispose();
             registration.dispose();
+            previewSource.dispose();
             shadow?.revert();
         };
-    }, [languageView, monacoLanguageId, handleNavigate, definitionSupported, symbolDefinitions]);
+    }, [
+        languageView,
+        monacoLanguageId,
+        handleNavigate,
+        definitionSupported,
+        symbolDefinitions,
+        repoId,
+        routingRef,
+        definitionPreviewOwners,
+    ]);
 
     // One editor change feeds two consumers: the render buffer, and the
     // document that the language server sees. Monaco's change list is converted
@@ -369,7 +465,7 @@ export function PreviewPane({ repoId, routingRef, filePath, fileName, revealLine
                     revealLine={revealLine}
                     revealColumn={revealColumn}
                     markers={languageEnabled ? languageDocument.markers : undefined}
-                    onModelMount={languageEnabled && languageView ? handleModelMount : undefined}
+                    onModelMount={displayBlob.encoding === 'utf-8' ? handleModelMount : undefined}
                     codeTestId="monaco-container"
                 />
             ) : null}

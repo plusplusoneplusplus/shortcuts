@@ -35,6 +35,87 @@ export interface EditorModelMountContext {
     model: monacoEditor.ITextModel;
 }
 
+export type EditorNavigationReason = 'user' | 'navigation' | 'jump' | 'programmatic';
+
+export interface EditorNavigationSnapshot {
+    selection: monacoEditor.ISelection;
+    viewState: monacoEditor.ICodeEditorViewState;
+}
+
+export interface EditorNavigationController {
+    capture(): EditorNavigationSnapshot | null;
+    restore(snapshot: EditorNavigationSnapshot): void;
+    subscribe(listener: (snapshot: EditorNavigationSnapshot, reason: EditorNavigationReason) => void): {
+        dispose(): void;
+    };
+}
+
+function navigationReason(source: string): EditorNavigationReason {
+    if (source === 'code.navigation') return 'navigation';
+    if (source === 'code.jump') return 'jump';
+    if (source === 'api') return 'programmatic';
+    return 'user';
+}
+
+export function createEditorNavigationController(
+    editor: Pick<
+        monacoEditor.IStandaloneCodeEditor,
+        | 'getSelection'
+        | 'saveViewState'
+        | 'restoreViewState'
+        | 'setSelection'
+        | 'onDidChangeCursorSelection'
+        | 'onDidScrollChange'
+    >,
+): EditorNavigationController {
+    let restoreGeneration = 0;
+    let restoring = false;
+    const capture = (): EditorNavigationSnapshot | null => {
+        const selection = editor.getSelection();
+        const viewState = editor.saveViewState();
+        if (!selection || !viewState) return null;
+        return {
+            selection: {
+                selectionStartLineNumber: selection.selectionStartLineNumber,
+                selectionStartColumn: selection.selectionStartColumn,
+                positionLineNumber: selection.positionLineNumber,
+                positionColumn: selection.positionColumn,
+            },
+            viewState,
+        };
+    };
+
+    return {
+        capture,
+        restore: snapshot => {
+            restoring = true;
+            const generation = ++restoreGeneration;
+            editor.restoreViewState(snapshot.viewState);
+            editor.setSelection(snapshot.selection);
+            queueMicrotask(() => {
+                if (restoreGeneration === generation) restoring = false;
+            });
+        },
+        subscribe: listener => {
+            const emit = (reason: EditorNavigationReason) => {
+                if (restoring) return;
+                const snapshot = capture();
+                if (snapshot) listener(snapshot, reason);
+            };
+            const selection = editor.onDidChangeCursorSelection(event => {
+                emit(navigationReason(event.source));
+            });
+            const scroll = editor.onDidScrollChange(() => emit('user'));
+            return {
+                dispose: () => {
+                    selection.dispose();
+                    scroll.dispose();
+                },
+            };
+        },
+    };
+}
+
 /** One-based inclusive line range to highlight (`end === start` for one line). */
 export interface EditorHighlightRange {
     start: number;
