@@ -92,11 +92,16 @@ export function DockNotesPanel({ workspaceId }: DockNotesPanelProps) {
     // Keep a selection whenever there is something to select: fall back to the
     // first visible note when nothing is selected yet, or when the selected note
     // disappeared (deleted elsewhere, or filtered out by the current query).
+    //
+    // React can commit a new list in one task and flush this effect in a later
+    // one, so a click can land while this is still pending. Resolve against the
+    // *current* selection instead of closing over it — closing over it queues a
+    // second update behind the click's and snaps the panel back to the first note.
     useEffect(() => {
         if (visibleNotes.length === 0) return;
-        if (selectedPath && visibleNotes.some(n => n.path === selectedPath)) return;
-        setSelectedPath(visibleNotes[0].path);
-    }, [visibleNotes, selectedPath]);
+        setSelectedPath(current =>
+            current && visibleNotes.some(n => n.path === current) ? current : visibleNotes[0].path);
+    }, [visibleNotes]);
 
     const selectedNote = useMemo(
         () => notes.find(n => n.path === selectedPath) ?? null,
