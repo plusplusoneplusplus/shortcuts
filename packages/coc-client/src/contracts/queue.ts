@@ -126,6 +126,8 @@ export interface EnqueueTaskRequest {
     effortTier?: EffortTierKey;
     model?: string;
     reasoningEffort?: ReasoningEffort;
+    /** Start a server-owned implement-plan PR gate chain. */
+    prGate?: { autoMerge: true };
   };
   displayName?: string;
   [key: string]: unknown;

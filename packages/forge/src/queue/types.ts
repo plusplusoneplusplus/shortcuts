@@ -98,6 +98,12 @@ export interface TaskExecutionConfig {
     reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
     /** When true, the repo queue is paused automatically if this task fails. */
     pauseOnFailure?: boolean;
+    /** Metadata for an implement-plan chain that holds its repository queue. */
+    prGate?: {
+        autoMerge: true;
+        /** Opaque chain identifier assigned by the server accepting the task. */
+        chainId: string;
+    };
 }
 
 /**

@@ -273,8 +273,25 @@ describe('ImplementPlanLaunchDialog', () => {
         expect(payload.payload.workingDirectory).toBe('/repo');
         expect(payload.payload.context.files).toEqual(['/repo/plan.md']);
         expect(payload.payload.prompt).toBe('Read and implement the plan file at /repo/plan.md');
+        expect(payload.config).toBeUndefined();
         await waitFor(() => expect(onImplemented).toHaveBeenCalledWith('queue_task-abc'));
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('carries the PR gate marker only when the checkbox is checked', async () => {
+        mockEnqueue.mockResolvedValue({ task: { id: 'task-gated' } });
+        renderDialog();
+        await waitReady();
+
+        fireEvent.click(screen.getByTestId('implement-launch-pr-automerge'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
+        });
+
+        await waitFor(() => expect(mockEnqueue).toHaveBeenCalledTimes(1));
+        expect(mockEnqueue.mock.calls[0][0].config).toEqual({
+            prGate: { autoMerge: true },
+        });
     });
 
     it('carries an explicit provider + effort tier into the enqueue payload', async () => {
@@ -291,6 +308,24 @@ describe('ImplementPlanLaunchDialog', () => {
         const arg = mockEnqueue.mock.calls[0][0];
         expect(arg.payload.provider).toBe('codex');
         expect(arg.config).toEqual({ effortTier: 'high' });
+    });
+
+    it('combines the PR gate marker with the selected effort tier', async () => {
+        mockModalSelection.mockReturnValue({ resolved: { provider: 'codex', effortTier: 'high' } });
+        mockEnqueue.mockResolvedValue({ task: { id: 'task-ai-gated' } });
+        renderDialog();
+        await waitReady();
+
+        fireEvent.click(screen.getByTestId('implement-launch-pr-automerge'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
+        });
+
+        await waitFor(() => expect(mockEnqueue).toHaveBeenCalledTimes(1));
+        expect(mockEnqueue.mock.calls[0][0].config).toEqual({
+            effortTier: 'high',
+            prGate: { autoMerge: true },
+        });
     });
 
     it('carries a legacy model + reasoning effort into the enqueue payload', async () => {

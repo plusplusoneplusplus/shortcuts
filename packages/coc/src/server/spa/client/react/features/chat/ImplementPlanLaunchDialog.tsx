@@ -386,7 +386,12 @@ export function ImplementPlanLaunchDialog({
             // effort / effort tier, matching the shapes the queue route honors.
             const resolvedAi = aiSelection.resolved;
             const context = mergeAutoProviderRoutingContext(resolvedAi, baseContext);
-            const config = resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : undefined;
+            const config = resolvedAi.effortTier || submitPrAndAutoMerge
+                ? {
+                    ...(resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : {}),
+                    ...(submitPrAndAutoMerge ? { prGate: { autoMerge: true as const } } : {}),
+                }
+                : undefined;
 
             const result = await targetClient.queue.enqueue({
                 type: 'chat',

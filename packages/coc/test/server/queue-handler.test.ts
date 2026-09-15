@@ -196,6 +196,39 @@ describe('Queue Handler', () => {
             expect(body.task.priority).toBe('low');
         });
 
+        it('assigns and persists a chain id for an implement-plan PR gate', async () => {
+            const processStore = createSqliteStore();
+            const srv = await startServerWith(processStore);
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask({
+                config: { prGate: { autoMerge: true, chainId: 'client-controlled' } },
+            }));
+
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.config.prGate).toEqual({
+                autoMerge: true,
+                chainId: expect.any(String),
+            });
+            expect(body.task.config.prGate.chainId).not.toHaveLength(0);
+            expect(body.task.config.prGate.chainId).not.toBe('client-controlled');
+
+            const persisted = new SqliteQueueStore(processStore.getDatabase())
+                .getQueueTasks()
+                .find(task => task.id === body.task.id);
+            expect(persisted?.config.prGate).toEqual(body.task.config.prGate);
+        });
+
+        it('does not add PR gate fields to an ordinary enqueue', async () => {
+            const srv = await startServer();
+
+            const res = await postJSON(`${srv.url}/api/queue`, makeTask());
+
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.config.prGate).toBeUndefined();
+        });
+
         it('should resolve config.effortTier to model and reasoningEffort before storing', async () => {
             const srv = await startServer({
                 models: {
