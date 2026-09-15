@@ -43,6 +43,22 @@ pub struct SyncProgress {
     pub total: usize,
 }
 
+/// Bump this on any change to extraction rules or to the table shape. The index is a derived
+/// cache keyed on per-file size/mtime/hash, so a rules change alone would never re-parse a file
+/// that still looks unchanged — on a version mismatch the tables are dropped and rebuilt.
+const INDEX_SCHEMA_VERSION: i64 = 1;
+
+/// Definitions outrank declarations. Without this a macro's `#define` competes with its call
+/// sites on path order alone, and the search `LIMIT` decides which one a jump lands on.
+const KIND_PRIORITY: &str = "CASE s.kind \
+     WHEN 'macro' THEN 0 \
+     WHEN 'class' THEN 1 \
+     WHEN 'type' THEN 2 \
+     WHEN 'method' THEN 3 \
+     WHEN 'function' THEN 4 \
+     WHEN 'prototype' THEN 6 \
+     ELSE 7 END";
+
 pub struct SymbolStore {
     connection: Mutex<Connection>,
 }
@@ -57,6 +73,19 @@ impl SymbolStore {
     pub fn open(path: &Path) -> rusqlite::Result<Self> {
         let connection = Connection::open(path)?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
+        let version: i64 =
+            connection.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap_or(0);
+        if version != INDEX_SCHEMA_VERSION {
+            // Drop, recreate and re-stamp in one transaction: a crash part-way through leaves a
+            // database the next open still recognises as stale.
+            connection.execute_batch(&format!(
+                "BEGIN;
+                 DROP TABLE IF EXISTS symbols;
+                 DROP TABLE IF EXISTS files;
+                 PRAGMA user_version = {INDEX_SCHEMA_VERSION};
+                 COMMIT;"
+            ))?;
+        }
         connection.execute_batch(
             "PRAGMA foreign_keys = ON;
              CREATE TABLE IF NOT EXISTS files (
@@ -123,17 +152,21 @@ impl SymbolStore {
     pub fn search(&self, name: &str, prefix: bool, limit: usize) -> rusqlite::Result<Vec<Symbol>> {
         let connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
         let sql = if prefix {
-            "SELECT s.name, s.kind, f.path, s.line, s.col, s.parent
-             FROM symbols s JOIN files f ON f.id = s.file_id
-             WHERE s.name >= ?1 AND s.name < (?1 || char(1114111))
-             ORDER BY s.name, f.path, s.line, s.col LIMIT ?2"
+            format!(
+                "SELECT s.name, s.kind, f.path, s.line, s.col, s.parent
+                 FROM symbols s JOIN files f ON f.id = s.file_id
+                 WHERE s.name >= ?1 AND s.name < (?1 || char(1114111))
+                 ORDER BY s.name, {KIND_PRIORITY}, f.path, s.line, s.col LIMIT ?2"
+            )
         } else {
-            "SELECT s.name, s.kind, f.path, s.line, s.col, s.parent
-             FROM symbols s JOIN files f ON f.id = s.file_id
-             WHERE s.name = ?1
-             ORDER BY f.path, s.line, s.col LIMIT ?2"
+            format!(
+                "SELECT s.name, s.kind, f.path, s.line, s.col, s.parent
+                 FROM symbols s JOIN files f ON f.id = s.file_id
+                 WHERE s.name = ?1
+                 ORDER BY {KIND_PRIORITY}, f.path, s.line, s.col LIMIT ?2"
+            )
         };
-        let mut statement = connection.prepare(sql)?;
+        let mut statement = connection.prepare(&sql)?;
         let rows = statement
             .query_map(params![name, i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
                 Ok(Symbol {
@@ -805,6 +838,77 @@ mod tests {
         );
         assert!(store.search("missing", false, 10).expect("miss").is_empty());
         assert_eq!(store.search("alph", true, 1).expect("limited").len(), 1);
+    }
+
+    #[test]
+    fn ranks_definitions_above_declarations_across_paths() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        // The macro definition sorts last by path, so only kind priority can float it to the top.
+        std::fs::write(root.path().join("zz_define.h"), "#define WIDGET(x) (x)\n").expect("define");
+        for index in 0..5 {
+            std::fs::write(
+                root.path().join(format!("aa_use_{index}.h")),
+                "struct Holder {\n  WIDGET(int);\n};\n",
+            )
+            .expect("use");
+        }
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("sync");
+
+        let exact = store.search("WIDGET", false, 10).expect("exact");
+        let prefix = store.search("WIDG", true, 10).expect("prefix");
+
+        assert_eq!((exact[0].kind.as_str(), exact[0].path.as_str()), ("macro", "zz_define.h"));
+        assert_eq!((prefix[0].kind.as_str(), prefix[0].path.as_str()), ("macro", "zz_define.h"));
+        assert!(exact[1..].iter().all(|symbol| symbol.kind == "prototype"));
+        assert_eq!(
+            exact[1..].iter().map(|symbol| symbol.path.as_str()).collect::<Vec<_>>(),
+            ["aa_use_0.h", "aa_use_1.h", "aa_use_2.h", "aa_use_3.h", "aa_use_4.h"]
+        );
+    }
+
+    #[test]
+    fn a_stale_database_is_emptied_and_re_stamped_on_open() {
+        let data = tempdir().expect("data");
+        let root = tempdir().expect("root");
+        let path = data.path().join("symbols.sqlite");
+        std::fs::write(root.path().join("one.c"), "int one() { return 1; }\n").expect("fixture");
+        let store = SymbolStore::open(&path).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("sync");
+        drop(store);
+        // Simulate a database written before index versioning existed.
+        Connection::open(&path)
+            .expect("raw open")
+            .pragma_update(None, "user_version", 0)
+            .expect("downgrade");
+
+        let reopened = SymbolStore::open(&path).expect("reopen");
+
+        assert!(reopened.manifest().expect("manifest").is_empty());
+        assert!(reopened.symbols_for_file("one.c").expect("symbols").is_empty());
+        let resynced =
+            reopened.sync_repository(root.path(), ExtractionLimits::default()).expect("resync");
+        assert_eq!((resynced.parsed, resynced.unchanged), (1, 0));
+    }
+
+    #[test]
+    fn a_current_database_keeps_its_rows_on_open() {
+        let data = tempdir().expect("data");
+        let root = tempdir().expect("root");
+        let path = data.path().join("symbols.sqlite");
+        std::fs::write(root.path().join("one.c"), "int one() { return 1; }\n").expect("fixture");
+        let store = SymbolStore::open(&path).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("sync");
+        drop(store);
+
+        let reopened = SymbolStore::open(&path).expect("reopen");
+
+        assert_eq!(reopened.manifest().expect("manifest").len(), 1);
+        assert_eq!(reopened.symbols_for_file("one.c").expect("symbols")[0].name, "one");
+        let warm =
+            reopened.sync_repository(root.path(), ExtractionLimits::default()).expect("warm");
+        assert_eq!((warm.parsed, warm.unchanged), (0, 1));
     }
 
     #[test]

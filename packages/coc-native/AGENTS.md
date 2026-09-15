@@ -3,12 +3,40 @@
 Rust/N-API native capabilities for the CoC server. The package is a home for CPU- or filesystem-bound work worth moving out of Node: one binary, one module per capability on both the Rust and TypeScript sides. It ships the file index behind quick-open search (`Ctrl+P`), the repo content search behind the Explorer's Search view, the bounded content index for Notes search, and the `git` runner every git-backed feature goes through.
 
 The core `symbol_index` module extracts C-family definitions with the bundled
-`tree-sitter-c` and `tree-sitter-cpp` tag queries. It filters extensions before
+`tree-sitter-c` and `tree-sitter-cpp` tag queries, plus an appended
+`EXTRA_TAGS_QUERY` that neither grammar ships: `preproc_def` and
+`preproc_function_def` become `kind: "macro"`. Without it a `#define` produces no
+symbol at all, while every invocation of the macro is picked up by
+`(function_declarator declarator: (identifier))` and indexed as a function. That
+same pattern cannot tell a definition from a declaration, so `resolve_kind` walks
+up from the declarator — through `pointer_declarator`, `reference_declarator` and
+`parenthesized_declarator`, since `int *f() {}` nests the declarator — and emits
+`kind: "prototype"` when no `function_definition` ancestor is reached. A macro
+invocation whose last argument is a braced initialiser (`FIELD(T, x, T{})`) still
+parses as a real `function_definition`, so it stays `function`; ranking, not
+extraction, is what keeps it below the `#define`. `kind` is a free-form `TEXT`
+column that flows unchanged through napi, the route types and the SPA, so a new
+kind value needs no type changes on any layer — only a `user_version` bump.
+It filters extensions before
 file reads, processes files through rayon, records per-file failures instead of
 aborting a build, and atomically swaps immutable snapshots on refresh. Parser,
 grammar, and tags crate versions stay pinned as one compatibility set.
 
 `SymbolStore` persists the index in a caller-supplied per-workspace SQLite path.
+**Bump `INDEX_SCHEMA_VERSION` on any change to extraction rules or table shape,
+not just on DDL changes.** Sync is keyed on per-file size/mtime/hash, so a rules
+change alone re-parses nothing and every `symbol-index.sqlite` already on disk
+keeps its stale rows indefinitely. `open` compares `PRAGMA user_version` and, on
+any mismatch (including `0` for pre-versioning databases), drops both tables and
+re-stamps the version in one transaction — a crash part-way leaves a database the
+next open still recognises as stale. Dropping beats migrating because the index is
+a derived cache whose rebuild already reports progress through the UI.
+Search orders by a `KIND_PRIORITY` `CASE` before path: `macro`, `class`, `type`,
+`method`, `function`, then `prototype`, then anything unrecognised, with
+`path, line, col` as the tiebreak. This is what makes go-to-definition on a macro
+land on the `#define` rather than on whichever call site sorts first — without it
+the real definition competes with its call sites on path order alone and the
+`LIMIT` decides. Both the exact and prefix branches apply it.
 It uses WAL plus `files(path, size, mtime, hash)` and `symbols` tables, compares
 size and mtime before reading or hashing, applies a full sync in one atomic transaction,
 extracts changed files in parallel through a bounded producer/consumer pipeline,
