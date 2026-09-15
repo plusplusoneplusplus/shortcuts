@@ -747,7 +747,6 @@ test.describe('Explorer language support – TypeScript and definition features'
 
             await gotoExplorer(page, serverUrl);
             await openSourceFile(page, 'app.cpp');
-            await waitForLanguageServer(page, CPP_APP_PANEL);
 
             const spot = await findWord(page, 'int main()', 'target', CPP_APP_PANEL);
             await page.mouse.click(spot.x, spot.y);
