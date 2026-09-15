@@ -45,6 +45,7 @@ function makeRegistry(): any {
         getQueued: vi.fn().mockReturnValue([]),
         getRunning: vi.fn().mockReturnValue([]),
         getHistory: vi.fn().mockReturnValue([]),
+        getRepoGate: vi.fn().mockReturnValue(undefined),
     };
     return {
         getQueueForRepo: vi.fn().mockReturnValue(mockManager),
