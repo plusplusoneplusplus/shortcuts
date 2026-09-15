@@ -130,13 +130,21 @@ export function createWebSocketInfrastructure(
         // 1) Per-repo scoped broadcast
         const repoManager = registry.getQueueForRepo(event.repoPath);
         const repoStats = repoManager.getStats();
+        const repoGate = repoManager.getRepoGate(event.repoId);
         wsServer.broadcastProcessEvent({
             type: 'queue-updated',
             queue: {
                 repoId: event.repoId,
                 queued: repoManager.getQueued().map(mapQueued),
                 running: repoManager.getRunning().map(mapRunning),
-                stats: { queued: repoStats.queued, running: repoStats.running, total: repoStats.total, isPaused: repoStats.isPaused, isDraining: repoStats.isDraining },
+                stats: {
+                    queued: repoStats.queued,
+                    running: repoStats.running,
+                    total: repoStats.total,
+                    isPaused: repoStats.isPaused,
+                    isDraining: repoStats.isDraining,
+                    ...(repoGate ? { repoGate } : {}),
+                },
             },
         } as any);
 

@@ -15,7 +15,7 @@ import { useQueueTouchDragDrop } from '../../queue/hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { useCocClient } from '../../repos/cloneRouting';
-import type { QueueFreezeDurationHours } from '@plusplusoneplusplus/coc-client';
+import type { QueueFreezeDurationHours, QueueRepoGate } from '@plusplusoneplusplus/coc-client';
 import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
 import { ScheduledSlideSchedules } from '../schedules/ScheduledSlideSchedules';
 import { getDraft } from './hooks/useDraftStore';
@@ -839,6 +839,11 @@ export interface ChatListPaneProps {
     fetchQueue: () => Promise<void>;
     /** Reason for the current pause (present when auto-paused due to task failure). */
     pauseReason?: { taskId: string; displayName: string; failedAt: string };
+    /** Active implement-plan chain holding this repository until its PR merges. */
+    repoGate?: QueueRepoGate;
+    /** Manually drop the active repo gate and resume this repository. */
+    onReleaseRepoGate?: () => void;
+    repoGateReleaseLoading?: boolean;
     /** True when there are more completed tasks to load from the server. */
     hasMore?: boolean;
     /** True while a "Load more" request is in-flight. */
@@ -898,6 +903,47 @@ export interface ChatListPaneProps {
 
 function formatMetadataText(task: any): string {
     return buildRows(task).map(r => `${r.label}: ${r.value}`).join('\n');
+}
+
+function RepoGateBanner({
+    gate,
+    onRelease,
+    releasing,
+}: {
+    gate: QueueRepoGate;
+    onRelease?: () => void;
+    releasing?: boolean;
+}) {
+    const label = gate.prNumber !== undefined
+        ? `Holding for PR #${gate.prNumber} to merge`
+        : gate.reason
+            ? `Holding this repo's queue: ${gate.reason}`
+            : 'Holding this repo queue for the implementation PR';
+    return (
+        <div
+            className="rounded bg-blue-500/10 text-blue-700 dark:text-blue-300 px-3 py-1.5 text-xs flex items-center gap-2"
+            data-testid="repo-pr-gate-banner"
+        >
+            <span className="flex-1">
+                {gate.prUrl ? (
+                    <a href={gate.prUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                        {label}
+                    </a>
+                ) : label}
+            </span>
+            {onRelease && (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={releasing}
+                    onClick={onRelease}
+                    data-testid="repo-pr-gate-release-btn"
+                >
+                    Release
+                </Button>
+            )}
+        </div>
+    );
 }
 
 function pauseUntilMs(value: number | string | undefined): number | undefined {
@@ -1371,6 +1417,9 @@ export function ChatListPane({
     onOpenDialog,
     fetchQueue,
     pauseReason,
+    repoGate,
+    onReleaseRepoGate,
+    repoGateReleaseLoading,
     hasMore,
     loadingMore,
     onLoadMore,
@@ -4226,6 +4275,11 @@ export function ChatListPane({
     if (running.length === 0 && queued.length === 0 && history.length === 0 && forEachRunGroups.length === 0 && mapReduceRunGroups.length === 0 && !isServerSearchActive) {
         return (
             <>
+            {activeTab !== 'chats' && repoGate && (
+                <div className="p-2 pb-0">
+                    <RepoGateBanner gate={repoGate} onRelease={onReleaseRepoGate} releasing={repoGateReleaseLoading} />
+                </div>
+            )}
             <div className="p-4 text-center text-sm text-[#848484]" data-testid="queue-empty-state">
                 {isRefreshing && (
                     <div className="mb-2 animate-pulse" data-testid="queue-refreshing-indicator">Refreshing…</div>
@@ -4558,6 +4612,9 @@ export function ChatListPane({
                     className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                     data-testid="chat-list-fixed-header"
                 >
+                {repoGate && (
+                    <RepoGateBanner gate={repoGate} onRelease={onReleaseRepoGate} releasing={repoGateReleaseLoading} />
+                )}
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">

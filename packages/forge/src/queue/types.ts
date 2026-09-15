@@ -456,6 +456,8 @@ export interface QueueStats {
     autopilotTaskDelayMinutes?: number;
     /** Epoch milliseconds when the autopilot cooldown elapses. Present only while it defers a start. */
     autopilotTaskDelayUntil?: number;
+    /** Active implement-plan gate when stats are scoped to one repository. */
+    repoGate?: RepoGateState;
 }
 
 // ============================================================================

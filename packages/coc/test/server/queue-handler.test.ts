@@ -1326,6 +1326,41 @@ describe('Queue Handler', () => {
     // ========================================================================
 
     describe('Pause / Resume', () => {
+        it('manually releases the active repo gate and resumes the repo', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/workspaces`, {
+                id: 'ws-gate-release',
+                name: 'gate-release',
+                rootPath: '/repo/gate-release',
+            });
+            await postJSON(`${srv.url}/api/queue`, makeTask({
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: 'implement',
+                    workspaceId: 'ws-gate-release',
+                },
+                config: { prGate: { autoMerge: true } },
+            }));
+
+            const before = await request(`${srv.url}/api/queue?repoId=ws-gate-release`);
+            expect(JSON.parse(before.body).stats.repoGate).toBeDefined();
+
+            const released = await postJSON(`${srv.url}/api/queue/repo-gate/release?repoId=ws-gate-release`, {});
+            expect(released.status).toBe(200);
+            expect(JSON.parse(released.body)).toMatchObject({
+                repoId: 'ws-gate-release',
+                released: true,
+            });
+
+            const after = await request(`${srv.url}/api/queue?repoId=ws-gate-release`);
+            expect(JSON.parse(after.body).stats.repoGate).toBeUndefined();
+
+            const duplicate = await postJSON(`${srv.url}/api/queue/repo-gate/release?repoId=ws-gate-release`, {});
+            expect(duplicate.status).toBe(409);
+        });
+
         it('should pause the queue', async () => {
             const srv = await startServer();
 

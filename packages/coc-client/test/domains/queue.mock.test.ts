@@ -117,6 +117,7 @@ describe('QueueClient mock server contract', () => {
     mock.on('POST', '/api/queue', { status: 201, body: enqueueResponse });
     mock.on('POST', '/api/queue/pause', { body: pauseResponse });
     mock.on('POST', '/api/queue/resume', { body: resumeResponse });
+    mock.on('POST', '/api/queue/repo-gate/release', { body: { released: true, stats: mockQueueStats() } });
     mock.on('DELETE', '/api/queue/task%2Fencoded', { body: { cancelled: true } });
     mock.on('POST', '/api/queue/task%2Fencoded/move-to-top', { body: { moved: true, position: 1 } });
     const client = createClient(mock);
@@ -134,14 +135,16 @@ describe('QueueClient mock server contract', () => {
     await expect(client.queue.enqueue(enqueueRequest)).resolves.toEqual(enqueueResponse);
     await expect(client.queue.pause({ repoId: 'repo/with/slashes' })).resolves.toEqual(pauseResponse);
     await expect(client.queue.resume('repo/with/slashes')).resolves.toEqual(resumeResponse);
+    await expect(client.queue.releaseRepoGate({ repoId: 'repo/with/slashes' })).resolves.toMatchObject({ released: true });
     await expect(client.queue.cancel('task/encoded', { reason: 'No longer needed' })).resolves.toEqual({ cancelled: true });
     await expect(client.queue.moveToTop('task/encoded')).resolves.toEqual({ moved: true, position: 1 });
 
     expectJsonRequest(mock.requests[0], 'POST', '/api/queue', enqueueRequest);
     expectEmptyRequest(mock.requests[1], 'POST', '/api/queue/pause', { repoId: 'repo/with/slashes' });
     expectEmptyRequest(mock.requests[2], 'POST', '/api/queue/resume', { workspace: 'repo/with/slashes' });
-    expectJsonRequest(mock.requests[3], 'DELETE', '/api/queue/task%2Fencoded', { reason: 'No longer needed' });
-    expectEmptyRequest(mock.requests[4], 'POST', '/api/queue/task%2Fencoded/move-to-top');
+    expectEmptyRequest(mock.requests[3], 'POST', '/api/queue/repo-gate/release', { repoId: 'repo/with/slashes' });
+    expectJsonRequest(mock.requests[4], 'DELETE', '/api/queue/task%2Fencoded', { reason: 'No longer needed' });
+    expectEmptyRequest(mock.requests[5], 'POST', '/api/queue/task%2Fencoded/move-to-top');
   });
 
   it('encodes task IDs for task detail, image, and resolved-prompt reads', async () => {

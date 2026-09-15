@@ -203,6 +203,7 @@ Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dr
 | POST | `/api/queue/:id/retry` | Re-run a failed/cancelled task by enqueueing a fresh copy from its preserved payload/config (recovery when a chat's first message failed before any resumable session existed). Accepts a bare task id or `queue_<taskId>`; strips `processId`/temp-attachment fields so the retry starts a new conversation. `201 { task }`; `404` not found, `409` when not failed/cancelled |
 | POST | `/api/queue/pause` | Pause queue processing globally or per repo (`workspace`/`repoId` query). Body: empty for indefinite, `{ durationHours }` (number in `(0, 24]`), or `{ until }` timestamp |
 | POST | `/api/queue/resume` | Resume queue processing globally or per repo |
+| POST | `/api/queue/repo-gate/release` | Release the active implement-plan PR gate for the required `workspace`/`repoId` query and resume that repo. Returns `409` when the repo has no active gate |
 | POST | `/api/queue/pause-autopilot` | Pause automatic autopilot admission globally or per repo; same timed-pause body as `/api/queue/pause` |
 | POST | `/api/queue/resume-autopilot` | Resume automatic autopilot admission globally or per repo |
 | POST | `/api/queue/task-delay` | Set or clear the repeating task cooldown globally or per repo (`workspace`/`repoId` query). Body `{ scope: 'all'\|'autopilot', delayMinutes: <integer 1..1440>\|null }`; returns the configured value and updated queue stats |

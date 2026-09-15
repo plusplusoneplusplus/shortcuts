@@ -4,6 +4,15 @@ export type TaskPriority = 'low' | 'normal' | 'high' | string;
 export type QueueStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
 export type EffortTierKey = 'very-low' | 'low' | 'medium' | 'high';
 
+export interface QueueRepoGate {
+  chainId: string;
+  implementTaskId: string;
+  submissionStatus?: 'pending' | 'submitted' | 'failed';
+  prUrl?: string;
+  prNumber?: number;
+  reason?: string;
+}
+
 export interface QueueStats {
   queued: number;
   running: number;
@@ -30,6 +39,8 @@ export interface QueueStats {
   autopilotTaskDelayMinutes?: number;
   /** Epoch milliseconds when the active autopilot cooldown ends. */
   autopilotTaskDelayUntil?: number;
+  /** Active implement-plan PR gate for this repo-scoped queue response. */
+  repoGate?: QueueRepoGate;
 }
 
 export interface QueuedTask {

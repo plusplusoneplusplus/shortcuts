@@ -137,6 +137,10 @@ export class QueueClient {
     return this.transport.request('/queue/resume', { method: 'POST', query: serializeQueueScope(scope) });
   }
 
+  releaseRepoGate(scope: QueueScope): Promise<QueueStatsResponse & { released: boolean; workspace?: string; repoId?: string }> {
+    return this.transport.request('/queue/repo-gate/release', { method: 'POST', query: serializeQueueScope(scope) });
+  }
+
   pauseAutopilot(scope?: QueueScope, options?: QueuePauseOptions): Promise<QueueStatsResponse & { isAutopilotPaused: boolean; autopilotPausedUntil?: number; repoId?: string }> {
     return this.transport.request('/queue/pause-autopilot', { method: 'POST', query: serializeQueueScope(scope), body: options });
   }
