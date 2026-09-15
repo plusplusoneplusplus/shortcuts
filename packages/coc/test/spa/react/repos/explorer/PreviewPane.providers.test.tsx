@@ -365,7 +365,9 @@ describe('PreviewPane — language providers (AC-03)', () => {
         expect(mockExplorerApi.searchSymbols).toHaveBeenCalledWith(
             'ws-1',
             'Widget',
-            { signal: expect.any(AbortSignal) },
+            // A definition peek asks for a short, ranked list rather than the route's
+            // generic search-palette limit of 100.
+            { limit: 10, signal: expect.any(AbortSignal) },
             'remote:ws-1',
         );
         expect(links[0].uri.toString()).toContain('include/widget.hpp#symbol-index-candidate');

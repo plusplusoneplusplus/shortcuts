@@ -139,6 +139,14 @@ impl From<tree_sitter::LanguageError> for ExtractError {
     }
 }
 
+/// The bundled `TAGS_QUERY` of neither grammar matches `#define`, so a macro definition produces
+/// no symbol at all while every invocation of it is picked up as a function declarator. Both
+/// grammars expose `preproc_def` and `preproc_function_def`, so one appended string serves both.
+const EXTRA_TAGS_QUERY: &str = r#"
+(preproc_def name: (identifier) @name) @definition.macro
+(preproc_function_def name: (identifier) @name) @definition.macro
+"#;
+
 pub struct SymbolExtractor {
     c: TagsConfiguration,
     cpp: TagsConfiguration,
@@ -148,8 +156,14 @@ pub struct SymbolExtractor {
 impl SymbolExtractor {
     pub fn new(limits: ExtractionLimits) -> Result<Self, ExtractError> {
         Ok(Self {
-            c: configuration(tree_sitter_c::LANGUAGE.into(), tree_sitter_c::TAGS_QUERY)?,
-            cpp: configuration(tree_sitter_cpp::LANGUAGE.into(), tree_sitter_cpp::TAGS_QUERY)?,
+            c: configuration(
+                tree_sitter_c::LANGUAGE.into(),
+                &format!("{}{EXTRA_TAGS_QUERY}", tree_sitter_c::TAGS_QUERY),
+            )?,
+            cpp: configuration(
+                tree_sitter_cpp::LANGUAGE.into(),
+                &format!("{}{EXTRA_TAGS_QUERY}", tree_sitter_cpp::TAGS_QUERY),
+            )?,
             limits,
         })
     }
@@ -208,7 +222,7 @@ impl SymbolExtractor {
             let position = name_node.start_position();
             symbols.push(Symbol {
                 name,
-                kind: kind.to_owned(),
+                kind: resolve_kind(kind, definition_node).to_owned(),
                 path: path.to_owned(),
                 line: u32::try_from(position.row).unwrap_or(u32::MAX).saturating_add(1),
                 column: utf16_column(source, name_node.start_byte()).saturating_add(1),
@@ -355,6 +369,35 @@ pub fn benchmark_repository(
         walk_time,
         extraction_time,
     })
+}
+
+/// `(function_declarator declarator: (identifier))` matches real definitions, plain prototypes and
+/// macro invocations in declaration position alike — only a real definition sits under a
+/// `function_definition`. Demote the rest to `prototype` so ranking can put definitions first.
+fn resolve_kind<'a>(kind: &'a str, definition_node: Node<'_>) -> &'a str {
+    if kind != "function" && kind != "method" {
+        return kind;
+    }
+    if has_function_definition_ancestor(definition_node) {
+        kind
+    } else {
+        "prototype"
+    }
+}
+
+fn has_function_definition_ancestor(node: Node<'_>) -> bool {
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        match parent.kind() {
+            "function_definition" => return true,
+            // `int *f() {}` nests the declarator, so the definition is a grandparent or higher.
+            "pointer_declarator" | "reference_declarator" | "parenthesized_declarator" => {
+                current = parent
+            }
+            _ => return false,
+        }
+    }
+    false
 }
 
 fn configuration(language: Language, tags_query: &str) -> Result<TagsConfiguration, ExtractError> {
@@ -529,6 +572,92 @@ mod tests {
         assert_eq!(function.line, 7);
         assert_eq!(function.column, 14);
         assert_eq!(function.docs.as_deref(), Some("Build a point from two coordinates."));
+    }
+
+    #[test]
+    fn extracts_object_like_and_function_like_macros() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        let source = "#define FOO 1\n#define BAR(x) ((x) + 1)\n";
+
+        let symbols = extractor.extract("src/macros.c", source.as_bytes()).expect("extraction");
+
+        let foo = symbols.iter().find(|symbol| symbol.name == "FOO").expect("object-like macro");
+        assert_eq!((foo.kind.as_str(), foo.line, foo.column), ("macro", 1, 9));
+        let bar = symbols.iter().find(|symbol| symbol.name == "BAR").expect("function-like macro");
+        assert_eq!((bar.kind.as_str(), bar.line, bar.column), ("macro", 2, 9));
+        assert_eq!(symbols.iter().filter(|symbol| symbol.kind == "macro").count(), 2);
+    }
+
+    #[test]
+    fn extracts_macros_from_headers() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+
+        let symbols = extractor
+            .extract("include/macros.h", "#define HEADER_MACRO(x) (x)\n".as_bytes())
+            .expect("header extraction");
+
+        assert!(symbols
+            .iter()
+            .any(|symbol| symbol.name == "HEADER_MACRO" && symbol.kind == "macro"));
+    }
+
+    #[test]
+    fn separates_prototypes_from_function_definitions() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        let source = "void declared();\nvoid defined() {}\n";
+
+        let symbols = extractor.extract("src/functions.c", source.as_bytes()).expect("extraction");
+
+        assert_eq!(kind_of(&symbols, "declared"), "prototype");
+        assert_eq!(kind_of(&symbols, "defined"), "function");
+    }
+
+    #[test]
+    fn pointer_and_reference_returning_definitions_stay_functions() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        let source = "int *pointer_returning() { return nullptr; }\nint &reference_returning() { static int value; return value; }\n";
+
+        let symbols = extractor.extract("src/returns.cpp", source.as_bytes()).expect("extraction");
+
+        assert_eq!(kind_of(&symbols, "pointer_returning"), "function");
+        assert_eq!(kind_of(&symbols, "reference_returning"), "function");
+    }
+
+    #[test]
+    fn macro_invocations_in_a_struct_body_are_not_functions() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        let source = "struct Info {\n  FIELD(int, x, 0);\n};\n";
+
+        let symbols = extractor.extract("src/invocation.h", source.as_bytes()).expect("extraction");
+
+        assert_eq!(kind_of(&symbols, "FIELD"), "prototype");
+        assert!(!symbols.iter().any(|symbol| symbol.kind == "function"));
+    }
+
+    #[test]
+    fn out_of_line_member_definitions_stay_methods() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        let source = "struct Foo { void bar(); };\nvoid Foo::bar() {}\n";
+
+        let symbols = extractor.extract("src/member.cpp", source.as_bytes()).expect("extraction");
+
+        assert!(symbols.iter().any(|symbol| symbol.name == "bar" && symbol.kind == "method"));
+        assert!(symbols.iter().any(|symbol| symbol.name == "bar" && symbol.kind == "prototype"));
+    }
+
+    fn kind_of<'a>(symbols: &'a [Symbol], name: &str) -> &'a str {
+        symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("symbol {name} was not extracted"))
+            .kind
+            .as_str()
     }
 
     #[test]

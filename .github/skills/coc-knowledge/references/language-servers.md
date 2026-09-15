@@ -73,7 +73,13 @@ through the same `initializationOptions.fallbackFlags` path.
 C and C++ go-to-definition combines clangd locations with the owning workspace's
 persistent symbol-index candidates in the Monaco provider. Exact locations sort
 first, results are deduplicated by file and line, and candidate URIs carry a
-`symbol-index-candidate` fragment. Explorer and unified-panel tabs preserve that
+`symbol-index-candidate` fragment. Within the candidates, the index itself ranks
+definitions above declarations — `macro`, `class`, `type`, `method`, `function`,
+then `prototype` — before falling back to path, line and column. A macro's
+`#define` therefore outranks its call sites, which the index records as
+`prototype` because they parse as function declarators with no enclosing
+`function_definition`. The definition peek asks for ten candidates rather than
+the route's generic search-palette limit of 100. Explorer and unified-panel tabs preserve that
 provenance and show an amber `Symbol candidate` pill on the destination until a
 plain or exact cross-file open replaces it. The index continues to answer when
 clangd is disabled, unavailable, or does not advertise definition support.

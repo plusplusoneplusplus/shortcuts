@@ -52,6 +52,9 @@ import {
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
+/** How many symbol-index candidates a go-to-definition jump asks for. */
+const DEFINITION_CANDIDATE_LIMIT = 10;
+
 export interface PreviewPaneProps {
     repoId: string;
     /** Concrete clone identity for file I/O and language transport routing. */
@@ -205,7 +208,10 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     const response = await explorerApi.searchSymbols(
                         repoId,
                         name,
-                        { signal },
+                        // The route's generic limit of 100 suits a search palette, not a
+                        // definition peek: the index ranks definitions first, so a handful
+                        // of rows is all a jump can usefully show.
+                        { limit: DEFINITION_CANDIDATE_LIMIT, signal },
                         routingRef,
                     );
                     return response.results;
