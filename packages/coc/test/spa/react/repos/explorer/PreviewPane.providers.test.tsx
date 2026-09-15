@@ -118,7 +118,24 @@ const monacoStub = vi.hoisted(() => {
                 },
             },
         },
-        editor: {},
+        // The pane builds a real navigation controller off this editor the
+        // moment a model mounts, so the stub has to answer the six calls that
+        // controller makes. A fixed cursor is enough: this suite is about
+        // providers, and the navigation behaviour itself is pinned in
+        // `PreviewPane.navigation.test.tsx`.
+        editor: {
+            getSelection: () => ({
+                selectionStartLineNumber: 1,
+                selectionStartColumn: 1,
+                positionLineNumber: 1,
+                positionColumn: 1,
+            }),
+            saveViewState: () => ({ cursorState: [], viewState: {}, contributionsState: {} }),
+            restoreViewState: () => undefined,
+            setSelection: () => undefined,
+            onDidChangeCursorSelection: () => ({ dispose: () => undefined }),
+            onDidScrollChange: () => ({ dispose: () => undefined }),
+        },
         model: {
             languageId: 'typescript',
             uri: { toString: () => 'coc-file://ws-1/src/a.ts' },
@@ -129,9 +146,16 @@ const monacoStub = vi.hoisted(() => {
     };
 });
 
-vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', async () => {
+// Only the React component is faked. Everything else the module exports —
+// `createEditorNavigationController` above all — is kept real, because the pane
+// calls it on model mount: replacing the whole module would leave that call
+// reaching for an export the mock never defined, and every test here would die
+// on a bare `<div />`.
+vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', async importOriginal => {
+    const actual = await importOriginal<typeof import('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor')>();
     const { useEffect } = await import('react');
     return {
+        ...actual,
         MonacoFileEditor: ({ value, onModelMount }: any) => {
             useEffect(() => {
                 if (!onModelMount) return;
@@ -200,6 +224,34 @@ afterEach(() => {
 });
 
 describe('PreviewPane — language providers (AC-03)', () => {
+    // Regression guard. The pane builds its navigation handle from a
+    // non-component export of the editor module, and this suite fakes that
+    // module. When the fake replaced it wholesale the export went missing, the
+    // mount effect threw before a single provider was registered, and all
+    // fourteen tests below failed against an empty DOM with nothing pointing at
+    // the cause. Asserting the handle here fails first, and says why.
+    it('builds its navigation handle from the real editor module on mount', async () => {
+        const onNavigationMount = vi.fn();
+        const onNavigationLocation = vi.fn();
+        renderPane({ onNavigationMount, onNavigationLocation });
+
+        await waitFor(() => expect(onNavigationMount).toHaveBeenCalled());
+        const controller = onNavigationMount.mock.calls[0][0];
+        expect(controller).not.toBeNull();
+        // The handle answers out of the mounted editor, not out of a stub the
+        // mock invented — that is what the missing export cost us.
+        expect(controller.capture()).toEqual({
+            selection: {
+                selectionStartLineNumber: 1,
+                selectionStartColumn: 1,
+                positionLineNumber: 1,
+                positionColumn: 1,
+            },
+            viewState: { cursorState: [], viewState: {}, contributionsState: {} },
+        });
+        expect(onNavigationLocation).toHaveBeenCalledWith(controller.capture(), 'programmatic');
+    });
+
     it('registers the selected features under the document’s shadow language', async () => {
         renderPane();
         const attachment = await attachmentFor('src/a.ts');
