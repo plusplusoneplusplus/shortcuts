@@ -6,6 +6,8 @@ import { describe, it, expect } from 'vitest';
 import { parseSlashCommands, getSlashCommandContext, isMetaCommand, META_COMMANDS, getActiveMetaCommands, getFileMentionContext } from '../../../src/server/spa/client/react/features/chat/slash-command-parser';
 
 const AVAILABLE_SKILLS = ['impl', 'go-deep', 'draft', 'pipeline-generator', 'review'];
+const ALL_FEATURES = { cronEnabled: true, canvasEnabled: true };
+const NO_FEATURES = { cronEnabled: false, canvasEnabled: false };
 
 // ============================================================================
 // parseSlashCommands
@@ -255,6 +257,10 @@ describe('META_COMMANDS constant', () => {
     it('contains compact', () => {
         expect(META_COMMANDS).toContain('compact');
     });
+
+    it('contains canvas', () => {
+        expect(META_COMMANDS).toContain('canvas');
+    });
 });
 
 // ============================================================================
@@ -295,8 +301,8 @@ describe('parseSlashCommands — /compact meta-command', () => {
 describe('getActiveMetaCommands — compact always active', () => {
     it('includes "compact" regardless of the cron feature flag', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        expect(getActiveMetaCommands(true)).toContain('compact');
-        expect(getActiveMetaCommands(false)).toContain('compact');
+        expect(getActiveMetaCommands(ALL_FEATURES)).toContain('compact');
+        expect(getActiveMetaCommands(NO_FEATURES)).toContain('compact');
     });
 });
 
@@ -356,7 +362,7 @@ describe('parseSlashCommands — /delegate meta-command', () => {
     });
 
     it('is unaffected by the cron feature flag', () => {
-        const result = parseSlashCommands('/delegate Review the plan', [], getActiveMetaCommands(false));
+        const result = parseSlashCommands('/delegate Review the plan', [], getActiveMetaCommands(NO_FEATURES));
         expect(result.metaCommands).toContain('delegate');
         expect(result.prompt).toBe('Review the plan');
     });
@@ -375,34 +381,56 @@ describe('parseSlashCommands — /delegate meta-command', () => {
 describe('getActiveMetaCommands', () => {
     it('includes "cron" when cron feature is enabled', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        expect(getActiveMetaCommands(true)).toContain('cron');
-        expect(getActiveMetaCommands(true)).toContain('model');
+        expect(getActiveMetaCommands(ALL_FEATURES)).toContain('cron');
+        expect(getActiveMetaCommands(ALL_FEATURES)).toContain('model');
     });
 
     it('excludes "cron" when cron feature is disabled', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        expect(getActiveMetaCommands(false)).not.toContain('cron');
-        expect(getActiveMetaCommands(false)).toContain('model');
+        expect(getActiveMetaCommands(NO_FEATURES)).not.toContain('cron');
+        expect(getActiveMetaCommands(NO_FEATURES)).toContain('model');
     });
 });
 
 describe('parseSlashCommands with restricted meta-commands', () => {
     it('does not match /cron when meta-commands excludes "cron"', async () => {
         const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        const result = parseSlashCommands('/cron every 5m', [], getActiveMetaCommands(false));
+        const result = parseSlashCommands('/cron every 5m', [], getActiveMetaCommands(NO_FEATURES));
         expect(result.metaCommands).not.toContain('cron');
     });
 
     it('still matches /model when meta-commands excludes "cron"', async () => {
         const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        const result = parseSlashCommands('/model gpt-5', [], getActiveMetaCommands(false));
+        const result = parseSlashCommands('/model gpt-5', [], getActiveMetaCommands(NO_FEATURES));
         expect(result.metaCommands).toContain('model');
     });
 
     it('matches /cron when meta-commands includes "cron"', async () => {
         const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        const result = parseSlashCommands('/cron every 5m', [], getActiveMetaCommands(true));
+        const result = parseSlashCommands('/cron every 5m', [], getActiveMetaCommands(ALL_FEATURES));
         expect(result.metaCommands).toContain('cron');
+    });
+});
+
+describe('parseSlashCommands — /canvas meta-command', () => {
+    it('strips /canvas and preserves the artifact request', () => {
+        const result = parseSlashCommands(
+            '/canvas write a rollout plan',
+            [],
+            getActiveMetaCommands(ALL_FEATURES),
+        );
+        expect(result.metaCommands).toContain('canvas');
+        expect(result.prompt).toBe('write a rollout plan');
+    });
+
+    it('leaves /canvas as ordinary prompt text when canvas is disabled', () => {
+        const result = parseSlashCommands(
+            '/canvas write a rollout plan',
+            [],
+            getActiveMetaCommands({ cronEnabled: true, canvasEnabled: false }),
+        );
+        expect(result.metaCommands).not.toContain('canvas');
+        expect(result.prompt).toBe('/canvas write a rollout plan');
     });
 });
 

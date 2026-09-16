@@ -779,6 +779,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'map-reduce',
     'grill-me',
     'cron',
+    'canvas',
     'ultra-ralph',
     'classify-diff',
     'dream',

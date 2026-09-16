@@ -165,6 +165,53 @@ describe('SKILL.md metadata', () => {
         }
     });
 
+    it('registers canvas and resolves its canvas-tool contract', () => {
+        const entry = getBundledSkillsRegistry().find(skill => skill.name === 'canvas');
+        expect(entry).toMatchObject({
+            name: 'canvas',
+            description: 'Create or update a written, visual, code, or interactive artifact in the canvas. Use when the user selects /canvas or asks to put the result in a canvas.',
+            relativePath: 'canvas',
+        });
+
+        const skillFile = path.join(bundledPath, entry!.relativePath, 'SKILL.md');
+        const content = fs.readFileSync(skillFile, 'utf-8').replace(/\r\n/g, '\n');
+        const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+        expect(fmMatch, 'canvas/SKILL.md should have YAML frontmatter').toBeTruthy();
+        expect(yaml.parse(fmMatch![1])).toMatchObject({
+            name: 'canvas',
+            description: entry!.description,
+            metadata: { author: 'CoC', version: '0.0.1' },
+        });
+
+        const body = fmMatch![2];
+        for (const guidance of ['write_canvas', 'read_canvas', 'extension_canvas', 'expectedRevision', 'canvas://<id>']) {
+            expect(body).toContain(guidance);
+        }
+        expect(body).toContain('type: "excalidraw"');
+        expect(body).toContain('language: "svg"');
+        expect(body).toContain('/canvas build an interactive revenue dashboard');
+    });
+
+    it('uses current canvas tools in the Excalidraw skill', () => {
+        const entry = getBundledSkillsRegistry().find(skill => skill.name === 'excalidraw-diagram');
+        expect(entry?.description).toContain('write_canvas');
+        expect(entry?.description).toContain('canvas://');
+        expect(entry?.description).not.toContain('excalidraw://');
+
+        const content = fs.readFileSync(
+            path.join(bundledPath, 'excalidraw-diagram', 'SKILL.md'),
+            'utf-8',
+        );
+        expect(content).toContain('write_canvas');
+        expect(content).toContain('read_canvas');
+        expect(content).toContain('type: "excalidraw"');
+        expect(content).toContain('canvas://<id>');
+        expect(content).not.toContain('create_or_update_excalidraw');
+        expect(content).not.toContain('read_excalidraw');
+        expect(content).not.toContain('excalidraw://');
+        expect(content).not.toContain('/diagrams/');
+    });
+
     it('every bundled SKILL.md has valid YAML frontmatter with metadata.version', () => {
         const skillDirs = fs.readdirSync(bundledPath).filter(d =>
             fs.statSync(path.join(bundledPath, d)).isDirectory()

@@ -8,6 +8,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { SlashCommandMenu, META_SKILL_ITEMS, getMetaSkillItems, mergeSkillsWithMeta, orderSkillItems, effectiveKind, type SkillItem } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
 
+const ALL_FEATURES = { cronEnabled: true, canvasEnabled: true };
+const NO_FEATURES = { cronEnabled: false, canvasEnabled: false };
+
 /** Read the kind icon's `data-kind` for a given menu row. */
 function rowKind(row: Element): string | null {
     return row.querySelector('[data-testid="slash-command-kind-icon"]')?.getAttribute('data-kind') ?? null;
@@ -175,6 +178,22 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(onSelect).toHaveBeenCalledWith('test');
     });
 
+    it('mouse-down on the canvas row selects canvas', () => {
+        const onSelect = vi.fn();
+        render(
+            <SlashCommandMenu
+                skills={META_SKILL_ITEMS}
+                filter="can"
+                onSelect={onSelect}
+                onDismiss={() => {}}
+                visible={true}
+                highlightIndex={0}
+            />,
+        );
+        fireEvent.mouseDown(document.querySelector('[data-menu-item]')!);
+        expect(onSelect).toHaveBeenCalledWith('canvas');
+    });
+
     it('renders the description text alongside each command', () => {
         render(
             <SlashCommandMenu
@@ -251,6 +270,15 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(delegate?.kind).toBe('builtin');
     });
 
+    it('META_SKILL_ITEMS includes canvas with its description and argument hint', () => {
+        const canvas = META_SKILL_ITEMS.find(s => s.name === 'canvas');
+        expect(canvas).toMatchObject({
+            description: 'Create or update a canvas',
+            args: '<what to create>',
+            kind: 'builtin',
+        });
+    });
+
     it('shows a single /delegate row when the delegate skill is also installed', () => {
         const merged = mergeSkillsWithMeta(
             [{ name: 'delegate', description: 'Delegate a job from the current chat' }],
@@ -282,25 +310,30 @@ describe('SlashCommandMenu (redesigned card)', () => {
 
 describe('getMetaSkillItems', () => {
     it('includes cron when crons are enabled', () => {
-        const items = getMetaSkillItems(true);
+        const items = getMetaSkillItems(ALL_FEATURES);
         expect(items.find(s => s.name === 'cron')).toBeDefined();
         expect(items.find(s => s.name === 'model')).toBeDefined();
     });
 
     it('excludes cron when crons are disabled', () => {
-        const items = getMetaSkillItems(false);
+        const items = getMetaSkillItems(NO_FEATURES);
         expect(items.find(s => s.name === 'cron')).toBeUndefined();
         expect(items.find(s => s.name === 'model')).toBeDefined();
     });
 
     it('always includes compact regardless of the cron flag', () => {
-        expect(getMetaSkillItems(true).find(s => s.name === 'compact')).toBeDefined();
-        expect(getMetaSkillItems(false).find(s => s.name === 'compact')).toBeDefined();
+        expect(getMetaSkillItems(ALL_FEATURES).find(s => s.name === 'compact')).toBeDefined();
+        expect(getMetaSkillItems(NO_FEATURES).find(s => s.name === 'compact')).toBeDefined();
     });
 
     it('always includes delegate regardless of the cron flag', () => {
-        expect(getMetaSkillItems(true).find(s => s.name === 'delegate')).toBeDefined();
-        expect(getMetaSkillItems(false).find(s => s.name === 'delegate')).toBeDefined();
+        expect(getMetaSkillItems(ALL_FEATURES).find(s => s.name === 'delegate')).toBeDefined();
+        expect(getMetaSkillItems(NO_FEATURES).find(s => s.name === 'delegate')).toBeDefined();
+    });
+
+    it('includes canvas only when canvas is enabled', () => {
+        expect(getMetaSkillItems(ALL_FEATURES).find(s => s.name === 'canvas')).toBeDefined();
+        expect(getMetaSkillItems(NO_FEATURES).find(s => s.name === 'canvas')).toBeUndefined();
     });
 });
 
@@ -376,6 +409,25 @@ describe('mergeSkillsWithMeta', () => {
         const serverSkills = [{ name: 'impl', description: 'Implement code' }];
         const merged = mergeSkillsWithMeta(serverSkills, []);
         expect(merged).toEqual([{ name: 'impl', description: 'Implement code', kind: 'skill' }]);
+    });
+
+    it('removes both the built-in canvas row and an installed canvas skill when disabled', () => {
+        const merged = mergeSkillsWithMeta(
+            [{ name: 'canvas', description: 'Installed canvas skill' }, { name: 'impl' }],
+            META_SKILL_ITEMS,
+            { cronEnabled: true, canvasEnabled: false },
+        );
+        expect(merged.find(item => item.name === 'canvas')).toBeUndefined();
+        expect(merged.find(item => item.name === 'impl')).toBeDefined();
+    });
+
+    it('uses the concise command description for an installed canvas skill', () => {
+        const merged = mergeSkillsWithMeta(
+            [{ name: 'canvas', description: 'Long skill-browser description' }],
+            META_SKILL_ITEMS,
+            ALL_FEATURES,
+        );
+        expect(merged.find(item => item.name === 'canvas')?.description).toBe('Create or update a canvas');
     });
 
     it('tags server skills as kind "skill" and appended meta items as kind "builtin"', () => {

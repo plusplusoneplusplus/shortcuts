@@ -22,7 +22,10 @@ const skillsWithMeta: SkillItem[] = [
     { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
     { name: 'model', description: 'Switch AI model' },
     { name: 'delegate', description: 'Delegate a task to a new conversation', args: '[provider] <task>' },
+    { name: 'canvas', description: 'Create or update a canvas', args: '<what to create>' },
 ];
+
+const ALL_FEATURES = { cronEnabled: true, canvasEnabled: true };
 
 /** Trigger the menu by simulating typing "/im" at position 3 */
 function openMenu(result: ReturnType<typeof useSlashCommands>) {
@@ -238,6 +241,14 @@ describe('useSlashCommands', () => {
             act(() => { result.current.handleInputChange('/sub-delegate', 13); });
             expect(result.current.activeCommandHint).toBeNull();
         });
+
+        it('shows the canvas artifact hint until request text is entered', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta, ALL_FEATURES));
+            act(() => { result.current.handleInputChange('/canvas ', 8); });
+            expect(result.current.activeCommandHint).toBe('<what to create>');
+            act(() => { result.current.handleInputChange('/canvas draw auth', 17); });
+            expect(result.current.activeCommandHint).toBeNull();
+        });
     });
 
     describe('parseAndExtract', () => {
@@ -261,6 +272,43 @@ describe('useSlashCommands', () => {
             expect(parsed.skills).toContain('delegate');
             expect(parsed.prompt).toBe('');
         });
+
+        it('turns /canvas into the selected canvas skill and preserves the request', () => {
+            const { result } = renderHook(() => useSlashCommands(skillsWithMeta, ALL_FEATURES));
+            const parsed = result.current.parseAndExtract('/canvas build a revenue dashboard');
+            expect(parsed.metaCommands).toContain('canvas');
+            expect(parsed.skills).toContain('canvas');
+            expect(parsed.prompt).toBe('build a revenue dashboard');
+        });
+
+        it('does not activate /canvas when the canvas feature is disabled', () => {
+            const { result } = renderHook(() => useSlashCommands(
+                skillsWithMeta.filter(skill => skill.name !== 'canvas'),
+                { cronEnabled: true, canvasEnabled: false },
+            ));
+            const parsed = result.current.parseAndExtract('/canvas build a dashboard');
+            expect(parsed.metaCommands).not.toContain('canvas');
+            expect(parsed.skills).not.toContain('canvas');
+            expect(parsed.prompt).toBe('/canvas build a dashboard');
+        });
+    });
+
+    it('inserts /canvas followed by a space for menu selection', () => {
+        const { result } = renderHook(() => useSlashCommands(skillsWithMeta, ALL_FEATURES));
+        const setText = vi.fn();
+        act(() => { result.current.handleInputChange('/can', 4); });
+        act(() => { result.current.selectSkill('canvas', '/can', setText); });
+        expect(setText).toHaveBeenCalledWith('/canvas ');
+    });
+
+    it.each(['Enter', 'Tab'])('%s consumes the canvas menu selection key', key => {
+        const { result } = renderHook(() => useSlashCommands(skillsWithMeta, ALL_FEATURES));
+        act(() => { result.current.handleInputChange('/can', 4); });
+        const event = { key, preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLElement>;
+        let consumed = false;
+        act(() => { consumed = result.current.handleKeyDown(event); });
+        expect(consumed).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalled();
     });
 
     // filteredSkills must be built-in-first so the hook's highlightIndex→item
