@@ -150,7 +150,10 @@ all have their own `references/*.md`.
   updates use temp-file rename, preserve prior dispositions, and evict missing,
   archived, or resolved-for-more-than-30-days entries. The deterministic board
   groups active judgments by bucket; unchecking a renderer-owned item resolves it
-  and deleting one mutes it.
+  and deleting one mutes it. Each tick folds edits before reconciliation and
+  publishes `Board.md` through the Notes optimistic-write contract, retrying
+  conflicts rather than clobbering an editor. `Sentinel.md` is created once with
+  editable defaults and never overwritten.
 - **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
   at least the default cron TTL from the current time, without shortening a
   longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A

@@ -7,6 +7,13 @@ import type {
     SentinelBucket,
     SentinelClassificationResult,
 } from './sentinel-classifier';
+import {
+    createSentinelBoardStorage,
+    foldSentinelBoardEdits,
+    renderSentinelBoard,
+    SENTINEL_BOARD_WRITE_ATTEMPTS,
+    type SentinelBoardStorage,
+} from './sentinel-board';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -44,6 +51,7 @@ export interface PersistSentinelClassificationOptions {
     classification: SentinelClassificationResult;
     now?: Date;
     resolvedRetentionMs?: number;
+    boardStorage?: SentinelBoardStorage;
 }
 
 const BUCKETS = new Set<SentinelBucket>([
@@ -289,21 +297,43 @@ export async function persistSentinelClassification(
 ): Promise<SentinelWatchlist | undefined> {
     const filePath = getSentinelWatchlistPath(options.dataDir, options.workspaceId);
     return withSentinelWatchlistLock(filePath, async () => {
-        const watchlist = await readSentinelWatchlistFile(filePath);
-        if (!watchlist || watchlist.sentinelProcessId !== options.sentinelProcessId) {
-            return undefined;
+        const boardStorage = options.boardStorage
+            ?? createSentinelBoardStorage(options.dataDir, options.workspaceId);
+        await boardStorage.ensureConfig();
+
+        for (let attempt = 0; attempt < SENTINEL_BOARD_WRITE_ATTEMPTS; attempt++) {
+            const watchlist = await readSentinelWatchlistFile(filePath);
+            if (!watchlist || watchlist.sentinelProcessId !== options.sentinelProcessId) {
+                return undefined;
+            }
+            const board = await boardStorage.readBoard();
+            const now = options.now ?? new Date();
+            const withBoardEdits = foldSentinelBoardEdits(watchlist, board?.content ?? '', now);
+            const processes = (await options.processStore.getAllProcesses({
+                workspaceId: options.workspaceId,
+            })).filter(process => process.metadata?.workspaceId === options.workspaceId);
+            const reconciled = reconcileSentinelWatchlist(
+                withBoardEdits,
+                options.classification,
+                processes,
+                now,
+                options.resolvedRetentionMs,
+            );
+            const renderedBoard = renderSentinelBoard(options.workspaceId, reconciled, processes);
+            const nextWatchlist = { ...reconciled, lastRenderedBoard: renderedBoard };
+
+            if (board?.content !== renderedBoard) {
+                const written = await boardStorage.writeBoard(renderedBoard, board?.mtimeMs);
+                if (!written) {
+                    continue;
+                }
+            }
+            await writeSentinelWatchlistFile(filePath, nextWatchlist);
+            return nextWatchlist;
         }
-        const processes = (await options.processStore.getAllProcesses({
-            workspaceId: options.workspaceId,
-        })).filter(process => process.metadata?.workspaceId === options.workspaceId);
-        const reconciled = reconcileSentinelWatchlist(
-            watchlist,
-            options.classification,
-            processes,
-            options.now ?? new Date(),
-            options.resolvedRetentionMs,
+
+        throw new Error(
+            `Sentinel board changed during ${SENTINEL_BOARD_WRITE_ATTEMPTS} write attempts`,
         );
-        await writeSentinelWatchlistFile(filePath, reconciled);
-        return reconciled;
     });
 }

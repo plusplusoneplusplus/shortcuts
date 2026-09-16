@@ -1,4 +1,8 @@
 import type { AIProcess } from '@plusplusoneplusplus/forge';
+import { loadNativeNotesFs, toNotesFsError } from '@plusplusoneplusplus/coc-native';
+import * as fs from 'fs';
+import * as path from 'path';
+import { getRepoDataPath } from '../paths';
 import type {
     SentinelDisposition,
     SentinelWatchlist,
@@ -8,6 +12,14 @@ import type { SentinelBucket } from './sentinel-classifier';
 
 const BOARD_ITEM_MARKER = '<!-- sentinel:item:';
 const BOARD_ITEM_PATTERN = /^- \[([ xX])\] .* <!-- sentinel:item:([^ ]+) -->$/;
+export const SENTINEL_BOARD_WRITE_ATTEMPTS = 3;
+export const SENTINEL_CONFIG_TEMPLATE = `# Sentinel
+
+tickInterval: 1h
+recencyWindow: 7d
+mute: []
+maxNudgesPerChat: 3
+`;
 const BUCKETS: Array<{ bucket: SentinelBucket; heading: string }> = [
     { bucket: 'blocked-on-you', heading: 'Blocked on you' },
     { bucket: 'failed', heading: 'Failed' },
@@ -15,6 +27,91 @@ const BUCKETS: Array<{ bucket: SentinelBucket; heading: string }> = [
     { bucket: 'loose-ends', heading: 'Loose ends' },
     { bucket: 'done-unread', heading: 'Done, unread' },
 ];
+
+export interface SentinelBoardSnapshot {
+    content: string;
+    mtimeMs: number;
+}
+
+export interface SentinelBoardStorage {
+    readBoard(): Promise<SentinelBoardSnapshot | undefined>;
+    writeBoard(content: string, expectedMtimeMs?: number): Promise<boolean>;
+    ensureConfig(): Promise<void>;
+}
+
+function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {
+    return error instanceof Error && 'code' in error && error.code === code;
+}
+
+export function createSentinelBoardStorage(
+    dataDir: string,
+    workspaceId: string,
+): SentinelBoardStorage {
+    const notesRoot = getRepoDataPath(dataDir, workspaceId, 'notes');
+    const sentinelDirectory = path.join(notesRoot, 'Sentinel');
+    const boardPath = path.join(sentinelDirectory, 'Board.md');
+    const configPath = path.join(sentinelDirectory, 'Sentinel.md');
+    const contentOptions = {
+        isDefaultRoot: true,
+        allowedPrefixes: [path.dirname(notesRoot)],
+    };
+
+    return {
+        async readBoard() {
+            try {
+                const note = await loadNativeNotesFs().readNote(
+                    notesRoot,
+                    'Sentinel/Board.md',
+                    contentOptions,
+                );
+                return { content: note.content, mtimeMs: note.mtimeMs };
+            } catch (error) {
+                if (toNotesFsError(error).statusCode === 404) {
+                    return undefined;
+                }
+                throw error;
+            }
+        },
+        async writeBoard(content, expectedMtimeMs) {
+            await fs.promises.mkdir(sentinelDirectory, { recursive: true });
+            if (expectedMtimeMs === undefined) {
+                try {
+                    await fs.promises.writeFile(boardPath, content, {
+                        encoding: 'utf8',
+                        flag: 'wx',
+                    });
+                    return true;
+                } catch (error) {
+                    if (isNodeError(error, 'EEXIST')) {
+                        return false;
+                    }
+                    throw error;
+                }
+            }
+            const result = await loadNativeNotesFs().writeNote(
+                notesRoot,
+                'Sentinel/Board.md',
+                content,
+                expectedMtimeMs,
+                contentOptions,
+            );
+            return result.status === 'written';
+        },
+        async ensureConfig() {
+            await fs.promises.mkdir(sentinelDirectory, { recursive: true });
+            try {
+                await fs.promises.writeFile(configPath, SENTINEL_CONFIG_TEMPLATE, {
+                    encoding: 'utf8',
+                    flag: 'wx',
+                });
+            } catch (error) {
+                if (!isNodeError(error, 'EEXIST')) {
+                    throw error;
+                }
+            }
+        },
+    };
+}
 
 function oneLine(value: string): string {
     return value.replace(/\s+/g, ' ').trim();

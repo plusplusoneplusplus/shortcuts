@@ -1,16 +1,28 @@
 import type { AIProcess } from '@plusplusoneplusplus/forge';
-import { describe, expect, it } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
+    createSentinelBoardStorage,
     foldSentinelBoardEdits,
     renderSentinelBoard,
 } from '../../../src/server/sentinel/sentinel-board';
 import {
     createSentinelWatchlist,
+    getSentinelWatchlistPath,
     type SentinelWatchlist,
     type SentinelWatchlistEntry,
 } from '../../../src/server/sentinel/sentinel-watchlist';
 
 const NOW = new Date('2026-09-16T21:00:00.000Z');
+const tempDirs: string[] = [];
+
+afterEach(() => {
+    for (const directory of tempDirs.splice(0)) {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
 
 function makeEntry(
     processId: string,
@@ -50,6 +62,33 @@ function withRenderedBoard(entries: SentinelWatchlistEntry[]): {
 }
 
 describe('Sentinel board', () => {
+    it('creates files once and rejects stale board writes', async () => {
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-board-'));
+        tempDirs.push(dataDir);
+        const storage = createSentinelBoardStorage(dataDir, 'workspace-a');
+
+        await expect(storage.readBoard()).resolves.toBeUndefined();
+        await storage.ensureConfig();
+        const sentinelDirectory = path.dirname(
+            getSentinelWatchlistPath(dataDir, 'workspace-a'),
+        );
+        fs.writeFileSync(path.join(sentinelDirectory, 'Sentinel.md'), '# Custom\n', 'utf8');
+        await storage.ensureConfig();
+        expect(fs.readFileSync(path.join(sentinelDirectory, 'Sentinel.md'), 'utf8'))
+            .toBe('# Custom\n');
+
+        await expect(storage.writeBoard('first\n')).resolves.toBe(true);
+        const first = await storage.readBoard();
+        expect(first?.content).toBe('first\n');
+        await expect(storage.writeBoard('stale\n', (first?.mtimeMs ?? 0) - 1))
+            .resolves.toBe(false);
+        await expect(storage.readBoard()).resolves.toEqual(first);
+        await expect(storage.writeBoard('second\n', first?.mtimeMs)).resolves.toBe(true);
+        await expect(storage.readBoard()).resolves.toEqual(expect.objectContaining({
+            content: 'second\n',
+        }));
+    });
+
     it('renders active judgments deterministically by bucket and process id', () => {
         const watchlist: SentinelWatchlist = {
             ...createSentinelWatchlist('sentinel-a', NOW),

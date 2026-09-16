@@ -130,6 +130,8 @@ missing, empty, truncated, and older-version files; updates use temp-file rename
 The marker also stashes the last rendered board for restart-safe edit comparison.
 `sentinel-board.ts` renders active judgments deterministically by bucket and folds
 renderer-owned unchecked or deleted lines into resolved or muted dispositions.
+Tick persistence uses Notes optimistic writes and retries concurrent board edits
+before updating the stash. `Sentinel.md` is created once with editable defaults.
 
 ### Task Group Registry
 
