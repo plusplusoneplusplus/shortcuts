@@ -2,7 +2,7 @@
  * Unified task type model with mode-based AI dispatch for chat tasks.
  *
  *   CocTaskKind = 'chat' | 'run-workflow' | 'run-script' | 'pr-classification' | 'dream-run'
- *   ChatMode = 'ask' | 'autopilot' | 'ralph'
+ *   ChatMode = 'ask' | 'autopilot' | 'ralph' | 'sentinel'
  *
  * All former AI task types (follow-prompt, ai-clarification, code-review,
  * resolve-comments, task-generation, replicate-template, custom) are now
@@ -114,7 +114,7 @@ export type TaskType = 'chat' | 'run-workflow' | 'run-script' | 'dream-run';
 // ============================================================================
 
 /** Controls permissions and concurrency for chat tasks. */
-export type ChatMode = 'ask' | 'autopilot' | 'ralph';
+export type ChatMode = 'ask' | 'autopilot' | 'ralph' | 'sentinel';
 
 export interface InheritedLensChatMode {
     inherited: true;
@@ -138,6 +138,7 @@ const CHAT_MODE_NORMALIZATION: Record<LegacyChatMode, ChatMode> = {
     plan: 'ask',
     autopilot: 'autopilot',
     ralph: 'ralph',
+    sentinel: 'sentinel',
 };
 
 /** Normalize chat-mode values from persisted legacy data or older clients. */
@@ -156,6 +157,7 @@ const INSTRUCTION_MODE_MAP: Record<ChatMode, InstructionMode> = {
     ask: 'ask',
     autopilot: 'autopilot',
     ralph: 'autopilot',
+    sentinel: 'ask',
 };
 
 /** Returns the instruction folder name for a chat mode; legacy `plan` uses Ask instructions. */

@@ -8,7 +8,7 @@ import type { ChatMode } from '../../../../../src/server/spa/client/react/repos/
 describe('modeConfig', () => {
     describe('WORKFLOW_REGISTRY', () => {
         it('is the single source for supported chat modes and default visible modes', () => {
-            expect(WORKFLOW_REGISTRY.map(entry => entry.mode)).toEqual(['ask', 'autopilot', 'ralph', 'for-each', 'map-reduce']);
+            expect(WORKFLOW_REGISTRY.map(entry => entry.mode)).toEqual(['ask', 'autopilot', 'ralph', 'for-each', 'map-reduce', 'sentinel']);
             expect(DEFAULT_CHAT_MODES).toEqual(['ask', 'autopilot']);
         });
 
@@ -56,20 +56,20 @@ describe('modeConfig', () => {
             expect(getVisibleChatModes({
                 surface: 'new-chat',
                 category: 'workflow',
-                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true },
-            })).toEqual(['ralph', 'for-each', 'map-reduce']);
+                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true, sentinel: true },
+            })).toEqual(['ralph', 'for-each', 'map-reduce', 'sentinel']);
         });
 
         it('keeps workflow modes hidden from follow-up composers unless explicitly allowed', () => {
             expect(getVisibleChatModes({
                 surface: 'follow-up',
                 category: 'workflow',
-                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true },
+                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true, sentinel: true },
             })).toEqual([]);
             expect(getVisibleChatModes({
                 surface: 'follow-up',
                 category: 'workflow',
-                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true },
+                featureFlags: { ralph: true, 'for-each': true, 'map-reduce': true, sentinel: true },
                 allowedModes: ['ask', 'for-each', 'map-reduce'],
             })).toEqual(['for-each', 'map-reduce']);
         });
@@ -139,6 +139,7 @@ describe('modeConfig', () => {
             expect(MODE_LABELS).toHaveProperty('autopilot');
             expect(MODE_LABELS).toHaveProperty('ralph');
             expect(MODE_LABELS).toHaveProperty('for-each');
+            expect(MODE_LABELS).toHaveProperty('sentinel');
             expect(MODE_LABELS['for-each']).toContain('For Each');
             expect(MODE_LABELS).not.toHaveProperty('plan');
         });
@@ -150,13 +151,14 @@ describe('modeConfig', () => {
             expect(MODE_ICONS).toHaveProperty('autopilot');
             expect(MODE_ICONS).toHaveProperty('ralph');
             expect(MODE_ICONS).toHaveProperty('for-each');
+            expect(MODE_ICONS).toHaveProperty('sentinel');
             expect(MODE_ICONS).not.toHaveProperty('plan');
         });
     });
 
     describe('MODE_BORDER_COLORS', () => {
         it('has border and ring styles for active modes only', () => {
-            for (const mode of ['ask', 'autopilot', 'ralph', 'for-each'] as ChatMode[]) {
+            for (const mode of ['ask', 'autopilot', 'ralph', 'for-each', 'sentinel'] as ChatMode[]) {
                 expect(MODE_BORDER_COLORS[mode]).toHaveProperty('border');
                 expect(MODE_BORDER_COLORS[mode]).toHaveProperty('ring');
             }
@@ -171,6 +173,10 @@ describe('modeConfig', () => {
 
         it('preserves for-each as a UI mode', () => {
             expect(normalizeChatMode('for-each')).toBe('for-each');
+        });
+
+        it('preserves sentinel as a UI mode', () => {
+            expect(normalizeChatMode('sentinel')).toBe('sentinel');
         });
     });
 });

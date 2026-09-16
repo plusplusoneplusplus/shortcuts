@@ -608,6 +608,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-map-reduce-enabled',
         },
     }),
+    bool({
+        key: 'sentinel.enabled', default: false, runtime: 'live', runtimeFlag: 'sentinelEnabled',
+        ui: {
+            group: 'aiModes', order: 32, label: 'Sentinel Mode', badge: 'experimental',
+            hint: 'Monitor recent workspace chats and draft follow-ups for approval. Disabled by default.',
+            testId: 'toggle-sentinel-enabled',
+        },
+    }),
     {
         key: 'ralph.finalCheck.maxGapFixLoops',
         value: { kind: 'number', integer: true, min: 1 },

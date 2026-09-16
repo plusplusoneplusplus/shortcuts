@@ -192,6 +192,10 @@ export interface CLIConfig {
     mapReduce?: {
         enabled?: boolean;
     };
+    /** Sentinel chat supervision mode configuration. Disabled by default. */
+    sentinel?: {
+        enabled?: boolean;
+    };
     /**
      * Dangerous-command guard: screens ask-mode shell commands against a
      * built-in disallow list and asks the user before running a match.
@@ -558,6 +562,10 @@ export interface ResolvedCLIConfig {
     mapReduce: {
         enabled: boolean;
     };
+    /** Sentinel chat supervision mode configuration. */
+    sentinel: {
+        enabled: boolean;
+    };
     /** Dangerous-command guard for ask-mode shell commands. */
     dangerousCommandGuard: {
         enabled: boolean;
@@ -852,6 +860,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     mapReduce: {
+        enabled: false,
+    },
+    sentinel: {
         enabled: false,
     },
     dangerousCommandGuard: {

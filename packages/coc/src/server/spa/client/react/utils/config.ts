@@ -34,6 +34,7 @@ interface DashboardConfig {
     ralphEnabled?: boolean;
     forEachEnabled?: boolean;
     mapReduceEnabled?: boolean;
+    sentinelEnabled?: boolean;
     dangerousCommandGuardEnabled?: boolean;
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
@@ -394,6 +395,10 @@ export function isForEachEnabled(): boolean {
 
 export function isMapReduceEnabled(): boolean {
     return getConfig().mapReduceEnabled === true;
+}
+
+export function isSentinelEnabled(): boolean {
+    return getConfig().sentinelEnabled === true;
 }
 
 export function isVimNavigationEnabled(): boolean {

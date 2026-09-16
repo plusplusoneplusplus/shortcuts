@@ -127,6 +127,10 @@ all have their own `references/*.md`.
   auto-creates them, reports them through the tree response's `systemFolders`,
   and blocks renaming or deleting their roots. Repo-folder and task-derived
   roots do not create or report system folders.
+- **Sentinel chat mode** is a disabled-by-default workflow mode exposed only on
+  the New Chat surface through `sentinel.enabled`. Its registry identity uses a
+  shield icon with teal accents, and server mode normalization maps its base
+  instruction profile to read-only Ask.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service

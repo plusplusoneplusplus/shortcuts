@@ -64,6 +64,19 @@ export const WORKFLOW_REGISTRY = [
         featureFlag: 'map-reduce',
         surfaces: ['new-chat'],
     },
+    {
+        mode: 'sentinel',
+        icon: '🛡️',
+        label: 'Sentinel',
+        tooltip: 'Sentinel — monitor recent chats and draft follow-ups for approval',
+        dotClass: 'bg-teal-500',
+        border: 'border-teal-500 dark:border-teal-400',
+        ring: 'focus-within:ring-teal-500/30',
+        text: 'text-teal-600 dark:text-teal-400',
+        category: 'workflow',
+        featureFlag: 'sentinel',
+        surfaces: ['new-chat'],
+    },
 ] as const;
 
 export type WorkflowRegistryEntry = typeof WORKFLOW_REGISTRY[number];

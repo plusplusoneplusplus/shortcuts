@@ -88,6 +88,7 @@ export interface AdminResolvedConfig {
   servers?: { enabled?: boolean };
   forEach?: { enabled?: boolean };
   mapReduce?: { enabled?: boolean };
+  sentinel?: { enabled?: boolean };
   dreams?: {
     enabled?: boolean;
     provider?: AdminDefaultProvider;
@@ -187,6 +188,7 @@ export interface AdminConfigUpdate {
   'servers.enabled'?: boolean;
   'forEach.enabled'?: boolean;
   'mapReduce.enabled'?: boolean;
+  'sentinel.enabled'?: boolean;
   'dreams.enabled'?: boolean;
   'dreams.provider'?: AdminDefaultProvider | null;
   'dreams.model'?: string | null;
@@ -241,6 +243,7 @@ export interface RuntimeDashboardConfig {
     ralphEnabled: boolean;
     forEachEnabled: boolean;
     mapReduceEnabled: boolean;
+    sentinelEnabled: boolean;
     vimNavigationEnabled: boolean;
     cronEnabled: boolean;
     dreamsEnabled: boolean;

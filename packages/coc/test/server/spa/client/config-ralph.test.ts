@@ -9,6 +9,7 @@ describe('isRalphEnabled', () => {
     let isRalphEnabled: () => boolean;
     let isRalphMultiAgentGrillEnabled: () => boolean;
     let isForEachEnabled: () => boolean;
+    let isSentinelEnabled: () => boolean;
 
     beforeEach(async () => {
         // Fresh import each time to avoid module cache
@@ -16,6 +17,7 @@ describe('isRalphEnabled', () => {
         isRalphEnabled = mod.isRalphEnabled;
         isRalphMultiAgentGrillEnabled = mod.isRalphMultiAgentGrillEnabled;
         isForEachEnabled = mod.isForEachEnabled;
+        isSentinelEnabled = mod.isSentinelEnabled;
     });
 
     afterEach(() => {
@@ -56,5 +58,13 @@ describe('isRalphEnabled', () => {
 
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', forEachEnabled: true };
         expect(isForEachEnabled()).toBe(true);
+    });
+
+    it('returns true only when sentinelEnabled is true', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', sentinelEnabled: false };
+        expect(isSentinelEnabled()).toBe(false);
+
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', sentinelEnabled: true };
+        expect(isSentinelEnabled()).toBe(true);
     });
 });

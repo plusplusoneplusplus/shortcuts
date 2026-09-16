@@ -9,15 +9,16 @@
  * 4. Legacy `defaultModel` only as Copilot migration fallback
  * 5. undefined (CLI default)
  *
- * The `chatMode` parameter uses the UI chat modes ('ask' | 'autopilot' | 'ralph' | 'for-each').
- * 'autopilot', 'ralph', and 'for-each' map to the 'task' preference key.
+ * Ask uses the read-only preference key; every workflow and execution mode uses
+ * the task preference key.
  */
 
 import { useState, useEffect } from 'react';
 import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
 import { getActiveProvider } from '../utils/config';
+import type { ChatMode } from '../repos/modeConfig';
 
-export type ChatModeForModel = 'ask' | 'autopilot' | 'ralph' | 'for-each';
+export type ChatModeForModel = ChatMode;
 
 /** Map UI chat mode to the preference key used by the server. */
 function toPreferenceMode(chatMode: ChatModeForModel): string {

@@ -72,6 +72,11 @@ child start/continue endpoints. Map Reduce adds editable `maxParallel` and
 `reduceInstructions`. Run panes, group rows, and approval navigation live in
 [chat.md](chat.md).
 
+`Sentinel` (`sentinel.enabled`, internal value `sentinel`) is a workflow-category mode
+available only from New Chat. The central mode registry supplies its shield icon and teal
+accent. Server normalization recognizes it as a chat mode and maps its base instruction
+profile to Ask so supervisor turns stay read-only.
+
 ### Follow-up toolbar
 
 `FollowUpInputArea` lays out provider chip → `ModePillSelector` → model picker →

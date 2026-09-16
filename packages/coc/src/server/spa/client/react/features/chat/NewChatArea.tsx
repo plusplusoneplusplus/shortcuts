@@ -42,7 +42,7 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isCanvasEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isSentinelEnabled, isCanvasEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
@@ -441,6 +441,7 @@ export function InitialChatComposer({
             ralph: isRalphEnabled(),
             'for-each': isForEachEnabled(),
             'map-reduce': isMapReduceEnabled(),
+            sentinel: isSentinelEnabled(),
         }),
         [],
     );

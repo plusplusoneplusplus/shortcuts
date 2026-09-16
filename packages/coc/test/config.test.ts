@@ -63,6 +63,7 @@ describe('Config', () => {
             expect(DEFAULT_CONFIG.pullRequests.autoClassifyTeam).toBe(false);
             expect(DEFAULT_CONFIG.forEach).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.mapReduce).toEqual({ enabled: false });
+            expect(DEFAULT_CONFIG.sentinel).toEqual({ enabled: false });
             expect(DEFAULT_CONFIG.dreams).toEqual({
                 enabled: false,
                 idleCheckIntervalMs: 300_000,
@@ -1042,6 +1043,8 @@ timeout: 300
                 '  enabled: true',
                 'mapReduce:',
                 '  enabled: true',
+                'sentinel:',
+                '  enabled: true',
                 'dangerousCommandGuard:',
                 '  enabled: true',
                 'vimNavigation:',
@@ -1256,6 +1259,8 @@ timeout: 300
                 'forEach:',
                 '  enabled: false',
                 'mapReduce:',
+                '  enabled: true',
+                'sentinel:',
                 '  enabled: true',
                 'dangerousCommandGuard:',
                 '  enabled: true',
@@ -1496,6 +1501,9 @@ timeout: 300
                     "enabled": true,
                     "layout": "horizontal",
                   },
+                  "sentinel": {
+                    "enabled": true,
+                  },
                   "serve": {
                     "dataDir": "\${HOME}/.coc-test",
                     "host": "127.0.0.1",
@@ -1630,6 +1638,7 @@ timeout: 300
                   "ralph.finalCheck.maxGapFixLoops": "default",
                   "scratchpad.enabled": "file",
                   "scratchpad.layout": "file",
+                  "sentinel.enabled": "file",
                   "serve.dataDir": "file",
                   "serve.host": "file",
                   "serve.port": "file",
