@@ -55,6 +55,14 @@ import { explorerApi } from './explorerApi';
 /** How many symbol-index candidates a go-to-definition jump asks for. */
 const DEFINITION_CANDIDATE_LIMIT = 10;
 
+/**
+ * Index kinds that are declarations, not definitions. The index ranks definitions
+ * first, but Monaco re-sorts a multi-result Peek by path and focuses by cursor
+ * distance, so an unfiltered list can make a macro land on one of its call sites.
+ * Declarations remain available as a fallback when no definition was indexed.
+ */
+const DECLARATION_KINDS = new Set(['prototype']);
+
 export interface PreviewPaneProps {
     repoId: string;
     /** Concrete clone identity for file I/O and language transport routing. */
@@ -214,7 +222,8 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                         { limit: DEFINITION_CANDIDATE_LIMIT, signal },
                         routingRef,
                     );
-                    return response.results;
+                    const definitions = response.results.filter(result => !DECLARATION_KINDS.has(result.kind));
+                    return definitions.length > 0 ? definitions : response.results;
                 },
             }
             : undefined

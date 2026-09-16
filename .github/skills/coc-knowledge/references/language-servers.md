@@ -73,16 +73,17 @@ through the same `initializationOptions.fallbackFlags` path.
 C and C++ go-to-definition combines clangd locations with the owning workspace's
 persistent symbol-index candidates in the Monaco provider. Exact locations sort
 first, results are deduplicated by file and line, and candidate URIs carry a
-`symbol-index-candidate` fragment. Within the candidates, the index itself ranks
-definitions above declarations — `macro`, `class`, `type`, `method`, `function`,
-then `prototype` — before falling back to path, line and column. A macro's
-`#define` therefore outranks its call sites, which the index records as
-`prototype` because they parse as function declarators with no enclosing
-`function_definition`. The definition peek asks for ten candidates rather than
-the route's generic search-palette limit of 100. Explorer and unified-panel tabs preserve that
-provenance and show an amber `Symbol candidate` pill on the destination until a
-plain or exact cross-file open replaces it. The index continues to answer when
-clangd is disabled, unavailable, or does not advertise definition support.
+`symbol-index-candidate` fragment. The index ranks `macro`, `class`, `type`,
+`method`, and `function` definitions above `prototype` declarations. The Explorer
+definition lookup removes `prototype` rows whenever at least one definition is
+available, because Monaco re-sorts multi-result Peek lists independently of the
+index ranking. When the index returns declarations only, it keeps them as a useful
+fallback for pure-virtual and header-only declarations. The definition peek asks
+for ten candidates rather than the route's generic search-palette limit of 100.
+Explorer and unified-panel tabs preserve that provenance and show an amber
+`Symbol candidate` pill on the destination until a plain or exact cross-file open
+replaces it. The index continues to answer when clangd is disabled, unavailable,
+or does not advertise definition support.
 Cross-file locations from either source are prepared by the initiating editor's
 temporary `coc-file` preview source. A repository editor accepts only its own
 workspace; a repo-group editor also accepts every live member and reads through

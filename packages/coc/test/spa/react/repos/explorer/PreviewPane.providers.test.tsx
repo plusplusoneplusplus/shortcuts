@@ -228,7 +228,7 @@ describe('PreviewPane — language providers (AC-03)', () => {
     // non-component export of the editor module, and this suite fakes that
     // module. When the fake replaced it wholesale the export went missing, the
     // mount effect threw before a single provider was registered, and all
-    // fourteen tests below failed against an empty DOM with nothing pointing at
+    // tests below failed against an empty DOM with nothing pointing at
     // the cause. Asserting the handle here fails first, and says why.
     it('builds its navigation handle from the real editor module on mount', async () => {
         const onNavigationMount = vi.fn();
@@ -371,6 +371,95 @@ describe('PreviewPane — language providers (AC-03)', () => {
             'remote:ws-1',
         );
         expect(links[0].uri.toString()).toContain('include/widget.hpp#symbol-index-candidate');
+    });
+
+    it('keeps only the macro definition when the symbol index also returns call sites', async () => {
+        monacoStub.model.languageId = 'cpp';
+        renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
+        const attachment = await attachmentFor('src/a.cpp');
+        attachWith(attachment, { textDocumentSync: 1 });
+        mockExplorerApi.searchSymbols.mockResolvedValue({
+            indexed: true,
+            results: [
+                { name: 'Widget', kind: 'macro', path: 'include/Serde.h', line: 42, column: 9 },
+                { name: 'Widget', kind: 'prototype', path: 'src/a.cpp', line: 18, column: 5 },
+                { name: 'Widget', kind: 'prototype', path: 'src/z.cpp', line: 73, column: 3 },
+            ],
+        });
+
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
+        const links = await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+
+        expect(links).toHaveLength(1);
+        expect(links[0]).toMatchObject({
+            range: {
+                startLineNumber: 42,
+                startColumn: 9,
+                endLineNumber: 42,
+                endColumn: 9,
+            },
+        });
+        expect(links[0].uri.toString()).toBe('coc-file://ws-1/include/Serde.h#symbol-index-candidate');
+    });
+
+    it('keeps declarations when the symbol index has no definition', async () => {
+        monacoStub.model.languageId = 'cpp';
+        renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
+        const attachment = await attachmentFor('src/a.cpp');
+        attachWith(attachment, { textDocumentSync: 1 });
+        mockExplorerApi.searchSymbols.mockResolvedValue({
+            indexed: true,
+            results: [
+                { name: 'Widget', kind: 'prototype', path: 'include/a.hpp', line: 8, column: 2 },
+                { name: 'Widget', kind: 'prototype', path: 'include/b.hpp', line: 12, column: 4 },
+            ],
+        });
+
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
+        const links = await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+
+        expect(links.map((link: any) => link.uri.toString())).toEqual([
+            'coc-file://ws-1/include/a.hpp#symbol-index-candidate',
+            'coc-file://ws-1/include/b.hpp#symbol-index-candidate',
+        ]);
+    });
+
+    it('dedupes a macro definition that matches the exact language-server result', async () => {
+        monacoStub.model.languageId = 'cpp';
+        renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
+        const attachment = await attachmentFor('src/a.cpp');
+        attachWith(attachment, { textDocumentSync: 1, definitionProvider: true });
+        attachment.respond('textDocument/definition', () => ({
+            uri: 'coc-file://ws-1/include/Serde.h',
+            range: { start: { line: 41, character: 8 }, end: { line: 41, character: 14 } },
+        }));
+        mockExplorerApi.searchSymbols.mockResolvedValue({
+            indexed: true,
+            results: [
+                { name: 'Widget', kind: 'macro', path: 'include/Serde.h', line: 42, column: 9 },
+                { name: 'Widget', kind: 'prototype', path: 'src/a.cpp', line: 18, column: 5 },
+            ],
+        });
+
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
+        const links = await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+
+        expect(links).toHaveLength(1);
+        expect(links[0].uri.toString()).toBe('coc-file://ws-1/include/Serde.h');
+        expect(links[0].range.startLineNumber).toBe(42);
+        expect(links[0].range.startColumn).toBe(9);
     });
 
     it('routes repo-group definition previews across live members and rejects outsiders', async () => {
