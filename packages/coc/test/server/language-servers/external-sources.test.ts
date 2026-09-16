@@ -156,7 +156,11 @@ describe('authorized external source read', () => {
             return; // Windows without developer mode; the canonical check is covered above.
         }
         const grant = await grantFor(link);
-        expect(grant.canonicalPath).toBe(fs.realpathSync(real));
+        // `fs.promises.realpath` is the native resolver, so compare against the
+        // same one the production path uses. The sync `fs.realpathSync` is the
+        // JS resolver and leaves a Windows 8.3 short name (`RUNNER~1`) in place,
+        // which would make an identical file look like a different one.
+        expect(grant.canonicalPath).toBe(await fs.promises.realpath(real));
 
         // Repointing the name cannot redirect the read: the grant already
         // resolved to a file, and that file is what it stays bound to.
@@ -164,6 +168,20 @@ describe('authorized external source read', () => {
         fs.symlinkSync(decoy, link);
 
         expect(await readExternalSource(grant)).toMatchObject({ ok: true, content: 'authorized\n' });
+    });
+
+    it('canonicalizes to a spelling that survives the identity recheck', async () => {
+        // The read re-canonicalizes and compares against the stored path, so a
+        // canonical path that is not itself canonical would report `moved` for a
+        // file that never moved. Windows makes this concrete: `os.tmpdir()` can
+        // hand back an 8.3 short name, and only a resolver that expands it gives
+        // the same answer on both passes.
+        const file = path.join(tempDir(), 'stable.h');
+        fs.writeFileSync(file, '#pragma once\n', 'utf-8');
+        const grant = await grantFor(file);
+
+        expect(await canonicalizeExternalFile(grant.canonicalPath)).toBe(grant.canonicalPath);
+        expect(await readExternalSource(grant)).toMatchObject({ ok: true, content: '#pragma once\n' });
     });
 
     it('refuses a directory, a missing file, and a file replaced by one', async () => {
