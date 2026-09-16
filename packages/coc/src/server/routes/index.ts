@@ -408,6 +408,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
         await prepareTaskForEnqueue(input, {
+            dataDir,
+            store,
             getDefaultProvider: concreteDefaultProvider,
             resolveDefaultProvider,
             isAutoProviderRoutingActive,
@@ -578,6 +580,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         resolveDefaultProvider,
         isAutoProviderRoutingActive,
         getEffortTiersForProvider,
+        dataDir,
         state: queueGlobalState,
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {

@@ -89,6 +89,7 @@ export function normalizeGlobalQueueState(state: QueueGlobalState, now = Date.no
 export interface QueueRouteContext {
     bridge: MultiRepoQueueRouter;
     store: ProcessStore | undefined;
+    dataDir?: string;
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
     getDefaultProvider?: () => ChatProvider;

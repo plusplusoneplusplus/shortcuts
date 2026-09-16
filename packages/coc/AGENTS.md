@@ -135,7 +135,9 @@ all have their own `references/*.md`.
   `repos/<workspaceId>/notes/Sentinel/.watchlist.json`. Initial claims use
   exclusive file creation; live owners block a second claim, while missing,
   archived, failed, cancelled, or corrupt owners are reclaimed. A short claim
-  grace covers admission before the new process row exists.
+  grace covers admission before the new process row exists. Queue preparation
+  reserves the generated `queue_<taskId>` for every new Sentinel chat; a live
+  owner returns `409 SENTINEL_ALREADY_EXISTS` with open/replace actions.
 - **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
   at least the default cron TTL from the current time, without shortening a
   longer configured TTL. Other chat-mode crons retain fixed expiry behavior.
