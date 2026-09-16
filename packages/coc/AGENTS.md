@@ -140,7 +140,10 @@ all have their own `references/*.md`.
   owner returns `409 SENTINEL_ALREADY_EXISTS` with open/replace actions.
 - **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
   at least the default cron TTL from the current time, without shortening a
-  longer configured TTL. Other chat-mode crons retain fixed expiry behavior.
+  longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A
+  newly admitted Sentinel provisions one hourly process-bound cron from the
+  aggregate queue's `taskAdded` event; general cron tools and routes remain
+  gated by `cron.enabled`.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service

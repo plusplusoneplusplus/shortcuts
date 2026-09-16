@@ -173,13 +173,13 @@ Server-wide (unscoped by design): `GET /api/crons`, `GET /api/crons/:cronId`.
 
 ## Server Lifecycle
 
-- **Startup:** if `cron.enabled`, `CronStore` and `CronExecutor` are constructed and `executor.armAll()` restores timers for all active crons.
+- **Startup:** if `cron.enabled` or Sentinel is enabled, `CronStore` and `CronExecutor` are constructed. General cron startup restores every active timer; Sentinel-only startup restores only Sentinel timers. A newly admitted Sentinel provisions one hourly process-bound scan cron from the aggregate queue's successful `taskAdded` event.
 - **Shutdown:** `executor.shutdownAll()` disarms in-memory timers without changing persisted state. Active crons stay `active` and re-arm on next startup from `nextTickAt`; overdue ticks fire immediately.
 - **Config toggle:** `cron.enabled` is editable at runtime via `PUT /api/admin/config`, but infrastructure is constructed only at startup, so a restart is required for the change to take effect.
 
 ## Feature Gating
 
-When `cron.enabled = false`: `CronStore`/`CronExecutor` are not constructed, cron REST routes are not registered, `scheduleWakeup` is filtered out of `LLM_TOOL_REGISTRY` by `getEffectiveLlmToolRegistry()`, the `/cron` skill is not in the default auto-install list and its slash command is hidden from autocomplete, and `CronBadge`/`CronManagementPanel` are hidden.
+When `cron.enabled = false`: cron REST routes are not registered, `scheduleWakeup` is filtered out of `LLM_TOOL_REGISTRY` by `getEffectiveLlmToolRegistry()`, the `/cron` skill is not in the default auto-install list and its slash command is hidden from autocomplete, and `CronBadge`/`CronManagementPanel` are hidden. Sentinel may still construct and use the shared cron infrastructure internally.
 
 ## Relationship to Schedules
 

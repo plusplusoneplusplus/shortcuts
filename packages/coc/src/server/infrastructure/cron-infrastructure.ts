@@ -12,6 +12,7 @@ import { SqliteProcessStore, initializeDatabase, getLogger, LogCategory } from '
 import { CronStore } from '../cron/cron-store';
 import { CronExecutor } from '../cron/cron-executor';
 import type { CronEventEmit } from '../cron/cron-executor';
+import type { CronEntry } from '../cron/cron-types';
 import { WakeupStore } from '../cron/wakeup-store';
 import { WakeupExecutor } from '../cron/wakeup-executor';
 import type { WakeupEventEmit, WakeupExecuteFollowUp } from '../cron/wakeup-executor';
@@ -55,6 +56,8 @@ export interface CronInfrastructureOptions {
     executeFollowUp: WakeupExecuteFollowUp;
     /** Emit wakeup change events (for WebSocket broadcasting). Optional. */
     emitWakeup?: WakeupEventEmit;
+    /** Limit which persisted active crons are restored at startup. */
+    shouldArmCron?: (cron: CronEntry) => boolean;
 }
 
 // ============================================================================
@@ -96,7 +99,7 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
     });
 
     // Restore active cron timers from the persisted nextTickAt values.
-    cronExecutor.armAll();
+    cronExecutor.armAll(options.shouldArmCron);
 
     // Durable one-shot wakeups. Prune stale terminal rows, then re-arm all
     // pending wakeups from persisted `firesAt` (overdue ones fire immediately)

@@ -86,8 +86,8 @@ export class CronExecutor {
      * Arm timers for all active crons.
      * Called once at server startup after crons are loaded from the DB.
      */
-    armAll(): void {
-        this.scheduler.armAll(this.deps.store.getActive());
+    armAll(predicate: (cron: CronEntry) => boolean = () => true): void {
+        this.scheduler.armAll(this.deps.store.getActive().filter(predicate));
     }
 
     /**

@@ -165,6 +165,18 @@ describe('CronExecutor', () => {
             expect(timerRegistry._timers.has('cron_2')).toBe(true);
             expect(timerRegistry._timers.has('cron_3')).toBe(false);
         });
+
+        it('arms only active crons accepted by the startup predicate', () => {
+            const { deps, store, timerRegistry } = createDeps();
+            store.insert(makeCron({ id: 'cron_general', description: 'General cron' }));
+            store.insert(makeCron({ id: 'cron_sentinel', description: 'Sentinel workspace scan' }));
+
+            const executor = new CronExecutor(deps);
+            executor.armAll(cron => cron.description === 'Sentinel workspace scan');
+
+            expect(timerRegistry._timers.has('cron_general')).toBe(false);
+            expect(timerRegistry._timers.has('cron_sentinel')).toBe(true);
+        });
     });
 
     describe('armTimer', () => {
