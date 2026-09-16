@@ -140,7 +140,9 @@ all have their own `references/*.md`.
   owner returns `409 SENTINEL_ALREADY_EXISTS` with open/replace actions.
   Confirmed replacement supplies the exact owner process ID, atomically transfers
   the marker, and cancels the old process-bound Sentinel cron without changing
-  the old transcript.
+  the old transcript. New Chat handles an ownership conflict with a confirmation
+  dialog that can open the named owner or resubmit the preserved draft with that
+  exact ID as the replacement guard.
 - **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
   at least the default cron TTL from the current time, without shortening a
   longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A
