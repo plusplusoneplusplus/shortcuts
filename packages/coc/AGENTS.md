@@ -154,8 +154,12 @@ all have their own `references/*.md`.
 - **Sentinel classification** reads only the owning workspace's process records.
   It excludes every Sentinel and all descendants transitively, then classifies
   recent, unarchived chats into blocked, failed/stale, long-queued, loose-end,
-  and completed-unread buckets. Loose-end judgment receives only final turns in
-  one batch; low-confidence judgments are ignored.
+  and completed-unread buckets. Each scheduled or manual Sentinel tick runs the
+  classifier once before its follow-up is enqueued. Loose-end judgment uses one
+  tool-free `transform` call over final turns and accepts only a complete set of
+  known process IDs, the fixed `loose-end | ignore` enum, and finite confidence
+  values. Invalid model output fails the tick; low-confidence judgments are
+  ignored.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service

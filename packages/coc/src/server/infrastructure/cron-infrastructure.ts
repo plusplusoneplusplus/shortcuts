@@ -7,7 +7,7 @@
 
 import DatabaseConstructor from 'better-sqlite3';
 import type Database from 'better-sqlite3';
-import type { TaskQueueManager, ProcessStore } from '@plusplusoneplusplus/forge';
+import type { ISDKService, TaskQueueManager, ProcessStore } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, initializeDatabase, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { CronStore } from '../cron/cron-store';
 import { CronExecutor } from '../cron/cron-executor';
@@ -18,6 +18,11 @@ import { WakeupExecutor } from '../cron/wakeup-executor';
 import type { WakeupEventEmit, WakeupExecuteFollowUp } from '../cron/wakeup-executor';
 import { WAKEUP_RETENTION_MS } from '../cron/wakeup-types';
 import { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
+import {
+    scanSentinelWorkspace,
+    type SentinelSeenStateReader,
+} from '../sentinel/sentinel-classifier';
+import { createSentinelLooseEndJudge } from '../sentinel/sentinel-loose-end-judge';
 
 // ============================================================================
 // Types
@@ -45,6 +50,8 @@ export interface CronInfrastructureOptions {
     queueFacade: TaskQueueManager;
     /** Process store instance (SQLite DB is extracted from SqliteProcessStore). */
     store: ProcessStore;
+    /** Stateless AI service used for Sentinel's batched loose-end judgment. */
+    aiService: Pick<ISDKService, 'transform'>;
     /** Emit cron change events (for WebSocket broadcasting). */
     emit: CronEventEmit;
     /** Resolve processId → workspaceId for multi-repo routing. */
@@ -88,6 +95,10 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
 
     const cronStore = new CronStore(db);
     const timerRegistry = new ScheduleTimerRegistry();
+    const seenStateStore = store as ProcessStore & Partial<SentinelSeenStateReader>;
+    const seenStateReader = typeof seenStateStore.getSeenMap === 'function'
+        ? { getSeenMap: (workspaceId: string) => seenStateStore.getSeenMap!(workspaceId) }
+        : undefined;
 
     const cronExecutor = new CronExecutor({
         store: cronStore,
@@ -96,6 +107,18 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
         queueManager: queueFacade,
         emit,
         resolveWorkspaceId,
+        runSentinelTick: async (process, workspaceId) => {
+            const model = typeof process.metadata?.model === 'string'
+                ? process.metadata.model
+                : undefined;
+            await scanSentinelWorkspace({
+                workspaceId,
+                sentinelProcessId: process.id,
+                processStore: store,
+                seenStateReader,
+                judgeLooseEnds: createSentinelLooseEndJudge(options.aiService, model),
+            });
+        },
     });
 
     // Restore active cron timers from the persisted nextTickAt values.

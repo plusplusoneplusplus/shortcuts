@@ -42,6 +42,8 @@ export interface CronExecutorDeps {
     emit: CronEventEmit;
     /** Resolve the repo/workspace ID for a given processId. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
+    /** Classify the workspace before enqueueing a Sentinel follow-up. */
+    runSentinelTick?: (process: AIProcess, workspaceId: string) => Promise<void>;
 }
 
 // ============================================================================
@@ -232,6 +234,15 @@ export class CronExecutor {
         // Enqueue follow-up
         try {
             this.inflight.add(cron.processId);
+            if (proc?.metadata?.mode === 'sentinel' && this.deps.runSentinelTick) {
+                const workspaceId = cron.workspaceId
+                    ?? (typeof proc.metadata.workspaceId === 'string' ? proc.metadata.workspaceId : undefined)
+                    ?? await this.deps.resolveWorkspaceId(cron.processId);
+                if (!workspaceId) {
+                    throw new Error(`Cannot resolve workspace for Sentinel process ${cron.processId}`);
+                }
+                await this.deps.runSentinelTick(proc, workspaceId);
+            }
             this.wakeupCounts.set(cron.processId, wakeupCount + 1);
             await this.enqueueFollowUp(cron);
         } catch (err) {

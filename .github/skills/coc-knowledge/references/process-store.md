@@ -115,9 +115,11 @@ empty chat. See [rest-api.md](rest-api.md).
 using current process fields rather than copying mutable facts into Sentinel state.
 It excludes all Sentinel processes and descendants whose `parentProcessId` chain
 reaches one, filters archived and old records, and classifies deterministic lifecycle
-buckets before making one batch loose-end judgment over final completed-chat turns.
-Low-confidence loose-end verdicts are ignored; pinned chats use lower queue and
-loose-end thresholds.
+buckets before making one tool-free `transform` call for all final completed-chat
+turns. The adapter requires exactly one verdict per known candidate, the fixed
+`loose-end | ignore` enum, and finite confidence from zero through one. Invalid
+output fails the tick; low-confidence verdicts are ignored, and pinned chats use
+lower queue and loose-end thresholds.
 
 ### Task Group Registry
 

@@ -516,6 +516,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             dataDir,
             queueFacade,
             store,
+            aiService: resolvedAiService,
             emit: (event) => {
                 try {
                     wsServer?.broadcastProcessEvent({
