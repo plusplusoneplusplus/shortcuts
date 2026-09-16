@@ -109,6 +109,16 @@ empty chat. See [rest-api.md](rest-api.md).
 `deleted_at` set. Seen-state, pin, and archive HTTP surfaces are catalogued in
 [rest-api.md](rest-api.md).
 
+### Sentinel classification
+
+`server/sentinel/sentinel-classifier.ts` scans one workspace through `ProcessStore`,
+using current process fields rather than copying mutable facts into Sentinel state.
+It excludes all Sentinel processes and descendants whose `parentProcessId` chain
+reaches one, filters archived and old records, and classifies deterministic lifecycle
+buckets before making one batch loose-end judgment over final completed-chat turns.
+Low-confidence loose-end verdicts are ignored; pinned chats use lower queue and
+loose-end thresholds.
+
 ### Task Group Registry
 
 `SqliteTaskGroupStore` (forge) owns `task_groups`/`task_group_members` over the shared database

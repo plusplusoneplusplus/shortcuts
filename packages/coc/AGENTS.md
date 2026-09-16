@@ -151,6 +151,11 @@ all have their own `references/*.md`.
   gated by `cron.enabled`. `POST /api/workspaces/:id/sentinel/check-now`
   validates the watchlist owner and immediately runs that cron's normal tick
   guards without creating another schedule.
+- **Sentinel classification** reads only the owning workspace's process records.
+  It excludes every Sentinel and all descendants transitively, then classifies
+  recent, unarchived chats into blocked, failed/stale, long-queued, loose-end,
+  and completed-unread buckets. Loose-end judgment receives only final turns in
+  one batch; low-confidence judgments are ignored.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service
