@@ -235,6 +235,7 @@ export interface RegisterRoutesOptions {
     mcpOauthManager?: McpOauthManager;
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     cronEmit?: CronEventEmit;
+    cancelSentinelCron?: (processId: string) => void;
     hostname?: string;
     bindAddress?: string;
     syncEngines?: Map<string, SyncEngine>;
@@ -414,6 +415,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             resolveDefaultProvider,
             isAutoProviderRoutingActive,
             getEffortTiersForProvider,
+            cancelSentinelCron: opts.cancelSentinelCron,
         });
     };
     const enqueueWithResolvedDefaults = async (input: CreateTaskInput): Promise<string> => {
@@ -581,6 +583,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         isAutoProviderRoutingActive,
         getEffortTiersForProvider,
         dataDir,
+        cancelSentinelCron: opts.cancelSentinelCron,
         state: queueGlobalState,
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {

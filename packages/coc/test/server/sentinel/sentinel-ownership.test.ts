@@ -107,6 +107,41 @@ describe('claimSentinelOwnership', () => {
         })).resolves.toEqual({ status: 'existing', processId: owner.id });
     });
 
+    it('replaces a live owner only when that exact process is confirmed', async () => {
+        const dataDir = makeTempDir();
+        const owner = makeSentinelProcess('sentinel-a', 'workspace-a');
+        const store = createMockProcessStore({ initialProcesses: [owner] });
+        writeOwner(dataDir, 'workspace-a', owner.id);
+
+        await expect(claimSentinelOwnership({
+            dataDir,
+            workspaceId: 'workspace-a',
+            processId: 'sentinel-b',
+            replaceProcessId: owner.id,
+            processStore: store,
+            now: () => NOW,
+        })).resolves.toEqual({ status: 'claimed', replacedProcessId: owner.id });
+
+        const record = JSON.parse(fs.readFileSync(watchlistPath(dataDir, 'workspace-a'), 'utf8'));
+        expect(record.sentinelProcessId).toBe('sentinel-b');
+    });
+
+    it('refuses replacement when the confirmed process is no longer the owner', async () => {
+        const dataDir = makeTempDir();
+        const owner = makeSentinelProcess('sentinel-newer', 'workspace-a');
+        const store = createMockProcessStore({ initialProcesses: [owner] });
+        writeOwner(dataDir, 'workspace-a', owner.id);
+
+        await expect(claimSentinelOwnership({
+            dataDir,
+            workspaceId: 'workspace-a',
+            processId: 'sentinel-b',
+            replaceProcessId: 'sentinel-older',
+            processStore: store,
+            now: () => NOW,
+        })).resolves.toEqual({ status: 'existing', processId: owner.id });
+    });
+
     it('temporarily preserves a fresh claim before its process row exists', async () => {
         const dataDir = makeTempDir();
         writeOwner(dataDir, 'workspace-a', 'sentinel-a', NOW.toISOString());

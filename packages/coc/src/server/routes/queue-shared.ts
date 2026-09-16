@@ -96,6 +96,7 @@ export interface QueueRouteContext {
     resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
     isAutoProviderRoutingActive?: () => boolean;
     getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
+    cancelSentinelCron?: (processId: string) => void;
 }
 
 export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {

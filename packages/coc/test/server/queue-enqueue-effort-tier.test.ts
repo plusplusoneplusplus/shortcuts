@@ -449,6 +449,43 @@ describe('prepareTaskForEnqueue', () => {
                 .rejects.toEqual(new SentinelAlreadyExistsError('queue_sentinel-first'));
         });
 
+        it('replaces the confirmed live owner and cancels only its tick', async () => {
+            const dataDir = makeDataDir();
+            const store = createMockProcessStore();
+            const first = makeInput({
+                id: 'sentinel-first',
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Watch this workspace',
+                    workspaceId: 'workspace-a',
+                },
+            });
+            await prepareSentinelAdmission(first, { dataDir, store });
+            const cancelSentinelCron = vi.fn();
+            const second = makeInput({
+                id: 'sentinel-second',
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Replace the old Sentinel',
+                    workspaceId: 'workspace-a',
+                    replaceSentinelProcessId: 'queue_sentinel-first',
+                },
+            });
+
+            await prepareSentinelAdmission(second, { dataDir, store, cancelSentinelCron });
+
+            expect(cancelSentinelCron).toHaveBeenCalledWith('queue_sentinel-first');
+            expect(second.payload.replaceSentinelProcessId).toBeUndefined();
+            const watchlist = JSON.parse(fs.readFileSync(path.join(
+                getRepoDataPath(dataDir, 'workspace-a', 'notes'),
+                'Sentinel',
+                '.watchlist.json',
+            ), 'utf8'));
+            expect(watchlist.sentinelProcessId).toBe('queue_sentinel-second');
+        });
+
         it('does not claim ownership for Sentinel follow-ups', async () => {
             const dataDir = makeDataDir();
             const input = makeInput({

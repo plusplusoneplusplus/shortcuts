@@ -138,6 +138,9 @@ all have their own `references/*.md`.
   grace covers admission before the new process row exists. Queue preparation
   reserves the generated `queue_<taskId>` for every new Sentinel chat; a live
   owner returns `409 SENTINEL_ALREADY_EXISTS` with open/replace actions.
+  Confirmed replacement supplies the exact owner process ID, atomically transfers
+  the marker, and cancels the old process-bound Sentinel cron without changing
+  the old transcript.
 - **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
   at least the default cron TTL from the current time, without shortening a
   longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A

@@ -173,7 +173,7 @@ Server-wide (unscoped by design): `GET /api/crons`, `GET /api/crons/:cronId`.
 
 ## Server Lifecycle
 
-- **Startup:** if `cron.enabled` or Sentinel is enabled, `CronStore` and `CronExecutor` are constructed. General cron startup restores every active timer; Sentinel-only startup restores only Sentinel timers. A newly admitted Sentinel provisions one hourly process-bound scan cron from the aggregate queue's successful `taskAdded` event.
+- **Startup:** if `cron.enabled` or Sentinel is enabled, `CronStore` and `CronExecutor` are constructed. General cron startup restores every active timer; Sentinel-only startup restores only Sentinel timers. A newly admitted Sentinel provisions one hourly process-bound scan cron from the aggregate queue's successful `taskAdded` event. Confirmed Sentinel replacement cancels and disarms the old process-bound scan cron while retaining the old conversation.
 - **Shutdown:** `executor.shutdownAll()` disarms in-memory timers without changing persisted state. Active crons stay `active` and re-arm on next startup from `nextTickAt`; overdue ticks fire immediately.
 - **Config toggle:** `cron.enabled` is editable at runtime via `PUT /api/admin/config`, but infrastructure is constructed only at startup, so a restart is required for the change to take effect.
 

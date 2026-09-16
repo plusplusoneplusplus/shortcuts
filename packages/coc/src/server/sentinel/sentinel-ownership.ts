@@ -23,6 +23,7 @@ export interface SentinelClaimOptions {
     workspaceId: string;
     processId: string;
     processStore: ProcessStore;
+    replaceProcessId?: string;
     now?: () => Date;
     claimGraceMs?: number;
 }
@@ -153,8 +154,10 @@ export async function claimSentinelOwnership(options: SentinelClaimOptions): Pro
                 current.sentinelProcessId,
                 options.workspaceId,
             );
-            if (isSentinelProcess(owner, options.workspaceId)
-                || isRecentUnvalidatedClaim(current, now(), claimGraceMs)) {
+            const ownerIsActive = isSentinelProcess(owner, options.workspaceId)
+                || isRecentUnvalidatedClaim(current, now(), claimGraceMs);
+            const confirmedReplacement = options.replaceProcessId === current.sentinelProcessId;
+            if (ownerIsActive && !confirmedReplacement) {
                 return { status: 'existing', processId: current.sentinelProcessId };
             }
         }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { CronStore } from '../../../src/server/cron/cron-store';
 import {
+    cancelSentinelCron,
     ensureSentinelCron,
     registerSentinelCronProvisioning,
     SENTINEL_CRON_DESCRIPTION,
@@ -149,6 +150,50 @@ describe('Sentinel cron provisioning', () => {
         });
 
         expect(harness.store.getAll()).toEqual([]);
+        harness.db.close();
+    });
+
+    it('cancels only the old process Sentinel cron during replacement', () => {
+        const harness = createHarness();
+        const task = {
+            id: 'sentinel-task',
+            type: 'chat',
+            priority: 'normal' as const,
+            status: 'queued' as const,
+            createdAt: harness.now.getTime(),
+            retryCount: 0,
+            payload: {
+                kind: 'chat',
+                mode: 'sentinel',
+                prompt: 'Supervise this workspace',
+                workspaceId: 'workspace-a',
+            },
+            config: {},
+        };
+        const cron = ensureSentinelCron(task, {
+            store: harness.store,
+            executor: { armTimer: harness.armTimer } as Pick<CronExecutor, 'armTimer'>,
+            now: () => harness.now,
+            createId: () => 'cron_sentinel',
+        })!;
+        const disarmTimer = vi.fn();
+
+        expect(cancelSentinelCron(cron.processId, {
+            store: harness.store,
+            executor: { disarmTimer },
+            emit: harness.emit,
+        })).toBe(1);
+
+        expect(harness.store.getById(cron.id)).toMatchObject({
+            status: 'cancelled',
+            nextTickAt: null,
+        });
+        expect(disarmTimer).toHaveBeenCalledWith(cron.id);
+        expect(harness.emit).toHaveBeenCalledWith({
+            type: 'cron-cancelled',
+            cron: expect.objectContaining({ id: cron.id, status: 'cancelled' }),
+        });
+        harness.dispose();
         harness.db.close();
     });
 });

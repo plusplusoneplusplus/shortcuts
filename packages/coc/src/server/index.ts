@@ -77,6 +77,7 @@ import { NotesSearchService } from './notes/notes-search-service';
 import { onRepoPreferencesChanged } from './preferences/repository';
 import { getDefaultSkillsToInstall } from './skills/default-skill-selection';
 import {
+    cancelSentinelCron,
     registerSentinelCronProvisioning,
     SENTINEL_CRON_DESCRIPTION,
 } from './sentinel/sentinel-cron';
@@ -791,6 +792,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         remoteServerConnector,
         remoteServerSshConnector,
         getLocalBaseUrl: () => localBaseUrl,
+        cancelSentinelCron: cronInfra
+            ? (processId) => cancelSentinelCron(processId, {
+                store: cronInfra!.cronStore,
+                executor: cronInfra!.cronExecutor,
+                emit: cronInfra!.emit,
+            })
+            : undefined,
         cronStore: cronEnabled ? cronInfra?.cronStore : undefined,
         cronExecutor: cronEnabled ? cronInfra?.cronExecutor : undefined,
         triggerStore: triggerInfra?.triggerStore,

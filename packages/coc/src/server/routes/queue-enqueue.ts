@@ -475,7 +475,7 @@ export async function prepareTaskForEnqueue(
     ctx: Pick<
         QueueRouteContext,
         'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive'
-        | 'getEffortTiersForProvider' | 'dataDir' | 'store'
+        | 'getEffortTiersForProvider' | 'dataDir' | 'store' | 'cancelSentinelCron'
     >,
 ): Promise<void> {
     await resolveDefaultProviderForTask(input, ctx);
@@ -490,7 +490,7 @@ export async function prepareTaskForEnqueue(
  */
 export async function prepareSentinelAdmission(
     input: CreateTaskInput,
-    ctx: Pick<QueueRouteContext, 'dataDir' | 'store'>,
+    ctx: Pick<QueueRouteContext, 'dataDir' | 'store' | 'cancelSentinelCron'>,
 ): Promise<void> {
     const payload = input.payload as Record<string, unknown>;
     if (input.type !== 'chat'
@@ -506,6 +506,12 @@ export async function prepareSentinelAdmission(
     if (!workspaceId) {
         throw new Error('Sentinel chats require a workspaceId');
     }
+    const replaceProcessId = typeof payload.replaceSentinelProcessId === 'string'
+        ? payload.replaceSentinelProcessId.trim()
+        : '';
+    if (replaceProcessId && !ctx.cancelSentinelCron) {
+        throw new Error('Sentinel replacement requires cron infrastructure');
+    }
 
     input.id ??= generateTaskId();
     const result = await claimSentinelOwnership({
@@ -513,9 +519,14 @@ export async function prepareSentinelAdmission(
         workspaceId,
         processId: toQueueProcessId(input.id),
         processStore: ctx.store,
+        ...(replaceProcessId ? { replaceProcessId } : {}),
     });
     if (result.status === 'existing') {
         throw new SentinelAlreadyExistsError(result.processId);
+    }
+    delete payload.replaceSentinelProcessId;
+    if (result.replacedProcessId) {
+        ctx.cancelSentinelCron?.(result.replacedProcessId);
     }
 }
 

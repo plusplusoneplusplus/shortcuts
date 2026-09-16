@@ -20,6 +20,12 @@ export interface SentinelCronProvisioningOptions {
     onError: (error: unknown, task: QueuedTask) => void;
 }
 
+export interface SentinelCronCancellationOptions {
+    store: Pick<CronStore, 'getByProcess' | 'update'>;
+    executor: Pick<CronExecutor, 'disarmTimer'>;
+    emit?: CronEventEmit;
+}
+
 function isNewSentinelTask(task: QueuedTask): boolean {
     return task.type === 'chat'
         && task.payload.kind === 'chat'
@@ -77,6 +83,24 @@ export function ensureSentinelCron(
     options.executor.armTimer(cron);
     safeEmit(options.emit, { type: 'cron-created', cron });
     return cron;
+}
+
+export function cancelSentinelCron(
+    processId: string,
+    options: SentinelCronCancellationOptions,
+): number {
+    const crons = options.store.getByProcess(processId)
+        .filter(cron => cron.description === SENTINEL_CRON_DESCRIPTION
+            && cron.status !== 'cancelled'
+            && cron.status !== 'expired');
+    for (const cron of crons) {
+        options.executor.disarmTimer(cron.id);
+        cron.status = 'cancelled';
+        cron.nextTickAt = null;
+        options.store.update(cron);
+        safeEmit(options.emit, { type: 'cron-cancelled', cron });
+    }
+    return crons.length;
 }
 
 export function registerSentinelCronProvisioning(options: SentinelCronProvisioningOptions): () => void {
