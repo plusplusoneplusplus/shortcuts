@@ -10,6 +10,7 @@ import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import {
     ContentSearchResults,
     groupMatchesByFile,
+    matchContextLine,
     splitMatchText,
     toggleCollapsedPath,
     trimDirectoryForDisplay,
@@ -133,6 +134,26 @@ describe('trimDirectoryForDisplay', () => {
     });
 });
 
+describe('matchContextLine', () => {
+    it('prefers the following source line', () => {
+        expect(matchContextLine(match({ before: ['before'], after: ['  after  '] }))).toBe('after');
+    });
+
+    it('falls back to the nearest preceding source line', () => {
+        expect(matchContextLine(match({ before: ['older', '  nearest  '], after: [] }))).toBe('nearest');
+    });
+
+    it('omits empty or unavailable context', () => {
+        expect(matchContextLine(match())).toBeNull();
+        expect(matchContextLine(match({ after: ['   '] }))).toBeNull();
+    });
+
+    it('skips blank following lines before falling back to earlier context', () => {
+        expect(matchContextLine(match({ before: ['earlier'], after: [' ', 'later'] }))).toBe('later');
+        expect(matchContextLine(match({ before: ['earlier'], after: [' '] }))).toBe('earlier');
+    });
+});
+
 describe('toggleCollapsedPath', () => {
     it('adds a path that is not collapsed and removes one that is', () => {
         expect(toggleCollapsedPath([], 'a.ts')).toEqual(['a.ts']);
@@ -167,12 +188,10 @@ describe('ContentSearchResults', () => {
         expect(rows.map(r => r.getAttribute('data-line'))).toEqual(['3', '9', '1']);
     });
 
-    it('shows no line-number gutter and no sticky header, as in VS Code', () => {
+    it('shows a line-number gutter and keeps file headers non-sticky', () => {
         render(<ContentSearchResults groups={groups} onOpenMatch={vi.fn()} />);
-        // The only text in a match row is the line itself; '3' and '9' would be
-        // the gutter values for the first file.
-        const row = screen.getAllByTestId('content-search-match')[0];
-        expect(row.textContent).toBe('const needle = 1;');
+        expect(screen.getAllByTestId('content-search-line-number').map(row => row.textContent))
+            .toEqual(['3', '9', '1']);
         for (const header of screen.getAllByTestId('content-search-file-header')) {
             expect(header.className).not.toContain('sticky');
         }
@@ -187,7 +206,7 @@ describe('ContentSearchResults', () => {
                 onOpenMatch={vi.fn()}
             />,
         );
-        expect(screen.getByTestId('content-search-match').textContent).toBe('const needle = 1;');
+        expect(screen.getByTestId('content-search-match')).toHaveTextContent('const needle = 1;');
     });
 
     it('highlights only the matched span', () => {
@@ -204,7 +223,7 @@ describe('ContentSearchResults', () => {
         expect(onOpenMatch).toHaveBeenCalledWith('src/app.ts', 9);
     });
 
-    it('keeps a very long line inside its own horizontally scrolling row', () => {
+    it('keeps a very long line inside a clipped snippet cell', () => {
         const long = `${'x'.repeat(4000)}needle${'y'.repeat(4000)}`;
         render(
             <ContentSearchResults
@@ -213,10 +232,21 @@ describe('ContentSearchResults', () => {
             />,
         );
         const row = screen.getByTestId('content-search-match');
-        const textSpan = row.querySelector('span.flex-1');
-        expect(textSpan?.className).toContain('overflow-x-auto');
-        expect(textSpan?.className).toContain('min-w-0');
+        const textSpan = row.querySelector('mark')?.parentElement;
+        expect(textSpan?.className).toContain('overflow-hidden');
+        expect(textSpan?.className).toContain('text-ellipsis');
         expect(row.querySelector('mark')?.textContent).toBe('needle');
+    });
+
+    it('renders one muted context line without including it in the highlight', () => {
+        render(
+            <ContentSearchResults
+                groups={groupMatchesByFile([match({ after: ['  return needle;  '] })])}
+                onOpenMatch={vi.fn()}
+            />,
+        );
+        expect(screen.getByTestId('content-search-context')).toHaveTextContent('return needle;');
+        expect(document.querySelectorAll('mark')).toHaveLength(1);
     });
 
     it('hides a collapsed group\'s matches but keeps its header and count', () => {

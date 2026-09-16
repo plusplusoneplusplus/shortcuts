@@ -2,9 +2,10 @@
  * ContentSearchResults — renders content-search hits as a collapsible tree,
  * grouped by file, the way VS Code's Search side bar does.
  *
- * One header row per file (twisty + file name + dimmed directory + match count),
- * and under it one row per match showing the matching line with the matched span
- * highlighted. Clicking a match asks the owner to open that file at that line.
+ * One two-line header per file (twisty + file name + directory + match-count
+ * badge), and under it one row per match showing a line-number gutter, the
+ * matching line with the matched span highlighted, and one nearby context line.
+ * Clicking a match asks the owner to open that file at that line.
  *
  * Two shapes, VS Code's "View as List" / "View as Tree":
  *  - `list` (default) is a flat sequence of file groups, each labelled with its
@@ -15,10 +16,7 @@
  * Directory rows collapse through the same `collapsed` path set as file rows —
  * a path is either a file or a directory, never both, so one set covers both.
  *
- * Two deliberate departures from the old flat list, both for VS Code parity:
- *  - match rows carry no line-number gutter (the line still rides along in
- *    `data-line`, which is what the click-through and the tests read);
- *  - the line's lead-in is capped for display, so every row keeps its matched
+ * The line's lead-in is capped for display, so every row keeps its matched
  *    span visible without changing the source columns used by replace.
  *
  * Headers are no longer sticky: the whole tree scrolls as one surface.
@@ -414,15 +412,16 @@ function dirName(path: string): string {
     return index < 0 ? '' : path.slice(0, index);
 }
 
-/** Row indentation in pixels for a nesting depth; depth 0 matches the old `px-2`. */
+/** Row indentation in pixels for a nesting depth. */
 const INDENT_STEP_PX = 12;
 const HEADER_BASE_PX = 8;
-const MATCH_BASE_PX = 28;
+const MATCH_BASE_PX = 20;
 
 const ROW_CLASS = cn(
-    'w-full flex items-baseline gap-1.5 pr-2 py-1 text-xs text-left',
+    'w-full flex items-center gap-1.5 pr-2 py-1.5 text-xs text-left',
     'bg-transparent border-none cursor-pointer',
-    'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]',
+    'hover:bg-[#f3f4f6] dark:hover:bg-[#2a2d2e]',
+    'focus:outline-none focus:bg-[#eaf3ff] dark:focus:bg-[#25364d]',
 );
 
 export interface ContentSearchResultsProps {
@@ -540,10 +539,27 @@ function Twisty({ collapsed }: { collapsed: boolean }) {
 
 function CountBadge({ count }: { count: number }) {
     return (
-        <span className="text-[#848484] flex-shrink-0" data-testid="content-search-file-count">
+        <span
+            className={cn(
+                'flex-shrink-0 min-w-5 h-5 px-1.5 inline-flex items-center justify-center',
+                'rounded-full bg-[#e8edf3] dark:bg-[#3a3d41] text-[#5f6b7a] dark:text-[#b8bcc2]',
+                'text-[10px] font-semibold leading-none',
+            )}
+            data-testid="content-search-file-count"
+        >
             {count}
         </span>
     );
+}
+
+/** One nearby line gives a hit meaning without turning each row into a code block. */
+export function matchContextLine(match: ExplorerContentMatch): string | null {
+    const candidates = [...match.after, ...[...match.before].reverse()];
+    for (const line of candidates) {
+        const trimmed = line.trim();
+        if (trimmed.length > 0) return trimmed;
+    }
+    return null;
 }
 
 /** One file group: its header row plus, when expanded, its match rows. */
@@ -559,7 +575,11 @@ function FileGroupRows(props: RowProps & {
     const rowProps: RowProps = props;
     const isCollapsed = collapsedSet.has(path);
     return (
-        <div data-testid="content-search-group" data-path={path}>
+        <div
+            className="border-t border-[#e8e8e8] dark:border-[#343434] first:border-t-0"
+            data-testid="content-search-group"
+            data-path={path}
+        >
             <div className="group relative flex items-center">
                 <button
                     type="button"
@@ -574,9 +594,15 @@ function FileGroupRows(props: RowProps & {
                     title={path}
                 >
                     <Twisty collapsed={isCollapsed} />
-                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">{name}</span>
-                    <span className="text-[#848484] truncate flex-1 min-w-0">
-                        {trimDirectoryForDisplay(directory)}
+                    <span className="flex-1 min-w-0 py-0.5">
+                        <span className="block font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                            {name}
+                        </span>
+                        {directory && (
+                            <span className="block text-[10px] leading-4 text-[#848484] truncate">
+                                {trimDirectoryForDisplay(directory)}
+                            </span>
+                        )}
                     </span>
                     <CountBadge count={matches.length} />
                 </button>
@@ -598,6 +624,7 @@ function FileGroupRows(props: RowProps & {
             </div>
             {!isCollapsed && matches.map(match => {
                 const { before, hit, after } = trimMatchForDisplay(splitMatchText(match));
+                const context = matchContextLine(match);
                 return (
                     <div key={`${match.line}:${match.startColumn}`} className="group relative flex items-center">
                         <button
@@ -605,23 +632,39 @@ function FileGroupRows(props: RowProps & {
                             {...rowFocusProps(matchRowKey(match), rowProps)}
                             onClick={() => onOpenMatch(match.path, match.line)}
                             className={cn(
-                                'flex-1 min-w-0 flex items-baseline gap-2 pr-3 py-0.5 text-left text-xs font-mono',
+                                'flex-1 min-w-0 grid grid-cols-[2.5rem_minmax(0,1fr)] pr-3 text-left text-xs',
                                 'bg-transparent border-none cursor-pointer',
-                                'hover:bg-[#e8e8e8] dark:hover:bg-[#2a2d2e]',
+                                'hover:bg-[#f3f4f6] dark:hover:bg-[#2a2d2e]',
+                                'focus:outline-none focus:bg-[#eaf3ff] dark:focus:bg-[#25364d]',
+                                'focus:shadow-[inset_2px_0_0_#0078d4]',
                             )}
                             style={{ paddingLeft: MATCH_BASE_PX + depth * INDENT_STEP_PX }}
                             data-testid="content-search-match"
                             data-path={match.path}
                             data-line={match.line}
                         >
-                            {/* Long lines scroll horizontally inside their own row rather
-                                than stretching the panel; the highlight stays inline. */}
-                            <span className="flex-1 min-w-0 overflow-x-auto whitespace-pre text-[#1e1e1e] dark:text-[#cccccc]">
-                                {before}
-                                <mark className="bg-[#fff2a8] dark:bg-[#623315] text-inherit rounded-sm">
-                                    {hit}
-                                </mark>
-                                {after}
+                            <span
+                                className="pr-2 pt-1.5 text-right text-[10px] leading-5 text-[#8a8f98] tabular-nums"
+                                data-testid="content-search-line-number"
+                            >
+                                {match.line}
+                            </span>
+                            <span className="min-w-0 border-l border-[#e1e5ea] dark:border-[#3c3c3c] px-2 py-1.5 font-mono">
+                                <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-pre text-[#1e1e1e] dark:text-[#cccccc]">
+                                    {before}
+                                    <mark className="bg-[#fff2a8] dark:bg-[#623315] text-inherit rounded-sm">
+                                        {hit}
+                                    </mark>
+                                    {after}
+                                </span>
+                                {context && (
+                                    <span
+                                        className="block min-w-0 overflow-hidden text-ellipsis whitespace-pre text-[10px] leading-4 text-[#8a8f98]"
+                                        data-testid="content-search-context"
+                                    >
+                                        {context}
+                                    </span>
+                                )}
                             </span>
                         </button>
                         {(onReplace || onDismiss) && (

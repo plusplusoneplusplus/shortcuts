@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import { Spinner } from '../../../ui';
+import { cn } from '../../../ui/cn';
 import { SearchBar, type SearchBarToggle } from './SearchBar';
 import { SearchFilters, SearchFiltersToggle } from './SearchFilters';
 import { ReplaceRow } from './ReplaceRow';
@@ -587,12 +588,18 @@ export function ContentSearchPanel({
             {state.status === 'success' && (
                 <>
                     <div
-                        className="px-2 py-1 text-[11px] text-[#848484] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        className="px-2 py-1.5 text-[11px] text-[#6b7280] dark:text-[#9ca3af] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
                         data-testid="content-search-summary"
                     >
-                        {state.matches.length} {state.matches.length === 1 ? 'result' : 'results'}
+                        <strong className="font-semibold text-[#374151] dark:text-[#d1d5db]">
+                            {state.matches.length}
+                        </strong>{' '}
+                        {state.matches.length === 1 ? 'match' : 'matches'}
                         {' in '}
-                        {fileCount} {fileCount === 1 ? 'file' : 'files'}
+                        <strong className="font-semibold text-[#374151] dark:text-[#d1d5db]">
+                            {fileCount}
+                        </strong>{' '}
+                        {fileCount === 1 ? 'file' : 'files'}
                         {dismissedCount > 0 && (
                             <>
                                 {' · '}
@@ -609,11 +616,19 @@ export function ContentSearchPanel({
                     </div>
                     {state.truncated && (
                         <div
-                            className="px-2 py-1 text-[11px] text-[#8a6d00] dark:text-[#d7ba7d] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            className={cn(
+                                'mx-2 my-2 px-2.5 py-2 rounded border text-[11px] leading-4',
+                                'bg-[#fff8df] border-[#f0d98c] text-[#7a5700]',
+                                'dark:bg-[#332b16] dark:border-[#665522] dark:text-[#d7ba7d]',
+                            )}
                             data-testid="content-search-truncated"
                         >
-                            Results truncated — showing the first 500 matches (max 20 per file, files
-                            over 1 MB skipped). Narrow the query to see the rest.
+                            <strong className="block font-semibold">
+                                Results truncated — showing the first 500 matches
+                            </strong>
+                            <span className="block opacity-80">
+                                20 matches per file · Files over 1 MB skipped
+                            </span>
                         </div>
                     )}
                     <ContentSearchResults

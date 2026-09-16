@@ -209,6 +209,11 @@ engine's own message, so it renders inline against the query box
 (`content-search-regex-error`); anything else is generic and retryable. Zero
 matches is the `empty` state, never an error.
 
+Result rows use the server's `line`, `before`, and `after` fields directly: the
+line number forms the navigation gutter, while one adjacent line provides compact
+context without another file read. File headers keep the repo-relative directory
+separate from the filename so long paths do not displace match counts.
+
 Clicking a match sets `previewFile` with a `line`, which threads through
 `PreviewPane` → `MonacoFileEditor.revealLine` → `revealEditorLine`. Monaco is
 revealed both on mount and from an effect keyed on `[revealLine, value]`, because
