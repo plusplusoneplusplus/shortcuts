@@ -11,6 +11,7 @@ describe('WorkspacesClient', () => {
     await client.register({ id: 'repo/a', name: 'Repo', rootPath: 'C:\\repo' });
     await client.getActiveWorkspaces();
     await client.reportActiveWorkspace({ clientId: 'dashboard-tab', workspaceId: 'repo/a' });
+    await client.checkSentinelNow('repo/a');
     await client.discover('C:\\repos');
     await client.browseFolders('C:\\repos', { showHidden: true });
     await client.summary('repo/a', { folder: 'workflows', showArchived: true });
@@ -34,6 +35,7 @@ describe('WorkspacesClient', () => {
       '/workspaces',
       '/workspaces/active',
       '/workspaces/active',
+      '/workspaces/repo%2Fa/sentinel/check-now',
       '/workspaces/discover',
       '/fs/browse',
       '/workspaces/repo%2Fa/summary',
@@ -56,29 +58,30 @@ describe('WorkspacesClient', () => {
       method: 'POST',
       body: { clientId: 'dashboard-tab', workspaceId: 'repo/a' },
     });
-    expect(adapter.calls[4].options?.query).toEqual({ path: 'C:\\repos' });
-    expect(adapter.calls[5].options?.query).toEqual({ path: 'C:\\repos', showHidden: true });
-    expect(adapter.calls[6].options?.query).toEqual({ folder: 'workflows', showArchived: true });
-    expect(adapter.calls[8].options).toMatchObject({
+    expect(adapter.calls[4].options).toMatchObject({ method: 'POST' });
+    expect(adapter.calls[5].options?.query).toEqual({ path: 'C:\\repos' });
+    expect(adapter.calls[6].options?.query).toEqual({ path: 'C:\\repos', showHidden: true });
+    expect(adapter.calls[7].options?.query).toEqual({ folder: 'workflows', showArchived: true });
+    expect(adapter.calls[9].options).toMatchObject({
       method: 'POST',
       body: { workspaceIds: ['repo/a', 'repo/b'] },
     });
-    expect(adapter.calls[10].options?.query).toEqual({ forceReload: true });
-    expect(adapter.calls[11].options).toMatchObject({
+    expect(adapter.calls[11].options?.query).toEqual({ forceReload: true });
+    expect(adapter.calls[12].options).toMatchObject({
       method: 'PUT',
       body: { enabledMcpServers: ['github'] },
     });
-    expect(adapter.calls[13].options).toMatchObject({
+    expect(adapter.calls[14].options).toMatchObject({
       method: 'PUT',
       body: { content: 'Ask carefully' },
     });
-    expect(adapter.calls[14].options).toMatchObject({ method: 'DELETE' });
-    expect(adapter.calls[15].options?.query).toEqual({ limit: 100, offset: 200 });
-    expect(adapter.calls[17].options).toMatchObject({
+    expect(adapter.calls[15].options).toMatchObject({ method: 'DELETE' });
+    expect(adapter.calls[16].options?.query).toEqual({ limit: 100, offset: 200 });
+    expect(adapter.calls[18].options).toMatchObject({
       method: 'POST',
       body: { actionItems: ['Review PR'] },
     });
-    expect(adapter.calls[19].options).toMatchObject({
+    expect(adapter.calls[20].options).toMatchObject({
       method: 'POST',
       body: { goals: ['Exercise'] },
     });
@@ -92,12 +95,14 @@ describe('WorkspacesClient', () => {
     await client.getMcpConfig('repo/a space/雪%done');
     await client.updateInstruction('repo/a space/雪%done', 'plan', { content: 'Plan' });
     await client.deleteHistory('repo/a space/雪%done', 'proc/1 snow/雪%done');
+    await client.checkSentinelNow('repo/a space/雪%done');
 
     expect(adapter.calls.map(c => c.path)).toEqual([
       '/workspaces/repo%2Fa%20space%2F%E9%9B%AA%25done/git-info',
       '/workspaces/repo%2Fa%20space%2F%E9%9B%AA%25done/mcp-config',
       '/workspaces/repo%2Fa%20space%2F%E9%9B%AA%25done/instructions/plan',
       '/workspaces/repo%2Fa%20space%2F%E9%9B%AA%25done/history/proc%2F1%20snow%2F%E9%9B%AA%25done',
+      '/workspaces/repo%2Fa%20space%2F%E9%9B%AA%25done/sentinel/check-now',
     ]);
   });
 

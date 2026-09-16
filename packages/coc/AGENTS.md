@@ -165,7 +165,8 @@ all have their own `references/*.md`.
   aggregate queue's `taskAdded` event; general cron tools and routes remain
   gated by `cron.enabled`. `POST /api/workspaces/:id/sentinel/check-now`
   validates the watchlist owner and immediately runs that cron's normal tick
-  guards without creating another schedule.
+  guards without creating another schedule. The active Sentinel chat header
+  exposes this route as a disabled-while-starting **Check now** action.
 - **Sentinel classification** reads only the owning workspace's process records.
   It excludes every Sentinel and all descendants transitively, then classifies
   recent, unarchived chats into blocked, failed/stale, long-queued, loose-end,

@@ -67,7 +67,10 @@ the agent tree popover, copy, and `ChatHeaderOverflowMenu`). Below 960px Referen
 into overflow and the pill goes icon-only; below 500px actions wrap to a second row. The
 left identity group is `flex-1 min-w-0 overflow-hidden` with an always `min-w-0 truncate`
 title, so the title yields width first and never bleeds under the non-shrinking action
-group. The `ConversationMetadataPopover` trigger stays inline at every tier.
+group. The `ConversationMetadataPopover` trigger stays inline at every tier. A
+feature-enabled Sentinel conversation adds a **Check now** action that calls its
+workspace-scoped immediate-tick endpoint, disables while starting, and reports the result
+through the shared toast surface.
 
 ### ConversationMetadataPopover
 

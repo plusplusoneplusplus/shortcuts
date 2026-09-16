@@ -32,6 +32,12 @@ describe('ChatDetail mode resolution', () => {
         })).toBe('ask');
     });
 
+    it('supports Sentinel mode from persisted metadata', () => {
+        expect(resolveLoadedTaskMode({
+            metadata: { mode: 'sentinel' },
+        })).toBe('sentinel');
+    });
+
     it('ignores unknown modes', () => {
         expect(resolveLoadedTaskMode({
             payload: { mode: 'unknown' },
@@ -54,5 +60,13 @@ describe('ChatDetail mode resolution', () => {
         expect(draftCheckIndex).toBeGreaterThan(-1);
         expect(taskModeIndex).toBeGreaterThan(-1);
         expect(draftCheckIndex).toBeLessThan(taskModeIndex);
+    });
+
+    it('exposes check-now only for a feature-enabled Sentinel chat', () => {
+        const source = readFileSync(CHAT_DETAIL_SOURCE, 'utf-8');
+
+        expect(source).toContain("const isSentinelChat = isSentinelEnabled() && resolveLoadedTaskMode(task) === 'sentinel';");
+        expect(source).toContain('onCheckSentinelNow={isSentinelChat ?');
+        expect(source).toContain('client.workspaces.checkSentinelNow(workspaceId)');
     });
 });
