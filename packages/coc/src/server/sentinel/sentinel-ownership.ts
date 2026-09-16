@@ -42,6 +42,17 @@ function watchlistPath(dataDir: string, workspaceId: string): string {
     );
 }
 
+export async function resolveLiveSentinelOwner(
+    dataDir: string,
+    workspaceId: string,
+    processStore: Pick<ProcessStore, 'getProcess'>,
+): Promise<AIProcess | undefined> {
+    const record = await readRecord(watchlistPath(dataDir, workspaceId));
+    if (!record) return undefined;
+    const process = await processStore.getProcess(record.sentinelProcessId, workspaceId);
+    return isSentinelProcess(process, workspaceId) ? process : undefined;
+}
+
 function createRecord(processId: string, now: Date): SentinelOwnershipRecord {
     return {
         version: SENTINEL_WATCHLIST_VERSION,

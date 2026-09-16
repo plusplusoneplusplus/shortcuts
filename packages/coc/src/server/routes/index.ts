@@ -164,6 +164,8 @@ import type { ResolveDefaultProviderOptions } from './queue-shared';
 import { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
 import { ActiveWorkspaceBackgroundRefresher } from '../dashboard/active-workspace-background-refresher';
 import type { NotesSearchService } from '../notes/notes-search-service';
+import { registerSentinelRoutes } from '../sentinel/sentinel-handler';
+import type { SentinelCheckNowResult } from '../sentinel/sentinel-cron';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 async function collectWorkItemCommits(
@@ -236,6 +238,7 @@ export interface RegisterRoutesOptions {
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     cronEmit?: CronEventEmit;
     cancelSentinelCron?: (processId: string) => void;
+    checkSentinelNow?: (workspaceId: string) => Promise<SentinelCheckNowResult>;
     hostname?: string;
     bindAddress?: string;
     syncEngines?: Map<string, SyncEngine>;
@@ -708,6 +711,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             emit: opts.cronEmit,
             resolveWorkspaceId: resolveProcessWorkspaceId,
         });
+    }
+    if (opts.checkSentinelNow) {
+        registerSentinelRoutes(routes, { checkNow: opts.checkSentinelNow });
     }
 
     // Trigger routes (generic event → action framework). Gated on the

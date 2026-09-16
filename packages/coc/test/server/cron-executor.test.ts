@@ -300,6 +300,18 @@ describe('CronExecutor', () => {
     // --------------------------------------------------------------------
 
     describe('onTick', () => {
+        it('runs the normal tick path immediately without waiting for the timer', async () => {
+            const { deps, store, queueManager, timerRegistry } = createDeps();
+            store.insert(makeCron({ id: 'cron_manual' }));
+            const executor = new CronExecutor(deps);
+
+            await executor.triggerNow('cron_manual');
+
+            expect(queueManager.enqueue).toHaveBeenCalledTimes(1);
+            expect(timerRegistry.set).not.toHaveBeenCalled();
+            expect(executor.isInflight('queue_proc_abc')).toBe(true);
+        });
+
         it('enqueues a follow-up when process is completed', async () => {
             const { deps, store, timerRegistry, queueManager } = createDeps();
             const cron = makeCron({ id: 'cron_tick', processId: 'queue_proc_abc' });

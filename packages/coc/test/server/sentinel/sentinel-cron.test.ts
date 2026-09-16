@@ -1,9 +1,14 @@
 import Database from 'better-sqlite3';
+import { rmSync } from 'fs';
+import { mkdir, mkdtemp, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import * as path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { CronStore } from '../../../src/server/cron/cron-store';
 import {
     cancelSentinelCron,
+    checkSentinelNow,
     ensureSentinelCron,
     registerSentinelCronProvisioning,
     SENTINEL_CRON_DESCRIPTION,
@@ -58,6 +63,7 @@ describe('Sentinel cron provisioning', () => {
             prompt: SENTINEL_TICK_PROMPT,
             status: 'active',
         });
+
         expect(cron.nextTickAt).toBe('2026-09-16T21:00:00.000Z');
         expect(harness.armTimer).toHaveBeenCalledWith(cron);
         expect(harness.emit).toHaveBeenCalledWith({ type: 'cron-created', cron });
@@ -195,5 +201,91 @@ describe('Sentinel cron provisioning', () => {
         });
         harness.dispose();
         harness.db.close();
+    });
+});
+
+describe('Sentinel manual check', () => {
+    it('fires the active cron owned by the workspace watchlist', async () => {
+        const dataDir = await mkdtemp(path.join(tmpdir(), 'sentinel-check-'));
+        const workspaceId = 'workspace-a';
+        const processId = 'queue_sentinel-task';
+        const watchlistDir = path.join(dataDir, 'repos', workspaceId, 'notes', 'Sentinel');
+        await mkdir(watchlistDir, { recursive: true });
+        await writeFile(path.join(watchlistDir, '.watchlist.json'), JSON.stringify({
+            version: 1,
+            sentinelProcessId: processId,
+            claimedAt: new Date().toISOString(),
+            excludedProcessIds: [processId],
+            entries: [],
+        }));
+        const triggerNow = vi.fn(async () => undefined);
+
+        const result = await checkSentinelNow(workspaceId, {
+            dataDir,
+            processStore: {
+                getProcess: vi.fn(async () => ({
+                    id: processId,
+                    status: 'completed',
+                    archived: false,
+                    metadata: { workspaceId, mode: 'sentinel' },
+                })),
+            },
+            store: {
+                getByProcess: vi.fn(() => [{
+                    id: 'cron_sentinel',
+                    processId,
+                    description: SENTINEL_CRON_DESCRIPTION,
+                    status: 'active',
+                }]),
+            } as Pick<CronStore, 'getByProcess'>,
+            executor: { isInflight: () => false, triggerNow },
+        });
+
+        expect(result).toEqual({ status: 'triggered', processId, cronId: 'cron_sentinel' });
+        expect(triggerNow).toHaveBeenCalledWith('cron_sentinel');
+        rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    it('does not fire for another workspace or while the Sentinel is busy', async () => {
+        const dataDir = await mkdtemp(path.join(tmpdir(), 'sentinel-check-'));
+        const watchlistDir = path.join(dataDir, 'repos', 'workspace-a', 'notes', 'Sentinel');
+        await mkdir(watchlistDir, { recursive: true });
+        await writeFile(path.join(watchlistDir, '.watchlist.json'), JSON.stringify({
+            sentinelProcessId: 'queue_sentinel-task',
+        }));
+        const triggerNow = vi.fn(async () => undefined);
+        const processStore = {
+            getProcess: vi.fn(async (_processId: string, workspaceId: string) => workspaceId === 'workspace-a'
+                ? {
+                    id: 'queue_sentinel-task',
+                    status: 'completed' as const,
+                    archived: false,
+                    metadata: { workspaceId, mode: 'sentinel' },
+                }
+                : undefined),
+        };
+
+        await expect(checkSentinelNow('workspace-b', {
+            dataDir,
+            processStore,
+            store: { getByProcess: vi.fn() },
+            executor: { isInflight: () => false, triggerNow },
+        })).resolves.toEqual({ status: 'not-found' });
+
+        await expect(checkSentinelNow('workspace-a', {
+            dataDir,
+            processStore,
+            store: { getByProcess: vi.fn() },
+            executor: { isInflight: () => true, triggerNow },
+        })).resolves.toEqual({ status: 'busy', processId: 'queue_sentinel-task' });
+
+        await expect(checkSentinelNow('workspace-a', {
+            dataDir,
+            processStore,
+            store: { getByProcess: vi.fn(() => []) },
+            executor: { isInflight: () => false, triggerNow },
+        })).resolves.toEqual({ status: 'not-ready', processId: 'queue_sentinel-task' });
+        expect(triggerNow).not.toHaveBeenCalled();
+        rmSync(dataDir, { recursive: true, force: true });
     });
 });

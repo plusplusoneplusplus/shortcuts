@@ -1,10 +1,11 @@
 import * as crypto from 'crypto';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { QueuedTask, TaskQueueManager } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, QueuedTask, TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { CronStore } from '../cron/cron-store';
 import type { CronExecutor, CronEventEmit } from '../cron/cron-executor';
 import type { CronChangeEvent, CronEntry } from '../cron/cron-types';
 import { DEFAULT_CRON_TTL_MS } from '../cron/cron-types';
+import { resolveLiveSentinelOwner } from './sentinel-ownership';
 
 export const SENTINEL_TICK_INTERVAL_MS = 60 * 60 * 1000;
 export const SENTINEL_CRON_DESCRIPTION = 'Sentinel workspace scan';
@@ -25,6 +26,19 @@ export interface SentinelCronCancellationOptions {
     executor: Pick<CronExecutor, 'disarmTimer'>;
     emit?: CronEventEmit;
 }
+
+export interface SentinelCheckNowOptions {
+    dataDir: string;
+    processStore: Pick<ProcessStore, 'getProcess'>;
+    store: Pick<CronStore, 'getByProcess'>;
+    executor: Pick<CronExecutor, 'isInflight' | 'triggerNow'>;
+}
+
+export type SentinelCheckNowResult =
+    | { status: 'triggered'; processId: string; cronId: string }
+    | { status: 'not-found' }
+    | { status: 'not-ready'; processId: string }
+    | { status: 'busy'; processId: string };
 
 function isNewSentinelTask(task: QueuedTask): boolean {
     return task.type === 'chat'
@@ -101,6 +115,30 @@ export function cancelSentinelCron(
         safeEmit(options.emit, { type: 'cron-cancelled', cron });
     }
     return crons.length;
+}
+
+export async function checkSentinelNow(
+    workspaceId: string,
+    options: SentinelCheckNowOptions,
+): Promise<SentinelCheckNowResult> {
+    const owner = await resolveLiveSentinelOwner(
+        options.dataDir,
+        workspaceId,
+        options.processStore,
+    );
+    if (!owner) return { status: 'not-found' };
+
+    const processId = owner.id;
+    if (owner.status === 'queued' || owner.status === 'running' || options.executor.isInflight(processId)) {
+        return { status: 'busy', processId };
+    }
+
+    const cron = options.store.getByProcess(processId)
+        .find(entry => entry.description === SENTINEL_CRON_DESCRIPTION && entry.status === 'active');
+    if (!cron) return { status: 'not-ready', processId };
+
+    await options.executor.triggerNow(cron.id);
+    return { status: 'triggered', processId, cronId: cron.id };
 }
 
 export function registerSentinelCronProvisioning(options: SentinelCronProvisioningOptions): () => void {

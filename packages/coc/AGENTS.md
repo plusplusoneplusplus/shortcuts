@@ -148,7 +148,9 @@ all have their own `references/*.md`.
   longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A
   newly admitted Sentinel provisions one hourly process-bound cron from the
   aggregate queue's `taskAdded` event; general cron tools and routes remain
-  gated by `cron.enabled`.
+  gated by `cron.enabled`. `POST /api/workspaces/:id/sentinel/check-now`
+  validates the watchlist owner and immediately runs that cron's normal tick
+  guards without creating another schedule.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service

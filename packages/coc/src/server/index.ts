@@ -78,6 +78,7 @@ import { onRepoPreferencesChanged } from './preferences/repository';
 import { getDefaultSkillsToInstall } from './skills/default-skill-selection';
 import {
     cancelSentinelCron,
+    checkSentinelNow,
     registerSentinelCronProvisioning,
     SENTINEL_CRON_DESCRIPTION,
 } from './sentinel/sentinel-cron';
@@ -797,6 +798,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 store: cronInfra!.cronStore,
                 executor: cronInfra!.cronExecutor,
                 emit: cronInfra!.emit,
+            })
+            : undefined,
+        checkSentinelNow: sentinelEnabled && cronInfra
+            ? (workspaceId) => checkSentinelNow(workspaceId, {
+                dataDir,
+                processStore: store,
+                store: cronInfra!.cronStore,
+                executor: cronInfra!.cronExecutor,
             })
             : undefined,
         cronStore: cronEnabled ? cronInfra?.cronStore : undefined,

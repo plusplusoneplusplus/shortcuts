@@ -129,6 +129,14 @@ export class CronExecutor {
     }
 
     /**
+     * Run a cron through the normal tick guards immediately.
+     * The existing timer remains authoritative for subsequent ticks.
+     */
+    async triggerNow(cronId: string): Promise<void> {
+        await this.onTick(cronId);
+    }
+
+    /**
      * Mark a tick execution as complete (success or failure).
      * Called by the task completion callback after the enqueued follow-up finishes.
      */
