@@ -131,7 +131,11 @@ The marker also stashes the last rendered board for restart-safe edit comparison
 `sentinel-board.ts` renders active judgments deterministically by bucket and folds
 renderer-owned unchecked or deleted lines into resolved or muted dispositions.
 Tick persistence uses Notes optimistic writes and retries concurrent board edits
-before updating the stash. `Sentinel.md` is created once with editable defaults.
+before updating the stash. `Sentinel.md` is created once with editable tick,
+recency, mute-list, and nudge-budget settings. Renderer-owned approval rows are
+unchecked drafts; a checked approval is budget/backoff checked before enqueueing
+a target follow-up or a linked fresh Ask chat when the target is too old to
+resume. Active target turns receive the approved draft as a pending message.
 
 ### Task Group Registry
 

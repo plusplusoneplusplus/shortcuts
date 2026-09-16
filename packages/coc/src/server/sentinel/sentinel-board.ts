@@ -9,9 +9,11 @@ import type {
     SentinelWatchlistEntry,
 } from './sentinel-watchlist';
 import type { SentinelBucket } from './sentinel-classifier';
+import type { SentinelNudgeDraft } from './sentinel-nudge';
 
 const BOARD_ITEM_MARKER = '<!-- sentinel:item:';
 const BOARD_ITEM_PATTERN = /^- \[([ xX])\] .* <!-- sentinel:item:([^ ]+) -->$/;
+const BOARD_APPROVAL_PATTERN = /^  - \[([ xX])\] .* <!-- sentinel:approve:([^ ]+) -->$/;
 export const SENTINEL_BOARD_WRITE_ATTEMPTS = 3;
 export const SENTINEL_CONFIG_TEMPLATE = `# Sentinel
 
@@ -37,6 +39,7 @@ export interface SentinelBoardStorage {
     readBoard(): Promise<SentinelBoardSnapshot | undefined>;
     writeBoard(content: string, expectedMtimeMs?: number): Promise<boolean>;
     ensureConfig(): Promise<void>;
+    readConfig(): Promise<string>;
 }
 
 function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {
@@ -110,6 +113,9 @@ export function createSentinelBoardStorage(
                 }
             }
         },
+        async readConfig() {
+            return fs.promises.readFile(configPath, 'utf8');
+        },
     };
 }
 
@@ -143,8 +149,10 @@ export function renderSentinelBoard(
     workspaceId: string,
     watchlist: SentinelWatchlist,
     processes: AIProcess[] = [],
+    nudgeDrafts: SentinelNudgeDraft[] = [],
 ): string {
     const processById = new Map(processes.map(process => [process.id, process]));
+    const draftByProcessId = new Map(nudgeDrafts.map(draft => [draft.processId, draft]));
     const activeEntries = watchlist.entries.filter(entry =>
         entry.disposition === 'watching' || entry.disposition === 'nudged',
     );
@@ -162,12 +170,54 @@ export function renderSentinelBoard(
             continue;
         }
         lines.push('', `## ${heading}`, '');
-        lines.push(...entries.map(entry =>
-            renderEntry(workspaceId, entry, processById.get(entry.processId)),
-        ));
+        for (const entry of entries) {
+            lines.push(renderEntry(workspaceId, entry, processById.get(entry.processId)));
+            const draft = draftByProcessId.get(entry.processId);
+            if (draft) {
+                const actionLabel = draft.action === 'fresh-chat'
+                    ? 'Approve a fresh chat'
+                    : 'Approve nudge';
+                lines.push(
+                    `  - [ ] **${actionLabel}:** ${safeText(draft.message)}`
+                    + ` <!-- sentinel:approve:${encodeURIComponent(entry.processId)} -->`,
+                );
+            }
+        }
     }
 
     return `${lines.join('\n')}\n`;
+}
+
+function parseApprovalStates(board: string): Map<string, boolean> {
+    const approvals = new Map<string, boolean>();
+    for (const line of board.split(/\r?\n/)) {
+        const match = BOARD_APPROVAL_PATTERN.exec(line);
+        if (!match) {
+            continue;
+        }
+        try {
+            approvals.set(decodeURIComponent(match[2]), match[1].toLowerCase() === 'x');
+        } catch (error) {
+            if (!(error instanceof URIError)) {
+                throw error;
+            }
+        }
+    }
+    return approvals;
+}
+
+export function findNewlyApprovedSentinelNudges(
+    previousBoard: string | undefined,
+    currentBoard: string,
+): Set<string> {
+    if (previousBoard === undefined) {
+        return new Set();
+    }
+    const previous = parseApprovalStates(previousBoard);
+    const current = parseApprovalStates(currentBoard);
+    return new Set([...current].flatMap(([processId, checked]) =>
+        checked && previous.get(processId) === false ? [processId] : [],
+    ));
 }
 
 interface RenderedBoardItem {

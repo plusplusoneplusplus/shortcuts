@@ -24,6 +24,8 @@ import {
 } from '../sentinel/sentinel-classifier';
 import { createSentinelLooseEndJudge } from '../sentinel/sentinel-loose-end-judge';
 import { persistSentinelClassification } from '../sentinel/sentinel-watchlist';
+import { createSentinelNudgeExecutor } from '../sentinel/sentinel-nudge';
+import { readSentinelConfig } from '../sentinel/sentinel-config';
 
 // ============================================================================
 // Types
@@ -108,7 +110,12 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
         queueManager: queueFacade,
         emit,
         resolveWorkspaceId,
-        runSentinelTick: async (process, workspaceId) => {
+        runSentinelTick: async (process, workspaceId, cron) => {
+            const sentinelConfig = await readSentinelConfig(dataDir, workspaceId);
+            if (cron.intervalMs !== sentinelConfig.tickIntervalMs) {
+                cron.intervalMs = sentinelConfig.tickIntervalMs;
+                cronStore.update(cron);
+            }
             const model = typeof process.metadata?.model === 'string'
                 ? process.metadata.model
                 : undefined;
@@ -118,6 +125,7 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
                 processStore: store,
                 seenStateReader,
                 judgeLooseEnds: createSentinelLooseEndJudge(options.aiService, model),
+                recencyWindowMs: sentinelConfig.recencyWindowMs,
             });
             await persistSentinelClassification({
                 dataDir,
@@ -125,6 +133,15 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
                 sentinelProcessId: process.id,
                 processStore: store,
                 classification,
+                tickWindowMs: sentinelConfig.tickIntervalMs,
+                maxNudges: sentinelConfig.maxNudgesPerChat,
+                muteProcessIds: sentinelConfig.muteProcessIds,
+                nudgeExecutor: createSentinelNudgeExecutor({
+                    workspaceId,
+                    sentinelProcessId: process.id,
+                    processStore: store,
+                    queueManager: queueFacade,
+                }),
             });
         },
     });

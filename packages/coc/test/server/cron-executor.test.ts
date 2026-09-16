@@ -409,6 +409,7 @@ describe('CronExecutor', () => {
             expect(runSentinelTick).toHaveBeenCalledWith(
                 expect.objectContaining({ id: 'queue_proc_sentinel' }),
                 'workspace-a',
+                expect.objectContaining({ intervalMs: 60_000 }),
             );
             expect(runSentinelTick.mock.invocationCallOrder[0])
                 .toBeLessThan(queueManager.enqueue.mock.invocationCallOrder[0]);

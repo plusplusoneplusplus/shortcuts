@@ -5,6 +5,7 @@ import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
     createSentinelBoardStorage,
+    findNewlyApprovedSentinelNudges,
     foldSentinelBoardEdits,
     renderSentinelBoard,
 } from '../../../src/server/sentinel/sentinel-board';
@@ -158,5 +159,31 @@ describe('Sentinel board', () => {
         };
 
         expect(foldSentinelBoardEdits(watchlist, '', NOW)).toBe(watchlist);
+    });
+
+    it('renders drafts unchecked and detects only a new explicit approval', () => {
+        const watchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            entries: [makeEntry('chat-a')],
+        };
+        const board = renderSentinelBoard(
+            'workspace-a',
+            watchlist,
+            [],
+            [{
+                processId: 'chat-a',
+                action: 'follow-up',
+                message: 'Please continue.',
+            }],
+        );
+
+        expect(board).toContain(
+            '  - [ ] **Approve nudge:** Please continue. <!-- sentinel:approve:chat-a -->',
+        );
+        expect(findNewlyApprovedSentinelNudges(board, board)).toEqual(new Set());
+        expect(findNewlyApprovedSentinelNudges(
+            board,
+            board.replace('  - [ ] **Approve nudge:**', '  - [x] **Approve nudge:**'),
+        )).toEqual(new Set(['chat-a']));
     });
 });

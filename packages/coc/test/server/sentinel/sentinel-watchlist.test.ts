@@ -2,7 +2,7 @@ import type { AIProcess } from '@plusplusoneplusplus/forge';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     createSentinelWatchlist,
     getSentinelWatchlistPath,
@@ -15,6 +15,7 @@ import {
 } from '../../../src/server/sentinel/sentinel-watchlist';
 import {
     SENTINEL_CONFIG_TEMPLATE,
+    renderSentinelBoard,
     type SentinelBoardSnapshot,
     type SentinelBoardStorage,
 } from '../../../src/server/sentinel/sentinel-board';
@@ -66,6 +67,9 @@ function createBoardStorage(initial?: SentinelBoardSnapshot): SentinelBoardStora
             if (this.config.length === 0) {
                 this.config = SENTINEL_CONFIG_TEMPLATE;
             }
+        },
+        async readConfig() {
+            return this.config;
         },
     };
 }
@@ -444,5 +448,135 @@ describe('Sentinel watchlist persistence', () => {
         await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toEqual(
             createSentinelWatchlist('sentinel-a', NOW),
         );
+    });
+
+    it('executes an approved nudge once after a board-conflict retry', async () => {
+        const dataDir = makeTempDir();
+        const process = makeProcess('chat-a');
+        const watchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            entries: [{
+                processId: 'chat-a',
+                bucket: 'failed' as const,
+                disposition: 'watching' as const,
+                reason: 'The chat failed.',
+                nudgeCount: 0,
+                addedAt: NOW.toISOString(),
+            }],
+        };
+        const rendered = renderSentinelBoard(
+            'workspace-a',
+            watchlist,
+            [process],
+            [{
+                processId: 'chat-a',
+                action: 'follow-up',
+                message: 'Please continue.',
+            }],
+        );
+        await writeSentinelWatchlist(dataDir, 'workspace-a', {
+            ...watchlist,
+            lastRenderedBoard: rendered,
+        });
+        const approved = rendered.replace(
+            '  - [ ] **Approve nudge:**',
+            '  - [x] **Approve nudge:**',
+        );
+        const boardStorage = createBoardStorage({ content: approved, mtimeMs: 1 });
+        const originalWrite = boardStorage.writeBoard.bind(boardStorage);
+        let conflict = true;
+        boardStorage.writeBoard = async (content, expectedMtimeMs) => {
+            if (conflict) {
+                conflict = false;
+                if (boardStorage.board) {
+                    boardStorage.board.mtimeMs = 2;
+                }
+                return false;
+            }
+            return originalWrite(content, expectedMtimeMs);
+        };
+        const nudgeExecutor = vi.fn().mockResolvedValue(undefined);
+
+        const result = await persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-a',
+            processStore: createMockProcessStore({ initialProcesses: [process] }),
+            classification: {
+                excludedProcessIds: ['sentinel-a'],
+                entries: [{
+                    processId: 'chat-a',
+                    bucket: 'failed',
+                    reason: 'The chat failed.',
+                }],
+            },
+            now: NOW,
+            boardStorage,
+            nudgeExecutor,
+        });
+
+        expect(nudgeExecutor).toHaveBeenCalledOnce();
+        expect(result?.entries[0]).toEqual(expect.objectContaining({
+            disposition: 'nudged',
+            nudgeCount: 1,
+        }));
+    });
+
+    it('checkpoints successful nudges before a later approved nudge fails', async () => {
+        const dataDir = makeTempDir();
+        const processes = [makeProcess('chat-a'), makeProcess('chat-b')];
+        const watchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            entries: ['chat-a', 'chat-b'].map(processId => ({
+                processId,
+                bucket: 'failed' as const,
+                disposition: 'watching' as const,
+                reason: 'The chat failed.',
+                nudgeCount: 0,
+                addedAt: NOW.toISOString(),
+            })),
+        };
+        const drafts = processes.map(process => ({
+            processId: process.id,
+            action: 'follow-up' as const,
+            message: 'Please continue.',
+        }));
+        const rendered = renderSentinelBoard('workspace-a', watchlist, processes, drafts);
+        await writeSentinelWatchlist(dataDir, 'workspace-a', {
+            ...watchlist,
+            lastRenderedBoard: rendered,
+        });
+        const approved = rendered.replace(/  - \[ \] \*\*Approve nudge:\*\*/g, (
+            '  - [x] **Approve nudge:**'
+        ));
+        const boardStorage = createBoardStorage({ content: approved, mtimeMs: 1 });
+        const nudgeExecutor = vi.fn()
+            .mockResolvedValueOnce(undefined)
+            .mockRejectedValueOnce(new Error('queue unavailable'));
+
+        await expect(persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-a',
+            processStore: createMockProcessStore({ initialProcesses: processes }),
+            classification: {
+                excludedProcessIds: ['sentinel-a'],
+                entries: processes.map(process => ({
+                    processId: process.id,
+                    bucket: 'failed' as const,
+                    reason: 'The chat failed.',
+                })),
+            },
+            now: NOW,
+            boardStorage,
+            nudgeExecutor,
+        })).rejects.toThrow('queue unavailable');
+
+        const persisted = await readSentinelWatchlist(dataDir, 'workspace-a');
+        expect(persisted?.entries).toEqual([
+            expect.objectContaining({ processId: 'chat-a', nudgeCount: 1 }),
+            expect.objectContaining({ processId: 'chat-b', nudgeCount: 0 }),
+        ]);
+        expect(persisted?.lastRenderedBoard).not.toContain('sentinel:approve');
     });
 });

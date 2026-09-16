@@ -153,7 +153,11 @@ all have their own `references/*.md`.
   and deleting one mutes it. Each tick folds edits before reconciliation and
   publishes `Board.md` through the Notes optimistic-write contract, retrying
   conflicts rather than clobbering an editor. `Sentinel.md` is created once with
-  editable defaults and never overwritten.
+  editable tick interval, recency, mute-list, and nudge-budget defaults and is
+  never overwritten. Board drafts stay unchecked until the user approves one;
+  a newly checked approval is revalidated against the per-chat budget, snooze,
+  and tick-window backoff before it queues a follow-up. Old chats start a linked
+  Ask chat instead. Approved nudges against active turns use pending messages.
 - **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
   at least the default cron TTL from the current time, without shortening a
   longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A

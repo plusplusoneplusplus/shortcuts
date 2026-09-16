@@ -43,7 +43,11 @@ export interface CronExecutorDeps {
     /** Resolve the repo/workspace ID for a given processId. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
     /** Classify the workspace before enqueueing a Sentinel follow-up. */
-    runSentinelTick?: (process: AIProcess, workspaceId: string) => Promise<void>;
+    runSentinelTick?: (
+        process: AIProcess,
+        workspaceId: string,
+        cron: CronEntry,
+    ) => Promise<void>;
 }
 
 // ============================================================================
@@ -241,7 +245,7 @@ export class CronExecutor {
                 if (!workspaceId) {
                     throw new Error(`Cannot resolve workspace for Sentinel process ${cron.processId}`);
                 }
-                await this.deps.runSentinelTick(proc, workspaceId);
+                await this.deps.runSentinelTick(proc, workspaceId, cron);
             }
             this.wakeupCounts.set(cron.processId, wakeupCount + 1);
             await this.enqueueFollowUp(cron);

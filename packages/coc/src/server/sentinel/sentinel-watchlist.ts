@@ -9,11 +9,17 @@ import type {
 } from './sentinel-classifier';
 import {
     createSentinelBoardStorage,
+    findNewlyApprovedSentinelNudges,
     foldSentinelBoardEdits,
     renderSentinelBoard,
     SENTINEL_BOARD_WRITE_ATTEMPTS,
     type SentinelBoardStorage,
 } from './sentinel-board';
+import {
+    buildSentinelNudgeDraft,
+    planApprovedSentinelNudges,
+    type SentinelNudgeExecutor,
+} from './sentinel-nudge';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -52,6 +58,11 @@ export interface PersistSentinelClassificationOptions {
     now?: Date;
     resolvedRetentionMs?: number;
     boardStorage?: SentinelBoardStorage;
+    nudgeExecutor?: SentinelNudgeExecutor;
+    tickWindowMs?: number;
+    maxNudges?: number;
+    resumeMaxAgeMs?: number;
+    muteProcessIds?: string[];
 }
 
 const BUCKETS = new Set<SentinelBucket>([
@@ -309,18 +320,64 @@ export async function persistSentinelClassification(
             const board = await boardStorage.readBoard();
             const now = options.now ?? new Date();
             const withBoardEdits = foldSentinelBoardEdits(watchlist, board?.content ?? '', now);
+            const configuredMuteIds = new Set(options.muteProcessIds ?? []);
+            const withConfiguredMutes = configuredMuteIds.size === 0
+                ? withBoardEdits
+                : {
+                    ...withBoardEdits,
+                    entries: withBoardEdits.entries.map(entry =>
+                        configuredMuteIds.has(entry.processId)
+                            ? { ...entry, disposition: 'muted' as const }
+                            : entry,
+                    ),
+                };
             const processes = (await options.processStore.getAllProcesses({
                 workspaceId: options.workspaceId,
             })).filter(process => process.metadata?.workspaceId === options.workspaceId);
-            const reconciled = reconcileSentinelWatchlist(
-                withBoardEdits,
+            const policy = {
+                now,
+                tickWindowMs: options.tickWindowMs ?? 60 * 60 * 1_000,
+                maxNudges: options.maxNudges,
+                resumeMaxAgeMs: options.resumeMaxAgeMs,
+            };
+            const approvals = findNewlyApprovedSentinelNudges(
+                watchlist.lastRenderedBoard,
+                board?.content ?? '',
+            );
+            const baseReconciled = reconcileSentinelWatchlist(
+                withConfiguredMutes,
                 options.classification,
                 processes,
                 now,
                 options.resolvedRetentionMs,
             );
-            const renderedBoard = renderSentinelBoard(options.workspaceId, reconciled, processes);
-            const nextWatchlist = { ...reconciled, lastRenderedBoard: renderedBoard };
+            const nudgePlan = approvals.size > 0
+                ? planApprovedSentinelNudges(
+                    baseReconciled,
+                    processes,
+                    approvals,
+                    policy,
+                )
+                : { watchlist: baseReconciled, drafts: [] };
+            const drafts = nudgePlan.watchlist.entries.flatMap(entry => {
+                const process = processes.find(candidate => candidate.id === entry.processId);
+                if (!process) {
+                    return [];
+                }
+                const draft = buildSentinelNudgeDraft(entry, process, policy);
+                return draft ? [draft] : [];
+            });
+            const renderedBoard = renderSentinelBoard(
+                options.workspaceId,
+                nudgePlan.watchlist,
+                processes,
+                drafts,
+            );
+            const nextWatchlist = { ...nudgePlan.watchlist, lastRenderedBoard: renderedBoard };
+            const executeNudge = options.nudgeExecutor;
+            if (nudgePlan.drafts.length > 0 && !executeNudge) {
+                throw new Error('Sentinel nudge executor is unavailable');
+            }
 
             if (board?.content !== renderedBoard) {
                 const written = await boardStorage.writeBoard(renderedBoard, board?.mtimeMs);
@@ -328,8 +385,27 @@ export async function persistSentinelClassification(
                     continue;
                 }
             }
-            await writeSentinelWatchlistFile(filePath, nextWatchlist);
-            return nextWatchlist;
+            let persistedWatchlist = {
+                ...baseReconciled,
+                lastRenderedBoard: renderedBoard,
+            };
+            await writeSentinelWatchlistFile(filePath, persistedWatchlist);
+            for (const draft of nudgePlan.drafts) {
+                await executeNudge?.(draft);
+                const plannedEntry = nextWatchlist.entries.find(
+                    entry => entry.processId === draft.processId,
+                );
+                if (plannedEntry) {
+                    persistedWatchlist = {
+                        ...persistedWatchlist,
+                        entries: persistedWatchlist.entries.map(entry =>
+                            entry.processId === draft.processId ? plannedEntry : entry,
+                        ),
+                    };
+                    await writeSentinelWatchlistFile(filePath, persistedWatchlist);
+                }
+            }
+            return persistedWatchlist;
         }
 
         throw new Error(
