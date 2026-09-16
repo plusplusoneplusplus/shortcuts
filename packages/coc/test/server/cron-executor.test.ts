@@ -62,12 +62,21 @@ function createTimerRegistryStub() {
 }
 
 /** Minimal ProcessStore stub. */
-function createProcessStoreStub(processes: Record<string, { status: string; workingDirectory?: string }> = {}) {
+function createProcessStoreStub(processes: Record<string, {
+    status: string;
+    workingDirectory?: string;
+    mode?: string;
+}> = {}) {
     return {
         getProcess: vi.fn(async (id: string) => {
             const proc = processes[id];
             if (!proc) return undefined;
-            return { id, status: proc.status, workingDirectory: proc.workingDirectory || '/test' } as any;
+            return {
+                id,
+                status: proc.status,
+                workingDirectory: proc.workingDirectory || '/test',
+                ...(proc.mode ? { metadata: { mode: proc.mode } } : {}),
+            } as any;
         }),
     } as any;
 }
@@ -331,6 +340,49 @@ describe('CronExecutor', () => {
             const updated = store.getById('cron_expired')!;
             expect(updated.status).toBe('expired');
             expect(events.some(e => e.type === 'cron-expired')).toBe(true);
+        });
+
+        it('refreshes a Sentinel cron expiry on every tick', async () => {
+            const now = new Date('2026-01-02T00:00:00.000Z');
+            vi.setSystemTime(now);
+            const processStore = createProcessStoreStub({
+                'queue_proc_sentinel': { status: 'completed', mode: 'sentinel' },
+            });
+            const { deps, store, timerRegistry } = createDeps({ processStore });
+            store.insert(makeCron({
+                id: 'cron_sentinel',
+                processId: 'queue_proc_sentinel',
+                expiresAt: new Date(now.getTime() - 1_000).toISOString(),
+            }));
+
+            const executor = new CronExecutor(deps);
+            executor.armAll();
+            await timerRegistry._fire('cron_sentinel');
+
+            const updated = store.getById('cron_sentinel')!;
+            expect(updated.status).toBe('active');
+            expect(updated.expiresAt).toBe('2026-01-05T00:00:00.000Z');
+        });
+
+        it('does not shorten a Sentinel cron with a longer custom expiry', async () => {
+            const now = new Date('2026-01-02T00:00:00.000Z');
+            vi.setSystemTime(now);
+            const processStore = createProcessStoreStub({
+                'queue_proc_sentinel': { status: 'completed', mode: 'sentinel' },
+            });
+            const { deps, store, timerRegistry } = createDeps({ processStore });
+            const customExpiry = '2026-02-01T00:00:00.000Z';
+            store.insert(makeCron({
+                id: 'cron_sentinel_custom_ttl',
+                processId: 'queue_proc_sentinel',
+                expiresAt: customExpiry,
+            }));
+
+            const executor = new CronExecutor(deps);
+            executor.armAll();
+            await timerRegistry._fire('cron_sentinel_custom_ttl');
+
+            expect(store.getById('cron_sentinel_custom_ttl')?.expiresAt).toBe(customExpiry);
         });
 
         it('auto-pauses when process is cancelled', async () => {

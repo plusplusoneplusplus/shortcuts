@@ -11,13 +11,17 @@
  */
 
 import * as crypto from 'crypto';
-import type { ProcessStore, TaskQueueManager, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { AIProcess, ProcessStore, TaskQueueManager, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toTaskId, toQueueProcessId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import { PeriodicEntryScheduler } from '../schedule/periodic-entry-scheduler';
 import type { CronStore } from './cron-store';
 import type { CronEntry, CronChangeEvent } from './cron-types';
-import { MAX_CONSECUTIVE_FAILURES, MAX_CONSECUTIVE_WAKEUPS_PER_PROCESS } from './cron-types';
+import {
+    DEFAULT_CRON_TTL_MS,
+    MAX_CONSECUTIVE_FAILURES,
+    MAX_CONSECUTIVE_WAKEUPS_PER_PROCESS,
+} from './cron-types';
 import { resolveFollowUpMode } from '../executors/follow-up-mode';
 
 // ============================================================================
@@ -178,6 +182,9 @@ export class CronExecutor {
             return;
         }
 
+        const proc = await this.deps.processStore.getProcess(cron.processId);
+        this.refreshSentinelExpiry(cron, proc);
+
         // TTL check
         if (this.isExpired(cron)) {
             this.expireCron(cron);
@@ -199,7 +206,6 @@ export class CronExecutor {
         }
 
         // Check process status — auto-pause if cancelled or failed
-        const proc = await this.deps.processStore.getProcess(cron.processId);
         if (proc) {
             const status = proc.status;
             if (status === 'cancelled' || status === 'failed') {
@@ -335,6 +341,15 @@ export class CronExecutor {
 
     private isExpired(cron: CronEntry): boolean {
         return Date.now() >= new Date(cron.expiresAt).getTime();
+    }
+
+    private refreshSentinelExpiry(cron: CronEntry, process: AIProcess | undefined): void {
+        if (process?.metadata?.mode !== 'sentinel') return;
+
+        const rollingExpiry = Date.now() + DEFAULT_CRON_TTL_MS;
+        const currentExpiry = new Date(cron.expiresAt).getTime();
+        cron.expiresAt = new Date(Math.max(currentExpiry, rollingExpiry)).toISOString();
+        this.deps.store.update(cron);
     }
 
     /**

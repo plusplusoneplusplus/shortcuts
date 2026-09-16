@@ -136,6 +136,9 @@ all have their own `references/*.md`.
   exclusive file creation; live owners block a second claim, while missing,
   archived, failed, cancelled, or corrupt owners are reclaimed. A short claim
   grace covers admission before the new process row exists.
+- **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
+  at least the default cron TTL from the current time, without shortening a
+  longer configured TTL. Other chat-mode crons retain fixed expiry behavior.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service

@@ -133,7 +133,7 @@ A single merged tool from `createCronTool()`, dispatched by a required `action`.
 ## Tick Execution Flow
 
 1. `ScheduleTimerRegistry` fires the callback for a cron ID; `CronExecutor.onTick(cronId)` runs.
-2. Guards, in order: status must be `active`; TTL check (expire if past `expiresAt`); per-process wakeup limit (100); concurrency guard (skip if the process has an in-flight tick); process status (auto-pause if `cancelled`/`failed`, skip if `running`).
+2. Guards, in order: status must be `active`; load the bound process and refresh a Sentinel cron's `expiresAt` to at least the default TTL from now; TTL check (expire if past `expiresAt`); per-process wakeup limit (100); concurrency guard (skip if the process has an in-flight tick); process status (auto-pause if `cancelled`/`failed`, skip if `running`). Longer custom Sentinel TTLs are not shortened, and other chat modes retain fixed expiry.
 3. Enqueue the follow-up via `TaskQueueManager` with `turnSource: { source: 'cron', cronId }`.
 4. `ProcessLifecycleRunner` invokes the `onCronTickComplete(cronId, success)` lifecycle option once a cron-originated follow-up (`context.source === 'cron'` with a string `context.cronId`) finishes. The queue-executor-bridge routes it to `CronExecutor.onTickComplete()`, which advances `tickCount`/`lastTickAt`, resets `consecutiveFailures` on success (auto-pausing at the threshold on failure), clears the in-flight guard, and re-arms the next timer. Bookkeeping errors are logged but never mask the follow-up's own result.
 
