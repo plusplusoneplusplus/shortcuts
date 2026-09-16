@@ -709,3 +709,66 @@ describe('unifiedPanelTabsModel — codec v3: clone routes, preview repair, and 
         expect(restored.migrated).toBe(false);
     });
 });
+
+describe('unifiedPanelTabsModel — external definition sources', () => {
+    /** A chat-owned external tab, as a definition jump out of a file tab opens one. */
+    function withExternal(): UnifiedPanelState {
+        return open(baseState(), {
+            kind: 'external',
+            resourceId: 'cap-1',
+            label: 'string_view',
+            chatId: CHAT_1,
+            readOnly: true,
+            line: 42,
+            column: 7,
+        });
+    }
+
+    it('opens read-only against the owner whose language server produced it', () => {
+        const state = withExternal();
+        const id = unifiedTabId({ kind: 'external', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'cap-1' });
+
+        expect(findTab(state, id)).toMatchObject({
+            kind: 'external',
+            ownerWorkspaceId: WS,
+            resourceId: 'cap-1',
+            label: 'string_view',
+            readOnly: true,
+            line: 42,
+            column: 7,
+        });
+        expect(activeTabId(state, CHAT_1)).toBe(id);
+    });
+
+    it('is dropped from storage, along with any selection naming it', () => {
+        const restored = parseUnifiedPanelState(serializeUnifiedPanelState(withExternal()));
+
+        expect(visibleTabs(restored, CHAT_1).map(tab => tab.kind)).toEqual(['terminal', 'notes', 'file']);
+        expect(activeTabId(restored, CHAT_1)).not.toBe(
+            unifiedTabId({ kind: 'external', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'cap-1' }),
+        );
+    });
+
+    it('rejects a hand-written external descriptor in a persisted payload', () => {
+        const id = unifiedTabId({ kind: 'external', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'cap-1' });
+        const restored = parseUnifiedPanelState(JSON.stringify({
+            version: UNIFIED_PANEL_STATE_VERSION,
+            workspaceTabs: [],
+            chatTabs: {
+                [CHAT_1]: [{ id, kind: 'external', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'cap-1', label: 'string_view' }],
+            },
+            activeByScope: {},
+        }));
+
+        expect(visibleTabs(restored, CHAT_1)).toEqual([]);
+    });
+
+    it('closing it leaves the tab it was opened from alone', () => {
+        const state = withExternal();
+        const id = unifiedTabId({ kind: 'external', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'cap-1' });
+
+        const closed = closeTab(state, id);
+
+        expect(visibleTabs(closed, CHAT_1).map(tab => tab.resourceId)).toEqual(['sess-1', 'notes', 'src/a.ts']);
+    });
+});

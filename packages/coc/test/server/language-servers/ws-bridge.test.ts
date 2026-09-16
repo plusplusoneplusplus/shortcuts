@@ -17,7 +17,7 @@ import { LanguageServerManager } from '../../../src/server/language-servers/mana
 import { LanguageServerWebSocketServer } from '../../../src/server/language-servers/ws-bridge';
 import type { LanguageServerServerMessage } from '../../../src/server/language-servers/ws-bridge';
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
-import { browserDocumentUri } from '../../../src/server/language-servers/uri-mapping';
+import { browserDocumentUri, parseExternalResourceUri } from '../../../src/server/language-servers/uri-mapping';
 import { attachWebSocketUpgradeHandler, ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 import { safeRm } from '../../helpers/safe-rm';
@@ -119,6 +119,16 @@ class Client {
     async request(attachmentId: string, id: string, method: string, params?: unknown): Promise<any> {
         this.send({ type: 'lsp-request', attachmentId, id, method, params });
         return await this.next('lsp-response', (msg) => msg.id === id);
+    }
+
+    /** Asks the server for the definition targets naming `paths`, verbatim. */
+    async definition(attachmentId: string, id: string, paths: string[]): Promise<any> {
+        return await this.request(attachmentId, id, 'textDocument/definition', { paths });
+    }
+
+    async readExternal(attachmentId: string, requestId: string, resourceId: string): Promise<any> {
+        this.send({ type: 'lsp-external-source', requestId, attachmentId, resourceId });
+        return await this.next('lsp-external-source-result', (msg) => msg.requestId === requestId);
     }
 
     async close(): Promise<void> {
@@ -695,5 +705,137 @@ describe('language-server WebSocket bridge', () => {
         client.send({ type: 'ping' });
         await client.next('pong');
         expect(client.socket.readyState).toBe(WebSocket.OPEN);
+    });
+
+    // ========================================================================
+    // External definition sources
+    // ========================================================================
+
+    describe('external definition sources', () => {
+        /** Attaches a document and returns the harness pieces a test needs. */
+        async function openDocument(harness: Harness) {
+            fs.mkdirSync(path.join(harness.workspaceRoot, 'src'), { recursive: true });
+            fs.writeFileSync(path.join(harness.workspaceRoot, 'src', 'notes.txt'), 'hello\n', 'utf-8');
+            const client = await harness.connect();
+            const attached = await client.attach('src/notes.txt');
+            return { client, attachmentId: attached.attachmentId };
+        }
+
+        it('maps an in-workspace target to a document URI and an outside one to an opaque resource', async () => {
+            const harness = await createHarness();
+            const { client, attachmentId } = await openDocument(harness);
+            const external = tempDir('coc-lsp-external-');
+            const header = path.join(external, 'string_view');
+            fs.writeFileSync(header, 'namespace std { class string_view; }\n', 'utf-8');
+
+            const response = await client.definition(attachmentId, 'd1', [
+                path.join(harness.workspaceRoot, 'src', 'notes.txt'),
+                header,
+            ]);
+
+            const [inside, outside] = response.result as { uri: string }[];
+            expect(inside.uri).toBe(browserDocumentUri(WORKSPACE_ID, 'src/notes.txt'));
+            const resource = parseExternalResourceUri(outside.uri);
+            expect(resource?.displayName).toBe('string_view');
+            expect(outside.uri).not.toContain(external);
+            expect(outside.uri).not.toContain('file:');
+        });
+
+        it('reads only the file a capability names, and reuses one capability per file', async () => {
+            const harness = await createHarness();
+            const { client, attachmentId } = await openDocument(harness);
+            const external = tempDir('coc-lsp-external-');
+            const header = path.join(external, 'widget.hpp');
+            fs.writeFileSync(header, '#pragma once\n', 'utf-8');
+
+            const first = await client.definition(attachmentId, 'd1', [header, header]);
+            const uris = (first.result as { uri: string }[]).map((entry) => entry.uri);
+            expect(uris[0]).toBe(uris[1]);
+
+            const resourceId = parseExternalResourceUri(uris[0])!.resourceId;
+            const read = await client.readExternal(attachmentId, 'x1', resourceId);
+            expect(read).toMatchObject({ content: '#pragma once\n', displayName: 'widget.hpp', languageHint: 'hpp' });
+        });
+
+        it('falls back to the session language when the file has no extension', async () => {
+            const harness = await createHarness();
+            const { client, attachmentId } = await openDocument(harness);
+            const header = path.join(tempDir('coc-lsp-external-'), 'string_view');
+            fs.writeFileSync(header, 'class string_view;\n', 'utf-8');
+
+            const response = await client.definition(attachmentId, 'd1', [header]);
+            const resourceId = parseExternalResourceUri((response.result as { uri: string }[])[0].uri)!.resourceId;
+
+            expect(await client.readExternal(attachmentId, 'x1', resourceId))
+                .toMatchObject({ languageHint: 'plaintext' });
+        });
+
+        it('refuses a forged resource id, and one issued to another socket', async () => {
+            const harness = await createHarness();
+            const { client, attachmentId } = await openDocument(harness);
+            const header = path.join(tempDir('coc-lsp-external-'), 'widget.hpp');
+            fs.writeFileSync(header, '#pragma once\n', 'utf-8');
+            const response = await client.definition(attachmentId, 'd1', [header]);
+            const resourceId = parseExternalResourceUri((response.result as { uri: string }[])[0].uri)!.resourceId;
+
+            expect(await client.readExternal(attachmentId, 'x1', 'forged'))
+                .toMatchObject({ error: { code: 'unknown-resource' } });
+
+            const other = await openDocument(harness);
+            expect(await other.client.readExternal(other.attachmentId, 'x2', resourceId))
+                .toMatchObject({ error: { code: 'unknown-resource' } });
+        });
+
+        it('refuses a resource id presented on a different attachment', async () => {
+            const harness = await createHarness();
+            const { client, attachmentId } = await openDocument(harness);
+            fs.writeFileSync(path.join(harness.workspaceRoot, 'src', 'other.txt'), 'x\n', 'utf-8');
+            const second = await client.attach('src/other.txt');
+            const header = path.join(tempDir('coc-lsp-external-'), 'widget.hpp');
+            fs.writeFileSync(header, '#pragma once\n', 'utf-8');
+            const response = await client.definition(attachmentId, 'd1', [header]);
+            const resourceId = parseExternalResourceUri((response.result as { uri: string }[])[0].uri)!.resourceId;
+
+            expect(await client.readExternal(second.attachmentId, 'x1', resourceId))
+                .toMatchObject({ error: { code: 'unknown-resource' } });
+        });
+
+        it('revokes a capability when its attachment detaches', async () => {
+            const harness = await createHarness();
+            const { client, attachmentId } = await openDocument(harness);
+            const header = path.join(tempDir('coc-lsp-external-'), 'widget.hpp');
+            fs.writeFileSync(header, '#pragma once\n', 'utf-8');
+            const response = await client.definition(attachmentId, 'd1', [header]);
+            const resourceId = parseExternalResourceUri((response.result as { uri: string }[])[0].uri)!.resourceId;
+
+            client.send({ type: 'lsp-detach', attachmentId });
+            await client.next('lsp-detached', (msg) => msg.attachmentId === attachmentId);
+
+            expect(await client.readExternal(attachmentId, 'x1', resourceId))
+                .toMatchObject({ error: { code: 'unknown-resource' } });
+        });
+
+        it('leaves an unreadable external target without a capability', async () => {
+            const harness = await createHarness();
+            const { client, attachmentId } = await openDocument(harness);
+            const missing = path.join(tempDir('coc-lsp-external-'), 'not-there.hpp');
+
+            const response = await client.definition(attachmentId, 'd1', [missing]);
+
+            // No capability was minted, so the URI stays as the server sent it
+            // and the browser treats it as an unavailable external definition.
+            expect((response.result as { uri: string }[])[0].uri.startsWith('file:')).toBe(true);
+        });
+
+        it('mints no capability for a method that is not a definition lookup', async () => {
+            const harness = await createHarness();
+            const { client, attachmentId } = await openDocument(harness);
+            const header = path.join(tempDir('coc-lsp-external-'), 'widget.hpp');
+            fs.writeFileSync(header, '#pragma once\n', 'utf-8');
+
+            const response = await client.request(attachmentId, 'e1', 'locate', { paths: [header] });
+
+            expect((response.result as { uri: string }[])[0].uri.startsWith('file:')).toBe(true);
+        });
     });
 });

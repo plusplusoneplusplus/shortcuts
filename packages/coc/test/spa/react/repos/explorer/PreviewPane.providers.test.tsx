@@ -432,7 +432,7 @@ describe('PreviewPane — language providers (AC-03)', () => {
         ]);
     });
 
-    it('dedupes a macro definition that matches the exact language-server result', async () => {
+    it('drops every symbol-index candidate once clangd answers', async () => {
         monacoStub.model.languageId = 'cpp';
         renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
         const attachment = await attachmentFor('src/a.cpp');
@@ -619,5 +619,67 @@ describe('PreviewPane — language providers (AC-03)', () => {
         await act(async () => { unmount(); });
 
         expect(monacoStub.live()).toHaveLength(0);
+    });
+
+    it('reads an external definition through this document\'s own attachment', async () => {
+        monacoStub.model.languageId = 'cpp';
+        renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp', routingRef: 'remote:server-a:ws-1' });
+        const attachment = await attachmentFor('src/a.cpp');
+        attachWith(attachment, { textDocumentSync: 1, definitionProvider: true });
+        attachment.externalSources.set('cap-1', {
+            content: 'namespace std { class string_view; }',
+            displayName: 'string_view',
+            languageHint: 'cpp',
+        });
+        attachment.respond('textDocument/definition', () => ({
+            uri: 'coc-lsp-external://cap-1/string_view',
+            range: { start: { line: 41, character: 8 }, end: { line: 41, character: 14 } },
+        }));
+        mockExplorerApi.searchSymbols.mockResolvedValue({
+            indexed: true,
+            results: [{ name: 'Widget', kind: 'class', path: 'src/z.cpp', line: 1, column: 1 }],
+        });
+
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
+        const links = await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+
+        // The capability belongs to this attachment, so the read rides its
+        // routed connection rather than the page's own server, and the exact
+        // result suppresses the index candidate.
+        expect(attachment.externalReads).toEqual([{ resourceId: 'cap-1', signal: expect.any(AbortSignal) }]);
+        expect(links.map((link: any) => link.uri.toString())).toEqual(['coc-lsp-external://cap-1/string_view']);
+        expect(monacoStub.resolvePreview('coc-lsp-external://cap-1/string_view'))
+            .toMatchObject({ content: 'namespace std { class string_view; }' });
+        expect(mockExplorerApi.readBlob).not.toHaveBeenCalledWith(
+            expect.anything(), 'string_view', expect.anything(), expect.anything(),
+        );
+    });
+
+    it('shows an unavailable model when the external read fails', async () => {
+        monacoStub.model.languageId = 'cpp';
+        renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
+        const attachment = await attachmentFor('src/a.cpp');
+        attachWith(attachment, { textDocumentSync: 1, definitionProvider: true });
+        attachment.respond('textDocument/definition', () => ({
+            uri: 'coc-lsp-external://cap-expired/string_view',
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        }));
+
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
+        const links = await monacoStub.provider('definition').provideDefinition(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            token,
+        );
+
+        // The exact location stays identified as an external definition; it is
+        // not replaced by textually similar repository symbols.
+        expect(links.map((link: any) => link.uri.toString())).toEqual(['coc-lsp-external://cap-expired/string_view']);
+        expect(monacoStub.resolvePreview('coc-lsp-external://cap-expired/string_view'))
+            .toMatchObject({ content: 'Definition source unavailable.' });
     });
 });

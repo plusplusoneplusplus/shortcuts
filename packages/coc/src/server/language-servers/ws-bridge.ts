@@ -24,8 +24,22 @@ import { getServerLogger } from '../logging/server-logger';
 import type { LanguageServerManager, LanguageServerHandle, LanguageServerUnavailableReason } from './manager';
 import type { LanguageServerSessionState } from './session';
 import { LanguageServerRequestError } from './connection';
-import { browserDocumentUri, resolveWorkspaceDocument, toBrowserUri, toServerUri, translateUris } from './uri-mapping';
+import {
+    browserDocumentUri,
+    collectUris,
+    externalResourceUri,
+    resolveWorkspaceDocument,
+    toBrowserUri,
+    toServerUri,
+    translateUris,
+} from './uri-mapping';
 import type { UriMappingFailure } from './uri-mapping';
+import {
+    ExternalSourceRegistry,
+    canonicalizeExternalFile,
+    describeExternalSourceFailure,
+    readExternalSource,
+} from './external-sources';
 
 /** Exported so a teardown test can identify this interval among all timers. */
 export const HEARTBEAT_INTERVAL_MS = 60_000;
@@ -37,6 +51,18 @@ const FORWARDED_NOTIFICATIONS = [
     'window/logMessage',
     '$/progress',
 ];
+
+/**
+ * Methods whose successful result may name a file outside the workspace that
+ * the user is entitled to read. Only these mint external-source capabilities;
+ * every other response keeps the plain "outside the workspace, not yours" URI.
+ */
+const EXTERNAL_SOURCE_METHODS = new Set([
+    'textDocument/definition',
+    'textDocument/declaration',
+    'textDocument/typeDefinition',
+    'textDocument/implementation',
+]);
 
 /** Minimal workspace lookup; `ProcessStore` satisfies it. */
 export interface WorkspaceLookup {
@@ -54,6 +80,7 @@ export type LanguageServerClientMessage =
     | { type: 'lsp-cancel'; attachmentId: string; id: string }
     | { type: 'lsp-notify'; attachmentId: string; method: string; params?: unknown }
     | { type: 'lsp-restart'; attachmentId: string }
+    | { type: 'lsp-external-source'; requestId: string; attachmentId: string; resourceId: string }
     | { type: 'ping' };
 
 export type LanguageServerServerMessage =
@@ -74,6 +101,14 @@ export type LanguageServerServerMessage =
     | { type: 'lsp-notification'; sessionKey: string; method: string; params?: unknown }
     | { type: 'lsp-status'; sessionKey: string; state: LanguageServerSessionState }
     | { type: 'lsp-detached'; attachmentId: string; reason: string }
+    | {
+          type: 'lsp-external-source-result';
+          requestId: string;
+          content?: string;
+          displayName?: string;
+          languageHint?: string;
+          error?: { code: string; message: string };
+      }
     | { type: 'lsp-error'; message: string }
     | { type: 'pong' };
 
@@ -107,6 +142,10 @@ interface BridgeClient {
     editingSessionId: string;
     attachments: Map<string, Attachment>;
     subscriptions: Map<string, SessionSubscription>;
+    /** Read capabilities this socket has issued for files outside the workspace. */
+    externalSources: ExternalSourceRegistry;
+    /** In-flight external reads, so a disconnect can abort them. */
+    externalReads: Set<AbortController>;
 }
 
 // ============================================================================
@@ -208,6 +247,8 @@ export class LanguageServerWebSocketServer {
             editingSessionId,
             attachments: new Map(),
             subscriptions: new Map(),
+            externalSources: new ExternalSourceRegistry(),
+            externalReads: new Set(),
         };
         this.clients.set(client.id, client);
         getServerLogger().info({ clientId: client.id, workspaceId }, 'Language-server WebSocket connected');
@@ -264,6 +305,9 @@ export class LanguageServerWebSocketServer {
                 return;
             case 'lsp-restart':
                 await this.restartSession(client, message.attachmentId);
+                return;
+            case 'lsp-external-source':
+                await this.sendExternalSource(client, message);
                 return;
             default:
                 return;
@@ -360,6 +404,7 @@ export class LanguageServerWebSocketServer {
             controller.abort();
         }
         attachment.pending.clear();
+        client.externalSources.revokeAttachment(attachment.id);
         this.closeOpenDocument(attachment);
         this.unsubscribe(client, attachment);
         attachment.handle.release();
@@ -397,7 +442,13 @@ export class LanguageServerWebSocketServer {
             const raw = await attachment.handle.session.sendRequest(message.method, params.value, {
                 signal: controller.signal,
             });
-            const result = translateUris(raw, (uri) => toBrowserUri(uri, client.workspaceId, client.workspaceRoot));
+            const external = EXTERNAL_SOURCE_METHODS.has(message.method)
+                ? await this.issueExternalSources(client, attachment, raw)
+                : undefined;
+            const result = translateUris(raw, (uri) => {
+                const mapped = toBrowserUri(uri, client.workspaceId, client.workspaceRoot);
+                return mapped === uri ? external?.get(uri) ?? uri : mapped;
+            });
             this.send(client.socket, {
                 type: 'lsp-response',
                 attachmentId: attachment.id,
@@ -421,6 +472,97 @@ export class LanguageServerWebSocketServer {
             });
         } finally {
             attachment.pending.delete(message.id);
+        }
+    }
+
+    /**
+     * Mint read capabilities for the files a definition-style response named
+     * outside the workspace, keyed by the URI they replace.
+     *
+     * Canonicalization happens here, before the synchronous translation pass,
+     * so a capability is bound to the file the server actually meant rather
+     * than to a name that could later point elsewhere. A target that is not a
+     * readable regular file gets no capability and keeps its own URI, which the
+     * browser treats as an unavailable external definition.
+     */
+    private async issueExternalSources(
+        client: BridgeClient,
+        attachment: Attachment,
+        raw: unknown,
+    ): Promise<Map<string, string>> {
+        const issued = new Map<string, string>();
+        const candidates = new Set(
+            collectUris(raw).filter(
+                (uri) => uri.startsWith('file:') && toBrowserUri(uri, client.workspaceId, client.workspaceRoot) === uri,
+            ),
+        );
+        for (const uri of candidates) {
+            let absolutePath: string;
+            try {
+                absolutePath = fileURLToPath(uri);
+            } catch {
+                continue;
+            }
+            const canonicalPath = await canonicalizeExternalFile(absolutePath);
+            if (!canonicalPath || !client.attachments.has(attachment.id)) {
+                continue;
+            }
+            const grant = client.externalSources.issue({
+                attachmentId: attachment.id,
+                workspaceId: client.workspaceId,
+                canonicalPath,
+                displayName: path.basename(canonicalPath) || 'source',
+            });
+            issued.set(uri, externalResourceUri(grant.id, grant.displayName));
+        }
+        return issued;
+    }
+
+    /**
+     * Read one external file the browser is holding a capability for. The
+     * request carries no path: the resource id is resolved against this
+     * socket's own registry and the attachment that asked, so an id from
+     * another socket, workspace or attachment reads nothing.
+     */
+    private async sendExternalSource(
+        client: BridgeClient,
+        message: { requestId: string; attachmentId: string; resourceId: string },
+    ): Promise<void> {
+        const requestId = String(message.requestId ?? '');
+        const attachment = client.attachments.get(String(message.attachmentId ?? ''));
+        const grant = attachment
+            ? client.externalSources.resolve(String(message.resourceId ?? ''), {
+                attachmentId: attachment.id,
+                workspaceId: client.workspaceId,
+            })
+            : undefined;
+        if (!attachment || !grant) {
+            this.send(client.socket, {
+                type: 'lsp-external-source-result',
+                requestId,
+                error: { code: 'unknown-resource', message: describeExternalSourceFailure('unknown-resource') },
+            });
+            return;
+        }
+        const controller = new AbortController();
+        client.externalReads.add(controller);
+        try {
+            const read = await readExternalSource(grant, controller.signal);
+            this.send(client.socket, read.ok
+                ? {
+                    type: 'lsp-external-source-result',
+                    requestId,
+                    content: read.content,
+                    displayName: read.displayName,
+                    languageHint: read.languageHint || attachment.handle.languageId,
+                }
+                : {
+                    type: 'lsp-external-source-result',
+                    requestId,
+                    error: { code: read.reason, message: describeExternalSourceFailure(read.reason) },
+                });
+        } finally {
+            client.externalReads.delete(controller);
         }
     }
 
@@ -611,6 +753,11 @@ export class LanguageServerWebSocketServer {
             attachment.handle.release();
         }
         client.attachments.clear();
+        client.externalSources.clear();
+        for (const controller of client.externalReads) {
+            controller.abort();
+        }
+        client.externalReads.clear();
         for (const [, subscription] of client.subscriptions) {
             subscription.dispose();
         }

@@ -248,7 +248,7 @@ and transport code stays generic.
   `commandLabel` is what a missing-executable status names, so an absolute
   fallback path cannot leak through `Executable not found`.
 
-## Browser bridge (`uri-mapping.ts`, `ws-bridge.ts`)
+## Browser bridge (`uri-mapping.ts`, `ws-bridge.ts`, `external-sources.ts`)
 
 - `uri-mapping.ts` translates between browser and host document identity. The
   browser addresses a file as `coc-file://<workspaceId>/<relative/path>`; the
@@ -259,16 +259,22 @@ and transport code stays generic.
   is how the client can tell a live repo document from an external target.
   `translateUris` deep-copies a payload, rewriting only LSP URI keys (`uri`,
   `targetUri`, `newUri`, `oldUri`, `rootUri`, `documentUri`, `externalUri`), and
-  rejects the whole payload when one URI cannot be mapped.
+  rejects the whole payload when one URI cannot be mapped. `collectUris` returns
+  the same URI-keyed strings without copying, so external targets can be
+  canonicalized before that synchronous pass runs. `externalResourceUri` /
+  `parseExternalResourceUri` build and read
+  `coc-lsp-external://<capability>/<basename>`, the browser-facing identity of a
+  read-only file outside every workspace.
 - `ws-bridge.ts` — `LanguageServerWebSocketServer(workspaces, manager)` serves
   `/ws/language-server`. `workspaceId` and `editingSessionId` come from the
   upgrade URL and are validated against the workspace list before any process is
   touched; the origin check is the shared one in
   `src/server/streaming/websocket.ts`, which routes the path to this server.
 - Client messages: `lsp-attach`, `lsp-detach`, `lsp-request`, `lsp-cancel`,
-  `lsp-notify`, `lsp-restart`, `ping`. Server messages: `lsp-welcome`, `lsp-attached`,
-  `lsp-unavailable`, `lsp-response`, `lsp-notification`, `lsp-status`,
-  `lsp-detached`, `lsp-error`, `pong`. This shape is the transport contract a
+  `lsp-notify`, `lsp-restart`, `lsp-external-source`, `ping`. Server messages:
+  `lsp-welcome`, `lsp-attached`, `lsp-unavailable`, `lsp-response`,
+  `lsp-notification`, `lsp-status`, `lsp-detached`, `lsp-external-source-result`,
+  `lsp-error`, `pong`. This shape is the transport contract a
   container relay implements, so the editor client does not change when the
   server moves off this host.
 - An attachment is one document on one socket; it holds one manager reference
@@ -288,6 +294,27 @@ and transport code stays generic.
   never waits on a spawn and a handshake; success reaches it through the
   session's ready handler as an `lsp-status`, and a failed start is pushed as
   one too, since no ready handler will fire for it.
+- `external-sources.ts` — read-only access to a file a language server names
+  outside every workspace. A successful `textDocument/definition`,
+  `declaration`, `typeDefinition`, or `implementation` response has its external
+  `file://` targets canonicalized and replaced with `coc-lsp-external://` before
+  the URI translation pass; every other method keeps its own URI, and a target
+  that is not a readable regular file gets no capability at all.
+  `ExternalSourceRegistry` scopes a capability to the issuing socket, its
+  workspace, the asking attachment, and the exact canonical file, with a bounded
+  TTL and a per-socket limit that evicts the oldest entry. Capabilities are
+  revoked on detach and on socket cleanup, and repeated locations in one file
+  reuse a single id. `readExternalSource` re-canonicalizes before opening
+  anything — so replacing the path with a symlink after issuance cannot redirect
+  the read — and refuses missing, non-regular, oversized, and binary targets.
+  Binary detection is a NUL probe rather than an extension check, because a
+  libstdc++ header such as `<string_view>` has no extension. External paths are
+  never added to `/api/fs/blob`, the trusted-directory list, or the workspace
+  file API.
+- `lsp-external-source` carries only an attachment id and an opaque resource id;
+  the bridge never accepts a path or URI from the browser. The reply carries the
+  content, the safe display basename, and a language hint (the file extension,
+  falling back to the session's language id).
 - The socket subscribes to `session.onStateChange` and forwards every
   transition as an `lsp-status`, so the browser's status display sees
   `starting`, `indexing`, `reconnecting` and `failed` rather than only `ready`.

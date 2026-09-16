@@ -46,7 +46,9 @@ import {
     type DefinitionPreviewMonaco,
 } from '../../language-servers/definitionPreview';
 import {
+    isExternalNavigationTarget,
     registerEditorNavigator,
+    type ExternalNavigationTarget,
     type LanguageNavigationTarget,
 } from '../../language-servers/editorNavigation';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
@@ -132,6 +134,18 @@ export interface PreviewPaneProps {
         column: number;
         symbolCandidate?: true;
     }) => void;
+    /**
+     * Where a definition that lands OUTSIDE every workspace should open — a
+     * standard-library header, a dependency source. The target carries the
+     * host's opaque capability, never a path, and opens read-only. A host that
+     * sets no handler declines the jump rather than showing the user nothing.
+     */
+    onNavigateExternal?: (target: {
+        resourceId: string;
+        name: string;
+        line: number;
+        column: number;
+    }) => void;
     /** Registers this file's live Monaco location capture/restore handle. */
     onNavigationMount?: (controller: EditorNavigationController | null) => void;
     /** Reports cursor, scroll, search, diagnostic, and language-jump locations. */
@@ -141,7 +155,7 @@ export interface PreviewPaneProps {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -238,12 +252,29 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     // it.
     const navigateRef = useRef(onNavigate);
     navigateRef.current = onNavigate;
+    const navigateExternalRef = useRef(onNavigateExternal);
+    navigateExternalRef.current = onNavigateExternal;
     const navigationMountRef = useRef(onNavigationMount);
     navigationMountRef.current = onNavigationMount;
     const navigationLocationRef = useRef(onNavigationLocation);
     navigationLocationRef.current = onNavigationLocation;
     const navigationControllerRef = useRef<EditorNavigationController | null>(null);
-    const handleNavigate = useCallback((target: LanguageNavigationTarget) => {
+    const handleNavigate = useCallback((
+        target: LanguageNavigationTarget | ExternalNavigationTarget,
+    ) => {
+        if (isExternalNavigationTarget(target)) {
+            const navigateExternal = navigateExternalRef.current;
+            if (!navigateExternal) return false;
+            const source = navigationControllerRef.current?.capture();
+            if (source) navigationLocationRef.current?.(source, 'jump');
+            navigateExternal({
+                resourceId: target.resourceId,
+                name: target.displayName,
+                line: target.line,
+                column: target.column,
+            });
+            return true;
+        }
         const navigate = navigateRef.current;
         if (!navigate || target.workspaceId !== repoId) return false;
         const source = navigationControllerRef.current?.capture();
@@ -319,6 +350,11 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                         : undefined;
                 }
                 : undefined,
+            // clangd answers a jump into `std::string_view` with a libstdc++
+            // header. Only the attachment that received that answer holds the
+            // capability to read it, so the reader is this document's own view.
+            readExternalSource: (resourceId, signal) => languageView.readExternalSource(resourceId, { signal }),
+            languageForFileName: getMonacoLanguage,
             showUnavailableForRejectedTarget: definitionPreviewOwners !== undefined,
         });
         // Before registering anything, move the model off `typescript` /

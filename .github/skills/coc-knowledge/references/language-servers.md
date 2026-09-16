@@ -70,33 +70,82 @@ configuration. The cross-platform validation workflow discovers those include
 directories on a Windows runner and exercises a real `<vector>` translation unit
 through the same `initializationOptions.fallbackFlags` path.
 
-C and C++ go-to-definition combines clangd locations with the owning workspace's
-persistent symbol-index candidates in the Monaco provider. Exact locations sort
-first, results are deduplicated by file and line, and candidate URIs carry a
-`symbol-index-candidate` fragment. The index ranks `macro`, `class`, `type`,
-`method`, and `function` definitions above `prototype` declarations. The Explorer
-definition lookup removes `prototype` rows whenever at least one definition is
-available, because Monaco re-sorts multi-result Peek lists independently of the
-index ranking. When the index returns declarations only, it keeps them as a useful
-fallback for pure-virtual and header-only declarations. The definition peek asks
-for ten candidates rather than the route's generic search-palette limit of 100.
-Explorer and unified-panel tabs preserve that provenance and show an amber
-`Symbol candidate` pill on the destination until a plain or exact cross-file open
-replaces it. The index continues to answer when clangd is disabled, unavailable,
-or does not advertise definition support.
-Cross-file locations from either source are prepared by the initiating editor's
-temporary `coc-file` preview source. A repository editor accepts only its own
-workspace; a repo-group editor also accepts every live member and reads through
-the target member's workspace and concrete clone route. Standalone Monaco
-resolves only existing models, so each accepted target first receives a
+C and C++ go-to-definition treats clangd as authoritative. Any non-empty,
+structurally valid definition response is the whole result: exact locations keep
+the server's order, are deduplicated by file and line, and suppress the
+repository symbol index entirely. The index lookup still starts alongside the
+request so the fallback costs no latency, but its result is discarded whenever
+clangd answers. An exact target the surface cannot load stays in the list as an
+unavailable exact result rather than being replaced by textually similar
+symbols.
+
+The persistent symbol index answers only when clangd is disabled, unavailable,
+fails, does not advertise definition support, or returns no locations. It ranks
+`macro`, `class`, `type`, `method`, and `function` definitions above `prototype`
+declarations, and the Explorer definition lookup removes `prototype` rows
+whenever at least one definition is available, because Monaco re-sorts
+multi-result Peek lists independently of the index ranking. When the index
+returns declarations only, it keeps them as a useful fallback for pure-virtual
+and header-only declarations. The definition peek asks for ten candidates rather
+than the route's generic search-palette limit of 100. Candidate URIs carry a
+`symbol-index-candidate` fragment; Explorer and unified-panel tabs preserve that
+provenance and show an amber `Symbol candidate` pill on the destination until a
+plain or exact cross-file open replaces it.
+
+Cross-file locations inside an accepted workspace are prepared by the initiating
+editor's temporary `coc-file` preview source. A repository editor accepts only
+its own workspace; a repo-group editor also accepts every live member and reads
+through the target member's workspace and concrete clone route. Standalone
+Monaco resolves only existing models, so each accepted target first receives a
 temporary loading model that Peek can display immediately; the routed read
 updates that model in place. A target outside the accepted ownership set is
 never read and receives an unavailable model so Peek explains the rejection.
 Read failures produce the same unavailable state. Cancellation removes stale
 loading models, and temporary models are disposed when Peek detaches or the
-editor closes.
-Prepared models remain available while a slow Peek widget attaches and have a
-bounded orphan timeout when no widget claims them.
+editor closes. Prepared models remain available while a slow Peek widget
+attaches and have a bounded orphan timeout when no widget claims them.
+
+### External definition sources
+
+A definition may name a file outside every workspace — a libstdc++ or libc++
+header, an SDK header, a dependency source. The owning host canonicalizes that
+target and replaces its `file://` URI with `coc-lsp-external://<capability>/<basename>`
+in `ws-bridge.ts`. Only definition-family responses
+(`textDocument/definition`, `declaration`, `typeDefinition`, `implementation`)
+mint capabilities; every other response keeps its own URI. A target that is not
+a readable regular file gets no capability and stays as an unavailable external
+definition.
+
+A capability is opaque, carries no host path, and is valid only for the issuing
+socket, its workspace, the attachment that asked, and the exact canonical file.
+It has a bounded lifetime and a per-socket retention limit that evicts the
+oldest entry, and it is revoked when the attachment detaches or the socket
+closes. Reads go over the same `lsp-external-source` request on the attachment's
+own routed WebSocket, so a result from a remote clone is read from that clone
+and never from the dashboard's local server. The host re-canonicalizes before
+reading, so replacing the path with a symlink after issuance cannot redirect the
+read, and it refuses missing, non-regular, oversized, and binary targets.
+External paths are never added to `/api/fs/blob`, the trusted-directory list, or
+the workspace file API.
+
+In the browser, the Peek preview source loads an external target through the
+attachment that received the definition and picks the Monaco language from the
+display basename, falling back to the host's language hint for extensionless
+standard-library headers. Confirming the result unmounts the pane whose
+attachment owns the capability, so the loaded text is published to a
+reference-counted store and handed to the tab instead of being re-read; the tab
+holds the retain until it closes, and an unreferenced record is dropped after a
+bounded timeout. External results are therefore always awaited before
+navigation, even as the only result.
+
+External sources open read-only in the surface that started the navigation — an
+`external` Explorer tab or an `external` unified-panel tab, both keyed by the
+capability rather than a path, carrying an `External · Read only` cue, and
+offering no Save action or dirty state. They are never persisted, because the
+capability dies with the language-server connection; a restored payload naming
+one is rejected, and the recovery is a fresh Go to Definition. A repo-group
+external tab is owned by the member and concrete clone whose language server
+produced the result.
 When `python.pythonPath` is absent, the adapter selects an executable interpreter
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.

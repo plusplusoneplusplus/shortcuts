@@ -25,6 +25,11 @@ export interface SentNotification {
     params: Record<string, unknown>;
 }
 
+export interface SentExternalRead {
+    resourceId: string;
+    signal?: AbortSignal;
+}
+
 export interface SentRequest {
     method: string;
     params: unknown;
@@ -40,6 +45,10 @@ export type RequestResponder = (params: unknown, signal?: AbortSignal) => unknow
 export class FakeAttachment {
     readonly notifications: SentNotification[] = [];
     readonly requests: SentRequest[] = [];
+    /** Every authorized external-source read this attachment was asked for. */
+    readonly externalReads: SentExternalRead[] = [];
+    /** Scripted answers by resource id; a missing id fails the read. */
+    readonly externalSources = new Map<string, { content: string; displayName: string; languageHint?: string }>();
     /** Every `restart()` the layers above asked for. */
     restarts = 0;
     private readonly responders = new Map<string, RequestResponder>();
@@ -77,6 +86,14 @@ export class FakeAttachment {
                     return undefined as T;
                 }
                 return (await responder(params, options?.signal)) as T;
+            },
+            readExternalSource: async (resourceId: string, options?: { signal?: AbortSignal }) => {
+                self.externalReads.push({ resourceId, signal: options?.signal });
+                const source = self.externalSources.get(resourceId);
+                if (!source) {
+                    throw new Error('Definition source unavailable.');
+                }
+                return source;
             },
             sendNotification: (method: string, params?: unknown) => {
                 if (!self.info) {

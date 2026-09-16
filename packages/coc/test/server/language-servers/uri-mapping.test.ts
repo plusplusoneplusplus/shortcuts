@@ -8,6 +8,9 @@ import * as path from 'path';
 import { pathToFileURL } from 'url';
 import {
     browserDocumentUri,
+    collectUris,
+    externalResourceUri,
+    parseExternalResourceUri,
     isInsideRoot,
     parseBrowserDocumentUri,
     resolveWorkspaceDocument,
@@ -174,5 +177,37 @@ describe('translateUris', () => {
         expect(translateUris(null, upper)).toEqual({ ok: true, value: null });
         expect(translateUris(7, upper)).toEqual({ ok: true, value: 7 });
         expect(translateUris(undefined, upper)).toEqual({ ok: true, value: undefined });
+    });
+});
+
+describe('external resource URIs', () => {
+    it('round-trips a capability id and a display basename', () => {
+        const uri = externalResourceUri('cap-1', 'string_view');
+        expect(uri).toBe('coc-lsp-external://cap-1/string_view');
+        expect(parseExternalResourceUri(uri)).toEqual({ resourceId: 'cap-1', displayName: 'string_view' });
+    });
+
+    it('carries no host directory, even for a deeply nested header', () => {
+        const uri = externalResourceUri('cap-1', path.basename('/usr/include/c++/13/string_view'));
+        expect(uri).not.toContain('include');
+        expect(uri).not.toContain('/usr');
+    });
+
+    it('rejects anything that is not an external resource', () => {
+        expect(parseExternalResourceUri(browserDocumentUri('ws-1', 'src/a.ts'))).toBeUndefined();
+        expect(parseExternalResourceUri('coc-lsp-external://')).toBeUndefined();
+    });
+});
+
+describe('collectUris', () => {
+    it('finds every URI-keyed string, in walk order', () => {
+        expect(collectUris([
+            { uri: 'file:///a', range: {} },
+            { targetUri: 'file:///b', extra: { uri: 'file:///c' } },
+        ])).toEqual(['file:///a', 'file:///b', 'file:///c']);
+    });
+
+    it('ignores strings that merely look like URIs under another key', () => {
+        expect(collectUris({ label: 'file:///not-a-uri-field' })).toEqual([]);
     });
 });

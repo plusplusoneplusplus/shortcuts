@@ -297,12 +297,25 @@ the API-only Monaco entry point does not register the Ctrl/Cmd-click gesture.
 Each pane claims its own model with `registerEditorNavigator`
 (`features/language-servers/editorNavigation.ts`), and the opener dispatches on
 the model the jump started in — that is how the target lands in the Explorer's
-strip or the right panel's, whichever the user was in. The pane refuses a target
-outside its own workspace and a URI that is not a `coc-file://` document, so a
-dependency under `node_modules` cannot be routed through the repo's own file
-endpoint. Surfaces open the target pinned and pass the position back down as
-`revealLine` / `revealColumn`; the column travels with its line through the tab
-descriptors and is dropped whenever the line changes without one.
+strip or the right panel's, whichever the user was in. The pane refuses a
+`coc-file://` target outside its own workspace, so a dependency under
+`node_modules` cannot be routed through the repo's own file endpoint. Surfaces
+open the target pinned and pass the position back down as `revealLine` /
+`revealColumn`; the column travels with its line through the tab descriptors and
+is dropped whenever the line changes without one.
+
+A `coc-lsp-external://` target takes the external branch instead
+(`onNavigateExternal`): it names an opaque capability the owning host issued with
+the definition, never a path, and opens as a pinned read-only `external` tab
+carrying an `External · Read only` cue, no Save action, and no dirty state.
+External tabs are keyed by the capability and are never persisted, because the
+capability dies with the language-server connection.
+
+Definition results are clangd's, not the symbol index's: any valid location
+response is the whole list and suppresses index candidates entirely. The index
+answers only when the server is unavailable, fails, or returns nothing. An exact
+target the pane cannot load stays in the list as an unavailable exact result
+rather than being replaced by textually similar symbols.
 
 Peek Definition resolves those same cross-file `coc-file://` locations through
 `features/language-servers/definitionPreview.ts`. A repository pane accepts only
@@ -316,6 +329,17 @@ model without reading the rejected target, and cancellation drops stale
 content. Temporary models are disposed after Peek
 detaches or with the initiating pane; a prepared model that never attaches has a
 bounded orphan timeout. Selecting a row does not open an Explorer tab.
+
+An external `coc-lsp-external://` target is loaded through the language
+attachment that received the definition — the routed connection of the owning
+clone, never the page's own server — and its Monaco language comes from the
+display basename, falling back to the host's language hint for extensionless
+standard-library headers. Because confirming the result unmounts the pane whose
+attachment owns the capability, the loaded text is published to the
+reference-counted `features/language-servers/externalSourceStore.ts` and handed
+to the tab instead of being re-read; external targets are therefore always
+awaited before navigation, even as the only result. The tab holds the retain
+until it closes, and an unreferenced record is dropped after a bounded timeout.
 
 Peek's preview editor is an `EmbeddedCodeEditorWidget`, which Monaco builds from
 `parentEditor.getRawOptions()`, so `EXPLORER_EDITOR_OPTIONS` keeps

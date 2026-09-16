@@ -48,8 +48,13 @@
  * There is deliberately no `explorer` kind: the file tree is a panel-level
  * column (`unifiedPanelTree`), not a tab, so it cannot be closed by accident,
  * duplicated per chat, or ordered among resources.
+ *
+ * `external` is a read-only standard-library or dependency source a language
+ * server named as a definition. Its `resourceId` is the opaque capability the
+ * owning host issued — never a path — so it has no entry in the "+" menu and is
+ * never persisted: the capability dies with the language-server connection.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'external';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
@@ -58,6 +63,13 @@ export type UnifiedTabScope = 'workspace' | 'chat';
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
     'terminal', 'notes', 'file', 'note', 'canvas', 'diff',
 ];
+
+/**
+ * Kinds that are never written to storage. An external source is addressed by a
+ * capability that expires with its connection, so a restored tab could only
+ * show "unavailable"; running Go to Definition again is the real recovery.
+ */
+const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
 const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note']);
@@ -707,17 +719,25 @@ interface SerializedUnifiedPanelState {
 
 /** Serialize descriptors only — never document bodies, output, or credentials. */
 export function serializeUnifiedPanelState(state: UnifiedPanelState): string {
+    const persistable = (list: readonly UnifiedPanelTab[]) => list.filter(tab => !EPHEMERAL_KINDS.has(tab.kind));
+    const written = new Set<string>();
+    const workspaceTabs = persistable(state.workspaceTabs);
+    for (const tab of workspaceTabs) written.add(tab.id);
     const chatTabs: Record<string, UnifiedPanelTab[]> = {};
     for (const [key, list] of Object.entries(state.chatTabs)) {
-        if (list.length > 0) chatTabs[key] = [...list];
+        const kept = persistable(list);
+        if (kept.length === 0) continue;
+        for (const tab of kept) written.add(tab.id);
+        chatTabs[key] = kept;
     }
     const activeByScope: Record<string, string> = {};
     for (const [key, id] of Object.entries(state.activeByScope)) {
-        if (id !== null) activeByScope[key] = id;
+        // A selection naming a dropped tab would restore as a dangling id.
+        if (id !== null && written.has(id)) activeByScope[key] = id;
     }
     const payload: SerializedUnifiedPanelState = {
         version: UNIFIED_PANEL_STATE_VERSION,
-        workspaceTabs: [...state.workspaceTabs],
+        workspaceTabs,
         chatTabs,
         activeByScope,
     };

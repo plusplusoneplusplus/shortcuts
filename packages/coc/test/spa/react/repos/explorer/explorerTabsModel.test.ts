@@ -9,10 +9,12 @@ import {
     closeTabs,
     cycleTabs,
     cycleTabsWithin,
+    externalTabId,
     fileTabId,
     findTab,
     hasFileTab,
     moveTab,
+    openExternalTab,
     openFileTab,
     openSearchTab,
     otherTabIds,
@@ -518,5 +520,76 @@ describe('explorerTabsModel — reference stability', () => {
         expect(openPinned(state, 'b.ts')).toBe(state);
         expect(moveTab(state, 0, 0)).toBe(state);
         expect(closeTabs(state, ['file:missing'])).toBe(state);
+    });
+});
+
+describe('external definition source tabs', () => {
+    it('opens pinned and read-only, keyed by the capability rather than a path', () => {
+        const state = openExternalTab(EMPTY_EXPLORER_TABS, {
+            resourceId: 'cap-1', name: 'string_view', line: 42, column: 7,
+        });
+
+        expect(state.tabs).toHaveLength(1);
+        expect(state.tabs[0]).toMatchObject({
+            id: externalTabId('cap-1'),
+            kind: 'external',
+            name: 'string_view',
+            path: '',
+            preview: false,
+            readOnly: true,
+            resourceId: 'cap-1',
+            line: 42,
+            column: 7,
+        });
+        expect(state.activeId).toBe(externalTabId('cap-1'));
+    });
+
+    it('moves the cursor in the existing tab for a second definition in the same file', () => {
+        const first = openExternalTab(EMPTY_EXPLORER_TABS, { resourceId: 'cap-1', name: 'string_view', line: 42, column: 7 });
+        const second = openExternalTab(first, { resourceId: 'cap-1', name: 'string_view', line: 90, column: 3 });
+
+        expect(second.tabs).toHaveLength(1);
+        expect(second.tabs[0]).toMatchObject({ line: 90, column: 3 });
+    });
+
+    it('never takes over the preview slot', () => {
+        const withPreview = openPreview(EMPTY_EXPLORER_TABS, 'src/a.cpp');
+        const state = openExternalTab(withPreview, { resourceId: 'cap-1', name: 'string_view' });
+
+        expect(paths(state)).toEqual(['src/a.cpp', '']);
+        expect(previewTab(state)?.path).toBe('src/a.cpp');
+    });
+
+    it('closing it leaves the rest of the strip alone', () => {
+        const withFile = openPinned(EMPTY_EXPLORER_TABS, 'src/a.cpp');
+        const state = openExternalTab(withFile, { resourceId: 'cap-1', name: 'string_view' });
+
+        const closed = closeTab(state, externalTabId('cap-1'));
+
+        expect(paths(closed)).toEqual(['src/a.cpp']);
+        expect(closed.activeId).toBe(fileTabId('src/a.cpp'));
+    });
+
+    it('is not persisted, and does not leave a dangling selection behind', () => {
+        const withFile = openPinned(EMPTY_EXPLORER_TABS, 'src/a.cpp');
+        const state = openExternalTab(withFile, { resourceId: 'cap-1', name: 'string_view' });
+
+        // The capability dies with the language-server connection, so restoring
+        // the tab could only ever show "unavailable".
+        const restored = parseExplorerTabs(serializeExplorerTabs(state));
+
+        expect(paths(restored)).toEqual(['src/a.cpp']);
+        expect(restored.activeId).toBe(fileTabId('src/a.cpp'));
+        expect(restored.mru).toEqual([fileTabId('src/a.cpp')]);
+    });
+
+    it('rejects a hand-written external tab in a persisted payload', () => {
+        const restored = parseExplorerTabs(JSON.stringify({
+            tabs: [{ id: externalTabId('cap-1'), kind: 'external', path: '', name: 'string_view', resourceId: 'cap-1' }],
+            activeId: externalTabId('cap-1'),
+            mru: [externalTabId('cap-1')],
+        }));
+
+        expect(restored).toEqual(EMPTY_EXPLORER_TABS);
     });
 });

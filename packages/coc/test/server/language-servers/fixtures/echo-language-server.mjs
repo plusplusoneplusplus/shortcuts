@@ -10,6 +10,8 @@
  * Supported requests:
  *   initialize            -> capabilities, plus the received initializationOptions
  *   echo                  -> returns the params unchanged
+ *   textDocument/definition -> one location per absolute path in `params.paths`
+ *   locate                -> same, under a non-definition method
  *   getInit               -> the received initialize params plus process.cwd()
  *   getDocument           -> returns the open text for one document URI
  *   slow                  -> never replies, for timeout and cancellation tests
@@ -31,6 +33,7 @@
 
 import process from 'node:process';
 import { writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 // `--stubborn` makes the process refuse every polite way of stopping it: the
 // `exit` notification, a closed stdin, and SIGTERM. Teardown tests use it to
@@ -108,6 +111,22 @@ function handle(message) {
             return;
         case 'echo':
             send({ jsonrpc: '2.0', id, result: params ?? null });
+            return;
+        // Builds one location per absolute path in `params.paths`, so a test
+        // decides exactly which files a definition response names. Paths, not
+        // URIs, because the bridge rewrites every URI on the way in as well.
+        case 'textDocument/definition':
+        // Same payload under a method that is not a definition lookup, so a
+        // test can show that only definition results mint capabilities.
+        case 'locate':
+            send({
+                jsonrpc: '2.0',
+                id,
+                result: (params?.paths ?? []).map((filePath) => ({
+                    uri: pathToFileURL(filePath).href,
+                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+                })),
+            });
             return;
         case 'slow':
             cancellable.set(id, true);

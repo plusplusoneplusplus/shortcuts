@@ -698,4 +698,87 @@ describe('getEditingSessionId', () => {
         resetEditingSessionIdForTests();
         expect(getEditingSessionId()).not.toBe(first);
     });
+
+    describe('external definition sources', () => {
+        /** An attached document, ready to read a capability its server issued. */
+        function attached() {
+            const client = makeClient();
+            const attachment = client.attach('src/a.cpp');
+            const socket = latest();
+            socket.open();
+            socket.emit(attachedMessage(socket));
+            return { client, attachment, socket };
+        }
+
+        it('sends only the opaque resource id, on this attachment', async () => {
+            const { attachment, socket } = attached();
+
+            const reading = attachment.readExternalSource('cap-1');
+            const sent = socket.sentOfType('lsp-external-source').at(-1)!;
+            expect(sent).toMatchObject({ attachmentId: 'att-1', resourceId: 'cap-1' });
+            expect(JSON.stringify(sent)).not.toContain('/');
+
+            socket.emit({
+                type: 'lsp-external-source-result',
+                requestId: sent.requestId,
+                content: 'class string_view;',
+                displayName: 'string_view',
+                languageHint: 'cpp',
+            });
+
+            await expect(reading).resolves.toEqual({
+                content: 'class string_view;',
+                displayName: 'string_view',
+                languageHint: 'cpp',
+            });
+        });
+
+        it('rejects with the host\'s reason when the capability no longer resolves', async () => {
+            const { attachment, socket } = attached();
+
+            const reading = attachment.readExternalSource('cap-1');
+            socket.emit({
+                type: 'lsp-external-source-result',
+                requestId: socket.sentOfType('lsp-external-source').at(-1)!.requestId,
+                error: { code: 'expired', message: 'That definition source expired.' },
+            });
+
+            await expect(reading).rejects.toMatchObject({ code: 'expired' });
+        });
+
+        it('fails a read that has no live attachment behind it', async () => {
+            const client = makeClient();
+            const attachment = client.attach('src/a.cpp');
+            latest().open();
+
+            await expect(attachment.readExternalSource('cap-1')).rejects.toMatchObject({ code: 'not-attached' });
+        });
+
+        it('settles an in-flight read when the connection drops', async () => {
+            const { attachment, socket } = attached();
+
+            const reading = attachment.readExternalSource('cap-1');
+            socket.drop();
+
+            // A capability belongs to the connection that issued it, so the
+            // recovery is a fresh definition request, not a retried read.
+            await expect(reading).rejects.toMatchObject({ code: 'disconnected' });
+        });
+
+        it('abandons a read whose caller cancelled', async () => {
+            const { attachment, socket } = attached();
+            const controller = new AbortController();
+
+            const reading = attachment.readExternalSource('cap-1', { signal: controller.signal });
+            controller.abort();
+            socket.emit({
+                type: 'lsp-external-source-result',
+                requestId: socket.sentOfType('lsp-external-source').at(-1)!.requestId,
+                content: 'too late',
+                displayName: 'string_view',
+            });
+
+            await expect(reading).rejects.toMatchObject({ code: 'cancelled' });
+        });
+    });
 });

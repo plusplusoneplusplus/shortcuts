@@ -29,9 +29,11 @@
 /**
  * What a tab renders. `file` tabs own a real path and go through PreviewPane;
  * `search` tabs hold the read-only text buffer produced by the content-search
- * view's "Open in Editor" action.
+ * view's "Open in Editor" action; `external` tabs show a standard-library or
+ * dependency source a language server named as a definition, read-only and
+ * addressed only by the capability its owning host issued.
  */
-export type ExplorerTabKind = 'file' | 'search';
+export type ExplorerTabKind = 'file' | 'search' | 'external';
 
 export interface ExplorerTab {
     /**
@@ -77,6 +79,11 @@ export interface ExplorerTab {
     symbolCandidate?: true;
     /** For `search` tabs only: the query whose results the buffer holds. */
     query?: string;
+    /**
+     * For `external` tabs only: the opaque capability id. The tab never holds a
+     * host path, so there is nothing here to turn into a file read of its own.
+     */
+    resourceId?: string;
 }
 
 export interface ExplorerTabsState {
@@ -114,6 +121,14 @@ export function fileTabId(path: string): string {
  */
 export function searchTabId(query: string): string {
     return `search:${query}`;
+}
+
+/**
+ * Tab id for an external definition source, keyed by its capability. Two
+ * definitions in the same header share a tab and just move the cursor.
+ */
+export function externalTabId(resourceId: string): string {
+    return `external:${resourceId}`;
 }
 
 /** The active tab object, or null when the strip is empty. */
@@ -224,7 +239,7 @@ export interface OpenFileTabInput {
  * The reveal fields an open contributes. A column only ever travels with a
  * line, so an open that names neither leaves an existing reveal alone.
  */
-function revealFields(input: OpenFileTabInput): { line?: number; column?: number } {
+function revealFields(input: { line?: number; column?: number }): { line?: number; column?: number } {
     if (input.line === undefined) return {};
     return input.column === undefined
         ? { line: input.line }
@@ -321,6 +336,48 @@ export function openSearchTab(state: ExplorerTabsState, input: OpenSearchTabInpu
     return reconcile(state, [...state.tabs, opened], id);
 }
 
+/** What `openExternalTab` needs: the capability, its label, and where to land. */
+export interface OpenExternalTabInput {
+    resourceId: string;
+    /** Safe basename supplied by the host; never a directory. */
+    name: string;
+    line?: number;
+    column?: number;
+}
+
+/**
+ * Open (or re-activate) the read-only view of an external definition source.
+ * Always pinned: the user asked for this file by confirming a definition, and a
+ * following single click in the tree should not throw it away.
+ */
+export function openExternalTab(state: ExplorerTabsState, input: OpenExternalTabInput): ExplorerTabsState {
+    const id = externalTabId(input.resourceId);
+    const reveal = revealFields(input);
+    const existingIndex = state.tabs.findIndex(tab => tab.id === id);
+    if (existingIndex >= 0) {
+        const existing = state.tabs[existingIndex];
+        const { column: _staleColumn, ...withoutColumn } = existing;
+        const updated: ExplorerTab = {
+            ...(input.line === undefined ? existing : withoutColumn),
+            preview: false,
+            ...reveal,
+        };
+        const tabs = sameTab(existing, updated) ? state.tabs : replaceAt(state.tabs, existingIndex, updated);
+        return reconcile(state, tabs, id);
+    }
+    const opened: ExplorerTab = {
+        id,
+        kind: 'external',
+        path: '',
+        name: input.name,
+        preview: false,
+        readOnly: true,
+        resourceId: input.resourceId,
+        ...reveal,
+    };
+    return reconcile(state, [...state.tabs, opened], id);
+}
+
 function replaceAt(tabs: readonly ExplorerTab[], index: number, tab: ExplorerTab): ExplorerTab[] {
     const next = [...tabs];
     next[index] = tab;
@@ -337,7 +394,8 @@ function sameTab(a: ExplorerTab, b: ExplorerTab): boolean {
         && a.line === b.line
         && a.column === b.column
         && a.symbolCandidate === b.symbolCandidate
-        && a.query === b.query;
+        && a.query === b.query
+        && a.resourceId === b.resourceId;
 }
 
 // ---------------------------------------------------------------------------
@@ -527,10 +585,15 @@ export function tabLabels(tabs: readonly ExplorerTab[]): Map<string, string> {
  * the same tabs reading their files fresh from disk.
  */
 export function serializeExplorerTabs(state: ExplorerTabsState): string {
+    // External tabs are deliberately not persisted: their capability dies with
+    // the language-server connection, so a restored tab could only ever show
+    // "unavailable". Running Go to Definition again is the real recovery.
+    const tabs = state.tabs.filter(tab => tab.kind !== 'external');
+    const ids = new Set(tabs.map(tab => tab.id));
     return JSON.stringify({
-        tabs: state.tabs,
-        activeId: state.activeId,
-        mru: state.mru,
+        tabs,
+        activeId: state.activeId !== null && ids.has(state.activeId) ? state.activeId : null,
+        mru: state.mru.filter(id => ids.has(id)),
     });
 }
 
@@ -574,6 +637,8 @@ export function parseExplorerTabs(raw: string): ExplorerTabsState {
 function parseTab(entry: unknown): ExplorerTab | null {
     if (!entry || typeof entry !== 'object') return null;
     const source = entry as Record<string, unknown>;
+    // `external` is intentionally absent: it is never written, and a payload
+    // claiming one is a stale or hand-edited capability that reads nothing.
     const kind = source.kind === 'search' ? 'search' : source.kind === 'file' ? 'file' : null;
     if (kind === null) return null;
     if (typeof source.name !== 'string' || source.name.length === 0) return null;

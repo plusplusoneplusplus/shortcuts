@@ -317,4 +317,43 @@ describe('PreviewPane — surface-aware navigation (AC-03)', () => {
             'This file was opened from a repository symbol candidate that clangd did not confirm.',
         );
     });
+
+    it('hands an external definition to its surface as a capability, not a path', async () => {
+        const open = installOpener();
+        const onNavigate = vi.fn();
+        const onNavigateExternal = vi.fn();
+        const { model } = await renderPane({ onNavigate, onNavigateExternal });
+
+        const handled = await open(model, 'coc-lsp-external://cap-1/string_view', {
+            startLineNumber: 42, startColumn: 7,
+        });
+
+        expect(handled).toBe(true);
+        expect(onNavigateExternal).toHaveBeenCalledWith({
+            resourceId: 'cap-1', name: 'string_view', line: 42, column: 7,
+        });
+        expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it('captures the source location before handing off an external jump', async () => {
+        const open = installOpener();
+        const calls: string[] = [];
+        const onNavigationLocation = vi.fn(() => calls.push('source'));
+        const onNavigateExternal = vi.fn(() => calls.push('target'));
+        const { model } = await renderPane({ onNavigateExternal, onNavigationLocation });
+        calls.length = 0;
+
+        await open(model, 'coc-lsp-external://cap-1/string_view', { startLineNumber: 42, startColumn: 7 });
+
+        expect(calls).toEqual(['source', 'target']);
+    });
+
+    it('declines an external definition when its host wires no external handler', async () => {
+        const open = installOpener();
+        const onNavigate = vi.fn();
+        const { model } = await renderPane({ onNavigate });
+
+        expect(await open(model, 'coc-lsp-external://cap-1/string_view')).toBe(false);
+        expect(onNavigate).not.toHaveBeenCalled();
+    });
 });

@@ -56,7 +56,7 @@ describe('ExplorerPanel mobile responsiveness', () => {
         it('hides preview pane on mobile when there is nothing to show', () => {
             expect(source).toContain("isMobile && !showMobilePreview ? { display: 'none' }");
             // Navigator mode has no editor at all, so it is never "content".
-            expect(source).toContain(": (tabsEnabled ? tabsState.tabs.length > 0 : (!!previewFile || !!searchEditor));");
+            expect(source).toContain(": (tabsEnabled ? tabsState.tabs.length > 0 : (!!previewFile || !!searchEditor || !!externalPreview));");
         });
     });
 

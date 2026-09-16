@@ -40,6 +40,7 @@ import {
     type LanguageServerSessionStateView,
     type LanguageServerUnavailableInfo,
 } from './languageServerClient';
+import type { ExternalSourceContent } from './externalSource';
 
 // ============================================================================
 // LSP shapes this layer needs
@@ -175,6 +176,11 @@ export interface LanguageDocumentView {
 
     /** Sends an LSP request for this document once it is attached. */
     sendRequest<T = unknown>(method: string, params?: unknown, options?: LanguageServerRequestOptions): Promise<T>;
+    /**
+     * Reads a file this document's own language server named outside the
+     * workspace, through the attachment that was issued the capability.
+     */
+    readExternalSource(resourceId: string, options?: { signal?: AbortSignal }): Promise<ExternalSourceContent>;
     /** `{ textDocument: { uri }, position }` with the URI filled in. */
     documentParams<T extends Record<string, unknown>>(params?: T): T & { textDocument: { uri: string } };
 
@@ -564,6 +570,8 @@ export class LanguageDocumentStore {
             setDiskText: (text) => store.setDiskText(record, text),
             sendRequest: <T>(method: string, params?: unknown, options?: LanguageServerRequestOptions) =>
                 record.attachment.sendRequest<T>(method, params, options),
+            readExternalSource: (resourceId, options) =>
+                record.attachment.readExternalSource(resourceId, options),
             documentParams: <T extends Record<string, unknown>>(params?: T) =>
                 ({ ...(params ?? ({} as T)), textDocument: { uri: record.uri } }) as T & {
                     textDocument: { uri: string };
