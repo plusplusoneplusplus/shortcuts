@@ -107,6 +107,18 @@ describe('Sentinel watchlist persistence', () => {
         });
     });
 
+    it('round-trips the last rendered board used for restart-safe edit comparison', async () => {
+        const dataDir = makeTempDir();
+        const watchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            lastRenderedBoard: '# Sentinel Board\n',
+        };
+
+        await writeSentinelWatchlist(dataDir, 'workspace-a', watchlist);
+
+        await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toEqual(watchlist);
+    });
+
     it('evicts missing, archived, and long-resolved entries while retaining recent judgments', () => {
         const watchlist: SentinelWatchlist = {
             ...createSentinelWatchlist('sentinel-a', NOW),

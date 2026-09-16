@@ -145,9 +145,12 @@ all have their own `references/*.md`.
   exact ID as the replacement guard.
 - **Sentinel watchlist state** stores the owner, resolved exclusion IDs, and
   judgment-only entries with disposition, bucket, reason, nudge counters, and
-  judgment timestamps. Reads tolerate missing, empty, truncated, and older
-  records. Tick updates use temp-file rename, preserve prior dispositions, and
-  evict missing, archived, or resolved-for-more-than-30-days entries.
+  judgment timestamps, plus the last rendered board used to detect edits across
+  restarts. Reads tolerate missing, empty, truncated, and older records. Tick
+  updates use temp-file rename, preserve prior dispositions, and evict missing,
+  archived, or resolved-for-more-than-30-days entries. The deterministic board
+  groups active judgments by bucket; unchecking a renderer-owned item resolves it
+  and deleting one mutes it.
 - **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
   at least the default cron TTL from the current time, without shortening a
   longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A

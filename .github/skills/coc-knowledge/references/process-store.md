@@ -127,6 +127,9 @@ judgments and exclusion IDs, preserves disposition and nudge history, and reads
 mutable lifecycle facts from `ProcessStore` for each eviction pass. Missing,
 archived, and resolved-for-more-than-30-days rows are removed. Reads accept
 missing, empty, truncated, and older-version files; updates use temp-file rename.
+The marker also stashes the last rendered board for restart-safe edit comparison.
+`sentinel-board.ts` renders active judgments deterministically by bucket and folds
+renderer-owned unchecked or deleted lines into resolved or muted dispositions.
 
 ### Task Group Registry
 

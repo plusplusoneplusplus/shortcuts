@@ -10,7 +10,7 @@ import type {
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-export const SENTINEL_WATCHLIST_VERSION = 2;
+export const SENTINEL_WATCHLIST_VERSION = 3;
 export const SENTINEL_RESOLVED_RETENTION_MS = 30 * DAY_MS;
 
 export type SentinelDisposition = 'watching' | 'nudged' | 'muted' | 'resolved';
@@ -33,6 +33,7 @@ export interface SentinelWatchlist {
     claimedAt: string;
     excludedProcessIds: string[];
     entries: SentinelWatchlistEntry[];
+    lastRenderedBoard?: string;
 }
 
 export interface PersistSentinelClassificationOptions {
@@ -129,6 +130,9 @@ function parseWatchlist(value: unknown): SentinelWatchlist | undefined {
                 return parsed ? [parsed] : [];
             })
             : [],
+        ...(typeof candidate.lastRenderedBoard === 'string'
+            ? { lastRenderedBoard: candidate.lastRenderedBoard }
+            : {}),
     };
 }
 
