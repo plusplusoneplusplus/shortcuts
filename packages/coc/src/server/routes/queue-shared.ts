@@ -3,6 +3,7 @@
  * state type that all queue route modules read/write via QueueRouteContext.
  */
 
+import { randomUUID } from 'crypto';
 import type {
     TaskQueueManager,
     QueuedTask,
@@ -459,6 +460,18 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
             error: `Invalid effortTier: '${effortTier}'. Valid tiers: very-low, low, medium, high`,
         };
     }
+    const requestedPrGate = taskSpec.config?.prGate;
+    if (requestedPrGate !== undefined && (
+        !requestedPrGate
+        || typeof requestedPrGate !== 'object'
+        || Array.isArray(requestedPrGate)
+        || requestedPrGate.autoMerge !== true
+    )) {
+        return {
+            valid: false,
+            error: 'Invalid prGate: expected { autoMerge: true }',
+        };
+    }
 
     const taskProvider = (taskSpec.type === 'chat' || taskSpec.type === TaskDefs.dreamRun.kind)
         && typeof payload.provider === 'string'
@@ -489,6 +502,12 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
             retryDelayMs: taskSpec.config?.retryDelayMs,
             ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
             ...(effortTier ? { effortTier } : {}),
+            ...(requestedPrGate ? {
+                prGate: {
+                    autoMerge: true as const,
+                    chainId: randomUUID(),
+                },
+            } : {}),
         },
         displayName,
     };

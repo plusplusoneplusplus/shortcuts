@@ -3275,6 +3275,109 @@ describe('Ralph-session continuation ordering', () => {
     });
 });
 
+describe('implement-plan repo gates', () => {
+    let manager: TaskQueueManager;
+
+    beforeEach(() => {
+        manager = new TaskQueueManager({ getTaskRepoId: task => task.repoId });
+    });
+
+    const gatedTask = (repoId: string, chainId: string, displayName: string): CreateTaskInput =>
+        createTestTask({
+            repoId,
+            displayName,
+            config: { prGate: { autoMerge: true, chainId } },
+        });
+
+    it('admits only the active chain in the gated repo', () => {
+        const implement = manager.enqueue(gatedTask('repo-A', 'chain-1', 'implement'));
+        manager.enqueue(createTestTask({ repoId: 'repo-A', priority: 'high', displayName: 'held' }));
+        const followUp = manager.enqueue(gatedTask('repo-A', 'chain-1', 'submit-pr'));
+
+        expect(manager.getRepoGate('repo-A')).toEqual({ chainId: 'chain-1', implementTaskId: implement });
+        expect(manager.peek()?.id).toBe(implement);
+        manager.markStarted(implement);
+        expect(manager.peek()?.id).toBe(followUp);
+    });
+
+    it('leaves another repository runnable while a gate is active', () => {
+        const implement = manager.enqueue(gatedTask('repo-A', 'chain-1', 'implement'));
+        manager.markStarted(implement);
+        manager.enqueue(createTestTask({ repoId: 'repo-A', priority: 'high', displayName: 'held' }));
+        const otherRepo = manager.enqueue(createTestTask({ repoId: 'repo-B', displayName: 'other repo' }));
+
+        expect(manager.peek()?.id).toBe(otherRepo);
+        expect(manager.dequeue()?.id).toBe(otherRepo);
+    });
+
+    it('releasing the gate admits a held task', () => {
+        const implement = manager.enqueue(gatedTask('repo-A', 'chain-1', 'implement'));
+        manager.markStarted(implement);
+        const held = manager.enqueue(createTestTask({ repoId: 'repo-A', displayName: 'held' }));
+
+        expect(manager.peek()).toBeUndefined();
+        expect(manager.releaseRepoGate('repo-A', 'chain-1')).toBe(true);
+        expect(manager.getRepoGate('repo-A')).toBeUndefined();
+        expect(manager.peek()?.id).toBe(held);
+    });
+
+    it('serializes two gated chains in the same repository', () => {
+        const first = manager.enqueue(gatedTask('repo-A', 'chain-1', 'first'));
+        const second = manager.enqueue(gatedTask('repo-A', 'chain-2', 'second'));
+
+        expect(manager.peek()?.id).toBe(first);
+        manager.markStarted(first);
+        manager.markCompleted(first);
+        expect(manager.peek()).toBeUndefined();
+
+        expect(manager.releaseRepoGate('repo-A', 'chain-1')).toBe(true);
+        expect(manager.getRepoGate('repo-A')).toEqual({ chainId: 'chain-2', implementTaskId: second });
+        expect(manager.peek()?.id).toBe(second);
+    });
+
+    it('does not let a stale chain release a newer gate', () => {
+        manager.enqueue(gatedTask('repo-A', 'chain-1', 'first'));
+
+        expect(manager.releaseRepoGate('repo-A', 'other-chain')).toBe(false);
+        expect(manager.getRepoGate('repo-A')).toEqual({
+            chainId: 'chain-1',
+            implementTaskId: expect.any(String),
+        });
+    });
+
+    it('records the exact implement task SHA range on the active chain', () => {
+        const implement = manager.enqueue(gatedTask('repo-A', 'chain-1', 'implement'));
+        const baselineSha = 'a'.repeat(40);
+        const endSha = 'c'.repeat(40);
+        const commitShas = ['b'.repeat(40), endSha];
+
+        expect(manager.recordRepoGateBaseline('repo-A', 'chain-1', implement, baselineSha)).toBe(true);
+        expect(manager.recordRepoGateCompletion('repo-A', 'chain-1', implement, {
+            endSha,
+            commitShas,
+            outcome: 'commits-recorded',
+        })).toBe(true);
+        expect(manager.getRepoGate('repo-A')).toEqual({
+            chainId: 'chain-1',
+            implementTaskId: implement,
+            baselineSha,
+            endSha,
+            commitShas,
+            outcome: 'commits-recorded',
+        });
+    });
+
+    it('keeps accepting older ungated inputs without a config object', () => {
+        const id = manager.enqueue({
+            ...createTestTask({ repoId: 'repo-A' }),
+            config: undefined,
+        } as unknown as CreateTaskInput);
+
+        expect(manager.peek()?.id).toBe(id);
+        expect(manager.getRepoGate('repo-A')).toBeUndefined();
+    });
+});
+
 // ============================================================================
 // Test Helpers
 // ============================================================================

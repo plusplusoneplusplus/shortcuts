@@ -32,6 +32,11 @@ import {
 import { normalizeChatMode } from '../tasks/task-types';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
+import {
+    createImplementPlanPrMergeStatusFetcher,
+    ImplementPlanPrMergeWatcher,
+    type FetchImplementPlanPrMergeStatus,
+} from './implement-plan-pr-merge-watcher';
 
 // ============================================================================
 // Types
@@ -40,6 +45,11 @@ import type { DreamRunExecutor } from '../dreams/dream-runner';
 interface RepoBridge {
     executor: QueueExecutor;
     bridge: QueueExecutorBridge;
+}
+
+export interface MultiRepoQueueRouterOptions extends QueueExecutorBridgeOptions {
+    prMergeStatusFetcher?: FetchImplementPlanPrMergeStatus;
+    prMergePollIntervalMs?: number;
 }
 
 // ============================================================================
@@ -60,21 +70,36 @@ export class MultiRepoQueueRouter extends EventEmitter {
 
     /** normalized rootPath → repoId (workspace ID) */
     private readonly pathToRepoId: Map<string, string> = new Map();
+    private readonly prMergeWatcher?: ImplementPlanPrMergeWatcher;
 
     constructor(
         registry: RepoQueueRegistry,
         store: ProcessStore,
-        defaultOptions: QueueExecutorBridgeOptions = {},
+        defaultOptions: MultiRepoQueueRouterOptions = {},
     ) {
         super();
         this.registry = registry;
         this.store = store;
         this.defaultOptions = defaultOptions;
+        const fetchStatus = defaultOptions.prMergeStatusFetcher
+            ?? (defaultOptions.dataDir
+                ? createImplementPlanPrMergeStatusFetcher(defaultOptions.dataDir, store)
+                : undefined);
+        if (fetchStatus) {
+            this.prMergeWatcher = new ImplementPlanPrMergeWatcher(
+                fetchStatus,
+                defaultOptions.prMergePollIntervalMs,
+                store,
+            );
+        }
 
         // Forward queueChange events from the registry, augmenting with repoId
         this.registry.on('queueChange', (repoPath: string, event: QueueChangeEvent) => {
             const repoId = this.getRepoIdForPath(repoPath);
             this.emit('queueChange', { repoPath, repoId, ...event });
+            if (event.type === 'repo-gate-updated' || event.type === 'repo-gate-released') {
+                this.prMergeWatcher?.sync(repoId, this.registry.getQueueForRepo(repoPath));
+            }
         });
     }
 
@@ -84,6 +109,13 @@ export class MultiRepoQueueRouter extends EventEmitter {
      */
     clearInitialDelay(): void {
         this.defaultOptions = { ...this.defaultOptions, initialDelayMs: 0 };
+    }
+
+    /** Re-arm submitted implement-plan PR watches after queue persistence restore. */
+    restorePrMergeWatchers(): void {
+        for (const [repoPath, queueManager] of this.registry.getAllQueues()) {
+            this.prMergeWatcher?.sync(this.getRepoIdForPath(repoPath), queueManager);
+        }
     }
 
     setResolveDefaultProvider(resolveDefaultProvider: ResolveDefaultProviderForExecution): void {
@@ -746,6 +778,7 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * Dispose all per-repo QueueExecutors, the registry, and clear internal state.
      */
     dispose(): void {
+        this.prMergeWatcher?.dispose();
         for (const { executor } of this.bridges.values()) {
             executor.dispose();
         }

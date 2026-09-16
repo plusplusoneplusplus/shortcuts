@@ -55,7 +55,7 @@ import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
 import { computeSummary, execGitAsync, parseFullDiff, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
-import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestAutoMerge, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
 import {
     autoClassifyTeamPullRequests,
@@ -559,6 +559,7 @@ export async function warmPullRequestWorkspaceCache(options: WarmPullRequestWork
 export interface OriginPullRequestChecksSnapshot {
     prStatus: ProviderPullRequestStatus;
     prNumber: number | string;
+    autoMerge?: ProviderPullRequestAutoMerge;
     /** PR head (source) branch name, when the provider reports it. */
     headRef?: string;
     /** PR head (source branch tip) commit SHA, when the provider reports it. */
@@ -603,6 +604,7 @@ export async function fetchOriginPullRequestChecksHeadless(
     return {
         prStatus: pr.status,
         prNumber: pr.number,
+        ...(pr.autoMerge !== undefined ? { autoMerge: pr.autoMerge } : {}),
         ...(headRef !== undefined ? { headRef } : {}),
         ...(headSha !== undefined ? { headSha } : {}),
         checks,

@@ -3,6 +3,7 @@
  *
  * POST   /api/queue/pause                     — Pause (global or per-repo)
  * POST   /api/queue/resume                    — Resume (global or per-repo)
+ * POST   /api/queue/repo-gate/release         — Manually release an implement-plan PR gate
  * POST   /api/queue/pause-autopilot           — Pause autopilot
  * POST   /api/queue/resume-autopilot          — Resume autopilot
  * POST   /api/queue/task-delay                — Set or clear repeating task delay
@@ -163,6 +164,30 @@ export function registerQueueControlRoutes(routes: Route[], ctx: QueueRouteConte
                 process.stderr.write(`[Queue] resume repoId=global\n`);
                 sendJSON(res, 200, { paused: false, stats: getAggregateStats(bridge, state) });
             }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: '/api/queue/repo-gate/release',
+        handler: async (req, res) => {
+            const parsed = url.parse(req.url || '/', true);
+            const repoId = getRepoIdentifierFromQuery(parsed.query);
+            if (!repoId) {
+                return sendError(res, 400, 'repoId or workspace is required');
+            }
+
+            const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
+            if (!mgr) {
+                return sendError(res, 404, `No queue found for repoId: ${repoId}`);
+            }
+            const gate = mgr.getRepoGate(repoId);
+            if (!gate || !mgr.releaseRepoGate(repoId, gate.chainId)) {
+                return sendError(res, 409, `No active repo gate for repoId: ${repoId}`);
+            }
+            mgr.resumeRepo(repoId);
+            process.stderr.write(`[Queue] repo-gate released manually repoId=${repoId}\n`);
+            sendJSON(res, 200, { repoId, released: true, stats: mgr.getStats() });
         },
     });
 

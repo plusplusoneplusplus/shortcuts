@@ -122,6 +122,7 @@ export function createQueueInfrastructure(
         restartPolicy: options.queue?.restartPolicy,
     });
     queuePersistence.restore();
+    bridge.restorePrMergeWatchers();
 
     // Clear the startup delay so lazily-created bridges after this point get no delay
     bridge.clearInitialDelay();

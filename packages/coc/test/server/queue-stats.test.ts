@@ -191,6 +191,32 @@ describe('Queue Statistics', () => {
         expect(stats.queued).toBe(1);
     });
 
+    it('repo-scoped list and stats expose an active implement-plan PR gate', async () => {
+        await post(`${server!.url}/api/workspaces`, { id: 'ws-gated', name: 'gated', rootPath: '/repos/gated' });
+        const enqueue = await post(`${server!.url}/api/queue`, {
+            type: 'chat',
+            priority: 'normal',
+            payload: {
+                kind: 'chat',
+                mode: 'autopilot',
+                prompt: 'implement',
+                workspaceId: 'ws-gated',
+                workingDirectory: '/repos/gated',
+            },
+            config: { prGate: { autoMerge: true } },
+        });
+        const implementTaskId = JSON.parse(enqueue.body).task.id;
+
+        const list = JSON.parse((await request(`${server!.url}/api/queue?repoId=ws-gated`)).body);
+        const stats = JSON.parse((await request(`${server!.url}/api/queue/stats?repoId=ws-gated`)).body).stats;
+
+        expect(list.stats.repoGate).toMatchObject({
+            chainId: expect.any(String),
+            implementTaskId,
+        });
+        expect(stats.repoGate).toEqual(list.stats.repoGate);
+    });
+
     it('stats for nonexistent workspace → 404', async () => {
         const res = await request(`${server!.url}/api/queue/stats?repoId=does-not-exist`);
         expect(res.status).toBe(404);

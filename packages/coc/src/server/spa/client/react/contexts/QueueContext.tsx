@@ -4,6 +4,7 @@
  */
 
 import { createContext, useContext, useReducer, type ReactNode, type Dispatch } from 'react';
+import type { QueueRepoGate } from '@plusplusoneplusplus/coc-client';
 import type { SessionContextAttachmentDragPayload } from '../features/chat/sessionContextDrag';
 
 // ── State ──────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ export interface QueueStats {
     taskDelayUntil?: number;
     autopilotTaskDelayMinutes?: number;
     autopilotTaskDelayUntil?: number;
+    repoGate?: QueueRepoGate;
 }
 
 export interface QueueContextState {

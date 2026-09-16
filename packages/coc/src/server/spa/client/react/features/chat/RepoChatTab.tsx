@@ -171,6 +171,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const [pausedUntil, setPausedUntil] = useState<number | string | undefined>();
     const [pauseSource, setPauseSource] = useState<'manual' | 'quota' | undefined>();
     const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
+    const [isRepoGateReleaseLoading, setIsRepoGateReleaseLoading] = useState(false);
     const [isAutopilotPaused, setIsAutopilotPaused] = useState(false);
     const [autopilotPausedUntil, setAutopilotPausedUntil] = useState<number | string | undefined>();
     const [autopilotPauseSource, setAutopilotPauseSource] = useState<'manual' | 'quota' | undefined>();
@@ -734,6 +735,16 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         }
     }
 
+    async function handleReleaseRepoGate() {
+        setIsRepoGateReleaseLoading(true);
+        try {
+            await cloneClient.queue.releaseRepoGate({ repoId: workspaceId });
+            await fetchQueue();
+        } finally {
+            setIsRepoGateReleaseLoading(false);
+        }
+    }
+
     async function handlePauseResumeAutopilot(options?: QueuePauseOptions) {
         setIsAutopilotPauseLoading(true);
         try {
@@ -1105,6 +1116,9 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             onOpenDialog={() => queueDispatch({ type: 'OPEN_DIALOG', workspaceId })}
             fetchQueue={fetchQueue}
             pauseReason={pauseReason}
+            repoGate={repoQueue?.stats?.repoGate}
+            onReleaseRepoGate={handleReleaseRepoGate}
+            repoGateReleaseLoading={isRepoGateReleaseLoading}
             hasMore={hasMore}
             loadingMore={loadingMore}
             onLoadMore={handleLoadMore}

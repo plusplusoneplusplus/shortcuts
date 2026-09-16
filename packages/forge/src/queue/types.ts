@@ -83,6 +83,23 @@ export type QueueStatus =
 // Task Configuration
 // ============================================================================
 
+export interface PrGateChainMetadata {
+    /** Opaque chain identifier assigned by the server accepting the task. */
+    chainId: string;
+    /** Process created for the original implement task, persisted for PR record updates. */
+    implementProcessId?: string;
+    /** Identifies the server-created PR-submit task within the chain. */
+    taskKind?: 'pr-submit';
+    baselineSha?: string;
+    endSha?: string;
+    commitShas?: string[];
+    outcome?: 'commits-recorded' | 'no-commits';
+    submissionStatus?: 'pending' | 'submitted' | 'failed';
+    prUrl?: string;
+    prNumber?: number;
+    reason?: string;
+}
+
 export interface TaskExecutionConfig {
     /** AI model to use */
     model?: string;
@@ -98,6 +115,16 @@ export interface TaskExecutionConfig {
     reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
     /** When true, the repo queue is paused automatically if this task fails. */
     pauseOnFailure?: boolean;
+    /** Metadata for an implement-plan chain that holds its repository queue. */
+    prGate?: PrGateChainMetadata & {
+        autoMerge: true;
+    };
+}
+
+/** The active implement-plan chain allowed through a repository queue gate. */
+export interface RepoGateState extends PrGateChainMetadata {
+    /** The first task in the chain, whose execution defines the PR commit range. */
+    implementTaskId: string;
 }
 
 /**
@@ -222,7 +249,10 @@ export type QueueChangeType =
     | 'admitted'
     | 'unadmitted'
     | 'task-delay-changed'
-    | 'task-delay-skipped';
+    | 'task-delay-skipped'
+    | 'repo-gate-activated'
+    | 'repo-gate-updated'
+    | 'repo-gate-released';
 
 export interface QueueChangeEvent {
     /** Type of change */
@@ -428,6 +458,8 @@ export interface QueueStats {
     autopilotTaskDelayMinutes?: number;
     /** Epoch milliseconds when the autopilot cooldown elapses. Present only while it defers a start. */
     autopilotTaskDelayUntil?: number;
+    /** Active implement-plan gate when stats are scoped to one repository. */
+    repoGate?: RepoGateState;
 }
 
 // ============================================================================

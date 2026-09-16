@@ -376,6 +376,27 @@ describe('ChatListPane', () => {
 
     // ── Banners ────────────────────────────────────────────────────────
     describe('Banners', () => {
+        it('shows a held repo PR link and releases the gate', () => {
+            const onReleaseRepoGate = vi.fn();
+            renderPane({
+                activeTab: 'tasks',
+                repoGate: {
+                    chainId: 'chain-1',
+                    implementTaskId: 'implement-1',
+                    submissionStatus: 'submitted',
+                    prUrl: 'https://github.com/example/repo/pull/123',
+                    prNumber: 123,
+                },
+                onReleaseRepoGate,
+            });
+
+            const banner = screen.getByTestId('repo-pr-gate-banner');
+            expect(banner.textContent).toContain('Holding for PR #123 to merge');
+            expect(screen.getByRole('link').getAttribute('href')).toBe('https://github.com/example/repo/pull/123');
+            fireEvent.click(screen.getByTestId('repo-pr-gate-release-btn'));
+            expect(onReleaseRepoGate).toHaveBeenCalledOnce();
+        });
+
         it('shows queue paused banner when isPaused', () => {
             renderPane({ isPaused: true, history: [makeHistoryTask()] });
             expect(screen.getByTestId('queue-paused-banner')).toBeTruthy();

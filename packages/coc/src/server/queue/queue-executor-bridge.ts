@@ -22,6 +22,7 @@ import { buildAskUserResumeTaskInput } from '../processes/resume-pending-ask-use
 import type { DreamRunExecutor } from '../dreams/dream-runner';
 import { EMPTY_EXECUTOR_RUNTIME } from '../executors/executor-runtime-contracts';
 import type { ExecutorRuntimeCapabilities } from '../executors/executor-runtime-contracts';
+import { executeImplementPlanWithPrGate } from './implement-plan-pr-gate';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -513,7 +514,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
         try {
-            return await this.executors.runner.run(task, {
+            const runTask = () => this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
                 executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re, strictResumeSessionId) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re, strictResumeSessionId),
                 resumePendingAskUserFn: (pid) => this.resumePendingAskUser(pid),
@@ -533,6 +534,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     if (!infra) return;
                     return infra.manager.onActionComplete(triggerId, success);
                 },
+            });
+            return await executeImplementPlanWithPrGate({
+                task,
+                queueManager: this.queueManager,
+                workingDirectory: this.executors.getWorkingDirectory(task),
+                processStore: this.store,
+                execute: runTask,
             });
         } finally {
             this.cancelledTasks.delete(task.id);

@@ -43,6 +43,7 @@ function createQueueManager({
             isAutopilotPaused: false,
             ...stats,
         })),
+        getRepoGate: vi.fn(() => undefined),
     };
 }
 

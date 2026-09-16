@@ -96,6 +96,10 @@ import { deriveEffort } from '../../utils/effortUtils';
 import { RalphStartPanel, type RalphLaunchedSession } from './RalphStartPanel';
 import { ImplementPlanCard } from './ImplementPlanCard';
 import type { ImplementationRecord, ExistingRun, RunLiveStatus } from './ImplementPlanCard';
+import {
+    mergeImplementationPrAnnotations,
+    parseImplementationPrAnnotation,
+} from './implementation-pr-sync';
 import { resolveSwitchablePlanFiles } from './implementPlanFiles';
 import { buildImplementTargets } from './implementTargets';
 import { ForEachPlanReviewCard, type ForEachGenerationMetadata } from './ForEachPlanReviewCard';
@@ -1047,6 +1051,73 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         const impls = task?.metadata?.implementations;
         return Array.isArray(impls) ? impls : [];
     }, [task?.metadata?.implementations]);
+
+    useEffect(() => {
+        if (!processId) return;
+        const gatedRuns = rawImplementations.filter(run =>
+            run.prGateChainId && run.prState !== 'merged',
+        );
+        if (gatedRuns.length === 0) return;
+
+        let cancelled = false;
+        let syncing = false;
+        const syncPrRecords = async () => {
+            if (syncing) return;
+            syncing = true;
+            try {
+                const annotations = await Promise.all(gatedRuns.map(async (run) => {
+                    const runClient = run.isRemoteTarget
+                        ? getCocClientForWorkspace(run.targetWorkspaceId)
+                        : client;
+                    try {
+                        const data = await runClient.processes.get(run.processId);
+                        return parseImplementationPrAnnotation(data?.process?.metadata?.implementationPr);
+                    } catch (error) {
+                        console.warn(`Failed to read implementation PR state for ${run.processId}:`, error);
+                        return undefined;
+                    }
+                }));
+                if (cancelled) return;
+
+                const byProcessId = Object.fromEntries(gatedRuns.flatMap((run, index) => {
+                    const annotation = annotations[index];
+                    return annotation ? [[run.processId, annotation]] : [];
+                }));
+                if (Object.keys(byProcessId).length === 0) return;
+
+                const source = await client.processes.get(processId);
+                const current = Array.isArray(source?.process?.metadata?.implementations)
+                    ? source.process.metadata.implementations as ImplementationRecord[]
+                    : rawImplementations;
+                const updated = mergeImplementationPrAnnotations(current, byProcessId);
+                if (updated === current || cancelled) return;
+
+                const response = await client.processes.patchMetadata(processId, {
+                    set: { implementations: updated },
+                });
+                if (!cancelled) {
+                    setTask((prev: any) => prev ? {
+                        ...prev,
+                        metadata: response?.process?.metadata ?? {
+                            ...prev.metadata,
+                            implementations: updated,
+                        },
+                    } : prev);
+                }
+            } catch (error) {
+                console.warn('Failed to synchronize implementation PR record:', error);
+            } finally {
+                syncing = false;
+            }
+        };
+
+        void syncPrRecords();
+        const timer = setInterval(() => { void syncPrRecords(); }, 60_000);
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    }, [client, processId, rawImplementations]);
 
     // Resolve live status for each recorded implementation from the queue context
     const existingRuns: ExistingRun[] = useMemo(() => {

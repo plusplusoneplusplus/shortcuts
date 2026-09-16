@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(33);
+        expect(SCHEMA_VERSION).toBe(34);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1178,7 +1178,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(33);
+            expect(SCHEMA_VERSION).toBe(34);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1405,7 +1405,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(33);
+            expect(SCHEMA_VERSION).toBe(34);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1606,7 +1606,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(33);
+            expect(SCHEMA_VERSION).toBe(34);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',
@@ -1638,6 +1638,43 @@ describe('sqlite-schema', () => {
             expect(columns.filter(column => column.name === 'task_delay_minutes')).toHaveLength(1);
             expect(columns.filter(column => column.name === 'autopilot_task_delay_minutes')).toHaveLength(1);
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+        });
+    });
+
+    describe('V33 -> V34 migration (implement-plan repo gate)', () => {
+        it('adds nullable gate state without changing existing queue controls', () => {
+            db.exec(`
+                CREATE TABLE queue_repo_state (
+                    repo_id                  TEXT PRIMARY KEY,
+                    is_paused                INTEGER DEFAULT 0,
+                    pause_reason             TEXT,
+                    queue_paused             INTEGER DEFAULT 0,
+                    queue_paused_until       INTEGER,
+                    autopilot_paused         INTEGER DEFAULT 0,
+                    autopilot_paused_until   INTEGER,
+                    task_delay_minutes       INTEGER,
+                    autopilot_task_delay_minutes INTEGER
+                );
+            `);
+            db.prepare(`
+                INSERT INTO queue_repo_state (repo_id, queue_paused, task_delay_minutes)
+                VALUES (?, ?, ?)
+            `).run('repo-v33', 1, 15);
+            db.pragma('user_version = 33');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
+            expect(columns.map(column => column.name)).toContain('pr_gate');
+            expect(db.prepare(`
+                SELECT queue_paused, task_delay_minutes, pr_gate
+                FROM queue_repo_state WHERE repo_id = ?
+            `).get('repo-v33')).toEqual({
+                queue_paused: 1,
+                task_delay_minutes: 15,
+                pr_gate: null,
+            });
         });
     });
 });

@@ -112,7 +112,7 @@ export class SqliteQueuePersistence {
             const hasTaskDelay = state.taskDelayMinutes !== undefined
                 || state.autopilotTaskDelayMinutes !== undefined;
 
-            if (state.isPaused || queuePauseActive || autopilotPauseActive || hasTaskDelay) {
+            if (state.isPaused || queuePauseActive || autopilotPauseActive || hasTaskDelay || state.prGate) {
                 this.bridge.getOrCreateBridge(rootPath);
                 const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
                 if (queueManager) {
@@ -130,6 +130,9 @@ export class SqliteQueuePersistence {
                     }
                     if (state.autopilotTaskDelayMinutes !== undefined) {
                         queueManager.setTaskDelayMinutes('autopilot', state.autopilotTaskDelayMinutes);
+                    }
+                    if (state.prGate) {
+                        queueManager.restoreRepoGate(repoId, state.prGate);
                     }
                 }
             }
@@ -317,6 +320,14 @@ export class SqliteQueuePersistence {
             case 'task-delay-skipped':
                 // Skipping releases only the current wait; the repeating setting remains persisted.
                 break;
+
+            case 'repo-gate-activated':
+            case 'repo-gate-updated':
+            case 'repo-gate-released': {
+                const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
+                this.store.setRepoGateState(repoId, queueManager?.getRepoGate(repoId));
+                break;
+            }
 
             case 'repo-paused':
             case 'repo-resumed': {

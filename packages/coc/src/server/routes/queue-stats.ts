@@ -57,6 +57,10 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                     queued = mgr.getQueueItems().map(serializeQueueItemSummary);
                     running = mgr.getRunning().map(serializeTaskSummary);
                     stats = mgr.getStats();
+                    const repoGate = mgr.getRepoGate(repoId);
+                    if (repoGate) {
+                        stats = { ...stats, repoGate };
+                    }
                 } else {
                     queued = [];
                     running = [];
@@ -138,7 +142,9 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                 if (!mgr) {
                     return sendError(res, 404, `No queue found for repoId: ${repoId}`);
                 }
-                sendJSON(res, 200, { stats: mgr.getStats() });
+                const stats = mgr.getStats();
+                const repoGate = mgr.getRepoGate(repoId);
+                sendJSON(res, 200, { stats: repoGate ? { ...stats, repoGate } : stats });
             } else {
                 sendJSON(res, 200, { stats: getAggregateStats(bridge, state) });
             }

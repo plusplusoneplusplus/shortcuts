@@ -118,6 +118,11 @@ describe('ImplementPlanLaunchDialog', () => {
         baseUrl: 'http://127.0.0.1:4000',
         workingDirectory: '/remote/repo',
     };
+    const repoGroupTarget: ImplementTarget = {
+        workspaceId: 'group-platform',
+        label: 'platform',
+        isRemote: false,
+    };
 
     function renderDialog(props: Record<string, any> = {}) {
         return render(
@@ -155,6 +160,53 @@ describe('ImplementPlanLaunchDialog', () => {
         expect(screen.getByTestId('implement-launch-ai-controls')).toBeTruthy();
         expect(screen.getByTestId('implement-launch-summary').textContent).toBe('/repo/plan.md');
         expect(screen.getByTestId('implement-launch-confirm-btn')).toBeTruthy();
+    });
+
+    it('defaults PR auto-merge off and resets it whenever the dialog reopens', () => {
+        const { rerender } = renderDialog();
+        const checkbox = screen.getByTestId('implement-launch-pr-automerge') as HTMLInputElement;
+        expect(checkbox.checked).toBe(false);
+
+        fireEvent.click(checkbox);
+        expect(checkbox.checked).toBe(true);
+
+        rerender(
+            <ImplementPlanLaunchDialog
+                open={false}
+                onClose={onClose}
+                planFilePath="/repo/plan.md"
+                selectedPlanFile="/repo/plan.md"
+                onSelectPlanFile={onSelectPlanFile}
+                workspaceId="ws-local"
+                workingDirectory="/repo"
+                onImplemented={onImplemented}
+            />,
+        );
+        rerender(
+            <ImplementPlanLaunchDialog
+                open
+                onClose={onClose}
+                planFilePath="/repo/plan.md"
+                selectedPlanFile="/repo/plan.md"
+                onSelectPlanFile={onSelectPlanFile}
+                workspaceId="ws-local"
+                workingDirectory="/repo"
+                onImplemented={onImplemented}
+            />,
+        );
+
+        expect((screen.getByTestId('implement-launch-pr-automerge') as HTMLInputElement).checked).toBe(false);
+    });
+
+    it('disables PR auto-merge for a selected repo-group target', () => {
+        renderDialog({
+            workspaceId: 'group-platform',
+            availableTargets: [repoGroupTarget],
+        });
+
+        const checkbox = screen.getByTestId('implement-launch-pr-automerge') as HTMLInputElement;
+        expect(checkbox).toBeDisabled();
+        expect(checkbox.parentElement?.textContent).toContain('Not supported for repo groups.');
     });
 
     it('hides the target selector with fewer than two targets', () => {
@@ -221,8 +273,25 @@ describe('ImplementPlanLaunchDialog', () => {
         expect(payload.payload.workingDirectory).toBe('/repo');
         expect(payload.payload.context.files).toEqual(['/repo/plan.md']);
         expect(payload.payload.prompt).toBe('Read and implement the plan file at /repo/plan.md');
+        expect(payload.config).toBeUndefined();
         await waitFor(() => expect(onImplemented).toHaveBeenCalledWith('queue_task-abc'));
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('carries the PR gate marker only when the checkbox is checked', async () => {
+        mockEnqueue.mockResolvedValue({ task: { id: 'task-gated' } });
+        renderDialog();
+        await waitReady();
+
+        fireEvent.click(screen.getByTestId('implement-launch-pr-automerge'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
+        });
+
+        await waitFor(() => expect(mockEnqueue).toHaveBeenCalledTimes(1));
+        expect(mockEnqueue.mock.calls[0][0].config).toEqual({
+            prGate: { autoMerge: true },
+        });
     });
 
     it('carries an explicit provider + effort tier into the enqueue payload', async () => {
@@ -239,6 +308,24 @@ describe('ImplementPlanLaunchDialog', () => {
         const arg = mockEnqueue.mock.calls[0][0];
         expect(arg.payload.provider).toBe('codex');
         expect(arg.config).toEqual({ effortTier: 'high' });
+    });
+
+    it('combines the PR gate marker with the selected effort tier', async () => {
+        mockModalSelection.mockReturnValue({ resolved: { provider: 'codex', effortTier: 'high' } });
+        mockEnqueue.mockResolvedValue({ task: { id: 'task-ai-gated' } });
+        renderDialog();
+        await waitReady();
+
+        fireEvent.click(screen.getByTestId('implement-launch-pr-automerge'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
+        });
+
+        await waitFor(() => expect(mockEnqueue).toHaveBeenCalledTimes(1));
+        expect(mockEnqueue.mock.calls[0][0].config).toEqual({
+            effortTier: 'high',
+            prGate: { autoMerge: true },
+        });
     });
 
     it('carries a legacy model + reasoning effort into the enqueue payload', async () => {
@@ -391,6 +478,34 @@ describe('ImplementPlanLaunchDialog', () => {
         expect(rec.provider).toBe('codex');
         expect(rec.effortTier).toBe('high');
         expect(onRecordPersisted).toHaveBeenCalledTimes(1);
+    });
+
+    it('persists the server-assigned PR gate chain on the source record', async () => {
+        mockEnqueue.mockResolvedValue({
+            task: {
+                id: 'task-gated-record',
+                config: { prGate: { autoMerge: true, chainId: 'chain-server' } },
+            },
+        });
+        mockProcessUpdate.mockResolvedValue({ process: {} });
+        renderDialog({
+            sourceProcessId: 'queue_source-1',
+            sourceMetadata: { type: 'chat' },
+            onRecordPersisted,
+        });
+        await waitReady();
+
+        fireEvent.click(screen.getByTestId('implement-launch-pr-automerge'));
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('implement-launch-confirm-btn'));
+        });
+
+        await waitFor(() => expect(mockProcessUpdate).toHaveBeenCalledTimes(1));
+        expect(mockProcessUpdate.mock.calls[0][1].set.implementations[0]).toMatchObject({
+            processId: 'queue_task-gated-record',
+            prGateChainId: 'chain-server',
+            prState: 'pending',
+        });
     });
 
     it('records remote target identity via the source client', async () => {
