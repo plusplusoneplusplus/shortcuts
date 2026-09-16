@@ -20,6 +20,14 @@ import { normalizeRelativePath } from './file-match';
 /** Scheme used for every document the browser owns. */
 export const BROWSER_URI_SCHEME = 'coc-file';
 
+/**
+ * Scheme for a read-only file outside every workspace — a standard-library
+ * header, a dependency source — that a language server named as a definition.
+ * The authority is an opaque capability id issued by the owning host; the one
+ * path segment is a display basename, so the URI carries no host directory.
+ */
+export const EXTERNAL_URI_SCHEME = 'coc-lsp-external';
+
 /** Why a document path or URI could not be mapped to a host file. */
 export type UriMappingFailure = 'empty-path' | 'absolute-path' | 'escapes-workspace' | 'foreign-workspace' | 'unsupported-scheme';
 
@@ -69,6 +77,55 @@ export function parseBrowserDocumentUri(uri: string): { workspaceId: string; rel
         return undefined;
     }
     return { workspaceId, relativePath };
+}
+
+/** Browser-facing URI for an issued external-source capability. */
+export function externalResourceUri(resourceId: string, displayName: string): string {
+    return `${EXTERNAL_URI_SCHEME}://${encodeURIComponent(resourceId)}/${encodeURIComponent(displayName)}`;
+}
+
+/** Inverse of {@link externalResourceUri}; undefined for any other URI. */
+export function parseExternalResourceUri(uri: string): { resourceId: string; displayName: string } | undefined {
+    const match = new RegExp(`^${EXTERNAL_URI_SCHEME}://([^/?#]+)/([^/?#]*)`).exec(uri);
+    if (!match) {
+        return undefined;
+    }
+    try {
+        const resourceId = decodeURIComponent(match[1]);
+        const displayName = decodeURIComponent(match[2]);
+        return resourceId.length > 0 ? { resourceId, displayName } : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Every URI-keyed string in an LSP payload, in walk order. Used to canonicalize
+ * external definition targets before the synchronous translation pass runs.
+ */
+export function collectUris(value: unknown): string[] {
+    const found: string[] = [];
+    const walk = (input: unknown, insideUriKey: boolean): void => {
+        if (typeof input === 'string') {
+            if (insideUriKey) {
+                found.push(input);
+            }
+            return;
+        }
+        if (Array.isArray(input)) {
+            for (const entry of input) {
+                walk(entry, insideUriKey);
+            }
+            return;
+        }
+        if (input !== null && typeof input === 'object') {
+            for (const [key, entry] of Object.entries(input as Record<string, unknown>)) {
+                walk(entry, URI_KEYS.has(key));
+            }
+        }
+    };
+    walk(value, false);
+    return found;
 }
 
 /**

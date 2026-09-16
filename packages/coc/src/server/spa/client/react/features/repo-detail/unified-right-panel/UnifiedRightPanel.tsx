@@ -773,6 +773,33 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     );
 
     /**
+     * A definition that landed outside every workspace — a standard-library
+     * header, a dependency source. It opens as a pinned read-only tab owned by
+     * the member and concrete clone whose language server produced it, because
+     * that host is the only one holding the capability behind it.
+     */
+    const openNavigationExternal = useCallback(
+        (
+            source: { resourceId: string; name: string; line: number; column: number },
+            origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
+        ) => {
+            open({
+                kind: 'external',
+                ownerWorkspaceId: origin.ownerWorkspaceId,
+                ...(origin.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: origin.ownerRoutingRef }),
+                chatId,
+                resourceId: source.resourceId,
+                label: source.name,
+                ...(origin.repoLabel === undefined ? {} : { repoLabel: origin.repoLabel }),
+                readOnly: true,
+                line: source.line,
+                column: source.column,
+            });
+        },
+        [open, chatId],
+    );
+
+    /**
      * A file picked in either dialog. Same shape as the Explorer's own
      * `handleQuickOpenSelect`: a trusted absolute path is deliberate and
      * unwritable, so it lands as a pinned read-only tab, and everything else
@@ -1293,6 +1320,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                                     onRegisterSave={handleRegisterSave}
                                     onTerminalSessionsChange={handleTerminalSessions}
                                     onOpenFile={openNavigationFile}
+                                    onOpenExternal={openNavigationExternal}
                                     onFileNavigationMount={handleFileNavigationMount}
                                     onFileNavigationLocation={handleFileNavigationLocation}
                                 />

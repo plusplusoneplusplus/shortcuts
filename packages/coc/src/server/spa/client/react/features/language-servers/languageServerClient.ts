@@ -29,6 +29,7 @@ import {
 } from '../../repos/cloneRegistry';
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { getEditingSessionId } from './editingSession';
+import type { ExternalSourceContent } from './externalSource';
 
 // ============================================================================
 // Wire protocol (mirror of the server's ws-bridge types)
@@ -129,6 +130,14 @@ type ServerMessage =
     | { type: 'lsp-notification'; sessionKey: string; method: string; params?: unknown }
     | { type: 'lsp-status'; sessionKey: string; state: LanguageServerSessionStateView }
     | { type: 'lsp-detached'; attachmentId: string; reason: string }
+    | {
+          type: 'lsp-external-source-result';
+          requestId: string;
+          content?: string;
+          displayName?: string;
+          languageHint?: string;
+          error?: { code: string; message: string };
+      }
     | { type: 'lsp-error'; message: string }
     | { type: 'pong' };
 
@@ -170,6 +179,15 @@ export interface LanguageServerAttachment {
     onNotification(listener: (method: string, params: unknown) => void): () => void;
     onStatus(listener: (state: LanguageServerSessionStateView) => void): () => void;
     sendRequest<T = unknown>(method: string, params?: unknown, options?: LanguageServerRequestOptions): Promise<T>;
+    /**
+     * Read a file the host authorized through this attachment's own definition
+     * response. Takes only the opaque resource id — never a path — so a read
+     * can reach nothing the language server did not itself name.
+     */
+    readExternalSource(
+        resourceId: string,
+        options?: { signal?: AbortSignal },
+    ): Promise<ExternalSourceContent>;
     /** Dropped when the attachment is not live; the next attach replays instead. */
     sendNotification(method: string, params?: unknown): void;
     /**
@@ -216,6 +234,13 @@ export interface LanguageServerClientOptions {
 }
 
 const OPEN = 1;
+
+/** An in-flight external-source read, correlated by its own request id. */
+interface PendingExternalRead {
+    resolve: (value: ExternalSourceContent) => void;
+    reject: (error: Error) => void;
+    cleanup: () => void;
+}
 
 interface PendingRequest {
     resolve: (value: unknown) => void;
@@ -281,6 +306,7 @@ export class LanguageServerClient {
     private readonly byAttachmentId = new Map<string, AttachmentRecord>();
     private readonly byAttachRequest = new Map<string, AttachmentRecord>();
     private readonly pendingRequests = new Map<string, PendingRequest>();
+    private readonly pendingExternalReads = new Map<string, PendingExternalRead>();
     private readonly connectionListeners = new Set<(status: LanguageServerConnectionStatus) => void>();
 
     constructor(options: LanguageServerClientOptions) {
@@ -641,6 +667,27 @@ export class LanguageServerClient {
                 }
                 return;
             }
+            case 'lsp-external-source-result': {
+                const pending = this.pendingExternalReads.get(message.requestId);
+                if (!pending) {
+                    return;
+                }
+                this.pendingExternalReads.delete(message.requestId);
+                pending.cleanup();
+                if (message.error || typeof message.content !== 'string') {
+                    pending.reject(new LanguageServerClientError(
+                        message.error?.code ?? 'unavailable',
+                        message.error?.message ?? 'Definition source unavailable.',
+                    ));
+                } else {
+                    pending.resolve({
+                        content: message.content,
+                        displayName: message.displayName ?? 'source',
+                        ...(message.languageHint ? { languageHint: message.languageHint } : {}),
+                    });
+                }
+                return;
+            }
             case 'lsp-notification': {
                 for (const record of this.recordsForSession(message.sessionKey)) {
                     for (const listener of [...record.notificationListeners]) {
@@ -766,6 +813,14 @@ export class LanguageServerClient {
             pending.reject(error);
         }
         this.pendingRequests.clear();
+        // A capability is scoped to the connection that issued it, so a drop
+        // settles these rather than leaving them for a socket that will come
+        // back without them.
+        for (const [, pending] of this.pendingExternalReads) {
+            pending.cleanup();
+            pending.reject(error);
+        }
+        this.pendingExternalReads.clear();
     }
 
     // ========================================================================
@@ -786,6 +841,8 @@ export class LanguageServerClient {
             onStatus: (listener) => subscribe(record.statusListeners, listener),
             sendRequest: <T>(method: string, params?: unknown, options?: LanguageServerRequestOptions) =>
                 client.request(record, method, params, options) as Promise<T>,
+            readExternalSource: (resourceId: string, options?: { signal?: AbortSignal }) =>
+                client.requestExternalSource(record, resourceId, options),
             sendNotification: (method: string, params?: unknown) => {
                 if (!record.info) {
                     return;
@@ -834,6 +891,56 @@ export class LanguageServerClient {
         if (this.attachments.size === 0) {
             this.closeSocket('no attached documents');
         }
+    }
+
+    /**
+     * Ask the owning host for the content behind one issued capability.
+     *
+     * The read rides this attachment's own socket, so a definition produced by
+     * a remote clone is read from that clone rather than from whichever server
+     * the page happens to be served by. A capability belongs to a live
+     * attachment on a live connection: if either is gone the read fails and the
+     * recovery is a fresh Go to Definition, not a retry with the same id.
+     */
+    private requestExternalSource(
+        record: AttachmentRecord,
+        resourceId: string,
+        options?: { signal?: AbortSignal },
+    ): Promise<ExternalSourceContent> {
+        if (record.released) {
+            return Promise.reject(new LanguageServerClientError('released', 'Document was closed'));
+        }
+        if (options?.signal?.aborted) {
+            return Promise.reject(new LanguageServerClientError('cancelled', 'Request cancelled'));
+        }
+        const info = record.info;
+        if (!info) {
+            return Promise.reject(
+                new LanguageServerClientError('not-attached', 'Language support is not attached to this document'),
+            );
+        }
+        const requestId = `ext-${this.generation}-${++this.requestCounter}`;
+        return new Promise<ExternalSourceContent>((resolve, reject) => {
+            const onAbort = () => {
+                const pending = this.pendingExternalReads.get(requestId);
+                if (!pending) {
+                    return;
+                }
+                this.pendingExternalReads.delete(requestId);
+                pending.cleanup();
+                reject(new LanguageServerClientError('cancelled', 'Request cancelled'));
+            };
+            const cleanup = () => {
+                options?.signal?.removeEventListener('abort', onAbort);
+            };
+            options?.signal?.addEventListener('abort', onAbort, { once: true });
+            this.pendingExternalReads.set(requestId, { resolve, reject, cleanup });
+            if (!this.send({ type: 'lsp-external-source', requestId, attachmentId: info.attachmentId, resourceId })) {
+                this.pendingExternalReads.delete(requestId);
+                cleanup();
+                reject(new LanguageServerClientError('disconnected', 'Language-server connection lost'));
+            }
+        });
     }
 
     private async request(

@@ -28,6 +28,11 @@
  *   - The default URI resolver drops results outside this workspace. A
  *     repo-group host supplies an owner-aware resolver that accepts live members
  *     and represents rejected targets with an unavailable in-memory model.
+ *   - The language server is authoritative for definitions. Whenever it answers
+ *     with a location, that answer is the whole result; the repository symbol
+ *     index is a fallback for when it cannot answer, never an augmentation.
+ *     Mixing the two is what made a C++ jump land on a call site that merely
+ *     shares the token's spelling.
  *
  * Runtime-Monaco-free like its neighbours: the `monaco` namespace arrives as an
  * argument, described structurally, so the tests drive real provider code
@@ -36,6 +41,7 @@
 
 import type { LanguageDocumentView } from './documentStore';
 import { SYMBOL_CANDIDATE_FRAGMENT } from './editorNavigation';
+import { EXTERNAL_URI_SCHEME } from './externalSource';
 import type { LanguageServerSessionStateView } from './languageServerClient';
 import { toLspPosition, type MonacoPosition, type MonacoRange } from './monacoBridge';
 import {
@@ -295,20 +301,15 @@ function definitionKey(link: ProviderLocationLink): string {
     return `${link.uri.toString().replace(/#.*$/, '')}:${link.range.startLineNumber}`;
 }
 
-function dedupeDefinitionLinks(
-    exact: readonly ProviderLocationLink[],
-    candidates: readonly ProviderLocationLink[],
-): ProviderLocationLink[] {
-    const seen = new Set(exact.map(definitionKey));
-    return [
-        ...exact,
-        ...candidates.filter((candidate) => {
-            const key = definitionKey(candidate);
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        }),
-    ];
+/** First occurrence of each location, in the order the server reported them. */
+function dedupeDefinitionLinks(links: readonly ProviderLocationLink[]): ProviderLocationLink[] {
+    const seen = new Set<string>();
+    return links.filter((link) => {
+        const key = definitionKey(link);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 /** Same scheme and authority as the document itself, i.e. this workspace. */
@@ -369,6 +370,28 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
         ).filter((link): link is ProviderLocationLink => link !== null);
     };
 
+    /**
+     * Exact targets, kept whole. A target the surface cannot load stays in the
+     * list wearing its own URI: the server said this is the definition, and
+     * reporting it as unavailable is honest where dropping it would leave the
+     * request looking semantically empty and hand the list to the symbol index.
+     */
+    const resolveExactLinks = async (
+        links: readonly ReturnType<typeof toLocationLinks>[number][],
+        signal: AbortSignal,
+    ): Promise<ProviderLocationLink[]> => Promise.all(links.map(async (link) => {
+        const target = link.targetSelectionRange ?? link.range;
+        const uri = await resolveUri(link.uri, signal, {
+            lineNumber: target.startLineNumber,
+            column: target.startColumn,
+            // An external source is also waited for when it is the only
+            // result: confirming it tears down the pane whose attachment may
+            // read it, so the content has to exist before Monaco navigates.
+            waitForContent: links.length > 1 || link.uri.startsWith(`${EXTERNAL_URI_SCHEME}:`),
+        });
+        return { ...link, uri: uri ?? monaco.Uri.parse(link.uri) };
+    }));
+
     let registrations: ProviderDisposable[] = [];
 
     const register = (state: LanguageServerSessionStateView | null): void => {
@@ -396,49 +419,75 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                         return null;
                     }
                     const controller = new AbortController();
-                    const subscription = token.onCancellationRequested(() => controller.abort());
+                    // The index lookup is speculative and gets its own signal,
+                    // so a semantic answer can abandon it without cancelling
+                    // the target resolution that is still running on `token`.
+                    const speculative = new AbortController();
+                    const subscription = token.onCancellationRequested(() => {
+                        controller.abort();
+                        speculative.abort();
+                    });
                     try {
-                        const exactPromise = supportsFeature(view.getSnapshot().state, 'definition')
+                        const semanticPromise = supportsFeature(view.getSnapshot().state, 'definition')
                             ? runRequest(
                                 view,
                                 'textDocument/definition',
                                 view.documentParams({ position: toLspPosition(position) }),
                                 token,
-                            ).then((result) => toProviderLinks(result, controller.signal))
-                            : Promise.resolve([]);
+                            )
+                            : Promise.resolve(null);
                         const word = target.getWordAtPosition?.(position)?.word;
+                        // Started alongside the request, not after it, so the
+                        // fallback costs no extra latency when the server has
+                        // nothing to say. Its result is dropped when it does.
                         const candidatePromise = symbolDefinitions && word
-                            && !token.isCancellationRequested && !controller.signal.aborted
-                            ? symbolDefinitions.lookup(word, controller.signal)
-                                .then((results) => Promise.all(results.map(async (result): Promise<ProviderLocationLink | null> => {
-                                    const baseUri = `coc-file://${encodeURIComponent(symbolDefinitions.workspaceId)}/${
-                                        result.path.split('/').map(encodeURIComponent).join('/')
-                                    }`;
-                                    const uri = await resolveUri(
-                                        `${baseUri}#${SYMBOL_CANDIDATE_FRAGMENT}`,
-                                        controller.signal,
-                                        {
-                                            lineNumber: result.line,
-                                            column: result.column,
-                                            waitForContent: true,
-                                        },
-                                    );
-                                    return uri
-                                        ? {
-                                            uri,
-                                            range: {
-                                                startLineNumber: result.line,
-                                                startColumn: result.column,
-                                                endLineNumber: result.line,
-                                                endColumn: result.column,
-                                            },
-                                        }
-                                        : null;
-                                }))).then((links) => links.filter((link): link is ProviderLocationLink => link !== null))
-                                .catch(() => [])
+                            && !token.isCancellationRequested && !speculative.signal.aborted
+                            ? symbolDefinitions.lookup(word, speculative.signal).catch(() => [])
                             : Promise.resolve([]);
-                        const [exact, candidates] = await Promise.all([exactPromise, candidatePromise]);
-                        return dedupeDefinitionLinks(exact, candidates);
+
+                        const semantic = await semanticPromise;
+                        const semanticLinks = toLocationLinks(semantic);
+                        if (semanticLinks.length > 0) {
+                            speculative.abort();
+                            return dedupeDefinitionLinks(
+                                await resolveExactLinks(semanticLinks, controller.signal),
+                            );
+                        }
+
+                        const results = await candidatePromise;
+                        if (token.isCancellationRequested || speculative.signal.aborted) {
+                            return [];
+                        }
+                        const candidates = await Promise.all(results.map(
+                            async (result): Promise<ProviderLocationLink | null> => {
+                                const baseUri = `coc-file://${encodeURIComponent(symbolDefinitions!.workspaceId)}/${
+                                    result.path.split('/').map(encodeURIComponent).join('/')
+                                }`;
+                                const uri = await resolveUri(
+                                    `${baseUri}#${SYMBOL_CANDIDATE_FRAGMENT}`,
+                                    controller.signal,
+                                    {
+                                        lineNumber: result.line,
+                                        column: result.column,
+                                        waitForContent: true,
+                                    },
+                                );
+                                return uri
+                                    ? {
+                                        uri,
+                                        range: {
+                                            startLineNumber: result.line,
+                                            startColumn: result.column,
+                                            endLineNumber: result.line,
+                                            endColumn: result.column,
+                                        },
+                                    }
+                                    : null;
+                            },
+                        ));
+                        return dedupeDefinitionLinks(
+                            candidates.filter((link): link is ProviderLocationLink => link !== null),
+                        );
                     } finally {
                         if (subscription && typeof subscription.dispose === 'function') {
                             subscription.dispose();

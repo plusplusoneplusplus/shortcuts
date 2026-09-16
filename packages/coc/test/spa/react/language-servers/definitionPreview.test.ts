@@ -1,10 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserDocumentUri } from '../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import {
     registerDefinitionPreviewSource,
     type DefinitionPreviewModel,
     type DefinitionPreviewUri,
 } from '../../../../src/server/spa/client/react/features/language-servers/definitionPreview';
+import { externalResourceUri } from '../../../../src/server/spa/client/react/features/language-servers/externalSource';
+import {
+    readExternalSourceRecord,
+    resetExternalSourceStoreForTests,
+} from '../../../../src/server/spa/client/react/features/language-servers/externalSourceStore';
 
 function createMonaco() {
     const models = new Map<string, DefinitionPreviewModel>();
@@ -14,11 +19,16 @@ function createMonaco() {
     const monaco = {
         editor: {
             getModel: (resource: DefinitionPreviewUri) => models.get(resource.toString()) ?? null,
-            createModel: (content: string, _language: string | undefined, resource: DefinitionPreviewUri) => {
+            setModelLanguage: (model: { language: string }, languageId: string) => {
+                model.language = languageId;
+            },
+            createModel: (content: string, language: string | undefined, resource: DefinitionPreviewUri) => {
                 const key = resource.toString();
                 const model = {
                     uri: resource,
                     content,
+                    language: language ?? 'plaintext',
+                    getLanguageId: () => model.language,
                     setValue: (value: string) => { model.content = value; },
                     isAttachedToEditor: () => attached.has(key),
                     onDidChangeAttached: (listener: () => void) => {
@@ -40,7 +50,8 @@ function createMonaco() {
             ...monaco,
             Uri: { parse: (value: string) => ({ toString: () => value }) },
         },
-        model: (uri: string) => models.get(uri) as (DefinitionPreviewModel & { content: string }) | undefined,
+        model: (uri: string) => models.get(uri) as
+            (DefinitionPreviewModel & { content: string; language: string }) | undefined,
         attach: (uri: string) => {
             attached.add(uri);
             attachmentListeners.get(uri)?.();
@@ -245,5 +256,74 @@ describe('definition preview source', () => {
         expect(disposed).toEqual(new Set([uri]));
         source.dispose();
         vi.useRealTimers();
+    });
+
+    describe('external definition sources', () => {
+        beforeEach(() => {
+            resetExternalSourceStoreForTests();
+        });
+
+        const EXTERNAL = externalResourceUri('cap-1', 'string_view');
+
+        function externalSource(monaco: ReturnType<typeof createMonaco>['monaco'], read: unknown) {
+            return registerDefinitionPreviewSource({
+                monaco,
+                workspaceId: 'ws-1',
+                load: vi.fn(),
+                readExternalSource: read as never,
+                languageForFileName: (name: string) => (name.endsWith('.hpp') ? 'cpp' : 'plaintext'),
+            });
+        }
+
+        it('loads an external target through the attachment that was issued the capability', async () => {
+            const { monaco, model } = createMonaco();
+            const read = vi.fn().mockResolvedValue({ content: 'class string_view;', displayName: 'string_view', languageHint: 'cpp' });
+            const source = externalSource(monaco, read);
+
+            expect(await source.prepare(EXTERNAL, new AbortController().signal, { lineNumber: 3, column: 5 }, true)).toBe(true);
+
+            expect(read).toHaveBeenCalledWith('cap-1', expect.any(AbortSignal));
+            expect(model(EXTERNAL)).toMatchObject({ content: 'class string_view;', language: 'cpp' });
+        });
+
+        it('publishes the loaded source so the tab that opens next can show it', async () => {
+            const { monaco } = createMonaco();
+            const source = externalSource(monaco, vi.fn().mockResolvedValue({
+                content: '#pragma once', displayName: 'widget.hpp',
+            }));
+
+            await source.prepare(externalResourceUri('cap-2', 'widget.hpp'), new AbortController().signal, undefined, true);
+
+            expect(readExternalSourceRecord('cap-2')).toMatchObject({ content: '#pragma once', displayName: 'widget.hpp' });
+        });
+
+        it('shows the unavailable model when the read fails', async () => {
+            const { monaco, model } = createMonaco();
+            const source = externalSource(monaco, vi.fn().mockRejectedValue(new Error('expired')));
+
+            await source.prepare(EXTERNAL, new AbortController().signal, undefined, true);
+
+            expect(model(EXTERNAL)?.content).toBe('Definition source unavailable.');
+            expect(readExternalSourceRecord('cap-1')).toBeUndefined();
+        });
+
+        it('shows the unavailable model when this surface has no reader at all', async () => {
+            const { monaco, model } = createMonaco();
+            const source = registerDefinitionPreviewSource({ monaco, workspaceId: 'ws-1', load: vi.fn() });
+
+            // No `showUnavailableForRejectedTarget`: an exact external result is
+            // still reported, because the server named it as the definition.
+            expect(await source.prepare(EXTERNAL, new AbortController().signal)).toBe(true);
+            expect(model(EXTERNAL)?.content).toBe('Definition source unavailable.');
+        });
+
+        it('ignores a malformed external resource', async () => {
+            const { monaco } = createMonaco();
+            const read = vi.fn();
+            const source = externalSource(monaco, read);
+
+            expect(await source.prepare('coc-lsp-external://', new AbortController().signal)).toBe(false);
+            expect(read).not.toHaveBeenCalled();
+        });
     });
 });

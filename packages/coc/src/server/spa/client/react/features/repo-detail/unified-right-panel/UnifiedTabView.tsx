@@ -41,6 +41,7 @@ import { useCallback } from 'react';
 import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
 import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
+import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
 import type {
     EditorNavigationController,
     EditorNavigationReason,
@@ -88,6 +89,15 @@ export interface UnifiedTabViewProps {
         file: { path: string; name: string; line: number; column: number; symbolCandidate?: true },
         origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
     ) => void;
+    /**
+     * Where a definition that lands OUTSIDE every workspace goes. `origin` is
+     * the SOURCE tab's owner, because the capability belongs to the member and
+     * concrete clone whose language server produced the result.
+     */
+    onOpenExternal?: (
+        source: { resourceId: string; name: string; line: number; column: number },
+        origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
+    ) => void;
     onFileNavigationMount?: (tabId: string, controller: EditorNavigationController | null) => void;
     onFileNavigationLocation?: (
         tabId: string,
@@ -104,7 +114,7 @@ function fileNameOf(tab: UnifiedPanelTab): string {
 
 export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
-    onRegisterSave, onTerminalSessionsChange, onOpenFile, definitionPreviewOwners,
+    onRegisterSave, onTerminalSessionsChange, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
@@ -134,6 +144,14 @@ export function UnifiedTabView({
             ...(tab.repoLabel === undefined ? {} : { repoLabel: tab.repoLabel }),
         }),
         [onOpenFile, tab.ownerWorkspaceId, tab.ownerRoutingRef, tab.repoLabel],
+    );
+    const handleNavigateExternal = useCallback(
+        (source: { resourceId: string; name: string; line: number; column: number }) => onOpenExternal?.(source, {
+            ownerWorkspaceId: tab.ownerWorkspaceId,
+            ...(tab.ownerRoutingRef === undefined ? {} : { ownerRoutingRef: tab.ownerRoutingRef }),
+            ...(tab.repoLabel === undefined ? {} : { repoLabel: tab.repoLabel }),
+        }),
+        [onOpenExternal, tab.ownerWorkspaceId, tab.ownerRoutingRef, tab.repoLabel],
     );
     const handleTerminalSessions = useCallback(
         (sessions: readonly TerminalSessionSummary[]) => onTerminalSessionsChange?.(tab.id, sessions),
@@ -168,11 +186,22 @@ export function UnifiedTabView({
                     readOnly={tab.readOnly === true}
                     onClose={close}
                     onNavigate={onOpenFile ? handleNavigate : undefined}
+                    onNavigateExternal={onOpenExternal ? handleNavigateExternal : undefined}
                     onDirtyChange={handleDirty}
                     onRegisterSave={handleRegisterSave}
                     onStatusChange={handleStatus}
                     onNavigationMount={handleNavigationMount}
                     onNavigationLocation={handleNavigationLocation}
+                />
+            );
+        case 'external':
+            return (
+                <ExternalSourcePane
+                    resourceId={tab.resourceId}
+                    name={tab.label}
+                    revealLine={tab.line}
+                    revealColumn={tab.column}
+                    onClose={close}
                 />
             );
         case 'canvas':

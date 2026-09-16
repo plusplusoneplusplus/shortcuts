@@ -16,8 +16,10 @@ import {
     registerEditorNavigator,
     resetEditorNavigationForTests,
     toRevealPosition,
+    type ExternalNavigationTarget,
     type LanguageNavigationTarget,
 } from '../../../../src/server/spa/client/react/features/language-servers/editorNavigation';
+import { externalResourceUri } from '../../../../src/server/spa/client/react/features/language-servers/externalSource';
 import {
     browserDocumentUri,
     parseBrowserDocumentUri,
@@ -246,5 +248,47 @@ describe('editor opener', () => {
 
         expect(installs).toBe(1);
         expect(second).toBe(first);
+    });
+
+    describe('external definition targets', () => {
+        it('hands the surface the capability, the safe name, and the position', () => {
+            const opener = installOpener();
+            const model = { uri: { toString: () => browserDocumentUri('ws-1', 'src/a.cpp') } };
+            const targets: (LanguageNavigationTarget | ExternalNavigationTarget)[] = [];
+            registerEditorNavigator(model, target => { targets.push(target); });
+
+            const opened = opener.open(
+                model,
+                externalResourceUri('cap-1', 'string_view'),
+                { startLineNumber: 42, startColumn: 7 },
+            );
+
+            expect(opened).toBe(true);
+            expect(targets).toEqual([{
+                external: true,
+                resourceId: 'cap-1',
+                displayName: 'string_view',
+                line: 42,
+                column: 7,
+            }]);
+        });
+
+        it('declines when the surface has no external handler', () => {
+            const opener = installOpener();
+            const model = { uri: { toString: () => browserDocumentUri('ws-1', 'src/a.cpp') } };
+            registerEditorNavigator(model, () => false);
+
+            expect(opener.open(model, externalResourceUri('cap-1', 'string_view'))).toBe(false);
+        });
+
+        it('declines a malformed external resource rather than guessing', () => {
+            const opener = installOpener();
+            const model = { uri: { toString: () => browserDocumentUri('ws-1', 'src/a.cpp') } };
+            let called = false;
+            registerEditorNavigator(model, () => { called = true; });
+
+            expect(opener.open(model, 'coc-lsp-external://')).toBe(false);
+            expect(called).toBe(false);
+        });
     });
 });

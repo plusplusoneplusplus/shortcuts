@@ -38,6 +38,7 @@ import {
     cycleTabs,
     findTab,
     moveTab,
+    openExternalTab,
     openFileTab,
     openSearchTab,
     otherTabIds,
@@ -45,6 +46,7 @@ import {
     tabLabels,
     type ExplorerTab,
     type ExplorerTabsState,
+    type OpenExternalTabInput,
     type OpenFileTabInput,
     type OpenSearchTabInput,
     type TabCycleDirection,
@@ -69,6 +71,8 @@ export interface ExplorerTabsApi {
     openFile(input: OpenFileTabInput): void;
     /** Open, or re-activate, the read-only buffer for a search result set. */
     openSearch(input: OpenSearchTabInput): void;
+    /** Open, or re-activate, the read-only view of an external definition source. */
+    openExternal(input: OpenExternalTabInput): void;
     /** Show an already-open tab, moving it to the front of the MRU. */
     activate(id: string): void;
     /** Promote a preview tab to a pinned one (double click, or first edit). */
@@ -116,6 +120,10 @@ export function useExplorerTabs(workspaceId: string): ExplorerTabsApi {
 
     const openFile = useCallback((input: OpenFileTabInput) => {
         setState(prev => openFileTab(prev, input));
+    }, [setState]);
+
+    const openExternal = useCallback((input: OpenExternalTabInput) => {
+        setState(prev => openExternalTab(prev, input));
     }, [setState]);
 
     const openSearch = useCallback((input: OpenSearchTabInput) => {
@@ -173,6 +181,7 @@ export function useExplorerTabs(workspaceId: string): ExplorerTabsApi {
         labels,
         openFile,
         openSearch,
+        openExternal,
         activate,
         pin,
         clearRevealLine,
@@ -186,7 +195,7 @@ export function useExplorerTabs(workspaceId: string): ExplorerTabsApi {
         idsAll,
     }), [
         state, active, labels,
-        openFile, openSearch, activate, pin, clearRevealLine,
+        openFile, openSearch, openExternal, activate, pin, clearRevealLine,
         close, closeMany, move, closeAll, cycle, find, idsOther, idsAll,
     ]);
 }

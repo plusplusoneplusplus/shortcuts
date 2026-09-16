@@ -16,6 +16,7 @@ import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
 import { ContentSearchPanel } from './ContentSearchPanel';
 import { SearchEditorPane } from './SearchEditorPane';
+import { ExternalSourcePane } from './ExternalSourcePane';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
 import { ExplorerTabStrip } from './ExplorerTabStrip';
 import { useExplorerTabs } from './useExplorerTabs';
@@ -288,6 +289,11 @@ export function ExplorerPanel({
     const [selectedPath, setSelectedPath] = useExplorerSelectedPath(ownerKey);
     const [expandedPaths, setExpandedPaths] = useExplorerExpandedPaths(ownerKey);
     const [previewFile, setPreviewFile] = useExplorerPreviewFile(ownerKey);
+    // Not persisted: an external capability dies with its language-server
+    // connection, so restoring one could only ever show "unavailable".
+    const [externalPreview, setExternalPreview] = useState<{
+        resourceId: string; name: string; line: number; column: number;
+    } | null>(null);
     // The "Open in Editor" buffer (§2.7). In memory only — it is a snapshot of a
     // result set, and a stale one restored after a reload would be a lie.
     const [searchEditor, setSearchEditor] = useState<{ text: string; query: string } | null>(null);
@@ -300,7 +306,7 @@ export function ExplorerPanel({
     const tabsEnabled = useExplorerEditorTabsEnabled();
     const tabs = useExplorerTabs(ownerKey);
     const tabsState = tabs.state;
-    const { openFile: openFileTab, openSearch: openSearchTab, close: closeTabById, closeMany: closeTabsByIds, pin: pinTabById, activate: activateTabById, idsOther, idsAll } = tabs;
+    const { openFile: openFileTab, openSearch: openSearchTab, openExternal: openExternalTab, close: closeTabById, closeMany: closeTabsByIds, pin: pinTabById, activate: activateTabById, idsOther, idsAll } = tabs;
     // The freshest session, readable from the keyboard listener without making
     // that listener depend on (and re-register on) every tab change.
     const tabsRef = useRef(tabsState);
@@ -569,6 +575,24 @@ export function ExplorerPanel({
     }) => {
         openFileInEditor(target, { preview: false });
     }, [openFileInEditor]);
+
+    /**
+     * A language-server jump into a file outside every workspace — a
+     * standard-library header, a dependency source. It opens read-only, keyed
+     * by the capability the owning host issued rather than by a path, so there
+     * is nothing here the file tree or the file API could act on. With tabs off
+     * it takes over the single preview slot, the same way a file open does.
+     */
+    const navigateToExternal = useCallback((source: {
+        resourceId: string; name: string; line: number; column: number;
+    }) => {
+        if (tabsEnabled) {
+            setMobileTreeVisible(false);
+            openExternalTab(source);
+            return;
+        }
+        setExternalPreview(source);
+    }, [tabsEnabled, openExternalTab]);
 
     /** Close tabs for real, dropping any search texts they owned. */
     const closeTabsNow = useCallback((ids: readonly string[]) => {
@@ -1285,7 +1309,7 @@ export function ExplorerPanel({
     // Files back action only hides the editor, so the tab set survives it.
     const editorHasContent = navigatorMode
         ? false
-        : (tabsEnabled ? tabsState.tabs.length > 0 : (!!previewFile || !!searchEditor));
+        : (tabsEnabled ? tabsState.tabs.length > 0 : (!!previewFile || !!searchEditor || !!externalPreview));
     const showMobilePreview = isMobile && editorHasContent && !(tabsEnabled && mobileTreeVisible);
 
     return (
@@ -1522,7 +1546,15 @@ export function ExplorerPanel({
                                         data-testid={`explorer-tab-panel-${tab.id}`}
                                         data-active={isActive || undefined}
                                     >
-                                        {tab.kind === 'search'
+                                        {tab.kind === 'external' ? (
+                                            <ExternalSourcePane
+                                                resourceId={tab.resourceId ?? ''}
+                                                name={tab.name}
+                                                revealLine={tab.line}
+                                                revealColumn={tab.column}
+                                                onClose={isMobile ? undefined : () => handleCloseTab(tab.id)}
+                                            />
+                                        ) : tab.kind === 'search'
                                             ? (searchText === undefined ? null : (
                                                 <SearchEditorPane
                                                     query={tab.query ?? ''}
@@ -1541,6 +1573,7 @@ export function ExplorerPanel({
                                                     symbolCandidate={tab.symbolCandidate}
                                                     readOnly={tab.readOnly}
                                                     onNavigate={navigateToFile}
+                                                    onNavigateExternal={navigateToExternal}
                                                     onClose={isMobile ? undefined : () => handleCloseTab(tab.id)}
                                                     onDirtyChange={dirtyHandlerFor(tab.id)}
                                                     onRegisterSave={saveRegistrarFor(tab.id)}
@@ -1562,7 +1595,17 @@ export function ExplorerPanel({
                         />
                     </div>
                 ) : (<>
-                {searchEditor
+                {externalPreview
+                    ? (
+                        <ExternalSourcePane
+                            resourceId={externalPreview.resourceId}
+                            name={externalPreview.name}
+                            revealLine={externalPreview.line}
+                            revealColumn={externalPreview.column}
+                            onClose={() => setExternalPreview(null)}
+                        />
+                    )
+                    : searchEditor
                     ? (
                         <SearchEditorPane
                             query={searchEditor.query}
@@ -1604,6 +1647,7 @@ export function ExplorerPanel({
                                     onClose={isMobile ? undefined : () => setPreviewFile(null)}
                                     onDirtyChange={reportPreviewDirty}
                                     onNavigate={navigateToFile}
+                                    onNavigateExternal={navigateToExternal}
                                 />
                             </div>
                         </div>

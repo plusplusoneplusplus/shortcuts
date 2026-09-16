@@ -26,7 +26,10 @@ Three different workspace ids, kept apart on purpose:
   affects new tabs only; changing it never retargets an open one.
 
 Tabs are scoped by kind: `terminal | notes | note` are workspace-owned,
-`file | canvas | diff` belong to the selected chat (`scopeForKind`). `unifiedTabId`
+`file | canvas | diff | external` belong to the selected chat (`scopeForKind`).
+`external` is a read-only definition source outside every workspace; its
+resource id is the opaque capability the owning member's host issued, it has no
+entry in the "+" menu, and it is never persisted. `unifiedTabId`
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the
 queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
@@ -38,7 +41,7 @@ from same-id clones never merge into one tab.
 
 | File | Holds |
 |---|---|
-| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab. |
+| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab, and `external` tabs are filtered out of the codec along with any selection naming one. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
 | `unifiedPanelTree.ts` | The navigator column's open and width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, panel collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |

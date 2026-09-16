@@ -21,6 +21,7 @@
  */
 
 import { parseBrowserDocumentUri } from './documentStore';
+import { parseExternalResourceUri } from './externalSource';
 
 export const SYMBOL_CANDIDATE_FRAGMENT = 'symbol-index-candidate';
 
@@ -38,11 +39,35 @@ export interface LanguageNavigationTarget {
 }
 
 /**
+ * A definition in a file outside every workspace — a standard-library header, a
+ * dependency source. It is addressed by the opaque capability the owning host
+ * issued, never by a path, and it opens read-only.
+ */
+export interface ExternalNavigationTarget {
+    external: true;
+    /** Opaque capability id; only the issuing attachment can read it. */
+    resourceId: string;
+    /** Safe basename for the tab label. */
+    displayName: string;
+    line: number;
+    column: number;
+}
+
+/**
  * Opens `target` in the surface that owns the initiating editor. Returning
  * `false` declines the navigation, which lets Monaco fall through to any other
  * opener rather than silently swallowing it.
  */
-export type LanguageNavigationHandler = (target: LanguageNavigationTarget) => boolean | void;
+export type LanguageNavigationHandler = (
+    target: LanguageNavigationTarget | ExternalNavigationTarget,
+) => boolean | void;
+
+/** Narrows a handler's argument to the external, read-only variant. */
+export function isExternalNavigationTarget(
+    target: LanguageNavigationTarget | ExternalNavigationTarget,
+): target is ExternalNavigationTarget {
+    return (target as ExternalNavigationTarget).external === true;
+}
 
 export interface NavigationDisposable {
     dispose(): void;
@@ -127,6 +152,11 @@ export function installLanguageEditorOpener(monaco: NavigationMonaco): Navigatio
             const handler = navigators.get(model);
             if (!handler) return false;
             const resourceUri = resource.toString();
+            const { line, column } = toRevealPosition(selectionOrPosition);
+            const external = parseExternalResourceUri(resourceUri);
+            if (external) {
+                return handler({ external: true, ...external, line, column }) !== false;
+            }
             const document = parseBrowserDocumentUri(resourceUri);
             if (!document) return false;
             const sourceDocument = model.uri
@@ -139,7 +169,6 @@ export function installLanguageEditorOpener(monaco: NavigationMonaco): Navigatio
             ) {
                 return false;
             }
-            const { line, column } = toRevealPosition(selectionOrPosition);
             return handler({
                 ...document,
                 line,
