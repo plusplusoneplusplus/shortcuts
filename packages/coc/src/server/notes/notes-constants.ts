@@ -3,7 +3,7 @@
  * New system folders can be added here; consumers read this list at runtime.
  */
 
-export const SYSTEM_FOLDER_NAMES: string[] = ['Plans'];
+export const SYSTEM_FOLDER_NAMES: string[] = ['Plans', 'Sentinel'];
 
 /**
  * Per-directory custom sibling order file.

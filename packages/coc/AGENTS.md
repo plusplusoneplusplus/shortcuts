@@ -123,6 +123,10 @@ all have their own `references/*.md`.
   task-derived rows out of Notes root removal selection, refresh discovery with
   the tree, clear the selected file when a root disappears or the workspace
   changes, and discard late root/tree responses from stale workspace scopes.
+- **Notes system folders** are `Plans` and `Sentinel`. The managed default root
+  auto-creates them, reports them through the tree response's `systemFolders`,
+  and blocks renaming or deleting their roots. Repo-folder and task-derived
+  roots do not create or report system folders.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service

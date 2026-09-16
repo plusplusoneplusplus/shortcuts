@@ -1,6 +1,6 @@
 /**
  * Tests for the systemFolders concept in the Notes REST API:
- * - GET /notes/tree exposes systemFolders and auto-creates Plans
+ * - GET /notes/tree exposes and auto-creates system folders
  * - PATCH /notes/path returns 403 when renaming a system folder
  * - DELETE /notes/path returns 403 when deleting a system folder
  * - Rename/delete of pages *inside* a system folder works normally
@@ -130,131 +130,140 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
     // Tree response — systemFolders field
     // -------------------------------------------------------------------------
 
-    it('GET /notes/tree includes systemFolders: ["Plans"]', async () => {
+    it('GET /notes/tree includes all system folders', async () => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
         const res = await request(treeUrl(srv));
         expect(res.status).toBe(200);
         const data = JSON.parse(res.body);
-        expect(data.systemFolders).toEqual(['Plans']);
+        expect(data.systemFolders).toEqual(['Plans', 'Sentinel']);
     });
 
-    it('GET /notes/tree auto-creates the Plans folder', async () => {
+    it.each(['Plans', 'Sentinel'])('GET /notes/tree auto-creates the %s folder', async (folderName) => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
-        const plansDir = path.join(notesRoot(), 'Plans');
-        expect(fs.existsSync(plansDir)).toBe(false);
+        const systemDir = path.join(notesRoot(), folderName);
+        expect(fs.existsSync(systemDir)).toBe(false);
 
         const res = await request(treeUrl(srv));
         expect(res.status).toBe(200);
 
-        expect(fs.existsSync(plansDir)).toBe(true);
-        expect(fs.statSync(plansDir).isDirectory()).toBe(true);
+        expect(fs.existsSync(systemDir)).toBe(true);
+        expect(fs.statSync(systemDir).isDirectory()).toBe(true);
     });
 
-    it('GET /notes/tree Plans folder appears in the tree', async () => {
+    it('GET /notes/tree system folders appear in the tree', async () => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
         const res = await request(treeUrl(srv));
         expect(res.status).toBe(200);
         const data = JSON.parse(res.body);
-        const plansNode = (data.tree as Array<{ name: string }>).find(n => n.name === 'Plans');
-        expect(plansNode).toBeDefined();
+        const names = (data.tree as Array<{ name: string }>).map(node => node.name);
+        expect(names).toEqual(expect.arrayContaining(['Plans', 'Sentinel']));
     });
 
     // -------------------------------------------------------------------------
     // Rename — system folder root blocked
     // -------------------------------------------------------------------------
 
-    it('PATCH /notes/path returns 403 when renaming Plans', async () => {
+    it.each(['Plans', 'Sentinel'])('PATCH /notes/path returns 403 when renaming %s', async (folderName) => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
         // Ensure the folder exists
         await request(treeUrl(srv));
 
-        const res = await patchJSON(patchUrl(srv), { oldPath: 'Plans', newPath: 'MyPlans' });
+        const res = await patchJSON(patchUrl(srv), { oldPath: folderName, newPath: `My${folderName}` });
         expect(res.status).toBe(403);
         const data = JSON.parse(res.body);
         expect(data.error).toMatch(/system folder/i);
     });
 
-    it('PATCH /notes/path still blocks rename of Plans when folder was pre-created', async () => {
-        const srv = await startServer();
-        await registerWorkspace(srv);
+    it.each(['Plans', 'Sentinel'])(
+        'PATCH /notes/path still blocks rename of pre-created %s',
+        async (folderName) => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
 
-        // Manually create the Plans folder
-        fs.mkdirSync(path.join(notesRoot(), 'Plans'), { recursive: true });
+            fs.mkdirSync(path.join(notesRoot(), folderName), { recursive: true });
 
-        const res = await patchJSON(patchUrl(srv), { oldPath: 'Plans', newPath: 'RenamedPlans' });
-        expect(res.status).toBe(403);
-    });
+            const res = await patchJSON(patchUrl(srv), {
+                oldPath: folderName,
+                newPath: `Renamed${folderName}`,
+            });
+            expect(res.status).toBe(403);
+        },
+    );
 
     // -------------------------------------------------------------------------
     // Delete — system folder root blocked
     // -------------------------------------------------------------------------
 
-    it('DELETE /notes/path returns 403 when deleting Plans', async () => {
+    it.each(['Plans', 'Sentinel'])('DELETE /notes/path returns 403 when deleting %s', async (folderName) => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
         // Ensure the folder exists
         await request(treeUrl(srv));
 
-        const res = await deleteReq(deleteUrl(srv, 'Plans'));
+        const res = await deleteReq(deleteUrl(srv, folderName));
         expect(res.status).toBe(403);
         const data = JSON.parse(res.body);
         expect(data.error).toMatch(/system folder/i);
     });
 
-    it('Plans folder is not deleted even when delete is attempted', async () => {
+    it.each(['Plans', 'Sentinel'])('%s is not deleted when delete is attempted', async (folderName) => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
-        await request(treeUrl(srv)); // auto-creates Plans
+        await request(treeUrl(srv));
 
-        await deleteReq(deleteUrl(srv, 'Plans'));
+        await deleteReq(deleteUrl(srv, folderName));
 
-        // Folder must still exist
-        expect(fs.existsSync(path.join(notesRoot(), 'Plans'))).toBe(true);
+        expect(fs.existsSync(path.join(notesRoot(), folderName))).toBe(true);
     });
 
     // -------------------------------------------------------------------------
     // Pages inside a system folder — not blocked
     // -------------------------------------------------------------------------
 
-    it('PATCH /notes/path allows renaming a page inside Plans', async () => {
-        const srv = await startServer();
-        await registerWorkspace(srv);
+    it.each(['Plans', 'Sentinel'])(
+        'PATCH /notes/path allows renaming a page inside %s',
+        async (folderName) => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
 
-        // Create a page inside Plans
-        const planFile = path.join(notesRoot(), 'Plans', 'my-plan.md');
-        fs.mkdirSync(path.dirname(planFile), { recursive: true });
-        fs.writeFileSync(planFile, '# Plan', 'utf-8');
+            const noteFile = path.join(notesRoot(), folderName, 'page.md');
+            fs.mkdirSync(path.dirname(noteFile), { recursive: true });
+            fs.writeFileSync(noteFile, '# Page', 'utf-8');
 
-        const res = await patchJSON(patchUrl(srv), {
-            oldPath: 'Plans/my-plan.md',
-            newPath: 'Plans/renamed-plan.md',
-        });
-        expect(res.status).toBe(200);
-        expect(fs.existsSync(path.join(notesRoot(), 'Plans', 'renamed-plan.md'))).toBe(true);
-    });
+            const res = await patchJSON(patchUrl(srv), {
+                oldPath: `${folderName}/page.md`,
+                newPath: `${folderName}/renamed-page.md`,
+            });
+            expect(res.status).toBe(200);
+            expect(fs.existsSync(path.join(notesRoot(), folderName, 'renamed-page.md'))).toBe(true);
+        },
+    );
 
-    it('DELETE /notes/path allows deleting a page inside Plans', async () => {
-        const srv = await startServer();
-        await registerWorkspace(srv);
+    it.each(['Plans', 'Sentinel'])(
+        'DELETE /notes/path allows deleting a page inside %s',
+        async (folderName) => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
 
-        const planFile = path.join(notesRoot(), 'Plans', 'to-delete.md');
-        fs.mkdirSync(path.dirname(planFile), { recursive: true });
-        fs.writeFileSync(planFile, '# Delete me', 'utf-8');
+            const noteFile = path.join(notesRoot(), folderName, 'to-delete.md');
+            fs.mkdirSync(path.dirname(noteFile), { recursive: true });
+            fs.writeFileSync(noteFile, '# Delete me', 'utf-8');
 
-        const res = await deleteReq(deleteUrl(srv, 'Plans/to-delete.md'));
-        expect(res.status).toBe(204);
-        expect(fs.existsSync(planFile)).toBe(false);
-    });
+            const res = await deleteReq(deleteUrl(srv, `${folderName}/to-delete.md`));
+            expect(res.status).toBe(204);
+            expect(fs.existsSync(noteFile)).toBe(false);
+        },
+    );
 
     // -------------------------------------------------------------------------
     // Non-system folders — not affected
