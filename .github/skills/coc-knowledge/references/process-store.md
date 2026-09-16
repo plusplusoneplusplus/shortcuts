@@ -121,6 +121,13 @@ turns. The adapter requires exactly one verdict per known candidate, the fixed
 output fails the tick; low-confidence verdicts are ignored, and pinned chats use
 lower queue and loose-end thresholds.
 
+`server/sentinel/sentinel-watchlist.ts` reconciles classification output into the
+managed `notes/Sentinel/.watchlist.json` ownership marker. It persists only
+judgments and exclusion IDs, preserves disposition and nudge history, and reads
+mutable lifecycle facts from `ProcessStore` for each eviction pass. Missing,
+archived, and resolved-for-more-than-30-days rows are removed. Reads accept
+missing, empty, truncated, and older-version files; updates use temp-file rename.
+
 ### Task Group Registry
 
 `SqliteTaskGroupStore` (forge) owns `task_groups`/`task_group_members` over the shared database

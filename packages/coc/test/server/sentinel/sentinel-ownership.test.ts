@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getRepoDataPath } from '../../../src/server/paths';
 import {
     claimSentinelOwnership,
+    SENTINEL_WATCHLIST_VERSION,
     type SentinelOwnershipRecord,
 } from '../../../src/server/sentinel/sentinel-ownership';
 import { createMockProcessStore } from '../../helpers/mock-process-store';
@@ -52,7 +53,7 @@ function writeOwner(
 ): void {
     const filePath = watchlistPath(dataDir, workspaceId);
     const record: SentinelOwnershipRecord = {
-        version: 1,
+        version: SENTINEL_WATCHLIST_VERSION,
         sentinelProcessId,
         claimedAt,
         excludedProcessIds: [sentinelProcessId],
@@ -83,7 +84,7 @@ describe('claimSentinelOwnership', () => {
 
         const record = JSON.parse(fs.readFileSync(watchlistPath(dataDir, 'workspace-a'), 'utf8'));
         expect(record).toEqual({
-            version: 1,
+            version: SENTINEL_WATCHLIST_VERSION,
             sentinelProcessId: 'sentinel-a',
             claimedAt: NOW.toISOString(),
             excludedProcessIds: ['sentinel-a'],

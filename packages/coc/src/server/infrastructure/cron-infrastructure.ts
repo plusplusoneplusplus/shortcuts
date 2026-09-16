@@ -23,6 +23,7 @@ import {
     type SentinelSeenStateReader,
 } from '../sentinel/sentinel-classifier';
 import { createSentinelLooseEndJudge } from '../sentinel/sentinel-loose-end-judge';
+import { persistSentinelClassification } from '../sentinel/sentinel-watchlist';
 
 // ============================================================================
 // Types
@@ -111,12 +112,19 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
             const model = typeof process.metadata?.model === 'string'
                 ? process.metadata.model
                 : undefined;
-            await scanSentinelWorkspace({
+            const classification = await scanSentinelWorkspace({
                 workspaceId,
                 sentinelProcessId: process.id,
                 processStore: store,
                 seenStateReader,
                 judgeLooseEnds: createSentinelLooseEndJudge(options.aiService, model),
+            });
+            await persistSentinelClassification({
+                dataDir,
+                workspaceId,
+                sentinelProcessId: process.id,
+                processStore: store,
+                classification,
             });
         },
     });
