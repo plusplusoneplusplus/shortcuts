@@ -8,12 +8,24 @@ import {
 } from './mobileWorkspacePane';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeftColWidth';
+import { useViewportWidth } from '../../hooks/ui/useViewportWidth';
 import { useHoverPeek } from '../chat/hooks/useHoverPeek';
 import {
     LEFT_RAIL_WIDTH,
     splitWorkspaceLeftCollapsedStorageKey,
     useLeftCollapsed,
 } from './WorkspaceLeftCollapse';
+import {
+    clearWorkspaceLeftWidth,
+    LEFT_COLUMN_INITIAL_WIDTH,
+    LEFT_COLUMN_MAX_WIDTH,
+    LEFT_COLUMN_MIN_WIDTH,
+    setWorkspaceLeftWidth,
+    splitWorkspaceWidthStorageKey,
+} from './WorkspaceLeftWidth';
+import { DOCK_MIN_CHAT_WIDTH, DOCK_MIN_WIDTH, RESIZE_HANDLE_TOTAL } from './WorkspaceDockToggle';
+
+export { splitWorkspaceWidthStorageKey } from './WorkspaceLeftWidth';
 
 /**
  * Layout shell for the split "Workspace" view (behind the `splitWorkspacePanel`
@@ -75,11 +87,6 @@ export interface SplitWorkspacePanelProps {
     onNewChat?: () => void;
 }
 
-/** localStorage key for the left column's overall width, per workspace. */
-export function splitWorkspaceWidthStorageKey(workspaceId: string): string {
-    return `split-workspace:${workspaceId}:left-width`;
-}
-
 /** localStorage key for the chat/git divider ratio (chat half height), per workspace. */
 export function splitWorkspaceDividerStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:chat-height`;
@@ -101,9 +108,6 @@ const DIVIDER_CLASS =
 const CHAT_SPLIT_MIN_HEIGHT = 120;
 const CHAT_SPLIT_MAX_HEIGHT = 1200;
 const CHAT_SPLIT_INITIAL_HEIGHT = 320;
-const LEFT_COLUMN_MIN_WIDTH = 240;
-const LEFT_COLUMN_MAX_WIDTH = 640;
-const LEFT_COLUMN_INITIAL_WIDTH = 360;
 
 /**
  * Label for the chat segment of the mobile switcher. The desktop section header
@@ -252,6 +256,14 @@ export function SplitWorkspacePanel({
     onNewChat,
 }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
+    const viewportWidth = useViewportWidth();
+    const leftMaxWidth = Math.max(
+        LEFT_COLUMN_MIN_WIDTH,
+        Math.min(
+            LEFT_COLUMN_MAX_WIDTH,
+            viewportWidth - DOCK_MIN_CHAT_WIDTH - DOCK_MIN_WIDTH - RESIZE_HANDLE_TOTAL,
+        ),
+    );
 
     const leftColRef = useRef<HTMLDivElement | null>(null);
     // The collapsed-peek overlay and the left column are the SAME (keep-alive)
@@ -278,7 +290,7 @@ export function SplitWorkspacePanel({
         direction: 'left',
         initialWidth: LEFT_COLUMN_INITIAL_WIDTH,
         minWidth: LEFT_COLUMN_MIN_WIDTH,
-        maxWidth: LEFT_COLUMN_MAX_WIDTH,
+        maxWidth: leftMaxWidth,
         storageKey: splitWorkspaceWidthStorageKey(workspaceId),
     });
 
@@ -340,7 +352,13 @@ export function SplitWorkspacePanel({
     // full width) to keep the bottom status bar flush (AC-05). Cleared on mobile /
     // unmount so the dock falls back to its default width where no split sidebar
     // is on screen.
-    usePublishWorkspaceLeftColWidth(leftCollapsed ? LEFT_RAIL_WIDTH : leftColumn.width, isMobile);
+    const publishedLeftWidth = leftCollapsed ? LEFT_RAIL_WIDTH : leftColumn.width;
+    usePublishWorkspaceLeftColWidth(publishedLeftWidth, isMobile);
+    useEffect(() => {
+        if (isMobile) return;
+        setWorkspaceLeftWidth(workspaceId, publishedLeftWidth);
+        return () => clearWorkspaceLeftWidth(workspaceId);
+    }, [workspaceId, publishedLeftWidth, isMobile]);
 
     // Narrow / mobile: one pane at a time. The segmented control picks the list
     // (chat or git); selecting an item inside it pushes the shared detail
@@ -628,7 +646,7 @@ export function SplitWorkspacePanel({
                         aria-orientation="vertical"
                         aria-label="Resize left panel width"
                         aria-valuemin={LEFT_COLUMN_MIN_WIDTH}
-                        aria-valuemax={LEFT_COLUMN_MAX_WIDTH}
+                        aria-valuemax={leftMaxWidth}
                         aria-valuenow={leftColumn.width}
                         tabIndex={0}
                     >
