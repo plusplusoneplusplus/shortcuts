@@ -131,6 +131,11 @@ all have their own `references/*.md`.
   the New Chat surface through `sentinel.enabled`. Its registry identity uses a
   shield icon with teal accents, and server mode normalization maps its base
   instruction profile to read-only Ask.
+- **Sentinel ownership** lives only at
+  `repos/<workspaceId>/notes/Sentinel/.watchlist.json`. Initial claims use
+  exclusive file creation; live owners block a second claim, while missing,
+  archived, failed, cancelled, or corrupt owners are reclaimed. A short claim
+  grace covers admission before the new process row exists.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service
