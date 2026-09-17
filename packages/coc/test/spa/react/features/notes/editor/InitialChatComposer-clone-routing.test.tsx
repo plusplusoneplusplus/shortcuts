@@ -156,6 +156,7 @@ vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
     isCronEnabled: () => false,
+    isCanvasEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getConfiguredDefaultProvider: () => 'copilot' as const,
     isAutoAgentProviderRoutingEnabled: () => false,

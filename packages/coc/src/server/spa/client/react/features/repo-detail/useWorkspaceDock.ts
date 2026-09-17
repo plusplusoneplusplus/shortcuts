@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useViewportWidth } from '../../hooks/ui/useViewportWidth';
 import { confirmDiscardExplorerEditsOnSwitch } from './explorer/explorerDirtyStore';
+import { useWorkspaceLeftWidth } from './WorkspaceLeftWidth';
 import {
     DOCK_INITIAL_WIDTH,
     DOCK_MIN_CHAT_WIDTH,
     DOCK_MIN_WIDTH,
+    RESIZE_HANDLE_TOTAL,
     workspaceDockTargetStorageKey,
     workspaceDockWidthStorageKey,
     type DockTarget,
@@ -144,9 +146,9 @@ export interface WorkspaceDockController {
      */
     width: number;
     /**
-     * Current max panel width in px — `max(DOCK_MIN_WIDTH, viewportWidth −
-     * DOCK_MIN_CHAT_WIDTH)`. Recomputed as the window resizes; feeds the resize
-     * handle's `aria-valuemax`.
+     * Current max panel width in px after reserving the live left column, both
+     * resize handles, and `DOCK_MIN_CHAT_WIDTH`. Recomputed as the layout changes;
+     * feeds the resize handle's `aria-valuemax`.
      */
     maxWidth: number;
     /** Whether the resize handle is being dragged. */
@@ -167,11 +169,14 @@ export function useWorkspaceDock(workspaceId: string, targets?: readonly DockTar
     const { isOpen, mode, toggleOpen, selectMode } = useWorkspaceDockToggle(workspaceId);
     const targetOptions = targets ?? EMPTY_TARGETS;
     const [target, setTarget] = useDockTarget(workspaceDockTargetStorageKey(workspaceId), targetOptions, workspaceId);
-    // Cap the panel relative to the live window so it can be dragged as wide as the
-    // monitor allows, while always reserving DOCK_MIN_CHAT_WIDTH for the chat pane.
+    // Reserve the live left column, both 8px dividers, and the middle detail pane.
     // The floor at DOCK_MIN_WIDTH guards the min > max inversion on narrow windows.
     const viewportWidth = useViewportWidth();
-    const maxWidth = Math.max(DOCK_MIN_WIDTH, viewportWidth - DOCK_MIN_CHAT_WIDTH);
+    const leftWidth = useWorkspaceLeftWidth(workspaceId);
+    const maxWidth = Math.max(
+        DOCK_MIN_WIDTH,
+        viewportWidth - leftWidth - RESIZE_HANDLE_TOTAL - DOCK_MIN_CHAT_WIDTH,
+    );
     const { width, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         direction: 'right',
         initialWidth: DOCK_INITIAL_WIDTH,

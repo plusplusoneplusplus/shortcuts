@@ -568,7 +568,14 @@ all have their own `references/*.md`.
   go through the `write_canvas`/`read_canvas`/`extension_canvas` LLM tools
   (which emit `canvas-updated` SSE events on the linked process); user saves
   go through the workspace canvases REST routes (409 + current record on a
-  stale revision, `canvas-updated` WebSocket broadcast). Every persisted
+  stale revision, `canvas-updated` WebSocket broadcast). The initial and
+  follow-up chat composers expose `/canvas` as a skill-backed built-in only
+  while `canvas.enabled` is true: parsing strips the command and selects the
+  bundled `canvas` skill, while disabled-state filtering removes both the
+  built-in row and any installed skill with the same name. Startup also omits
+  `canvas` from default skill installation while the feature is disabled.
+  Keep this gate paired with the existing `cron.enabled` default-skill gate in
+  `skills/default-skill-selection.ts`. Every persisted
   revision also writes a version snapshot (capped at 50) used by the panel's
   history stepper and restore-as-new-revision flow, and anchored comments
   (`comments.json`, open|sent|resolved) are delivered to the AI through the

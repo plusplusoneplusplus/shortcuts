@@ -71,6 +71,11 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         relativePath: 'cron',
     },
     {
+        name: 'canvas',
+        description: 'Create or update a written, visual, code, or interactive artifact in the canvas. Use when the user selects /canvas or asks to put the result in a canvas.',
+        relativePath: 'canvas',
+    },
+    {
         name: 'classify-diff',
         description: 'Classify every hunk in a pull request diff by change type (logic, mechanical, test, generated) so reviewers can focus on what matters',
         relativePath: 'classify-diff',
@@ -82,7 +87,7 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
     },
     {
         name: 'excalidraw-diagram',
-        description: 'Generate, read, and iteratively modify Excalidraw diagrams (flowcharts, relationships, mind maps, architecture, DFD, swimlane, class, sequence, ER) with interactive inline previews via excalidraw:// links; ships with templates, schema references, and Python helper scripts',
+        description: 'Generate, read, and iteratively modify Excalidraw diagrams with write_canvas and read_canvas, interactive canvas:// previews, templates, schema references, and optional Python helpers',
         relativePath: 'excalidraw-diagram',
     },
     {

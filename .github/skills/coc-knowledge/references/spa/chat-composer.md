@@ -99,6 +99,28 @@ skips unconfigured tiers; `EffortPillSelector` cycles Auto plus selectable effor
 disabled/unavailable ones and persisting through the repo-scoped `lastChatProvider`
 preference. These are absent from labels, tooltips, and ARIA copy.
 
+### Slash commands
+
+`slash-command-parser.ts` owns built-in recognition, while `useSlashCommands`
+turns skill-backed built-ins into selected skills and removes their command token
+from the submitted prompt. `SlashCommandFeatureState` carries the `cronEnabled`
+and `canvasEnabled` gates through parsing and menu construction. Initial and
+follow-up chat filter both the built-in item and a server-returned skill with the
+same gated name; queue and shared-dialog skill selection keep their ordinary
+skill behavior.
+
+`/canvas <request>` selects the bundled `canvas` skill and leaves `<request>` as
+the prompt. Its inline hint is shown only while the request is empty. With
+`canvas.enabled` off, the command is absent and manually typed `/canvas` remains
+ordinary prompt text.
+
+Callers that build a menu (initial and follow-up chat) pass the feature state in.
+Everyone else mounts `useSlashCommands` bare, and the hook reads the flags from
+`utils/config` inside `parseAndExtract` — never during render. Keep it that way:
+the hook is mounted by surfaces with no slash-command UI (Resolve Context, the
+markdown editors, PR panels), and a render-time flag read makes every one of
+those suites depend on the config module.
+
 ### ComposerMetaStrip and the warm dot
 
 `ComposerMetaStrip` carries the cwd chip, the context-window fuel gauge, and a provider

@@ -9,13 +9,14 @@
  */
 
 import { useEffect, useRef } from 'react';
+import type { SlashCommandFeatureState } from './slash-command-parser';
 
 export interface SkillItem {
     name: string;
     description?: string;
     args?: string;
     /**
-     * Discriminates a built-in meta command (`/model`, `/cron`, `/compact`, `/delegate`) from a
+     * Discriminates a built-in meta command from a
      * server-fetched SKILL.md skill. Derived client-side; when absent it is treated
      * as `'skill'` (see {@link effectiveKind}) so surfaces that don't merge meta
      * still render sanely.
@@ -28,14 +29,20 @@ export const META_SKILL_ITEMS: SkillItem[] = [
     { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' },
     { name: 'compact', description: 'Compact the conversation to free context', args: '[instructions]', kind: 'builtin' },
     { name: 'delegate', description: 'Delegate a task to a new conversation', args: '[provider] <task>', kind: 'builtin' },
+    { name: 'canvas', description: 'Create or update a canvas', args: '<what to create>', kind: 'builtin' },
 ];
+
+function isItemEnabled(item: SkillItem, features: SlashCommandFeatureState): boolean {
+    return (item.name !== 'cron' || features.cronEnabled)
+        && (item.name !== 'canvas' || features.canvasEnabled);
+}
 
 /**
  * Return meta skill items filtered by feature flags.
- * `/cron` is excluded when the cron feature is disabled.
+ * Feature-backed commands are excluded when their feature is disabled.
  */
-export function getMetaSkillItems(cronEnabled: boolean): SkillItem[] {
-    return META_SKILL_ITEMS.filter(m => m.name !== 'cron' || cronEnabled);
+export function getMetaSkillItems(features: SlashCommandFeatureState): SkillItem[] {
+    return META_SKILL_ITEMS.filter(item => isItemEnabled(item, features));
 }
 
 /**
@@ -44,15 +51,22 @@ export function getMetaSkillItems(cronEnabled: boolean): SkillItem[] {
  * description is preferred but the meta item's `args` hint is overlaid if the
  * server skill lacks one.
  */
-export function mergeSkillsWithMeta(skills: SkillItem[], metaItems: SkillItem[]): SkillItem[] {
-    const metaByName = new Map(metaItems.map(m => [m.name, m]));
-    const merged: SkillItem[] = skills.map(s => {
+export function mergeSkillsWithMeta(
+    skills: SkillItem[],
+    metaItems: SkillItem[],
+    features?: SlashCommandFeatureState,
+): SkillItem[] {
+    const visibleSkills = features ? skills.filter(item => isItemEnabled(item, features)) : skills;
+    const visibleMetaItems = features ? metaItems.filter(item => isItemEnabled(item, features)) : metaItems;
+    const metaByName = new Map(visibleMetaItems.map(m => [m.name, m]));
+    const merged: SkillItem[] = visibleSkills.map(s => {
         const meta = metaByName.get(s.name);
         if (meta) {
             metaByName.delete(s.name);
-            // Server description wins; overlay the meta `args` hint when the skill
-            // lacks one. The name matches a built-in command, so it is built-in.
-            return { ...s, args: s.args || meta.args, kind: 'builtin' };
+            // Canvas has intentionally short command copy even though its skill-browser
+            // description is richer. Other overlapping commands keep server copy.
+            const description = meta.name === 'canvas' ? meta.description : s.description;
+            return { ...s, description, args: s.args || meta.args, kind: 'builtin' };
         }
         // Every server-fetched entry is a skill.
         return { ...s, kind: 'skill' };

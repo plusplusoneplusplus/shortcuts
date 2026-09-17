@@ -119,7 +119,7 @@ describe('ContentSearchPanel — UX states', () => {
         type('needle');
         await advance(SEARCH_DEBOUNCE_MS);
 
-        expect(screen.getByTestId('content-search-summary').textContent).toBe('3 results in 2 files');
+        expect(screen.getByTestId('content-search-summary').textContent).toBe('3 matches in 2 files');
         expect(screen.getAllByTestId('content-search-match')).toHaveLength(3);
         expect(screen.queryByTestId('content-search-truncated')).toBeNull();
     });
@@ -129,7 +129,7 @@ describe('ContentSearchPanel — UX states', () => {
         renderPanel();
         type('needle');
         await advance(SEARCH_DEBOUNCE_MS);
-        expect(screen.getByTestId('content-search-summary').textContent).toBe('1 result in 1 file');
+        expect(screen.getByTestId('content-search-summary').textContent).toBe('1 match in 1 file');
     });
 
     it('reports dismissed matches and restores them from the summary', async () => {
@@ -485,7 +485,7 @@ describe('ContentSearchPanel — collapsible result groups', () => {
         expect(screen.getAllByTestId('content-search-file-count').map(c => c.textContent))
             .toEqual(['2', '1']);
         // The summary reports the search, not the visible rows.
-        expect(screen.getByTestId('content-search-summary').textContent).toBe('3 results in 2 files');
+        expect(screen.getByTestId('content-search-summary').textContent).toBe('3 matches in 2 files');
     });
 
     it('clicking the header again expands the group', async () => {

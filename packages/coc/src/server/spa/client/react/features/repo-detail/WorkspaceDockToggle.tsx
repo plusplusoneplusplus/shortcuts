@@ -62,10 +62,11 @@ export interface DockTarget {
 
 export const DOCK_MIN_WIDTH = 280;
 export const DOCK_INITIAL_WIDTH = 420;
+/** Total width of the two 8px dividers in the three-column workspace row. */
+export const RESIZE_HANDLE_TOTAL = 16;
 /**
- * px reserved for the left/chat column. The dock's max-width is computed as
- * `viewportWidth − DOCK_MIN_CHAT_WIDTH` (floored at `DOCK_MIN_WIDTH`), so the dock
- * scales with the monitor while never crushing the chat pane below this width.
+ * px reserved for the flexible middle detail pane. The dock's width budget also
+ * subtracts the live left-column width and the two resize handles.
  */
 export const DOCK_MIN_CHAT_WIDTH = 360;
 

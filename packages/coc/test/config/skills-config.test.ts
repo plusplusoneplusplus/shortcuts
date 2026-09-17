@@ -37,6 +37,12 @@ describe('skills config', () => {
         expect(config.skills.defaultSkills).toContain('cron');
     });
 
+    it('includes canvas in default bundled skills', () => {
+        const config = resolveConfig(undefined, undefined);
+        expect(DEFAULT_BUNDLED_SKILLS).toContain('canvas');
+        expect(config.skills.defaultSkills).toContain('canvas');
+    });
+
     it('includes classify-diff in default bundled skills', () => {
         const config = resolveConfig(undefined, undefined);
         expect(DEFAULT_BUNDLED_SKILLS).toContain('classify-diff');

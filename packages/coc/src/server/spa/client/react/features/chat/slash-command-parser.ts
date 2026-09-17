@@ -5,20 +5,27 @@
  *
  * Supports two token types:
  * - **Skill tokens**: `/skill-name` where the name matches an available skill
- * - **Meta-command tokens**: `/model` (built-in commands that are not skills)
+ * - **Meta-command tokens**: built-in commands such as `/model` and skill-backed commands
  */
 
 /** Built-in meta-commands (not skills). */
-export const META_COMMANDS = ['model', 'cron', 'compact', 'delegate'] as const;
+export const META_COMMANDS = ['model', 'cron', 'compact', 'delegate', 'canvas'] as const;
 export type MetaCommand = (typeof META_COMMANDS)[number];
+
+export interface SlashCommandFeatureState {
+    cronEnabled: boolean;
+    canvasEnabled: boolean;
+}
 
 /**
  * Return the set of meta-commands available in the current runtime.
- * Filters out `cron` when the cron feature is disabled.
+ * Filters out commands whose backing feature is disabled.
  */
-export function getActiveMetaCommands(cronEnabled: boolean): readonly MetaCommand[] {
-    if (cronEnabled) return META_COMMANDS;
-    return META_COMMANDS.filter(c => c !== 'cron');
+export function getActiveMetaCommands(features: SlashCommandFeatureState): readonly MetaCommand[] {
+    return META_COMMANDS.filter(command =>
+        (command !== 'cron' || features.cronEnabled)
+        && (command !== 'canvas' || features.canvasEnabled),
+    );
 }
 
 export interface ParsedSlashCommands {

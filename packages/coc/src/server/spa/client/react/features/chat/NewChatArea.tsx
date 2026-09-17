@@ -42,7 +42,7 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isCanvasEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
@@ -411,8 +411,14 @@ export function InitialChatComposer({
     // Model command support
     const { models: availableModels, loading: modelsLoading } = useModels(selectedProviderForClientHooks, cloneBaseUrl);
     const pickableModels = selectPickableModels(availableModels);
-    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isCronEnabled())), [skills]);
-    const slashCommands = useSlashCommands(augmentedSkills);
+    const cronEnabled = isCronEnabled();
+    const canvasEnabled = isCanvasEnabled();
+    const slashCommandFeatures = useMemo(() => ({ cronEnabled, canvasEnabled }), [cronEnabled, canvasEnabled]);
+    const augmentedSkills = useMemo(
+        () => mergeSkillsWithMeta(skills, getMetaSkillItems(slashCommandFeatures), slashCommandFeatures),
+        [skills, slashCommandFeatures],
+    );
+    const slashCommands = useSlashCommands(augmentedSkills, slashCommandFeatures);
     const modelCommand = useModelCommand(pickableModels);
     // `#repo_name` mentions: only in a repo-group chat, and only once the
     // group's membership has resolved. Elsewhere `#` is ordinary text.

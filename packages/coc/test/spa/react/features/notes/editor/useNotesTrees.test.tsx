@@ -73,10 +73,12 @@ describe('useNotesTrees', () => {
 
         // Second section expands — only the new root is requested.
         rerender({ active: ['default', 'docs'] });
-        await waitFor(() => expect(result.current.isFetched('docs')).toBe(true));
+        // Same reason as below: isFetched is true from the request, so wait on
+        // the tree itself before comparing it.
+        await waitFor(() =>
+            expect(result.current.getTree('docs').tree).toEqual(treeResponse('docs').tree));
         expect(getTreeMock).toHaveBeenCalledTimes(2);
         expect(getTreeMock).toHaveBeenLastCalledWith('ws1', 'docs');
-        expect(result.current.getTree('docs').tree).toEqual(treeResponse('docs').tree);
 
         // Collapse then re-expand: the cached tree is reused, no new request.
         rerender({ active: ['default'] });
@@ -89,13 +91,14 @@ describe('useNotesTrees', () => {
     it('exposes each root tree independently', async () => {
         const { result } = renderHook(() => useNotesTrees('ws1', ['default', 'docs']));
 
+        // Wait on the resolved payload, not on isFetched: a root counts as
+        // fetched the moment its request starts, so isFetched flips to true
+        // while the entry is still the loading placeholder (notesRoot null).
         await waitFor(() => {
-            expect(result.current.isFetched('default')).toBe(true);
-            expect(result.current.isFetched('docs')).toBe(true);
+            expect(result.current.getTree('default').notesRoot).toBe('/notes/default');
+            expect(result.current.getTree('docs').notesRoot).toBe('/notes/docs');
         });
 
-        expect(result.current.getTree('default').notesRoot).toBe('/notes/default');
-        expect(result.current.getTree('docs').notesRoot).toBe('/notes/docs');
         expect(Object.keys(result.current.trees).sort()).toEqual(['default', 'docs']);
     });
 

@@ -75,6 +75,7 @@ import { ContainerLinkClient } from './container-link/container-client';
 import { registerContainerLinkRoutes } from './container-link/container-link-routes';
 import { NotesSearchService } from './notes/notes-search-service';
 import { onRepoPreferencesChanged } from './preferences/repository';
+import { getDefaultSkillsToInstall } from './skills/default-skill-selection';
 
 // ============================================================================
 // Close Handler Builder
@@ -499,6 +500,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     const cronEnabled = resolvedConfig.cron?.enabled ?? false;
+    const canvasEnabled = resolvedConfig.canvas?.enabled ?? false;
 
     // Cron infrastructure — separate from schedules. Gated by cron.enabled feature flag (default false).
     if (cronEnabled) {
@@ -617,11 +619,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     // Auto-install default bundled skills into the global skills dir (non-blocking on errors).
-    // When cron feature is disabled, strip the `cron` skill so its prompt suffix doesn't
-    // leak into sessions where the underlying tools aren't wired.
-    const defaultSkillsToInstall = cronEnabled
-        ? resolvedConfig.skills.defaultSkills
-        : resolvedConfig.skills.defaultSkills.filter(name => name !== 'cron');
+    // Feature-backed skills are installed only when their underlying tools are available.
+    const defaultSkillsToInstall = getDefaultSkillsToInstall(
+        resolvedConfig.skills.defaultSkills,
+        { cronEnabled, canvasEnabled },
+    );
     if (defaultSkillsToInstall.length > 0) {
         const globalSkillsDir = path.join(dataDir, 'skills');
         autoInstallDefaultSkills(globalSkillsDir, defaultSkillsToInstall).then(result => {

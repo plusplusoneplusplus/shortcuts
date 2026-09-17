@@ -3,7 +3,7 @@
  * §2.5 of the Explorer Search VS Code parity goal — dismissing result rows.
  *
  * `X` on a match hides that row; `X` on a file header hides the whole group.
- * Dismissal is view-only: nothing is written, the "N results in M files" summary
+ * Dismissal is view-only: nothing is written, the "N matches in M files" summary
  * keeps reporting what the search found, and any new response brings the rows
  * back.
  */
@@ -225,11 +225,11 @@ describe('ContentSearchPanel — dismissing rows', () => {
     it('leaves the summary reporting what the search found, not what survives', async () => {
         await searchWithResults();
         expect(screen.getByTestId('content-search-summary').textContent)
-            .toContain('3 results in 2 files');
+            .toContain('3 matches in 2 files');
 
         fireEvent.click(screen.getByLabelText('Dismiss a.ts'));
         expect(screen.getByTestId('content-search-summary').textContent)
-            .toContain('3 results in 2 files');
+            .toContain('3 matches in 2 files');
     });
 
     it('writes nothing: dismissing issues no request', async () => {

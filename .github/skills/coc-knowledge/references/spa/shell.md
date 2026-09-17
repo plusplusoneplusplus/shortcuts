@@ -225,6 +225,13 @@ panel; they select or collapse the right-edge navigator without closing the pane
 Repository-group mode stays scoped to the group while panel requests use the
 selected dock target.
 
+The desktop three-column layout keeps the flexible middle pane usable by sharing
+the left column's live, workspace-scoped width through `WorkspaceLeftWidth.ts`.
+The right-panel maximum reserves that width, both resize handles, and 360px for
+the middle pane; the left-panel maximum reserves the dock minimum and the same
+fixed space. Viewport clamps do not replace either panel's persisted pixel width,
+so the chosen size returns when space becomes available.
+
 On mount and on a panel-scope chat selection change, the panel reconciles its open
 bit with that chat's visible tab view: workspace-owned tabs plus the selected
 chat's tabs open it, while an empty view closes it. The selected chat comes from
@@ -249,6 +256,10 @@ docked Explorer omits its internal Files/Search switch; the standalone Explorer
 page retains it. Tab descriptors (never document bodies, terminal output, or
 credentials) persist per panel scope in localStorage. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
+
+Content-search rows group hits by repo-relative file path and consume the search
+response's line number plus adjacent `before`/`after` lines, so the navigator can
+show source context without issuing per-result file reads.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative

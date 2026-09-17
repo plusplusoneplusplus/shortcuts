@@ -249,6 +249,7 @@ describe('useWorkspaceDock target selection', () => {
     // --- the panel's own state is scoped, not targeted ----------------------
 
     it('keeps the scope-owned width across a target switch', () => {
+        Object.defineProperty(window, 'innerWidth', { value: 1600, writable: true, configurable: true });
         localStorage.setItem(workspaceDockWidthStorageKey(GROUP_ID), '520');
         render(<Harness targets={MEMBERS} />);
         expect(dock.width).toBe(520);

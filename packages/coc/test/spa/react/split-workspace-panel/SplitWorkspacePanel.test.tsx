@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
     SplitWorkspacePanel,
@@ -10,6 +10,12 @@ import {
 } from '../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
 import { splitWorkspaceMobilePaneStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/mobileWorkspacePane';
 import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftCollapse';
+import { DOCK_MIN_CHAT_WIDTH, DOCK_MIN_WIDTH, RESIZE_HANDLE_TOTAL } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
+import { readWorkspaceLeftWidth } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceLeftWidth';
+
+function setInnerWidth(px: number) {
+    Object.defineProperty(window, 'innerWidth', { value: px, writable: true, configurable: true });
+}
 
 // Toggle the responsive fallback per test without a real matchMedia.
 let mockIsMobile = false;
@@ -34,9 +40,19 @@ function renderPanel(workspaceId = 'ws1') {
 }
 
 describe('SplitWorkspacePanel', () => {
+    let originalWidth: number;
+
     beforeEach(() => {
+        originalWidth = window.innerWidth;
         localStorage.clear();
         mockIsMobile = false;
+        setInnerWidth(1280);
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        setInnerWidth(originalWidth);
     });
 
     it('renders all three slots and both dividers on desktop (AC-03)', () => {
@@ -65,7 +81,9 @@ describe('SplitWorkspacePanel', () => {
         expect(widthDivider.getAttribute('role')).toBe('separator');
         expect(widthDivider.getAttribute('aria-orientation')).toBe('vertical');
         expect(widthDivider.getAttribute('aria-valuemin')).toBe('240');
-        expect(widthDivider.getAttribute('aria-valuemax')).toBe('640');
+        expect(widthDivider.getAttribute('aria-valuemax')).toBe(
+            String(1280 - DOCK_MIN_CHAT_WIDTH - DOCK_MIN_WIDTH - RESIZE_HANDLE_TOTAL),
+        );
         expect(widthDivider.getAttribute('aria-valuenow')).toBe('360');
         expect(widthDivider.className).toContain('w-2');
     });
@@ -146,6 +164,49 @@ describe('SplitWorkspacePanel', () => {
         renderPanel('ws-gamma');
         expect(screen.getByTestId('split-workspace-chat').style.height).toBe('500px');
         expect(screen.getByTestId('split-workspace-left').style.width).toBe('480px');
+    });
+
+    it('clamps the left width to the viewport budget and restores persistence when widened', () => {
+        localStorage.setItem(splitWorkspaceWidthStorageKey('ws-budget'), '600');
+        setInnerWidth(1000);
+        renderPanel('ws-budget');
+
+        const expectedNarrowWidth = 1000 - DOCK_MIN_CHAT_WIDTH - DOCK_MIN_WIDTH - RESIZE_HANDLE_TOTAL;
+        expect(screen.getByTestId('split-workspace-left').style.width).toBe(`${expectedNarrowWidth}px`);
+        expect(screen.getByTestId('split-workspace-width-divider')).toHaveAttribute(
+            'aria-valuemax',
+            String(expectedNarrowWidth),
+        );
+        expect(localStorage.getItem(splitWorkspaceWidthStorageKey('ws-budget'))).toBe('600');
+
+        act(() => {
+            setInnerWidth(1400);
+            window.dispatchEvent(new Event('resize'));
+            vi.advanceTimersByTime(150);
+        });
+
+        expect(screen.getByTestId('split-workspace-left').style.width).toBe('600px');
+        expect(localStorage.getItem(splitWorkspaceWidthStorageKey('ws-budget'))).toBe('600');
+    });
+
+    it('leaves the requested middle-pane budget at 1000px with default widths', () => {
+        setInnerWidth(1000);
+        renderPanel('ws-invariant');
+
+        const leftWidth = Number.parseInt(screen.getByTestId('split-workspace-left').style.width, 10);
+        expect(leftWidth + DOCK_MIN_WIDTH + RESIZE_HANDLE_TOTAL).toBeLessThanOrEqual(
+            1000 - DOCK_MIN_CHAT_WIDTH,
+        );
+    });
+
+    it('clears its live workspace width on unmount', () => {
+        localStorage.setItem(splitWorkspaceWidthStorageKey('ws-unmount'), '500');
+        const { unmount } = renderPanel('ws-unmount');
+        localStorage.setItem(splitWorkspaceWidthStorageKey('ws-unmount'), '470');
+
+        expect(readWorkspaceLeftWidth('ws-unmount')).toBe(500);
+        unmount();
+        expect(readWorkspaceLeftWidth('ws-unmount')).toBe(470);
     });
 
     it('does not persist any selection/scroll state (AC-06)', () => {

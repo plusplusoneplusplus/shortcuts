@@ -444,7 +444,7 @@ test.describe('ExplorerPanel – Content search', () => {
             await expect(groups).toHaveCount(2);
             const matches = page.locator('[data-testid="content-search-match"]');
             await expect(matches).toHaveCount(2);
-            await expect(page.locator('[data-testid="content-search-summary"]')).toContainText('2 results in 2 files');
+            await expect(page.locator('[data-testid="content-search-summary"]')).toContainText('2 matches in 2 files');
 
             // Each group header names its file and reports its own match count.
             await expect(

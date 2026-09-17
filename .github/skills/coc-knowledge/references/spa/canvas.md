@@ -12,6 +12,13 @@ the chat, the event only refreshes an already-mounted view. The panel supplies
 `liveEvent` from its own `useSyncExternalStore` relay, since the SSE stream arrives far
 from the mounted view. See `features/repo-detail/unified-right-panel/AGENTS.md`.
 
+The initial and follow-up composers expose `/canvas` while `canvas.enabled` is on.
+It is a skill-backed prompt directive: the composer removes the token, selects the
+bundled `canvas` skill, and sends the remaining artifact request through the normal
+provider-neutral selected-skill path. The skill chooses among Markdown, code,
+Mermaid, SVG, Excalidraw, and extension canvases using the existing canvas tools;
+it does not add a canvas route, tool, or storage location.
+
 The source canvas (files, notes, folders) and the whisper diff are still chat-owned
 columns, mutually exclusive with the scratchpad, with a session-only per-chat restore
 memory (`features/chat/openCanvasMemory.ts`). No AI-canvas preference affects them; the

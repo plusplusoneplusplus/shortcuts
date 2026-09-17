@@ -86,7 +86,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isRemoteShellEnabled, getDefaultChatStyle } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isRemoteShellEnabled, getDefaultChatStyle } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -428,8 +428,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const useFollowUpEffortTierMode = isEffortLevelsEnabled() && followUpHasTiers;
     const pickableModels = selectPickableModels(availableModels);
     const modelCommand = useModelCommand(pickableModels);
-    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isCronEnabled())), [skills]);
-    const slashCommands = useSlashCommands(augmentedSkills);
+    const cronEnabled = isCronEnabled();
+    const canvasEnabled = isCanvasEnabled();
+    const slashCommandFeatures = useMemo(() => ({ cronEnabled, canvasEnabled }), [cronEnabled, canvasEnabled]);
+    const augmentedSkills = useMemo(
+        () => mergeSkillsWithMeta(skills, getMetaSkillItems(slashCommandFeatures), slashCommandFeatures),
+        [skills, slashCommandFeatures],
+    );
+    const slashCommands = useSlashCommands(augmentedSkills, slashCommandFeatures);
 
     useEffect(() => {
         if (previousSessionProviderRef.current === null) {

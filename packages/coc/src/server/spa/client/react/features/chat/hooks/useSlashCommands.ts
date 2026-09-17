@@ -6,8 +6,8 @@
  */
 
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands, type ParsedSlashCommands } from '../slash-command-parser';
-import { isCronEnabled } from '../../../utils/config';
+import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands, type ParsedSlashCommands, type SlashCommandFeatureState } from '../slash-command-parser';
+import { isCanvasEnabled, isCronEnabled } from '../../../utils/config';
 import { orderSkillItems, type SkillItem } from '../SlashCommandMenu';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 
@@ -36,11 +36,11 @@ export interface UseSlashCommandsResult {
 }
 
 /**
- * Meta-commands that activate a bundled skill of the same name. `cron` is only
- * reachable when the cron feature is enabled, which `getActiveMetaCommands`
- * already enforces before parsing, so an inactive command never matches here.
+ * Meta-commands that activate a bundled skill of the same name. Feature-backed
+ * commands are filtered by `getActiveMetaCommands`, so an inactive command
+ * never matches here.
  */
-const SKILL_BACKED_COMMANDS = ['cron', 'delegate'] as const;
+const SKILL_BACKED_COMMANDS = ['cron', 'delegate', 'canvas'] as const;
 
 /** Meta-commands that show an inline argument hint while the argument is empty. */
 const HINT_COMMANDS = new Set<string>(SKILL_BACKED_COMMANDS);
@@ -48,7 +48,18 @@ const HINT_COMMANDS = new Set<string>(SKILL_BACKED_COMMANDS);
 /** A trailing `/command` token, optionally followed by whitespace, at the end of the input. */
 const TRAILING_COMMAND_REGEX = /(?:^|\s)\/([a-zA-Z][a-zA-Z0-9_-]*)\s*$/;
 
-export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
+/**
+ * Read the feature flags backing slash commands from the dashboard config.
+ *
+ * Only called while parsing submitted text — never during render — so surfaces
+ * that merely mount this hook (Resolve Context, markdown editors, follow-up
+ * composers) don't depend on the config module at mount time.
+ */
+function readSlashCommandFeatures(): SlashCommandFeatureState {
+    return { cronEnabled: isCronEnabled(), canvasEnabled: isCanvasEnabled() };
+}
+
+export function useSlashCommands(skills: SkillItem[], configuredFeatures?: SlashCommandFeatureState): UseSlashCommandsResult {
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuFilter, setMenuFilter] = useState('');
     const [highlightIndex, setHighlightIndex] = useState(0);
@@ -143,8 +154,7 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
     }, []);
 
     const parseAndExtract = useCallback((text: string) => {
-        const cronEnabled = isCronEnabled();
-        const activeMeta = getActiveMetaCommands(cronEnabled);
+        const activeMeta = getActiveMetaCommands(configuredFeatures ?? readSlashCommandFeatures());
         const result = parseSlashCommands(text, skillNames, activeMeta);
         // These meta-commands are thin entry points onto a bundled skill of the
         // same name: the command activates the skill and the agent reads the
@@ -155,7 +165,7 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
             }
         }
         return result;
-    }, [skillNames]);
+    }, [skillNames, configuredFeatures]);
 
     const dismissMenu = useCallback(() => {
         setMenuVisible(false);

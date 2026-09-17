@@ -67,6 +67,15 @@ It has no DOM. Call it once per workspace view and hand the returned
 `WorkspaceDockController` to the panel. Storage keys, `DockTarget`, the width
 constants, and the cross-tree open store live in `WorkspaceDockToggle.tsx`.
 
+The three-column desktop row budgets both side widths against the same viewport.
+`SplitWorkspacePanel` publishes its rendered width per panel scope through
+`WorkspaceLeftWidth.ts`; `useWorkspaceDock` subtracts that live width, both 8px
+resize handles, and the middle pane's 360px reserve from the dock maximum. The
+left column applies the matching reserve for the dock minimum. Both resizable
+panels keep their persisted pixel widths when a narrow viewport temporarily
+clamps them, so widening restores the user's chosen sizes. Mobile publishes no
+live left width.
+
 **Scope vs. target.** `workspaceId` is the panel's *scope*: it owns the
 `split-workspace:<id>:dock-{open,width,target}` keys, the unified tab set, and
 the workspace `DockNotesPanel` is keyed on. The *target* is the workspace new
@@ -199,6 +208,11 @@ chose. A 400 is the route's answer for an unparseable pattern and carries the
 engine's own message, so it renders inline against the query box
 (`content-search-regex-error`); anything else is generic and retryable. Zero
 matches is the `empty` state, never an error.
+
+Result rows use the server's `line`, `before`, and `after` fields directly: the
+line number forms the navigation gutter, while one adjacent line provides compact
+context without another file read. File headers keep the repo-relative directory
+separate from the filename so long paths do not displace match counts.
 
 Clicking a match sets `previewFile` with a `line`, which threads through
 `PreviewPane` → `MonacoFileEditor.revealLine` → `revealEditorLine`. Monaco is
