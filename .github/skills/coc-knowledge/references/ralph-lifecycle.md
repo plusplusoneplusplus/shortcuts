@@ -161,8 +161,23 @@ reasoning effort, and `afterEffortTier`. Auto-routed tasks keep `afterEffortTier
 completed task's concrete model and reasoning effort, allowing the lifecycle runner to expand
 the tier after choosing the provider for each follow-on task.
 
+When a final check completes but its `RALPH_FINAL_CHECK_RESULT` block is unparseable or
+internally contradictory, the session is not ended on the first failure. The decision layer
+emits `requestFinalCheckRepair`, which persists `repairAttempted: true` on the check record and
+then queues one follow-up turn carrying the same `processId` — so the checker's findings are
+still in context — plus `context.ralph.finalCheck.repairTurn: true`. That flag is what makes the
+follow-up path in `process-lifecycle-runner` fire `onRalphNext`; ordinary ralph-mode follow-ups
+are not routed. The repair prompt asks only for the result block and forbids re-running
+validation or calling tools. Exactly one repair per `checkIndex`: a second unparseable result,
+or a failure to queue the repair, falls through to the ordinary failure path. Failed check
+records omit `hasGaps`/`gapCount` — a check whose findings were never parsed knows nothing about
+gaps, and writing zeros there would assert "no gaps" for a run that may have found many.
+
+The parser accepts the result block either after a bare `RALPH_FINAL_CHECK_RESULT` marker line
+or as any fenced ```json block whose `marker` field equals `RALPH_FINAL_CHECK_RESULT`.
+
 Terminal paths broadcast `ralph-session-complete` with `reason`: `signal` (clean), `cap`,
-`final-check-failed` (parse failure), `final-check-enqueue-failed`,
+`final-check-failed` (parse failure, after the repair attempt), `final-check-enqueue-failed`,
 `final-check-session-missing`, `final-check-gap-loop-start-failed`,
 `final-check-gap-enqueue-failed`. A successful gap-fix enqueue broadcasts nothing because the
 next loop continues the session.

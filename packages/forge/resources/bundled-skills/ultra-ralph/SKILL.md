@@ -2,7 +2,7 @@
 name: ultra-ralph
 description: Core instruction sets for Ralph autonomous coding loop phases — grill (clarification), synthesis (goal extraction), execution (iteration), iteration (user prompt), and final-check (validation).
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 ## Section: grill
@@ -142,3 +142,8 @@ actual repository state, and validation evidence. Your final response must
 contain exactly one RALPH_FINAL_CHECK_RESULT JSON block as requested by the user
 prompt. Do not end with RALPH_NEXT or RALPH_COMPLETE. The server will append the
 final-check result to progress.md after parsing your response.
+
+Regardless of which tools, subagents, or skills you used during evaluation, your
+final message must end with the RALPH_FINAL_CHECK_RESULT block. Findings
+expressed in any other format — review reports, issue lists, structured tool
+output — are not counted. Translate each such finding into one `gaps[]` entry.

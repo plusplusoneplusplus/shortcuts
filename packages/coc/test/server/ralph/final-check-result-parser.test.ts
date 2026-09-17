@@ -223,3 +223,55 @@ describe('parseFinalCheckResult — edge cases', () => {
         expect(res.status).toBe('clean');
     });
 });
+
+describe('parseFinalCheckResult — fenced block without a preceding marker line', () => {
+    it('parses a fenced json block whose marker field matches, with no marker line above it', () => {
+        const response = [
+            'Here is my assessment.',
+            '',
+            '```json',
+            makeCleanJson(),
+            '```',
+        ].join('\n');
+
+        const result = parseFinalCheckResult(response);
+        expect(result.status).toBe('clean');
+        expect(result.hasGaps).toBe(false);
+    });
+
+    it('skips fenced json blocks that are not the result block', () => {
+        const response = [
+            'Example config I inspected:',
+            '```json',
+            JSON.stringify({ some: 'unrelated', config: true }),
+            '```',
+            '',
+            '```json',
+            makeGapsJson('Close GAP-01.'),
+            '```',
+        ].join('\n');
+
+        const result = parseFinalCheckResult(response);
+        expect(result.status).toBe('gaps');
+        expect(result.gaps).toHaveLength(2);
+    });
+
+    it('still reports unparseable when a code-review prose report replaces the block', () => {
+        // Regression fixture: the shape of the ralph-1789573558333-toxrp5
+        // final check — five real findings reported as code-review prose, with
+        // no RALPH_FINAL_CHECK_RESULT block anywhere in the response.
+        const response = [
+            '## Issue: Sentinel board is never published on tick',
+            'The tick handler builds the board but never calls publish.',
+            '',
+            '## Issue: watchlist judgments are not persisted',
+            'No write path exists for judgments.',
+            '',
+            'Overall: five gaps found.',
+        ].join('\n');
+
+        const result = parseFinalCheckResult(response);
+        expect(result.status).toBe('unparseable');
+        expect(result.error).toContain('marker');
+    });
+});

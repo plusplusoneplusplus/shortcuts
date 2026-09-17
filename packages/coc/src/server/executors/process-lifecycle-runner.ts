@@ -69,6 +69,7 @@ import {
     isRunScriptPayload,
     hasNoteChatContext,
     isRalphMode,
+    isRalphFinalCheckRepairTurn,
     normalizeChatMode,
     serializeForEachMetadata,
     serializeMapReduceMetadata,
@@ -541,6 +542,24 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         await opts.onDrainPendingMessages(followUpPayload.processId!, task.id);
                     } catch (err) {
                         logger.warn(LogCategory.AI, `[QueueExecutor] Failed to drain pending messages for ${followUpPayload.processId} — messages may be stranded: ${err instanceof Error ? err.message : String(err)}`);
+                    }
+                }
+                // A Ralph final-check format-repair turn runs as a follow-up on
+                // the checker's own conversation so its findings stay in context.
+                // Ralph routing normally fires only on the new-process path, so
+                // fire it here too — narrowly, for repair turns only, since any
+                // other ralph-mode follow-up (e.g. a user reply) must not drive
+                // the loop. The follow-up executor returns no text, so read the
+                // assistant turn it just appended.
+                if (opts.onRalphNext && isRalphFinalCheckRepairTurn(task.payload)) {
+                    try {
+                        const proc = await this.store.getProcess(followUpPayload.processId!);
+                        const lastAssistant = [...(proc?.conversationTurns ?? [])]
+                            .reverse()
+                            .find(turn => turn.role === 'assistant');
+                        await opts.onRalphNext(followUpPayload.processId!, task, lastAssistant?.content ?? '');
+                    } catch (err) {
+                        logger.debug(LogCategory.AI, `[QueueExecutor] Failed to route Ralph final-check repair turn for ${followUpPayload.processId}: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 }
                 // Notify cron executor that a cron-originated tick has finished successfully

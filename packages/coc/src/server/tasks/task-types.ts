@@ -771,6 +771,22 @@ export function isRalphMode(payload: Record<string, unknown>): boolean {
     return isChatPayload(payload) && payload.mode === 'ralph';
 }
 
+/**
+ * True for the follow-up turn Ralph sends when a final check completed but its
+ * RALPH_FINAL_CHECK_RESULT block could not be parsed.
+ *
+ * Repair turns run as chat follow-ups so the checker's findings stay in
+ * context; this flag is what lets the follow-up path route their completion
+ * back into final-check handling without doing the same for ordinary
+ * ralph-mode follow-ups.
+ */
+export function isRalphFinalCheckRepairTurn(payload: Record<string, unknown>): boolean {
+    if (!isRalphMode(payload)) return false;
+    const finalCheck = (payload as unknown as ChatPayload).context?.ralph?.finalCheck as
+        Record<string, unknown> | undefined;
+    return finalCheck?.repairTurn === true;
+}
+
 // ============================================================================
 // Ralph Context Accessors (single source of truth)
 // ============================================================================
