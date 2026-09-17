@@ -236,7 +236,9 @@ describe('ChatDetail', () => {
         });
 
         it('initializes useSlashCommands with augmentedSkills', () => {
-            expect(source).toContain('useSlashCommands(augmentedSkills)');
+            // The feature-gate argument is optional; what matters is that the hook
+            // receives the meta-merged list, not the raw server skills.
+            expect(source).toMatch(/useSlashCommands\(augmentedSkills[,)]/);
         });
 
         it('passes augmentedSkills (not raw skills) to FollowUpInputArea so meta-commands appear in the slash menu', () => {

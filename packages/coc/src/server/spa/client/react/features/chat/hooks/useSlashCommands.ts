@@ -48,6 +48,17 @@ const HINT_COMMANDS = new Set<string>(SKILL_BACKED_COMMANDS);
 /** A trailing `/command` token, optionally followed by whitespace, at the end of the input. */
 const TRAILING_COMMAND_REGEX = /(?:^|\s)\/([a-zA-Z][a-zA-Z0-9_-]*)\s*$/;
 
+/**
+ * Read the feature flags backing slash commands from the dashboard config.
+ *
+ * Only called while parsing submitted text — never during render — so surfaces
+ * that merely mount this hook (Resolve Context, markdown editors, follow-up
+ * composers) don't depend on the config module at mount time.
+ */
+function readSlashCommandFeatures(): SlashCommandFeatureState {
+    return { cronEnabled: isCronEnabled(), canvasEnabled: isCanvasEnabled() };
+}
+
 export function useSlashCommands(skills: SkillItem[], configuredFeatures?: SlashCommandFeatureState): UseSlashCommandsResult {
     const [menuVisible, setMenuVisible] = useState(false);
     const [menuFilter, setMenuFilter] = useState('');
@@ -56,8 +67,6 @@ export function useSlashCommands(skills: SkillItem[], configuredFeatures?: Slash
     const slashStartRef = useRef<number>(-1);
 
     const skillNames = skills.map(s => s.name);
-    const cronEnabled = configuredFeatures?.cronEnabled ?? isCronEnabled();
-    const canvasEnabled = configuredFeatures?.canvasEnabled ?? isCanvasEnabled();
 
     // Order built-in commands before skills. Must match SlashCommandMenu's
     // renderer ordering so the highlighted row lines up with the selected item.
@@ -145,7 +154,7 @@ export function useSlashCommands(skills: SkillItem[], configuredFeatures?: Slash
     }, []);
 
     const parseAndExtract = useCallback((text: string) => {
-        const activeMeta = getActiveMetaCommands({ cronEnabled, canvasEnabled });
+        const activeMeta = getActiveMetaCommands(configuredFeatures ?? readSlashCommandFeatures());
         const result = parseSlashCommands(text, skillNames, activeMeta);
         // These meta-commands are thin entry points onto a bundled skill of the
         // same name: the command activates the skill and the agent reads the
@@ -156,7 +165,7 @@ export function useSlashCommands(skills: SkillItem[], configuredFeatures?: Slash
             }
         }
         return result;
-    }, [skillNames, cronEnabled, canvasEnabled]);
+    }, [skillNames, configuredFeatures]);
 
     const dismissMenu = useCallback(() => {
         setMenuVisible(false);

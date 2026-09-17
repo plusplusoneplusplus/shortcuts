@@ -114,6 +114,13 @@ the prompt. Its inline hint is shown only while the request is empty. With
 `canvas.enabled` off, the command is absent and manually typed `/canvas` remains
 ordinary prompt text.
 
+Callers that build a menu (initial and follow-up chat) pass the feature state in.
+Everyone else mounts `useSlashCommands` bare, and the hook reads the flags from
+`utils/config` inside `parseAndExtract` — never during render. Keep it that way:
+the hook is mounted by surfaces with no slash-command UI (Resolve Context, the
+markdown editors, PR panels), and a render-time flag read makes every one of
+those suites depend on the config module.
+
 ### ComposerMetaStrip and the warm dot
 
 `ComposerMetaStrip` carries the cwd chip, the context-window fuel gauge, and a provider

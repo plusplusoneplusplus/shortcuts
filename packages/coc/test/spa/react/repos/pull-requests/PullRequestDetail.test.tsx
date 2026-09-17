@@ -21,6 +21,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
     isCronEnabled: () => false,
+    isCanvasEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isChatStyleSelectorEnabled: () => false,
     getDefaultChatStyle: () => 'default',

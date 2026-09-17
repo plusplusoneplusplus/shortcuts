@@ -181,6 +181,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => mockConfig.forEachEnabled,
     isMapReduceEnabled: () => false,
     isCronEnabled: () => mockConfig.cronEnabled,
+    isCanvasEnabled: () => false,
     isCodexEnabled: () => false,
     getDefaultProvider: () => mockConfig.defaultProvider,
     getConfiguredDefaultProvider: () => mockConfig.defaultProvider,
