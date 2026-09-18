@@ -1,5 +1,6 @@
 //! Lifecycle and dispatch for the symbol-index language server.
 
+use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,6 +32,11 @@ const INDEX_PROGRESS_TOKEN: &str = "coc-symbols/index";
 /// common token from turning into a list nobody can use, and the store already
 /// orders definitions ahead of prototypes.
 const DEFINITION_RESULT_LIMIT: usize = 100;
+
+/// `textDocument/references` lists call sites, so it is capped looser than a jump: a reader
+/// scrolls a reference list, and truncating a widely called function at a hundred would hide
+/// most of what they asked for.
+const REFERENCE_RESULT_LIMIT: usize = 500;
 
 /// `workspace/symbol` is a palette query, matched as a prefix. It is capped
 /// harder than a definition: the caller is typing and only ever reads the top.
@@ -126,6 +132,10 @@ impl Server {
                 let result = self.definition(&params);
                 self.transport.respond(id, result);
             }
+            "textDocument/references" => {
+                let result = self.references(&params);
+                self.transport.respond(id, result);
+            }
             "textDocument/documentSymbol" => {
                 let result = self.document_symbol(&params);
                 self.transport.respond(id, result);
@@ -180,6 +190,7 @@ impl Server {
                         "save": { "includeText": false },
                     },
                     "definitionProvider": true,
+                    "referencesProvider": true,
                     "documentSymbolProvider": true,
                     "workspaceSymbolProvider": true,
                 },
@@ -209,16 +220,7 @@ impl Server {
         let (Some(store), Some(root)) = (self.store.as_ref(), self.root.as_ref()) else {
             return json!([]);
         };
-        let Some(path) = document_path(params) else {
-            return json!([]);
-        };
-        let Some((line, character)) = document_position(params) else {
-            return json!([]);
-        };
-        let Ok(source) = std::fs::read_to_string(&path) else {
-            return json!([]);
-        };
-        let Some(word) = word_at(&source, line, character) else {
+        let Some(word) = self.word_under_cursor(params) else {
             return json!([]);
         };
         let Ok(symbols) = store.search(&word, false, DEFINITION_RESULT_LIMIT) else {
@@ -228,6 +230,53 @@ impl Server {
         Value::Array(
             symbols.iter().map(|symbol| symbol_location(&mut cache, root, symbol)).collect(),
         )
+    }
+
+    /// `textDocument/references` — the filtered occurrences of the identifier under the cursor.
+    ///
+    /// The store keeps call sites and type usages, matched on the bare name, so this is fuzzy in
+    /// exactly the way definition lookup is. `context.includeDeclaration` defaults to true per
+    /// the specification, and the declarations come from the definition table; positions that
+    /// appear in both tables are emitted once.
+    fn references(&self, params: &Value) -> Value {
+        let (Some(store), Some(root)) = (self.store.as_ref(), self.root.as_ref()) else {
+            return json!([]);
+        };
+        let Some(word) = self.word_under_cursor(params) else {
+            return json!([]);
+        };
+        let include_declaration = params
+            .get("context")
+            .and_then(|context| context.get("includeDeclaration"))
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let declarations = if include_declaration {
+            store.search(&word, false, DEFINITION_RESULT_LIMIT).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let Ok(occurrences) = store.occurrences(&word, REFERENCE_RESULT_LIMIT) else {
+            return json!([]);
+        };
+        let mut seen = HashSet::new();
+        let mut cache = LineCache::new();
+        Value::Array(
+            declarations
+                .iter()
+                .chain(occurrences.iter())
+                .filter(|symbol| seen.insert((symbol.path.clone(), symbol.line, symbol.column)))
+                .map(|symbol| symbol_location(&mut cache, root, symbol))
+                .collect(),
+        )
+    }
+
+    /// The identifier at a request's position, read from disk for the reason [`Self::definition`]
+    /// documents.
+    fn word_under_cursor(&self, params: &Value) -> Option<String> {
+        let path = document_path(params)?;
+        let (line, character) = document_position(params)?;
+        let source = std::fs::read_to_string(&path).ok()?;
+        word_at(&source, line, character)
     }
 
     /// `textDocument/documentSymbol` — everything the index stored for one file.

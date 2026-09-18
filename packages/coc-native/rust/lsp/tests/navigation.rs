@@ -114,6 +114,73 @@ fn a_position_on_nothing_answers_an_empty_array() {
 }
 
 #[test]
+fn references_list_call_sites_with_and_without_the_declaration() {
+    let directory = workspace();
+    let root = directory.path();
+    let mut server = Server::start(root, &root.join("index.sqlite"));
+    initialize(&mut server, root);
+    index(&mut server);
+
+    let position = json!({
+        "textDocument": { "uri": file_uri(&root.join("src/compute.cpp")) },
+        "position": { "line": 0, "character": 4 },
+    });
+    let mut with_declaration = position.clone();
+    with_declaration["context"] = json!({ "includeDeclaration": true });
+    let included = request(&mut server, 20, "textDocument/references", with_declaration);
+    let locations = included.as_array().expect("an array of locations");
+    // The call site in the other translation unit is the point of the exercise.
+    assert!(
+        locations.iter().any(|location| location["uri"]
+            .as_str()
+            .unwrap()
+            .ends_with("/src/main.cpp")
+            && location["range"]["start"] == json!({ "line": 1, "character": 20 })),
+        "the cross-TU call site is missing: {included}"
+    );
+    assert!(
+        locations
+            .iter()
+            .any(|location| location["uri"].as_str().unwrap().ends_with("/src/compute.cpp")),
+        "the declaration was asked for: {included}"
+    );
+    // Each position appears once even though the definition and occurrence
+    // tables are queried separately.
+    let positions: Vec<Value> = locations
+        .iter()
+        .map(|location| json!([location["uri"], location["range"]["start"]]))
+        .collect();
+    let mut unique = positions.clone();
+    unique.dedup();
+    assert_eq!(unique.len(), positions.len(), "duplicate locations in {included}");
+
+    let mut without_declaration = position;
+    without_declaration["context"] = json!({ "includeDeclaration": false });
+    let excluded = request(&mut server, 21, "textDocument/references", without_declaration);
+    assert!(
+        excluded
+            .as_array()
+            .expect("an array")
+            .iter()
+            .all(|location| !location["uri"].as_str().unwrap().ends_with("/src/compute.cpp")),
+        "the declaration was excluded: {excluded}"
+    );
+
+    // A position on nothing is an empty array, never an error.
+    let nothing = request(
+        &mut server,
+        22,
+        "textDocument/references",
+        json!({
+            "textDocument": { "uri": "file:///nowhere/absent.cpp" },
+            "position": { "line": 0, "character": 0 },
+        }),
+    );
+    assert_eq!(nothing, json!([]));
+    server.shutdown(99);
+}
+
+#[test]
 fn document_symbols_come_back_flat_with_locations() {
     let directory = workspace();
     let root = directory.path();
