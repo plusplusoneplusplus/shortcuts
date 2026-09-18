@@ -10,6 +10,8 @@ use coc_native_core::symbol_index::{
 use serde_json::{json, Value};
 
 use crate::framing::read_message;
+use crate::locations::{symbol_information, symbol_location, LineCache};
+use crate::positions::word_at;
 use crate::transport::Transport;
 use crate::uri::uri_to_path;
 
@@ -23,6 +25,16 @@ const DEFAULT_DATABASE_RELATIVE: &str = ".coc-symbols/symbol-index.sqlite";
 /// the session on the Node side counts begin/end pairs, and a fresh token per
 /// sync would only make it harder to see that they balance.
 const INDEX_PROGRESS_TOKEN: &str = "coc-symbols/index";
+
+/// How many stored symbols one lookup may answer with. The index is fuzzy by
+/// design — every `read` in the tree shares a name — so the cap is what keeps a
+/// common token from turning into a list nobody can use, and the store already
+/// orders definitions ahead of prototypes.
+const DEFINITION_RESULT_LIMIT: usize = 100;
+
+/// `workspace/symbol` is a palette query, matched as a prefix. It is capped
+/// harder than a definition: the caller is typing and only ever reads the top.
+const WORKSPACE_SYMBOL_LIMIT: usize = 200;
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_REQUEST: i64 = -32600;
@@ -110,6 +122,18 @@ impl Server {
             _ if !self.initialized => {
                 self.transport.respond_error(id, SERVER_NOT_INITIALIZED, "server not initialized");
             }
+            "textDocument/definition" => {
+                let result = self.definition(&params);
+                self.transport.respond(id, result);
+            }
+            "textDocument/documentSymbol" => {
+                let result = self.document_symbol(&params);
+                self.transport.respond(id, result);
+            }
+            "workspace/symbol" => {
+                let result = self.workspace_symbol(&params);
+                self.transport.respond(id, result);
+            }
             _ => {
                 self.transport.respond_error(
                     id,
@@ -155,6 +179,9 @@ impl Server {
                         "change": 0,
                         "save": { "includeText": false },
                     },
+                    "definitionProvider": true,
+                    "documentSymbolProvider": true,
+                    "workspaceSymbolProvider": true,
                 },
                 "serverInfo": {
                     "name": "coc-symbols",
@@ -168,6 +195,78 @@ impl Server {
                 json!({ "type": 1, "message": format!("symbol index unavailable: {error}") }),
             );
         }
+    }
+
+    /// `textDocument/definition` — the identifier under the cursor, looked up
+    /// by name.
+    ///
+    /// The buffer is read from disk rather than from a synced copy: the index
+    /// itself only ever sees saved files, so answering an unsaved edit out of
+    /// an in-memory buffer would point at symbols this store has never indexed.
+    /// An empty array, not `null`, is the answer to everything it cannot
+    /// resolve — Monaco treats the two alike and the array keeps one shape.
+    fn definition(&self, params: &Value) -> Value {
+        let (Some(store), Some(root)) = (self.store.as_ref(), self.root.as_ref()) else {
+            return json!([]);
+        };
+        let Some(path) = document_path(params) else {
+            return json!([]);
+        };
+        let Some((line, character)) = document_position(params) else {
+            return json!([]);
+        };
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            return json!([]);
+        };
+        let Some(word) = word_at(&source, line, character) else {
+            return json!([]);
+        };
+        let Ok(symbols) = store.search(&word, false, DEFINITION_RESULT_LIMIT) else {
+            return json!([]);
+        };
+        let mut cache = LineCache::new();
+        Value::Array(
+            symbols.iter().map(|symbol| symbol_location(&mut cache, root, symbol)).collect(),
+        )
+    }
+
+    /// `textDocument/documentSymbol` — everything the index stored for one file.
+    fn document_symbol(&self, params: &Value) -> Value {
+        let (Some(store), Some(root)) = (self.store.as_ref(), self.root.as_ref()) else {
+            return json!([]);
+        };
+        let Some(relative) = document_path(params).and_then(|path| relative_path(root, &path))
+        else {
+            return json!([]);
+        };
+        let Ok(symbols) = store.symbols_for_file(&relative) else {
+            return json!([]);
+        };
+        let mut cache = LineCache::new();
+        Value::Array(
+            symbols.iter().map(|symbol| symbol_information(&mut cache, root, symbol)).collect(),
+        )
+    }
+
+    /// `workspace/symbol` — a prefix query across the whole index.
+    fn workspace_symbol(&self, params: &Value) -> Value {
+        let (Some(store), Some(root)) = (self.store.as_ref(), self.root.as_ref()) else {
+            return json!([]);
+        };
+        let query = params.get("query").and_then(Value::as_str).unwrap_or("");
+        // An empty query means "everything", and answering it would serialise
+        // millions of rows on the design-target repository. Clients send it
+        // when a palette first opens; nothing is the right answer.
+        if query.is_empty() {
+            return json!([]);
+        }
+        let Ok(symbols) = store.search(query, true, WORKSPACE_SYMBOL_LIMIT) else {
+            return json!([]);
+        };
+        let mut cache = LineCache::new();
+        Value::Array(
+            symbols.iter().map(|symbol| symbol_information(&mut cache, root, symbol)).collect(),
+        )
     }
 
     fn database_path(&self) -> Option<PathBuf> {
@@ -236,6 +335,32 @@ impl Server {
                 }),
             );
         });
+    }
+}
+
+/// The host path of `params.textDocument.uri`, for a `file://` URI only.
+fn document_path(params: &Value) -> Option<PathBuf> {
+    params.get("textDocument")?.get("uri")?.as_str().and_then(uri_to_path)
+}
+
+/// The zero-based line and UTF-16 character of `params.position`.
+fn document_position(params: &Value) -> Option<(u32, u32)> {
+    let position = params.get("position")?;
+    let line = position.get("line")?.as_u64()?;
+    let character = position.get("character")?.as_u64()?;
+    Some((u32::try_from(line).ok()?, u32::try_from(character).ok()?))
+}
+
+/// The index keys files by repository-relative, forward-slashed path. A
+/// document outside the root has no such key, and gets no answer rather than a
+/// path that would collide with an unrelated file inside it.
+fn relative_path(root: &Path, path: &Path) -> Option<String> {
+    let relative = path.strip_prefix(root).ok()?;
+    let text = relative.to_string_lossy().replace('\\', "/");
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
     }
 }
 

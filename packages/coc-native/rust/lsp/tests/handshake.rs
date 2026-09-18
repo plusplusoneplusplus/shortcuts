@@ -1,86 +1,9 @@
-//! Drives the real binary over real pipes. The unit tests cover the pieces;
-//! this is the only evidence that the shipped executable speaks the protocol.
+//! Lifecycle: the handshake, the index-build progress, and the exit codes.
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+mod harness;
 
+use harness::{initialize, Server};
 use serde_json::{json, Value};
-
-struct Server {
-    child: Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
-}
-
-impl Server {
-    fn start(root: &Path, database: &Path) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_coc-symbols-lsp"))
-            .arg("--stdio")
-            .arg("--database")
-            .arg(database)
-            .current_dir(root)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("binary starts");
-        let stdin = child.stdin.take().expect("stdin");
-        let stdout = BufReader::new(child.stdout.take().expect("stdout"));
-        Self { child, stdin, stdout }
-    }
-
-    fn send(&mut self, message: Value) {
-        let body = serde_json::to_vec(&message).unwrap();
-        write!(self.stdin, "Content-Length: {}\r\n\r\n", body.len()).unwrap();
-        self.stdin.write_all(&body).unwrap();
-        self.stdin.flush().unwrap();
-    }
-
-    fn receive(&mut self) -> Value {
-        let mut length = None;
-        loop {
-            let mut line = String::new();
-            let read = self.stdout.read_line(&mut line).expect("header line");
-            assert!(read > 0, "server closed the stream mid-handshake");
-            let line = line.trim_end_matches(['\r', '\n']).to_string();
-            if line.is_empty() {
-                break;
-            }
-            if let Some((name, value)) = line.split_once(':') {
-                if name.trim().eq_ignore_ascii_case("content-length") {
-                    length = value.trim().parse::<usize>().ok();
-                }
-            }
-        }
-        let mut body = vec![0u8; length.expect("Content-Length")];
-        self.stdout.read_exact(&mut body).expect("body");
-        serde_json::from_slice(&body).expect("json body")
-    }
-
-    /// Reads until a message the predicate accepts, so an interleaved
-    /// `$/progress` or log never breaks a test waiting on a response.
-    fn receive_matching(&mut self, predicate: impl Fn(&Value) -> bool) -> Value {
-        for _ in 0..200 {
-            let message = self.receive();
-            if predicate(&message) {
-                return message;
-            }
-        }
-        panic!("no matching message arrived");
-    }
-}
-
-fn initialize(server: &mut Server, root: &Path) -> Value {
-    let root_uri = format!("file://{}", root.to_string_lossy().replace('\\', "/"));
-    server.send(json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": { "processId": Value::Null, "rootUri": root_uri, "capabilities": {} },
-    }));
-    server.receive_matching(|message| message.get("id") == Some(&json!(1)))
-}
 
 #[test]
 fn completes_the_lifecycle_and_reports_index_progress() {

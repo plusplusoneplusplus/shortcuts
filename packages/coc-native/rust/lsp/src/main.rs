@@ -7,6 +7,8 @@
 //! lifecycle and status plumbing.
 
 mod framing;
+mod locations;
+mod positions;
 mod server;
 mod transport;
 mod uri;
