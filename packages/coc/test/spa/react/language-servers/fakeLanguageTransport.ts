@@ -31,6 +31,7 @@ export interface SentExternalRead {
 }
 
 export interface SentRequest {
+    definitionId?: string;
     method: string;
     params: unknown;
     /** The provider layer's cancellation signal, when it passed one. */
@@ -52,6 +53,8 @@ export class FakeAttachment {
     /** Every `restart()` the layers above asked for. */
     restarts = 0;
     private readonly responders = new Map<string, RequestResponder>();
+    private readonly targetedResponders = new Map<string, RequestResponder>();
+    private readonly infos = new Map<string, LanguageServerAttachedInfo>();
     refCount = 0;
     released = false;
 
@@ -75,7 +78,7 @@ export class FakeAttachment {
         return {
             path: this.path,
             getInfo: () => self.info,
-            getInfos: () => self.info ? [self.info] : [],
+            getInfos: () => [...self.infos.values()],
             getUnavailable: () => self.unavailable,
             onAttached: (listener) => add(self.attached, listener),
             onDetached: (listener) => add(self.detached, listener),
@@ -91,13 +94,14 @@ export class FakeAttachment {
                 return (await responder(params, options?.signal)) as T;
             },
             sendRequestTo: async <T,>(
-                _definitionId: string,
+                definitionId: string,
                 method: string,
                 params?: unknown,
                 options?: { signal?: AbortSignal },
             ) => {
-                self.requests.push({ method, params, signal: options?.signal });
-                const responder = self.responders.get(method);
+                self.requests.push({ definitionId, method, params, signal: options?.signal });
+                const responder = self.targetedResponders.get(`${definitionId}\0${method}`)
+                    ?? self.responders.get(method);
                 return responder ? (await responder(params, options?.signal)) as T : undefined as T;
             },
             readExternalSource: async (resourceId: string, options?: { signal?: AbortSignal }) => {
@@ -141,6 +145,10 @@ export class FakeAttachment {
         this.responders.set(method, responder);
     }
 
+    respondTo(definitionId: string, method: string, responder: RequestResponder): void {
+        this.targetedResponders.set(`${definitionId}\0${method}`, responder);
+    }
+
     lastRequest(method: string): SentRequest | undefined {
         return [...this.requests].reverse().find((entry) => entry.method === method);
     }
@@ -157,7 +165,8 @@ export class FakeAttachment {
             state: readyState(),
             ...overrides,
         };
-        this.info = info;
+        this.infos.set(info.definitionId, info);
+        this.info = this.infos.values().next().value ?? null;
         this.unavailable = null;
         for (const listener of [...this.attached]) {
             listener(info);
@@ -165,6 +174,7 @@ export class FakeAttachment {
     }
 
     detach(reason = 'config-changed'): void {
+        this.infos.clear();
         this.info = null;
         for (const listener of [...this.detached]) {
             listener(reason);
@@ -193,6 +203,7 @@ export class FakeAttachment {
             return;
         }
         this.info = { ...this.info, state };
+        this.infos.set(this.info.definitionId, this.info);
         for (const listener of [...this.statusListeners]) {
             listener(state, this.info);
         }

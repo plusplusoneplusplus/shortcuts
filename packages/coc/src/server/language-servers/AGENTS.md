@@ -393,13 +393,13 @@ and transport code stays generic.
   it in tab identity, and forward it through cross-file definition navigation,
   so a dock retarget or an equal workspace id on another host cannot change the
   client, buffer, or blob loader an open tab uses.
-- C and C++ definition requests query clangd and the owning workspace's
-  repository symbol index together. Exact clangd locations sort first; index
-  candidates are deduplicated by file and line and carry a
+- C and C++ definition requests target the preferred semantic attachment and
+  `coc-symbols` concurrently. Any semantic locations are authoritative; otherwise
+  symbol candidates are deduplicated by file and line and carry a
   `symbol-index-candidate` URI fragment. Navigation persists that provenance on
   the destination tab and shows an amber `Symbol candidate` pill until a plain
-  or exact cross-file open replaces it. The index path remains available when
-  clangd is disabled or unavailable.
+  or exact cross-file open replaces it. The symbols attachment remains available
+  when clangd is disabled or unavailable.
 - `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
   — the repo Settings tab's `language-servers` section: master enable toggle,
   the `effective` list with a per-definition enable checkbox, and an editor for
