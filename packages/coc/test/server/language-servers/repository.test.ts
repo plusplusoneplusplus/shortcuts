@@ -200,8 +200,16 @@ describe('resolving the definitions a workspace may start', () => {
         expect(resolveLanguageServerDefinitions(dataDir, 'ws-nope')).toEqual([]);
     });
 
-    it('omits presets that were never enabled', () => {
+    it('omits presets that were never enabled, keeping the one that ships enabled', () => {
         writeLanguageServerConfig(dataDir, 'ws-1', { enabled: true, definitions: [] });
+        expect(resolveLanguageServerDefinitions(dataDir, 'ws-1').map((d) => d.id)).toEqual(['coc-symbols']);
+    });
+
+    it('lets a workspace turn the bundled symbol index off', () => {
+        writeLanguageServerConfig(dataDir, 'ws-1', {
+            enabled: true,
+            definitions: [definition({ id: 'coc-symbols', displayName: 'Symbols', enabled: false })],
+        });
         expect(resolveLanguageServerDefinitions(dataDir, 'ws-1')).toEqual([]);
     });
 
@@ -212,8 +220,7 @@ describe('resolving the definitions a workspace may start', () => {
         });
 
         const resolved = resolveLanguageServerDefinitions(dataDir, 'ws-1');
-        expect(resolved).toHaveLength(1);
-        expect(resolved[0].id).toBe('typescript');
+        expect(resolved.map((d) => d.id)).toEqual(['typescript', 'coc-symbols']);
         expect(resolved[0].builtIn).toBe(true);
         expect(resolved[0].command).toBe('fixture-language-server');
     });
@@ -223,6 +230,9 @@ describe('resolving the definitions a workspace may start', () => {
             enabled: true,
             definitions: [definition({ id: 'custom', enabled: true })],
         });
-        expect(resolveLanguageServerDefinitions(dataDir, 'ws-1').map((d) => d.id)).toEqual(['custom']);
+        expect(resolveLanguageServerDefinitions(dataDir, 'ws-1').map((d) => d.id)).toEqual([
+            'coc-symbols',
+            'custom',
+        ]);
     });
 });

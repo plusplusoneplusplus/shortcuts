@@ -29,6 +29,10 @@ and transport code stays generic.
   Pyright from the project, the copy packaged with CoC, or the owning host's PATH.
 - `clangd-adapter.ts` — C-family runtime discovery from the owning host's PATH or
   platform-specific LLVM install locations, plus nearest clangd project roots.
+- `symbols-adapter.ts` — the bundled `coc-symbols-lsp` binary's answer to that
+  hook: resolve the executable CoC ships and point it at this workspace's
+  `symbol-index.sqlite` with `--database`. The resolved path and the database
+  path are argv only; labels carry the plain binary name.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -43,7 +47,13 @@ and transport code stays generic.
   rejects shell metacharacters and quotes so a command line can never be passed
   as a single executable.
 - Ids must be slug-safe; they appear in log file names and status payloads.
-- Built-in presets ship disabled. Language support is opt-in per workspace.
+- Built-in presets that drive an installed toolchain ship disabled. Language
+  support is opt-in per workspace. The one exception is `coc-symbols`, whose
+  server CoC ships itself: it needs no install and no project configuration, so
+  it ships enabled and the per-workspace toggle is its off switch.
+- `coc-symbols` claims the same C-family patterns as `clangd` at a lower
+  priority. Both attach to a C-family document; the client merges their answers
+  and clangd's win. Priority orders that merge, it does not pick one server.
 - A workspace definition sharing a preset id overrides that preset and keeps
   `builtIn: true`, so presets can be repointed but not deleted.
 - Selection must not depend on input order.

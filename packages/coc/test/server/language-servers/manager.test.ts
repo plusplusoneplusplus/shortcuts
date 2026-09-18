@@ -20,7 +20,14 @@ import { LanguageServerSession } from '../../../src/server/language-servers/sess
 import type { LanguageServerSessionOptions } from '../../../src/server/language-servers/session';
 import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
 import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
-import { CLANGD_PRESET, PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from '../../../src/server/language-servers/presets';
+import {
+    CLANGD_PRESET,
+    COC_SYMBOLS_PRESET,
+    PYTHON_PRESET,
+    RUST_PRESET,
+    TYPESCRIPT_PRESET,
+} from '../../../src/server/language-servers/presets';
+import { symbolIndexDatabasePath } from '../../../src/server/language-servers/symbols-adapter';
 import type { LanguageServerDefinition } from '../../../src/server/language-servers/types';
 import { safeRm } from '../../helpers/safe-rm';
 
@@ -207,6 +214,29 @@ describe('LanguageServerManager session identity', () => {
         expect(second.handle.session).not.toBe(first.handle.session);
         expect(second.handle.key).not.toBe(first.handle.key);
         expect(harness.manager.size).toBe(2);
+    });
+
+    it('hands the symbol index the database for the workspace being acquired', () => {
+        const binary = path.join(path.sep, 'opt', 'coc', 'coc-symbols-lsp');
+        const harness = createHarness([{ ...COC_SYMBOLS_PRESET }], {
+            prepareDeps: { resolveSymbolsLspBinary: () => binary },
+        });
+        const result = harness.manager.acquire({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/main.cpp',
+        });
+
+        expect(result.ok).toBe(true);
+        expect(harness.created).toHaveLength(1);
+        expect(harness.created[0].definition.command).toBe(binary);
+        expect(harness.created[0].definition.args).toEqual([
+            '--database',
+            symbolIndexDatabasePath(harness.dataDir, 'ws-a'),
+        ]);
+        // The host path is what the manager spawns, never what it labels.
+        expect(harness.created[0].commandLabel).toBe('coc-symbols-lsp');
     });
 
     it('shares a workspace-scoped definition across browser editing sessions', () => {

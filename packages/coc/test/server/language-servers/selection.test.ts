@@ -19,6 +19,7 @@ import {
 } from '../../../src/server/language-servers/selection';
 import {
     CLANGD_PRESET,
+    COC_SYMBOLS_PRESET,
     PYTHON_PRESET,
     RUST_PRESET,
     TYPESCRIPT_PRESET,
@@ -210,14 +211,24 @@ describe('resolveServerRoot', () => {
 
 describe('mergeWithBuiltIns', () => {
     it('exposes the built-in presets when nothing is configured', () => {
-        expect(mergeWithBuiltIns([]).map(d => d.id)).toEqual(['typescript', 'rust', 'python', 'clangd']);
+        expect(mergeWithBuiltIns([]).map(d => d.id)).toEqual([
+            'typescript',
+            'rust',
+            'python',
+            'clangd',
+            'coc-symbols',
+        ]);
     });
 
-    it('ships every preset disabled so language support starts off', () => {
+    it('ships every preset needing an installed toolchain disabled', () => {
         expect(TYPESCRIPT_PRESET.enabled).toBe(false);
         expect(RUST_PRESET.enabled).toBe(false);
         expect(PYTHON_PRESET.enabled).toBe(false);
         expect(CLANGD_PRESET.enabled).toBe(false);
+    });
+
+    it('ships the bundled symbol index enabled, since nothing has to be installed', () => {
+        expect(COC_SYMBOLS_PRESET.enabled).toBe(true);
     });
 
     it('defines Rust defaults for fast diagnostics and macro expansion', () => {
@@ -247,7 +258,14 @@ describe('mergeWithBuiltIns', () => {
 
     it('appends custom definitions after the built-ins', () => {
         const merged = mergeWithBuiltIns([definition({ id: 'custom' })]);
-        expect(merged.map(d => d.id)).toEqual(['typescript', 'rust', 'python', 'clangd', 'custom']);
+        expect(merged.map(d => d.id)).toEqual([
+            'typescript',
+            'rust',
+            'python',
+            'clangd',
+            'coc-symbols',
+            'custom',
+        ]);
         expect(merged.find(d => d.id === 'custom')?.builtIn).toBeUndefined();
     });
 
@@ -322,5 +340,32 @@ describe('mergeWithBuiltIns', () => {
             expect(selectDefinitionForFile(merged, file)?.id).toBe('clangd');
             expect(resolveLanguageId(CLANGD_PRESET, file)).toBe(languageId);
         }
+    });
+
+    it('claims clangd\'s C-family files for the symbol index at a lower priority', () => {
+        expect(COC_SYMBOLS_PRESET).toMatchObject({
+            id: 'coc-symbols',
+            displayName: 'C / C++ (symbol index)',
+            command: 'coc-symbols-lsp',
+            args: [],
+            rootMarkers: [],
+            priority: 50,
+            sessionScope: 'workspace',
+            maxSessions: 2,
+            enabled: true,
+            builtIn: true,
+        });
+        expect(COC_SYMBOLS_PRESET.filePatterns).toEqual(CLANGD_PRESET.filePatterns);
+        expect(COC_SYMBOLS_PRESET.languageIds).toEqual(CLANGD_PRESET.languageIds);
+        expect(COC_SYMBOLS_PRESET.priority ?? 0).toBeLessThan(CLANGD_PRESET.priority ?? 0);
+    });
+
+    it('lets clangd win selection where both are enabled, and answers alone otherwise', () => {
+        const both = mergeWithBuiltIns([{ ...CLANGD_PRESET, enabled: true }]);
+        expect(selectDefinitionForFile(both, 'src/main.cpp')?.id).toBe('clangd');
+
+        const indexOnly = mergeWithBuiltIns([]);
+        expect(selectDefinitionForFile(indexOnly, 'src/main.cpp')?.id).toBe('coc-symbols');
+        expect(selectDefinitionForFile(indexOnly, 'src/main.ts')).toBeUndefined();
     });
 });

@@ -100,7 +100,7 @@ describe('registerLanguageServerRoutes', () => {
         return { status: res.statusCode, json: res.body ? JSON.parse(res.body) : undefined };
     }
 
-    it('GET returns all disabled built-in presets before anything is configured', async () => {
+    it('GET returns every built-in preset before anything is configured', async () => {
         const { status, json } = await call('GET', WORKSPACE);
 
         expect(status).toBe(200);
@@ -112,6 +112,7 @@ describe('registerLanguageServerRoutes', () => {
             'rust',
             'python',
             'clangd',
+            'coc-symbols',
         ]);
         // Nothing may start while support is off, preset included.
         expect(json.startable).toEqual([]);
@@ -166,7 +167,10 @@ describe('registerLanguageServerRoutes', () => {
         const put = await call('PUT', WORKSPACE, { enabled: true, definitions: [customDefinition()] });
         expect(put.status).toBe(200);
         expect(put.json.enabled).toBe(true);
-        expect(put.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual(['fixture']);
+        expect(put.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual([
+            'coc-symbols',
+            'fixture',
+        ]);
 
         // Reopening settings shows the saved definition.
         const reopened = await call('GET', WORKSPACE);
@@ -209,8 +213,7 @@ describe('registerLanguageServerRoutes', () => {
 
         expect(patched.status).toBe(200);
         const startable = patched.json.startable as LanguageServerDefinition[];
-        expect(startable).toHaveLength(1);
-        expect(startable[0].id).toBe('typescript');
+        expect(startable.map((d) => d.id)).toEqual(['typescript', 'coc-symbols']);
         // Overriding a preset keeps it marked as built-in and repoints the command.
         expect(startable[0].builtIn).toBe(true);
         expect(startable[0].command).toBe('node');
@@ -232,13 +235,18 @@ describe('registerLanguageServerRoutes', () => {
         expect(presetOnly.json.startable).toEqual([]);
 
         const enabled = await call('PATCH', WORKSPACE, { enabled: true });
-        expect(enabled.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual(['python']);
+        expect(enabled.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual([
+            'python',
+            'coc-symbols',
+        ]);
         expect(enabled.json.startable[0].builtIn).toBe(true);
 
         const disabledPreset = await call('PATCH', WORKSPACE, {
             definitions: [{ ...python, enabled: false }],
         });
-        expect(disabledPreset.json.startable).toEqual([]);
+        expect(disabledPreset.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual([
+            'coc-symbols',
+        ]);
         expect(readLanguageServerConfig(dataDir, WORKSPACE).definitions[0].enabled).toBe(false);
     });
 

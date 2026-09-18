@@ -61,6 +61,14 @@ export {
     resolvePythonRuntime,
     resolvePythonServerRoot,
 } from './python-adapter';
+export type { SymbolsRuntime, SymbolsRuntimeDeps, SymbolsRuntimeOrigin } from './symbols-adapter';
+export {
+    SYMBOLS_LSP_BUILD_COMMAND,
+    SYMBOL_INDEX_FILE_NAME,
+    applySymbolsRuntime,
+    resolveSymbolsRuntime,
+    symbolIndexDatabasePath,
+} from './symbols-adapter';
 export { registerLanguageServerRoutes } from './routes';
 export type {
     JsonRpcErrorBody,

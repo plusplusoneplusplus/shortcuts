@@ -156,6 +156,8 @@ export class LanguageServerManager {
             relativePath,
             {
                 exists: this.options.exists,
+                dataDir: this.options.dataDir,
+                workspaceId: request.workspaceId,
                 ...this.options.prepareDeps,
             },
         );
@@ -299,10 +301,15 @@ export class LanguageServerManager {
         definition: LanguageServerDefinition,
         rootPath: string,
     ): SessionEntry {
-        const prepared = prepareDefinitionForRoot(definition, rootPath, {
+        // The workspace identity travels with the deps because one adapter —
+        // the symbol index — needs to name a per-workspace file on this host.
+        const prepareDeps = {
             exists: this.options.exists,
+            dataDir: this.options.dataDir,
+            workspaceId: request.workspaceId,
             ...this.options.prepareDeps,
-        });
+        };
+        const prepared = prepareDefinitionForRoot(definition, rootPath, prepareDeps);
         const sessionOptions: LanguageServerSessionOptions = {
             definition: prepared.definition,
             rootPath,
@@ -311,10 +318,7 @@ export class LanguageServerManager {
             unavailableDetail: prepared.notes?.join(' '),
             recoveryCommand: prepared.recoveryCommand,
             prepareForStart: () => {
-                const next = prepareDefinitionForRoot(definition, rootPath, {
-                    exists: this.options.exists,
-                    ...this.options.prepareDeps,
-                });
+                const next = prepareDefinitionForRoot(definition, rootPath, prepareDeps);
                 return {
                     definition: next.definition,
                     runtimeLabel: next.runtimeLabel,
