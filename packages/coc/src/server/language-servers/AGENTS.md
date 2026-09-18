@@ -13,9 +13,9 @@ and transport code stays generic.
   `{a,b}`). Patterns match the workspace-relative path. Windows paths also use
   case-insensitive identity and trim trailing dots/spaces before selection, URI
   mapping, and shared-session ownership checks.
-- `selection.ts` — deterministic server selection (priority, then pattern
-  specificity, then id), LSP language-id resolution, and nearest-marker
-  project-root discovery.
+- `selection.ts` — deterministic server ordering (priority, then pattern
+  specificity, then id), preferred-server selection for single-server callers,
+  LSP language-id resolution, and nearest-marker project-root discovery.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
 - `adapters.ts` — the language-neutral root and runtime preparation hooks the
   manager calls before starting a session.
@@ -150,12 +150,13 @@ and transport code stays generic.
   in flight; abort signals and bounded lifecycle requests such as `shutdown`
   remain active. The browser keeps the document synchronized while indexing.
 - `manager.ts` — `LanguageServerManager` owns every live session on this host.
-  `acquire({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
-  resolves the definition with `selectDefinitionForFile`, the root with
+  `acquireAll({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
+  resolves every matching definition in preference order, then each root with
   the adapter registry (generic definitions use nearest-marker discovery, Rust
   uses the outermost Cargo workspace, and Python canonicalizes its nearest
-  project root), and returns a handle carrying the
-  session, the LSP language id, and a `release` function. A failure carries a
+  project root), and returns handles carrying the sessions, LSP language ids,
+  and `release` functions. `acquire` remains the preferred-definition form for
+  single-server internal callers. A failure carries a
   reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
   concise status instead of an error.
 - Sessions are keyed on workspace, browser editing session, definition id, and
@@ -287,7 +288,9 @@ and transport code stays generic.
   `lsp-error`, `pong`. This shape is the transport contract a
   container relay implements, so the editor client does not change when the
   server moves off this host.
-- An attachment is one document on one socket; it holds one manager reference
+- One browser document may have several attachments on one socket, one per
+  matching definition. `lsp-attached` streams them in preference order and marks
+  the final response with `complete`; each attachment holds one manager reference
   and its own in-flight request map, so `lsp-cancel` and a closed socket both
   abort cleanly. The bridge tracks successful `didOpen` notifications and sends
   `didClose` before releasing an abruptly disconnected socket, keeping warm
@@ -380,6 +383,11 @@ and transport code stays generic.
   `detectLanguageTransportBlock` is also the container gate: an explicitly local
   clone behind the agent proxy settles as `container-unsupported`, while a routed
   remote clone connects directly to its own CoC host.
+- The browser client groups every physical server attachment behind one document
+  handle. It preserves host preference order, broadcasts document lifecycle
+  notifications to every server, and exposes definition-targeted requests for
+  provider-level result merging. If one member is replaced, the client retires
+  the group and reacquires it so ordering and buffer replay stay coherent.
 - Explorer and unified-panel file views pass the concrete route into
   `PreviewPane`. Unified file tabs persist it beside `ownerWorkspaceId`, include
   it in tab identity, and forward it through cross-file definition navigation,

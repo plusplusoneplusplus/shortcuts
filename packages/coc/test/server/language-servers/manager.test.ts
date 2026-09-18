@@ -187,6 +187,28 @@ describe('LanguageServerManager selection', () => {
         }
         expect(result.handle.languageId).toBe('markdown');
     });
+
+    it('acquires every matching definition in priority order', () => {
+        const harness = createHarness([
+            echoDefinition({ id: 'fallback', priority: 10 }),
+            echoDefinition({ id: 'semantic', priority: 100 }),
+        ]);
+
+        const result = harness.manager.acquireAll({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/notes.txt',
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) {
+            return;
+        }
+        expect(result.handles.map(({ definition }) => definition.id)).toEqual(['semantic', 'fallback']);
+        expect(harness.manager.size).toBe(2);
+        result.handles.forEach(({ release }) => release());
+    });
 });
 
 describe('LanguageServerManager session identity', () => {

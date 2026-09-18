@@ -5,7 +5,7 @@
  * normally the browser editing session. Definitions may opt into workspace
  * scope when an expensive server should be shared across editing sessions.
  *
- * The manager stays language-neutral: it resolves which definition serves a
+ * The manager stays language-neutral: it resolves every definition serving a
  * file through the shared selection rules and hands the rest to
  * `LanguageServerSession`.
  */
@@ -18,7 +18,7 @@ import { onLanguageServerConfigChanged, resolveLanguageServerDefinitions } from 
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 import type { PrepareDefinitionDeps } from './adapters';
 import { normalizeRelativePath } from './file-match';
-import { resolveLanguageId, selectDefinitionForFile } from './selection';
+import { resolveLanguageId, selectDefinitionForFile, selectDefinitionsForFile } from './selection';
 import type { JsonValue, LanguageServerDefinition } from './types';
 
 /** Why a document has no language server. Each maps to a concise editor status. */
@@ -39,6 +39,10 @@ export interface LanguageServerHandle {
 
 export type AcquireResult =
     | { ok: true; handle: LanguageServerHandle }
+    | { ok: false; reason: LanguageServerUnavailableReason; detail: string };
+
+export type AcquireAllResult =
+    | { ok: true; handles: LanguageServerHandle[] }
     | { ok: false; reason: LanguageServerUnavailableReason; detail: string };
 
 export interface AcquireRequest {
@@ -150,6 +154,46 @@ export class LanguageServerManager {
         if (!definition) {
             return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
         }
+        return this.acquireDefinition({ ...request, relativePath }, definition);
+    }
+
+    /**
+     * Acquires every enabled definition that claims a document. Handles are
+     * returned in deterministic priority order so clients can preserve the
+     * preferred server while also querying lower-priority providers.
+     */
+    acquireAll(request: AcquireRequest): AcquireAllResult {
+        const relativePath = normalizeRelativePath(request.relativePath);
+        if (this.disposed) {
+            return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
+        }
+        const startable = resolveLanguageServerDefinitions(this.options.dataDir, request.workspaceId);
+        if (startable.length === 0) {
+            return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
+        }
+        const definitions = selectDefinitionsForFile(startable, relativePath);
+        if (definitions.length === 0) {
+            return { ok: false, reason: 'no-definition', detail: 'No language server serves this file.' };
+        }
+        const handles: LanguageServerHandle[] = [];
+        for (const definition of definitions) {
+            const result = this.acquireDefinition({ ...request, relativePath }, definition);
+            if (!result.ok) {
+                for (const handle of handles) {
+                    handle.release();
+                }
+                return result;
+            }
+            handles.push(result.handle);
+        }
+        return { ok: true, handles };
+    }
+
+    private acquireDefinition(
+        request: AcquireRequest,
+        definition: LanguageServerDefinition,
+    ): AcquireResult {
+        const relativePath = request.relativePath;
         const rootPath = resolveDefinitionRoot(
             definition,
             request.workspaceRoot,

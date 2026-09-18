@@ -5,7 +5,8 @@ dashboard file editor.
 
 ### Session lifecycle
 
-`LanguageServerManager` keys sessions by workspace, browser editing session,
+`LanguageServerManager` attaches every enabled definition matching a document in
+priority order and keys each session by workspace, browser editing session,
 definition, and resolved project root by default. Definitions may select
 workspace scope to share an expensive process across editing sessions when they
 open different files. A second editing session opening the same path receives
@@ -15,6 +16,10 @@ the path boundary, matching Win32 file identity before definition selection,
 URI mapping, and shared-session ownership checks.
 The WebSocket bridge sends `didClose` for tracked open documents when a socket
 drops, allowing the warm shared process to be reused without stale text.
+One browser document handle groups all of its physical server attachments,
+broadcasts document synchronization to each, and supports targeted requests by
+definition id. Replacing one member reacquires the ordered group and replays the
+current buffer to every server.
 Definitions may set per-definition process caps, request timeouts, and idle
 timeouts. clangd shares by workspace and root, caps itself at four processes,
 uses a two-minute request timeout, and remains idle for 30 minutes.

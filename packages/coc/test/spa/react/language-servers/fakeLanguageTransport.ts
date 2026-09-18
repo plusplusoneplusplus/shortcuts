@@ -61,8 +61,10 @@ export class FakeAttachment {
     private readonly attached = new Set<(info: LanguageServerAttachedInfo) => void>();
     private readonly detached = new Set<(reason: string) => void>();
     private readonly unavailableListeners = new Set<(info: LanguageServerUnavailableInfo) => void>();
-    private readonly notificationListeners = new Set<(method: string, params: unknown) => void>();
-    private readonly statusListeners = new Set<(state: LanguageServerSessionStateView) => void>();
+    private readonly notificationListeners =
+        new Set<(method: string, params: unknown, info: LanguageServerAttachedInfo) => void>();
+    private readonly statusListeners =
+        new Set<(state: LanguageServerSessionStateView, info: LanguageServerAttachedInfo) => void>();
 
     constructor(readonly path: string, readonly workspaceId = 'ws-1') {}
 
@@ -73,6 +75,7 @@ export class FakeAttachment {
         return {
             path: this.path,
             getInfo: () => self.info,
+            getInfos: () => self.info ? [self.info] : [],
             getUnavailable: () => self.unavailable,
             onAttached: (listener) => add(self.attached, listener),
             onDetached: (listener) => add(self.detached, listener),
@@ -87,6 +90,16 @@ export class FakeAttachment {
                 }
                 return (await responder(params, options?.signal)) as T;
             },
+            sendRequestTo: async <T,>(
+                _definitionId: string,
+                method: string,
+                params?: unknown,
+                options?: { signal?: AbortSignal },
+            ) => {
+                self.requests.push({ method, params, signal: options?.signal });
+                const responder = self.responders.get(method);
+                return responder ? (await responder(params, options?.signal)) as T : undefined as T;
+            },
             readExternalSource: async (resourceId: string, options?: { signal?: AbortSignal }) => {
                 self.externalReads.push({ resourceId, signal: options?.signal });
                 const source = self.externalSources.get(resourceId);
@@ -98,6 +111,12 @@ export class FakeAttachment {
             sendNotification: (method: string, params?: unknown) => {
                 if (!self.info) {
                     return; // The real client drops notifications while detached.
+                }
+                self.notifications.push({ method, params: (params ?? {}) as Record<string, unknown> });
+            },
+            sendNotificationTo: (_attachmentId: string, method: string, params?: unknown) => {
+                if (!self.info) {
+                    return;
                 }
                 self.notifications.push({ method, params: (params ?? {}) as Record<string, unknown> });
             },
@@ -161,14 +180,21 @@ export class FakeAttachment {
     }
 
     notify(method: string, params: unknown): void {
+        if (!this.info) {
+            return;
+        }
         for (const listener of [...this.notificationListeners]) {
-            listener(method, params);
+            listener(method, params, this.info);
         }
     }
 
     status(state: LanguageServerSessionStateView): void {
+        if (!this.info) {
+            return;
+        }
+        this.info = { ...this.info, state };
         for (const listener of [...this.statusListeners]) {
-            listener(state);
+            listener(state, this.info);
         }
     }
 

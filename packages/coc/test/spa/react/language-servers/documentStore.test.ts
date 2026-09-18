@@ -122,6 +122,66 @@ describe('LanguageDocumentStore', () => {
             const second = store.open({ path: 'src/a.ts', text: 'two' });
             expect(second.getStatus()).toBe('ready');
         });
+
+        it('synchronizes the buffer with every server attached to the document', () => {
+            FakeSocket.instances = [];
+            const transport = new LanguageServerClient({
+                workspaceId: 'ws-1',
+                editingSessionId: 'session-a',
+                createSocket: (url: string) => new FakeSocket(url),
+            });
+            const multiStore = new LanguageDocumentStore({ workspaceId: 'ws-1', client: transport });
+            const view = multiStore.open({ path: 'src/main.cpp', text: 'int main() {}\n' });
+            const socket = FakeSocket.instances[0];
+            socket.open();
+            const requestId = socket.sentOfType('lsp-attach')[0].requestId;
+            const base = {
+                type: 'lsp-attached',
+                requestId,
+                documentUri: 'coc-file://ws-1/src/main.cpp',
+                languageId: 'cpp',
+            };
+            socket.emit({
+                ...base,
+                attachmentId: 'att-clangd',
+                sessionKey: 'clangd-session',
+                definitionId: 'clangd',
+                displayName: 'clangd',
+                state: readyState({ textDocumentSync: 2 }),
+                complete: false,
+            });
+            socket.emit({
+                ...base,
+                attachmentId: 'att-symbols',
+                sessionKey: 'symbols-session',
+                definitionId: 'coc-symbols',
+                displayName: 'Symbol Index',
+                state: readyState({ textDocumentSync: 1 }),
+                complete: true,
+            });
+
+            expect(socket.sentOfType('lsp-notify').map(({ attachmentId, method }) => ({ attachmentId, method })))
+                .toEqual([
+                    { attachmentId: 'att-clangd', method: 'textDocument/didOpen' },
+                    { attachmentId: 'att-symbols', method: 'textDocument/didOpen' },
+                ]);
+            socket.emit({
+                type: 'lsp-notification',
+                sessionKey: 'clangd-session',
+                method: 'textDocument/publishDiagnostics',
+                params: { uri: view.uri, diagnostics: [diagnostic('semantic')] },
+            });
+            socket.emit({
+                type: 'lsp-notification',
+                sessionKey: 'symbols-session',
+                method: 'textDocument/publishDiagnostics',
+                params: { uri: view.uri, diagnostics: [diagnostic('index')] },
+            });
+            expect(view.getDiagnostics().map(({ message }) => message)).toEqual(['semantic', 'index']);
+
+            multiStore.dispose();
+            transport.dispose();
+        });
     });
 
     describe('edits and versions', () => {

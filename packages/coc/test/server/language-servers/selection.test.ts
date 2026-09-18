@@ -16,6 +16,7 @@ import {
     resolveLanguageId,
     resolveServerRoot,
     selectDefinitionForFile,
+    selectDefinitionsForFile,
 } from '../../../src/server/language-servers/selection';
 import {
     CLANGD_PRESET,
@@ -123,6 +124,18 @@ describe('selectDefinitionForFile', () => {
     it('returns the single matching definition', () => {
         const ts = definition({ id: 'ts', filePatterns: ['**/*.ts'] });
         expect(selectDefinitionForFile([ts], 'src/main.ts')?.id).toBe('ts');
+    });
+
+    describe('selectDefinitionsForFile', () => {
+        it('returns every matching definition in preference order', () => {
+            const low = definition({ id: 'low', filePatterns: ['**/*.ts'], priority: 1 });
+            const narrow = definition({ id: 'narrow', filePatterns: ['**/*.spec.ts'], priority: 5 });
+            const high = definition({ id: 'high', filePatterns: ['**/*.ts'], priority: 5 });
+            const disabled = definition({ id: 'disabled', filePatterns: ['**/*.ts'], priority: 10, enabled: false });
+
+            expect(selectDefinitionsForFile([low, narrow, disabled, high], 'src/a.spec.ts').map(({ id }) => id))
+                .toEqual(['narrow', 'high', 'low']);
+        });
     });
 
     it('returns undefined when no definition claims the file', () => {
