@@ -178,6 +178,34 @@ describe('Queue Handler', () => {
             expect(body.task.displayName).toBe('Test task');
         });
 
+        it('returns the existing owner when a second Sentinel is admitted', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const sentinelTask = makeTask({
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Watch this workspace',
+                    workspaceId: 'workspace-a',
+                    workingDirectory: dataDir,
+                },
+            });
+
+            const first = await postJSON(`${srv.url}/api/queue`, sentinelTask);
+            expect(first.status).toBe(201);
+            const firstTaskId = JSON.parse(first.body).task.id;
+
+            const second = await postJSON(`${srv.url}/api/queue`, sentinelTask);
+
+            expect(second.status).toBe(409);
+            expect(JSON.parse(second.body)).toEqual({
+                error: 'A Sentinel is already active in this workspace',
+                code: 'SENTINEL_ALREADY_EXISTS',
+                existingProcessId: `queue_${firstTaskId}`,
+                actions: ['open', 'replace'],
+            });
+        });
+
         it('should enqueue with high priority', async () => {
             const srv = await startServer();
 

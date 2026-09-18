@@ -13,6 +13,7 @@ import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { cn } from '../../ui/cn';
+import { Dialog } from '../../ui/Dialog';
 import { MODE_BORDER_COLORS, cycleMode, normalizeChatMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useQueue } from '../../contexts/QueueContext';
@@ -42,12 +43,12 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isCanvasEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isSentinelEnabled, isCanvasEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
 import { ChatStyleSelector } from './ChatStyleSelector';
-import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { CocApiError, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { resolveEffortTier, resolveEffectiveTier } from '../../utils/resolveEffortTier';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
@@ -139,6 +140,7 @@ export interface InitialChatComposerSubmission {
      * value — it tells the server the user is on Default, which injects nothing.
      */
     chatStyle?: ChatStyle;
+    replaceSentinelProcessId?: string;
 }
 
 export type InitialChatComposerSettingsLayout = 'full' | 'compact' | 'responsive';
@@ -233,6 +235,25 @@ const EFFORT_LEVEL_LABELS: Record<EffortLevel, string> = {
 const COMPACT_SETTINGS_POPOVER_WIDTH = 360;
 const COMPACT_SETTINGS_POPOVER_MIN_CONTAINER_WIDTH = COMPACT_SETTINGS_POPOVER_WIDTH + 24;
 
+interface SentinelConflict {
+    existingProcessId: string;
+    submission: InitialChatComposerSubmission;
+    replacing: boolean;
+    error: string | null;
+}
+
+function getSentinelConflictProcessId(error: unknown): string | null {
+    if (!(error instanceof CocApiError) || error.status !== 409 || error.code !== 'SENTINEL_ALREADY_EXISTS') {
+        return null;
+    }
+    const body = error.body && typeof error.body === 'object'
+        ? error.body as Record<string, unknown>
+        : null;
+    return typeof body?.existingProcessId === 'string' && body.existingProcessId.trim()
+        ? body.existingProcessId.trim()
+        : null;
+}
+
 function getEffortLabel(effort: EffortLevel | null): string {
     return effort ? EFFORT_LEVEL_LABELS[effort] : 'Auto';
 }
@@ -265,6 +286,9 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
                 ...(submission.reasoningEffort ? { reasoningEffort: submission.reasoningEffort } : {}),
                 ...(submission.chatStyle ? { chatStyle: submission.chatStyle } : {}),
                 ...(submission.provider ? { provider: submission.provider } : {}),
+                ...(submission.replaceSentinelProcessId
+                    ? { replaceSentinelProcessId: submission.replaceSentinelProcessId }
+                    : {}),
             } as any,
             ...(submission.config ? { config: submission.config } : {}),
         });
@@ -330,6 +354,7 @@ export function InitialChatComposer({
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [sentinelConflict, setSentinelConflict] = useState<SentinelConflict | null>(null);
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
     const [sessionContextDragActive, setSessionContextDragActive] = useState(false);
     // Context payloads dropped onto the desktop "+ New chat" button, waiting to
@@ -441,6 +466,7 @@ export function InitialChatComposer({
             ralph: isRalphEnabled(),
             'for-each': isForEachEnabled(),
             'map-reduce': isMapReduceEnabled(),
+            sentinel: isSentinelEnabled(),
         }),
         [],
     );
@@ -896,6 +922,7 @@ export function InitialChatComposer({
         setSessionContextDropError(null);
         setSending(true);
         abortControllerRef.current = new AbortController();
+        let attemptedSubmission: InitialChatComposerSubmission | null = null;
 
         try {
             const workspaceRoot = getSelectedWorkspaceRoot();
@@ -964,7 +991,7 @@ export function InitialChatComposer({
             const context = mergeAutoProviderRoutingContext(resolvedAi, contextOverride);
             const config = resolvedAi.effortTier ? { effortTier: resolvedAi.effortTier } : undefined;
 
-            const submittedTaskId = await onSubmit({
+            attemptedSubmission = {
                 mode,
                 prompt: effectivePrompt,
                 workingDirectory: workspaceRoot,
@@ -976,26 +1003,74 @@ export function InitialChatComposer({
                 ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                 ...(config ? { config } : {}),
                 ...(chatStyleSelectorEnabled && isChatStyleSupportedMode(mode) ? { chatStyle: selectedChatStyle } : {}),
-            });
+            };
+            const submittedTaskId = await onSubmit(attemptedSubmission);
             await onSubmitted?.(typeof submittedTaskId === 'string' ? submittedTaskId : null);
-            setInput('');
-            setCursorPos(0);
-            richTextRef.current?.setValue('');
-            clearAttachments();
-            clearAttachmentDraft(draftStorageKey);
-            attachedContext.clear();
-            promptHistory.reset();
-            clearDraft(draftStorageKey);
+            clearComposerAfterSubmission();
             // Consume the pending prefix only after a successful create — a
             // rejected onSubmit skips this so the references stay intact for retry.
             onClearPendingPrefix?.();
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
-                setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
+                const existingProcessId = getSentinelConflictProcessId(err);
+                if (existingProcessId && selectedMode === 'sentinel' && attemptedSubmission) {
+                    setSentinelConflict({
+                        existingProcessId,
+                        submission: attemptedSubmission,
+                        replacing: false,
+                        error: null,
+                    });
+                } else {
+                    setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
+                }
             }
         } finally {
             setSending(false);
             abortControllerRef.current = null;
+        }
+    }
+
+    function clearComposerAfterSubmission() {
+        setInput('');
+        setCursorPos(0);
+        richTextRef.current?.setValue('');
+        clearAttachments();
+        clearAttachmentDraft(draftStorageKey);
+        attachedContext.clear();
+        promptHistory.reset();
+        clearDraft(draftStorageKey);
+    }
+
+    async function handleOpenExistingSentinel() {
+        if (!sentinelConflict) return;
+        await onSubmitted?.(sentinelConflict.existingProcessId);
+        setSentinelConflict(null);
+    }
+
+    async function handleReplaceSentinel() {
+        if (!sentinelConflict || sentinelConflict.replacing) return;
+        const pending = sentinelConflict;
+        setSentinelConflict({ ...pending, replacing: true, error: null });
+        setSending(true);
+        try {
+            const submittedTaskId = await onSubmit({
+                ...pending.submission,
+                replaceSentinelProcessId: pending.existingProcessId,
+            });
+            await onSubmitted?.(typeof submittedTaskId === 'string' ? submittedTaskId : null);
+            clearComposerAfterSubmission();
+            onClearPendingPrefix?.();
+            setSentinelConflict(null);
+        } catch (err) {
+            const currentOwner = getSentinelConflictProcessId(err);
+            setSentinelConflict({
+                ...pending,
+                existingProcessId: currentOwner ?? pending.existingProcessId,
+                replacing: false,
+                error: getSpaCocClientErrorMessage(err, 'Failed to replace Sentinel'),
+            });
+        } finally {
+            setSending(false);
         }
     }
 
@@ -1516,6 +1591,55 @@ export function InitialChatComposer({
             data-testid={`${testIdPrefix}-area`}
             data-settings-layout={effectiveSettingsLayout}
         >
+            <Dialog
+                open={sentinelConflict !== null}
+                onClose={() => {
+                    if (!sentinelConflict?.replacing) setSentinelConflict(null);
+                }}
+                title="Sentinel already active"
+                id="sentinel-conflict-dialog"
+                disableClose={sentinelConflict?.replacing}
+                footer={(
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => setSentinelConflict(null)}
+                            disabled={sentinelConflict?.replacing}
+                            className="rounded px-3 py-1.5 text-xs text-[#5a5a5a] hover:bg-[#f3f3f3] disabled:opacity-50 dark:text-[#cccccc] dark:hover:bg-[#2a2d2e]"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handleOpenExistingSentinel()}
+                            disabled={sentinelConflict?.replacing}
+                            data-testid="sentinel-open-existing"
+                            className="rounded border border-[#0f766e] px-3 py-1.5 text-xs font-medium text-[#0f766e] hover:bg-teal-50 disabled:opacity-50 dark:text-teal-300 dark:hover:bg-teal-950"
+                        >
+                            Open existing
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handleReplaceSentinel()}
+                            disabled={sentinelConflict?.replacing}
+                            data-testid="sentinel-replace"
+                            className="rounded bg-[#0f766e] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#115e59] disabled:opacity-50"
+                        >
+                            {sentinelConflict?.replacing ? 'Replacing…' : 'Replace Sentinel'}
+                        </button>
+                    </>
+                )}
+            >
+                <p>
+                    This workspace already has a Sentinel. Open its board, or replace its recurring
+                    checks while keeping the existing transcript.
+                </p>
+                {sentinelConflict?.error && (
+                    <p className="mt-2 text-xs text-[#f14c4c]" data-testid="sentinel-replace-error">
+                        {sentinelConflict.error}
+                    </p>
+                )}
+            </Dialog>
             {enableRalphDirectGoal && ralphDirectGoalDraft !== null && (
                 <RalphLaunchDialog
                     open={ralphDirectGoalDraft !== null}

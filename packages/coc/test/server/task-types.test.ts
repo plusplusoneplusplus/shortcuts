@@ -1,7 +1,7 @@
 /**
  * Tests for the unified task type guards:
  *   TaskType = 'chat' | 'run-workflow' | 'run-script' | 'dream-run'
- *   ChatMode = 'ask' | 'autopilot' | 'ralph'
+ *   ChatMode = 'ask' | 'autopilot' | 'ralph' | 'sentinel'
  */
 
 import { describe, it, expect } from 'vitest';
@@ -611,8 +611,12 @@ describe('resolveInstructionMode', () => {
         expect(resolveInstructionMode('ralph')).toBe('autopilot');
     });
 
+    it('maps sentinel -> ask (read-only supervisor instructions)', () => {
+        expect(resolveInstructionMode('sentinel')).toBe('ask');
+    });
+
     it('returns a value for every ChatMode member', () => {
-        const modes = ['ask', 'plan', 'autopilot', 'ralph'] as const;
+        const modes = ['ask', 'plan', 'autopilot', 'ralph', 'sentinel'] as const;
         for (const mode of modes) {
             expect(['ask', 'autopilot']).toContain(resolveInstructionMode(mode));
         }
@@ -628,6 +632,7 @@ describe('normalizeChatMode', () => {
         expect(normalizeChatMode('ask')).toBe('ask');
         expect(normalizeChatMode('autopilot')).toBe('autopilot');
         expect(normalizeChatMode('ralph')).toBe('ralph');
+        expect(normalizeChatMode('sentinel')).toBe('sentinel');
     });
 
     it('normalizes legacy plan mode to ask', () => {

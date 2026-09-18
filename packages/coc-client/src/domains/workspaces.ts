@@ -104,6 +104,12 @@ export class WorkspacesClient {
     });
   }
 
+  checkSentinelNow(workspaceId: string): Promise<{ status: 'triggered'; processId: string; cronId: string }> {
+    return this.transport.request(`/workspaces/${encodePathSegment(workspaceId)}/sentinel/check-now`, {
+      method: 'POST',
+    });
+  }
+
   discover(path: string): Promise<DiscoverWorkspacesResponse> {
     return this.transport.request<DiscoverWorkspacesResponse>('/workspaces/discover', { query: { path } });
   }

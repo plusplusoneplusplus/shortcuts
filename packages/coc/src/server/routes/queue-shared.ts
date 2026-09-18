@@ -89,12 +89,14 @@ export function normalizeGlobalQueueState(state: QueueGlobalState, now = Date.no
 export interface QueueRouteContext {
     bridge: MultiRepoQueueRouter;
     store: ProcessStore | undefined;
+    dataDir?: string;
     globalWorkspaceRootPath: string | undefined;
     state: QueueGlobalState;
     getDefaultProvider?: () => ChatProvider;
     resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
     isAutoProviderRoutingActive?: () => boolean;
     getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
+    cancelSentinelCron?: (processId: string) => void;
 }
 
 export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {

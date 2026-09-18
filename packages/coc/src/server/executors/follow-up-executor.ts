@@ -85,6 +85,7 @@ const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
     ask: 'interactive',
     autopilot: 'autopilot',
     ralph: 'autopilot',
+    sentinel: 'interactive',
 };
 
 const KNOWN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const satisfies readonly ReasoningEffort[];

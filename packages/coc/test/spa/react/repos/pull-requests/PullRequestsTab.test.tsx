@@ -27,6 +27,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
+    isSentinelEnabled: () => false,
     isCronEnabled: () => false,
     isCanvasEnabled: () => false,
     isEffortLevelsEnabled: () => false,

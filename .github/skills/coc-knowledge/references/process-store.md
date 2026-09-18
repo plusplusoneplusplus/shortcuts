@@ -109,6 +109,34 @@ empty chat. See [rest-api.md](rest-api.md).
 `deleted_at` set. Seen-state, pin, and archive HTTP surfaces are catalogued in
 [rest-api.md](rest-api.md).
 
+### Sentinel classification
+
+`server/sentinel/sentinel-classifier.ts` scans one workspace through `ProcessStore`,
+using current process fields rather than copying mutable facts into Sentinel state.
+It excludes all Sentinel processes and descendants whose `parentProcessId` chain
+reaches one, filters archived and old records, and classifies deterministic lifecycle
+buckets before making one tool-free `transform` call for all final completed-chat
+turns. The adapter requires exactly one verdict per known candidate, the fixed
+`loose-end | ignore` enum, and finite confidence from zero through one. Invalid
+output fails the tick; low-confidence verdicts are ignored, and pinned chats use
+lower queue and loose-end thresholds.
+
+`server/sentinel/sentinel-watchlist.ts` reconciles classification output into the
+managed `notes/Sentinel/.watchlist.json` ownership marker. It persists only
+judgments and exclusion IDs, preserves disposition and nudge history, and reads
+mutable lifecycle facts from `ProcessStore` for each eviction pass. Missing,
+archived, and resolved-for-more-than-30-days rows are removed. Reads accept
+missing, empty, truncated, and older-version files; updates use temp-file rename.
+The marker also stashes the last rendered board for restart-safe edit comparison.
+`sentinel-board.ts` renders active judgments deterministically by bucket and folds
+renderer-owned unchecked or deleted lines into resolved or muted dispositions.
+Tick persistence uses Notes optimistic writes and retries concurrent board edits
+before updating the stash. `Sentinel.md` is created once with editable tick,
+recency, mute-list, and nudge-budget settings. Renderer-owned approval rows are
+unchecked drafts; a checked approval is budget/backoff checked before enqueueing
+a target follow-up or a linked fresh Ask chat when the target is too old to
+resume. Active target turns receive the approved draft as a pending message.
+
 ### Task Group Registry
 
 `SqliteTaskGroupStore` (forge) owns `task_groups`/`task_group_members` over the shared database

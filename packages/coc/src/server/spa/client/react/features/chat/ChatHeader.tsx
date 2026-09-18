@@ -112,6 +112,10 @@ export interface ChatHeaderProps {
     hasActiveCrons?: boolean;
     /** Called when the user clicks the cron badge */
     onToggleCronPanel?: () => void;
+    /** Starts an immediate scan for the active Sentinel conversation. */
+    onCheckSentinelNow?: () => void;
+    /** Whether an immediate Sentinel scan request is being submitted. */
+    sentinelCheckPending?: boolean;
     /** Called when the user double-clicks the title to rename. Header always shows the user-set name. */
     onRenameTitle?: () => void;
     /** Called by lens chat embeddings to archive the current binding and show an empty same-target composer. */
@@ -370,6 +374,8 @@ export function ChatHeader({
     cronCount,
     hasActiveCrons = false,
     onToggleCronPanel,
+    onCheckSentinelNow,
+    sentinelCheckPending = false,
     onRenameTitle,
     onStartFreshSameContext,
     startingFreshSameContext = false,
@@ -615,6 +621,31 @@ export function ChatHeader({
                             <line x1="3" y1="4" x2="13" y2="4" />
                             <line x1="3" y1="8" x2="13" y2="8" />
                             <line x1="3" y1="12" x2="9" y2="12" />
+                        </svg>
+                    </button>
+                )}
+                {onCheckSentinelNow && (
+                    <button
+                        title={sentinelCheckPending ? 'Starting Sentinel check…' : 'Check now'}
+                        aria-label="Check Sentinel now"
+                        data-testid="sentinel-check-now-btn"
+                        disabled={sentinelCheckPending}
+                        onClick={onCheckSentinelNow}
+                        className={ICON_BTN_CLASS}
+                    >
+                        <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                        >
+                            <path d="M13.5 5.5V2.5h-3" />
+                            <path d="M13.2 5A5.5 5.5 0 1 0 13 11" />
                         </svg>
                     </button>
                 )}

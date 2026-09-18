@@ -123,6 +123,59 @@ all have their own `references/*.md`.
   task-derived rows out of Notes root removal selection, refresh discovery with
   the tree, clear the selected file when a root disappears or the workspace
   changes, and discard late root/tree responses from stale workspace scopes.
+- **Notes system folders** are `Plans` and `Sentinel`. The managed default root
+  auto-creates them, reports them through the tree response's `systemFolders`,
+  and blocks renaming or deleting their roots. Repo-folder and task-derived
+  roots do not create or report system folders.
+- **Sentinel chat mode** is a disabled-by-default workflow mode exposed only on
+  the New Chat surface through `sentinel.enabled`. Its registry identity uses a
+  shield icon with teal accents, and server mode normalization maps its base
+  instruction profile to read-only Ask.
+- **Sentinel ownership** lives only at
+  `repos/<workspaceId>/notes/Sentinel/.watchlist.json`. Initial claims use
+  exclusive file creation; live owners block a second claim, while missing,
+  archived, failed, cancelled, or corrupt owners are reclaimed. A short claim
+  grace covers admission before the new process row exists. Queue preparation
+  reserves the generated `queue_<taskId>` for every new Sentinel chat; a live
+  owner returns `409 SENTINEL_ALREADY_EXISTS` with open/replace actions.
+  Confirmed replacement supplies the exact owner process ID, atomically transfers
+  the marker, and cancels the old process-bound Sentinel cron without changing
+  the old transcript. New Chat handles an ownership conflict with a confirmation
+  dialog that can open the named owner or resubmit the preserved draft with that
+  exact ID as the replacement guard.
+- **Sentinel watchlist state** stores the owner, resolved exclusion IDs, and
+  judgment-only entries with disposition, bucket, reason, nudge counters, and
+  judgment timestamps, plus the last rendered board used to detect edits across
+  restarts. Reads tolerate missing, empty, truncated, and older records. Tick
+  updates use temp-file rename, preserve prior dispositions, and evict missing,
+  archived, or resolved-for-more-than-30-days entries. The deterministic board
+  groups active judgments by bucket; unchecking a renderer-owned item resolves it
+  and deleting one mutes it. Each tick folds edits before reconciliation and
+  publishes `Board.md` through the Notes optimistic-write contract, retrying
+  conflicts rather than clobbering an editor. `Sentinel.md` is created once with
+  editable tick interval, recency, mute-list, and nudge-budget defaults and is
+  never overwritten. Board drafts stay unchecked until the user approves one;
+  a newly checked approval is revalidated against the per-chat budget, snooze,
+  and tick-window backoff before it queues a follow-up. Old chats start a linked
+  Ask chat instead. Approved nudges against active turns use pending messages.
+- **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
+  at least the default cron TTL from the current time, without shortening a
+  longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A
+  newly admitted Sentinel provisions one hourly process-bound cron from the
+  aggregate queue's `taskAdded` event; general cron tools and routes remain
+  gated by `cron.enabled`. `POST /api/workspaces/:id/sentinel/check-now`
+  validates the watchlist owner and immediately runs that cron's normal tick
+  guards without creating another schedule. The active Sentinel chat header
+  exposes this route as a disabled-while-starting **Check now** action.
+- **Sentinel classification** reads only the owning workspace's process records.
+  It excludes every Sentinel and all descendants transitively, then classifies
+  recent, unarchived chats into blocked, failed/stale, long-queued, loose-end,
+  and completed-unread buckets. Each scheduled or manual Sentinel tick runs the
+  classifier once before its follow-up is enqueued. Loose-end judgment uses one
+  tool-free `transform` call over final turns and accepts only a complete set of
+  known process IDs, the fixed `loose-end | ignore` enum, and finite confidence
+  values. Invalid model output fails the tick; low-confidence judgments are
+  ignored.
 - **Native Notes search lifecycle** lives in
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service

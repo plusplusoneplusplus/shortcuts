@@ -70,7 +70,7 @@ describe('resolveFollowUpMode', () => {
     });
 
     it('accepts all valid ChatMode values from metadata', async () => {
-        for (const mode of ['ask', 'autopilot', 'ralph'] as const) {
+        for (const mode of ['ask', 'autopilot', 'ralph', 'sentinel'] as const) {
             const store = makeStore(mode);
             await expect(resolveFollowUpMode(store, 'p')).resolves.toBe(mode);
         }

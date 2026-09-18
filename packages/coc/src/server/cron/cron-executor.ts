@@ -11,13 +11,17 @@
  */
 
 import * as crypto from 'crypto';
-import type { ProcessStore, TaskQueueManager, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { AIProcess, ProcessStore, TaskQueueManager, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toTaskId, toQueueProcessId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import { PeriodicEntryScheduler } from '../schedule/periodic-entry-scheduler';
 import type { CronStore } from './cron-store';
 import type { CronEntry, CronChangeEvent } from './cron-types';
-import { MAX_CONSECUTIVE_FAILURES, MAX_CONSECUTIVE_WAKEUPS_PER_PROCESS } from './cron-types';
+import {
+    DEFAULT_CRON_TTL_MS,
+    MAX_CONSECUTIVE_FAILURES,
+    MAX_CONSECUTIVE_WAKEUPS_PER_PROCESS,
+} from './cron-types';
 import { resolveFollowUpMode } from '../executors/follow-up-mode';
 
 // ============================================================================
@@ -38,6 +42,12 @@ export interface CronExecutorDeps {
     emit: CronEventEmit;
     /** Resolve the repo/workspace ID for a given processId. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
+    /** Classify the workspace before enqueueing a Sentinel follow-up. */
+    runSentinelTick?: (
+        process: AIProcess,
+        workspaceId: string,
+        cron: CronEntry,
+    ) => Promise<void>;
 }
 
 // ============================================================================
@@ -82,8 +92,8 @@ export class CronExecutor {
      * Arm timers for all active crons.
      * Called once at server startup after crons are loaded from the DB.
      */
-    armAll(): void {
-        this.scheduler.armAll(this.deps.store.getActive());
+    armAll(predicate: (cron: CronEntry) => boolean = () => true): void {
+        this.scheduler.armAll(this.deps.store.getActive().filter(predicate));
     }
 
     /**
@@ -122,6 +132,14 @@ export class CronExecutor {
      */
     isInflight(processId: string): boolean {
         return this.inflight.has(processId);
+    }
+
+    /**
+     * Run a cron through the normal tick guards immediately.
+     * The existing timer remains authoritative for subsequent ticks.
+     */
+    async triggerNow(cronId: string): Promise<void> {
+        await this.onTick(cronId);
     }
 
     /**
@@ -178,6 +196,9 @@ export class CronExecutor {
             return;
         }
 
+        const proc = await this.deps.processStore.getProcess(cron.processId);
+        this.refreshSentinelExpiry(cron, proc);
+
         // TTL check
         if (this.isExpired(cron)) {
             this.expireCron(cron);
@@ -199,7 +220,6 @@ export class CronExecutor {
         }
 
         // Check process status — auto-pause if cancelled or failed
-        const proc = await this.deps.processStore.getProcess(cron.processId);
         if (proc) {
             const status = proc.status;
             if (status === 'cancelled' || status === 'failed') {
@@ -218,6 +238,15 @@ export class CronExecutor {
         // Enqueue follow-up
         try {
             this.inflight.add(cron.processId);
+            if (proc?.metadata?.mode === 'sentinel' && this.deps.runSentinelTick) {
+                const workspaceId = cron.workspaceId
+                    ?? (typeof proc.metadata.workspaceId === 'string' ? proc.metadata.workspaceId : undefined)
+                    ?? await this.deps.resolveWorkspaceId(cron.processId);
+                if (!workspaceId) {
+                    throw new Error(`Cannot resolve workspace for Sentinel process ${cron.processId}`);
+                }
+                await this.deps.runSentinelTick(proc, workspaceId, cron);
+            }
             this.wakeupCounts.set(cron.processId, wakeupCount + 1);
             await this.enqueueFollowUp(cron);
         } catch (err) {
@@ -335,6 +364,15 @@ export class CronExecutor {
 
     private isExpired(cron: CronEntry): boolean {
         return Date.now() >= new Date(cron.expiresAt).getTime();
+    }
+
+    private refreshSentinelExpiry(cron: CronEntry, process: AIProcess | undefined): void {
+        if (process?.metadata?.mode !== 'sentinel') return;
+
+        const rollingExpiry = Date.now() + DEFAULT_CRON_TTL_MS;
+        const currentExpiry = new Date(cron.expiresAt).getTime();
+        cron.expiresAt = new Date(Math.max(currentExpiry, rollingExpiry)).toISOString();
+        this.deps.store.update(cron);
     }
 
     /**

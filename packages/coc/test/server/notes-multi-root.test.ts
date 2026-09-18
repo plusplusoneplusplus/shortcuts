@@ -169,6 +169,7 @@ describe('Notes Multi-Root — read endpoints', { timeout: 30_000 }, () => {
             expect(data.rootId).toBe('docs/notes');
             // No system folders for non-default root
             expect(data.systemFolders).toEqual([]);
+            expect(fs.existsSync(path.join(workspaceDir, 'docs', 'notes', 'Sentinel'))).toBe(false);
             // Should see the md file, not the png
             const allNames = flatNames(data.tree);
             expect(allNames).toContain('guide.md');

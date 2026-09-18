@@ -1,7 +1,25 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CreateTaskInput, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
-import { prepareTaskForEnqueue, resolveEffortTierConfig } from '../../src/server/routes/queue-enqueue';
+import {
+    prepareSentinelAdmission,
+    prepareTaskForEnqueue,
+    resolveEffortTierConfig,
+    SentinelAlreadyExistsError,
+} from '../../src/server/routes/queue-enqueue';
 import type { QueueRouteContext } from '../../src/server/routes/queue-shared';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { createMockProcessStore } from '../helpers/mock-process-store';
+import { getRepoDataPath } from '../../src/server/paths';
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+    for (const directory of tempDirs.splice(0)) {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
 
 function makeInput(overrides: Partial<CreateTaskInput> = {}): CreateTaskInput {
     return {
@@ -368,6 +386,129 @@ describe('prepareTaskForEnqueue', () => {
             selectedByAuto: true,
             provider: 'codex',
             fallbackUsed: false,
+        });
+    });
+
+    describe('prepareSentinelAdmission', () => {
+        function makeDataDir(): string {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-admission-'));
+            tempDirs.push(directory);
+            return directory;
+        }
+
+        it('reserves the generated process ID before enqueue', async () => {
+            const dataDir = makeDataDir();
+            const input = makeInput({
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Watch this workspace',
+                    workspaceId: 'workspace-a',
+                },
+            });
+
+            await prepareSentinelAdmission(input, {
+                dataDir,
+                store: createMockProcessStore(),
+            });
+
+            expect(input.id).toMatch(/^\d+-[a-z0-9]+$/);
+            const watchlist = JSON.parse(fs.readFileSync(path.join(
+                getRepoDataPath(dataDir, 'workspace-a', 'notes'),
+                'Sentinel',
+                '.watchlist.json',
+            ), 'utf8'));
+            expect(watchlist.sentinelProcessId).toBe(`queue_${input.id}`);
+        });
+
+        it('returns the live owner when a second Sentinel is admitted', async () => {
+            const dataDir = makeDataDir();
+            const store = createMockProcessStore();
+            const first = makeInput({
+                id: 'sentinel-first',
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Watch this workspace',
+                    workspaceId: 'workspace-a',
+                },
+            });
+            await prepareSentinelAdmission(first, { dataDir, store });
+
+            const second = makeInput({
+                id: 'sentinel-second',
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Watch this workspace',
+                    workspaceId: 'workspace-a',
+                },
+            });
+
+            await expect(prepareSentinelAdmission(second, { dataDir, store }))
+                .rejects.toEqual(new SentinelAlreadyExistsError('queue_sentinel-first'));
+        });
+
+        it('replaces the confirmed live owner and cancels only its tick', async () => {
+            const dataDir = makeDataDir();
+            const store = createMockProcessStore();
+            const first = makeInput({
+                id: 'sentinel-first',
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Watch this workspace',
+                    workspaceId: 'workspace-a',
+                },
+            });
+            await prepareSentinelAdmission(first, { dataDir, store });
+            const cancelSentinelCron = vi.fn();
+            const second = makeInput({
+                id: 'sentinel-second',
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Replace the old Sentinel',
+                    workspaceId: 'workspace-a',
+                    replaceSentinelProcessId: 'queue_sentinel-first',
+                },
+            });
+
+            await prepareSentinelAdmission(second, { dataDir, store, cancelSentinelCron });
+
+            expect(cancelSentinelCron).toHaveBeenCalledWith('queue_sentinel-first');
+            expect(second.payload.replaceSentinelProcessId).toBeUndefined();
+            const watchlist = JSON.parse(fs.readFileSync(path.join(
+                getRepoDataPath(dataDir, 'workspace-a', 'notes'),
+                'Sentinel',
+                '.watchlist.json',
+            ), 'utf8'));
+            expect(watchlist.sentinelProcessId).toBe('queue_sentinel-second');
+        });
+
+        it('does not claim ownership for Sentinel follow-ups', async () => {
+            const dataDir = makeDataDir();
+            const input = makeInput({
+                payload: {
+                    kind: 'chat',
+                    mode: 'sentinel',
+                    prompt: 'Check now',
+                    processId: 'queue_existing-sentinel',
+                    workspaceId: 'workspace-a',
+                },
+            });
+
+            await prepareSentinelAdmission(input, {
+                dataDir,
+                store: createMockProcessStore(),
+            });
+
+            expect(input.id).toBeUndefined();
+            expect(fs.existsSync(path.join(
+                getRepoDataPath(dataDir, 'workspace-a', 'notes'),
+                'Sentinel',
+                '.watchlist.json',
+            ))).toBe(false);
         });
     });
 

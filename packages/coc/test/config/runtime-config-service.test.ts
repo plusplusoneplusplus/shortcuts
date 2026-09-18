@@ -42,6 +42,7 @@ describe('RuntimeConfigService', () => {
             expect(svc.config.servers.enabled).toBe(true);
             expect(svc.config.ralph.enabled).toBe(false);
             expect(svc.config.forEach.enabled).toBe(false);
+            expect(svc.config.sentinel.enabled).toBe(false);
             expect(svc.config.features.gitCrossCloneCherryPick).toBe(true);
             expect(svc.config.features.commitChatLens).toBe(true);
             expect(svc.config.features.chatStyleSelector).toBe(true);
@@ -59,12 +60,14 @@ describe('RuntimeConfigService', () => {
                 parallel: 10,
                 ralph: { enabled: true },
                 forEach: { enabled: true },
+                sentinel: { enabled: true },
                 pullRequests: { autoClassifyTeam: true },
             });
             const svc = new RuntimeConfigService({ configPath });
             expect(svc.config.parallel).toBe(10);
             expect(svc.config.ralph.enabled).toBe(true);
             expect(svc.config.forEach.enabled).toBe(true);
+            expect(svc.config.sentinel.enabled).toBe(true);
             expect(svc.config.pullRequests.autoClassifyTeam).toBe(true);
             expect(svc.revision).toBe(0);
         });

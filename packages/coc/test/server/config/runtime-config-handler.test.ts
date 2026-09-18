@@ -84,6 +84,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.serversEnabled).toBe(false);
         expect(result.features.ralphEnabled).toBe(false);
         expect(result.features.forEachEnabled).toBe(false);
+        expect(result.features.sentinelEnabled).toBe(false);
         expect(result.features.vimNavigationEnabled).toBe(false);
         expect(result.features.cronEnabled).toBe(false);
         expect(result.features.dreamsEnabled).toBe(false);

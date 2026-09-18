@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
 // ---------------------------------------------------------------------------
 // Mocks – declared before importing component under test
@@ -28,6 +29,7 @@ let mockUseModelsProviders: Array<string | undefined> = [];
 let mockUseDefaultModelArgs: Array<[string | undefined, string, string | undefined]> = [];
 let mockForEachEnabled = false;
 let mockMapReduceEnabled = false;
+let mockSentinelEnabled = false;
 let mockRalphEnabled = false;
 let mockRalphMultiAgentGrillEnabled = false;
 let mockSessionContextAttachmentsEnabled = false;
@@ -66,6 +68,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphMultiAgentGrillEnabled: () => mockRalphMultiAgentGrillEnabled,
     isForEachEnabled: () => mockForEachEnabled,
     isMapReduceEnabled: () => mockMapReduceEnabled,
+    isSentinelEnabled: () => mockSentinelEnabled,
     isCronEnabled: () => false,
     isCanvasEnabled: () => false,
     isAutoAgentProviderRoutingEnabled: () => mockAutoProviderRoutingEnabled,
@@ -194,6 +197,18 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
             category: 'workflow',
             featureFlag: 'map-reduce',
         },
+        {
+            mode: 'sentinel',
+            icon: '🛡️',
+            label: 'Sentinel',
+            tooltip: 'Sentinel — monitor recent chats and draft follow-ups',
+            dotClass: 'bg-teal-500',
+            border: 'border-teal-500',
+            ring: 'ring-teal-500',
+            text: 'text-teal-600',
+            category: 'workflow',
+            featureFlag: 'sentinel',
+        },
     ],
     DEFAULT_CHAT_MODES: ['ask', 'autopilot'],
     getVisibleChatModes: ({ category, featureFlags }: { category?: string; featureFlags?: Record<string, boolean> }) => {
@@ -202,6 +217,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
             if (featureFlags?.ralph) modes.push('ralph');
             if (featureFlags?.['for-each']) modes.push('for-each');
             if (featureFlags?.['map-reduce']) modes.push('map-reduce');
+            if (featureFlags?.sentinel) modes.push('sentinel');
             return modes;
         }
         return ['ask', 'autopilot'];
@@ -213,6 +229,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         ralph: { border: 'border-purple-500', ring: 'ring-purple-500' },
         'for-each': { border: 'border-sky-500', ring: 'ring-sky-500' },
         'map-reduce': { border: 'border-indigo-500', ring: 'ring-indigo-500' },
+        sentinel: { border: 'border-teal-500', ring: 'ring-teal-500' },
     },
     MODE_ICONS: {
         ask: '💡',
@@ -221,6 +238,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         ralph: '🔄',
         'for-each': '🔁',
         'map-reduce': '🧩',
+        sentinel: '🛡️',
     },
     MODE_LABELS: {
         ask: '💡 Ask',
@@ -229,6 +247,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         ralph: '🔄 Ralph',
         'for-each': '🔁 For Each',
         'map-reduce': '🧩 Map Reduce',
+        sentinel: '🛡️ Sentinel',
     },
     MODE_TOOLTIPS: {
         ask: 'Ask — get answers without making changes',
@@ -237,6 +256,7 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         ralph: 'Ralph — iterative AI coding loop with guided goal setting',
         'for-each': 'For Each — generate a reviewed item plan, then run each item separately',
         'map-reduce': 'Map Reduce — fan out parallel map work, then aggregate with one reduce step',
+        sentinel: 'Sentinel — monitor recent chats and draft follow-ups',
     },
     cycleMode: (current: string) => {
         const next: Record<string, string> = { autopilot: 'ask', ask: 'autopilot', plan: 'autopilot', 'for-each': 'ask', 'map-reduce': 'ask' };
@@ -366,6 +386,7 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         mockForEachEnabled = false;
         mockSessionContextAttachmentsEnabled = false;
         mockRalphEnabled = false;
+        mockSentinelEnabled = false;
         mockRalphMultiAgentGrillEnabled = false;
         mockAttachments = [];
         mockAttachmentPayload = [];
@@ -442,6 +463,77 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
             expect(screen.getByTestId('new-chat-error')).toBeTruthy();
         });
         expect(mockQueueDispatch).not.toHaveBeenCalled();
+    });
+
+    it('offers to open the existing Sentinel when workspace admission conflicts', async () => {
+        mockSentinelEnabled = true;
+        mockEnqueueTask.mockRejectedValueOnce(new CocApiError({
+            status: 409,
+            statusText: 'Conflict',
+            url: '/api/queue',
+            message: 'A Sentinel is already active in this workspace',
+            code: 'SENTINEL_ALREADY_EXISTS',
+            body: {
+                code: 'SENTINEL_ALREADY_EXISTS',
+                existingProcessId: 'queue_existing-sentinel',
+                actions: ['open', 'replace'],
+            },
+        }));
+
+        renderNewChatArea();
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-sentinel'));
+        typeInInput('Watch this workspace');
+        await clickSend();
+
+        await waitFor(() => expect(screen.getByText('Sentinel already active')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('sentinel-open-existing'));
+
+        expect(mockQueueDispatch).toHaveBeenCalledWith({
+            type: 'SELECT_QUEUE_TASK',
+            id: 'queue_existing-sentinel',
+            repoId: 'ws-1',
+        });
+        expect(mockEnqueueTask).toHaveBeenCalledOnce();
+    });
+
+    it('confirms replacement with the exact existing owner and selects the new Sentinel', async () => {
+        mockSentinelEnabled = true;
+        mockEnqueueTask
+            .mockRejectedValueOnce(new CocApiError({
+                status: 409,
+                statusText: 'Conflict',
+                url: '/api/queue',
+                message: 'A Sentinel is already active in this workspace',
+                code: 'SENTINEL_ALREADY_EXISTS',
+                body: {
+                    code: 'SENTINEL_ALREADY_EXISTS',
+                    existingProcessId: 'queue_existing-sentinel',
+                    actions: ['open', 'replace'],
+                },
+            }))
+            .mockResolvedValueOnce({ task: { id: 'new-sentinel' } });
+
+        renderNewChatArea();
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-sentinel'));
+        typeInInput('Watch this workspace');
+        await clickSend();
+        await waitFor(() => expect(screen.getByTestId('sentinel-replace')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('sentinel-replace'));
+
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledTimes(2));
+        expect(mockEnqueueTask.mock.calls[1][0].payload).toEqual({
+            ...mockEnqueueTask.mock.calls[0][0].payload,
+            replaceSentinelProcessId: 'queue_existing-sentinel',
+        });
+        await waitFor(() => expect(mockQueueDispatch).toHaveBeenCalledWith({
+            type: 'SELECT_QUEUE_TASK',
+            id: 'queue_new-sentinel',
+            repoId: 'ws-1',
+        }));
+        expect(screen.queryByText('Sentinel already active')).toBeNull();
+        expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('');
     });
 
     it('includes provider=copilot in enqueue payload by default', async () => {

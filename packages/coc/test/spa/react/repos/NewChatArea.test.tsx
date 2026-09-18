@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockDefaultChatStyle, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSentinelEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockDefaultChatStyle, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -56,6 +56,7 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueue
     mockRalphEnabled: { value: false },
     mockForEachEnabled: { value: false },
     mockMapReduceEnabled: { value: false },
+    mockSentinelEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
     mockEffortLevelsEnabled: { value: false },
     mockChatStyleEnabled: { value: false },
@@ -121,6 +122,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphMultiAgentGrillEnabled: () => false,
     isForEachEnabled: () => mockForEachEnabled.value,
     isMapReduceEnabled: () => mockMapReduceEnabled.value,
+    isSentinelEnabled: () => mockSentinelEnabled.value,
     isCronEnabled: () => false,
     isCanvasEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
@@ -372,6 +374,7 @@ beforeEach(() => {
     mockRalphEnabled.value = false;
     mockForEachEnabled.value = false;
     mockMapReduceEnabled.value = false;
+    mockSentinelEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
     mockEffortLevelsEnabled.value = false;
     mockChatStyleEnabled.value = false;
@@ -547,6 +550,26 @@ describe('NewChatArea', () => {
 
         expect(screen.queryByTestId('workflow-mode-option-ralph')).toBeNull();
         expect(screen.getByTestId('workflow-mode-option-for-each').textContent).toContain('For Each');
+    });
+
+    it('shows only the Sentinel workflow option when only Sentinel is feature-enabled', () => {
+        mockSentinelEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+
+        expect(screen.getByTestId('workflow-mode-option-sentinel').textContent).toContain('Sentinel');
+        expect(screen.queryByTestId('workflow-mode-option-ralph')).toBeNull();
+        expect(screen.queryByTestId('workflow-mode-option-for-each')).toBeNull();
+    });
+
+    it('hides the Sentinel workflow option when the flag is off', () => {
+        mockRalphEnabled.value = true;
+
+        render(<NewChatArea workspaceId="ws-1" />);
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+
+        expect(screen.queryByTestId('workflow-mode-option-sentinel')).toBeNull();
     });
 
     it('selects Ralph from the Workflow submenu and preserves the Ralph split submit', () => {
@@ -1973,6 +1996,7 @@ describe('NewChatArea', () => {
             mockRalphEnabled.value = true;
             mockForEachEnabled.value = true;
             mockMapReduceEnabled.value = true;
+            mockSentinelEnabled.value = true;
         }
 
         it('offers only the allowed modes in the full layout despite every workflow flag being enabled', () => {
@@ -1995,6 +2019,7 @@ describe('NewChatArea', () => {
             expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
             expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
             expect(screen.queryByTestId('mode-pill-map-reduce')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-sentinel')).toBeNull();
         });
 
         it('offers only the allowed modes in the compact settings editor despite every workflow flag being enabled', () => {

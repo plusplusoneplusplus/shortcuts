@@ -29,6 +29,8 @@ export function registerQueueRoutes(
         resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
         isAutoProviderRoutingActive?: () => boolean;
         getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
+        dataDir?: string;
+        cancelSentinelCron?: (processId: string) => void;
         /**
          * Shared global queue state. When supplied (by the route layer), the HTTP
          * enqueue path and any in-process enqueue capability (e.g. the
@@ -48,12 +50,14 @@ export function registerQueueRoutes(
     const ctx = {
         bridge,
         store,
+        dataDir: options.dataDir,
         globalWorkspaceRootPath,
         state,
         getDefaultProvider: options.getDefaultProvider,
         resolveDefaultProvider: options.resolveDefaultProvider,
         isAutoProviderRoutingActive: options.isAutoProviderRoutingActive,
         getEffortTiersForProvider: options.getEffortTiersForProvider,
+        cancelSentinelCron: options.cancelSentinelCron,
     };
     registerQueueEnqueueRoutes(routes, ctx);
     registerQueueStatsRoutes(routes, ctx);

@@ -77,6 +77,8 @@ export function initializeQueueStartup(options: QueueStartupOptions): QueueStart
     // Prepare task for enqueueing: resolve provider/effort defaults, validate
     const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
         await prepareTaskForEnqueue(input, {
+            dataDir,
+            store: processStore,
             getDefaultProvider: () => providerResolver.getConcreteDefaultProvider(),
             resolveDefaultProvider: (opts) => providerResolver.resolveDefaultProvider(opts),
             isAutoProviderRoutingActive: () => providerResolver.isAutoProviderRoutingActive(),

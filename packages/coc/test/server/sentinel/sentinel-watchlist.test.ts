@@ -1,0 +1,582 @@
+import type { AIProcess } from '@plusplusoneplusplus/forge';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    createSentinelWatchlist,
+    getSentinelWatchlistPath,
+    persistSentinelClassification,
+    readSentinelWatchlist,
+    reconcileSentinelWatchlist,
+    SENTINEL_WATCHLIST_VERSION,
+    writeSentinelWatchlist,
+    type SentinelWatchlist,
+} from '../../../src/server/sentinel/sentinel-watchlist';
+import {
+    SENTINEL_CONFIG_TEMPLATE,
+    renderSentinelBoard,
+    type SentinelBoardSnapshot,
+    type SentinelBoardStorage,
+} from '../../../src/server/sentinel/sentinel-board';
+import { createMockProcessStore } from '../../helpers/mock-process-store';
+
+const NOW = new Date('2026-09-16T21:00:00.000Z');
+const tempDirs: string[] = [];
+
+function makeTempDir(): string {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-watchlist-'));
+    tempDirs.push(directory);
+    return directory;
+}
+
+function makeProcess(id: string, overrides: Partial<AIProcess> = {}): AIProcess {
+    return {
+        id,
+        type: 'chat',
+        promptPreview: id,
+        fullPrompt: id,
+        status: 'completed',
+        startTime: new Date('2026-09-16T19:00:00.000Z'),
+        metadata: { type: 'chat', mode: 'ask', workspaceId: 'workspace-a' },
+        ...overrides,
+    };
+}
+
+function createBoardStorage(initial?: SentinelBoardSnapshot): SentinelBoardStorage & {
+    board?: SentinelBoardSnapshot;
+    config: string;
+    writes: number;
+} {
+    return {
+        board: initial,
+        config: '',
+        writes: 0,
+        async readBoard() {
+            return this.board;
+        },
+        async writeBoard(content, expectedMtimeMs) {
+            if (this.board && this.board.mtimeMs !== expectedMtimeMs) {
+                return false;
+            }
+            this.writes += 1;
+            this.board = { content, mtimeMs: (this.board?.mtimeMs ?? 0) + 1 };
+            return true;
+        },
+        async ensureConfig() {
+            if (this.config.length === 0) {
+                this.config = SENTINEL_CONFIG_TEMPLATE;
+            }
+        },
+        async readConfig() {
+            return this.config;
+        },
+    };
+}
+
+afterEach(() => {
+    for (const directory of tempDirs.splice(0)) {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+describe('Sentinel watchlist persistence', () => {
+    it('round-trips judgment state through an atomic write', async () => {
+        const dataDir = makeTempDir();
+        const watchlist: SentinelWatchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            excludedProcessIds: ['child-a', 'sentinel-a'],
+            entries: [{
+                processId: 'chat-a',
+                bucket: 'failed',
+                disposition: 'nudged',
+                reason: 'The chat failed.',
+                nudgeCount: 2,
+                lastNudgedAt: '2026-09-16T20:00:00.000Z',
+                snoozedUntil: '2026-09-17T20:00:00.000Z',
+                addedAt: '2026-09-15T20:00:00.000Z',
+            }],
+        };
+
+        await writeSentinelWatchlist(dataDir, 'workspace-a', watchlist);
+
+        await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toEqual(watchlist);
+        expect(fs.readdirSync(path.dirname(getSentinelWatchlistPath(dataDir, 'workspace-a'))))
+            .toEqual(['.watchlist.json']);
+    });
+
+    it.each(['', '{"sentinelProcessId":'])(
+        'treats an absent, empty, or truncated watchlist as unclaimed',
+        async (content) => {
+            const dataDir = makeTempDir();
+            await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toBeUndefined();
+            const filePath = getSentinelWatchlistPath(dataDir, 'workspace-a');
+            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            fs.writeFileSync(filePath, content, 'utf8');
+            await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toBeUndefined();
+        },
+    );
+
+    it('loads a version 1 record with missing judgment fields using safe defaults', async () => {
+        const dataDir = makeTempDir();
+        const filePath = getSentinelWatchlistPath(dataDir, 'workspace-a');
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, JSON.stringify({
+            version: 1,
+            sentinelProcessId: 'sentinel-a',
+            claimedAt: '2026-09-15T20:00:00.000Z',
+            entries: [{ processId: 'chat-a', reason: 'Needs attention.' }],
+        }), 'utf8');
+
+        await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toEqual({
+            version: SENTINEL_WATCHLIST_VERSION,
+            sentinelProcessId: 'sentinel-a',
+            claimedAt: '2026-09-15T20:00:00.000Z',
+            excludedProcessIds: ['sentinel-a'],
+            entries: [{
+                processId: 'chat-a',
+                bucket: 'loose-ends',
+                disposition: 'watching',
+                reason: 'Needs attention.',
+                nudgeCount: 0,
+                addedAt: '2026-09-15T20:00:00.000Z',
+            }],
+        });
+    });
+
+    it('round-trips the last rendered board used for restart-safe edit comparison', async () => {
+        const dataDir = makeTempDir();
+        const watchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            lastRenderedBoard: '# Sentinel Board\n',
+        };
+
+        await writeSentinelWatchlist(dataDir, 'workspace-a', watchlist);
+
+        await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toEqual(watchlist);
+    });
+
+    it('evicts missing, archived, and long-resolved entries while retaining recent judgments', () => {
+        const watchlist: SentinelWatchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            entries: [
+                {
+                    processId: 'missing',
+                    bucket: 'failed',
+                    disposition: 'watching',
+                    reason: 'Missing',
+                    nudgeCount: 0,
+                    addedAt: '2026-09-01T00:00:00.000Z',
+                },
+                {
+                    processId: 'archived',
+                    bucket: 'failed',
+                    disposition: 'watching',
+                    reason: 'Archived',
+                    nudgeCount: 0,
+                    addedAt: '2026-09-01T00:00:00.000Z',
+                },
+                {
+                    processId: 'old-resolved',
+                    bucket: 'loose-ends',
+                    disposition: 'resolved',
+                    reason: 'Resolved',
+                    nudgeCount: 0,
+                    addedAt: '2026-07-01T00:00:00.000Z',
+                    resolvedAt: '2026-07-02T00:00:00.000Z',
+                },
+                {
+                    processId: 'muted',
+                    bucket: 'done-unread',
+                    disposition: 'muted',
+                    reason: 'Muted',
+                    nudgeCount: 1,
+                    addedAt: '2026-07-01T00:00:00.000Z',
+                },
+            ],
+        };
+
+        const reconciled = reconcileSentinelWatchlist(
+            watchlist,
+            { excludedProcessIds: ['sentinel-a'], entries: [] },
+            [
+                makeProcess('archived', { archived: true }),
+                makeProcess('old-resolved'),
+                makeProcess('muted'),
+            ],
+            NOW,
+        );
+
+        expect(reconciled.entries).toEqual([expect.objectContaining({
+            processId: 'muted',
+            disposition: 'muted',
+            nudgeCount: 1,
+        })]);
+    });
+
+    it('refreshes classifications without losing user intent or nudge history', () => {
+        const watchlist: SentinelWatchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            entries: [{
+                processId: 'chat-a',
+                bucket: 'failed',
+                disposition: 'muted',
+                reason: 'Old reason.',
+                nudgeCount: 2,
+                lastNudgedAt: '2026-09-16T20:00:00.000Z',
+                addedAt: '2026-09-15T20:00:00.000Z',
+            }],
+        };
+
+        const reconciled = reconcileSentinelWatchlist(
+            watchlist,
+            {
+                excludedProcessIds: ['sentinel-a'],
+                entries: [{
+                    processId: 'chat-a',
+                    bucket: 'blocked-on-you',
+                    reason: 'Waiting for your answer.',
+                }],
+            },
+            [makeProcess('chat-a')],
+            NOW,
+        );
+
+        expect(reconciled.entries).toEqual([{
+            processId: 'chat-a',
+            bucket: 'blocked-on-you',
+            disposition: 'muted',
+            reason: 'Waiting for your answer.',
+            nudgeCount: 2,
+            lastNudgedAt: '2026-09-16T20:00:00.000Z',
+            addedAt: '2026-09-15T20:00:00.000Z',
+        }]);
+    });
+
+    it('persists classifications as judgments without copying mutable process facts', async () => {
+        const dataDir = makeTempDir();
+        const boardStorage = createBoardStorage();
+        await writeSentinelWatchlist(
+            dataDir,
+            'workspace-a',
+            createSentinelWatchlist('sentinel-a', NOW),
+        );
+        const process = makeProcess('chat-a', {
+            status: 'failed',
+            stale: true,
+            archived: false,
+            lastEventAt: new Date('2026-09-16T20:30:00.000Z'),
+        });
+
+        const result = await persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-a',
+            processStore: createMockProcessStore({ initialProcesses: [process] }),
+            classification: {
+                excludedProcessIds: ['child-a', 'sentinel-a'],
+                entries: [{
+                    processId: 'chat-a',
+                    bucket: 'failed',
+                    reason: 'The chat was marked stale.',
+                }],
+            },
+            now: NOW,
+            boardStorage,
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            version: SENTINEL_WATCHLIST_VERSION,
+            sentinelProcessId: 'sentinel-a',
+            claimedAt: NOW.toISOString(),
+            excludedProcessIds: ['child-a', 'sentinel-a'],
+            entries: [{
+                processId: 'chat-a',
+                bucket: 'failed',
+                disposition: 'watching',
+                reason: 'The chat was marked stale.',
+                nudgeCount: 0,
+                addedAt: NOW.toISOString(),
+            }],
+            lastRenderedBoard: expect.stringContaining(
+                '- [x] [chat-a](#repos/workspace-a/activity/chat-a)',
+            ),
+        }));
+        expect(boardStorage.board?.content).toBe(result?.lastRenderedBoard);
+        expect(boardStorage.config).toBe(SENTINEL_CONFIG_TEMPLATE);
+        const serialized = fs.readFileSync(
+            getSentinelWatchlistPath(dataDir, 'workspace-a'),
+            'utf8',
+        );
+        expect(serialized).not.toMatch(/"status"|"stale"|"archived"|"lastEventAt"|"seenAt"/);
+    });
+
+    it('does not overwrite a missing or replacement owner during a tick', async () => {
+        const dataDir = makeTempDir();
+        const store = createMockProcessStore({ initialProcesses: [makeProcess('chat-a')] });
+        const boardStorage = createBoardStorage();
+        const classification = {
+            excludedProcessIds: ['sentinel-old'],
+            entries: [{
+                processId: 'chat-a',
+                bucket: 'loose-ends' as const,
+                reason: 'Follow-up was promised.',
+            }],
+        };
+
+        await expect(persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-old',
+            processStore: store,
+            classification,
+            now: NOW,
+            boardStorage,
+        })).resolves.toBeUndefined();
+
+        await writeSentinelWatchlist(
+            dataDir,
+            'workspace-a',
+            createSentinelWatchlist('sentinel-new', NOW),
+        );
+        await expect(persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-old',
+            processStore: store,
+            classification,
+            now: NOW,
+            boardStorage,
+        })).resolves.toBeUndefined();
+        await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toEqual(
+            createSentinelWatchlist('sentinel-new', NOW),
+        );
+    });
+
+    it('retries a concurrent board edit and folds the winning user intent', async () => {
+        const dataDir = makeTempDir();
+        const initial = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            entries: [{
+                processId: 'chat-a',
+                bucket: 'failed' as const,
+                disposition: 'watching' as const,
+                reason: 'The chat failed.',
+                nudgeCount: 0,
+                addedAt: NOW.toISOString(),
+            }],
+        };
+        const initialBoard = '# Sentinel Board\n\n'
+            + '- [x] [chat-a](#repos/workspace-a/activity/chat-a)'
+            + ' — The chat failed. <!-- sentinel:item:chat-a -->\n';
+        await writeSentinelWatchlist(dataDir, 'workspace-a', {
+            ...initial,
+            lastRenderedBoard: initialBoard,
+        });
+        const boardStorage = createBoardStorage({ content: initialBoard, mtimeMs: 1 });
+        const originalWrite = boardStorage.writeBoard.bind(boardStorage);
+        boardStorage.writeBoard = async (content, expectedMtimeMs) => {
+            if (boardStorage.writes === 0) {
+                boardStorage.writes += 1;
+                boardStorage.board = {
+                    content: initialBoard.replace('- [x]', '- [ ]'),
+                    mtimeMs: 2,
+                };
+                return false;
+            }
+            return originalWrite(content, expectedMtimeMs);
+        };
+
+        const result = await persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-a',
+            processStore: createMockProcessStore({
+                initialProcesses: [makeProcess('chat-a')],
+            }),
+            classification: {
+                excludedProcessIds: ['sentinel-a'],
+                entries: [{
+                    processId: 'chat-a',
+                    bucket: 'failed',
+                    reason: 'The chat failed.',
+                }],
+            },
+            now: NOW,
+            boardStorage,
+        });
+
+        expect(result?.entries[0]).toEqual(expect.objectContaining({
+            disposition: 'resolved',
+            resolvedAt: NOW.toISOString(),
+        }));
+        expect(result?.lastRenderedBoard).not.toContain('sentinel:item:chat-a');
+        expect(boardStorage.board?.content).toBe(result?.lastRenderedBoard);
+    });
+
+    it('fails rather than overwriting a board that keeps changing', async () => {
+        const dataDir = makeTempDir();
+        await writeSentinelWatchlist(
+            dataDir,
+            'workspace-a',
+            createSentinelWatchlist('sentinel-a', NOW),
+        );
+        const boardStorage = createBoardStorage({ content: 'user edit', mtimeMs: 1 });
+        boardStorage.writeBoard = async () => {
+            if (boardStorage.board) {
+                boardStorage.board.mtimeMs += 1;
+            }
+            return false;
+        };
+
+        await expect(persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-a',
+            processStore: createMockProcessStore({ initialProcesses: [makeProcess('chat-a')] }),
+            classification: {
+                excludedProcessIds: ['sentinel-a'],
+                entries: [{
+                    processId: 'chat-a',
+                    bucket: 'failed',
+                    reason: 'The chat failed.',
+                }],
+            },
+            now: NOW,
+            boardStorage,
+        })).rejects.toThrow('Sentinel board changed during 3 write attempts');
+        await expect(readSentinelWatchlist(dataDir, 'workspace-a')).resolves.toEqual(
+            createSentinelWatchlist('sentinel-a', NOW),
+        );
+    });
+
+    it('executes an approved nudge once after a board-conflict retry', async () => {
+        const dataDir = makeTempDir();
+        const process = makeProcess('chat-a');
+        const watchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            entries: [{
+                processId: 'chat-a',
+                bucket: 'failed' as const,
+                disposition: 'watching' as const,
+                reason: 'The chat failed.',
+                nudgeCount: 0,
+                addedAt: NOW.toISOString(),
+            }],
+        };
+        const rendered = renderSentinelBoard(
+            'workspace-a',
+            watchlist,
+            [process],
+            [{
+                processId: 'chat-a',
+                action: 'follow-up',
+                message: 'Please continue.',
+            }],
+        );
+        await writeSentinelWatchlist(dataDir, 'workspace-a', {
+            ...watchlist,
+            lastRenderedBoard: rendered,
+        });
+        const approved = rendered.replace(
+            '  - [ ] **Approve nudge:**',
+            '  - [x] **Approve nudge:**',
+        );
+        const boardStorage = createBoardStorage({ content: approved, mtimeMs: 1 });
+        const originalWrite = boardStorage.writeBoard.bind(boardStorage);
+        let conflict = true;
+        boardStorage.writeBoard = async (content, expectedMtimeMs) => {
+            if (conflict) {
+                conflict = false;
+                if (boardStorage.board) {
+                    boardStorage.board.mtimeMs = 2;
+                }
+                return false;
+            }
+            return originalWrite(content, expectedMtimeMs);
+        };
+        const nudgeExecutor = vi.fn().mockResolvedValue(undefined);
+
+        const result = await persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-a',
+            processStore: createMockProcessStore({ initialProcesses: [process] }),
+            classification: {
+                excludedProcessIds: ['sentinel-a'],
+                entries: [{
+                    processId: 'chat-a',
+                    bucket: 'failed',
+                    reason: 'The chat failed.',
+                }],
+            },
+            now: NOW,
+            boardStorage,
+            nudgeExecutor,
+        });
+
+        expect(nudgeExecutor).toHaveBeenCalledOnce();
+        expect(result?.entries[0]).toEqual(expect.objectContaining({
+            disposition: 'nudged',
+            nudgeCount: 1,
+        }));
+    });
+
+    it('checkpoints successful nudges before a later approved nudge fails', async () => {
+        const dataDir = makeTempDir();
+        const processes = [makeProcess('chat-a'), makeProcess('chat-b')];
+        const watchlist = {
+            ...createSentinelWatchlist('sentinel-a', NOW),
+            entries: ['chat-a', 'chat-b'].map(processId => ({
+                processId,
+                bucket: 'failed' as const,
+                disposition: 'watching' as const,
+                reason: 'The chat failed.',
+                nudgeCount: 0,
+                addedAt: NOW.toISOString(),
+            })),
+        };
+        const drafts = processes.map(process => ({
+            processId: process.id,
+            action: 'follow-up' as const,
+            message: 'Please continue.',
+        }));
+        const rendered = renderSentinelBoard('workspace-a', watchlist, processes, drafts);
+        await writeSentinelWatchlist(dataDir, 'workspace-a', {
+            ...watchlist,
+            lastRenderedBoard: rendered,
+        });
+        const approved = rendered.replace(/  - \[ \] \*\*Approve nudge:\*\*/g, (
+            '  - [x] **Approve nudge:**'
+        ));
+        const boardStorage = createBoardStorage({ content: approved, mtimeMs: 1 });
+        const nudgeExecutor = vi.fn()
+            .mockResolvedValueOnce(undefined)
+            .mockRejectedValueOnce(new Error('queue unavailable'));
+
+        await expect(persistSentinelClassification({
+            dataDir,
+            workspaceId: 'workspace-a',
+            sentinelProcessId: 'sentinel-a',
+            processStore: createMockProcessStore({ initialProcesses: processes }),
+            classification: {
+                excludedProcessIds: ['sentinel-a'],
+                entries: processes.map(process => ({
+                    processId: process.id,
+                    bucket: 'failed' as const,
+                    reason: 'The chat failed.',
+                })),
+            },
+            now: NOW,
+            boardStorage,
+            nudgeExecutor,
+        })).rejects.toThrow('queue unavailable');
+
+        const persisted = await readSentinelWatchlist(dataDir, 'workspace-a');
+        expect(persisted?.entries).toEqual([
+            expect.objectContaining({ processId: 'chat-a', nudgeCount: 1 }),
+            expect.objectContaining({ processId: 'chat-b', nudgeCount: 0 }),
+        ]);
+        expect(persisted?.lastRenderedBoard).not.toContain('sentinel:approve');
+    });
+});

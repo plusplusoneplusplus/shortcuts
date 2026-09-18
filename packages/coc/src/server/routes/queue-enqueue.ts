@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { getActiveModels, modelMetadataStore, ensureQueueProcessId, toQueueProcessId, isQueueProcessId, toTaskId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults, isEffortTierKey, resolveModelForProvider, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { getActiveModels, modelMetadataStore, ensureQueueProcessId, toQueueProcessId, isQueueProcessId, toTaskId, SqliteProcessStore, sdkServiceRegistry, mergeEffortTiersWithDefaults, isEffortTierKey, resolveModelForProvider, getLogger, LogCategory, generateTaskId } from '@plusplusoneplusplus/forge';
 import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import { setStaticConfigCacheHeaders } from '../shared/router';
@@ -34,8 +34,32 @@ import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { isInheritedLensChatMode, type ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
+import { claimSentinelOwnership } from '../sentinel/sentinel-ownership';
 
 type ResolvedDefaultProviderResolution = AutoProviderResolutionResult & { provider: ChatProvider };
+
+export class SentinelAlreadyExistsError extends Error {
+    readonly code = 'SENTINEL_ALREADY_EXISTS';
+
+    constructor(readonly existingProcessId: string) {
+        super('A Sentinel is already active in this workspace');
+        this.name = 'SentinelAlreadyExistsError';
+    }
+}
+
+function sendPrepareTaskError(res: Parameters<Route['handler']>[1], error: unknown): void {
+    if (error instanceof SentinelAlreadyExistsError) {
+        sendJSON(res, 409, {
+            error: error.message,
+            code: error.code,
+            existingProcessId: error.existingProcessId,
+            actions: ['open', 'replace'],
+        });
+        return;
+    }
+    const message = error instanceof Error ? error.message : 'Failed to prepare task';
+    sendError(res, 400, message);
+}
 
 export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, globalWorkspaceRootPath, state } = ctx;
@@ -134,8 +158,8 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
         try {
             await prepareTaskForEnqueue(validation.input!, ctx);
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'Failed to resolve provider or effort tier';
-            return sendError(res, 400, message);
+            sendPrepareTaskError(res, err);
+            return;
         }
 
         // For brand-new chat tasks, the SPA sends raw data-URL attachments on
@@ -235,8 +259,8 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             try {
                 await prepareTaskForEnqueue(validation.input!, ctx);
             } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to resolve provider or effort tier';
-                return sendError(res, 400, message);
+                sendPrepareTaskError(res, err);
+                return;
             }
 
             try {
@@ -446,9 +470,64 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 /**
  * @internal exported for tests
  */
-export async function prepareTaskForEnqueue(input: CreateTaskInput, ctx: Pick<QueueRouteContext, 'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive' | 'getEffortTiersForProvider'>): Promise<void> {
+export async function prepareTaskForEnqueue(
+    input: CreateTaskInput,
+    ctx: Pick<
+        QueueRouteContext,
+        'getDefaultProvider' | 'resolveDefaultProvider' | 'isAutoProviderRoutingActive'
+        | 'getEffortTiersForProvider' | 'dataDir' | 'store' | 'cancelSentinelCron'
+    >,
+): Promise<void> {
     await resolveDefaultProviderForTask(input, ctx);
     resolveEffortTierConfig(input, ctx);
+    await prepareSentinelAdmission(input, ctx);
+}
+
+/**
+ * Claims the workspace Sentinel slot before a new chat enters any queue.
+ * Assigning the task ID here keeps the file owner identical to the process ID
+ * that the lifecycle runner will persist.
+ */
+export async function prepareSentinelAdmission(
+    input: CreateTaskInput,
+    ctx: Pick<QueueRouteContext, 'dataDir' | 'store' | 'cancelSentinelCron'>,
+): Promise<void> {
+    const payload = input.payload as Record<string, unknown>;
+    if (input.type !== 'chat'
+        || payload.kind !== 'chat'
+        || payload.mode !== 'sentinel'
+        || typeof payload.processId === 'string') {
+        return;
+    }
+    if (!ctx.dataDir || !ctx.store) {
+        throw new Error('Sentinel admission requires the server data directory and process store');
+    }
+    const workspaceId = typeof payload.workspaceId === 'string' ? payload.workspaceId.trim() : '';
+    if (!workspaceId) {
+        throw new Error('Sentinel chats require a workspaceId');
+    }
+    const replaceProcessId = typeof payload.replaceSentinelProcessId === 'string'
+        ? payload.replaceSentinelProcessId.trim()
+        : '';
+    if (replaceProcessId && !ctx.cancelSentinelCron) {
+        throw new Error('Sentinel replacement requires cron infrastructure');
+    }
+
+    input.id ??= generateTaskId();
+    const result = await claimSentinelOwnership({
+        dataDir: ctx.dataDir,
+        workspaceId,
+        processId: toQueueProcessId(input.id),
+        processStore: ctx.store,
+        ...(replaceProcessId ? { replaceProcessId } : {}),
+    });
+    if (result.status === 'existing') {
+        throw new SentinelAlreadyExistsError(result.processId);
+    }
+    delete payload.replaceSentinelProcessId;
+    if (result.replacedProcessId) {
+        ctx.cancelSentinelCron?.(result.replacedProcessId);
+    }
 }
 
 /**
