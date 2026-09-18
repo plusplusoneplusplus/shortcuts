@@ -86,6 +86,26 @@ impl Server {
     }
 }
 
+/// Sends `initialized` and waits for the cold index build to finish, so queries
+/// that follow run against a populated store rather than racing it.
+pub fn index(server: &mut Server) {
+    server.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    server.receive_matching(|message| {
+        message.get("method") == Some(&json!("$/progress"))
+            && message["params"]["value"]["kind"] == json!("end")
+    });
+}
+
+pub fn request(server: &mut Server, id: i64, method: &str, params: Value) -> Value {
+    server.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+    let response = server.receive_matching(|message| message.get("id") == Some(&json!(id)));
+    response["result"].clone()
+}
+
+pub fn file_uri(path: &Path) -> String {
+    format!("file://{}", path.to_string_lossy().replace('\\', "/"))
+}
+
 pub fn initialize(server: &mut Server, root: &Path) -> Value {
     let root_uri = format!("file://{}", root.to_string_lossy().replace('\\', "/"));
     server.send(json!({

@@ -495,7 +495,7 @@ fn configuration_for_path<'a>(
     }
 }
 
-fn is_c_family_path(path: &str) -> bool {
+pub fn is_c_family_path(path: &str) -> bool {
     configuration_extension(path).is_some()
 }
 

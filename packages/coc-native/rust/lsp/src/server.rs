@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use coc_native_core::symbol_index::{
-    ExtractionLimits, SymbolStore, SyncProgress, SyncProgressPhase,
+    is_c_family_path, ExtractionLimits, SymbolStore, SyncProgress, SyncProgressPhase,
 };
 use serde_json::{json, Value};
 
 use crate::framing::read_message;
+use crate::indexer::Indexer;
 use crate::locations::{symbol_information, symbol_location, LineCache};
 use crate::positions::word_at;
 use crate::transport::Transport;
@@ -57,6 +58,8 @@ struct Server {
     options: ServerOptions,
     root: Option<PathBuf>,
     store: Option<Arc<SymbolStore>>,
+    /// Serial re-index queue for saved files. Present whenever a store opened.
+    indexer: Option<Indexer>,
     initialized: bool,
     shutdown_requested: bool,
 }
@@ -74,6 +77,7 @@ pub fn run(
         options,
         root: None,
         store: None,
+        indexer: None,
         initialized: false,
         shutdown_requested: false,
     };
@@ -155,10 +159,14 @@ impl Server {
         Flow::Continue
     }
 
-    fn handle_notification(&mut self, method: &str, _message: &Value) -> Flow {
+    fn handle_notification(&mut self, method: &str, message: &Value) -> Flow {
         match method {
             "initialized" => {
                 self.start_index_build();
+                Flow::Continue
+            }
+            "textDocument/didSave" => {
+                self.reindex_saved_document(message.get("params").unwrap_or(&Value::Null));
                 Flow::Continue
             }
             "exit" => Flow::Exit(if self.shutdown_requested { 0 } else { 1 }),
@@ -174,7 +182,14 @@ impl Server {
         let database = self.database_path();
         let mut index_error = None;
         match database.as_deref().map(open_store) {
-            Some(Ok(store)) => self.store = Some(Arc::new(store)),
+            Some(Ok(store)) => {
+                let store = Arc::new(store);
+                if let Some(root) = self.root.clone() {
+                    self.indexer =
+                        Some(Indexer::start(root, store.clone(), self.transport.clone()));
+                }
+                self.store = Some(store);
+            }
             Some(Err(error)) => index_error = Some(error),
             None => index_error = Some("no workspace root and no --database argument".to_string()),
         }
@@ -268,6 +283,27 @@ impl Server {
                 .map(|symbol| symbol_location(&mut cache, root, symbol))
                 .collect(),
         )
+    }
+
+    /// `textDocument/didSave` — queue the saved file for a targeted re-index.
+    ///
+    /// The store is keyed on repository-relative paths, so a document outside the root has no
+    /// row to update and is ignored rather than guessed at. Non-C-family saves are dropped here
+    /// instead of in the store: every save in the editor arrives on this notification, and
+    /// handing the worker a `.ts` file only to have it decide there is nothing to parse would
+    /// wake the queue on every keystroke-adjacent write in the tree.
+    fn reindex_saved_document(&self, params: &Value) {
+        let (Some(indexer), Some(root)) = (self.indexer.as_ref(), self.root.as_ref()) else {
+            return;
+        };
+        let Some(relative) = document_path(params).and_then(|path| relative_path(root, &path))
+        else {
+            return;
+        };
+        if !is_c_family_path(&relative) {
+            return;
+        }
+        indexer.submit(relative);
     }
 
     /// The identifier at a request's position, read from disk for the reason [`Self::definition`]

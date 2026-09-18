@@ -3,30 +3,8 @@
 
 mod harness;
 
-use std::path::Path;
-
-use harness::{initialize, Server};
+use harness::{file_uri, index, initialize, request, Server};
 use serde_json::{json, Value};
-
-/// Sends `initialized` and waits for the index build to finish, so the queries
-/// that follow run against a populated store rather than racing it.
-fn index(server: &mut Server) {
-    server.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
-    server.receive_matching(|message| {
-        message.get("method") == Some(&json!("$/progress"))
-            && message["params"]["value"]["kind"] == json!("end")
-    });
-}
-
-fn request(server: &mut Server, id: i64, method: &str, params: Value) -> Value {
-    server.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
-    let response = server.receive_matching(|message| message.get("id") == Some(&json!(id)));
-    response["result"].clone()
-}
-
-fn file_uri(path: &Path) -> String {
-    format!("file://{}", path.to_string_lossy().replace('\\', "/"))
-}
 
 /// A tiny two-file repository: the definition of `compute` lives in one
 /// translation unit and the call site in another, which is the cross-TU case
