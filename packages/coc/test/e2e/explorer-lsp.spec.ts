@@ -121,22 +121,6 @@ function createCppSymbolRepoFixture(tmpDir: string): string {
     return repoDir;
 }
 
-async function waitForSymbolIndex(
-    serverUrl: string,
-    workspaceId: string,
-    symbol: string,
-    expectedCount = 2,
-): Promise<void> {
-    await expect.poll(async () => {
-        const response = await request(
-            `${serverUrl}/api/repos/${encodeURIComponent(workspaceId)}/search/symbols?q=${encodeURIComponent(symbol)}`,
-        );
-        if (response.status !== 200) return false;
-        const body = JSON.parse(response.body) as { indexed?: boolean; results?: unknown[] };
-        return body.indexed === true && body.results?.length === expectedCount;
-    }, { timeout: 30_000 }).toBe(true);
-}
-
 /** Navigate to the repo detail and click the Explorer sub-tab. */
 async function gotoExplorer(page: Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
@@ -744,8 +728,6 @@ test.describe('Explorer language support – TypeScript and definition features'
             await seedWorkspace(serverUrl, WORKSPACE_ID, 'cpp-symbol-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
             await enableLanguageServers(serverUrl, WORKSPACE_ID);
-            await waitForSymbolIndex(serverUrl, WORKSPACE_ID, 'target');
-
             await gotoExplorer(page, serverUrl);
             await openSourceFile(page, 'app.cpp');
 

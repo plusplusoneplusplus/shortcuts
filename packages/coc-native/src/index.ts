@@ -51,15 +51,6 @@ export {
     SymbolsLspBinaryError,
 } from './symbols-lsp';
 
-export { loadNativeSymbolIndex, nativeSymbolIndexStatus } from './symbol-index';
-export type {
-    NativeSymbolIndex,
-    NativeSymbolIndexAddon,
-    NativeSymbolIndexBuildProgress,
-    NativeSymbolMatch,
-    NativeSymbolSearchOptions,
-} from './symbol-index';
-
 export {
     loadNativeDangerousCommandGuard,
     nativeDangerousCommandGuardStatus,

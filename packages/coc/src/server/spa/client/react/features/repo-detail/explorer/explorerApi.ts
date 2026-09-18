@@ -10,8 +10,6 @@ import type {
     ExplorerFilesResponse,
     ExplorerSearchOptions,
     ExplorerSearchResponse,
-    ExplorerSymbolSearchOptions,
-    ExplorerSymbolSearchResponse,
     ExplorerTreeOptions,
     ExplorerTreeResponse,
 } from '@plusplusoneplusplus/coc-client';
@@ -51,16 +49,6 @@ export const explorerApi = {
     ): Promise<ExplorerContentSearchResponse> {
         return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
             .explorer.searchContent(workspaceId, query, options);
-    },
-
-    searchSymbols(
-        workspaceId: string,
-        query: string,
-        options?: ExplorerSymbolSearchOptions & Pick<CocRequestOptions, 'signal'>,
-        routingRef?: string | null,
-    ): Promise<ExplorerSymbolSearchResponse> {
-        return getCocClientForWorkspace(routingRef === undefined ? workspaceId : routingRef)
-            .explorer.searchSymbols(workspaceId, query, options);
     },
 
     replaceContent(
