@@ -180,6 +180,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => mockConfig.ralphEnabled,
     isForEachEnabled: () => mockConfig.forEachEnabled,
     isMapReduceEnabled: () => false,
+    isSentinelEnabled: () => false,
     isCronEnabled: () => mockConfig.cronEnabled,
     isCanvasEnabled: () => false,
     isCodexEnabled: () => false,

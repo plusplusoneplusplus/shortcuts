@@ -14,7 +14,7 @@ import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/types';
-import { ORDER_FILE_NAME } from '../../src/server/notes/notes-constants';
+import { ORDER_FILE_NAME, SYSTEM_FOLDER_NAMES } from '../../src/server/notes/notes-constants';
 
 // ── HTTP helpers ───────────────────────────────────────────────────────
 
@@ -131,6 +131,19 @@ describe('Notes Order — Integration', () => {
         fs.writeFileSync(path.join(dir, ORDER_FILE_NAME), JSON.stringify({ order }, null, 2), 'utf-8');
     }
 
+    /**
+     * Default sibling order for directories: case-insensitive alphabetical,
+     * the same collation the native notes_fs scan applies. The auto-created
+     * system folders sort in among the caller's own directories, so tests mix
+     * them in here rather than hard-coding a position that shifts whenever
+     * SYSTEM_FOLDER_NAMES grows.
+     */
+    function defaultDirOrder(...names: string[]): string[] {
+        return [...names, ...SYSTEM_FOLDER_NAMES].sort((a, b) =>
+            a.toLowerCase().localeCompare(b.toLowerCase()),
+        );
+    }
+
     function readOrder(relDir: string): string[] {
         try {
             const raw = fs.readFileSync(path.join(notesDir(), relDir, ORDER_FILE_NAME), 'utf-8');
@@ -155,11 +168,12 @@ describe('Notes Order — Integration', () => {
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             const tree = JSON.parse(res.body).tree;
 
-            // Default: dirs first (alpha, Plans, zebra — case-insensitive a < p < z), then files (note.md)
-            expect(tree[0].name).toBe('alpha');
-            expect(tree[1].name).toBe('Plans');
-            expect(tree[2].name).toBe('zebra');
-            expect(tree[3].name).toBe('note.md');
+            // Default: dirs first (alpha/zebra plus the auto-created system
+            // folders, case-insensitive), then files (note.md)
+            expect(tree.map((node: { name: string }) => node.name)).toEqual([
+                ...defaultDirOrder('alpha', 'zebra'),
+                'note.md',
+            ]);
         });
 
         it('returns tree in custom order when .order.json is present at root', async () => {
@@ -197,15 +211,16 @@ describe('Notes Order — Integration', () => {
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             const tree = JSON.parse(res.body).tree;
 
-            // gamma and alpha come first (explicitly ordered)
-            expect(tree[0].name).toBe('gamma');
-            expect(tree[1].name).toBe('alpha');
-            // Then unlisted items in default order (dirs before files, alphabetical)
-            // beta and Plans are unlisted dirs (b < p), then pages
-            expect(tree[2].name).toBe('beta');
-            expect(tree[3].name).toBe('Plans');
-            expect(tree[4].name).toBe('a-page.md');
-            expect(tree[5].name).toBe('z-page.md');
+            // gamma and alpha come first (explicitly ordered), then the
+            // unlisted items in default order: dirs (beta plus the system
+            // folders) before files.
+            expect(tree.map((node: { name: string }) => node.name)).toEqual([
+                'gamma',
+                'alpha',
+                ...defaultDirOrder('beta'),
+                'a-page.md',
+                'z-page.md',
+            ]);
         });
 
         it('applies .order.json inside a nested notebook', async () => {

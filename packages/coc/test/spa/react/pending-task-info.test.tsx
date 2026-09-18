@@ -39,6 +39,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isChatStyleSelectorEnabled: () => false,
     getDefaultChatStyle: () => 'default',
     isForEachEnabled: () => false,
+    isSentinelEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
     isSessionContextAttachmentsEnabled: () => false,
