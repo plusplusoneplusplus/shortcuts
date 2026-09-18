@@ -62,6 +62,30 @@ test("release workflow builds the native addon on all six supported targets", ()
     }
 });
 
+test("release workflow ships the symbols language server with the addon", () => {
+    // One build job produces both artifacts, and every consumer resolves them
+    // from the same `prebuilt/<triple>/` directory. A release that uploads only
+    // the addon leaves C-family navigation with clangd alone — which returns
+    // empty for cross-TU definitions on the repositories this targets.
+    const job = jobBlock("build-native");
+    assert.match(job, /coc-symbols-lsp\.\$\{\{ matrix\.triple \}\}/, "the binary must be uploaded");
+    assert.match(job, /coc-symbols-lsp\.\$\{\{ matrix\.triple \}\}\.exe/, "Windows names it .exe");
+    assert.match(job, /ls "packages\/coc-native\/coc-symbols-lsp/, "the build must verify it exists");
+
+    for (const [name, triple] of [
+        ["build-mac", "darwin-arm64"],
+        ["build-win", "win32-x64-msvc"],
+        ["build-docker", "linux-x64-gnu"],
+    ]) {
+        const suffix = triple.startsWith("win32") ? "\\.exe" : "";
+        assert.match(
+            jobBlock(name),
+            new RegExp(`prebuilt/${triple}/coc-symbols-lsp\\.${triple}${suffix}`),
+            `${name} must verify the staged ${triple} language server`,
+        );
+    }
+});
+
 test("desktop builds download only the native addon for their architecture", () => {
     assert.match(jobBlock("build-mac"), /name: coc-native-darwin-arm64/);
     assert.doesNotMatch(jobBlock("build-mac"), /pattern: coc-native-darwin-\*/);

@@ -13,11 +13,13 @@
   "files": [
     "dist",
     "prebuilt",
-    "*.node"
+    "*.node",
+    "coc-symbols-lsp.*"
   ],
   "scripts": {
     "build": "tsc",
     "build:native": "node scripts/build-native.mjs",
+    "build:symbols-lsp": "node scripts/build-symbols-lsp.mjs",
     "ensure:native": "node scripts/ensure-native.mjs",
     "bench:git": "node scripts/bench-git.mjs",
     "bench:symbol-index": "node scripts/bench-symbol-index.mjs",

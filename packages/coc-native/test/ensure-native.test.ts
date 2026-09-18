@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 // @ts-expect-error — a .mjs build script with no type declarations.
 import {
+    builtBinaryPaths,
     checkStaleness,
     ensureNative,
     installRust,
@@ -20,6 +21,7 @@ import {
 } from '../scripts/ensure-native.mjs';
 
 const BINARY = '/pkg/coc-native.linux-x64-gnu.node';
+const LSP = '/pkg/coc-symbols-lsp.linux-x64-gnu';
 const RUST = '/pkg/rust';
 
 const silentLogger = { error() {}, log() {}, warn() {} };
@@ -73,6 +75,30 @@ describe('checkStaleness', () => {
         expect(result.stale).toBe(true);
     });
 
+    // One `build:native` run produces the addon and the stdio language server,
+    // so a tree with only one of them current is a half-finished build and has
+    // to rebuild — otherwise the fresher artifact hides the missing one forever.
+    it('is stale when only the language server is missing', () => {
+        const result = checkStaleness([BINARY, LSP], RUST, {
+            exists: (p: string) => p !== LSP,
+            mtimeOf: () => 500,
+            listSources: () => [],
+        });
+
+        expect(result.stale).toBe(true);
+        expect(result.reason).toContain('coc-symbols-lsp');
+    });
+
+    it('compares sources against the oldest of several binaries', () => {
+        const result = checkStaleness([BINARY, LSP], RUST, {
+            exists: () => true,
+            mtimeOf: (p: string) => (p === BINARY ? 900 : p === LSP ? 200 : 500),
+            listSources: () => [`${RUST}/core/src/lib.rs`],
+        });
+
+        expect(result.stale).toBe(true);
+    });
+
     it('ignores a source that disappears mid-walk', () => {
         const result = checkStaleness(BINARY, RUST, {
             exists: () => true,
@@ -84,6 +110,14 @@ describe('checkStaleness', () => {
         });
 
         expect(result.stale).toBe(false);
+    });
+});
+
+describe('builtBinaryPaths', () => {
+    it('gates on both artifacts the native build produces', () => {
+        const paths = builtBinaryPaths('/pkg').map((p: string) => path.basename(p));
+        expect(paths.some((name: string) => name.endsWith('.node'))).toBe(true);
+        expect(paths.some((name: string) => name.startsWith('coc-symbols-lsp'))).toBe(true);
     });
 });
 

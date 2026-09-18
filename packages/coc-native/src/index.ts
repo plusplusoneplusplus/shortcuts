@@ -42,6 +42,15 @@ export type {
     NativeContentSearchResult,
 } from './content-search';
 
+export {
+    loadSymbolsLspBinary,
+    resetSymbolsLspCache,
+    symbolsLspBinaryCandidates,
+    symbolsLspBinaryName,
+    symbolsLspStatus,
+    SymbolsLspBinaryError,
+} from './symbols-lsp';
+
 export { loadNativeSymbolIndex, nativeSymbolIndexStatus } from './symbol-index';
 export type {
     NativeSymbolIndex,
