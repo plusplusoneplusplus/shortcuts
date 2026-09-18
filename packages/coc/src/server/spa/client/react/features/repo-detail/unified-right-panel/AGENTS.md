@@ -50,6 +50,7 @@ from same-id clones never merge into one tab.
 | `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/mode/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — resource views on the left, the selected Search/Explorer mode on the right edge. |
 | `unifiedPanelNavigationHistory.ts` | Pure in-memory file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, and closed-tab pruning. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | Session-only history keyed by panel scope, plus pure Alt+Arrow and auxiliary mouse-button classification. |
+| `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
 | `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
@@ -260,13 +261,16 @@ unsaved buffer still get their prompts. `ExplorerPanel`'s own Ctrl+W handler is
 independent and self-gates on its own root; there is deliberately no shared
 helper.
 
-## Ctrl/Cmd+F focuses the file filter
+## Ctrl/Cmd+F follows navigator focus (`findRouting.ts`)
 
-When Explorer is the visible navigator and keyboard focus is inside the open
-right panel, Ctrl/Cmd+F focuses Explorer's **Filter files** input. The panel
-claims the key in the capture phase so the behavior also works from Monaco;
-Ctrl/Cmd+Shift+F remains available for workspace search. Search mode, a hidden
-or narrow navigator, and focus outside the panel leave native find unchanged.
+The Explorer navigator owns Ctrl/Cmd+F only when it is visible and keyboard
+focus is inside its column. It focuses Explorer's **Filter files** input and
+claims the key in the capture phase to beat `ExplorerPanel`'s bubble listener.
+Focus in the content column stays with the active resource, so Monaco and diff
+views open their own find widgets and terminals retain native find-in-page.
+Focus on panel chrome, Search mode, a hidden or narrow navigator, and a closed
+panel leave the key unchanged. Ctrl/Cmd+Shift+F remains available for workspace
+search.
 
 ## The preview slot
 
@@ -502,7 +506,9 @@ ways.
 `Unified*` cover the model, store, strip, shell, menu, per-kind views, both close
 guards, terminal-session survival, the Ctrl+P routing matrix, the Ctrl/Cmd+W
 close-tab shortcut (`closeTabRouting.test.ts`,
-`UnifiedPanelCloseTabShortcut.test.tsx`), and the canvas
+`UnifiedPanelCloseTabShortcut.test.tsx`), the navigator-scoped Ctrl/Cmd+F rule
+(`findRouting.test.ts`, `UnifiedPanelQuickOpen.test.tsx`, and the diff case in
+`UnifiedPanelResourceTabs.test.tsx`), and the canvas
 event relay. Entry-point rerouting is tested where the
 entry point lives — `test/spa/react/repos/ChatDetailCanvasClosed.test.tsx` holds
 the diff, source-link, note-link, and canvas cases, plus the guard that the chat

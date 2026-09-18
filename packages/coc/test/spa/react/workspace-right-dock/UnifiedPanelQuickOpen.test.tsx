@@ -28,7 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPa
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
     ExplorerPanel: ({ workspaceId, mode }: { workspaceId: string; mode?: string }) => (
-        <div data-testid="mock-explorer" data-mode={mode}>
+        <div data-testid="mock-explorer" data-mode={mode} tabIndex={0}>
             explorer:{workspaceId}
             <input data-testid="explorer-search-input" placeholder="Filter files…" />
         </div>
@@ -93,7 +93,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
     },
 }));
 vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor', () => ({
-    MonacoFileEditor: () => <div data-testid="mock-monaco" />,
+    MonacoFileEditor: () => <textarea data-testid="mock-monaco" />,
     getMonacoLanguage: () => 'plaintext',
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
@@ -116,6 +116,7 @@ import {
     clearUnifiedPanelState,
     readUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import {
     clearUnifiedTreeState,
     readUnifiedTreeState,
@@ -222,16 +223,16 @@ describe('unified panel quick open', () => {
         expect(screen.getByTestId('quick-open-dialog')).toBeTruthy();
     });
 
-    it('focuses Filter files on Ctrl+F when focus is in the right panel Explorer view', () => {
+    it('focuses Filter files on Ctrl+F when focus is in the Explorer navigator', () => {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         renderPanel();
-        const focusable = screen.getByTestId('unified-panel-resize-handle');
-        focusable.focus();
+        const explorer = screen.getByTestId('mock-explorer');
+        explorer.focus();
 
         const bubbled = vi.fn();
         document.addEventListener('keydown', bubbled);
         try {
-            const event = pressFind(focusable);
+            const event = pressFind(explorer);
             expect(event.defaultPrevented).toBe(true);
             expect(document.activeElement).toBe(screen.getByTestId('explorer-search-input'));
             expect(bubbled).not.toHaveBeenCalled();
@@ -243,37 +244,81 @@ describe('unified panel quick open', () => {
     it('focuses Filter files on Cmd+F too', () => {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         renderPanel();
-        const focusable = screen.getByTestId('unified-panel-resize-handle');
-        focusable.focus();
+        const explorer = screen.getByTestId('mock-explorer');
+        explorer.focus();
 
-        expect(pressFind(focusable, { metaKey: true }).defaultPrevented).toBe(true);
+        expect(pressFind(explorer, { metaKey: true }).defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(screen.getByTestId('explorer-search-input'));
     });
 
-    it('leaves Ctrl+F alone outside the panel and outside Explorer mode', () => {
+    it('leaves Ctrl+F to a mounted file view in the content column', async () => {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
-        const { rerender } = renderPanel();
+        openUnifiedPanelTab(WS, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/app.ts', label: 'app.ts',
+        });
+        renderPanel();
+        const editor = await screen.findByTestId('mock-monaco');
+        editor.focus();
+
+        const bubbled = vi.fn();
+        document.addEventListener('keydown', bubbled);
+        try {
+            const event = pressFind(editor);
+            expect(event.defaultPrevented).toBe(false);
+            expect(document.activeElement).toBe(editor);
+            expect(bubbled).toHaveBeenCalledOnce();
+        } finally {
+            document.removeEventListener('keydown', bubbled);
+        }
+    });
+
+    it('leaves Ctrl+F alone on the tab strip chrome', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 220 });
+        renderPanel();
+        const openMenu = screen.getByTestId('unified-panel-open-menu');
+        openMenu.focus();
+
+        expect(pressFind(openMenu).defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(openMenu);
+    });
+
+    it('leaves Ctrl+F alone outside the panel', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 220 });
+        renderPanel();
         const outside = document.createElement('button');
         document.body.appendChild(outside);
         outside.focus();
 
         expect(pressFind(outside).defaultPrevented).toBe(false);
+        outside.remove();
+    });
+
+    it('leaves Ctrl+F alone when Explorer is not visible or the panel is closed', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 220 });
+        const { rerender } = renderPanel();
+        const explorer = screen.getByTestId('mock-explorer');
 
         rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ mode: 'search' })} />);
-        const focusable = screen.getByTestId('unified-panel-resize-handle');
-        focusable.focus();
-        expect(pressFind(focusable).defaultPrevented).toBe(false);
-        outside.remove();
+        explorer.focus();
+        expect(pressFind(explorer).defaultPrevented).toBe(false);
+
+        rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ width: 300 })} />);
+        explorer.focus();
+        expect(pressFind(explorer).defaultPrevented).toBe(false);
+
+        rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);
+        explorer.focus();
+        expect(pressFind(explorer).defaultPrevented).toBe(false);
     });
 
     it('keeps Ctrl+Shift+F available for workspace search', () => {
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         renderPanel();
-        const focusable = screen.getByTestId('unified-panel-resize-handle');
-        focusable.focus();
+        const explorer = screen.getByTestId('mock-explorer');
+        explorer.focus();
 
-        expect(pressFind(focusable, { shiftKey: true }).defaultPrevented).toBe(false);
-        expect(document.activeElement).toBe(focusable);
+        expect(pressFind(explorer, { shiftKey: true }).defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(explorer);
     });
 
     it('opens Exact Open on Ctrl+O, and only one dialog at a time', () => {

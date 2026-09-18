@@ -74,6 +74,7 @@ import {
     quickOpenShortcut,
 } from './quickOpenRouting';
 import { closeTabOutcome, closeTabShortcut } from './closeTabRouting';
+import { findFilterOwner, findFilterShortcut } from './findRouting';
 import {
     keyboardNavigationDirection,
     mouseNavigationDirection,
@@ -922,36 +923,33 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         return () => document.removeEventListener('keydown', onKeyDown, true);
     }, [isOpen, quickOpenVisible, exactOpenVisible, repoGroup]);
 
-    // While the visible navigator is the file tree, Ctrl/Cmd+F belongs to its
-    // filter. Claim it in capture phase so Monaco's find widget and the native
-    // browser/Electron find bar do not open first when focus is in a resource
-    // view on the other side of this panel.
+    // The visible Explorer navigator owns Ctrl/Cmd+F only while focus is inside
+    // that column. Capture beats ExplorerPanel's bubble listener without
+    // taking the shortcut from Monaco, diffs, terminals, or panel chrome.
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
-            if (
-                !(event.ctrlKey || event.metaKey)
-                || event.altKey
-                || event.shiftKey
-                || event.key.toLowerCase() !== 'f'
-                || !isOpen
-                || mode !== 'explorer'
-                || !modeColumnVisible
-            ) return;
+            if (findFilterShortcut(event) === null) return;
             const root = panelRootRef.current;
+            const column = root?.querySelector<HTMLElement>(
+                '[data-testid="unified-panel-explorer-mode"]',
+            ) ?? null;
+            const filter = column?.querySelector<HTMLInputElement>(
+                '[data-testid="explorer-search-input"]',
+            ) ?? null;
             const focused = document.activeElement;
-            if (
-                root === null
-                || focused === null
-                || focused === document.body
-                || !root.contains(focused)
-            ) return;
-            const filter = root.querySelector<HTMLInputElement>(
-                '[data-testid="unified-panel-explorer-mode"] [data-testid="explorer-search-input"]',
-            );
-            if (filter === null) return;
+            const outcome = findFilterOwner({
+                panelOpen: isOpen,
+                explorerNavigatorVisible: mode === 'explorer' && modeColumnVisible,
+                focusInNavigatorColumn: column !== null
+                    && focused !== null
+                    && focused !== document.body
+                    && column.contains(focused),
+                filterPresent: filter !== null,
+            });
+            if (outcome === 'ignore') return;
             event.preventDefault();
             event.stopPropagation();
-            filter.focus();
+            filter?.focus();
         };
         document.addEventListener('keydown', onKeyDown, true);
         return () => document.removeEventListener('keydown', onKeyDown, true);

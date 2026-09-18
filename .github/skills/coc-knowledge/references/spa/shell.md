@@ -257,6 +257,11 @@ page retains it. Tab descriptors (never document bodies, terminal output, or
 credentials) persist per panel scope in localStorage. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
+Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the
+visible Explorer navigator column. Content tabs keep their own find behavior,
+including Monaco and diff find widgets, while panel chrome falls through to
+native find.
+
 Content-search rows group hits by repo-relative file path and consume the search
 response's line number plus adjacent `before`/`after` lines, so the navigator can
 show source context without issuing per-result file reads.
