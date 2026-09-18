@@ -26,6 +26,17 @@ const LOG_INFO: i64 = 3;
 /// Dropping it closes the channel, which is what ends the worker — so the
 /// server holds one for the whole session and lets process exit clean it up.
 pub struct Indexer {
+    queue: IndexQueue,
+}
+
+/// A cloneable handle onto one [`Indexer`]'s queue.
+///
+/// The dispatch loop reaches the worker through the `Indexer` it owns; the
+/// filesystem watcher lives on its own thread and holds one of these instead,
+/// so both feed the same serial worker and a file touched by a save and by the
+/// watcher at once is still parsed once.
+#[derive(Clone)]
+pub struct IndexQueue {
     sender: Sender<String>,
 }
 
@@ -61,11 +72,21 @@ impl Indexer {
                 transport.notify("window/logMessage", message);
             }
         });
-        Self { sender }
+        Self { queue: IndexQueue { sender } }
     }
 
     /// Queues one repository-relative path. A closed channel means the worker
     /// is gone, which only happens on the way out; the save is dropped.
+    pub fn submit(&self, relative: String) {
+        self.queue.submit(relative);
+    }
+
+    pub fn queue(&self) -> IndexQueue {
+        self.queue.clone()
+    }
+}
+
+impl IndexQueue {
     pub fn submit(&self, relative: String) {
         let _ = self.sender.send(relative);
     }

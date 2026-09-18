@@ -13,6 +13,7 @@ mod positions;
 mod server;
 mod transport;
 mod uri;
+mod watcher;
 
 use std::io::{self, BufReader};
 use std::path::PathBuf;

@@ -16,6 +16,7 @@ use crate::locations::{symbol_information, symbol_location, LineCache};
 use crate::positions::word_at;
 use crate::transport::Transport;
 use crate::uri::uri_to_path;
+use crate::watcher::FileWatcher;
 
 /// Where the index lands when the host did not name a file. The host always
 /// does — `coc-symbols` is prepared with `--database` pointing at
@@ -60,6 +61,8 @@ struct Server {
     store: Option<Arc<SymbolStore>>,
     /// Serial re-index queue for saved files. Present whenever a store opened.
     indexer: Option<Indexer>,
+    /// Kept alive for the session; dropping it stops the recursive watch.
+    watcher: Option<FileWatcher>,
     initialized: bool,
     shutdown_requested: bool,
 }
@@ -78,6 +81,7 @@ pub fn run(
         root: None,
         store: None,
         indexer: None,
+        watcher: None,
         initialized: false,
         shutdown_requested: false,
     };
@@ -185,8 +189,15 @@ impl Server {
             Some(Ok(store)) => {
                 let store = Arc::new(store);
                 if let Some(root) = self.root.clone() {
-                    self.indexer =
-                        Some(Indexer::start(root, store.clone(), self.transport.clone()));
+                    let indexer =
+                        Indexer::start(root.clone(), store.clone(), self.transport.clone());
+                    // The watcher shares the indexer's queue, so a change the
+                    // editor also reported as a save is parsed once. It starts
+                    // here rather than at `initialized` so nothing written
+                    // between the two is missed.
+                    self.watcher =
+                        crate::watcher::start(root, indexer.queue(), self.transport.clone());
+                    self.indexer = Some(indexer);
                 }
                 self.store = Some(store);
             }
