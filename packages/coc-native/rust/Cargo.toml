@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "napi"]
+members = ["core", "lsp", "napi"]
 resolver = "2"
 
 [workspace.package]

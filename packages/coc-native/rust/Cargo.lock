@@ -153,6 +153,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "coc-symbols-lsp"
+version = "0.1.0"
+dependencies = [
+ "coc-native-core",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "constant_time_eq"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
