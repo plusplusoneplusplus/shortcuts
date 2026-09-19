@@ -666,9 +666,8 @@ all have their own `references/*.md`.
 - **Chat style selector** (live admin flag `features.chatStyleSelector`, default
   on — `absentFallback: false`, so a legacy partial config that lacks the key
   still reads off — runtime flag `chatStyleSelectorEnabled`) adds a
-  `Style: Default|Human|
-  Direct|Structured` chip beside Effort in the new-chat and follow-up
-  composers. The style instruction is prepended to the **user message**, never
+  `Style: Default|Human|Direct|Terse|Structured` chip beside Effort in the
+  new-chat and follow-up composers. The style instruction is prepended to the **user message**, never
   injected into the system message. Style changes only how a response is
   written — never the provider, model, effort, tools, permission mode, or any
   structured output contract.
@@ -679,9 +678,10 @@ all have their own `references/*.md`.
     ('default')` is true — so switching *to* Default is distinguishable from
     never having chosen. `validateAndParseTask()` and `normalizeFollowUpInput()`
     re-validate: unknown → 400, omitted → `'default'`.
-  - Prompt text lives ONLY in `src/server/executors/chat-style-prompt.ts` and is
-    asserted verbatim in `chat-style-prompt.test.ts` — treat wording edits as
-    product changes. The block is exactly four lines — open tag,
+  - Prompt text lives in `src/config/chat-style-prompts.ts`, is resolved by
+    `src/server/executors/chat-style-prompt.ts`, and is asserted verbatim in
+    `chat-style-prompt.test.ts` — treat wording edits as product changes. The
+    block is exactly four lines — open tag,
     `Selected style: X.`, one focus line, close tag — followed by a blank line
     and then the user's text. There is no shared preamble. `Default` has no
     focus line and no block at all: the builder returns `undefined` and the

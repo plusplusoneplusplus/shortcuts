@@ -18,9 +18,9 @@ import {
 } from '../../src/config/chat-style-prompts';
 
 describe('CHAT_STYLE_FOCUS_LINES', () => {
-    it('carries exactly the three editable styles and no default entry', () => {
-        expect(Object.keys(CHAT_STYLE_FOCUS_LINES).sort()).toEqual(['direct', 'human', 'structured']);
-        expect(EDITABLE_CHAT_STYLES).toEqual(['human', 'direct', 'structured']);
+    it('carries exactly the four editable styles and no default entry', () => {
+        expect(Object.keys(CHAT_STYLE_FOCUS_LINES).sort()).toEqual(['direct', 'human', 'structured', 'terse']);
+        expect(EDITABLE_CHAT_STYLES).toEqual(['human', 'direct', 'terse', 'structured']);
         expect((CHAT_STYLE_FOCUS_LINES as Record<string, string>).default).toBeUndefined();
     });
 });

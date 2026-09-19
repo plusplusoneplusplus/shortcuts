@@ -15,7 +15,7 @@
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 
 /** The styles that carry prompt text, and are therefore admin-editable. */
-export const EDITABLE_CHAT_STYLES = ['human', 'direct', 'structured'] as const;
+export const EDITABLE_CHAT_STYLES = ['human', 'direct', 'terse', 'structured'] as const;
 
 export type EditableChatStyle = typeof EDITABLE_CHAT_STYLES[number];
 
@@ -35,6 +35,10 @@ export const CHAT_STYLE_FOCUS_LINES: Readonly<Record<EditableChatStyle, string>>
     direct:
         'Lead with the answer or action, then only what the user needs to act on it. '
         + 'Short sentences, plain words. Cut preamble, softening, and background they did not ask for — short, not compressed.',
+    terse:
+        'Use the fewest words that fully answer the request. Lead with the answer. Default to 1–3 short sentences. '
+        + 'Omit preamble, repetition, background, examples, caveats, and next steps unless essential or requested. '
+        + 'Sentence fragments are fine. Preserve critical warnings and exact technical details.',
     structured:
         'Make the answer easy to scan: outcome, key points, decisions, risks, and next steps. Only organize this way when the answer benefits from it, and never pad a one-line answer into a template. Do not invent owners, dates, decisions, risks, or certainty the context does not support.',
 };

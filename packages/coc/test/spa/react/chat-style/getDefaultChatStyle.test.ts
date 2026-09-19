@@ -17,7 +17,7 @@ describe('getDefaultChatStyle', () => {
     });
 
     it('reads the configured style', () => {
-        for (const style of ['default', 'human', 'direct', 'structured'] as const) {
+        for (const style of ['default', 'human', 'direct', 'terse', 'structured'] as const) {
             applyRuntimeConfigPatch({ defaultChatStyle: style });
             expect(getDefaultChatStyle()).toBe(style);
         }

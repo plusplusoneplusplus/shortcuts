@@ -180,8 +180,8 @@ describe('AdminPanel — Default chat style select', () => {
         await waitFor(() => expect(screen.getByTestId('select-default-chat-style')).toBeTruthy());
         const select = screen.getByTestId('select-default-chat-style') as HTMLSelectElement;
         expect(select.value).toBe('default');
-        expect([...select.options].map(o => o.value)).toEqual(['default', 'human', 'direct', 'structured']);
-        expect([...select.options].map(o => o.textContent)).toEqual(['Default', 'Human', 'Direct', 'Structured']);
+        expect([...select.options].map(o => o.value)).toEqual(['default', 'human', 'direct', 'terse', 'structured']);
+        expect([...select.options].map(o => o.textContent)).toEqual(['Default', 'Human', 'Direct', 'Terse', 'Structured']);
     });
 
     it('shows the configured style as the current value', async () => {

@@ -15,10 +15,10 @@ export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
  * This file is the single source of truth for the values — nothing else may
  * re-list them.
  */
-export type ChatStyle = 'default' | 'human' | 'direct' | 'structured';
+export type ChatStyle = 'default' | 'human' | 'direct' | 'terse' | 'structured';
 
 /** Stable wire values for {@link ChatStyle}, in display order (Default first). */
-export const CHAT_STYLES: readonly ChatStyle[] = ['default', 'human', 'direct', 'structured'];
+export const CHAT_STYLES: readonly ChatStyle[] = ['default', 'human', 'direct', 'terse', 'structured'];
 
 /** Style a new conversation starts on, and the value an omitted field means. */
 export const DEFAULT_CHAT_STYLE: ChatStyle = 'default';
@@ -28,6 +28,7 @@ export const CHAT_STYLE_LABELS: Readonly<Record<ChatStyle, string>> = {
   default: 'Default',
   human: 'Human',
   direct: 'Direct',
+  terse: 'Terse',
   structured: 'Structured',
 };
 

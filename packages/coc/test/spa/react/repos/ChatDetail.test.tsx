@@ -2576,7 +2576,7 @@ describe('ChatDetail — per-conversation chat style', () => {
         expect(screen.queryByTestId('follow-up-chat-style-selector')).toBeNull();
     });
 
-    it.each(['default', 'human', 'direct', 'structured'])(
+    it.each(['default', 'human', 'direct', 'terse', 'structured'])(
         'restores %s from the conversation metadata',
         async (style) => {
             mockState.chatStyleSelectorEnabled = true;

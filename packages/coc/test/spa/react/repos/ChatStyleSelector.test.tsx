@@ -44,11 +44,11 @@ describe('ChatStyleSelector', () => {
             .toBe('Choose how the response is written.');
     });
 
-    it('lists all four styles, Default first, with their one-line descriptions', () => {
+    it('lists all five styles, Default first, with their one-line descriptions', () => {
         render(<ChatStyleSelector selectedStyle={DEFAULT_CHAT_STYLE} onChange={() => {}} />);
         fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
 
-        expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'structured']);
+        expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'terse', 'structured']);
         const rendered = Array.from(
             screen.getByTestId('chat-style-menu').querySelectorAll('[role="option"]'),
         ).map(el => el.getAttribute('data-testid'));

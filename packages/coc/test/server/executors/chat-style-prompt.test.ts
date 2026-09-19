@@ -32,6 +32,17 @@ describe('buildChatStyleBlock', () => {
     );
   });
 
+  it('builds the terse block verbatim', () => {
+    expect(buildChatStyleBlock('terse')).toBe(
+      [
+        '<chat-style>',
+        'Selected style: Terse.',
+        'Use the fewest words that fully answer the request. Lead with the answer. Default to 1–3 short sentences. Omit preamble, repetition, background, examples, caveats, and next steps unless essential or requested. Sentence fragments are fine. Preserve critical warnings and exact technical details.',
+        '</chat-style>',
+      ].join('\n')
+    );
+  });
+
   it('builds the structured block verbatim', () => {
     expect(buildChatStyleBlock('structured')).toBe(
       [
@@ -44,7 +55,7 @@ describe('buildChatStyleBlock', () => {
   });
 
   it('is exactly four lines for every real style', () => {
-    for (const style of ['human', 'direct', 'structured']) {
+    for (const style of ['human', 'direct', 'terse', 'structured']) {
       const block = buildChatStyleBlock(style);
       expect(block).toBeDefined();
       const lines = (block as string).split('\n');
