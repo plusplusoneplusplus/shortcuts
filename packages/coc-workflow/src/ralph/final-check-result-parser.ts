@@ -13,6 +13,14 @@ export function parseFinalCheckResult(response: string): FinalCheckResult {
         return unparseable('Response does not contain RALPH_FINAL_CHECK_RESULT marker');
     }
 
+    // The marker may only appear inside the JSON block itself, with no preceding
+    // marker line. Scan fenced json blocks for the first one whose `marker` field
+    // matches before falling back to "everything after the marker text".
+    const fromFence = parseFromFencedBlocks(normalised);
+    if (fromFence) {
+        return fromFence;
+    }
+
     const afterMarker = normalised.slice(markerIdx + MARKER.length);
     const raw = extractJson(afterMarker);
     if (!raw) {
@@ -27,6 +35,27 @@ export function parseFinalCheckResult(response: string): FinalCheckResult {
     }
 
     return validateParsed(parsed);
+}
+
+/**
+ * Return the validated result from the first fenced ```json block whose parsed
+ * root carries `marker: RALPH_FINAL_CHECK_RESULT`, or null when none matches.
+ */
+function parseFromFencedBlocks(text: string): FinalCheckResult | null {
+    const fenceRe = /```json\s*\n([\s\S]*?)\n```/gm;
+    for (const match of text.matchAll(fenceRe)) {
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(match[1].trim());
+        } catch {
+            continue;
+        }
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+            && (parsed as Record<string, unknown>)['marker'] === MARKER) {
+            return validateParsed(parsed);
+        }
+    }
+    return null;
 }
 
 function extractJson(text: string): string | null {

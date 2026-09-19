@@ -288,30 +288,89 @@ describe('orchestrateFinalCheck', () => {
         });
     });
 
-    describe('unparseable response', () => {
-        it('records status=failed with explicit gap metadata', async () => {
-            const deps = makeDeps();
+    describe('unparseable response — repair turn', () => {
+        it('requests a repair turn and does not end the session', async () => {
+            const requestRepairTurn = vi.fn().mockReturnValue(true);
+            const deps = makeDeps({ requestRepairTurn });
             await orchestrateFinalCheck(makeInput('This is not a valid response', deps));
 
+            expect(requestRepairTurn).toHaveBeenCalledWith(
+                TASK_ID,
+                expect.stringContaining('RALPH_FINAL_CHECK_RESULT'),
+            );
+            expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+            expect(deps.enqueueTask).not.toHaveBeenCalled();
             expect(deps.store.upsertFinalCheckRecord).toHaveBeenCalledWith(
                 WORKSPACE_ID, SESSION_ID, CHECK_INDEX,
-                expect.objectContaining({ status: 'failed', hasGaps: false, gapCount: 0 }),
+                expect.objectContaining({ status: 'running', repairAttempted: true }),
             );
         });
 
-        it('broadcasts session-complete with reason "final-check-failed"', async () => {
+        it('persists repairAttempted before attempting the requeue', async () => {
+            const calls: string[] = [];
+            const deps = makeDeps({ requestRepairTurn: vi.fn(() => { calls.push('requeue'); return true; }) });
+            (deps.store.upsertFinalCheckRecord as Mock).mockImplementation(async () => {
+                calls.push('persist');
+                return makeSession();
+            });
+
+            await orchestrateFinalCheck(makeInput('Nope.', deps));
+            expect(calls).toEqual(['persist', 'requeue']);
+        });
+
+        it('falls through to FAILED + final-check-failed when the repair turn cannot be scheduled', async () => {
+            const deps = makeDeps({ requestRepairTurn: vi.fn().mockReturnValue(false) });
+            await orchestrateFinalCheck(makeInput('Not parseable.', deps));
+
+            expect(deps.store.upsertFinalCheckRecord).toHaveBeenCalledWith(
+                WORKSPACE_ID, SESSION_ID, CHECK_INDEX,
+                expect.objectContaining({ status: 'failed', repairAttempted: true }),
+            );
+            expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(
+                expect.objectContaining({ reason: 'final-check-failed' }),
+            );
+        });
+
+        it('falls through the same way when no requestRepairTurn dep is supplied', async () => {
             const deps = makeDeps();
             await orchestrateFinalCheck(makeInput('Not parseable.', deps));
 
             expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(
                 expect.objectContaining({ reason: 'final-check-failed' }),
             );
+            expect(deps.enqueueTask).not.toHaveBeenCalled();
         });
 
-        it('does not call enqueueTask', async () => {
+        it('does not assert zero gaps on a failed record', async () => {
             const deps = makeDeps();
-            await orchestrateFinalCheck(makeInput('Bad response.', deps));
-            expect(deps.enqueueTask).not.toHaveBeenCalled();
+            await orchestrateFinalCheck(makeInput('Not parseable.', deps));
+
+            const record = (deps.store.upsertFinalCheckRecord as Mock).mock.calls.at(-1)![3];
+            expect(record).not.toHaveProperty('hasGaps');
+            expect(record).not.toHaveProperty('gapCount');
+        });
+
+        it('ends the session on a second unparseable completion (repair is bounded to one)', async () => {
+            const requestRepairTurn = vi.fn().mockReturnValue(true);
+            const priorCheck: RalphFinalCheckRecord = {
+                checkIndex: CHECK_INDEX,
+                loopIndex: LOOP_INDEX,
+                sourceIteration: SOURCE_ITERATION,
+                startedAt: NOW,
+                status: 'running',
+                repairAttempted: true,
+            };
+            const deps = makeDeps({ requestRepairTurn });
+            (deps.store.readSessionRecord as Mock).mockResolvedValue(
+                makeSession({ finalChecks: [priorCheck] }),
+            );
+
+            await orchestrateFinalCheck(makeInput('Still not parseable.', deps));
+
+            expect(requestRepairTurn).not.toHaveBeenCalled();
+            expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(
+                expect.objectContaining({ reason: 'final-check-failed' }),
+            );
         });
     });
 

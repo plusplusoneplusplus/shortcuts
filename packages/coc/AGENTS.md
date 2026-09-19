@@ -466,6 +466,16 @@ all have their own `references/*.md`.
   `RalphExecutor` must use validation-only system instructions whenever
   `context.ralph.finalCheck` is present. Do not route final checks through the
   normal implementation-loop system prompt.
+- **Ralph final-check result repair** handles an unparseable/contradictory
+  `RALPH_FINAL_CHECK_RESULT` by queueing exactly one follow-up turn instead of
+  ending the session. The repair task reuses the check's `processId` (so the
+  checker's findings stay in context) and carries
+  `context.ralph.finalCheck.repairTurn: true`, which is the **only** thing that
+  makes the follow-up path in `process-lifecycle-runner` call `onRalphNext` —
+  never widen that gate to all ralph-mode follow-ups. `repairAttempted` is
+  persisted before the requeue, so a crash cannot loop it; a second failure
+  falls through to `final-check-failed`. Failed check records must omit
+  `hasGaps`/`gapCount` rather than write zeros.
 - **Ralph follow-on task config** comes from the completed task for iterations,
   final checks, and gap-fix loops. Explicit-provider tasks preserve model,
   reasoning effort, and `afterEffortTier`; Auto-routed tasks preserve

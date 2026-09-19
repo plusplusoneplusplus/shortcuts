@@ -31,7 +31,8 @@ export type {
 } from './progress-classifier';
 export { buildRalphIterationPrompt } from './iteration-prompt';
 export type { BuildRalphIterationPromptInput } from './iteration-prompt';
-export { buildFinalCheckPrompt } from './final-check-prompt';
+export { buildFinalCheckPrompt, FINAL_CHECK_RESULT_SCHEMA } from './final-check-prompt';
+export { buildFinalCheckRepairPrompt } from './final-check-repair-prompt';
 export type { BuildFinalCheckPromptInput } from './final-check-prompt';
 export { parseFinalCheckResult } from './final-check-result-parser';
 export { buildRalphSubmitPrompt } from './submit-prompt';
@@ -62,6 +63,7 @@ export type {
     RalphFinalCheckAction,
     RalphFinalCheckDecision,
     RalphFinalCheckRecordPatch,
+    RalphRequestFinalCheckRepairAction,
     RalphStartGapFixLoopAction,
     RalphUpsertFinalCheckRecordAction,
 } from './final-check-decision';

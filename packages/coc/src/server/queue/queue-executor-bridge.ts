@@ -1,6 +1,6 @@
 import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
 import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
-import { applyFollowUpToTask } from '../shared/queue-utils';
+import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
@@ -23,6 +23,31 @@ import type { DreamRunExecutor } from '../dreams/dream-runner';
 import { EMPTY_EXECUTOR_RUNTIME } from '../executors/executor-runtime-contracts';
 import type { ExecutorRuntimeCapabilities } from '../executors/executor-runtime-contracts';
 import { executeImplementPlanWithPrGate } from './implement-plan-pr-gate';
+
+/**
+ * Clone a final-check payload into a repair follow-up: same processId (so the
+ * follow-up executor resumes the checker's conversation), same
+ * `context.ralph.finalCheck` (so the result records under the same checkIndex),
+ * plus the `repairTurn` marker the follow-up routing hook keys off.
+ */
+function withFinalCheckRepairFlag(
+    payload: Record<string, unknown>,
+    prompt: string,
+    processId: string,
+): Record<string, unknown> {
+    const context = (payload.context ?? {}) as Record<string, unknown>;
+    const ralph = (context.ralph ?? {}) as Record<string, unknown>;
+    const finalCheck = (ralph.finalCheck ?? {}) as Record<string, unknown>;
+    return {
+        ...payload,
+        prompt,
+        processId,
+        context: {
+            ...context,
+            ralph: { ...ralph, finalCheck: { ...finalCheck, repairTurn: true } },
+        },
+    };
+}
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -479,10 +504,48 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 existingTaskConfig: completedTask.config as Record<string, unknown>,
                 repoId: completedTask.repoId,
                 extraContext: getRalphCarryForwardContext((completedTask.payload as any).context),
+                requestRepairTurn: (_taskId, prompt) => this.enqueueFinalCheckRepairTurn(completedTask, processId, prompt),
             },
         }).catch(err => {
             logger.warn(LogCategory.AI, `[Ralph/FinalCheck] orchestrateFinalCheck threw: ${err instanceof Error ? err.message : String(err)}`);
         });
+    }
+
+    /**
+     * Queue one follow-up turn that re-asks the checker for its result block.
+     *
+     * `onRalphNext` fires from inside the executor, before the queue moves the
+     * task to history, so `requeueFromHistory` cannot take here. Continuity does
+     * not depend on task identity: the follow-up executor resumes a conversation
+     * from `payload.processId`, so a fresh task carrying the same processId — and
+     * the same `context.ralph.finalCheck` — lands in the same conversation with
+     * the checker's findings still in context and routes back to
+     * `handleFinalCheckCompletion` under the same `checkIndex`.
+     */
+    private enqueueFinalCheckRepairTurn(completedTask: QueuedTask, processId: string, prompt: string): boolean {
+        if (!this.queueManager) return false;
+        const logger = getLogger();
+        try {
+            this.queueManager.enqueue({
+                processId,
+                type: completedTask.type ?? 'chat',
+                priority: 'normal',
+                repoId: completedTask.repoId,
+                folderPath: (completedTask as any).folderPath,
+                config: (completedTask.config ?? {}) as any,
+                // `mode: 'ralph'` and `context.ralph.finalCheck` must survive:
+                // the first keeps the task ralph-routed, the second carries the
+                // checkIndex the repaired result is recorded under.
+                // `finalCheck.repairTurn` is what lets the follow-up path route
+                // this completion back to handleFinalCheckCompletion.
+                payload: withFinalCheckRepairFlag(completedTask.payload as Record<string, unknown>, prompt, processId),
+                displayName: truncateDisplayName(`Ralph final check result repair (${processId})`),
+            } as any);
+            return true;
+        } catch (err) {
+            logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Failed to enqueue repair turn for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+            return false;
+        }
     }
 
     async requeueForFollowUp(taskId: string, prompt: string, attachments?: Attachment[], imageTempDir?: string, mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[]): Promise<void> {

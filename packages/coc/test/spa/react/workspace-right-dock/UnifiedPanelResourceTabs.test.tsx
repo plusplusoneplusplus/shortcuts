@@ -22,6 +22,7 @@ const mockExplorerApi = vi.hoisted(() => ({
     readTrustedBlob: vi.fn(),
     searchFiles: vi.fn(async () => ({ results: [] as { path: string }[] })),
 }));
+const mockDiffFindTrigger = vi.hoisted(() => vi.fn());
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: mockExplorerApi,
 }));
@@ -53,7 +54,11 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView'
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
-    ExplorerPanel: () => <div data-testid="mock-explorer" />,
+    ExplorerPanel: () => (
+        <div data-testid="mock-explorer">
+            <input data-testid="explorer-search-input" />
+        </div>
+    ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
     DockNotesPanel: () => <div data-testid="mock-notes" />,
@@ -88,15 +93,34 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 // The diff chrome has its own suite; the real `useWhisperDiffState` stays in
 // play so what this stub receives is the reconstruction the chat would show.
-vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', async importOriginal => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    WhisperDiffPanel: ({ state, workspaceRootPath, onClose }: any) => (
-        <div data-testid="mock-whisper-diff">
-            diff:{state.view.fileCount}:{workspaceRootPath ?? 'none'}
-            <button data-testid="mock-whisper-diff-close" onClick={onClose}>close</button>
-        </div>
-    ),
-}));
+vi.mock('../../../../src/server/spa/client/react/features/chat/whisper-diff', async importOriginal => {
+    const original = await importOriginal<Record<string, unknown>>();
+    const { useEffect, useRef } = await import('react');
+    const { useDiffFindShortcut } = await import(
+        '../../../../src/server/spa/client/react/features/git/diff/useDiffFindShortcut'
+    );
+    return {
+        ...original,
+        WhisperDiffPanel: ({ state, workspaceRootPath, onClose }: any) => {
+            const ref = useRef<HTMLDivElement | null>(null);
+            useEffect(() => {
+                if (ref.current) {
+                    Object.defineProperty(ref.current, 'offsetParent', {
+                        configurable: true,
+                        get: () => document.body,
+                    });
+                }
+            }, []);
+            useDiffFindShortcut(ref, mockDiffFindTrigger);
+            return (
+                <div ref={ref} data-testid="mock-whisper-diff" tabIndex={0}>
+                    diff:{state.view.fileCount}:{workspaceRootPath ?? 'none'}
+                    <button data-testid="mock-whisper-diff-close" onClick={onClose}>close</button>
+                </div>
+            );
+        },
+    };
+});
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
@@ -113,6 +137,10 @@ import {
     clearUnifiedCanvasEvents,
     publishUnifiedCanvasEvent,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
+import {
+    clearUnifiedTreeState,
+    writeUnifiedTreeState,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
@@ -177,11 +205,13 @@ beforeEach(() => {
     mockExplorerApi.writeBlob.mockResolvedValue({ success: true });
     localStorage.clear();
     clearUnifiedPanelState();
+    clearUnifiedTreeState();
     clearUnifiedCanvasEvents();
 });
 afterEach(() => {
     cleanup();
     clearUnifiedPanelState();
+    clearUnifiedTreeState();
     clearUnifiedDiffSources();
     clearUnifiedCanvasEvents();
 });
@@ -313,6 +343,24 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
 
         expect(screen.getByTestId('mock-whisper-diff')).toHaveTextContent('diff:1:/repo');
         expect(screen.getByTestId(`unified-panel-tab-${unifiedTabIdFor(input)}`)).toHaveTextContent('1 file changed');
+    });
+
+    it('lets Ctrl+F reach the diff find shortcut from the content column', () => {
+        writeUnifiedTreeState(WS, { open: true, width: 180 });
+        const input = whisperDiffTabInput({ ctx: diffCtx(), ownerWorkspaceId: WS, chatId: CHAT });
+        openUnifiedPanelTab(WS, input);
+        renderPanel();
+        const diff = screen.getByTestId('mock-whisper-diff');
+        diff.focus();
+
+        const event = new KeyboardEvent('keydown', {
+            key: 'f', ctrlKey: true, bubbles: true, cancelable: true,
+        });
+        act(() => { diff.dispatchEvent(event); });
+
+        expect(mockDiffFindTrigger).toHaveBeenCalledOnce();
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(diff);
     });
 
     it('opens one tab for the footer and a file row of the same group', () => {

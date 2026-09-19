@@ -82,6 +82,17 @@ function sessionWithGapLoops(count: number): Pick<RalphSessionRecord, 'finalChec
     };
 }
 
+function repairedCheckRecord(checkIndex: number) {
+    return {
+        checkIndex,
+        loopIndex: 1,
+        sourceIteration: 4,
+        startedAt: NOW,
+        status: 'running' as const,
+        repairAttempted: true,
+    };
+}
+
 function action<T extends RalphFinalCheckAction['type']>(
     actions: RalphFinalCheckAction<typeof baseInput.adapterContext>[],
     type: T,
@@ -181,7 +192,7 @@ describe('decideRalphFinalCheckActions', () => {
         });
     });
 
-    it('records unparseable output as final-check-failed', () => {
+    it('requests a format-repair turn for unparseable output instead of ending the session', () => {
         const decision = decideRalphFinalCheckActions({
             ...baseInput,
             responseText: 'No structured result here.',
@@ -189,16 +200,18 @@ describe('decideRalphFinalCheckActions', () => {
         });
 
         expect(decision.result.status).toBe('unparseable');
-        expect(decision.progressSection).toContain('FAILED');
-        expect(action(decision.actions, 'upsertFinalCheckRecord').record).toMatchObject({
-            status: 'failed',
-            hasGaps: false,
-            gapCount: 0,
-        });
-        expect(action(decision.actions, 'broadcastSessionComplete').reason).toBe('final-check-failed');
+        expect(decision.progressSection).toContain('RESULT FORMAT REPAIR REQUESTED');
+        const repair = action(decision.actions, 'requestFinalCheckRepair');
+        expect(repair.repairPrompt).toContain('RALPH_FINAL_CHECK_RESULT');
+        expect(repair.repairPrompt).toContain('Do not re-run any validation');
+        expect(repair.pendingRecord).toMatchObject({ status: 'running', repairAttempted: true });
+        expect(repair.failureRecord).toMatchObject({ status: 'failed', repairAttempted: true });
+        expect(repair.failureSection).toContain('FAILED');
+        expect(decision.actions.some(a => a.type === 'broadcastSessionComplete')).toBe(false);
+        expect(decision.actions.some(a => a.type === 'upsertFinalCheckRecord')).toBe(false);
     });
 
-    it('records contradictory output as final-check-failed', () => {
+    it('takes the same repair path for contradictory (invalid) output', () => {
         const decision = decideRalphFinalCheckActions({
             ...baseInput,
             responseText: contradictoryResponse(),
@@ -207,12 +220,44 @@ describe('decideRalphFinalCheckActions', () => {
 
         expect(decision.result.status).toBe('invalid');
         expect(decision.result.error).toContain('non-empty');
-        expect(action(decision.actions, 'upsertFinalCheckRecord').record).toMatchObject({
-            status: 'failed',
-            hasGaps: false,
-            gapCount: 0,
+        expect(action(decision.actions, 'requestFinalCheckRepair').pendingRecord.repairAttempted).toBe(true);
+        expect(decision.actions.some(a => a.type === 'broadcastSessionComplete')).toBe(false);
+    });
+
+    it('fails the check when a repair was already attempted for this checkIndex', () => {
+        const decision = decideRalphFinalCheckActions({
+            ...baseInput,
+            responseText: 'Still no structured result.',
+            session: { finalChecks: [repairedCheckRecord(baseInput.checkIndex)] },
         });
+
+        expect(decision.progressSection).toContain('FAILED');
+        expect(decision.actions.some(a => a.type === 'requestFinalCheckRepair')).toBe(false);
+        expect(action(decision.actions, 'upsertFinalCheckRecord').record).toMatchObject({ status: 'failed' });
         expect(action(decision.actions, 'broadcastSessionComplete').reason).toBe('final-check-failed');
+    });
+
+    it('does not reuse another checkIndex\'s repair attempt', () => {
+        const decision = decideRalphFinalCheckActions({
+            ...baseInput,
+            checkIndex: 2,
+            responseText: 'No structured result here.',
+            session: { finalChecks: [repairedCheckRecord(1)] },
+        });
+
+        expect(decision.actions.some(a => a.type === 'requestFinalCheckRepair')).toBe(true);
+    });
+
+    it('omits hasGaps/gapCount on a failed record rather than asserting zero gaps', () => {
+        const decision = decideRalphFinalCheckActions({
+            ...baseInput,
+            responseText: 'Nope.',
+            session: { finalChecks: [repairedCheckRecord(baseInput.checkIndex)] },
+        });
+
+        const record = action(decision.actions, 'upsertFinalCheckRecord').record;
+        expect(record).not.toHaveProperty('hasGaps');
+        expect(record).not.toHaveProperty('gapCount');
     });
 
     it('starts a gap-fix loop when gaps are below maxGapFixLoops', () => {

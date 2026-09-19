@@ -16,6 +16,7 @@
 import {
     decideRalphFinalCheckActions,
     type RalphFinalCheckRecordPatch,
+    type RalphRequestFinalCheckRepairAction,
     type RalphStartGapFixLoopAction,
 } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { RalphSessionStore } from './ralph-session-store';
@@ -59,6 +60,15 @@ export interface OrchestrateFinalCheckDeps {
     repoId?: string;
     /** Non-Ralph context to preserve when enqueueing gap-fix iterations. */
     extraContext?: Record<string, unknown>;
+    /**
+     * Send one follow-up turn into the *same* conversation as the completed
+     * final-check task, asking only for the missing result block.
+     *
+     * Returns whether the follow-up was actually scheduled. When it returns
+     * false — or when the dep is absent — the caller falls through to the
+     * ordinary failure path, so behavior degrades to "no repair".
+     */
+    requestRepairTurn?: (taskId: string, prompt: string) => boolean;
 }
 
 export interface OrchestrateFinalCheckInput {
@@ -137,6 +147,13 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
                 });
                 break;
 
+            case 'requestFinalCheckRepair':
+                await requestFinalCheckRepair({
+                    action, deps, store, workspaceId, sessionId, checkIndex,
+                    sourceIteration, processId, taskId, logger,
+                });
+                break;
+
             case 'startGapFixLoop':
                 await startGapFixLoop({
                     action,
@@ -159,6 +176,64 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
 // ============================================================================
 // Private helpers
 // ============================================================================
+
+interface RequestFinalCheckRepairInput {
+    action: RalphRequestFinalCheckRepairAction;
+    deps: OrchestrateFinalCheckDeps;
+    store: RalphSessionStore;
+    workspaceId: string;
+    sessionId: string;
+    checkIndex: number;
+    sourceIteration: number;
+    processId: string;
+    taskId: string;
+    logger: ReturnType<typeof getLogger>;
+}
+
+/**
+ * Ask the checker for one more turn that emits only the result block.
+ *
+ * The `repairAttempted: true` record is persisted *before* the follow-up is
+ * scheduled: a crash between the two must leave the check un-repairable rather
+ * than repairable forever.
+ */
+async function requestFinalCheckRepair(input: RequestFinalCheckRepairInput): Promise<void> {
+    const {
+        action, deps, store, workspaceId, sessionId, checkIndex,
+        sourceIteration, processId, taskId, logger,
+    } = input;
+
+    await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, action.pendingRecord, logger);
+
+    let requested = false;
+    if (deps.requestRepairTurn) {
+        try {
+            requested = deps.requestRepairTurn(taskId, action.repairPrompt);
+        } catch (err) {
+            logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Repair turn request threw for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+
+    if (requested) {
+        logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Requested result-format repair turn for ${sessionId} check ${checkIndex}.`);
+        return;
+    }
+
+    logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Could not request repair turn for ${sessionId} check ${checkIndex}; failing the check.`);
+    try {
+        await store.appendFinalCheckSection(workspaceId, sessionId, action.failureSection);
+    } catch (err) {
+        logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Failed to append failure section for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, action.failureRecord, logger);
+    deps.broadcastSessionComplete({
+        workspaceId,
+        sessionId,
+        processId,
+        totalIterations: sourceIteration,
+        reason: action.failureReason,
+    });
+}
 
 interface StartGapFixLoopInput {
     action: RalphStartGapFixLoopAction;

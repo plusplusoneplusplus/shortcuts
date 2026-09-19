@@ -15,6 +15,36 @@ export interface BuildFinalCheckPromptInput {
 
 const READ_ONLY_INSTRUCTIONS = 'Load and follow the `ultra-ralph` skill, `final-check` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.';
 
+/**
+ * The verbatim RALPH_FINAL_CHECK_RESULT schema block.
+ *
+ * Shared by the final-check prompt and the format-repair prompt so the two can
+ * never drift into describing different shapes of the same contract.
+ */
+export const FINAL_CHECK_RESULT_SCHEMA = `RALPH_FINAL_CHECK_RESULT
+\`\`\`json
+{
+  "marker": "RALPH_FINAL_CHECK_RESULT",
+  "hasGaps": <true|false>,
+  "summary": "<one-paragraph assessment>",
+  "gaps": [
+    {
+      "id": "GAP-01",
+      "title": "<short title>",
+      "evidence": "<what the gap is and why>",
+      "recommendedAction": "<what to do to close it>",
+      "validation": "<optional command to verify the fix>"
+    }
+  ],
+  "gapFixGoal": "<required when hasGaps is true - focused goal text for a gap-fix loop>"
+}
+\`\`\`
+
+Rules:
+- When hasGaps is false, gaps must be an empty array and gapFixGoal must be absent or empty.
+- When hasGaps is true, gaps must be non-empty and gapFixGoal must be a non-empty string.
+- Do not include both hasGaps:false and a non-empty gaps array.`;
+
 const EVALUATION_INSTRUCTIONS = `## Evaluation Steps
 
 1. Read the original goal and any referenced spec files (look for goal.md and ac-NN-*.spec.md in the working directory).
@@ -38,29 +68,9 @@ Do not report gaps for manual demos, product review, unavailable credentials, hu
 
 After your evaluation, output EXACTLY ONE JSON block using this structure (no trailing text after the block):
 
-RALPH_FINAL_CHECK_RESULT
-\`\`\`json
-{
-  "marker": "RALPH_FINAL_CHECK_RESULT",
-  "hasGaps": <true|false>,
-  "summary": "<one-paragraph assessment>",
-  "gaps": [
-    {
-      "id": "GAP-01",
-      "title": "<short title>",
-      "evidence": "<what the gap is and why>",
-      "recommendedAction": "<what to do to close it>",
-      "validation": "<optional command to verify the fix>"
-    }
-  ],
-  "gapFixGoal": "<required when hasGaps is true - focused goal text for a gap-fix loop>"
-}
-\`\`\`
+${FINAL_CHECK_RESULT_SCHEMA}
 
-Rules:
-- When hasGaps is false, gaps must be an empty array and gapFixGoal must be absent or empty.
-- When hasGaps is true, gaps must be non-empty and gapFixGoal must be a non-empty string.
-- Do not include both hasGaps:false and a non-empty gaps array.`;
+Regardless of which tools, subagents, or skills you used during evaluation, your final message must end with the RALPH_FINAL_CHECK_RESULT block. Findings expressed in any other format - review reports, issue lists, structured tool output - are not counted. Translate each such finding into one gaps[] entry.`;
 
 /**
  * Build the user-message prompt for one final-check task.

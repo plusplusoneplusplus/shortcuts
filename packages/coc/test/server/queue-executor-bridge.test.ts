@@ -7559,6 +7559,125 @@ describe('Ralph session queue continuity', () => {
         // causes a flaky ENOTEMPTY on rmdir (mirrors the AC-01 hardening above).
         await executor.drainAndDispose(5000);
     });
+
+    it('recovers a dropped RALPH_FINAL_CHECK_RESULT block via one repair turn', async () => {
+        // Gating test for the repair path: onRalphNext fires from inside the
+        // executor, before the queue moves the task to history, so the repair
+        // cannot go through requeueFromHistory. It instead enqueues a fresh task
+        // carrying the same processId — which is what the follow-up executor keys
+        // conversation continuity off — plus the same context.ralph.finalCheck,
+        // so the repaired result routes back under the same checkIndex.
+        const sessionStore = new RalphSessionStore({ dataDir });
+        await sessionStore.initSession(workspaceId, sessionId, {
+            originalGoal: 'Complete goal.',
+            maxIterations: 1,
+        });
+
+        const iterationDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const checkDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        const repairDone = deferred<{ success: boolean; response: string; sessionId: string }>();
+        mockSendMessage
+            .mockImplementationOnce(() => iterationDone.promise)
+            .mockImplementationOnce(() => checkDone.promise)
+            .mockImplementationOnce(() => repairDone.promise);
+
+        const queueManager = new TaskQueueManager({ isExclusive: defaultIsExclusive });
+        const allAddedTasks: QueuedTask[] = [];
+        queueManager.on('taskAdded', (task: QueuedTask) => { allAddedTasks.push({ ...task }); });
+
+        const { executor } = createQueueExecutorBridge(queueManager, store, {
+            dataDir,
+            exclusiveConcurrency: 1,
+        });
+
+        queueManager.enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: workspaceId,
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'Do the work.',
+                workspaceId,
+                workingDirectory: '',
+                context: {
+                    ralph: {
+                        phase: 'executing',
+                        sessionId,
+                        originalGoal: 'Complete goal.',
+                        currentIteration: 1,
+                        maxIterations: 1,
+                    },
+                },
+            } as any,
+            config: {},
+            displayName: 'Ralph iteration 1',
+        });
+
+        await waitForCondition(() => mockSendMessage.mock.calls.length >= 1, 3000);
+        iterationDone.resolve({
+            success: true,
+            response: 'Done.\n\nRALPH_PROGRESS:\nFiles: f\nDecisions: d\nRemaining: none\nRALPH_COMPLETE',
+            sessionId: 'sdk-iter-1',
+        });
+
+        const isFinalCheckTask = (t: QueuedTask) => (t.payload as any)?.context?.ralph?.finalCheck !== undefined;
+        await waitForCondition(() => allAddedTasks.filter(isFinalCheckTask).length >= 1, 5000);
+        const checkTask = allAddedTasks.find(isFinalCheckTask)!;
+        const checkIndex = (checkTask.payload as any).context.ralph.finalCheck.checkIndex;
+
+        await waitForCondition(() => mockSendMessage.mock.calls.length >= 2, 5000);
+        // The checker reports real findings as prose — the result block is lost.
+        checkDone.resolve({
+            success: true,
+            response: '## Issue: gap one\nEvidence.\n\n## Issue: gap two\nEvidence.',
+            sessionId: 'sdk-check-1',
+        });
+
+        // A second final-check task appears: the repair turn.
+        await waitForCondition(() => allAddedTasks.filter(isFinalCheckTask).length >= 2, 5000);
+        const repairTask = allAddedTasks.filter(isFinalCheckTask)[1];
+
+        // Continuity: the repair task carries the *same* processId as the check
+        // run, in the payload, which is what makes it a follow-up turn on that
+        // conversation rather than a fresh one.
+        expect((repairTask.payload as any).processId).toBe(repairTask.processId);
+        expect((repairTask.payload as any).mode).toBe('ralph');
+        expect((repairTask.payload as any).context.ralph.finalCheck.checkIndex).toBe(checkIndex);
+        expect((repairTask.payload as any).prompt).toContain('RALPH_FINAL_CHECK_RESULT');
+        expect((repairTask.payload as any).prompt).toContain('Do not re-run any validation');
+
+        // The repair turn has not ended the session.
+        const midRecord = await sessionStore.readSessionRecord(workspaceId, sessionId);
+        expect(midRecord?.finalChecks?.[0]).toEqual(expect.objectContaining({
+            checkIndex,
+            status: 'running',
+            repairAttempted: true,
+            processId: repairTask.processId,
+        }));
+
+        await waitForCondition(() => mockSendMessage.mock.calls.length >= 3, 5000);
+        repairDone.resolve({
+            success: true,
+            response: `RALPH_FINAL_CHECK_RESULT\n\`\`\`json\n${JSON.stringify({
+                marker: 'RALPH_FINAL_CHECK_RESULT',
+                hasGaps: false,
+                summary: 'Recovered.',
+                gaps: [],
+            })}\n\`\`\``,
+            sessionId: 'sdk-check-1',
+        });
+
+        await executor.drainAndDispose(5000);
+
+        const finalRecord = await sessionStore.readSessionRecord(workspaceId, sessionId);
+        expect(finalRecord?.finalChecks).toHaveLength(1);
+        expect(finalRecord?.finalChecks?.[0]).toEqual(expect.objectContaining({
+            checkIndex,
+            status: 'completed',
+            hasGaps: false,
+        }));
+    });
 });
 
 

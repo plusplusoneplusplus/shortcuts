@@ -169,6 +169,11 @@ export interface RalphFinalCheckRecord {
     capReached?: boolean;
     /** True when gapFixGoal was absent but synthesized server-side. */
     goalSynthesized?: boolean;
+    /**
+     * Set once a format-repair turn has been requested for this check.
+     * Bounds the repair to exactly one attempt, across restarts.
+     */
+    repairAttempted?: boolean;
 }
 
 export type RalphSubmitStatus = 'queued' | 'running' | 'completed' | 'failed';

@@ -1,4 +1,5 @@
 import { parseFinalCheckResult } from './final-check-result-parser';
+import { buildFinalCheckRepairPrompt } from './final-check-repair-prompt';
 import type {
     FinalCheckResult,
     RalphFinalCheckRecord,
@@ -11,6 +12,8 @@ export interface FormatFinalCheckProgressSectionInput {
     loopIndex: number;
     result: FinalCheckResult;
     timestamp: string;
+    /** True when a format-repair turn is being requested instead of failing. */
+    repairRequested?: boolean;
 }
 
 export interface DecideRalphFinalCheckActionsInput<TAdapterContext = Record<string, unknown>> {
@@ -92,14 +95,44 @@ export interface RalphStartGapFixLoopAction<TAdapterContext = Record<string, unk
     successRecordBase: RalphFinalCheckRecordPatch;
 }
 
+export interface RalphRequestFinalCheckRepairAction<TAdapterContext = Record<string, unknown>>
+    extends RalphFinalCheckActionBase<TAdapterContext> {
+    type: 'requestFinalCheckRepair';
+    /** Follow-up prompt asking only for the missing result block. */
+    repairPrompt: string;
+    /** Parser error that triggered the repair, for logging. */
+    parseError?: string;
+    /** Record patch to persist *before* the repair turn is requested. */
+    pendingRecord: RalphFinalCheckRecordPatch;
+    /** Record patch to use if the repair turn cannot be requested. */
+    failureRecord: RalphFinalCheckRecordPatch;
+    /** Progress section to append if the repair turn cannot be requested. */
+    failureSection: string;
+    /** Broadcast reason to use if the repair turn cannot be requested. */
+    failureReason: Extract<RalphSessionCompleteReason, 'final-check-failed'>;
+}
+
 export type RalphFinalCheckAction<TAdapterContext = Record<string, unknown>> =
     | RalphAppendFinalCheckSectionAction<TAdapterContext>
     | RalphUpsertFinalCheckRecordAction<TAdapterContext>
     | RalphBroadcastSessionCompleteAction<TAdapterContext>
-    | RalphStartGapFixLoopAction<TAdapterContext>;
+    | RalphStartGapFixLoopAction<TAdapterContext>
+    | RalphRequestFinalCheckRepairAction<TAdapterContext>;
 
 export function formatFinalCheckProgressSection(input: FormatFinalCheckProgressSectionInput): string {
     const { checkIndex, loopIndex, result, timestamp } = input;
+    if ((result.status === 'unparseable' || result.status === 'invalid') && input.repairRequested) {
+        return [
+            '---',
+            `## Final Check ${checkIndex} - RESULT FORMAT REPAIR REQUESTED - ${timestamp}`,
+            `Loop: ${loopIndex}`,
+            '',
+            'The final-check task completed but produced no parseable RALPH_FINAL_CHECK_RESULT block.',
+            'Requesting one follow-up turn that re-emits the result block from the findings already reported.',
+            ...(result.error ? [`Error: ${result.error}`] : []),
+        ].join('\n');
+    }
+
     if (result.status === 'unparseable' || result.status === 'invalid') {
         return [
             '---',
@@ -159,22 +192,70 @@ export function decideRalphFinalCheckActions<TAdapterContext = Record<string, un
 
     const base = makeActionBase(input);
     const baseRecord = makeBaseCheckRecord(input, startedAt, nowIso);
+
+    if (result.status === 'unparseable' || result.status === 'invalid') {
+        // A failed check knows nothing about gaps. Writing hasGaps/gapCount here
+        // would assert "zero gaps" for a run whose findings were never parsed.
+        const failureRecord: RalphFinalCheckRecordPatch = { status: 'failed', ...baseRecord };
+        const failureSection = formatFinalCheckProgressSection({
+            checkIndex: input.checkIndex,
+            loopIndex: input.loopIndex,
+            result,
+            timestamp: nowIso,
+        });
+
+        if (repairAlreadyAttempted(input.session, input.checkIndex)) {
+            return {
+                result,
+                progressSection: failureSection,
+                existingGapFixLoops,
+                maxGapFixLoops: input.maxGapFixLoops,
+                actions: [
+                    { type: 'appendFinalCheckSection', ...base, section: failureSection },
+                    upsert(base, failureRecord),
+                    broadcast(base, input.sourceIteration, 'final-check-failed'),
+                ],
+            };
+        }
+
+        const repairSection = formatFinalCheckProgressSection({
+            checkIndex: input.checkIndex,
+            loopIndex: input.loopIndex,
+            result,
+            timestamp: nowIso,
+            repairRequested: true,
+        });
+        return {
+            result,
+            progressSection: repairSection,
+            existingGapFixLoops,
+            maxGapFixLoops: input.maxGapFixLoops,
+            actions: [
+                { type: 'appendFinalCheckSection', ...base, section: repairSection },
+                {
+                    type: 'requestFinalCheckRepair',
+                    ...base,
+                    repairPrompt: buildFinalCheckRepairPrompt(result.error),
+                    ...(result.error ? { parseError: result.error } : {}),
+                    pendingRecord: {
+                        status: 'running',
+                        ...baseRecord,
+                        completedAt: undefined,
+                        repairAttempted: true,
+                    },
+                    failureRecord: { ...failureRecord, repairAttempted: true },
+                    failureSection,
+                    failureReason: 'final-check-failed',
+                },
+            ],
+        };
+    }
+
     const actions: RalphFinalCheckAction<TAdapterContext>[] = [{
         type: 'appendFinalCheckSection',
         ...base,
         section: progressSection,
     }];
-
-    if (result.status === 'unparseable' || result.status === 'invalid') {
-        actions.push(upsert(base, {
-            status: 'failed',
-            ...baseRecord,
-            hasGaps: false,
-            gapCount: 0,
-        }));
-        actions.push(broadcast(base, input.sourceIteration, 'final-check-failed'));
-        return { result, progressSection, existingGapFixLoops, maxGapFixLoops: input.maxGapFixLoops, actions };
-    }
 
     if (!result.hasGaps || result.gaps.length === 0) {
         actions.push(upsert(base, {
@@ -231,6 +312,14 @@ export function decideRalphFinalCheckActions<TAdapterContext = Record<string, un
     });
 
     return { result, progressSection, existingGapFixLoops, maxGapFixLoops: input.maxGapFixLoops, actions };
+}
+
+function repairAlreadyAttempted(
+    session: Pick<RalphSessionRecord, 'finalChecks'> | null | undefined,
+    checkIndex: number,
+): boolean {
+    return (session?.finalChecks ?? [])
+        .some(check => check.checkIndex === checkIndex && check.repairAttempted === true);
 }
 
 export function countStartedGapFixLoops(
