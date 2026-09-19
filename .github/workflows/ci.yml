@@ -244,11 +244,18 @@ jobs:
       - name: Run N-API boundary and parity tests
         run: npm run test:run -w packages/coc-native
 
-      - name: Upload the addon
+      # Both artifacts `build:native` produces, for the same reason release.yml
+      # ships both: the addon is dlopen'd and the symbol language server is
+      # spawned, and the C-family navigation the e2e suite drives has no lane
+      # left but that server. Uploading only *.node left every downstream job
+      # resolving it to "not built for this platform".
+      - name: Upload the native binaries
         uses: actions/upload-artifact@v4
         with:
           name: coc-native-${{ matrix.os }}
-          path: packages/coc-native/*.node
+          path: |
+            packages/coc-native/*.node
+            packages/coc-native/coc-symbols-lsp.*
           if-no-files-found: error
           retention-days: 1
 
@@ -631,6 +638,13 @@ jobs:
         with:
           name: coc-native-ubuntu-latest
           path: packages/coc-native
+
+      # Artifact download drops the executable bit, and unlike the addon this
+      # one is spawned rather than dlopen'd -- without the chmod the symbols
+      # server fails at exec with EACCES, which the host reports as a server
+      # that would not start rather than a packaging problem.
+      - name: Restore the symbols language server's executable bit
+        run: chmod +x packages/coc-native/coc-symbols-lsp.*
 
       - name: Run Playwright E2E tests (shard ${{ matrix.shard }}/4)
         run: npx playwright test --config test/e2e/playwright.config.ts --shard=${{ matrix.shard }}/4
