@@ -1,5 +1,5 @@
 /**
- * unifiedSourceLinks — turns a clicked chat source-file link into a read-only
+ * unifiedSourceLinks — turns a clicked chat source-file link into an editable
  * `file` tab descriptor for the unified right panel (AC-04).
  *
  * An assistant response links a path, not a resource: the ref may be relative
@@ -23,9 +23,7 @@
  * source canvas — whose `previewWorkspaceFile` transport does handle those —
  * rather than open a tab that could only render an error.
  *
- * The descriptor is always `readOnly`. A chat source link is a reference, not an
- * authorization: `openTab` takes that bit from the entry point, so the same file
- * opened from the Explorer stays editable and this one never widens.
+ * In-repo files use the same editable `PreviewPane` path as Explorer selections.
  */
 
 import { isAbsolutePath } from '../../../utils/path-resolution';
@@ -107,7 +105,6 @@ export function sourceLinkTabInput(args: SourceLinkTabInputArgs): OpenUnifiedTab
         resourceId: relativePath,
         label: resourcePathName(relativePath),
         ...(repoLabel === undefined ? {} : { repoLabel }),
-        readOnly: true,
         ...(fileRef.line === undefined ? {} : { line: fileRef.line }),
     };
 }

@@ -58,11 +58,10 @@ export interface ExplorerTab {
      */
     preview: boolean;
     /**
-     * True when the buffer must never be written: search buffers, and trusted
-     * absolute-path files opened through Exact Open. Read-only tabs never
-     * become dirty and never take part in a save prompt.
+     * Temporary compatibility field removed from all creation paths. Persisted
+     * state may still supply it until the tab model migration is completed.
      */
-    readOnly: boolean;
+    readOnly?: boolean;
     /**
      * One-based line to reveal when the buffer loads — set when the file was
      * opened from a content-search hit, a deep link, or a language-server
@@ -288,7 +287,6 @@ export function openFileTab(state: ExplorerTabsState, input: OpenFileTabInput): 
         path: input.path,
         name: input.name,
         preview: input.preview,
-        readOnly: input.readOnly === true,
         ...revealFields(input),
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
     };
@@ -330,7 +328,6 @@ export function openSearchTab(state: ExplorerTabsState, input: OpenSearchTabInpu
         path: '',
         name: input.name,
         preview: false,
-        readOnly: true,
         query: input.query,
     };
     return reconcile(state, [...state.tabs, opened], id);
@@ -371,7 +368,6 @@ export function openExternalTab(state: ExplorerTabsState, input: OpenExternalTab
         path: '',
         name: input.name,
         preview: false,
-        readOnly: true,
         resourceId: input.resourceId,
         ...reveal,
     };
@@ -651,7 +647,6 @@ function parseTab(entry: unknown): ExplorerTab | null {
             path: source.path,
             name: source.name,
             preview: source.preview === true,
-            readOnly: source.readOnly === true,
             ...(typeof source.line === 'number' && Number.isFinite(source.line)
                 ? {
                     line: source.line,
@@ -671,7 +666,6 @@ function parseTab(entry: unknown): ExplorerTab | null {
         path: '',
         name: source.name,
         preview: false,
-        readOnly: true,
         query: source.query,
     };
 }

@@ -174,14 +174,13 @@ describe('explorerTabsModel — opening files', () => {
         expect(clearTabRevealLine(cleared, fileTabId('a.ts'))).toBe(cleared);
     });
 
-    it('marks trusted absolute-path files read-only', () => {
+    it('does not put file permissions on the tab record', () => {
         const state = openFileTab(EMPTY_EXPLORER_TABS, {
             path: 'trusted:/etc/hosts',
             name: 'hosts',
             preview: true,
-            readOnly: true,
         });
-        expect(state.tabs[0].readOnly).toBe(true);
+        expect(state.tabs[0]).not.toHaveProperty('readOnly');
     });
 
     it('reports open files through hasFileTab and findTab', () => {
@@ -194,9 +193,10 @@ describe('explorerTabsModel — opening files', () => {
 });
 
 describe('explorerTabsModel — search tabs', () => {
-    it('opens a pinned read-only tab that a preview open cannot replace', () => {
+    it('opens a pinned search tab that a preview open cannot replace', () => {
         let state = openSearchTab(EMPTY_EXPLORER_TABS, { query: 'foo', name: 'Search: foo' });
-        expect(state.tabs[0]).toMatchObject({ kind: 'search', preview: false, readOnly: true, query: 'foo' });
+        expect(state.tabs[0]).toMatchObject({ kind: 'search', preview: false, query: 'foo' });
+        expect(state.tabs[0]).not.toHaveProperty('readOnly');
 
         state = openPreview(state, 'src/a.ts');
         expect(state.tabs).toHaveLength(2);
@@ -435,7 +435,6 @@ describe('explorerTabsModel — persistence codec', () => {
             path: 'trusted:/etc/hosts',
             name: 'hosts',
             preview: false,
-            readOnly: true,
         });
         return activateTab(state, fileTabId('src/a.ts'));
     }
@@ -480,6 +479,7 @@ describe('explorerTabsModel — persistence codec', () => {
         });
         const restored = parseExplorerTabs(raw);
         expect(restored.tabs.map(tab => tab.path)).toEqual(['a.ts']);
+        expect(restored.tabs[0]).not.toHaveProperty('readOnly');
     });
 
     it('repairs a payload with duplicate ids, two previews and a stale active id', () => {
@@ -505,8 +505,9 @@ describe('explorerTabsModel — persistence codec', () => {
         expect(Object.keys(parsed).sort()).toEqual(['activeId', 'mru', 'tabs']);
         for (const tab of parsed.tabs as Record<string, unknown>[]) {
             expect(Object.keys(tab).sort()).toEqual(
-                expect.arrayContaining(['id', 'kind', 'name', 'path', 'preview', 'readOnly']),
+                expect.arrayContaining(['id', 'kind', 'name', 'path', 'preview']),
             );
+            expect(tab).not.toHaveProperty('readOnly');
             expect(tab).not.toHaveProperty('content');
         }
     });
@@ -524,7 +525,7 @@ describe('explorerTabsModel — reference stability', () => {
 });
 
 describe('external definition source tabs', () => {
-    it('opens pinned and read-only, keyed by the capability rather than a path', () => {
+    it('opens pinned and keyed by the capability rather than a path', () => {
         const state = openExternalTab(EMPTY_EXPLORER_TABS, {
             resourceId: 'cap-1', name: 'string_view', line: 42, column: 7,
         });
@@ -536,11 +537,11 @@ describe('external definition source tabs', () => {
             name: 'string_view',
             path: '',
             preview: false,
-            readOnly: true,
             resourceId: 'cap-1',
             line: 42,
             column: 7,
         });
+        expect(state.tabs[0]).not.toHaveProperty('readOnly');
         expect(state.activeId).toBe(externalTabId('cap-1'));
     });
 

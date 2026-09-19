@@ -78,7 +78,7 @@ export interface ExplorerPanelProps {
      */
     onOpenFile?: (
         file: { path: string; name: string; line?: number; column?: number; symbolCandidate?: true },
-        options: { preview: boolean; readOnly?: boolean },
+        options: { preview: boolean },
     ) => void;
     /**
      * Which parts of the Explorer to render. Every mount states it: `sidebar`
@@ -547,7 +547,7 @@ export function ExplorerPanel({
      */
     const openFileInEditor = useCallback((
         file: { path: string; name: string; line?: number; column?: number; symbolCandidate?: true },
-        options: { preview: boolean; readOnly?: boolean },
+        options: { preview: boolean },
     ) => {
         // Navigator mode hands the open to the host and keeps no buffer of its
         // own — neither a tab nor the preview file — so the host's tab strip is
@@ -558,7 +558,7 @@ export function ExplorerPanel({
         }
         if (tabsEnabled) {
             setMobileTreeVisible(false);
-            openFileTab({ ...file, preview: options.preview, readOnly: options.readOnly });
+            openFileTab({ ...file, preview: options.preview });
             return;
         }
         setPreviewFile(file);
@@ -790,9 +790,9 @@ export function ExplorerPanel({
             const absPath = filePath.slice(TRUSTED_PATH_PREFIX.length);
             const name = exactFileName(absPath);
             setSelectedPath(null);
-            // Trusted files are never editable and always deliberate, so they
-            // open as pinned read-only tabs rather than taking the preview slot.
-            openFileInEditor({ path: filePath, name }, { preview: false, readOnly: true });
+            // Trusted files are always deliberate, so they open pinned rather
+            // than taking the preview slot. PreviewPane enforces read-only mode.
+            openFileInEditor({ path: filePath, name }, { preview: false });
             return;
         }
 
