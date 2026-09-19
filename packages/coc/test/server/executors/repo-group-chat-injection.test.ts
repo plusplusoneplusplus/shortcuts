@@ -352,6 +352,85 @@ describe('repo-group chat context injection (AC-03)', () => {
             expect(call.readOnlyDirectories).toEqual([repoA]);
         });
 
+        it('rebuilds current repo-group membership and access policy for a target provider', async () => {
+            const process = seedInjectedProcess(groupId, 'proc-group-provider-switch');
+            pushUserTurn(process);
+
+            const repoCPath = path.join(tmpDir, 'checkouts', 'ws-v2-ccc');
+            fs.mkdirSync(repoCPath, { recursive: true });
+            const repoC = fs.realpathSync.native(repoCPath);
+            await store.registerWorkspace({ id: 'ws-v2-ccc', name: 'Repo C', rootPath: repoC });
+            await updateRepoGroup(tmpDir, store, groupId, {
+                members: ['ws-v2-bbb', 'ws-v2-ccc'],
+                readOnly: { 'ws-v2-bbb': true },
+            });
+
+            const resolveAiServiceForProvider = vi.fn(() => sdkMocks.service as any);
+            sdkMocks.mockSendMessage.mockImplementationOnce(async (options: any) => {
+                options.onSessionCreated?.('claude-session-1');
+                return { success: true, response: 'Switched answer', sessionId: 'claude-session-1', toolCalls: [] };
+            });
+            const executor = new FollowUpExecutor(store, makeOptions({ resolveAiServiceForProvider }), tmpDir);
+
+            await executor.executeFollowUp(
+                'proc-group-provider-switch', 'next question', undefined, 'ask', undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined,
+                { requestedProvider: 'claude', historyCutoffTurnIndex: 2 },
+            );
+
+            expect(resolveAiServiceForProvider).toHaveBeenCalledWith('claude');
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.sessionId).toBeUndefined();
+            expect(call.prompt).toContain(`- Repo B [read-only]: ${repoB}`);
+            expect(call.prompt).toContain(`- Repo C [read-write]: ${repoC}`);
+            expect(call.prompt).not.toContain('Repo A');
+            expect(call.additionalDirectories).toEqual([repoC]);
+            expect(call.readOnlyDirectories).toEqual([repoB]);
+            expect(call.systemMessage.content).toContain('<conversation_handoff');
+            expect(call.systemMessage.content).not.toContain(REPO_GROUP_CONTEXT_TAG);
+            expect(store.processes.get('proc-group-provider-switch')?.activeProviderSession).toMatchObject({
+                provider: 'claude',
+                sessionId: 'claude-session-1',
+            });
+        });
+
+        it('preserves the old binding when the target rejects mixed repo-group access before session creation', async () => {
+            const process = seedInjectedProcess(groupId, 'proc-group-unsupported-target');
+            process.activeProviderSession = {
+                provider: 'copilot',
+                sessionId: 'sess-1',
+                segmentId: 'seg-copilot-1',
+                firstTurnIndex: 0,
+            };
+            pushUserTurn(process);
+            await updateRepoGroup(tmpDir, store, groupId, { readOnly: { 'ws-v2-bbb': true } });
+
+            sdkMocks.mockSendMessage.mockImplementationOnce(async (options: any) => {
+                expect(options.sessionId).toBeUndefined();
+                expect(options.additionalDirectories).toEqual([repoA]);
+                expect(options.readOnlyDirectories).toEqual([repoB]);
+                return {
+                    success: false,
+                    error: 'Codex cannot enforce mixed read-only and read-write Repo Group members. Switch to Copilot or Claude.',
+                };
+            });
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp(
+                'proc-group-unsupported-target', 'next question', undefined, 'ask', undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined,
+                { requestedProvider: 'codex', historyCutoffTurnIndex: 2 },
+            );
+
+            expect(store.processes.get('proc-group-unsupported-target')?.activeProviderSession).toEqual({
+                provider: 'copilot',
+                sessionId: 'sess-1',
+                segmentId: 'seg-copilot-1',
+                firstTurnIndex: 0,
+            });
+            expect(store.processes.get('proc-group-unsupported-target')?.sdkSessionId).toBe('sess-1');
+        });
+
         it('re-appends the block after a compaction result turn', async () => {
             const process = seedInjectedProcess(groupId, 'proc-group-compacted');
             process.conversationTurns!.push({
