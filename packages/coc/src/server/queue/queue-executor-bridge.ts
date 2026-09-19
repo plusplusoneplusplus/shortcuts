@@ -23,7 +23,7 @@ import { buildAskUserResumeTaskInput } from '../processes/resume-pending-ask-use
 import type { DreamRunExecutor } from '../dreams/dream-runner';
 import { EMPTY_EXECUTOR_RUNTIME } from '../executors/executor-runtime-contracts';
 import type { ExecutorRuntimeCapabilities, InFlightTurn } from '../executors/executor-runtime-contracts';
-import { readActiveProviderSession, resolveRecordedProvider } from '../processes/active-provider-session';
+import { readActiveProviderSession, resolveRecordedProvider, turnProviderAttribution } from '../processes/active-provider-session';
 import { executeImplementPlanWithPrGate } from './implement-plan-pr-gate';
 
 /**
@@ -865,6 +865,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         const sessionProvider = resolveChatProviderOrDefault(
             nextMsg.provider ?? proc.metadata?.provider,
         );
+        const binding = readActiveProviderSession(proc);
         const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
         if (resolvedModel.coerced) {
             getLogger().warn(
@@ -891,8 +892,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 // Attribute the turn to the provider the message was accepted
                 // for. A message buffered before provider routing existed has
                 // none; leave it unattributed rather than guessing from the
-                // conversation's current metadata.
-                ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
+                // conversation's current metadata. Buffering is same-provider
+                // only, so a matching provider means the turn belongs to the
+                // segment that is already active.
+                ...turnProviderAttribution(
+                    nextMsg.provider,
+                    nextMsg.provider === binding.provider ? binding.segmentId : undefined,
+                ),
             }),
         );
 

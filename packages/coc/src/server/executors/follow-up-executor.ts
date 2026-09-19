@@ -26,7 +26,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
-import { readActiveProviderSession, advanceActiveProviderSession, activeProviderSessionUpdate } from '../processes/active-provider-session';
+import { readActiveProviderSession, advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
 import {
     getForEachContext,
@@ -386,6 +386,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         const sessionIdForSend = continuation.resumeSessionId;
         const canResumeSession = continuation.mode === 'native-resume';
 
+        // Provider segment the turns recorded below belong to. A native resume
+        // continues the bound segment; a reconstructed continuation has no
+        // segment until the target provider reports a session, at which point
+        // `onSessionCreated` fills this in before the response is appended.
+        let turnSegmentId = canResumeSession ? activeBinding.segmentId : undefined;
+
         const historyContext = canResumeSession
             ? undefined
             : buildConversationHistoryContext(process.conversationTurns);
@@ -440,6 +446,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         turnIndex: idx,
                         timeline: [],
                         turnSource,
+                        ...turnProviderAttribution(sessionProvider, turnSegmentId),
                     }),
                     { additionalUpdates: { status: 'running' } },
                 );
@@ -666,6 +673,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             sessionId,
                             turnIndex: process.conversationTurns?.length ?? 0,
                         });
+                        turnSegmentId = next.binding.segmentId;
                         // One store write: provider, session id, segment id and
                         // segment start can never be persisted apart.
                         this.store.updateProcess(processId, activeProviderSessionUpdate(next.binding)).catch((err: unknown) => {
@@ -738,6 +746,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         tokenUsage: result.tokenUsage,
                         ...(result.effectiveModel ? { model: result.effectiveModel } : {}),
                         ...(turnSource ? { turnSource } : {}),
+                        ...turnProviderAttribution(sessionProvider, turnSegmentId),
                     };
                 },
                 {
@@ -857,6 +866,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         ...(partial.hasPartial ? { interrupted: true, interruptionReason: errorMsg } : {}),
                         ...(partial.hasPartial && partial.suggestions ? { suggestions: partial.suggestions } : {}),
                         ...(turnSource ? { turnSource } : {}),
+                        ...turnProviderAttribution(sessionProvider, turnSegmentId),
                     };
                 },
                 {

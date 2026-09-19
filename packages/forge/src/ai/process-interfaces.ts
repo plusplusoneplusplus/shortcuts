@@ -234,6 +234,15 @@ export interface ConversationTurn {
      * to the process's provider for display only.
      */
     provider?: SupportedProvider;
+    /**
+     * Provider segment this turn belongs to. A segment is one continuous run
+     * on one native provider session; a new one starts whenever the provider
+     * changes or a fresh native session replaces the previous one. Written
+     * alongside `provider` and never re-derived, so the boundary between two
+     * provider sessions stays provable after the fact. Absent on turns
+     * recorded before segment attribution existed.
+     */
+    segmentId?: string;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: Date;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */
@@ -321,6 +330,15 @@ export interface SerializedConversationTurn {
      * to the process's provider for display only.
      */
     provider?: SupportedProvider;
+    /**
+     * Provider segment this turn belongs to. A segment is one continuous run
+     * on one native provider session; a new one starts whenever the provider
+     * changes or a fresh native session replaces the previous one. Written
+     * alongside `provider` and never re-derived, so the boundary between two
+     * provider sessions stays provable after the fact. Absent on turns
+     * recorded before segment attribution existed.
+     */
+    segmentId?: string;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: string;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */

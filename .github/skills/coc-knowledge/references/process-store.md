@@ -18,7 +18,7 @@ Single `processes.db` at `~/.coc/processes.db`. Schema version 36.
 | Table | Purpose |
 |-------|---------|
 | `processes` | Process metadata, config, status, context-window totals/breakdown, `active_provider_session`, `pinned_at`, `archived`, `last_event_at`, `seen_at` |
-| `conversation_turns` | Per-turn content, role, tool calls, `provider`, `pinned_at`, `archived`, `deleted_at` |
+| `conversation_turns` | Per-turn content, role, tool calls, `provider`, `segment_id`, `pinned_at`, `archived`, `deleted_at` |
 | `conversation_search` | FTS5 index on `conversation_turns.content` with sync triggers |
 | `queue_tasks` | Queue task persistence |
 | `schedule_runs` | Schedule execution history |
@@ -76,12 +76,18 @@ empty chat. See [rest-api.md](rest-api.md).
 - **Context window tracking** — `tokenLimit`, `currentTokens`, and optional `systemTokens` /
   `toolDefinitionsTokens` / `conversationTokens` persist on the process record for snapshot
   replay.
-- **Per-turn provider attribution** — `ConversationTurn.provider` records the concrete AI
-  provider that ran the turn, written when the turn is recorded from the provider the request
-  was accepted for. It is never re-derived from `metadata.provider`, so turns keep their
-  original attribution after a conversation switches providers. NULL on turns predating the
-  field; those fall back to the process provider for display only. Carried through fork copies
-  and the shared `serializeProcess`/`deserializeProcess` path used by `FileProcessStore`.
+- **Per-turn provider attribution** — `ConversationTurn.provider` and `ConversationTurn.segmentId`
+  record the concrete AI provider that ran the turn and the provider segment it ran in, written
+  when the turn is recorded from the provider the request was accepted for. Neither is
+  re-derived from `metadata.provider` or the current binding, so turns keep their original
+  attribution after a conversation switches providers and a segment boundary stays provable.
+  NULL on turns predating the fields; those fall back to the process provider for display only.
+  `segmentId` is also absent while the segment is unknown — a cross-provider user turn is
+  recorded before the target provider reports a session. Executors supply both (the follow-up
+  executor directly; `ChatBaseExecutor` hands them back on `ChatModeExecutionResult` for the
+  lifecycle runner to write). Carried through fork copies and the shared
+  `serializeProcess`/`deserializeProcess` path used by `FileProcessStore`; build the fields with
+  `turnProviderAttribution()` in `packages/coc/src/server/processes/active-provider-session.ts`.
 - **Active provider/session binding** — `AIProcess.activeProviderSession` (`active_provider_session`,
   JSON) holds `{ provider, sessionId?, segmentId, firstTurnIndex }` as one value, so the provider
   that owns the conversation and the native session id that continues it can only ever be written

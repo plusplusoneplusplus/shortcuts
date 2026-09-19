@@ -454,6 +454,51 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(turn.provider).toBeUndefined();
     });
 
+    it('records the active segment on a same-provider user turn', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({
+                status: 'completed',
+                activeProviderSession: {
+                    provider: 'copilot',
+                    sessionId: 'copilot-1',
+                    segmentId: 'seg-copilot-1',
+                    firstTurnIndex: 0,
+                },
+            }),
+            makeInput({ provider: 'copilot' }),
+        );
+
+        const turn = store.appendConversationTurn.mock.calls[0][1](0);
+        expect(turn.segmentId).toBe('seg-copilot-1');
+    });
+
+    it('leaves a cross-provider user turn without a segment until the target binds one', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({
+                status: 'completed',
+                activeProviderSession: {
+                    provider: 'copilot',
+                    sessionId: 'copilot-1',
+                    segmentId: 'seg-copilot-1',
+                    firstTurnIndex: 0,
+                },
+            }),
+            makeInput({ provider: 'codex' }),
+        );
+
+        const turn = store.appendConversationTurn.mock.calls[0][1](0);
+        expect(turn.provider).toBe('codex');
+        expect(turn.segmentId).toBeUndefined();
+    });
+
     it('records the accepted provider on a buffered pending message', async () => {
         const store = makeStore();
         const bridge = {

@@ -43,7 +43,7 @@ import {
     toForwardSlashes,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import { advanceActiveProviderSession, activeProviderSessionUpdate } from '../processes/active-provider-session';
+import { advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
@@ -200,6 +200,10 @@ export interface ChatModeExecutionResult {
     tokenUsage?: TokenUsage;
     /** Model that the provider actually used. Omitted means provider default. */
     effectiveModel?: string;
+    /** Concrete provider that ran the turn, recorded on the assistant turn. */
+    provider?: ChatProvider;
+    /** Provider segment the turn ran in; absent when no session was reported. */
+    segmentId?: string;
 }
 
 /** Mode-specific AI call parameters supplied by each concrete executor. */
@@ -1028,6 +1032,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         let policyReasoningEffort: string | undefined;
 
         const turnAbort = this.registerTurnAbortController(processId, taskProvider);
+
+        // Provider segment this turn's response belongs to, known once the
+        // provider reports its session. Handed back with the result so the
+        // lifecycle runner can attribute the assistant turn it appends.
+        let turnSegmentId: string | undefined;
         try {
             // Rewrite large prompts to file-path references
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
@@ -1196,6 +1205,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             sessionId,
                             turnIndex: 0,
                         }).binding;
+                        turnSegmentId = binding.segmentId;
                         this.store.updateProcess(processId, activeProviderSessionUpdate(binding)).catch(() => {
                             // Non-fatal: store may be a stub
                         });
@@ -1250,6 +1260,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 pendingSuggestions,
                 tokenUsage: result.tokenUsage,
                 effectiveModel: result.effectiveModel ?? policy.modelId,
+                ...turnProviderAttribution(taskProvider, turnSegmentId),
             };
         } catch (err) {
             // Settle before the interrupted-turn append below so the ordinal
@@ -1281,6 +1292,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             interrupted: true,
                             interruptionReason: errorMsg,
                             ...(partial.suggestions ? { suggestions: partial.suggestions } : {}),
+                            ...turnProviderAttribution(taskProvider, turnSegmentId),
                         }),
                         { filterStreaming: true },
                     );

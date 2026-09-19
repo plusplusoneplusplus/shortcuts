@@ -14,7 +14,7 @@
  * single shape to work with; it is never written back.
  */
 
-import type { ActiveProviderSession, AIProcess } from '@plusplusoneplusplus/forge';
+import type { ActiveProviderSession, AIProcess, ConversationTurn } from '@plusplusoneplusplus/forge';
 import { type ChatProvider, resolveChatProvider, resolveChatProviderOrDefault } from '../tasks/task-types';
 
 /**
@@ -144,4 +144,23 @@ export function activeProviderSessionUpdate(binding: ActiveProviderSession): Par
 
 function defaultSegmentId(): string {
     return `seg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * The attribution fields a newly recorded turn carries: which provider ran it
+ * and which provider segment it belongs to. Both are written from what the
+ * turn actually ran on and never re-derived later, so a turn keeps its
+ * original attribution after the conversation switches providers.
+ *
+ * `segmentId` is omitted when the segment is not yet known — a reconstructed
+ * continuation has no segment until the target provider reports a session.
+ */
+export function turnProviderAttribution(
+    provider: ChatProvider | undefined,
+    segmentId: string | undefined,
+): Pick<ConversationTurn, 'provider' | 'segmentId'> {
+    return {
+        ...(provider ? { provider } : {}),
+        ...(segmentId ? { segmentId } : {}),
+    };
 }

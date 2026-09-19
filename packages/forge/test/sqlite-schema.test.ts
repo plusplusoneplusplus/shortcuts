@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(36);
+        expect(SCHEMA_VERSION).toBe(37);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1178,7 +1178,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(36);
+            expect(SCHEMA_VERSION).toBe(37);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1405,7 +1405,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(36);
+            expect(SCHEMA_VERSION).toBe(37);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1606,7 +1606,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(36);
+            expect(SCHEMA_VERSION).toBe(37);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',
@@ -1800,5 +1800,81 @@ describe('V35 -> V36 migration (active provider/session binding)', () => {
 
         const columns = db.prepare('PRAGMA table_info(processes)').all() as Array<{ name: string }>;
         expect(columns.filter(column => column.name === 'active_provider_session')).toHaveLength(1);
+    });
+});
+
+describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
+    let db: Database.Database;
+
+    beforeEach(() => {
+        db = new Database(':memory:');
+    });
+
+    afterEach(() => {
+        db.close();
+    });
+
+    it('adds a nullable segment_id column without backfilling existing turns', () => {
+        db.exec(`
+            CREATE TABLE processes (
+                id                    TEXT PRIMARY KEY,
+                workspace_id          TEXT NOT NULL,
+                type                  TEXT,
+                status                TEXT NOT NULL,
+                start_time            TEXT NOT NULL,
+                metadata              TEXT,
+                parent_process_id     TEXT,
+                sdk_session_id        TEXT,
+                active_provider_session TEXT,
+                archived              INTEGER DEFAULT 0,
+                pinned_at             TEXT,
+                seen_at               TEXT,
+                last_event_at         TEXT
+            );
+            CREATE TABLE conversation_turns (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                process_id        TEXT NOT NULL,
+                turn_index        INTEGER NOT NULL,
+                role              TEXT NOT NULL,
+                content           TEXT,
+                timestamp         TEXT NOT NULL,
+                streaming         INTEGER DEFAULT 0,
+                deleted_at        TEXT,
+                pinned_at         TEXT,
+                model             TEXT,
+                mode              TEXT,
+                provider          TEXT,
+                UNIQUE(process_id, turn_index)
+            );
+        `);
+        db.prepare(`
+            INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, provider)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `).run('p-v36', 0, 'assistant', 'hi', '2026-01-01T00:00:00.000Z', 'codex');
+        db.pragma('user_version = 36');
+
+        initializeDatabase(db);
+
+        expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+        const columns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
+        expect(columns.map(column => column.name)).toContain('segment_id');
+        // No backfill: the current binding is not evidence about which native
+        // session ran an already-recorded turn.
+        expect(db.prepare(`
+            SELECT provider, segment_id FROM conversation_turns WHERE process_id = ?
+        `).get('p-v36')).toEqual({
+            provider: 'codex',
+            segment_id: null,
+        });
+    });
+
+    it('is idempotent when initializeDatabase runs twice', () => {
+        initializeDatabase(db);
+        db.pragma('user_version = 36');
+
+        expect(() => initializeDatabase(db)).not.toThrow();
+
+        const columns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
+        expect(columns.filter(column => column.name === 'segment_id')).toHaveLength(1);
     });
 });

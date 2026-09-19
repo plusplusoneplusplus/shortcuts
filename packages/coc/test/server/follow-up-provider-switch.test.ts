@@ -142,6 +142,64 @@ describe('follow-up provider switching', () => {
         expect(store.processes.get('proc-stopped-switch')?.activeProviderSession?.provider).toBe('codex');
     });
 
+    describe('assistant turn attribution (AC-06)', () => {
+        /** The assistant turn the executor appended, if any. */
+        function lastAssistantTurn(processId: string) {
+            const turns = store.processes.get(processId)?.conversationTurns ?? [];
+            return [...turns].reverse().find(t => t.role === 'assistant');
+        }
+
+        it('records the bound provider and segment on a same-provider turn', async () => {
+            await seedCopilotChat('proc-attr-same');
+            mockSendMessage.mockResolvedValueOnce({ success: true, response: 'A2', sessionId: 'copilot-session-1' });
+
+            await new CLITaskExecutor(store).executeFollowUp('proc-attr-same', 'Q2');
+
+            expect(lastAssistantTurn('proc-attr-same')).toMatchObject({
+                provider: 'copilot',
+                segmentId: 'seg-copilot-1',
+            });
+        });
+
+        it('records the target provider and its new segment on a cross-provider turn', async () => {
+            await seedCopilotChat('proc-attr-switch');
+            mockSendMessage.mockImplementation(async (options: any) => {
+                options?.onSessionCreated?.('codex-session-1');
+                return { success: true, response: 'A2', sessionId: 'codex-session-1' };
+            });
+
+            await new CLITaskExecutor(store).executeFollowUp(
+                'proc-attr-switch', 'Q2', undefined, 'ask', undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, { requestedProvider: 'codex' },
+            );
+
+            const binding = store.processes.get('proc-attr-switch')?.activeProviderSession;
+            expect(lastAssistantTurn('proc-attr-switch')).toMatchObject({
+                provider: 'codex',
+                segmentId: binding?.segmentId,
+            });
+            // The boundary is only provable if the new segment differs from the
+            // one the earlier Copilot turns ran in.
+            expect(binding?.segmentId).not.toBe('seg-copilot-1');
+        });
+
+        it('attributes an interrupted turn to the provider that was running it', async () => {
+            await seedCopilotChat('proc-attr-failed');
+            mockSendMessage.mockResolvedValueOnce({ success: false, error: 'codex exploded' });
+
+            await new CLITaskExecutor(store).executeFollowUp(
+                'proc-attr-failed', 'Q2', undefined, 'ask', undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, { requestedProvider: 'codex' },
+            );
+
+            const turn = lastAssistantTurn('proc-attr-failed');
+            expect(turn?.provider).toBe('codex');
+            // No session was ever created, so there is no segment to claim —
+            // and certainly not the outgoing Copilot one.
+            expect(turn?.segmentId).toBeUndefined();
+        });
+    });
+
     describe('stop during an in-flight turn', () => {
         /** Executor whose provider resolution is observable. */
         function makeExecutor() {

@@ -135,3 +135,82 @@ describe('process serialization — conversation turn `provider`', () => {
         expect(restored.conversationTurns?.[1].provider).toBeUndefined();
     });
 });
+
+describe('SqliteProcessStore — conversation turn `segmentId` round-trip', () => {
+    it('persists `segmentId` alongside `provider`', async () => {
+        await store.addProcess(makeProcess('proc-segment-1'));
+        await store.appendConversationTurn('proc-segment-1', (idx) =>
+            makeUserTurn(idx, { provider: 'codex', segmentId: 'seg-a' })
+        );
+
+        const turn = (await store.getProcess('proc-segment-1'))?.conversationTurns?.[0];
+        expect(turn?.provider).toBe('codex');
+        expect(turn?.segmentId).toBe('seg-a');
+    });
+
+    it('omits `segmentId` for turns recorded before segment attribution existed', async () => {
+        await store.addProcess(makeProcess('proc-segment-2'));
+        await store.appendConversationTurn('proc-segment-2', (idx) => makeUserTurn(idx));
+
+        const turn = (await store.getProcess('proc-segment-2'))?.conversationTurns?.[0];
+        expect(turn?.segmentId).toBeUndefined();
+    });
+
+    it('keeps one segment per provider run so a boundary stays provable', async () => {
+        await store.addProcess(makeProcess('proc-segment-3'));
+        const recorded: Array<[ConversationTurn['provider'], string]> = [
+            ['copilot', 'seg-a'],
+            ['copilot', 'seg-a'],
+            ['codex', 'seg-b'],
+            ['copilot', 'seg-c'],
+        ];
+        for (const [provider, segmentId] of recorded) {
+            await store.appendConversationTurn('proc-segment-3', (idx) =>
+                makeUserTurn(idx, { provider, segmentId })
+            );
+        }
+
+        const restored = await store.getProcess('proc-segment-3');
+        expect((restored?.conversationTurns ?? []).map(t => t.segmentId))
+            .toEqual(['seg-a', 'seg-a', 'seg-b', 'seg-c']);
+    });
+
+    it('carries `segmentId` through a fork copy', async () => {
+        await store.addProcess(makeProcess('proc-segment-4'));
+        await store.appendConversationTurn('proc-segment-4', (idx) =>
+            makeUserTurn(idx, { provider: 'copilot', segmentId: 'seg-a' })
+        );
+        await store.appendConversationTurn('proc-segment-4', (idx) =>
+            makeUserTurn(idx, { provider: 'codex', segmentId: 'seg-b' })
+        );
+
+        const forked = await store.forkProcess('proc-segment-4', 'proc-segment-4-fork', 'sdk-session-fork');
+
+        expect((forked?.conversationTurns ?? []).map(t => t.segmentId)).toEqual(['seg-a', 'seg-b']);
+    });
+
+    it('leaves a streaming assistant turn unattributed until it is finalized', async () => {
+        await store.addProcess(makeProcess('proc-segment-5'));
+        await store.upsertStreamingTurn('proc-segment-5', 'partial', true);
+
+        const turn = (await store.getProcess('proc-segment-5'))?.conversationTurns?.[0];
+        expect(turn?.streaming).toBe(true);
+        expect(turn?.segmentId).toBeUndefined();
+    });
+});
+
+describe('process serialization — conversation turn `segmentId`', () => {
+    it('survives a serialize/deserialize round trip (file-store path)', () => {
+        const proc = makeProcess('proc-segment-serialize', {
+            conversationTurns: [
+                makeUserTurn(0, { provider: 'copilot', segmentId: 'seg-a' }),
+                makeUserTurn(1),
+            ],
+        });
+
+        const restored = deserializeProcess(serializeProcess(proc));
+
+        expect(restored.conversationTurns?.[0].segmentId).toBe('seg-a');
+        expect(restored.conversationTurns?.[1].segmentId).toBeUndefined();
+    });
+});

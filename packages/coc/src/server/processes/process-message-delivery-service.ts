@@ -20,6 +20,7 @@ import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@p
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
 import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
@@ -288,6 +289,7 @@ export class ProcessMessageDeliveryService {
     async deliver(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
+        const activeBinding = readActiveProviderSession(proc);
         const events: DeliveryEvent[] = [];
 
         let path: DeliveryPath = 'enqueued';
@@ -405,7 +407,14 @@ export class ProcessMessageDeliveryService {
                     ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
                     ...(input.model ? { model: input.model } : {}),
                     ...(input.mode ? { mode: input.mode } : {}),
-                    ...(input.provider ? { provider: input.provider } : {}),
+                    // The segment is only known when this message continues the
+                    // active one. A cross-provider message has no segment until
+                    // the target provider reports a session, so it stays
+                    // unattributed rather than claiming the outgoing segment.
+                    ...turnProviderAttribution(
+                        input.provider,
+                        input.provider === activeBinding.provider ? activeBinding.segmentId : undefined,
+                    ),
                 }),
                 { additionalUpdates: { status: 'running' } },
             );

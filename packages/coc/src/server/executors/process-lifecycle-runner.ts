@@ -59,6 +59,7 @@ import {
 import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
 import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
+import { turnProviderAttribution } from '../processes/active-provider-session';
 import { bindDetectedPullRequestsForProcess } from '../processes/bind-detected-pull-requests';
 import type { FollowUpTurnOptions } from './follow-up-executor';
 import {
@@ -839,6 +840,13 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             suggestions: (result as any)?.pendingSuggestions ?? this.getPendingSuggestions(processId),
                             ...(effectiveModel ? { model: effectiveModel } : {}),
                             ...(tokenUsage ? { tokenUsage } : {}),
+                            // Attribution comes from the executor that just ran
+                            // the turn, not from a re-read of the conversation
+                            // binding, so a concurrent switch cannot relabel it.
+                            ...turnProviderAttribution(
+                                (result as any)?.provider,
+                                (result as any)?.segmentId,
+                            ),
                         };
                     },
                     {

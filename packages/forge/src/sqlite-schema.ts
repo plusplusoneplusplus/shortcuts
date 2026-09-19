@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 
 /**
  * Read the current schema version from the database.
@@ -100,6 +100,7 @@ export function initializeDatabase(db: Database.Database): void {
                 repo_group_context TEXT,
                 chat_mode_context TEXT,
                 provider          TEXT,
+                segment_id        TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -558,6 +559,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 36) {
             migrateV35toV36(db);
         }
+        if (versionBefore < 37) {
+            migrateV36toV37(db);
+        }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });
@@ -1002,6 +1006,16 @@ function migrateV34toV35(db: Database.Database): void {
  */
 function migrateV35toV36(db: Database.Database): void {
     ensureColumn(db, 'processes', 'active_provider_session', 'TEXT');
+}
+
+/**
+ * V36 -> V37: add `segment_id` to `conversation_turns` — which provider
+ * segment the turn belongs to. Existing rows stay NULL for the same reason
+ * `provider` is not backfilled: the current binding is not evidence about
+ * which session ran an old turn.
+ */
+function migrateV36toV37(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'segment_id', 'TEXT');
 }
 
 /**
