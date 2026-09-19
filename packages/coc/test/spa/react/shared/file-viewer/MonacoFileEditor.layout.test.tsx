@@ -35,7 +35,7 @@ const stub = vi.hoisted(() => ({
         revealLineInCenter: vi.fn(),
         setPosition: vi.fn(),
         setSelection: vi.fn(),
-        addAction: vi.fn(),
+        addAction: vi.fn(() => ({ dispose: vi.fn() })),
     },
     monaco: { editor: { setModelMarkers: vi.fn() }, KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 2 } },
 }));

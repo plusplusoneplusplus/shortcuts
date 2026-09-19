@@ -27,7 +27,7 @@ const stub = vi.hoisted(() => ({
         revealLineInCenter: vi.fn(),
         setPosition: vi.fn(),
         setSelection: vi.fn(),
-        addAction: vi.fn(),
+        addAction: vi.fn(() => ({ dispose: vi.fn() })),
         layout: vi.fn(),
     },
 }));

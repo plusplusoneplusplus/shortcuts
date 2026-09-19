@@ -344,6 +344,8 @@ export function MonacoFileEditor({
     // registration is torn down with the model it was made for.
     const [modelGeneration, setModelGeneration] = useState(0);
     const modelListenerRef = useRef<{ dispose(): void } | null>(null);
+    const onSaveRef = useRef(onSave);
+    onSaveRef.current = onSave;
 
     // Measure the wrapper element and track resizes so Monaco gets explicit
     // pixel dimensions instead of relying on CSS 100% (which causes runaway
@@ -408,6 +410,8 @@ export function MonacoFileEditor({
         monaco.editor.setModelMarkers(model, LANGUAGE_MARKER_OWNER, [...markers]);
     }, [markers]);
 
+    // `@monaco-editor/react` invokes `onMount` only once, so live callbacks
+    // such as save must be registered by effects outside this handler.
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
         monacoRef.current = monaco;
@@ -422,15 +426,20 @@ export function MonacoFileEditor({
         applyHighlight(editor);
         applyMarkers();
 
-        if (onSave && !readOnly) {
-            editor.addAction({
-                id: 'file-save',
-                label: 'Save File',
-                keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
-                run: () => onSave(),
-            });
-        }
-    }, [onSave, readOnly, revealLine, revealColumn, applyHighlight, applyMarkers]);
+    }, [revealLine, revealColumn, applyHighlight, applyMarkers]);
+
+    // Register outside `handleMount`: the Monaco React wrapper pins its first
+    // `onMount`, so an action created there would keep the initial save handler.
+    useEffect(() => {
+        if (!mounted || readOnly) return;
+        const action = mounted.editor.addAction({
+            id: 'file-save',
+            label: 'Save File',
+            keybindings: [mounted.monaco.KeyMod.CtrlCmd | mounted.monaco.KeyCode.KeyS],
+            run: () => { void onSaveRef.current?.(); },
+        });
+        return () => action.dispose();
+    }, [mounted, readOnly]);
 
     // A later reveal (a second search hit in the same already-open file) has no
     // mount to piggyback on, so apply it here too. `value` is a dependency
