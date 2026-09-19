@@ -8,7 +8,7 @@ import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { ChatMode } from '../../../repos/modeConfig';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload, ChatAttachment } from '../../../types/attachments';
-import { CocApiError, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
+import { CocApiError, type ChatProviderId, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
@@ -71,6 +71,11 @@ export interface UseSendMessageOptions {
     clearAttachedContext?: () => void;
     /** Optional model override to include in the POST body. */
     modelOverride?: string | null;
+    /**
+     * Confirmed concrete provider for this follow-up. Omit it to preserve the
+     * active conversation provider and the request shape used by older servers.
+     */
+    providerOverride?: ChatProviderId;
     /**
      * Optional per-turn reasoning-effort override to include in the POST body.
      * `null` (or omitted) means no override — the executor falls back to the
@@ -145,6 +150,7 @@ export function useSendMessage({
     getAttachedContext,
     clearAttachedContext,
     modelOverride,
+    providerOverride,
     effortOverride,
     chatStyle,
     workspaceId,
@@ -185,11 +191,12 @@ export function useSendMessage({
         mode: options.modeOverride ?? selectedMode,
         deliveryMode,
         ...(skillNames.length > 0 ? { skillNames } : {}),
+        ...(providerOverride ? { provider: providerOverride } : {}),
         ...(modelOverride ? { model: modelOverride } : {}),
         ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
         ...(chatStyle ? { chatStyle } : {}),
         });
-    }, [images, modelOverride, effortOverride, chatStyle, selectedMode, toPayload]);
+    }, [images, providerOverride, modelOverride, effortOverride, chatStyle, selectedMode, toPayload]);
 
     const closeFollowUpStream = useCallback(() => {
         if (followUpEventSourceRef.current) {

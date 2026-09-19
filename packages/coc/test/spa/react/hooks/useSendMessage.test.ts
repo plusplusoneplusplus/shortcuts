@@ -134,6 +134,28 @@ describe('useSendMessage', () => {
         expect(parseAndExtract).toHaveBeenCalledWith('hello');
     });
 
+    it('includes the confirmed concrete provider in the follow-up request', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions({ providerOverride: 'codex' });
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('hello'); });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.provider).toBe('codex');
+    });
+
+    it('omits provider when the composer has no confirmed switch', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+        const opts = makeOptions();
+
+        const { result } = renderHook(() => useSendMessage(opts));
+        await act(async () => { await result.current.sendFollowUp('hello'); });
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body).not.toHaveProperty('provider');
+    });
+
     it('calls clearDraft after initiating send', async () => {
         const { clearDraft } = await import(
             '../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore'
