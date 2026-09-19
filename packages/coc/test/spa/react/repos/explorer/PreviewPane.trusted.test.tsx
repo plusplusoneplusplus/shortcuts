@@ -12,32 +12,26 @@ const mockExplorerApi = vi.hoisted(() => ({
     writeBlob: vi.fn(),
     readTrustedBlob: vi.fn(),
 }));
+const mockViewer = vi.hoisted(() => ({
+    props: null as any,
+    updateOptions: vi.fn(),
+}));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: mockExplorerApi,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, language, onChange, onSave, readOnly }: any) => (
-        <div data-testid="mock-monaco-editor" data-language={language} data-value={value} data-read-only={String(!!readOnly)}>
-            <textarea
-                data-testid="mock-monaco-textarea"
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-            />
-            {onSave && <button data-testid="mock-monaco-save" onClick={onSave}>Save</button>}
-        </div>
-    ),
-    getMonacoLanguage: (name: string) => {
-        const ext = name?.split('.').pop()?.toLowerCase();
-        const map: Record<string, string> = { ts: 'typescript', js: 'javascript', py: 'python', md: 'markdown' };
-        return map[ext ?? ''] ?? 'plaintext';
+vi.mock('../../../../../src/server/spa/client/react/shared/file-viewer/FileViewer', () => ({
+    FileViewer: (props: any) => {
+        mockViewer.props = props;
+        return <div data-testid="mock-file-viewer" />;
     },
 }));
 
 describe('PreviewPane — trusted path support', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockViewer.props = null;
     });
 
     it('fetches from /api/fs/blob for trusted-prefixed paths', async () => {
@@ -59,7 +53,7 @@ describe('PreviewPane — trusted path support', () => {
         expect(mockExplorerApi.readBlob).not.toHaveBeenCalled();
     });
 
-    it('forces readOnly for trusted paths', async () => {
+    it('keeps trusted paths read-only and omits their save route', async () => {
         mockExplorerApi.readTrustedBlob.mockResolvedValue({
             content: 'const x = 1;',
             encoding: 'utf-8',
@@ -69,10 +63,16 @@ describe('PreviewPane — trusted path support', () => {
         const trustedPath = `${TRUSTED_PATH_PREFIX}/home/user/.copilot/file.ts`;
         render(<PreviewPane repoId="r1" filePath={trustedPath} fileName="file.ts" />);
 
-        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
-        expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-read-only')).toBe('true');
-        // onSave should not be provided for trusted paths → no save button
-        expect(screen.queryByTestId('mock-monaco-save')).not.toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('mock-file-viewer')).toBeInTheDocument());
+        expect(mockViewer.props.onSave).toBeUndefined();
+
+        const cleanup = mockViewer.props.onModelMount({
+            editor: { updateOptions: mockViewer.updateOptions },
+        });
+        expect(mockViewer.updateOptions).toHaveBeenCalledWith({ readOnly: true });
+
+        cleanup();
+        expect(mockViewer.updateOptions).toHaveBeenLastCalledWith({ readOnly: false });
     });
 
     it('fetches from /repos/:id/blob for non-trusted paths (no prefix)', async () => {

@@ -34,10 +34,9 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
 }));
 // Monaco never loads in jsdom; the textarea stands in for the edit buffer.
 vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, onChange, readOnly }: any) => (
+    MonacoFileEditor: ({ value, onChange }: any) => (
         <textarea
             data-testid="mock-monaco-textarea"
-            data-readonly={readOnly ? 'true' : 'false'}
             value={value}
             onChange={e => onChange?.(e.target.value)}
         />
@@ -109,14 +108,13 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
     };
 }
 
-function openFile(opts: { path: string; readOnly?: boolean; chatId?: string | null } = { path: 'src/a.ts' }) {
+function openFile(opts: { path: string; chatId?: string | null } = { path: 'src/a.ts' }) {
     return openUnifiedPanelTab(WS, {
         kind: 'file',
         ownerWorkspaceId: WS,
         chatId: opts.chatId === undefined ? CHAT : opts.chatId,
         resourceId: opts.path,
         label: opts.path.split('/').pop() ?? opts.path,
-        ...(opts.readOnly ? { readOnly: true } : {}),
     });
 }
 
@@ -232,18 +230,6 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
 
         expect(screen.queryByTestId('explorer-close-tabs-prompt')).toBeNull();
         expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
-    });
-
-    it('never prompts for a read-only tab, which has no write path to offer', async () => {
-        const tabId = openFile({ path: 'src/a.ts', readOnly: true });
-        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
-        await screen.findByTestId('mock-monaco-textarea');
-
-        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
-
-        expect(screen.queryByTestId('explorer-close-tabs-prompt')).toBeNull();
-        expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
-        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
     });
 
     it('keeps a draft alive while its tab is hidden behind another', async () => {

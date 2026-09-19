@@ -83,7 +83,7 @@ describe('canvasEventTabInput', () => {
         });
         // A canvas has a write path of its own; a live event is not a reason to
         // mark it as a read-only reference.
-        expect(input.readOnly).toBeUndefined();
+        expect(input).not.toHaveProperty('readOnly');
     });
 
     it('routes to the owning clone and labels it when it is not the panel scope', () => {

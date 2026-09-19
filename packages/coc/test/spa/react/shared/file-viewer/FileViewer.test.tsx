@@ -16,12 +16,11 @@ import { FileViewer, formatFileSize } from '../../../../../src/server/spa/client
 vi.mock(
     '../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor',
     () => ({
-        MonacoFileEditor: ({ value, language, readOnly, markers }: any) => (
+        MonacoFileEditor: ({ value, language, markers }: any) => (
             <div
                 data-testid="mock-monaco-editor"
                 data-language={language}
                 data-value={value}
-                data-read-only={String(!!readOnly)}
                 data-markers={markers === undefined ? 'none' : String(markers.length)}
             />
         ),
@@ -42,7 +41,7 @@ describe('FileViewer', () => {
 
     it('renders markdown formatted when the host opts in', () => {
         const { getByTestId } = render(
-            <FileViewer blob={text('# hi')} fileName="README.md" markdown="toggle" readOnly />,
+            <FileViewer blob={text('# hi')} fileName="README.md" markdown="toggle" />,
         );
         expect(getByTestId('source-canvas-markdown-view')).toBeTruthy();
     });

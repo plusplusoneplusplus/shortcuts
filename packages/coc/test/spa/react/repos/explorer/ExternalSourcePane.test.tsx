@@ -52,7 +52,7 @@ describe('ExternalSourcePane', () => {
         expect(screen.getByTestId('external-source-badge')).toHaveTextContent('External · Read only');
         expect(editors.mounted.at(-1)).toMatchObject({
             value: 'namespace std { class string_view; }',
-            readOnly: true,
+            onModelMount: expect.any(Function),
             revealLine: 42,
             revealColumn: 7,
             // No extension on the basename, so the host's hint is what keeps it C++.
@@ -68,7 +68,7 @@ describe('ExternalSourcePane', () => {
         const props = editors.mounted.at(-1)!;
         expect(props.onChange).toBeUndefined();
         expect(props.onSave).toBeUndefined();
-        expect(props.readOnly).toBe(true);
+        expect(props.onModelMount).toEqual(expect.any(Function));
     });
 
     it('holds the source alive while it is open and releases it on close', () => {

@@ -2,10 +2,8 @@
  * unifiedDirtyClose — which unified-panel closes have to ask about unsaved
  * edits, and what the prompt calls them (AC-05).
  *
- * The pure half of the guard. The cases that matter are the ones that must NOT
- * prompt: a read-only tab (a chat source link can never be dirty, and offering
- * to save one would imply a write path it does not have), and every kind that
- * holds nothing to save.
+ * The pure half of the guard. The cases that matter are the kinds that can
+ * report dirtiness and write their pending changes.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -24,12 +22,6 @@ describe('needsDirtyCloseConfirm', () => {
 
     it('closes a clean file tab straight through', () => {
         expect(needsDirtyCloseConfirm({ kind: 'file' }, false)).toBe(false);
-    });
-
-    it('never prompts for a read-only file tab', () => {
-        // A chat source link is a reference, not an authorization: it has no
-        // write path, so a save prompt would be a lie.
-        expect(needsDirtyCloseConfirm({ kind: 'file', readOnly: true }, true)).toBe(false);
     });
 
     it('never prompts for a missing tab', () => {

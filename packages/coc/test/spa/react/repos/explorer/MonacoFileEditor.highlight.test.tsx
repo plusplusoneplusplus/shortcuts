@@ -60,7 +60,7 @@ describe('MonacoFileEditor — highlightRange', () => {
     });
 
     it('installs a whole-line decoration for the range on mount and centres its first line', async () => {
-        render(<MonacoFileEditor value="a\nb\nc" language="typescript" readOnly highlightRange={{ start: 2, end: 3 }} />);
+        render(<MonacoFileEditor value="a\nb\nc" language="typescript" highlightRange={{ start: 2, end: 3 }} />);
         await flushMount();
 
         expect(editorStub.createDecorationsCollection).toHaveBeenCalledTimes(1);
@@ -73,13 +73,13 @@ describe('MonacoFileEditor — highlightRange', () => {
 
     it('re-applies a changed range on the already-mounted editor without a remount', async () => {
         const { rerender } = render(
-            <MonacoFileEditor value="x" language="typescript" readOnly highlightRange={{ start: 71, end: 78 }} />,
+            <MonacoFileEditor value="x" language="typescript" highlightRange={{ start: 71, end: 78 }} />,
         );
         await flushMount();
         editorStub.revealLineInCenter.mockClear();
 
         await act(async () => {
-            rerender(<MonacoFileEditor value="x" language="typescript" readOnly highlightRange={{ start: 120, end: 120 }} />);
+            rerender(<MonacoFileEditor value="x" language="typescript" highlightRange={{ start: 120, end: 120 }} />);
         });
 
         // Same collection reused — the editor was never re-created.
@@ -92,13 +92,13 @@ describe('MonacoFileEditor — highlightRange', () => {
 
     it('does not re-apply when an equal range object is passed on every render', async () => {
         const { rerender } = render(
-            <MonacoFileEditor value="x" language="typescript" readOnly highlightRange={{ start: 5, end: 5 }} />,
+            <MonacoFileEditor value="x" language="typescript" highlightRange={{ start: 5, end: 5 }} />,
         );
         await flushMount();
         editorStub.collection.set.mockClear();
 
         await act(async () => {
-            rerender(<MonacoFileEditor value="x" language="typescript" readOnly highlightRange={{ start: 5, end: 5 }} />);
+            rerender(<MonacoFileEditor value="x" language="typescript" highlightRange={{ start: 5, end: 5 }} />);
         });
 
         expect(editorStub.collection.set).not.toHaveBeenCalled();
@@ -106,19 +106,19 @@ describe('MonacoFileEditor — highlightRange', () => {
 
     it('clears the decorations when the range goes away', async () => {
         const { rerender } = render(
-            <MonacoFileEditor value="x" language="typescript" readOnly highlightRange={{ start: 4, end: 4 }} />,
+            <MonacoFileEditor value="x" language="typescript" highlightRange={{ start: 4, end: 4 }} />,
         );
         await flushMount();
 
         await act(async () => {
-            rerender(<MonacoFileEditor value="x" language="typescript" readOnly highlightRange={null} />);
+            rerender(<MonacoFileEditor value="x" language="typescript" highlightRange={null} />);
         });
 
         expect(latestDecorations()).toEqual([]);
     });
 
     it('installs no decorations and centres nothing when mounted without a range', async () => {
-        render(<MonacoFileEditor value="x" language="typescript" readOnly />);
+        render(<MonacoFileEditor value="x" language="typescript" />);
         await flushMount();
 
         expect(latestDecorations()).toEqual([]);
@@ -133,8 +133,8 @@ describe('MonacoFileEditor — optional onChange', () => {
         editorStub.createDecorationsCollection.mockReturnValue(editorStub.collection);
     });
 
-    it('tolerates an edit event with no onChange handler (read-only viewers pass none)', async () => {
-        render(<MonacoFileEditor value="x" language="typescript" readOnly />);
+    it('tolerates an edit event with no onChange handler', async () => {
+        render(<MonacoFileEditor value="x" language="typescript" />);
         await flushMount();
 
         expect(() => editorStub.lastOnChange?.('edited')).not.toThrow();
@@ -149,10 +149,4 @@ describe('MonacoFileEditor — optional onChange', () => {
         expect(onChange).toHaveBeenCalledWith('edited', []);
     });
 
-    it('registers no save action when read-only', async () => {
-        render(<MonacoFileEditor value="x" language="typescript" readOnly onSave={vi.fn()} />);
-        await flushMount();
-
-        expect(editorStub.addAction).not.toHaveBeenCalled();
-    });
 });

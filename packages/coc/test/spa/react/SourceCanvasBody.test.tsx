@@ -34,7 +34,7 @@ vi.mock(
     async () => {
         const { useRef } = await import('react');
         return {
-            MonacoFileEditor: ({ value, language, readOnly, onChange, onSave, highlightRange }: any) => {
+            MonacoFileEditor: ({ value, language, onModelMount, onChange, onSave, highlightRange }: any) => {
                 const id = useRef<number | null>(null);
                 if (id.current === null) { id.current = ++mountState.count; }
                 return (
@@ -43,7 +43,7 @@ vi.mock(
                         data-mount-id={String(id.current)}
                         data-language={language}
                         data-value={value}
-                        data-read-only={String(!!readOnly)}
+                        data-read-only={String(typeof onModelMount === 'function')}
                         data-has-on-change={String(!!onChange)}
                         data-has-on-save={String(!!onSave)}
                         data-highlight-start={highlightRange ? String(highlightRange.start) : ''}

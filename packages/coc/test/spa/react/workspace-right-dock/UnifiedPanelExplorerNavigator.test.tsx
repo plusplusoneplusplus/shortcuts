@@ -33,14 +33,13 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
 }));
 // The file body has its own suite; here only the routing it is handed matters.
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', () => ({
-    PreviewPane: ({ repoId, filePath, revealLine, readOnly }: {
-        repoId: string; filePath: string; revealLine?: number; readOnly?: boolean;
+    PreviewPane: ({ repoId, filePath, revealLine }: {
+        repoId: string; filePath: string; revealLine?: number;
     }) => (
         <div
             data-testid={`mock-preview-${filePath}`}
             data-repo={repoId}
             data-reveal-line={revealLine ?? 'none'}
-            data-readonly={readOnly ? 'true' : 'false'}
         />
     ),
 }));
@@ -152,9 +151,6 @@ describe('unified panel — the tree column as a navigator', () => {
 
         await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-${fileTabId('a.ts')}`)).toBeInTheDocument());
         const preview = await screen.findByTestId('mock-preview-a.ts');
-        // Editable — the Explorer is an authorized entry point, unlike a chat
-        // source link, which opens the same view read-only.
-        expect(preview).toHaveAttribute('data-readonly', 'false');
         expect(preview).toHaveAttribute('data-repo', WS);
         expect(screen.getByTestId(`unified-panel-tab-${fileTabId('a.ts')}`)).toHaveAttribute('aria-selected', 'true');
     });

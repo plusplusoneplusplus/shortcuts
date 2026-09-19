@@ -130,7 +130,7 @@ describe('whisperDiffTabInput', () => {
         expect(input.label).toBe('2 files changed');
         // A diff surface has no write path, so it must not claim the read-only
         // lock the strip reserves for suppressed-write file tabs.
-        expect(input.readOnly).toBeUndefined();
+        expect(input).not.toHaveProperty('readOnly');
         expect(getUnifiedDiffSource(input.resourceId)?.workspaceRootPath).toBe('/repo');
     });
 

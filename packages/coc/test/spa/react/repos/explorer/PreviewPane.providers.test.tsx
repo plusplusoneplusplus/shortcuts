@@ -123,6 +123,7 @@ const monacoStub = vi.hoisted(() => {
         // providers, and the navigation behaviour itself is pinned in
         // `PreviewPane.navigation.test.tsx`.
         editor: {
+            updateOptions: vi.fn(),
             getSelection: () => ({
                 selectionStartLineNumber: 1,
                 selectionStartColumn: 1,

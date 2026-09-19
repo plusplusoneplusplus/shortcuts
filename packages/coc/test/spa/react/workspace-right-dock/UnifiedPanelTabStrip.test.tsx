@@ -194,9 +194,9 @@ describe('UnifiedPanelTabStrip', () => {
         expect(props.onMove).not.toHaveBeenCalled();
     });
 
-    it('signals read-only, dirty, and error states without relying on color', () => {
+    it('signals dirty and error states without relying on color', () => {
         let state = openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts', readOnly: true,
+            kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts',
         });
         state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
         const tabs = visibleTabs(state, CHAT);
@@ -207,13 +207,10 @@ describe('UnifiedPanelTabStrip', () => {
             errorIds: new Set([tabs[0].id]),
         });
 
-        expect(screen.getByTestId(`unified-panel-tab-readonly-${tabs[0].id}`)).toBeTruthy();
         expect(screen.getByTestId(`unified-panel-tab-error-${tabs[0].id}`)).toBeTruthy();
         expect(screen.getByTestId(`unified-panel-tab-dirty-${tabs[1].id}`)).toBeTruthy();
-        expect(tabNode(tabs[0]).getAttribute('data-readonly')).toBe('true');
         expect(tabNode(tabs[1]).getAttribute('data-dirty')).toBe('true');
         // …and the same states are spelled out for a screen reader.
-        expect(tabNode(tabs[0]).textContent).toContain('(read-only)');
         expect(tabNode(tabs[0]).textContent).toContain('(unavailable)');
         expect(tabNode(tabs[1]).textContent).toContain('(unsaved changes)');
     });

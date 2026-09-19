@@ -9,11 +9,8 @@
  *    shell renders beside whichever view is active.
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
  *    Explorer sub-tab uses, so load/retry/dirty/save/status behave
- *    identically wherever a file was opened from. `tab.readOnly` forces the
- *    editor read-only and suppresses its save path, which is how a chat source
- *    link stays a preview while an Explorer selection stays editable. The
- *    descriptor carries that bit (it is never re-derived), so restoring or
- *    reordering a tab cannot widen a read-only reference into a writable file.
+ *    identically wherever a file was opened from. Trusted absolute paths are
+ *    recognized inside `PreviewPane`, which keeps their write route absent.
  *  - `canvas` — `CanvasPanel`, routed at `tab.ownerWorkspaceId` so a canvas from
  *    a remote clone keeps hitting its own server for revisions and comments,
  *    with the live `canvas-updated` event for that clone's canvas wired in
@@ -70,8 +67,7 @@ export interface UnifiedTabViewProps {
     /**
      * Hands the panel a way to write this tab's buffer (AC-05), so the
      * unsaved-changes prompt can save without the user re-visiting the tab.
-     * Called with `null` when the buffer stops being editable or unmounts, so a
-     * read-only tab never registers a write at all.
+     * Called with `null` when the buffer stops being editable or unmounts.
      */
     onRegisterSave?: (tabId: string, save: (() => Promise<boolean>) | null) => void;
     /**
@@ -183,7 +179,6 @@ export function UnifiedTabView({
                     revealLine={tab.line}
                     revealColumn={tab.column}
                     symbolCandidate={tab.symbolCandidate}
-                    readOnly={tab.readOnly === true}
                     onClose={close}
                     onNavigate={onOpenFile ? handleNavigate : undefined}
                     onNavigateExternal={onOpenExternal ? handleNavigateExternal : undefined}

@@ -1,9 +1,8 @@
 /**
  * MonacoFileEditor — React wrapper around Monaco Editor for file editing.
  *
- * Provides syntax highlighting, theme syncing, and Ctrl+S save keybinding.
- * Also serves as a read-only viewer (`readOnly`, no `onChange`/`onSave`), with
- * optional line reveal and whole-line range highlighting.
+ * Provides syntax highlighting, theme syncing, Ctrl+S save keybinding, optional
+ * line reveal, and whole-line range highlighting.
  *
  * It also carries the three hooks a language-server host needs, and no more:
  * the raw Monaco change list alongside the new text, a marker list to publish,
@@ -148,8 +147,6 @@ export interface MonacoFileEditorProps {
      * the editor itself never learns what was registered.
      */
     onModelMount?: (context: EditorModelMountContext) => (() => void) | void;
-    /** When true the editor is non-editable and the save keybinding is suppressed. */
-    readOnly?: boolean;
     /**
      * One-based line to scroll into view and select once the editor is ready.
      * Applied on mount and whenever it changes, so opening a second search hit in
@@ -310,7 +307,6 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
     // the same element and collapses the preview to its content height. This
     // editor is laid out from the wrapper measurement below instead.
     automaticLayout: false,
-    readOnly: false,
     padding: { top: 0, bottom: 0 },
     glyphMargin: false,
     folding: false,
@@ -326,7 +322,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
 };
 
 export function MonacoFileEditor({
-    value, language, onChange, onSave, readOnly, revealLine, revealColumn, highlightRange, markers, onModelMount,
+    value, language, onChange, onSave, revealLine, revealColumn, highlightRange, markers, onModelMount,
 }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
@@ -431,7 +427,7 @@ export function MonacoFileEditor({
     // Register outside `handleMount`: the Monaco React wrapper pins its first
     // `onMount`, so an action created there would keep the initial save handler.
     useEffect(() => {
-        if (!mounted || readOnly) return;
+        if (!mounted) return;
         const action = mounted.editor.addAction({
             id: 'file-save',
             label: 'Save File',
@@ -439,7 +435,7 @@ export function MonacoFileEditor({
             run: () => { void onSaveRef.current?.(); },
         });
         return () => action.dispose();
-    }, [mounted, readOnly]);
+    }, [mounted]);
 
     // A later reveal (a second search hit in the same already-open file) has no
     // mount to piggyback on, so apply it here too. `value` is a dependency
@@ -514,7 +510,7 @@ export function MonacoFileEditor({
                     theme={monacoTheme}
                     onChange={handleChange}
                     onMount={handleMount}
-                    options={readOnly ? { ...EXPLORER_EDITOR_OPTIONS, readOnly: true } : EXPLORER_EDITOR_OPTIONS}
+                    options={EXPLORER_EDITOR_OPTIONS}
                 />
             )}
         </div>

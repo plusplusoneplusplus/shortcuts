@@ -69,15 +69,6 @@ describe('MonacoFileEditor — save action', () => {
         expect(first).not.toHaveBeenCalled();
     });
 
-    it('does not register a save action for a read-only buffer', async () => {
-        render(<MonacoFileEditor value="original" language="typescript" onSave={vi.fn()} readOnly />);
-        await flushMount();
-
-        expect(stub.editor.addAction).not.toHaveBeenCalledWith(
-            expect.objectContaining({ id: 'file-save' }),
-        );
-    });
-
     it('disposes the save action on unmount', async () => {
         const { unmount } = render(
             <MonacoFileEditor value="original" language="typescript" onSave={vi.fn()} />,

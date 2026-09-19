@@ -43,7 +43,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
             activeFilePath?: string | null;
             onOpenFile?: (
                 file: { path: string; name: string; line?: number },
-                options: { preview: boolean; readOnly?: boolean },
+                options: { preview: boolean },
             ) => void;
         }) => (
             <div

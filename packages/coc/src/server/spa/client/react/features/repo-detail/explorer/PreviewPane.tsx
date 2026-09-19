@@ -29,6 +29,7 @@ import {
     type EditorNavigationReason,
     type EditorNavigationSnapshot,
 } from '../../../shared/file-viewer/MonacoFileEditor';
+import { mountNonEditableModel } from '../../../shared/file-viewer/nonEditableMonacoModel';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
 import { toContentChanges } from '../../language-servers/monacoBridge';
 import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
@@ -80,8 +81,6 @@ export interface PreviewPaneProps {
     /** Shows that this location came from the fuzzy repository symbol index. */
     symbolCandidate?: boolean;
     onClose?: () => void;
-    /** When true the editor is non-editable and save/dirty UI is suppressed. */
-    readOnly?: boolean;
     /**
      * Notified whenever the unsaved-edits state changes (and with `false` on
      * unmount). Lets the owner surface dirtiness to the workspace-switch guard so
@@ -144,10 +143,9 @@ export interface PreviewPaneProps {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, readOnly, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
-    const effectiveReadOnly = readOnly || isTrusted;
 
     const read = useCallback((signal: AbortSignal) => (
         isTrusted
@@ -158,14 +156,14 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     ), [actualPath, isTrusted, repoId, routingRef]);
 
     const write = useMemo(() => (
-        effectiveReadOnly
+        isTrusted
             ? undefined
             : (content: string) => (
                 routingRef === undefined
                     ? explorerApi.writeBlob(repoId, actualPath, content)
                     : explorerApi.writeBlob(repoId, actualPath, content, routingRef)
             ).then(() => undefined)
-    ), [effectiveReadOnly, repoId, actualPath, routingRef]);
+    ), [isTrusted, repoId, actualPath, routingRef]);
 
     const handleNotFound = useCallback((err: Error) => {
         if ((err as { status?: number }).status === 404) onNotFound?.();
@@ -423,13 +421,13 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     saveRef.current = handleSave;
     useEffect(() => {
         if (!onRegisterSave) return;
-        if (effectiveReadOnly) {
+        if (isTrusted) {
             onRegisterSave(null);
             return;
         }
         onRegisterSave(() => saveRef.current());
         return () => onRegisterSave(null);
-    }, [onRegisterSave, effectiveReadOnly]);
+    }, [onRegisterSave, isTrusted]);
 
     return (
         <div className="relative w-full h-full overflow-hidden" data-testid="preview-pane">
@@ -439,7 +437,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     className="absolute top-2 right-6 z-10 flex items-center gap-1.5"
                     data-testid="preview-toolbar"
                 >
-                    {isDirty && !effectiveReadOnly && (
+                    {isDirty && !isTrusted && (
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"
                             onClick={handleSave}
@@ -449,7 +447,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                             {isSaving ? 'Saving…' : 'Save'}
                         </button>
                     )}
-                    {isDirty && !effectiveReadOnly && (
+                    {isDirty && !isTrusted && (
                         <span className="w-2 h-2 rounded-full bg-[#f59e0b] flex-shrink-0" title="Unsaved changes" data-testid="dirty-indicator" />
                     )}
                     {onClose && (
@@ -478,13 +476,14 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                 <FileViewer
                     blob={displayBlob}
                     fileName={fileName}
-                    readOnly={effectiveReadOnly}
                     onChange={handleEditorChange}
-                    onSave={effectiveReadOnly ? undefined : handleSave}
+                    onSave={isTrusted ? undefined : handleSave}
                     revealLine={revealLine}
                     revealColumn={revealColumn}
                     markers={languageEnabled ? languageDocument.markers : undefined}
-                    onModelMount={displayBlob.encoding === 'utf-8' ? handleModelMount : undefined}
+                    onModelMount={displayBlob.encoding === 'utf-8'
+                        ? (isTrusted ? mountNonEditableModel : handleModelMount)
+                        : undefined}
                     codeTestId="monaco-container"
                 />
             ) : null}

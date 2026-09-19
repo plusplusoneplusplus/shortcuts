@@ -31,12 +31,11 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, onChange, readOnly }: {
+    MonacoFileEditor: ({ value, onChange }: {
         value: string;
         onChange: (next: string) => void;
-        readOnly?: boolean;
     }) => (
-        <div data-testid="mock-monaco-editor" data-read-only={String(!!readOnly)}>
+        <div data-testid="mock-monaco-editor">
             <textarea data-testid="mock-monaco-textarea" value={value} onChange={e => onChange(e.target.value)} />
         </div>
     ),

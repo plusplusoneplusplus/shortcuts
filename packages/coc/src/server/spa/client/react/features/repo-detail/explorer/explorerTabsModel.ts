@@ -58,11 +58,6 @@ export interface ExplorerTab {
      */
     preview: boolean;
     /**
-     * Temporary compatibility field removed from all creation paths. Persisted
-     * state may still supply it until the tab model migration is completed.
-     */
-    readOnly?: boolean;
-    /**
      * One-based line to reveal when the buffer loads — set when the file was
      * opened from a content-search hit, a deep link, or a language-server
      * navigation. Absent for a plain open.
@@ -230,8 +225,6 @@ export interface OpenFileTabInput {
      * what a double click and a deep link do.
      */
     preview: boolean;
-    /** True for trusted absolute-path files, which are never editable. */
-    readOnly?: boolean;
 }
 
 /**
@@ -386,7 +379,6 @@ function sameTab(a: ExplorerTab, b: ExplorerTab): boolean {
         && a.path === b.path
         && a.name === b.name
         && a.preview === b.preview
-        && a.readOnly === b.readOnly
         && a.line === b.line
         && a.column === b.column
         && a.symbolCandidate === b.symbolCandidate

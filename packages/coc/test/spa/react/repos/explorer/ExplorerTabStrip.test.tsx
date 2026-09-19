@@ -19,7 +19,6 @@ function fileTab(path: string, overrides: Partial<ExplorerTab> = {}): ExplorerTa
         path,
         name: path.split('/').pop() ?? path,
         preview: false,
-        readOnly: false,
         ...overrides,
     };
 }
@@ -31,7 +30,6 @@ function searchTab(query: string): ExplorerTab {
         path: '',
         name: `Search: ${query}`,
         preview: false,
-        readOnly: true,
         query,
     };
 }
@@ -231,19 +229,17 @@ describe('ExplorerTabStrip', () => {
         expect(screen.queryByTestId(`explorer-tab-dirty-${tabs[0].id}`)).toBeNull();
     });
 
-    it('marks read-only, loading and error tabs without relying on color', () => {
-        const tabs = [fileTab('src/a.ts', { readOnly: true }), fileTab('src/b.ts'), fileTab('src/c.ts')];
+    it('marks loading and error tabs without relying on color', () => {
+        const tabs = [fileTab('src/a.ts'), fileTab('src/b.ts')];
         renderStrip(tabs, tabs[0].id, {
-            loadingIds: new Set([tabs[1].id]),
-            errorIds: new Set([tabs[2].id]),
+            loadingIds: new Set([tabs[0].id]),
+            errorIds: new Set([tabs[1].id]),
         });
 
-        expect(screen.getByTestId(`explorer-tab-readonly-${tabs[0].id}`).textContent).toBe('🔒');
-        expect(screen.getByTestId(`explorer-tab-${tabs[0].id}`).textContent).toContain('read-only');
-        expect(screen.getByTestId(`explorer-tab-${tabs[1].id}`).getAttribute('aria-busy')).toBe('true');
-        expect(screen.getByTestId(`explorer-tab-${tabs[1].id}`).textContent).toContain('loading');
-        expect(screen.getByTestId(`explorer-tab-error-${tabs[2].id}`).textContent).toBe('⚠');
-        expect(screen.getByTestId(`explorer-tab-${tabs[2].id}`).textContent).toContain('failed to load');
+        expect(screen.getByTestId(`explorer-tab-${tabs[0].id}`).getAttribute('aria-busy')).toBe('true');
+        expect(screen.getByTestId(`explorer-tab-${tabs[0].id}`).textContent).toContain('loading');
+        expect(screen.getByTestId(`explorer-tab-error-${tabs[1].id}`).textContent).toBe('⚠');
+        expect(screen.getByTestId(`explorer-tab-${tabs[1].id}`).textContent).toContain('failed to load');
     });
 
     describe('drag reorder', () => {

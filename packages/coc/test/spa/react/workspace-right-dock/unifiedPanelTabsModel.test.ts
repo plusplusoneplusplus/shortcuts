@@ -170,15 +170,6 @@ describe('unifiedPanelTabsModel — identity and deduplication', () => {
         expect(activeTab(state, CHAT_1)).toMatchObject({ line: 7, column: 21 });
     });
 
-    it('lets an editable entry point unlock a read-only tab, and a read-only one re-lock it', () => {
-        let state = open(EMPTY_UNIFIED_PANEL, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1, readOnly: true });
-        expect(activeTab(state, CHAT_1)?.readOnly).toBe(true);
-        state = open(state, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1 });
-        expect(activeTab(state, CHAT_1)?.readOnly).toBeUndefined();
-        state = open(state, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1, readOnly: true });
-        expect(activeTab(state, CHAT_1)?.readOnly).toBe(true);
-    });
-
     it('shows candidate provenance until an exact open replaces it', () => {
         let state = open(EMPTY_UNIFIED_PANEL, {
             kind: 'file',
@@ -319,7 +310,6 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
             label: 'b.ts',
             chatId: CHAT_2,
             repoLabel: 'member-b',
-            readOnly: true,
             line: 7,
             column: 3,
             symbolCandidate: true,
@@ -592,10 +582,9 @@ describe('unifiedPanelTabsModel — preview tabs', () => {
         expect(sectionLabels(state)).toEqual(['a.ts']);
     });
 
-    it('does not widen a read-only preview, and keeps the reveal line', () => {
-        const state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts', { readOnly: true, line: 12 });
+    it('keeps the reveal line on a preview', () => {
+        const state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts', { line: 12 });
         const tab = previewTab(state, null)!;
-        expect(tab.readOnly).toBe(true);
         expect(tab.line).toBe(12);
     });
 });
@@ -718,13 +707,12 @@ describe('unifiedPanelTabsModel — external definition sources', () => {
             resourceId: 'cap-1',
             label: 'string_view',
             chatId: CHAT_1,
-            readOnly: true,
             line: 42,
             column: 7,
         });
     }
 
-    it('opens read-only against the owner whose language server produced it', () => {
+    it('opens against the owner whose language server produced it', () => {
         const state = withExternal();
         const id = unifiedTabId({ kind: 'external', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'cap-1' });
 
@@ -733,7 +721,6 @@ describe('unifiedPanelTabsModel — external definition sources', () => {
             ownerWorkspaceId: WS,
             resourceId: 'cap-1',
             label: 'string_view',
-            readOnly: true,
             line: 42,
             column: 7,
         });

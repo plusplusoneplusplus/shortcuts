@@ -37,11 +37,10 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', () => ({
-    PreviewPane: ({ filePath, revealLine, revealColumn, readOnly, onDirtyChange, onRegisterSave, onClose, onNavigate }: {
+    PreviewPane: ({ filePath, revealLine, revealColumn, onDirtyChange, onRegisterSave, onClose, onNavigate }: {
         filePath: string;
         revealLine?: number;
         revealColumn?: number;
-        readOnly?: boolean;
         onDirtyChange?: (d: boolean) => void;
         onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
         onClose?: () => void;
@@ -49,18 +48,15 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
     }) => {
         useEffect(() => {
             if (!onRegisterSave) return;
-            // Read-only buffers never register a way to write, exactly as the
-            // real PreviewPane does.
-            const save = readOnly ? null : async () => { onDirtyChange?.(false); return true; };
+            const save = async () => { onDirtyChange?.(false); return true; };
             registeredSaves.set(filePath, save);
             onRegisterSave(save);
-        }, [onRegisterSave, readOnly, onDirtyChange, filePath]);
+        }, [onRegisterSave, onDirtyChange, filePath]);
         return (
             <div
                 data-testid={`mock-preview-${filePath}`}
                 data-reveal-line={revealLine}
                 data-reveal-column={revealColumn}
-                data-readonly={readOnly ? 'true' : undefined}
             >
                 <button data-testid={`make-dirty-${filePath}`} onClick={() => onDirtyChange?.(true)}>dirty</button>
                 <button data-testid={`make-clean-${filePath}`} onClick={() => onDirtyChange?.(false)}>clean</button>
@@ -298,7 +294,6 @@ describe('ExplorerPanel — editor tabs (flag on)', () => {
         fireEvent.click(await screen.findByTestId('open-in-editor'));
 
         await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts', 'search:needle']));
-        expect(screen.getByTestId('explorer-tab-search:needle')).toHaveAttribute('data-readonly', 'true');
         expect(screen.getByTestId('search-editor-text')).toHaveTextContent('hit one');
 
         fireEvent.click(screen.getByTestId('explorer-tab-close-search:needle'));
@@ -362,7 +357,7 @@ describe('ExplorerPanel — editor tabs (flag on)', () => {
         expect(screen.getByTestId('explorer-tab-file:a.ts')).not.toHaveAttribute('data-preview');
     });
 
-    it('adds a trusted Exact Open path to the same strip as a pinned read-only tab that registers no save', async () => {
+    it('adds a trusted Exact Open path to the same strip as a pinned tab', async () => {
         await renderPanel();
         fireEvent.doubleClick(screen.getByTestId('tree-node-a.ts'));
         await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts']));
@@ -373,17 +368,10 @@ describe('ExplorerPanel — editor tabs (flag on)', () => {
 
         await waitFor(() => expect(openTabIds()).toEqual(['file:a.ts', TRUSTED_TAB_ID]));
         const tab = screen.getByTestId(`explorer-tab-${TRUSTED_TAB_ID}`);
-        expect(tab).toHaveAttribute('data-readonly', 'true');
         expect(tab).toHaveAttribute('aria-selected', 'true');
         expect(tab).not.toHaveAttribute('data-preview');
         expect(tab).toHaveTextContent('hosts');
-        expect(screen.getByTestId(`mock-preview-${TRUSTED_FILE_PATH}`)).toHaveAttribute('data-readonly', 'true');
-
-        // Read-only, so its buffer hands the panel no way to write it — while
-        // the editable tab beside it does.
-        await waitFor(() => expect(registeredSaves.has(TRUSTED_FILE_PATH)).toBe(true));
-        expect(registeredSaves.get(TRUSTED_FILE_PATH)).toBeNull();
-        expect(registeredSaves.get('a.ts')).not.toBeNull();
+        expect(screen.getByTestId(`mock-preview-${TRUSTED_FILE_PATH}`)).toBeInTheDocument();
 
         // ...and closing it can never raise the save prompt.
         fireEvent.click(screen.getByTestId(`explorer-tab-close-${TRUSTED_TAB_ID}`));

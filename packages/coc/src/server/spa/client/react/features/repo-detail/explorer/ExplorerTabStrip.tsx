@@ -13,9 +13,9 @@
  *    file opened from the tree) has to scroll it back into view.
  *  - **State without color.** Every state a tab can be in is carried by a glyph
  *    or by type as well as by color — italic for preview, a dot for dirty, a
- *    lock for read-only, a warning sign for a failed load, an underline plus
- *    `aria-selected` for the active tab — so the strip stays readable to anyone
- *    who cannot separate the accents.
+ *    warning sign for a failed load, an underline plus `aria-selected` for the
+ *    active tab — so the strip stays readable to anyone who cannot separate the
+ *    accents.
  */
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
@@ -195,7 +195,6 @@ export function ExplorerTabStrip({
                             data-active={isActive || undefined}
                             data-preview={tab.preview || undefined}
                             data-dirty={isDirty || undefined}
-                            data-readonly={tab.readOnly || undefined}
                             data-dragging={draggingId === tab.id || undefined}
                             onClick={() => onActivate(tab.id)}
                             onDoubleClick={() => onPin(tab.id)}
@@ -241,11 +240,6 @@ export function ExplorerTabStrip({
                                 draggingId === tab.id && 'opacity-50',
                             )}
                         >
-                            {tab.readOnly && (
-                                <span aria-hidden="true" className="flex-shrink-0" data-testid={`explorer-tab-readonly-${tab.id}`}>
-                                    🔒
-                                </span>
-                            )}
                             {hasError && (
                                 <span aria-hidden="true" className="flex-shrink-0" data-testid={`explorer-tab-error-${tab.id}`}>
                                     ⚠
@@ -267,7 +261,6 @@ export function ExplorerTabStrip({
                                 {label}
                             </span>
                             <span className="sr-only">
-                                {tab.readOnly ? ' (read-only)' : ''}
                                 {tab.preview ? ' (preview)' : ''}
                                 {isDirty ? ' (unsaved changes)' : ''}
                                 {isLoading ? ' (loading)' : ''}

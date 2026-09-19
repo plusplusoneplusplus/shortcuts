@@ -34,21 +34,14 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', () => ({
-    PreviewPane: ({ filePath, readOnly, onDirtyChange, onRegisterSave, onClose }: {
+    PreviewPane: ({ filePath, onDirtyChange, onRegisterSave, onClose }: {
         filePath: string;
-        readOnly?: boolean;
         onDirtyChange?: (d: boolean) => void;
         onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
         onClose?: () => void;
     }) => {
         useEffect(() => {
             if (!onRegisterSave) return;
-            // Read-only buffers never register a way to write (real PreviewPane
-            // does the same), which is what makes a write on one impossible.
-            if (readOnly) {
-                onRegisterSave(null);
-                return;
-            }
             onRegisterSave(async () => {
                 saveCalls.push(filePath);
                 const ok = saveOutcome.get(filePath) ?? true;
@@ -56,9 +49,9 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
                 return ok;
             });
             return () => onRegisterSave(null);
-        }, [onRegisterSave, readOnly, onDirtyChange, filePath]);
+        }, [onRegisterSave, onDirtyChange, filePath]);
         return (
-            <div data-testid={`mock-preview-${filePath}`} data-readonly={readOnly ? 'true' : undefined}>
+            <div data-testid={`mock-preview-${filePath}`}>
                 <button data-testid={`make-dirty-${filePath}`} onClick={() => onDirtyChange?.(true)}>dirty</button>
                 <button data-testid={`preview-close-${filePath}`} onClick={() => onClose?.()}>close</button>
             </div>

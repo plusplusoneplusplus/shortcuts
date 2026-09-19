@@ -43,6 +43,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/language-servers/la
 // needs: hand the host a model, and take the registration down on unmount.
 const monacoStub = vi.hoisted(() => ({
     editor: {
+        updateOptions: vi.fn(),
         createDecorationsCollection: () => ({ clear: () => undefined, set: () => [] }),
         getSelection: () => ({
             selectionStartLineNumber: 3,

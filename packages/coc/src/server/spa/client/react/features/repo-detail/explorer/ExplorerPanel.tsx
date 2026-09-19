@@ -625,15 +625,14 @@ export function ExplorerPanel({
     }, [closeTabById, closeTabsByIds, setSearchBuffers]);
 
     /**
-     * Which of these tabs would lose unsaved work if they closed now. Only
-     * editable file buffers qualify: a read-only or trusted file tab and a
-     * search-result tab can never be dirty, so they never raise a save choice
-     * (AC-04).
+     * Which of these tabs would lose unsaved work if they closed now. Only file
+     * buffers qualify; trusted files and search-result tabs cannot become dirty,
+     * so they never enter this set (AC-04).
      */
     const dirtyClosableIds = useCallback((ids: readonly string[]) => ids.filter(id => {
         if (!dirtyTabIdsRef.current.has(id)) return false;
         const tab = findTab(tabsRef.current, id);
-        return !!tab && tab.kind === 'file' && !tab.readOnly;
+        return !!tab && tab.kind === 'file';
     }), []);
 
     /**
@@ -1571,7 +1570,6 @@ export function ExplorerPanel({
                                                     revealLine={tab.line}
                                                     revealColumn={tab.column}
                                                     symbolCandidate={tab.symbolCandidate}
-                                                    readOnly={tab.readOnly}
                                                     onNavigate={navigateToFile}
                                                     onNavigateExternal={navigateToExternal}
                                                     onClose={isMobile ? undefined : () => handleCloseTab(tab.id)}

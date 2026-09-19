@@ -9,9 +9,8 @@
  * Two things this module decides, and one it deliberately does not:
  *
  *  - **Which tabs can lose work.** Only kinds that report dirtiness AND can
- *    write it back qualify. A read-only tab (a chat source link) can never be
- *    dirty, and a diff, a terminal, and the two navigators hold nothing to
- *    save, so none of them ever raises the prompt.
+ *    write it back qualify. A diff, a terminal, and the two navigators hold
+ *    nothing to save, so none of them ever raises the prompt.
  *  - **What the prompt names.** One readable path per tab, with the trusted
  *    absolute-path prefix stripped and the owning repo prepended when the tab
  *    carries one, so a repo-group member's file is tellable from its namesake.
@@ -43,15 +42,13 @@ export const DIRTY_CLOSE_KINDS: ReadonlySet<UnifiedTabKind> =
 
 /**
  * Whether closing `tab` right now would discard unsaved edits, and therefore
- * has to ask first. A missing tab, a clean one, and a read-only one all close
- * straight through.
+ * has to ask first. A missing or clean tab closes straight through.
  */
 export function needsDirtyCloseConfirm(
-    tab: Pick<UnifiedPanelTab, 'kind' | 'readOnly'> | undefined | null,
+    tab: Pick<UnifiedPanelTab, 'kind'> | undefined | null,
     isDirty: boolean,
 ): boolean {
     if (!tab || !isDirty) return false;
-    if (tab.readOnly === true) return false;
     return DIRTY_CLOSE_KINDS.has(tab.kind);
 }
 
