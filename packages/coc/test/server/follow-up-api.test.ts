@@ -1420,6 +1420,113 @@ describe('POST /api/processes/:id/message', () => {
     });
 
     // ========================================================================
+    // Requested provider (provider switching contract)
+    // ========================================================================
+
+    describe('requested provider', () => {
+        async function addChat(id: string, overrides: Partial<AIProcess> = {}): Promise<void> {
+            await store.addProcess({
+                id,
+                type: 'chat',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: `sess-${id}`,
+                metadata: { type: 'chat', provider: 'copilot' },
+                ...overrides,
+            } as AIProcess);
+        }
+
+        it('accepts a follow-up that omits provider, as older clients send', async () => {
+            await addChat('proc-prov-omitted');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-omitted/message`, {
+                content: 'Hello',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('accepts a same-provider follow-up', async () => {
+            await addChat('proc-prov-same');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-same/message`, {
+                content: 'Hello',
+                provider: 'copilot',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('accepts a different provider on an idle conversation', async () => {
+            await addChat('proc-prov-switch');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-switch/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('rejects auto with 400 INVALID_PROVIDER', async () => {
+            await addChat('proc-prov-auto');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-auto/message`, {
+                content: 'Hello',
+                provider: 'auto',
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).code).toBe('INVALID_PROVIDER');
+        });
+
+        it('rejects an unknown provider with 400 INVALID_PROVIDER', async () => {
+            await addChat('proc-prov-unknown');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-unknown/message`, {
+                content: 'Hello',
+                provider: 'gemini',
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).code).toBe('INVALID_PROVIDER');
+        });
+
+        it('rejects a cross-provider follow-up on a running conversation with 409', async () => {
+            await addChat('proc-prov-running', { status: 'running' });
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-running/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+        });
+
+        it('rejects a cross-provider follow-up on a queued conversation with 409', async () => {
+            await addChat('proc-prov-queued', { status: 'queued' });
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-queued/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+        });
+
+        it('still allows a same-provider follow-up while running (buffered as today)', async () => {
+            await addChat('proc-prov-running-same', { status: 'running' });
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-running-same/message`, {
+                content: 'Hello',
+                provider: 'copilot',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('rejects a cross-provider follow-up while an ask_user batch is waiting', async () => {
+            await addChat('proc-prov-ask', {
+                pendingAskUser: [{ id: 'q1', question: 'which one?' }],
+            } as Partial<AIProcess>);
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-ask/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+        });
+    });
+
+    // ========================================================================
     // Large content payload
     // ========================================================================
 

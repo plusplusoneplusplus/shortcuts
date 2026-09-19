@@ -33,6 +33,7 @@ import type { ChatProvider } from '../tasks/task-types';
 import {
     ProcessMessageDeliveryService,
     normalizeFollowUpInput,
+    isIdleForProviderSwitch,
     FollowUpDeliveryError,
 } from '../processes/process-message-delivery-service';
 import type { FollowUpMessageInput } from '../processes/process-message-delivery-service';
@@ -1218,9 +1219,26 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ctx.getLiveFeatureFlags?.().defaultChatStyle,
             );
             if (!normalized.ok) {
-                return handleAPIError(res, badRequest(normalized.error));
+                return handleAPIError(res, normalized.code
+                    ? new APIError(400, normalized.error, normalized.code)
+                    : badRequest(normalized.error));
             }
             const fields = normalized.value;
+
+            // A different provider means a fresh native session, so it can only
+            // start between turns. Rejected outright rather than steered or
+            // buffered: both of those would hand the message to the provider
+            // that is already running.
+            if (fields.isProviderSwitch && !isIdleForProviderSwitch(
+                proc,
+                bridge.findTaskByProcessId?.(id)?.status,
+            )) {
+                return handleAPIError(res, new APIError(
+                    409,
+                    'Cannot switch providers while this conversation is busy. Wait for the current response to finish, then try again.',
+                    'PROVIDER_SWITCH_REQUIRES_IDLE',
+                ));
+            }
             if (fields.modelCoerced) {
                 getLogger().warn(
                     LogCategory.AI,

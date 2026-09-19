@@ -14,6 +14,7 @@ import type { AIProcess, ConversationTurn, PendingMessage } from '@plusplusonepl
 import {
     ProcessMessageDeliveryService,
     normalizeFollowUpInput,
+    isIdleForProviderSwitch,
     FollowUpDeliveryError,
     type FollowUpMessageInput,
 } from '../../src/server/processes/process-message-delivery-service';
@@ -218,6 +219,62 @@ describe('normalizeFollowUpInput', () => {
         });
     });
 
+    describe('requested provider', () => {
+        it('leaves the provider unset when the body omits it (pre-switching clients)', () => {
+            const r = normalizeFollowUpInput({}, 'copilot');
+            expect(r.ok && r.value.requestedProvider).toBeUndefined();
+            expect(r.ok && r.value.isProviderSwitch).toBe(false);
+        });
+        it('treats an explicit null like an omitted provider', () => {
+            const r = normalizeFollowUpInput({ provider: null }, 'copilot');
+            expect(r.ok && r.value.requestedProvider).toBeUndefined();
+            expect(r.ok && r.value.isProviderSwitch).toBe(false);
+        });
+        it('accepts every concrete provider', () => {
+            for (const provider of ['copilot', 'codex', 'claude', 'opencode'] as const) {
+                const r = normalizeFollowUpInput({ provider }, 'copilot');
+                expect(r.ok && r.value.requestedProvider).toBe(provider);
+            }
+        });
+        it('does not flag a switch when the requested provider is the active one', () => {
+            const r = normalizeFollowUpInput({ provider: 'codex' }, 'codex');
+            expect(r.ok && r.value.requestedProvider).toBe('codex');
+            expect(r.ok && r.value.isProviderSwitch).toBe(false);
+        });
+        it('flags a switch when the requested provider differs', () => {
+            const r = normalizeFollowUpInput({ provider: 'codex' }, 'copilot');
+            expect(r.ok && r.value.isProviderSwitch).toBe(true);
+        });
+        it('rejects auto with INVALID_PROVIDER rather than resolving it', () => {
+            const r = normalizeFollowUpInput({ provider: 'auto' }, 'copilot');
+            expect(r.ok).toBe(false);
+            expect(!r.ok && r.code).toBe('INVALID_PROVIDER');
+        });
+        it('rejects an unknown provider', () => {
+            const r = normalizeFollowUpInput({ provider: 'gemini' }, 'copilot');
+            expect(r.ok).toBe(false);
+            expect(!r.ok && r.code).toBe('INVALID_PROVIDER');
+        });
+        it('rejects a non-string provider', () => {
+            const r = normalizeFollowUpInput({ provider: 3 }, 'copilot');
+            expect(r.ok).toBe(false);
+            expect(!r.ok && r.code).toBe('INVALID_PROVIDER');
+        });
+        it('validates the model against the requested provider, not the active one', () => {
+            // Valid for the active provider, meaningless to the target: it must
+            // be dropped rather than sent to the wrong provider.
+            const r = normalizeFollowUpInput({ provider: 'codex', model: 'claude-sonnet-4-6' }, 'claude');
+            expect(r.ok && r.value.model).toBeUndefined();
+            expect(r.ok && r.value.modelCoerced).toBe(true);
+            expect(r.ok && r.value.requestedModel).toBe('claude-sonnet-4-6');
+        });
+        it('keeps a model that is valid for the requested provider', () => {
+            const r = normalizeFollowUpInput({ provider: 'claude', model: 'claude-sonnet-4-6' }, 'copilot');
+            expect(r.ok && r.value.model).toBe('claude-sonnet-4-6');
+            expect(r.ok && r.value.modelCoerced).toBe(false);
+        });
+    });
+
     describe('optimisticId', () => {
         it('keeps a string optimisticId', () => {
             const r = normalizeFollowUpInput({ optimisticId: 'opt-1' }, 'copilot');
@@ -415,5 +472,44 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(pending.model).toBe('gpt-5');
         expect(pending.reasoningEffort).toBe('low');
         expect(pending.mode).toBe('autopilot');
+    });
+});
+
+// ============================================================================
+// isIdleForProviderSwitch
+// ============================================================================
+
+describe('isIdleForProviderSwitch', () => {
+    it('is idle for a completed process with no owning task', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed' })).toBe(true);
+    });
+    it('is idle for a cancelled (stopped) process so it can continue elsewhere', () => {
+        expect(isIdleForProviderSwitch({ status: 'cancelled' })).toBe(true);
+    });
+    it('is idle for a failed process so a retry can switch providers', () => {
+        expect(isIdleForProviderSwitch({ status: 'failed' })).toBe(true);
+    });
+    it('is busy while the owning task runs', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed' }, 'running')).toBe(false);
+    });
+    it('is busy while the owning task is queued', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed' }, 'queued')).toBe(false);
+    });
+    it('is idle once the owning task reached a terminal status', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed' }, 'completed')).toBe(true);
+    });
+    it('falls back to a non-terminal process status when the task is gone', () => {
+        for (const status of ['queued', 'running', 'cancelling', 'created']) {
+            expect(isIdleForProviderSwitch({ status })).toBe(false);
+        }
+    });
+    it('is busy while an ask_user batch is waiting for an answer', () => {
+        expect(isIdleForProviderSwitch({
+            status: 'completed',
+            pendingAskUser: [{ question: 'which one?' }],
+        })).toBe(false);
+    });
+    it('ignores an empty pendingAskUser list', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed', pendingAskUser: [] })).toBe(true);
     });
 });

@@ -19,7 +19,7 @@ import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@pluspluson
 import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
-import { normalizeChatMode } from '../tasks/task-types';
+import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
@@ -66,11 +66,22 @@ export interface NormalizedFollowUpFields {
      * to read.
      */
     chatStyle: ChatStyle;
+    /**
+     * Concrete provider the caller asked to run this turn on, when it named one.
+     * Undefined means "use the conversation's active provider" — what every
+     * client that predates provider switching sends. This value travels with
+     * the message from here on; nothing downstream re-reads the provider from
+     * mutable process metadata, so a metadata change after the message was
+     * accepted cannot retarget it.
+     */
+    requestedProvider?: ChatProvider;
+    /** True when {@link requestedProvider} differs from the active provider. */
+    isProviderSwitch: boolean;
 }
 
 export type NormalizeFollowUpResult =
     | { ok: true; value: NormalizedFollowUpFields }
-    | { ok: false; error: string };
+    | { ok: false; error: string; code?: string };
 
 /**
  * Normalize the optional scalar fields of a follow-up request body. Pure — the
@@ -83,6 +94,26 @@ export function normalizeFollowUpInput(
     provider: ChatProvider,
     defaultChatStyle: ChatStyle = DEFAULT_CHAT_STYLE,
 ): NormalizeFollowUpResult {
+    // Requested provider. Omitted keeps the active provider. `auto` is
+    // deliberately rejected rather than resolved: a follow-up must name one
+    // concrete provider so the message carries an unambiguous target through
+    // queueing and retry.
+    let requestedProvider: ChatProvider | undefined;
+    if (body.provider !== undefined && body.provider !== null) {
+        if (typeof body.provider !== 'string' || !VALID_CHAT_PROVIDERS.has(body.provider as ChatProvider)) {
+            return {
+                ok: false,
+                code: 'INVALID_PROVIDER',
+                error: `Invalid provider: must be one of ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
+            };
+        }
+        requestedProvider = body.provider as ChatProvider;
+    }
+    // The provider that will actually run the turn — what the model override
+    // must be valid for. Validating against the conversation provider instead
+    // would let a model belonging to the old provider reach the new one.
+    const targetProvider: ChatProvider = requestedProvider ?? provider;
+
     // Mode: legacy `plan` is accepted as Ask; `ralph` is not a per-turn override.
     const normalizedMode = normalizeChatMode(body.mode);
     const mode: string | undefined = normalizedMode === 'ralph' ? undefined : normalizedMode;
@@ -105,7 +136,7 @@ export function normalizeFollowUpInput(
 
     // Model override, validated against the conversation provider.
     const rawModelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
-    const resolvedModelOverride = resolveModelForProvider(provider, rawModelOverride);
+    const resolvedModelOverride = resolveModelForProvider(targetProvider, rawModelOverride);
 
     // Per-turn reasoning-effort override; unknown values are silently dropped so
     // a stale client never breaks an otherwise-valid follow-up.
@@ -134,8 +165,31 @@ export function normalizeFollowUpInput(
             modelCoerced: resolvedModelOverride.coerced,
             ...(resolvedModelOverride.requestedModel ? { requestedModel: resolvedModelOverride.requestedModel } : {}),
             ...(effort ? { effort } : {}),
+            ...(requestedProvider ? { requestedProvider } : {}),
+            isProviderSwitch: requestedProvider !== undefined && requestedProvider !== provider,
         },
     };
+}
+
+/**
+ * Whether a conversation is idle enough to accept a provider switch. A switch
+ * starts a brand-new native session, so it can only happen between turns —
+ * never steered into or buffered behind an in-flight one.
+ *
+ * `taskStatus` is the status of the queue task that owns this process, when one
+ * exists; the process status is the fallback for the restart case where the
+ * task is gone but the process never reached a terminal state.
+ */
+export function isIdleForProviderSwitch(
+    proc: Pick<AIProcess, 'status'> & { pendingAskUser?: unknown },
+    taskStatus?: string,
+): boolean {
+    if (taskStatus === 'running' || taskStatus === 'queued') return false;
+    if (!taskStatus && NONTERMINAL_STATUSES.has(proc.status)) return false;
+    // A waiting ask_user batch means the provider owns an open turn even though
+    // nothing is streaming.
+    if (Array.isArray(proc.pendingAskUser) && proc.pendingAskUser.length > 0) return false;
+    return true;
 }
 
 /**
