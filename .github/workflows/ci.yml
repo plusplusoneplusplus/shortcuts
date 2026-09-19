@@ -244,6 +244,17 @@ jobs:
       - name: Run N-API boundary and parity tests
         run: npm run test:run -w packages/coc-native
 
+      # Last thing before the upload, because the suite above runs the real
+      # `buildSymbolsLsp` against this directory. `if-no-files-found: error`
+      # only fires when *every* pattern misses, so a suite that removed one
+      # binary would otherwise ship a half-empty artifact and fail four jobs
+      # later, in a peek widget that never opens.
+      - name: Verify both native binaries survived the suite
+        shell: bash
+        run: |
+          ls packages/coc-native/*.node >/dev/null
+          ls packages/coc-native/coc-symbols-lsp.* >/dev/null
+
       # Both artifacts `build:native` produces, for the same reason release.yml
       # ships both: the addon is dlopen'd and the symbol language server is
       # spawned, and the C-family navigation the e2e suite drives has no lane

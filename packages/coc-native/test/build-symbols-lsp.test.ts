@@ -92,6 +92,14 @@ describe('buildSymbolsLsp', () => {
             fs.mkdirSync(path.dirname(source), { recursive: true });
             fs.writeFileSync(source, '');
         }
+        // `buildSymbolsLsp` writes to the real package root — there is no root
+        // to redirect — and on a built tree that is the shipping binary, which
+        // CI uploads as an artifact right after this suite runs. Leaving it
+        // deleted silently drops the language server from every downstream job.
+        const shipped = symbolsLspBinaryCandidates()[0];
+        const saved = fs.existsSync(shipped)
+            ? { content: fs.readFileSync(shipped), mode: fs.statSync(shipped).mode }
+            : null;
         const logged: string[] = [];
 
         try {
@@ -102,15 +110,21 @@ describe('buildSymbolsLsp', () => {
                 logger: { log: (line: string) => logged.push(line) },
             });
 
+            expect(destination).toBe(shipped);
             expect(fs.existsSync(destination)).toBe(true);
             expect(symbolsLspBinaryCandidates()).toContain(destination);
             if (process.platform !== 'win32') {
                 expect(fs.statSync(destination).mode & 0o111).not.toBe(0);
             }
             expect(logged.join('\n')).toContain('symbols lsp: built');
-            fs.rmSync(destination, { force: true });
         } finally {
             if (!preexisting) fs.rmSync(source, { force: true });
+            if (saved) {
+                fs.writeFileSync(shipped, saved.content);
+                fs.chmodSync(shipped, saved.mode);
+            } else {
+                fs.rmSync(shipped, { force: true });
+            }
         }
     });
 });
