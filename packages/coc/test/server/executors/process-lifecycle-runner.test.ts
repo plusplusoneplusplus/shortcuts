@@ -472,6 +472,8 @@ describe('ProcessLifecycleRunner — pending messages drain', () => {
             undefined,
             undefined,
             'sess-stopped-turn',
+            // 12th arg = per-message turn options (no requested provider)
+            {},
         );
     });
 

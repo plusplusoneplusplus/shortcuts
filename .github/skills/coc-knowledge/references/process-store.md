@@ -91,7 +91,10 @@ empty chat. See [rest-api.md](rest-api.md).
   which projects pre-binding processes from the legacy fields. An `updateProcess` that writes only
   `sdkSessionId` moves the binding's session id in the same UPDATE so it cannot go stale. NULL on
   processes predating the column, and never copied into a fork — a fork's first follow-up
-  reconstructs a fresh session.
+  reconstructs a fresh session. During a cross-provider turn the binding still names the
+  outgoing provider until the target reports a session id, so stop/cancel resolves the running
+  provider from the bridge's `inFlightTurns` registry first and skips the persisted session id
+  when it belongs to the other provider.
 - **Pending messages** — `pendingMessages` in process metadata; append atomically with
   `appendPendingMessage(processId, message)` (read-append-persist under the store write lock).
   Never read-modify-write the array through `updateProcess` — concurrent follow-ups lose

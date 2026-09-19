@@ -402,7 +402,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         let chatCtx: ChatTurnContext | undefined;
 
-        const turnAbort = this.registerTurnAbortController(processId);
+        const turnAbort = this.registerTurnAbortController(processId, continuation.provider);
         try {
             if (continuation.strictResume) {
                 if (!activeBinding.sessionId) {

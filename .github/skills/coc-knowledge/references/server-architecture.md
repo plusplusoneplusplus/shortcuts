@@ -130,7 +130,7 @@ as getters rather than captured values.
 
 ```
 createQueueInfrastructure → MultiRepoQueueRouter.defaultOptions.runtime
-    → CLITaskExecutorOptions.runtime      (bridge adds processAbortControllers + getDreamRunExecutor)
+    → CLITaskExecutorOptions.runtime      (bridge adds inFlightTurns + getDreamRunExecutor)
     → ExecutorRegistryOptions.runtime     (required)
     → ChatModeExecutorOptions.runtime     (read as this.runtime.getX?.())
     → LifecycleRuntime / DreamRuntime     (narrow Pick views)

@@ -15,7 +15,7 @@ import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 
 const sdkMocks = createMockSDKService();
-const { mockSendMessage, mockIsAvailable } = sdkMocks;
+const { mockSendMessage, mockIsAvailable, mockSoftAbortSession } = sdkMocks;
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -31,6 +31,8 @@ describe('follow-up provider switching', () => {
     beforeEach(() => {
         store = createMockProcessStore();
         mockSendMessage.mockReset();
+        mockSoftAbortSession.mockReset();
+        mockSoftAbortSession.mockResolvedValue(true);
         mockIsAvailable.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
     });
@@ -138,5 +140,70 @@ describe('follow-up provider switching', () => {
         expect(sent.strictSessionResume).toBeUndefined();
         expect(store.processes.get('proc-stopped-switch')?.status).not.toBe('failed');
         expect(store.processes.get('proc-stopped-switch')?.activeProviderSession?.provider).toBe('codex');
+    });
+
+    describe('stop during an in-flight turn', () => {
+        /** Executor whose provider resolution is observable. */
+        function makeExecutor() {
+            const resolveAiServiceForProvider = vi.fn(() => sdkMocks.service);
+            const executor = new CLITaskExecutor(store, { runtime: { resolveAiServiceForProvider } as any });
+            return { executor, resolveAiServiceForProvider };
+        }
+
+        it('aborts the target turn without touching the outgoing provider session', async () => {
+            await seedCopilotChat('queue_stop-startup');
+            const { executor, resolveAiServiceForProvider } = makeExecutor();
+            let sentSignal: AbortSignal | undefined;
+            mockSendMessage.mockImplementation(async (options: any) => {
+                sentSignal = options?.signal;
+                // Stop arrives while the target is still starting up: no
+                // session id has been reported by Codex yet.
+                await executor.cancelProcess('queue_stop-startup');
+                return { success: false, error: 'aborted' };
+            });
+
+            await executor.executeFollowUp(
+                'queue_stop-startup', 'Q2', undefined, 'ask', undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, { requestedProvider: 'codex' },
+            );
+
+            expect(sentSignal?.aborted).toBe(true);
+            // The persisted Copilot session belongs to the provider that is
+            // *not* running this turn, so it must never be aborted.
+            expect(mockSoftAbortSession).not.toHaveBeenCalled();
+            expect(resolveAiServiceForProvider).not.toHaveBeenCalledWith('copilot');
+        });
+
+        it('soft-aborts the target session once the target reports one', async () => {
+            await seedCopilotChat('queue_stop-after-create');
+            const { executor, resolveAiServiceForProvider } = makeExecutor();
+            mockSendMessage.mockImplementation(async (options: any) => {
+                options?.onSessionCreated?.('codex-session-3');
+                await executor.cancelProcess('queue_stop-after-create');
+                return { success: false, error: 'aborted' };
+            });
+
+            await executor.executeFollowUp(
+                'queue_stop-after-create', 'Q2', undefined, 'ask', undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, { requestedProvider: 'codex' },
+            );
+
+            expect(mockSoftAbortSession).toHaveBeenCalledWith('codex-session-3');
+            expect(resolveAiServiceForProvider).toHaveBeenCalledWith('codex');
+        });
+
+        it('soft-aborts the bound session for a same-provider turn', async () => {
+            await seedCopilotChat('queue_stop-same');
+            const { executor, resolveAiServiceForProvider } = makeExecutor();
+            mockSendMessage.mockImplementation(async () => {
+                await executor.cancelProcess('queue_stop-same');
+                return { success: false, error: 'aborted' };
+            });
+
+            await executor.executeFollowUp('queue_stop-same', 'Q2');
+
+            expect(mockSoftAbortSession).toHaveBeenCalledWith('copilot-session-1');
+            expect(resolveAiServiceForProvider).toHaveBeenCalledWith('copilot');
+        });
     });
 });

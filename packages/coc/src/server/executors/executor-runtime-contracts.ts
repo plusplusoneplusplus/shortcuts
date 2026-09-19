@@ -85,6 +85,18 @@ export interface TriggerInfraDeps {
  * executors do not need must not be added here, or it degenerates into a
  * service locator.
  */
+/**
+ * A turn currently executing against a provider. Registered before the SDK
+ * call so cancel/timeout resolve the provider that is really running rather
+ * than the provider persisted on the process.
+ */
+export interface InFlightTurn {
+    /** Concrete provider this turn is being sent to. */
+    readonly provider: ChatProvider;
+    /** Aborts the in-flight `sendMessage`, session id or not. */
+    readonly controller: AbortController;
+}
+
 export interface ExecutorRuntimeCapabilities {
     /** WebSocket server for process/git broadcasts. */
     readonly getWsServer?: () => ProcessWebSocketServer | undefined;
@@ -140,12 +152,14 @@ export interface ExecutorRuntimeCapabilities {
     /** Dreams runner, created during route composition. */
     readonly getDreamRunExecutor?: () => DreamRunExecutor | undefined;
     /**
-     * Shared per-process AbortController registry owned by the queue bridge.
-     * Chat executors register a controller per turn so the bridge's cancel path
-     * can abort an in-flight `sendMessage` before an `sdkSessionId` is
-     * persisted.
+     * Shared in-flight turn registry owned by the queue bridge. Chat executors
+     * register the turn's target provider and AbortController *before* the SDK
+     * call, so the bridge's cancel path can abort an in-flight `sendMessage`
+     * before an `sdkSessionId` is persisted, and can tell which provider is
+     * actually running — during a cross-provider switch the persisted binding
+     * still names the outgoing provider until the target reports a session.
      */
-    readonly processAbortControllers?: Map<string, AbortController>;
+    readonly inFlightTurns?: Map<string, InFlightTurn>;
 }
 
 // ============================================================================
@@ -168,7 +182,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getTurnPerformanceStore'
     | 'getGlobalSystemPrompt'
     | 'resolveAiServiceForProvider'
-    | 'processAbortControllers'
+    | 'inFlightTurns'
 >;
 
 /** Capabilities visible to {@link ProcessLifecycleRunner}. */

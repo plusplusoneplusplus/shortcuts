@@ -399,6 +399,8 @@ describe('CLITaskExecutor executor dispatch', () => {
                 undefined,
                 // 11th arg = strict resume session id (none for this task)
                 undefined,
+                // 12th arg = per-message turn options (no requested provider)
+                {},
             );
         });
 
@@ -459,6 +461,8 @@ describe('CLITaskExecutor executor dispatch', () => {
                 'xhigh',
                 // 11th arg = strict resume session id (none for this task)
                 undefined,
+                // 12th arg = per-message turn options (no requested provider)
+                {},
             );
         });
     });

@@ -22,7 +22,8 @@ import { ASK_USER_RESUME_FAILED_MESSAGE, buildAskUserResumeMessage, buildPending
 import { buildAskUserResumeTaskInput } from '../processes/resume-pending-ask-user-answers';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
 import { EMPTY_EXECUTOR_RUNTIME } from '../executors/executor-runtime-contracts';
-import type { ExecutorRuntimeCapabilities } from '../executors/executor-runtime-contracts';
+import type { ExecutorRuntimeCapabilities, InFlightTurn } from '../executors/executor-runtime-contracts';
+import { readActiveProviderSession, resolveRecordedProvider } from '../processes/active-provider-session';
 import { executeImplementPlanWithPrGate } from './implement-plan-pr-gate';
 
 /**
@@ -180,7 +181,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly titleGenerationService: TitleGenerationService;
     /**
      * The capability object shared with the executor registry, held by
-     * identity. Includes the bridge-owned `processAbortControllers` and
+     * identity. Includes the bridge-owned `inFlightTurns` and
      * `getDreamRunExecutor`.
      */
     private readonly runtime: ExecutorRuntimeCapabilities;
@@ -197,11 +198,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private getEffortTiersForProvider?: GetEffortTiersForProvider;
     private dreamRunExecutor?: DreamRunExecutor;
     /**
-     * Per-process AbortControllers registered by chat-mode executors when a
-     * turn starts. Aborting one interrupts the in-flight `sendMessage` even
-     * when no `sdkSessionId` has been persisted yet (early-turn cancel).
+     * In-flight turns registered by chat-mode executors when a turn starts.
+     * Aborting one interrupts the in-flight `sendMessage` even when no
+     * `sdkSessionId` has been persisted yet (early-turn cancel), and the
+     * recorded provider names the provider actually running the turn.
      */
-    private readonly processAbortControllers = new Map<string, AbortController>();
+    private readonly inFlightTurns = new Map<string, InFlightTurn>();
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -223,7 +225,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.runtime = {
             ...(options.runtime ?? EMPTY_EXECUTOR_RUNTIME),
             getDreamRunExecutor: () => this.dreamRunExecutor,
-            processAbortControllers: this.processAbortControllers,
+            inFlightTurns: this.inFlightTurns,
         };
         this.titleGenerationService = new TitleGenerationService({
             store,
@@ -617,19 +619,18 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // not depend on an sdkSessionId lookup. Follow-up tasks may carry an
         // auto-generated id that does not map back to a process id; that path
         // is covered by cancelProcess() aborting by process id directly.
-        this.processAbortControllers.get(toQueueProcessId(taskId))?.abort();
+        this.inFlightTurns.get(toQueueProcessId(taskId))?.controller.abort();
     }
 
     /**
-     * Resolve the ISDKService that owns a process's live session, routing by
-     * `metadata.provider` so cancel/steer reach the same service that ran the
-     * turn (codex/claude/opencode), not just the server default. Falls back to
-     * the default aiService when the provider is missing, the resolver is
-     * absent, or the resolver rejects the provider (e.g. disabled mid-turn) —
-     * a best-effort abort against the default beats doing nothing.
+     * Resolve the ISDKService for a provider so cancel/steer reach the same
+     * service that ran the turn (codex/claude/opencode), not just the server
+     * default. Falls back to the default aiService when the provider is
+     * missing, the resolver is absent, or the resolver rejects the provider
+     * (e.g. disabled mid-turn) — a best-effort abort against the default beats
+     * doing nothing.
      */
-    private getAiServiceForProcess(proc: AIProcess | null | undefined): ISDKService {
-        const provider = proc?.metadata?.provider;
+    private getAiServiceForProvider(provider: string | undefined): ISDKService {
         if (provider && VALID_CHAT_PROVIDERS.has(provider as ChatProvider) && this.runtime.resolveAiServiceForProvider) {
             try {
                 return this.runtime.resolveAiServiceForProvider(provider as ChatProvider);
@@ -653,10 +654,20 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // Abort by process id as well: covers turns whose queue task id is
         // auto-generated (follow-up requeues) and turns that have not yet
         // persisted an sdkSessionId.
-        this.processAbortControllers.get(processId)?.abort();
+        this.inFlightTurns.get(processId)?.controller.abort();
         try {
             const proc = await this.store.getProcess(processId);
-            if (proc?.sdkSessionId) { await this.getAiServiceForProcess(proc).softAbortSession(proc.sdkSessionId); }
+            if (!proc) return;
+            // The in-flight provider wins over the persisted binding: during a
+            // cross-provider switch the binding still names the outgoing
+            // provider until the target reports a session id. In that window
+            // the persisted session id belongs to the *other* provider, so it
+            // is not sent anywhere — the AbortController above is the stop.
+            const binding = readActiveProviderSession(proc);
+            const inFlight = this.inFlightTurns.get(processId);
+            const provider = inFlight?.provider ?? resolveRecordedProvider(proc);
+            const sessionId = !inFlight || inFlight.provider === binding.provider ? binding.sessionId : undefined;
+            if (sessionId) { await this.getAiServiceForProvider(provider).softAbortSession(sessionId); }
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to abort SDK session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -667,10 +678,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     async steerProcess(processId: string, message: string): Promise<boolean> {
         try {
             const proc = await this.store.getProcess(processId);
-            if (!proc?.sdkSessionId) return false;
+            if (!proc) return false;
+            const binding = readActiveProviderSession(proc);
+            if (!binding.sessionId) return false;
             // SDK steering targets the already-running session; it cannot change
-            // that live session's custom tool registry.
-            return await this.getAiServiceForProcess(proc).steerSession(proc.sdkSessionId, message);
+            // that live session's custom tool registry. Steering stays
+            // same-provider, so the binding is the right pair to use.
+            return await this.getAiServiceForProvider(resolveRecordedProvider(proc)).steerSession(binding.sessionId, message);
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
             return false;

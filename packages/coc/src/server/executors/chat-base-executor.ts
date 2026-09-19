@@ -299,21 +299,23 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
-     * Register a fresh AbortController for this turn in the shared bridge
-     * registry (when wired) so a cancel can abort the in-flight `sendMessage`
-     * before any `sdkSessionId` exists. Always returns a controller so the
+     * Register this turn in the shared bridge registry (when wired) so a cancel
+     * can abort the in-flight `sendMessage` before any `sdkSessionId` exists,
+     * and so the bridge aborts against `provider` — the provider this turn is
+     * really being sent to, which during a cross-provider switch is not yet the
+     * provider persisted on the process. Always returns a controller so the
      * signal can be passed to the SDK unconditionally.
      */
-    protected registerTurnAbortController(processId: string): AbortController {
+    protected registerTurnAbortController(processId: string, provider: ChatProvider): AbortController {
         const controller = new AbortController();
-        this.runtime.processAbortControllers?.set(processId, controller);
+        this.runtime.inFlightTurns?.set(processId, { provider, controller });
         return controller;
     }
 
-    /** Remove this turn's controller unless a newer turn has already replaced it. */
+    /** Remove this turn unless a newer turn has already replaced it. */
     protected releaseTurnAbortController(processId: string, controller: AbortController): void {
-        if (this.runtime.processAbortControllers?.get(processId) === controller) {
-            this.runtime.processAbortControllers.delete(processId);
+        if (this.runtime.inFlightTurns?.get(processId)?.controller === controller) {
+            this.runtime.inFlightTurns.delete(processId);
         }
     }
 
@@ -1025,7 +1027,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         let policyModelId: string | undefined;
         let policyReasoningEffort: string | undefined;
 
-        const turnAbort = this.registerTurnAbortController(processId);
+        const turnAbort = this.registerTurnAbortController(processId, taskProvider);
         try {
             // Rewrite large prompts to file-path references
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');

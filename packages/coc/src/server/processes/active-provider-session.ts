@@ -15,7 +15,7 @@
  */
 
 import type { ActiveProviderSession, AIProcess } from '@plusplusoneplusplus/forge';
-import { type ChatProvider, resolveChatProviderOrDefault } from '../tasks/task-types';
+import { type ChatProvider, resolveChatProvider, resolveChatProviderOrDefault } from '../tasks/task-types';
 
 /**
  * Segment id used for the projection of a pre-binding conversation. Segment
@@ -48,6 +48,18 @@ export function readActiveProviderSession(process: ProcessBindingSource): Active
 /** The concrete provider that currently owns the conversation. */
 export function resolveActiveProvider(process: ProcessBindingSource): ChatProvider {
     return readActiveProviderSession(process).provider as ChatProvider;
+}
+
+/**
+ * The provider explicitly recorded for this conversation, or `undefined` when
+ * nothing recorded one. Unlike {@link resolveActiveProvider} this does not
+ * substitute a default, so a caller routing to a provider service can keep
+ * falling back to the server default instead of guessing Copilot.
+ */
+export function resolveRecordedProvider(process: ProcessBindingSource): ChatProvider | undefined {
+    const candidate = process.activeProviderSession?.provider ?? process.metadata?.provider;
+    if (typeof candidate !== 'string') return undefined;
+    return resolveChatProvider(candidate);
 }
 
 /** The native session id the conversation can currently resume, if any. */
