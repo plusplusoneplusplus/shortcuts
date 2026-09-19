@@ -7,18 +7,13 @@ import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
 import {
     loadNativeContentSearch,
     loadNativeFileIndex,
-    loadNativeSymbolIndex,
 } from '@plusplusoneplusplus/coc-native';
 import type {
     NativeContentSearchAddon,
     NativeFileIndex,
     NativeFileIndexAddon,
     NativeRankedFileMatch,
-    NativeSymbolIndex,
-    NativeSymbolIndexAddon,
-    NativeSymbolIndexBuildProgress,
 } from '@plusplusoneplusplus/coc-native';
-import { getRepoDataPath } from '../paths';
 
 const execFileAsync = promisify(execFile);
 import type {
@@ -29,7 +24,6 @@ import type {
     SearchFilesResult,
     ContentSearchOptions,
     ContentSearchResult,
-    SearchSymbolsResult,
 } from './types';
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
 import { applyReplacements, buildReplaceMatcher } from './content-replace';
@@ -81,9 +75,6 @@ export interface RepoTreeServiceOptions {
      * binary too. Tests inject a stub here.
      */
     nativeContentSearch?: NativeContentSearchAddon;
-
-    /** The native persistent C-family symbol-index addon. Tests inject a stub. */
-    nativeSymbolIndex?: NativeSymbolIndexAddon;
 }
 
 /** A native index kept warm for one repo + showIgnored combination. */
@@ -94,16 +85,6 @@ interface NativeIndexEntry {
     at: number;
     /** In-flight background refresh, so only one runs per entry. */
     refreshing?: Promise<void>;
-}
-
-interface NativeSymbolIndexEntry {
-    root: string;
-    index?: NativeSymbolIndex;
-    progress?: NativeSymbolIndexBuildProgress;
-    error?: unknown;
-    refreshing?: Promise<void>;
-    pendingChanges?: Set<string>;
-    refreshTimer?: NodeJS.Timeout;
 }
 
 /** Extension → MIME type map for common file types. */
@@ -170,7 +151,6 @@ const MAX_BLOB_SIZE = 1 * 1024 * 1024;
 
 /** Number of bytes to scan for binary detection. */
 const BINARY_PROBE_SIZE = 8192;
-const SYMBOL_REFRESH_BATCH_SIZE = 1024;
 
 function getMimeType(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
@@ -303,8 +283,6 @@ export class RepoTreeService {
      * fresh walk — so this holds the addon itself, not per-repo state.
      */
     private nativeContent?: NativeContentSearchAddon;
-    private nativeSymbols?: NativeSymbolIndexAddon;
-    private readonly nativeSymbolIndexes = new Map<string, NativeSymbolIndexEntry>();
 
     private static rgAvailable: boolean | undefined;
 
@@ -388,7 +366,6 @@ export class RepoTreeService {
         this.store = store;
         this.native = options?.nativeFileIndex ?? loadNativeFileIndex();
         this.nativeContent = options?.nativeContentSearch;
-        this.nativeSymbols = options?.nativeSymbolIndex;
     }
 
     /**
@@ -531,121 +508,6 @@ export class RepoTreeService {
         return workspaces.find(w => w.id === repoId)?.rootPath;
     }
 
-    /**
-     * Query the persistent C-family symbol index.
-     *
-     * The first query starts the cold or incremental build and returns
-     * `indexed: false`; callers can retry while progress reporting owns the
-     * longer-running build lifecycle.
-     */
-    async searchSymbols(
-        repoId: string,
-        query: string,
-        options?: { prefix?: boolean; limit?: number },
-    ): Promise<SearchSymbolsResult> {
-        const repoRoot = await this.resolveRepoRoot(repoId);
-        if (!repoRoot) throw new Error(`Repo not found: ${repoId}`);
-
-        let existing = this.nativeSymbolIndexes.get(repoId);
-        if (existing && existing.root !== repoRoot) {
-            if (!existing.index && existing.error === undefined) {
-                return { indexed: false, results: [] };
-            }
-            this.nativeSymbolIndexes.delete(repoId);
-            existing = undefined;
-        }
-        if (!existing) {
-            const addon = this.nativeSymbols ??= loadNativeSymbolIndex();
-            const entry: NativeSymbolIndexEntry = { root: repoRoot };
-            const database = getRepoDataPath(this.dataDir, repoId, 'symbol-index.sqlite');
-            this.nativeSymbolIndexes.set(repoId, entry);
-            let build: Promise<NativeSymbolIndex>;
-            try {
-                build = addon.buildSymbolIndex(repoRoot, database, progress => {
-                    if (this.nativeSymbolIndexes.get(repoId) === entry) {
-                        entry.progress = progress;
-                    }
-                });
-            } catch (error) {
-                this.nativeSymbolIndexes.delete(repoId);
-                throw error;
-            }
-            void build.then(
-                index => {
-                    if (this.nativeSymbolIndexes.get(repoId) !== entry) return;
-                    entry.index = index;
-                    if (entry.pendingChanges?.size) {
-                        this.refreshSymbolIndex(repoId, repoRoot, []);
-                    }
-                },
-                error => {
-                    entry.error = error;
-                },
-            );
-            return { indexed: false, progress: entry.progress, results: [] };
-        }
-        if (existing.error !== undefined) {
-            this.nativeSymbolIndexes.delete(repoId);
-            throw existing.error;
-        }
-        if (!existing.index) {
-            return { indexed: false, progress: existing.progress, results: [] };
-        }
-
-        const results = await existing.index.search(query, {
-            prefix: options?.prefix ?? false,
-            limit: options?.limit ?? 100,
-        });
-        return { indexed: true, results };
-    }
-
-    private refreshSymbolIndex(repoId: string, repoRoot: string, changedPaths: string[]): void {
-        const entry = this.nativeSymbolIndexes.get(repoId);
-        if (!entry) return;
-        if (entry.root !== repoRoot) {
-            if (!entry.index && entry.error === undefined) return;
-            this.nativeSymbolIndexes.delete(repoId);
-            return;
-        }
-        const pending = entry.pendingChanges ??= new Set<string>();
-        for (const changedPath of changedPaths) pending.add(changedPath);
-        if (!entry.index || entry.refreshing || pending.size === 0) return;
-        if (entry.refreshTimer) clearTimeout(entry.refreshTimer);
-        entry.refreshTimer = setTimeout(() => {
-            entry.refreshTimer = undefined;
-            this.runSymbolIndexRefresh(repoId, entry);
-        }, 100);
-    }
-
-    private runSymbolIndexRefresh(repoId: string, entry: NativeSymbolIndexEntry): void {
-        if (this.nativeSymbolIndexes.get(repoId) !== entry) return;
-        if (!entry.index || entry.refreshing || !entry.pendingChanges?.size) return;
-        const changedPaths = [...entry.pendingChanges].slice(0, SYMBOL_REFRESH_BATCH_SIZE);
-        for (const changedPath of changedPaths) entry.pendingChanges.delete(changedPath);
-        let succeeded = false;
-        let retryQueued = false;
-        const refresh = Promise.resolve()
-            .then(() => entry.index!.refreshChanged(changedPaths))
-            .then(
-                () => { succeeded = true; },
-                error => {
-                    retryQueued = entry.pendingChanges!.size > 0;
-                    for (const changedPath of changedPaths) entry.pendingChanges!.add(changedPath);
-                    console.warn(
-                        `[symbol-index] incremental refresh failed for workspace ${repoId}: ${
-                            error instanceof Error ? error.message : String(error)
-                        }`,
-                    );
-                },
-            );
-        entry.refreshing = refresh;
-        void refresh.finally(() => {
-            if (entry.refreshing === refresh) entry.refreshing = undefined;
-            if ((succeeded || retryQueued) && entry.pendingChanges?.size) {
-                this.refreshSymbolIndex(repoId, entry.root, []);
-            }
-        });
-    }
 
     /**
      * List the contents of `relativePath` inside the repo identified by `repoId`.
@@ -951,9 +813,6 @@ export class RepoTreeService {
 
         // A write may have created a file that is not in the cached listing.
         await this.invalidateFileListCacheAndWait(repoId);
-        this.refreshSymbolIndex(repoId, repoRoot, [
-            path.relative(repoRoot, absPath).split(path.sep).join('/'),
-        ]);
     }
 
     /**
@@ -1098,7 +957,6 @@ export class RepoTreeService {
         const matcher = buildReplaceMatcher(query, options);
 
         const skipped: ContentReplaceSkip[] = [];
-        const changedPaths: string[] = [];
         let replacedMatches = 0;
         let replacedFiles = 0;
 
@@ -1136,14 +994,10 @@ export class RepoTreeService {
             if (outcome.replaced === 0) continue;
 
             await fs.promises.writeFile(absPath, outcome.content, 'utf-8');
-            changedPaths.push(path.relative(repoRoot, absPath).split(path.sep).join('/'));
             replacedMatches += outcome.replaced;
             replacedFiles++;
         }
 
-        if (replacedFiles > 0) {
-            this.refreshSymbolIndex(repoId, repoRoot, changedPaths);
-        }
         return { replacedMatches, replacedFiles, skipped };
     }
 

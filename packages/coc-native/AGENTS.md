@@ -17,6 +17,15 @@ parses as a real `function_definition`, so it stays `function`; ranking, not
 extraction, is what keeps it below the `#define`. `kind` is a free-form `TEXT`
 column that flows unchanged through napi, the route types and the SPA, so a new
 kind value needs no type changes on any layer — only a `user_version` bump.
+Two more appended queries, `C_REFERENCE_QUERY` and `CPP_REFERENCE_QUERY`, capture the
+`@reference.*` tags neither grammar ships — call sites and type usages. They feed a
+*filtered* occurrence table: never every identifier token, which would dwarf the definition
+table on a 30M-line repository and answer a reference query mostly with unrelated locals.
+The C++ variant adds the `field_expression` and `qualified_identifier` call shapes, which are
+not nodes in the C grammar and would fail to compile appended to its query. `extract_file`
+returns both halves as an `ExtractedFile`; `extract` is the definitions-only view of it.
+`Occurrence` is an alias of `Symbol` so one range/location path serves both tables — `kind`
+carries the reference kind and `parent`/`docs` are always `None`.
 It filters extensions before
 file reads, processes files through rayon, records per-file failures instead of
 aborting a build, and atomically swaps immutable snapshots on refresh. Parser,
@@ -27,7 +36,7 @@ grammar, and tags crate versions stay pinned as one compatibility set.
 not just on DDL changes.** Sync is keyed on per-file size/mtime/hash, so a rules
 change alone re-parses nothing and every `symbol-index.sqlite` already on disk
 keeps its stale rows indefinitely. `open` compares `PRAGMA user_version` and, on
-any mismatch (including `0` for pre-versioning databases), drops both tables and
+any mismatch (including `0` for pre-versioning databases), drops every table and
 re-stamps the version in one transaction — a crash part-way leaves a database the
 next open still recognises as stale. Dropping beats migrating because the index is
 a derived cache whose rebuild already reports progress through the UI.
@@ -37,18 +46,17 @@ Search orders by a `KIND_PRIORITY` `CASE` before path: `macro`, `class`, `type`,
 land on the `#define` rather than on whichever call site sorts first — without it
 the real definition competes with its call sites on path order alone and the
 `LIMIT` decides. Both the exact and prefix branches apply it.
-It uses WAL plus `files(path, size, mtime, hash)` and `symbols` tables, compares
+It uses WAL plus `files(path, size, mtime, hash)`, `symbols` and `occurrences` tables;
+`occurrences(name, limit)` answers `textDocument/references` by bare name, ordered by
+position, and a file's rows in both tables are replaced together on every re-parse. It compares
 size and mtime before reading or hashing, applies a full sync in one atomic transaction,
 extracts changed files in parallel through a bounded producer/consumer pipeline,
 replaces a targeted file's rows transactionally, removes deleted files, and retains
 previous committed rows when a file cannot be read or parsed. A database write
 failure rolls back the full sync transaction.
-`refreshChanged(paths)` validates and deduplicates repository-relative paths,
-then reads and updates only those files. Server-side writes debounce and
-coalesce their paths before calling it.
-`buildSymbolIndex(root, database)` runs the initial or incremental sync on a
-libuv worker and returns a `SymbolIndex` whose exact/prefix `search()` and
-incremental `refresh()` methods also stay off the event loop.
+`sync_changed_paths(paths)` validates and deduplicates repository-relative
+paths, then reads and updates only those files. The stdio server coalesces saves
+and filesystem-watcher events before calling it.
 `npm run bench:symbol-index -- --repo <path>` runs the production tree-sitter
 extractor without SQLite, reports extraction MB/s in one-core and all-core
 configurations, and uses the ctags baseline's extension set while excluding its
@@ -82,12 +90,15 @@ The `*Status()` accessors never throw, because `/api/health` reports them and ha
 ## Layout
 
 - `rust/core/` — `coc-native-core`: the logic layer, `pub mod <capability>` per capability. `git` runs `git -C <repo> <args>` with the timeout and buffer caps Node's `execFile` used to enforce. `repo_index` contains the gitignore-aware walker, scorer, immutable file-list snapshot, fuzzy matcher, and atomic refresh state. `content_search` searches file *contents* across the same walk, on ripgrep's `grep-searcher`/`grep-regex`; it holds no state at all, so every query is a fresh parallel walk bounded only by its caps. `notes_index` contains immutable Markdown-content snapshots, JavaScript-compatible lowercase caches, bounded search, full rebuilds, and bounded root-relative incremental upserts/removals under a root-specific symlink policy. Refresh writers serialize per index, build against the last complete snapshot, and atomically swap only after success. `dangerous_command` is a hardcoded disallow list of shell-command shapes, holding no state and touching no filesystem. No N-API dependency, so `cargo test -p coc-native-core` runs it all without Node. All Rust unit tests live here under `tests/`.
-- `rust/napi/` — `coc-native`: a thin `cdylib` wrapper, one `src/<capability>.rs` per capability registering its own classes and functions (`file_index.rs` keeps the shipped JS names — `FileIndex`, `buildFileIndex` — while wrapping core's `repo_index`). `FileIndex.search()` returns the public match shape; `searchRanked()` returns the same matches with the complete native ordering tuple for server-side cross-index merges. `symbol_index.rs` owns the persistent `SymbolIndex` boundary and sends bounded scanning/indexing/complete progress through its optional build callback. Everything that touches the filesystem or scans a large structure returns an `AsyncTask`, so work happens on a libuv worker and the event loop is never blocked. It has no tests: the crate links against Node's symbols, so a test binary would not link.
+- `rust/napi/` — `coc-native`: a thin `cdylib` wrapper, one `src/<capability>.rs` per Node-facing capability registering its own classes and functions (`file_index.rs` keeps the shipped JS names — `FileIndex`, `buildFileIndex` — while wrapping core's `repo_index`). `FileIndex.search()` returns the public match shape; `searchRanked()` returns the same matches with the complete native ordering tuple for server-side cross-index merges. Everything that touches the filesystem or scans a large structure returns an `AsyncTask`, so work happens on a libuv worker and the event loop is never blocked. It has no tests: the crate links against Node's symbols, so a test binary would not link.
+- `rust/lsp/` — `coc-symbols-lsp`: the symbol index as a stdio language server, so CoC reaches it over the same `/ws/language-server` transport that runs clangd instead of a bespoke HTTP route. It is a plain `[[bin]]` linking `coc-native-core` directly — no N-API anywhere, so it runs with no Node in the picture and `cargo test -p coc-symbols-lsp` needs no built addon. `framing.rs` mirrors the rules in `packages/coc/src/server/language-servers/jsonrpc.ts` (byte lengths, case-insensitive headers, a cap on the declared length); `uri.rs` reads `file://` including an encoded Windows drive; `transport.rs` funnels every write through one mutex, because the dispatch loop and the background indexer both send; `server.rs` owns the lifecycle. The index build runs on a worker thread and reports through `$/progress` under one reused token, which is what moves the Node session between `indexing` and `ready` — so the `end` notification is sent on the failure path too. `--database <path>` is how the host names the index file; the runtime adapter supplies it, and that resolved path never reaches a browser payload. `positions.rs` and `locations.rs` carry the coordinate conversion the navigation answers need: the index stores one-based lines and one-based UTF-8 *byte* columns, LSP wants zero-based lines and UTF-16 characters, so a range is only correct once the target line's text has been read — `LineCache` bounds that to one read per file per request and is deliberately not kept between requests. `textDocument/references` reads the occurrence table, prepends the definition table's rows when `context.includeDeclaration` is set (the specification's default), and emits each position once. `textDocument/documentSymbol` answers the flat `SymbolInformation` shape, not `DocumentSymbol`: the index stores the point where a name appears and no enclosing span, and fabricating one would make an outline lie about where a function ends. `indexer.rs` owns everything after the cold build: `textDocument/didSave` queues the saved file on one serial worker thread, which coalesces whatever else is waiting into a single `sync_changed_paths` and logs the outcome through `window/logMessage`. A save is filtered by `is_c_family_path` in the dispatch loop rather than in the worker — every save in the editor arrives on that notification, and most of them have nothing to index. `watcher.rs` covers the third source of change, the one CoC never sees: a branch switch, a `git pull`, a file written by a build script. It watches the root recursively with `notify` and feeds the *same* queue the save path uses, so a file reported twice is still parsed once and a checkout touching thousands of files collapses into as few syncs as the worker can keep up with. Its `PathFilter` keeps the watched set equal to the cold build's: C-family extensions only, never under `.git`, and the root `.gitignore` plus `.git/info/exclude` applied — nested `.gitignore` files are deliberately not read, because loading them needs a walk and the cost of a miss is one wasted targeted sync. A platform that refuses to watch is logged and shrugged off; saves and cold builds still work, and failing the session over a background convenience would be worse. Unlike the addon, this crate has integration tests: `tests/harness/` spawns the real executable over real pipes and holds the shared `initialize`/`index`/`request` helpers, `tests/handshake.rs` covers the lifecycle, `tests/navigation.rs` the four navigation requests, `tests/incremental.rs` what a save does to the store, and `tests/watcher.rs` what a write behind the editor's back does to it — all against an index the server builds for itself.
 - `src/loader.ts` — resolves and loads the binary. Deliberately capability-agnostic: it validates only that the module loaded, never which exports it has.
+- `src/symbols-lsp.ts` — resolves the `coc-symbols-lsp` *executable* from disk, by the same precedence the addon uses. Kept apart from `loader.ts` because nothing here is loaded: the path is handed to the language-server manager, which spawns it. A missing executable is a reported reason, not a throw — see "Binary resolution".
 - `src/native-bindings.ts` — **generated, do not edit.** The `#[napi]` type surface as TypeScript, produced by `npm run build:native`.
-- `src/<capability>.ts` — one module per capability (`file-index.ts`, `content-search.ts`, `symbol-index.ts`, `notes-index.ts`): aliases of the generated types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`.
+- `src/<capability>.ts` — one module per Node-facing capability (`file-index.ts`, `content-search.ts`, `notes-index.ts`): aliases of the generated types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`.
 - `scripts/build-native.mjs` — `npm run build:native`. Drives `@napi-rs/cli` to compile the addon *and* emit the type surface, then rewrites the header. The CLI is used for the build only; the loader still resolves binaries from disk rather than through napi-rs's per-platform npm packages.
-- `scripts/ensure-native.mjs` — `npm run ensure:native`. A stale check in front of `build-native.mjs`: rebuilds only when the `.node` is missing or older than a file under `rust/`, and otherwise exits 0 having run nothing. The serve loops call it before `coc:link`, because nothing else in the local build path compiles the addon. When cargo is absent, it downloads the official target-specific `rustup-init`, installs the minimal toolchain without modifying shell profiles, rediscovers `~/.cargo/bin/cargo`, and continues; `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning. A failed install or compile keeps a daemon up on an existing binary and only fails when no binary exists. It runs `build-native.mjs`, which rewrites the committed `src/native-bindings.ts`, so a serve loop can leave that file modified when the `#[napi]` surface has changed.
+- `scripts/build-symbols-lsp.mjs` — a plain `cargo build -p coc-symbols-lsp`, no napi involved, renaming the output to the triple-qualified name `src/symbols-lsp.ts` computes. `build-native.mjs` calls it, so one `npm run build:native` produces both artifacts and neither can quietly lag the other; `npm run build:symbols-lsp` runs it alone when only the language server changed.
+- `scripts/ensure-native.mjs` — `npm run ensure:native`. A stale check in front of `build-native.mjs`: rebuilds only when either built binary — the `.node` or `coc-symbols-lsp` — is missing or older than a file under `rust/`, and otherwise exits 0 having run nothing. The serve loops call it before `coc:link`, because nothing else in the local build path compiles the addon. When cargo is absent, it downloads the official target-specific `rustup-init`, installs the minimal toolchain without modifying shell profiles, rediscovers `~/.cargo/bin/cargo`, and continues; `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning. A failed install or compile keeps a daemon up on an existing binary and only fails when no binary exists. It runs `build-native.mjs`, which rewrites the committed `src/native-bindings.ts`, so a serve loop can leave that file modified when the `#[napi]` surface has changed.
 
 Adding a capability means a `rust/core/src/<name>/` module, a `rust/napi/src/<name>.rs` registered in `rust/napi/src/lib.rs`, and a `src/<name>.ts` re-exported from `src/index.ts`. The loader does not change.
 
@@ -112,7 +123,16 @@ In order, from `loader.ts`:
 3. `packages/coc-native/prebuilt/<triple>/` — injected by CI/release (gitignored).
 4. nothing found — `NativeAddonLoadError`.
 
-Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI builds and publishes `linux-x64-gnu`, `linux-arm64-gnu`, `darwin-arm64`, `darwin-x64`, `win32-x64-msvc`, and `win32-arm64-msvc`. Desktop packaging downloads only the binary matching the installer's architecture. Resolution is cached, so the same error object is rethrown on every call; `resetNativeAddonCache()` clears it for tests.
+The stdio language server is resolved the same way, from `symbols-lsp.ts`:
+
+1. `COC_SYMBOLS_LSP_PATH`.
+2. `packages/coc-native/coc-symbols-lsp.<triple>[.exe]`.
+3. `packages/coc-native/prebuilt/<triple>/coc-symbols-lsp.<triple>[.exe]`, then the unqualified name.
+4. nothing found — `symbolsLspStatus()` reports `loaded: false` with a reason; only `loadSymbolsLspBinary()` throws.
+
+The split on failure is deliberate. The addon backs quick-open, notes search and git, so a server without it is dead on the first request and failing at load is the honest outcome. The language server backs one preset, and a workspace with no C code never starts it — so the preset asks for status, and only the code about to spawn the process asks for a path.
+
+Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI builds and publishes both binaries for `linux-x64-gnu`, `linux-arm64-gnu`, `darwin-arm64`, `darwin-x64`, `win32-x64-msvc`, and `win32-arm64-msvc`. Desktop packaging downloads only the binary matching the installer's architecture. Resolution is cached, so the same error object is rethrown on every call; `resetNativeAddonCache()` clears it for tests.
 
 `nativeAddonStatus()` reports whether the *binary* loaded; capability status accessors (`nativeFileIndexStatus()`, `nativeContentSearchStatus()`, `nativeNotesIndexStatus()`) additionally report `loaded: false` when the binary loaded but lacks their export. They return `{ loaded, binaryPath?, reason? }`, never throw, and cover missing, unloadable and capability-less states.
 
@@ -360,6 +380,7 @@ Recorded on a 2-core arm64 box, 25 iterations, medians. "spawns" is how many git
 - `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; only this and `ensure:native` do.
 - `npm run ensure:native` (root) / `-w packages/coc-native` — the same build, but only when the addon is behind `rust/`. Free on a fresh tree, so it is safe on every serve-loop restart. Deliberately **not** wired into `build`, which must stay plain `tsc`.
 - `npm run bench:git -w packages/coc-native` — the git benchmark above. Needs a built binary and a built `dist`, not a Rust toolchain; takes ~23 s at the default 20 iterations (the table above is 25). Add `-- --check` to have it fail on a regression.
+- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-symbols-lsp` — the language server, unit tests plus the spawned-binary handshake, navigation and incremental suites.
 - `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec`, `git_status`, `git_log`, `git_commit`, `git_range`, `git_branch`, `git_remote`, `git_config` and `git_diff` suites drive a real `git`, so it has to be on PATH; `git_log`, `git_commit`, `git_diff`, parts of `git_range` and parts of `git_branch` additionally compare their output against the real CLI.
 - `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suites (marshalling, async build/refresh/search contracts, snapshot consistency, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built — there is no skip path — so a botched native build cannot pass for a green run.
 - `cargo fmt`/`cargo clippy` run in the `coc-native` CI job. `rust/rustfmt.toml` widens `use_small_heuristics` to match the density of the surrounding TypeScript.

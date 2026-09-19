@@ -95,6 +95,8 @@ export type LanguageServerServerMessage =
           definitionId: string;
           displayName: string;
           state: LanguageServerSessionState;
+          /** True on the final attachment produced by this document request. */
+          complete: boolean;
       }
     | { type: 'lsp-unavailable'; requestId: string; reason: LanguageServerUnavailableReason | 'invalid-path'; detail: string }
     | { type: 'lsp-response'; attachmentId: string; id: string; result?: unknown; error?: { code: string; message: string } }
@@ -327,7 +329,7 @@ export class LanguageServerWebSocketServer {
             return;
         }
 
-        const result = this.manager.acquire({
+        const result = this.manager.acquireAll({
             workspaceId: client.workspaceId,
             workspaceRoot: client.workspaceRoot,
             editingSessionId: client.editingSessionId,
@@ -343,35 +345,35 @@ export class LanguageServerWebSocketServer {
             return;
         }
 
-        const attachment: Attachment = {
-            id: crypto.randomUUID(),
-            handle: result.handle,
-            relativePath: resolved.relativePath,
-            documentUri: browserDocumentUri(client.workspaceId, resolved.relativePath),
-            pending: new Map(),
-        };
-        client.attachments.set(attachment.id, attachment);
-        this.subscribe(client, attachment);
+        result.handles.forEach((handle, index) => {
+            const attachment: Attachment = {
+                id: crypto.randomUUID(),
+                handle,
+                relativePath: resolved.relativePath,
+                documentUri: browserDocumentUri(client.workspaceId, resolved.relativePath),
+                pending: new Map(),
+            };
+            client.attachments.set(attachment.id, attachment);
+            this.subscribe(client, attachment);
 
-        this.send(client.socket, {
-            type: 'lsp-attached',
-            requestId,
-            attachmentId: attachment.id,
-            sessionKey: result.handle.key,
-            documentUri: attachment.documentUri,
-            languageId: result.handle.languageId,
-            definitionId: result.handle.definition.id,
-            displayName: result.handle.definition.displayName,
-            state: result.handle.session.getState(),
+            this.send(client.socket, {
+                type: 'lsp-attached',
+                requestId,
+                attachmentId: attachment.id,
+                sessionKey: handle.key,
+                documentUri: attachment.documentUri,
+                languageId: handle.languageId,
+                definitionId: handle.definition.id,
+                displayName: handle.definition.displayName,
+                state: handle.session.getState(),
+                complete: index === result.handles.length - 1,
+            });
+
+            // Opening an eligible file is what starts the server (lazy startup).
+            // Every matching server starts independently after its attachment is
+            // visible, and the client replays the buffer on each ready generation.
+            this.startSession(client, attachment);
         });
-
-        // Opening an eligible file is what starts the server (lazy startup).
-        // Without this the first `didOpen` would be dropped, because a
-        // notification needs a live connection and only a request starts one.
-        // `lsp-attached` goes out first so the browser is not made to wait for
-        // a spawn and a handshake; the client replays its buffer when the
-        // session reports a new ready generation.
-        this.startSession(client, attachment);
     }
 
     /**

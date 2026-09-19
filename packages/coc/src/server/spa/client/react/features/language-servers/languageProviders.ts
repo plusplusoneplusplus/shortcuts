@@ -28,11 +28,10 @@
  *   - The default URI resolver drops results outside this workspace. A
  *     repo-group host supplies an owner-aware resolver that accepts live members
  *     and represents rejected targets with an unavailable in-memory model.
- *   - The language server is authoritative for definitions. Whenever it answers
- *     with a location, that answer is the whole result; the repository symbol
- *     index is a fallback for when it cannot answer, never an augmentation.
- *     Mixing the two is what made a C++ jump land on a call site that merely
- *     shares the token's spelling.
+ *   - The preferred semantic server is authoritative for definitions. The
+ *     `coc-symbols` attachment is queried alongside it, but its answer is used
+ *     only when the semantic server has no locations. Mixing the two is what
+ *     made a C++ jump land on a call site that merely shares the token's spelling.
  *
  * Runtime-Monaco-free like its neighbours: the `monaco` namespace arrives as an
  * argument, described structurally, so the tests drive real provider code
@@ -70,11 +69,6 @@ export interface ProviderModel {
     uri: ProviderUri;
     /** Monaco's word range at the cursor, used as the completion fallback range. */
     getWordUntilPosition(position: MonacoPosition): { startColumn: number; endColumn: number };
-    getWordAtPosition?(position: MonacoPosition): {
-        word: string;
-        startColumn: number;
-        endColumn: number;
-    } | null;
 }
 
 export interface ProviderCancellationToken {
@@ -286,15 +280,6 @@ export interface RegisterLanguageProvidersOptions {
         signal: AbortSignal,
         target: { lineNumber: number; column: number; waitForContent: boolean },
     ) => ProviderUri | null | Promise<ProviderUri | null>;
-    /** Repository-wide definition candidates, available without a live server. */
-    symbolDefinitions?: {
-        workspaceId: string;
-        lookup(name: string, signal: AbortSignal): Promise<readonly {
-            path: string;
-            line: number;
-            column: number;
-        }[]>;
-    };
 }
 
 function definitionKey(link: ProviderLocationLink): string {
@@ -342,13 +327,32 @@ async function runRequest<T>(
     }
 }
 
+async function runTargetedRequest<T>(
+    view: LanguageDocumentView,
+    definitionId: string,
+    method: string,
+    params: unknown,
+    signal: AbortSignal,
+): Promise<unknown | null> {
+    if (signal.aborted) {
+        return null;
+    }
+    try {
+        return await view.sendRequestTo<T>(definitionId, method, params, { signal });
+    } catch {
+        return null;
+    }
+}
+
+const SYMBOLS_DEFINITION_ID = 'coc-symbols';
+
 /**
  * Registers the selected language features for one model and returns a single
  * disposable. Dispose it with the document: a provider outliving its buffer
  * would answer out of a document the host has already closed.
  */
 export function registerLanguageProviders(options: RegisterLanguageProvidersOptions): ProviderDisposable {
-    const { monaco, model, view, languageId, symbolDefinitions } = options;
+    const { monaco, model, view, languageId } = options;
     const modelUri = model.uri.toString();
     const resolveUri = options.resolveUri
         ?? ((uri: string) => (sameWorkspace(view.uri, uri) ? monaco.Uri.parse(uri) : null));
@@ -412,14 +416,16 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                 },
             }));
         }
-        if (supportsFeature(state, 'definition') || symbolDefinitions) {
+        const definitionServers = view.getServerInfos()
+            .filter(info => supportsFeature(info.state, 'definition'));
+        if (supportsFeature(state, 'definition') || definitionServers.length > 0) {
             next.push(monaco.languages.registerDefinitionProvider(languageId, {
                 provideDefinition: async (target, position, token) => {
                     if (!owns(target)) {
                         return null;
                     }
                     const controller = new AbortController();
-                    // The index lookup is speculative and gets its own signal,
+                    // The symbols request is speculative and gets its own signal,
                     // so a semantic answer can abandon it without cancelling
                     // the target resolution that is still running on `token`.
                     const speculative = new AbortController();
@@ -428,22 +434,34 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                         speculative.abort();
                     });
                     try {
-                        const semanticPromise = supportsFeature(view.getSnapshot().state, 'definition')
-                            ? runRequest(
+                        const params = view.documentParams({ position: toLspPosition(position) });
+                        const servers = view.getServerInfos()
+                            .filter(info => supportsFeature(info.state, 'definition'));
+                        const symbolServer = servers.find(info => info.definitionId === SYMBOLS_DEFINITION_ID);
+                        const semanticServer = servers.find(info => info.definitionId !== SYMBOLS_DEFINITION_ID);
+                        const semanticPromise = semanticServer
+                            ? runTargetedRequest(
                                 view,
+                                semanticServer.definitionId,
                                 'textDocument/definition',
-                                view.documentParams({ position: toLspPosition(position) }),
-                                token,
+                                params,
+                                controller.signal,
+                            )
+                            : symbolServer
+                                ? Promise.resolve(null)
+                                : runRequest(view, 'textDocument/definition', params, token);
+                        // Started alongside the semantic request, not after it,
+                        // so the fallback costs no extra latency when clangd has
+                        // nothing to say. Its result is dropped when it does.
+                        const candidatePromise = symbolServer
+                            ? runTargetedRequest(
+                                view,
+                                symbolServer.definitionId,
+                                'textDocument/definition',
+                                params,
+                                speculative.signal,
                             )
                             : Promise.resolve(null);
-                        const word = target.getWordAtPosition?.(position)?.word;
-                        // Started alongside the request, not after it, so the
-                        // fallback costs no extra latency when the server has
-                        // nothing to say. Its result is dropped when it does.
-                        const candidatePromise = symbolDefinitions && word
-                            && !token.isCancellationRequested && !speculative.signal.aborted
-                            ? symbolDefinitions.lookup(word, speculative.signal).catch(() => [])
-                            : Promise.resolve([]);
 
                         const semantic = await semanticPromise;
                         const semanticLinks = toLocationLinks(semantic);
@@ -458,29 +476,25 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                         if (token.isCancellationRequested || speculative.signal.aborted) {
                             return [];
                         }
-                        const candidates = await Promise.all(results.map(
+                        const candidates = await Promise.all(toLocationLinks(results).map(
                             async (result): Promise<ProviderLocationLink | null> => {
-                                const baseUri = `coc-file://${encodeURIComponent(symbolDefinitions!.workspaceId)}/${
-                                    result.path.split('/').map(encodeURIComponent).join('/')
-                                }`;
+                                const candidateUri = `${
+                                    result.uri.toString().replace(/#.*$/, '')
+                                }#${SYMBOL_CANDIDATE_FRAGMENT}`;
+                                const targetRange = result.targetSelectionRange ?? result.range;
                                 const uri = await resolveUri(
-                                    `${baseUri}#${SYMBOL_CANDIDATE_FRAGMENT}`,
+                                    candidateUri,
                                     controller.signal,
                                     {
-                                        lineNumber: result.line,
-                                        column: result.column,
+                                        lineNumber: targetRange.startLineNumber,
+                                        column: targetRange.startColumn,
                                         waitForContent: true,
                                     },
                                 );
                                 return uri
                                     ? {
+                                        ...result,
                                         uri,
-                                        range: {
-                                            startLineNumber: result.line,
-                                            startColumn: result.column,
-                                            endLineNumber: result.line,
-                                            endColumn: result.column,
-                                        },
                                     }
                                     : null;
                             },
@@ -592,13 +606,20 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
         registrations = [];
     };
 
-    let fingerprint = capabilityFingerprint(view.getSnapshot().state);
+    const registrationFingerprint = (): string => [
+        capabilityFingerprint(view.getSnapshot().state),
+        ...view.getServerInfos().map(info => (
+            `${info.definitionId}:${capabilityFingerprint(info.state)}`
+        )),
+    ].join('|server:');
+
+    let fingerprint = registrationFingerprint();
     register(view.getSnapshot().state);
 
     // A restart or a configuration change can hand us a different server, and
     // therefore a different feature set, without the document ever closing.
     const unsubscribe = view.onStatus((snapshot) => {
-        const next = capabilityFingerprint(snapshot.state);
+        const next = registrationFingerprint();
         if (next === fingerprint) {
             return;
         }

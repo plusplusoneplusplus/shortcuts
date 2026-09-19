@@ -1,0 +1,22 @@
+[package]
+name = "coc-symbols-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Stdio LSP server answering C-family navigation from CoC's symbol index"
+
+[[bin]]
+name = "coc-symbols-lsp"
+path = "src/main.rs"
+
+[dependencies]
+# The index itself. `core` carries no N-API dependency, so this binary links it
+# directly and stays runnable without a Node runtime anywhere in the picture.
+coc-native-core = { path = "../core" }
+ignore = "0.4.33"
+notify = "8.2.0"
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

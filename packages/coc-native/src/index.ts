@@ -42,14 +42,14 @@ export type {
     NativeContentSearchResult,
 } from './content-search';
 
-export { loadNativeSymbolIndex, nativeSymbolIndexStatus } from './symbol-index';
-export type {
-    NativeSymbolIndex,
-    NativeSymbolIndexAddon,
-    NativeSymbolIndexBuildProgress,
-    NativeSymbolMatch,
-    NativeSymbolSearchOptions,
-} from './symbol-index';
+export {
+    loadSymbolsLspBinary,
+    resetSymbolsLspCache,
+    symbolsLspBinaryCandidates,
+    symbolsLspBinaryName,
+    symbolsLspStatus,
+    SymbolsLspBinaryError,
+} from './symbols-lsp';
 
 export {
     loadNativeDangerousCommandGuard,

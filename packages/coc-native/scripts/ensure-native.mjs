@@ -51,6 +51,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { nativeBinaryName } from './build-native.mjs';
+import { symbolsLspBinaryName } from './build-symbols-lsp.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -63,6 +64,21 @@ const SKIPPED_DIRS = new Set(['target', 'node_modules', '.git']);
 /** Absolute path of the addon the loader would pick up on this platform. */
 export function nativeBinaryPath(root = packageRoot) {
     return path.join(root, nativeBinaryName());
+}
+
+/** Absolute path of the stdio symbol language server, built by the same run. */
+export function symbolsLspBinaryPath(root = packageRoot) {
+    return path.join(root, symbolsLspBinaryName());
+}
+
+/**
+ * Every artifact `build-native.mjs` produces. Both are gated together because
+ * one command builds both: a tree with a current addon and no language server
+ * is exactly the state a partial build leaves behind, and it has to count as
+ * stale or nothing will ever rebuild it.
+ */
+export function builtBinaryPaths(root = packageRoot) {
+    return [nativeBinaryPath(root), symbolsLspBinaryPath(root)];
 }
 
 /**
@@ -100,19 +116,25 @@ export function listRustSources(dir, deps = {}) {
 }
 
 /**
- * Is the compiled addon behind its sources? Missing binary counts as stale.
- * Returns the reason too, so the log says why a restart paid for a rebuild.
+ * Are the compiled binaries behind their sources? A missing one counts as
+ * stale. Returns the reason too, so the log says why a restart paid for a
+ * rebuild.
+ *
+ * Accepts one path or several; with several the oldest wins, since a rebuild
+ * regenerates all of them anyway and the youngest would hide a laggard.
  */
 export function checkStaleness(binaryPath, rustDir, deps = {}) {
     const exists = deps.exists ?? ((p) => fs.existsSync(p));
     const mtimeOf = deps.mtimeOf ?? ((p) => fs.statSync(p).mtimeMs);
     const sourcesOf = deps.listSources ?? ((d) => listRustSources(d, deps));
+    const binaryPaths = Array.isArray(binaryPath) ? binaryPath : [binaryPath];
 
-    if (!exists(binaryPath)) {
-        return { stale: true, reason: `${path.basename(binaryPath)} is not built` };
+    const missing = binaryPaths.find((candidate) => !exists(candidate));
+    if (missing) {
+        return { stale: true, reason: `${path.basename(missing)} is not built` };
     }
 
-    const binaryMtime = mtimeOf(binaryPath);
+    const binaryMtime = Math.min(...binaryPaths.map(mtimeOf));
     for (const source of sourcesOf(rustDir)) {
         let sourceMtime;
         try {
@@ -279,7 +301,7 @@ function defaultRunBuild(cargoPath) {
  * The whole decision, injectable end to end. Returns the process exit code.
  */
 export function ensureNative(options = {}) {
-    const binaryPath = options.binaryPath ?? nativeBinaryPath();
+    const binaryPath = options.binaryPath ?? builtBinaryPaths();
     const rustDir = options.rustDir ?? RUST_DIR;
     const exists = options.exists ?? ((p) => fs.existsSync(p));
     const findCargo = options.findCargo ?? (() => resolveCargo());
@@ -298,7 +320,11 @@ export function ensureNative(options = {}) {
         return 0;
     }
 
-    const haveBinary = exists(binaryPath);
+    const binaryPaths = Array.isArray(binaryPath) ? binaryPath : [binaryPath];
+    // "Have something to fall back on" means every artifact is present: a
+    // partially built tree cannot serve the capability whose binary is missing.
+    const haveBinary = binaryPaths.every(exists);
+    const binaryNames = binaryPaths.map((candidate) => path.basename(candidate)).join(' / ');
 
     let cargo = findCargo();
     if (!cargo) {
@@ -354,7 +380,7 @@ export function ensureNative(options = {}) {
 
     logger.error(
         `[ensure-native] the Rust addon failed to build (exit ${status}) and no ` +
-            `${path.basename(binaryPath)} exists to fall back on. The server would fail on the first ` +
+            `${binaryNames} exists to fall back on. The server would fail on the first ` +
             `quick-open, notes-search or git-sync call, so the build stops here.` +
             (process.platform === 'win32'
                 ? ' Windows native builds also require the Visual Studio C++ Build Tools and Windows SDK.'

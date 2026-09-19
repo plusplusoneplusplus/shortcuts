@@ -7,8 +7,9 @@
  * open document over it.
  *
  * What lives here and what does not:
- *   - Here: socket lifecycle, reconnect with backoff, attach bookkeeping,
- *     request/response correlation, cancellation, notification fan-out.
+ *   - Here: socket lifecycle, reconnect with backoff, grouped per-document
+ *     attachment bookkeeping, request/response correlation, cancellation, and
+ *     notification fan-out.
  *   - Not here: document buffers, versions, Monaco, or anything TypeScript.
  *     The document layer sits on top and uses `onAttached` as its replay hook.
  *
@@ -124,7 +125,7 @@ export function detectLanguageTransportBlock(
 
 type ServerMessage =
     | { type: 'lsp-welcome'; clientId: string; workspaceId: string; editingSessionId: string }
-    | ({ type: 'lsp-attached'; requestId: string } & LanguageServerAttachedInfo)
+    | ({ type: 'lsp-attached'; requestId: string; complete?: boolean } & LanguageServerAttachedInfo)
     | ({ type: 'lsp-unavailable'; requestId: string } & LanguageServerUnavailableInfo)
     | { type: 'lsp-response'; attachmentId: string; id: string; result?: unknown; error?: { code: string; message: string } }
     | { type: 'lsp-notification'; sessionKey: string; method: string; params?: unknown }
@@ -168,6 +169,8 @@ export interface LanguageServerAttachment {
     readonly path: string;
     /** Live attachment details, or `null` while attaching or unavailable. */
     getInfo(): LanguageServerAttachedInfo | null;
+    /** All live servers for this document, in host preference order. */
+    getInfos(): readonly LanguageServerAttachedInfo[];
     /** Why the host refused this document, if it did. */
     getUnavailable(): LanguageServerUnavailableInfo | null;
     /** Fires on every successful attach, including re-attach after a drop. */
@@ -176,9 +179,19 @@ export interface LanguageServerAttachment {
     onDetached(listener: (reason: string) => void): () => void;
     onUnavailable(listener: (info: LanguageServerUnavailableInfo) => void): () => void;
     /** Session-wide server notifications (diagnostics, log messages, progress). */
-    onNotification(listener: (method: string, params: unknown) => void): () => void;
-    onStatus(listener: (state: LanguageServerSessionStateView) => void): () => void;
+    onNotification(
+        listener: (method: string, params: unknown, info: LanguageServerAttachedInfo) => void,
+    ): () => void;
+    onStatus(
+        listener: (state: LanguageServerSessionStateView, info: LanguageServerAttachedInfo) => void,
+    ): () => void;
     sendRequest<T = unknown>(method: string, params?: unknown, options?: LanguageServerRequestOptions): Promise<T>;
+    sendRequestTo<T = unknown>(
+        definitionId: string,
+        method: string,
+        params?: unknown,
+        options?: LanguageServerRequestOptions,
+    ): Promise<T>;
     /**
      * Read a file the host authorized through this attachment's own definition
      * response. Takes only the opaque resource id — never a path — so a read
@@ -190,6 +203,7 @@ export interface LanguageServerAttachment {
     ): Promise<ExternalSourceContent>;
     /** Dropped when the attachment is not live; the next attach replays instead. */
     sendNotification(method: string, params?: unknown): void;
+    sendNotificationTo(attachmentId: string, method: string, params?: unknown): void;
     /**
      * The user's retry. Picks the one recovery this document actually needs:
      * a new socket, a fresh attach, or a restart of the host's server process.
@@ -246,6 +260,7 @@ interface PendingRequest {
     resolve: (value: unknown) => void;
     reject: (error: Error) => void;
     generation: number;
+    attachmentId: string;
     cleanup: () => void;
 }
 
@@ -261,15 +276,15 @@ interface AttachmentRecord {
     refCount: number;
     released: boolean;
     attachRequestId: string | null;
-    info: LanguageServerAttachedInfo | null;
+    infos: Map<string, LanguageServerAttachedInfo>;
     unavailable: LanguageServerUnavailableInfo | null;
     pending: Set<string>;
     waiters: Set<AttachWaiter>;
     attachedListeners: Set<(info: LanguageServerAttachedInfo) => void>;
     detachedListeners: Set<(reason: string) => void>;
     unavailableListeners: Set<(info: LanguageServerUnavailableInfo) => void>;
-    notificationListeners: Set<(method: string, params: unknown) => void>;
-    statusListeners: Set<(state: LanguageServerSessionStateView) => void>;
+    notificationListeners: Set<(method: string, params: unknown, info: LanguageServerAttachedInfo) => void>;
+    statusListeners: Set<(state: LanguageServerSessionStateView, info: LanguageServerAttachedInfo) => void>;
 }
 
 /**
@@ -358,7 +373,7 @@ export class LanguageServerClient {
                 refCount: 0,
                 released: false,
                 attachRequestId: null,
-                info: null,
+                infos: new Map(),
                 unavailable: null,
                 pending: new Set(),
                 waiters: new Set(),
@@ -476,8 +491,8 @@ export class LanguageServerClient {
         this.byAttachmentId.clear();
         this.byAttachRequest.clear();
         for (const [, record] of this.attachments) {
-            const wasAttached = record.info !== null;
-            record.info = null;
+            const wasAttached = record.infos.size > 0;
+            record.infos.clear();
             record.attachRequestId = null;
             record.pending.clear();
             if (wasAttached) {
@@ -492,7 +507,9 @@ export class LanguageServerClient {
 
     /** Replace a live or pending socket when this clone's concrete endpoint changes. */
     private handleCloneRouteChange(): void {
-        if (this.disposed || this.attachments.size === 0) return;
+        if (this.disposed || this.attachments.size === 0) {
+            return;
+        }
 
         const blocked = this.detectTransportBlock(this.workspaceId, this.routingRef);
         this.clearReconnectTimer();
@@ -502,8 +519,8 @@ export class LanguageServerClient {
         this.byAttachmentId.clear();
         this.byAttachRequest.clear();
         for (const [, record] of this.attachments) {
-            const wasAttached = record.info !== null;
-            record.info = null;
+            const wasAttached = record.infos.size > 0;
+            record.infos.clear();
             record.attachRequestId = null;
             record.pending.clear();
             if (wasAttached) {
@@ -611,7 +628,6 @@ export class LanguageServerClient {
         switch (message?.type) {
             case 'lsp-attached': {
                 const record = this.byAttachRequest.get(message.requestId);
-                this.byAttachRequest.delete(message.requestId);
                 if (!record || record.released) {
                     // The view went away while the attach was in flight; do not
                     // leak the host's session reference.
@@ -627,12 +643,15 @@ export class LanguageServerClient {
                     displayName: message.displayName,
                     state: message.state,
                 };
-                record.info = info;
+                record.infos.set(info.attachmentId, info);
                 record.unavailable = null;
-                record.attachRequestId = null;
                 this.byAttachmentId.set(info.attachmentId, record);
-                this.resolveWaiters(record);
                 emit(record.attachedListeners, info);
+                if (message.complete !== false) {
+                    record.attachRequestId = null;
+                    this.byAttachRequest.delete(message.requestId);
+                    this.resolveWaiters(record);
+                }
                 return;
             }
             case 'lsp-unavailable': {
@@ -643,7 +662,7 @@ export class LanguageServerClient {
                 }
                 const info: LanguageServerUnavailableInfo = { reason: message.reason, detail: message.detail };
                 record.unavailable = info;
-                record.info = null;
+                record.infos.clear();
                 record.attachRequestId = null;
                 // Not a transport failure: retrying would spin. Settle waiters
                 // so callers surface "language support unavailable" instead of
@@ -690,18 +709,27 @@ export class LanguageServerClient {
             }
             case 'lsp-notification': {
                 for (const record of this.recordsForSession(message.sessionKey)) {
+                    const info = infoForSession(record, message.sessionKey);
+                    if (!info) {
+                        continue;
+                    }
                     for (const listener of [...record.notificationListeners]) {
-                        listener(message.method, message.params);
+                        listener(message.method, message.params, info);
                     }
                 }
                 return;
             }
             case 'lsp-status': {
                 for (const record of this.recordsForSession(message.sessionKey)) {
-                    if (record.info) {
-                        record.info = { ...record.info, state: message.state };
+                    const current = infoForSession(record, message.sessionKey);
+                    if (!current) {
+                        continue;
                     }
-                    emit(record.statusListeners, message.state);
+                    const info = { ...current, state: message.state };
+                    record.infos.set(info.attachmentId, info);
+                    for (const listener of [...record.statusListeners]) {
+                        listener(message.state, info);
+                    }
                 }
                 return;
             }
@@ -711,22 +739,40 @@ export class LanguageServerClient {
                     return;
                 }
                 this.byAttachmentId.delete(message.attachmentId);
-                record.info = null;
-                for (const id of record.pending) {
+                record.infos.delete(message.attachmentId);
+                for (const id of [...record.pending]) {
                     const pending = this.pendingRequests.get(id);
-                    if (pending) {
+                    if (pending?.attachmentId === message.attachmentId) {
                         this.pendingRequests.delete(id);
+                        record.pending.delete(id);
                         pending.cleanup();
                         pending.reject(
                             new LanguageServerClientError('disconnected', `Attachment detached: ${message.reason}`),
                         );
                     }
                 }
-                record.pending.clear();
                 emit(record.detachedListeners, message.reason);
                 if (!record.released && message.reason !== 'client-request') {
-                    // The host replaced or lost the session. Re-attach so the
-                    // document layer gets a fresh `onAttached` and replays.
+                    // One member of the document's server set changed. Retire
+                    // the remaining set and reacquire it as one ordered group.
+                    for (const info of record.infos.values()) {
+                        this.byAttachmentId.delete(info.attachmentId);
+                        this.send({ type: 'lsp-detach', attachmentId: info.attachmentId });
+                    }
+                    record.infos.clear();
+                    for (const id of record.pending) {
+                        const pending = this.pendingRequests.get(id);
+                        if (!pending) {
+                            continue;
+                        }
+                        this.pendingRequests.delete(id);
+                        pending.cleanup();
+                        pending.reject(new LanguageServerClientError(
+                            'disconnected',
+                            `Attachment group detached: ${message.reason}`,
+                        ));
+                    }
+                    record.pending.clear();
                     this.sendAttach(record);
                 }
                 return;
@@ -739,7 +785,7 @@ export class LanguageServerClient {
     private recordsForSession(sessionKey: string): AttachmentRecord[] {
         const matches: AttachmentRecord[] = [];
         for (const [, record] of this.attachments) {
-            if (record.info?.sessionKey === sessionKey) {
+            if (infoForSession(record, sessionKey)) {
                 matches.push(record);
             }
         }
@@ -758,7 +804,10 @@ export class LanguageServerClient {
         }
         const requestId = `attach-${this.generation}-${++this.requestCounter}`;
         record.attachRequestId = requestId;
-        record.info = null;
+        for (const info of record.infos.values()) {
+            this.byAttachmentId.delete(info.attachmentId);
+        }
+        record.infos.clear();
         this.byAttachRequest.set(requestId, record);
         this.send({ type: 'lsp-attach', requestId, path: record.path });
     }
@@ -791,12 +840,14 @@ export class LanguageServerClient {
             this.connect();
             return;
         }
-        if (!record.info) {
+        if (record.infos.size === 0) {
             record.unavailable = null;
             this.sendAttach(record);
             return;
         }
-        this.send({ type: 'lsp-restart', attachmentId: record.info.attachmentId });
+        for (const info of record.infos.values()) {
+            this.send({ type: 'lsp-restart', attachmentId: info.attachmentId });
+        }
     }
 
     private send(message: unknown): boolean {
@@ -832,7 +883,8 @@ export class LanguageServerClient {
         const client = this;
         return {
             path: record.path,
-            getInfo: () => record.info,
+            getInfo: () => firstInfo(record),
+            getInfos: () => [...record.infos.values()],
             getUnavailable: () => record.unavailable,
             onAttached: (listener) => subscribe(record.attachedListeners, listener),
             onDetached: (listener) => subscribe(record.detachedListeners, listener),
@@ -841,13 +893,23 @@ export class LanguageServerClient {
             onStatus: (listener) => subscribe(record.statusListeners, listener),
             sendRequest: <T>(method: string, params?: unknown, options?: LanguageServerRequestOptions) =>
                 client.request(record, method, params, options) as Promise<T>,
+            sendRequestTo: <T>(
+                definitionId: string,
+                method: string,
+                params?: unknown,
+                options?: LanguageServerRequestOptions,
+            ) => client.request(record, method, params, options, definitionId) as Promise<T>,
             readExternalSource: (resourceId: string, options?: { signal?: AbortSignal }) =>
                 client.requestExternalSource(record, resourceId, options),
             sendNotification: (method: string, params?: unknown) => {
-                if (!record.info) {
-                    return;
+                for (const info of record.infos.values()) {
+                    client.send({ type: 'lsp-notify', attachmentId: info.attachmentId, method, params });
                 }
-                client.send({ type: 'lsp-notify', attachmentId: record.info.attachmentId, method, params });
+            },
+            sendNotificationTo: (attachmentId: string, method: string, params?: unknown) => {
+                if (record.infos.has(attachmentId)) {
+                    client.send({ type: 'lsp-notify', attachmentId, method, params });
+                }
             },
             restart: () => {
                 client.restartRecord(record);
@@ -873,11 +935,11 @@ export class LanguageServerClient {
             this.byAttachRequest.delete(record.attachRequestId);
             record.attachRequestId = null;
         }
-        if (record.info) {
-            this.byAttachmentId.delete(record.info.attachmentId);
-            this.send({ type: 'lsp-detach', attachmentId: record.info.attachmentId });
-            record.info = null;
+        for (const info of record.infos.values()) {
+            this.byAttachmentId.delete(info.attachmentId);
+            this.send({ type: 'lsp-detach', attachmentId: info.attachmentId });
         }
+        record.infos.clear();
         this.failWaiters(record, new LanguageServerClientError('released', 'Document was closed'));
         for (const id of record.pending) {
             const pending = this.pendingRequests.get(id);
@@ -913,7 +975,7 @@ export class LanguageServerClient {
         if (options?.signal?.aborted) {
             return Promise.reject(new LanguageServerClientError('cancelled', 'Request cancelled'));
         }
-        const info = record.info;
+        const info = firstInfo(record);
         if (!info) {
             return Promise.reject(
                 new LanguageServerClientError('not-attached', 'Language support is not attached to this document'),
@@ -948,6 +1010,7 @@ export class LanguageServerClient {
         method: string,
         params: unknown,
         options?: LanguageServerRequestOptions,
+        definitionId?: string,
     ): Promise<unknown> {
         if (record.released) {
             throw new LanguageServerClientError('released', 'Document was closed');
@@ -955,15 +1018,20 @@ export class LanguageServerClient {
         if (options?.signal?.aborted) {
             throw new LanguageServerClientError('cancelled', 'Request cancelled');
         }
-        if (!record.info && record.unavailable && !record.attachRequestId) {
+        if (record.infos.size === 0 && record.unavailable && !record.attachRequestId) {
             // The host already refused this document. Waiting would only burn
             // the attach timeout before reporting the same thing.
             throw new LanguageServerClientError(record.unavailable.reason, record.unavailable.detail);
         }
-        if (!record.info) {
+        const requestedInfo = definitionId
+            ? [...record.infos.values()].find(candidate => candidate.definitionId === definitionId)
+            : firstInfo(record);
+        if (!requestedInfo && record.attachRequestId) {
             await this.waitForAttachment(record, options?.attachTimeoutMs ?? this.attachTimeoutMs, options?.signal);
         }
-        const info = record.info;
+        const info = definitionId
+            ? [...record.infos.values()].find(candidate => candidate.definitionId === definitionId)
+            : firstInfo(record);
         if (!info) {
             throw new LanguageServerClientError('not-attached', 'Language support is not attached to this document');
         }
@@ -988,7 +1056,7 @@ export class LanguageServerClient {
             };
             options?.signal?.addEventListener('abort', onAbort);
 
-            this.pendingRequests.set(id, { resolve, reject, generation, cleanup });
+            this.pendingRequests.set(id, { resolve, reject, generation, attachmentId: info.attachmentId, cleanup });
             record.pending.add(id);
             const sent = this.send({ type: 'lsp-request', attachmentId: info.attachmentId, id, method, params });
             if (!sent) {
@@ -1029,7 +1097,7 @@ export class LanguageServerClient {
             }, timeoutMs);
             record.waiters.add(waiter);
             signal?.addEventListener('abort', onAbort);
-            if (record.info) {
+            if (record.infos.size > 0 && !record.attachRequestId) {
                 waiter.resolve();
             }
         });
@@ -1066,6 +1134,14 @@ function subscribe<T>(set: Set<T>, listener: T): () => void {
     return () => {
         set.delete(listener);
     };
+}
+
+function firstInfo(record: AttachmentRecord): LanguageServerAttachedInfo | null {
+    return record.infos.values().next().value ?? null;
+}
+
+function infoForSession(record: AttachmentRecord, sessionKey: string): LanguageServerAttachedInfo | undefined {
+    return [...record.infos.values()].find(info => info.sessionKey === sessionKey);
 }
 
 function emit<T>(listeners: Set<(value: T) => void>, value: T): void {

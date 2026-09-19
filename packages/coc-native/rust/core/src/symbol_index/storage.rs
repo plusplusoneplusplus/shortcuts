@@ -8,7 +8,8 @@ use rayon::prelude::*;
 use rusqlite::{params, Connection, Transaction};
 
 use super::{
-    is_c_family_path, read_bounded, ExtractionLimits, Symbol, SymbolExtractor, SymbolFileFailure,
+    is_c_family_path, read_bounded, ExtractedFile, ExtractionLimits, Occurrence, Symbol,
+    SymbolExtractor, SymbolFileFailure,
 };
 use crate::repo_index::walk::{walk, WalkOptions};
 
@@ -46,7 +47,7 @@ pub struct SyncProgress {
 /// Bump this on any change to extraction rules or to the table shape. The index is a derived
 /// cache keyed on per-file size/mtime/hash, so a rules change alone would never re-parse a file
 /// that still looks unchanged — on a version mismatch the tables are dropped and rebuilt.
-const INDEX_SCHEMA_VERSION: i64 = 1;
+const INDEX_SCHEMA_VERSION: i64 = 2;
 
 /// Definitions outrank declarations. Without this a macro's `#define` competes with its call
 /// sites on path order alone, and the search `LIMIT` decides which one a jump lands on.
@@ -65,7 +66,7 @@ pub struct SymbolStore {
 
 enum PreparedFile {
     ManifestOnly(FileManifestEntry),
-    Parsed(FileManifestEntry, Vec<Symbol>),
+    Parsed(FileManifestEntry, ExtractedFile),
     Failed(SymbolFileFailure),
 }
 
@@ -80,6 +81,7 @@ impl SymbolStore {
             // database the next open still recognises as stale.
             connection.execute_batch(&format!(
                 "BEGIN;
+                 DROP TABLE IF EXISTS occurrences;
                  DROP TABLE IF EXISTS symbols;
                  DROP TABLE IF EXISTS files;
                  PRAGMA user_version = {INDEX_SCHEMA_VERSION};
@@ -103,8 +105,17 @@ impl SymbolStore {
                  col INTEGER NOT NULL,
                  parent TEXT
              );
+             CREATE TABLE IF NOT EXISTS occurrences (
+                 name TEXT NOT NULL,
+                 kind TEXT NOT NULL,
+                 file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+                 line INTEGER NOT NULL,
+                 col INTEGER NOT NULL
+             );
              CREATE INDEX IF NOT EXISTS symbols_name_idx ON symbols(name);
-             CREATE INDEX IF NOT EXISTS symbols_file_id_idx ON symbols(file_id);",
+             CREATE INDEX IF NOT EXISTS symbols_file_id_idx ON symbols(file_id);
+             CREATE INDEX IF NOT EXISTS occurrences_name_idx ON occurrences(name);
+             CREATE INDEX IF NOT EXISTS occurrences_file_id_idx ON occurrences(file_id);",
         )?;
         Ok(Self { connection: Mutex::new(connection) })
     }
@@ -176,6 +187,34 @@ impl SymbolStore {
                     line: row.get(3)?,
                     column: row.get(4)?,
                     parent: row.get(5)?,
+                    docs: None,
+                })
+            })?
+            .collect();
+        rows
+    }
+
+    /// Every stored occurrence of one name, ordered by position.
+    ///
+    /// Only call sites and type usages are stored (see `C_REFERENCE_QUERY`), and the match is on
+    /// the bare name — the index has no scopes, so two unrelated `read`s are indistinguishable
+    /// here. That is the same deliberate fuzziness definition lookup has.
+    pub fn occurrences(&self, name: &str, limit: usize) -> rusqlite::Result<Vec<Occurrence>> {
+        let connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
+        let mut statement = connection.prepare(
+            "SELECT o.name, o.kind, f.path, o.line, o.col
+             FROM occurrences o JOIN files f ON f.id = o.file_id
+             WHERE o.name = ?1 ORDER BY f.path, o.line, o.col LIMIT ?2",
+        )?;
+        let rows = statement
+            .query_map(params![name, i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
+                Ok(Occurrence {
+                    name: row.get(0)?,
+                    kind: row.get(1)?,
+                    path: row.get(2)?,
+                    line: row.get(3)?,
+                    column: row.get(4)?,
+                    parent: None,
                     docs: None,
                 })
             })?
@@ -271,10 +310,12 @@ impl SymbolStore {
                                 stats.unchanged += 1;
                             })
                         }
-                        PreparedFile::Parsed(entry, symbols) => {
-                            replace_file_in_transaction(&transaction, &entry, &symbols).map(|()| {
-                                stats.parsed += 1;
-                            })
+                        PreparedFile::Parsed(entry, extracted) => {
+                            replace_file_in_transaction(&transaction, &entry, &extracted).map(
+                                |()| {
+                                    stats.parsed += 1;
+                                },
+                            )
                         }
                         PreparedFile::Failed(failure) => {
                             stats.failures.push(failure);
@@ -374,9 +415,9 @@ impl SymbolStore {
                 stats.unchanged += 1;
                 continue;
             }
-            match extractor.extract(&relative, &source) {
-                Ok(symbols) => {
-                    self.replace_file(&entry, &symbols)?;
+            match extractor.extract_file(&relative, &source) {
+                Ok(extracted) => {
+                    self.replace_file(&entry, &extracted)?;
                     stats.parsed += 1;
                 }
                 Err(error) => stats
@@ -407,10 +448,14 @@ impl SymbolStore {
         }))
     }
 
-    fn replace_file(&self, file: &FileManifestEntry, symbols: &[Symbol]) -> rusqlite::Result<()> {
+    fn replace_file(
+        &self,
+        file: &FileManifestEntry,
+        extracted: &ExtractedFile,
+    ) -> rusqlite::Result<()> {
         let mut connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
         let transaction = connection.transaction()?;
-        replace_file_in_transaction(&transaction, file, symbols)?;
+        replace_file_in_transaction(&transaction, file, extracted)?;
         transaction.commit()
     }
 
@@ -465,8 +510,8 @@ fn prepare_changed_file(
     if previous.is_some_and(|old| old.hash == entry.hash) {
         return PreparedFile::ManifestOnly(entry);
     }
-    match extractor.extract(relative, &source) {
-        Ok(symbols) => PreparedFile::Parsed(entry, symbols),
+    match extractor.extract_file(relative, &source) {
+        Ok(extracted) => PreparedFile::Parsed(entry, extracted),
         Err(error) => PreparedFile::Failed(SymbolFileFailure {
             path: relative.to_owned(),
             reason: error.to_string(),
@@ -506,7 +551,7 @@ fn update_file_manifest(
 fn replace_file_in_transaction(
     transaction: &Transaction<'_>,
     file: &FileManifestEntry,
-    symbols: &[Symbol],
+    extracted: &ExtractedFile,
 ) -> rusqlite::Result<()> {
     transaction.execute(
         "INSERT INTO files(path, size, mtime, hash) VALUES (?1, ?2, ?3, ?4)
@@ -517,7 +562,9 @@ fn replace_file_in_transaction(
         transaction
             .query_row("SELECT id FROM files WHERE path = ?1", [&file.path], |row| row.get(0))?;
     transaction.execute("DELETE FROM symbols WHERE file_id = ?1", [file_id])?;
-    insert_symbols(transaction, file_id, symbols)
+    transaction.execute("DELETE FROM occurrences WHERE file_id = ?1", [file_id])?;
+    insert_symbols(transaction, file_id, &extracted.symbols)?;
+    insert_occurrences(transaction, file_id, &extracted.occurrences)
 }
 
 fn normalize_relative_path(path: &str) -> io::Result<String> {
@@ -558,6 +605,26 @@ fn insert_symbols(
             symbol.line,
             symbol.column,
             symbol.parent
+        ])?;
+    }
+    Ok(())
+}
+
+fn insert_occurrences(
+    transaction: &Transaction<'_>,
+    file_id: i64,
+    occurrences: &[Occurrence],
+) -> rusqlite::Result<()> {
+    let mut statement = transaction.prepare(
+        "INSERT INTO occurrences(name, kind, file_id, line, col) VALUES (?1, ?2, ?3, ?4, ?5)",
+    )?;
+    for occurrence in occurrences {
+        statement.execute(params![
+            occurrence.name,
+            occurrence.kind,
+            file_id,
+            occurrence.line,
+            occurrence.column
         ])?;
     }
     Ok(())
@@ -869,6 +936,74 @@ mod tests {
     }
 
     #[test]
+    fn occurrences_follow_their_file_through_edits_and_deletion() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(root.path().join("def.c"), "int helper() { return 1; }\n").expect("def");
+        std::fs::write(root.path().join("use.c"), "int call() { return helper(); }\n")
+            .expect("use");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("cold");
+
+        let found = store.occurrences("helper", 10).expect("occurrences");
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            (found[0].path.as_str(), found[0].kind.as_str(), found[0].line, found[0].column),
+            ("use.c", "call", 1, 21)
+        );
+        // Definitions are not occurrences; the two tables answer separately.
+        assert!(found.iter().all(|occurrence| occurrence.path != "def.c"));
+
+        // Re-parsing a file replaces its occurrences rather than appending them.
+        std::fs::write(
+            root.path().join("use.c"),
+            "int call() { return helper(); }\nint again() { return helper(); }\n",
+        )
+        .expect("edit");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("warm");
+        assert_eq!(store.occurrences("helper", 10).expect("edited").len(), 2);
+
+        std::fs::remove_file(root.path().join("use.c")).expect("remove");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("removal");
+        assert!(store.occurrences("helper", 10).expect("after removal").is_empty());
+    }
+
+    #[test]
+    fn occurrences_are_capped_and_miss_cleanly() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(
+            root.path().join("use.c"),
+            "int call() { return helper() + helper() + helper(); }\n",
+        )
+        .expect("use");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("sync");
+
+        assert_eq!(store.occurrences("helper", 10).expect("all").len(), 3);
+        assert_eq!(store.occurrences("helper", 2).expect("capped").len(), 2);
+        assert!(store.occurrences("absent", 10).expect("miss").is_empty());
+    }
+
+    #[test]
+    fn targeted_sync_rewrites_occurrences_for_the_named_path() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        let file = root.path().join("use.c");
+        std::fs::write(&file, "int call() { return helper(); }\n").expect("use");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("cold");
+
+        std::fs::write(&file, "int call() { return renamed(); }\n").expect("edit");
+        store
+            .sync_changed_paths(root.path(), &["use.c".to_string()], ExtractionLimits::default())
+            .expect("targeted sync");
+
+        assert!(store.occurrences("helper", 10).expect("stale").is_empty());
+        assert_eq!(store.occurrences("renamed", 10).expect("fresh").len(), 1);
+    }
+
+    #[test]
     fn a_stale_database_is_emptied_and_re_stamped_on_open() {
         let data = tempdir().expect("data");
         let root = tempdir().expect("root");
@@ -887,6 +1022,7 @@ mod tests {
 
         assert!(reopened.manifest().expect("manifest").is_empty());
         assert!(reopened.symbols_for_file("one.c").expect("symbols").is_empty());
+        assert!(reopened.occurrences("one", 10).expect("occurrences").is_empty());
         let resynced =
             reopened.sync_repository(root.path(), ExtractionLimits::default()).expect("resync");
         assert_eq!((resynced.parsed, resynced.unchanged), (1, 0));

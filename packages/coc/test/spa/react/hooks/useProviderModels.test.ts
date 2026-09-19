@@ -191,10 +191,16 @@ describe('useProviderModels', () => {
         expect(result.current.error).toBe('fail');
 
         mocks.agentProviders.listModels.mockResolvedValueOnce({ provider: 'copilot', models: [{ id: 'm1', name: 'M1' }] });
-        result.current.reload();
-        await waitFor(() => expect(result.current.loading).toBe(false));
-        expect(result.current.error).toBe(null);
-        expect(result.current.models).toHaveLength(1);
+        act(() => {
+            result.current.reload();
+        });
+        // `loading` is still false for the tick between the call and the
+        // hook's own state update, so wait on the refetch's result instead.
+        await waitFor(() => {
+            expect(result.current.error).toBe(null);
+            expect(result.current.models).toHaveLength(1);
+        });
+        expect(result.current.loading).toBe(false);
     });
 });
 

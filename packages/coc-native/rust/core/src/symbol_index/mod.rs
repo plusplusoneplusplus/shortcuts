@@ -56,6 +56,20 @@ pub struct Symbol {
     pub docs: Option<String>,
 }
 
+/// One filtered occurrence of a name — a call site or a type usage.
+///
+/// It shares [`Symbol`]'s shape on purpose: `kind` carries the reference kind instead of the
+/// definition kind, `parent` and `docs` are always `None`, and one range/location code path
+/// then serves both tables.
+pub type Occurrence = Symbol;
+
+/// What one file contributes to the index: its definitions and its filtered occurrences.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ExtractedFile {
+    pub symbols: Vec<Symbol>,
+    pub occurrences: Vec<Occurrence>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SymbolFileFailure {
     pub path: String,
@@ -147,6 +161,29 @@ const EXTRA_TAGS_QUERY: &str = r#"
 (preproc_function_def name: (identifier) @name) @definition.macro
 "#;
 
+/// Occurrence patterns appended to each grammar's tags query. Neither bundled query captures
+/// a `@reference.*` at all, so `textDocument/references` has nothing to answer from without
+/// these.
+///
+/// The table they feed is deliberately *filtered*: call sites and type usages only, never every
+/// identifier token. An unfiltered table would dwarf the definition table on a 30M-line
+/// repository and would answer a reference query mostly with local variables that happen to
+/// share a name.
+const C_REFERENCE_QUERY: &str = r#"
+(call_expression function: (identifier) @name) @reference.call
+(type_identifier) @name @reference.type
+"#;
+
+/// The C patterns plus the two call shapes only C++ has. `field_expression` and
+/// `qualified_identifier` are not nodes in the C grammar, so appending these to the C query
+/// would fail to compile it.
+const CPP_REFERENCE_QUERY: &str = r#"
+(call_expression function: (identifier) @name) @reference.call
+(call_expression function: (field_expression field: (field_identifier) @name)) @reference.call
+(call_expression function: (qualified_identifier name: (identifier) @name)) @reference.call
+(type_identifier) @name @reference.type
+"#;
+
 pub struct SymbolExtractor {
     c: TagsConfiguration,
     cpp: TagsConfiguration,
@@ -158,17 +195,22 @@ impl SymbolExtractor {
         Ok(Self {
             c: configuration(
                 tree_sitter_c::LANGUAGE.into(),
-                &format!("{}{EXTRA_TAGS_QUERY}", tree_sitter_c::TAGS_QUERY),
+                &format!("{}{EXTRA_TAGS_QUERY}{C_REFERENCE_QUERY}", tree_sitter_c::TAGS_QUERY),
             )?,
             cpp: configuration(
                 tree_sitter_cpp::LANGUAGE.into(),
-                &format!("{}{EXTRA_TAGS_QUERY}", tree_sitter_cpp::TAGS_QUERY),
+                &format!("{}{EXTRA_TAGS_QUERY}{CPP_REFERENCE_QUERY}", tree_sitter_cpp::TAGS_QUERY),
             )?,
             limits,
         })
     }
 
+    /// The definitions in one file. Callers that also need occurrences use [`Self::extract_file`].
     pub fn extract(&self, path: &str, source: &[u8]) -> Result<Vec<Symbol>, ExtractError> {
+        self.extract_file(path, source).map(|extracted| extracted.symbols)
+    }
+
+    pub fn extract_file(&self, path: &str, source: &[u8]) -> Result<ExtractedFile, ExtractError> {
         if source.len() > self.limits.max_file_bytes {
             return Err(ExtractError::FileTooLarge {
                 bytes: source.len(),
@@ -204,33 +246,51 @@ impl SymbolExtractor {
         let capture_names = config.query.capture_names();
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&config.query, tree.root_node(), source);
-        let mut symbols = Vec::new();
+        let mut extracted = ExtractedFile::default();
         while let Some(query_match) = matches.next() {
-            let definition = query_match.captures().iter().find_map(|capture| {
+            let tagged = query_match.captures().iter().find_map(|capture| {
                 let capture_name = capture_names[capture.index as usize];
-                capture_name.strip_prefix("definition.").map(|kind| (kind, capture.node))
+                if let Some(kind) = capture_name.strip_prefix("definition.") {
+                    return Some((true, kind, capture.node));
+                }
+                capture_name.strip_prefix("reference.").map(|kind| (false, kind, capture.node))
             });
             let name_node = query_match
                 .captures()
                 .iter()
                 .find(|capture| capture_names[capture.index as usize] == "name")
                 .map(|capture| capture.node);
-            let (Some((kind, definition_node)), Some(name_node)) = (definition, name_node) else {
+            let (Some((is_definition, kind, tag_node)), Some(name_node)) = (tagged, name_node)
+            else {
                 continue;
             };
             let name = node_text(name_node, source)?.to_owned();
             let position = name_node.start_position();
-            symbols.push(Symbol {
-                name,
-                kind: resolve_kind(kind, definition_node).to_owned(),
-                path: path.to_owned(),
-                line: u32::try_from(position.row).unwrap_or(u32::MAX).saturating_add(1),
-                column: utf16_column(source, name_node.start_byte()).saturating_add(1),
-                parent: symbol_parent(name_node, source),
-                docs: adjacent_docs(definition_node, source),
-            });
+            let line = u32::try_from(position.row).unwrap_or(u32::MAX).saturating_add(1);
+            let column = utf16_column(source, name_node.start_byte()).saturating_add(1);
+            if is_definition {
+                extracted.symbols.push(Symbol {
+                    name,
+                    kind: resolve_kind(kind, tag_node).to_owned(),
+                    path: path.to_owned(),
+                    line,
+                    column,
+                    parent: symbol_parent(name_node, source),
+                    docs: adjacent_docs(tag_node, source),
+                });
+            } else {
+                extracted.occurrences.push(Occurrence {
+                    name,
+                    kind: kind.to_owned(),
+                    path: path.to_owned(),
+                    line,
+                    column,
+                    parent: None,
+                    docs: None,
+                });
+            }
         }
-        Ok(symbols)
+        Ok(extracted)
     }
 }
 
@@ -435,7 +495,7 @@ fn configuration_for_path<'a>(
     }
 }
 
-fn is_c_family_path(path: &str) -> bool {
+pub fn is_c_family_path(path: &str) -> bool {
     configuration_extension(path).is_some()
 }
 
@@ -572,6 +632,61 @@ mod tests {
         assert_eq!(function.line, 7);
         assert_eq!(function.column, 14);
         assert_eq!(function.docs.as_deref(), Some("Build a point from two coordinates."));
+    }
+
+    #[test]
+    fn extracts_call_sites_and_type_usages_as_occurrences() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        let source = "struct Widget;\nvoid run() { helper(1); }\nWidget* make();\n";
+
+        let extracted =
+            extractor.extract_file("src/uses.cpp", source.as_bytes()).expect("extraction");
+
+        let helper = extracted
+            .occurrences
+            .iter()
+            .find(|occurrence| occurrence.name == "helper")
+            .expect("the call site");
+        assert_eq!((helper.kind.as_str(), helper.line, helper.column), ("call", 2, 14));
+        assert_eq!(helper.path, "src/uses.cpp");
+        assert!(helper.parent.is_none() && helper.docs.is_none());
+        assert!(extracted
+            .occurrences
+            .iter()
+            .any(|occurrence| occurrence.name == "Widget" && occurrence.kind == "type"));
+        // A call site is never mistaken for a definition.
+        assert!(!extracted.symbols.iter().any(|symbol| symbol.name == "helper"));
+    }
+
+    #[test]
+    fn a_cpp_method_and_qualified_call_are_occurrences() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        let source = "void run(Engine& engine) { engine.start(); util::reset(); }\n";
+
+        let extracted =
+            extractor.extract_file("src/calls.cpp", source.as_bytes()).expect("extraction");
+
+        let names: Vec<&str> =
+            extracted.occurrences.iter().map(|occurrence| occurrence.name.as_str()).collect();
+        assert!(names.contains(&"start"), "member call missing from {names:?}");
+        assert!(names.contains(&"reset"), "qualified call missing from {names:?}");
+    }
+
+    #[test]
+    fn a_c_file_has_no_member_or_qualified_call_patterns_to_compile() {
+        let extractor =
+            SymbolExtractor::new(ExtractionLimits::default()).expect("valid bundled queries");
+        let source = "void run(void) { helper(1); }\n";
+
+        let extracted =
+            extractor.extract_file("src/uses.c", source.as_bytes()).expect("extraction");
+
+        assert!(extracted
+            .occurrences
+            .iter()
+            .any(|occurrence| occurrence.name == "helper" && occurrence.kind == "call"));
     }
 
     #[test]

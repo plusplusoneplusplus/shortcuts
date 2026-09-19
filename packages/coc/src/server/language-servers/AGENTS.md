@@ -13,9 +13,9 @@ and transport code stays generic.
   `{a,b}`). Patterns match the workspace-relative path. Windows paths also use
   case-insensitive identity and trim trailing dots/spaces before selection, URI
   mapping, and shared-session ownership checks.
-- `selection.ts` — deterministic server selection (priority, then pattern
-  specificity, then id), LSP language-id resolution, and nearest-marker
-  project-root discovery.
+- `selection.ts` — deterministic server ordering (priority, then pattern
+  specificity, then id), preferred-server selection for single-server callers,
+  LSP language-id resolution, and nearest-marker project-root discovery.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
 - `adapters.ts` — the language-neutral root and runtime preparation hooks the
   manager calls before starting a session.
@@ -29,6 +29,10 @@ and transport code stays generic.
   Pyright from the project, the copy packaged with CoC, or the owning host's PATH.
 - `clangd-adapter.ts` — C-family runtime discovery from the owning host's PATH or
   platform-specific LLVM install locations, plus nearest clangd project roots.
+- `symbols-adapter.ts` — the bundled `coc-symbols-lsp` binary's answer to that
+  hook: resolve the executable CoC ships and point it at this workspace's
+  `symbol-index.sqlite` with `--database`. The resolved path and the database
+  path are argv only; labels carry the plain binary name.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
   the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
@@ -43,7 +47,13 @@ and transport code stays generic.
   rejects shell metacharacters and quotes so a command line can never be passed
   as a single executable.
 - Ids must be slug-safe; they appear in log file names and status payloads.
-- Built-in presets ship disabled. Language support is opt-in per workspace.
+- Built-in presets that drive an installed toolchain ship disabled. Language
+  support is opt-in per workspace. The one exception is `coc-symbols`, whose
+  server CoC ships itself: it needs no install and no project configuration, so
+  it ships enabled and the per-workspace toggle is its off switch.
+- `coc-symbols` claims the same C-family patterns as `clangd` at a lower
+  priority. Both attach to a C-family document; the client merges their answers
+  and clangd's win. Priority orders that merge, it does not pick one server.
 - A workspace definition sharing a preset id overrides that preset and keeps
   `builtIn: true`, so presets can be repointed but not deleted.
 - Selection must not depend on input order.
@@ -140,12 +150,13 @@ and transport code stays generic.
   in flight; abort signals and bounded lifecycle requests such as `shutdown`
   remain active. The browser keeps the document synchronized while indexing.
 - `manager.ts` — `LanguageServerManager` owns every live session on this host.
-  `acquire({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
-  resolves the definition with `selectDefinitionForFile`, the root with
+  `acquireAll({ workspaceId, workspaceRoot, editingSessionId, relativePath })`
+  resolves every matching definition in preference order, then each root with
   the adapter registry (generic definitions use nearest-marker discovery, Rust
   uses the outermost Cargo workspace, and Python canonicalizes its nearest
-  project root), and returns a handle carrying the
-  session, the LSP language id, and a `release` function. A failure carries a
+  project root), and returns handles carrying the sessions, LSP language ids,
+  and `release` functions. `acquire` remains the preferred-definition form for
+  single-server internal callers. A failure carries a
   reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
   concise status instead of an error.
 - Sessions are keyed on workspace, browser editing session, definition id, and
@@ -277,7 +288,9 @@ and transport code stays generic.
   `lsp-error`, `pong`. This shape is the transport contract a
   container relay implements, so the editor client does not change when the
   server moves off this host.
-- An attachment is one document on one socket; it holds one manager reference
+- One browser document may have several attachments on one socket, one per
+  matching definition. `lsp-attached` streams them in preference order and marks
+  the final response with `complete`; each attachment holds one manager reference
   and its own in-flight request map, so `lsp-cancel` and a closed socket both
   abort cleanly. The bridge tracks successful `didOpen` notifications and sends
   `didClose` before releasing an abruptly disconnected socket, keeping warm
@@ -370,18 +383,23 @@ and transport code stays generic.
   `detectLanguageTransportBlock` is also the container gate: an explicitly local
   clone behind the agent proxy settles as `container-unsupported`, while a routed
   remote clone connects directly to its own CoC host.
+- The browser client groups every physical server attachment behind one document
+  handle. It preserves host preference order, broadcasts document lifecycle
+  notifications to every server, and exposes definition-targeted requests for
+  provider-level result merging. If one member is replaced, the client retires
+  the group and reacquires it so ordering and buffer replay stay coherent.
 - Explorer and unified-panel file views pass the concrete route into
   `PreviewPane`. Unified file tabs persist it beside `ownerWorkspaceId`, include
   it in tab identity, and forward it through cross-file definition navigation,
   so a dock retarget or an equal workspace id on another host cannot change the
   client, buffer, or blob loader an open tab uses.
-- C and C++ definition requests query clangd and the owning workspace's
-  repository symbol index together. Exact clangd locations sort first; index
-  candidates are deduplicated by file and line and carry a
+- C and C++ definition requests target the preferred semantic attachment and
+  `coc-symbols` concurrently. Any semantic locations are authoritative; otherwise
+  symbol candidates are deduplicated by file and line and carry a
   `symbol-index-candidate` URI fragment. Navigation persists that provenance on
   the destination tab and shows an amber `Symbol candidate` pill until a plain
-  or exact cross-file open replaces it. The index path remains available when
-  clangd is disabled or unavailable.
+  or exact cross-file open replaces it. The symbols attachment remains available
+  when clangd is disabled or unavailable.
 - `src/server/spa/client/react/features/language-servers/LanguageServersPanel.tsx`
   — the repo Settings tab's `language-servers` section: master enable toggle,
   the `effective` list with a per-definition enable checkbox, and an editor for

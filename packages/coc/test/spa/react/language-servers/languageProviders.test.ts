@@ -84,7 +84,6 @@ function model(uri: string): ProviderModel {
         uri: { toString: () => uri },
         // "cons|" — the word starts at column 1 and the cursor sits after it.
         getWordUntilPosition: () => ({ startColumn: 1, endColumn: 5 }),
-        getWordAtPosition: () => ({ word: 'Widget', startColumn: 1, endColumn: 7 }),
     };
 }
 
@@ -257,17 +256,20 @@ describe('registerLanguageProviders', () => {
     });
 
     it('suppresses symbol-index candidates whenever the server answers', async () => {
-        const lookup = vi.fn().mockResolvedValue([
-            { path: 'src/exact.cpp', line: 4, column: 12 },
-            { path: 'src/candidate.hpp', line: 9, column: 3 },
-            { path: 'src/candidate.hpp', line: 9, column: 20 },
-        ]);
         const view = store.open({ path: 'src/a.cpp', text: 'Widget value;\n' });
         const attachment = client.get('src/a.cpp');
-        attachment.attach({ state: readyState({ definitionProvider: true }) });
-        attachment.respond('textDocument/definition', () => [{
+        attachment.attach({
+            attachmentId: 'att-clangd',
+            definitionId: 'clangd',
+            state: { ...readyState({ definitionProvider: true }), definitionId: 'clangd' },
+        });
+        attachment.respondTo('clangd', 'textDocument/definition', () => [{
             uri: 'coc-file://ws-1/src/exact.cpp',
             range: { start: { line: 3, character: 1 }, end: { line: 3, character: 7 } },
+        }]);
+        attachment.respondTo('coc-symbols', 'textDocument/definition', () => [{
+            uri: 'coc-file://ws-1/src/candidate.hpp',
+            range: { start: { line: 8, character: 2 }, end: { line: 8, character: 8 } },
         }]);
         const target = model(view.uri);
         registerLanguageProviders({
@@ -275,15 +277,18 @@ describe('registerLanguageProviders', () => {
             model: target,
             view,
             languageId: 'cpp',
-            symbolDefinitions: { workspaceId: 'ws-1', lookup },
+        });
+        attachment.attach({
+            attachmentId: 'att-symbols',
+            definitionId: 'coc-symbols',
+            state: { ...readyState({ definitionProvider: true }), definitionId: 'coc-symbols' },
         });
 
         const links = await monaco.provider('definition').provideDefinition(target, POSITION, token());
 
-        // The lookup still starts alongside the request so the fallback costs no
-        // latency, but a semantic answer discards it: a Definitions list mixing
-        // the two is what made a C++ jump land on a same-named call site.
-        expect(lookup).toHaveBeenCalledWith('Widget', expect.any(AbortSignal));
+        // The symbols request starts alongside the semantic request so the
+        // fallback costs no latency, but a semantic answer discards it.
+        expect(attachment.requests.map(request => request.definitionId)).toEqual(['clangd', 'coc-symbols']);
         expect(links.map(link => link.uri.toString())).toEqual(['coc-file://ws-1/src/exact.cpp']);
     });
 
@@ -291,30 +296,27 @@ describe('registerLanguageProviders', () => {
         const view = store.open({ path: 'src/a.cpp', text: 'Widget value;\n' });
         const attachment = client.get('src/a.cpp');
         attachment.attach({
-            state: {
-                status: 'unavailable',
-                definitionId: 'clangd',
-                displayName: 'C / C++ (clangd)',
-                capabilities: {},
-            },
+            attachmentId: 'att-symbols',
+            definitionId: 'coc-symbols',
+            state: { ...readyState({ definitionProvider: true }), definitionId: 'coc-symbols' },
         });
+        attachment.respondTo('coc-symbols', 'textDocument/definition', () => [{
+            uri: 'coc-file://ws-1/include/widget.hpp',
+            range: { start: { line: 6, character: 1 }, end: { line: 6, character: 7 } },
+        }]);
         const target = model(view.uri);
         registerLanguageProviders({
             monaco: monaco.asMonaco(),
             model: target,
             view,
             languageId: 'cpp',
-            symbolDefinitions: {
-                workspaceId: 'ws-1',
-                lookup: async () => [{ path: 'include/widget.hpp', line: 7, column: 2 }],
-            },
         });
 
         const links = await monaco.provider('definition').provideDefinition(target, POSITION, token());
 
         expect(links.map((link: { uri: { toString(): string } }) => link.uri.toString()))
             .toEqual(['coc-file://ws-1/include/widget.hpp#symbol-index-candidate']);
-        expect(attachment.requests).toHaveLength(0);
+        expect(attachment.requests.map(request => request.definitionId)).toEqual(['coc-symbols']);
     });
 
     it('asks for references including the declaration', async () => {
@@ -506,35 +508,45 @@ describe('registerLanguageProviders', () => {
     // ========================================================================
 
     describe('authoritative definitions', () => {
-        /** A C++ document with both a live server and a symbol index behind it. */
+        /** A C++ document with both language-server attachments behind it. */
         function openCpp(options: {
-            lookup: ReturnType<typeof vi.fn>;
             resolveUri?: (uri: string, signal: AbortSignal, target: unknown) => unknown;
-        }) {
+        } = {}) {
             const view = store.open({ path: 'src/a.cpp', text: 'Widget value;\n' });
             const attachment = client.get('src/a.cpp');
-            attachment.attach({ state: readyState({ definitionProvider: true }) });
+            attachment.attach({
+                attachmentId: 'att-clangd',
+                definitionId: 'clangd',
+                state: { ...readyState({ definitionProvider: true }), definitionId: 'clangd' },
+            });
+            attachment.attach({
+                attachmentId: 'att-symbols',
+                definitionId: 'coc-symbols',
+                state: { ...readyState({ definitionProvider: true }), definitionId: 'coc-symbols' },
+            });
             const target = model(view.uri);
             registerLanguageProviders({
                 monaco: monaco.asMonaco(),
                 model: target,
                 view,
                 languageId: 'cpp',
-                symbolDefinitions: { workspaceId: 'ws-1', lookup: options.lookup },
                 ...(options.resolveUri ? { resolveUri: options.resolveUri as never } : {}),
             });
             return { attachment, target };
         }
 
-        const CANDIDATES = [{ path: 'src/candidate.hpp', line: 9, column: 3 }];
+        const CANDIDATES = [{
+            uri: 'coc-file://ws-1/src/candidate.hpp',
+            range: { start: { line: 8, character: 2 }, end: { line: 8, character: 8 } },
+        }];
 
         it('preserves server order across several exact definitions', async () => {
-            const lookup = vi.fn().mockResolvedValue(CANDIDATES);
-            const { attachment, target } = openCpp({ lookup });
-            attachment.respond('textDocument/definition', () => [
+            const { attachment, target } = openCpp();
+            attachment.respondTo('clangd', 'textDocument/definition', () => [
                 { uri: 'coc-file://ws-1/src/z.cpp', range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } } },
                 { uri: 'coc-file://ws-1/src/a.cpp', range: { start: { line: 5, character: 0 }, end: { line: 5, character: 1 } } },
             ]);
+            attachment.respondTo('coc-symbols', 'textDocument/definition', () => CANDIDATES);
 
             const links = await monaco.provider('definition').provideDefinition(target, POSITION, token());
 
@@ -543,17 +555,16 @@ describe('registerLanguageProviders', () => {
         });
 
         it('keeps an external result and still suppresses candidates when it cannot load', async () => {
-            const lookup = vi.fn().mockResolvedValue(CANDIDATES);
             const external = 'coc-lsp-external://cap-1/string_view';
             const { attachment, target } = openCpp({
-                lookup,
                 // This surface refuses every target, as one with no live
                 // language attachment would.
                 resolveUri: () => null,
             });
-            attachment.respond('textDocument/definition', () => [
+            attachment.respondTo('clangd', 'textDocument/definition', () => [
                 { uri: external, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
             ]);
+            attachment.respondTo('coc-symbols', 'textDocument/definition', () => CANDIDATES);
 
             const links = await monaco.provider('definition').provideDefinition(target, POSITION, token());
 
@@ -561,18 +572,17 @@ describe('registerLanguageProviders', () => {
         });
 
         it('waits for an external source even as the only result', async () => {
-            const lookup = vi.fn().mockResolvedValue([]);
             const waited: boolean[] = [];
             const { attachment, target } = openCpp({
-                lookup,
                 resolveUri: (uri, _signal, request) => {
                     waited.push((request as { waitForContent: boolean }).waitForContent);
                     return { toString: () => uri };
                 },
             });
-            attachment.respond('textDocument/definition', () => [
+            attachment.respondTo('clangd', 'textDocument/definition', () => [
                 { uri: 'coc-lsp-external://cap-1/string_view', range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } },
             ]);
+            attachment.respondTo('coc-symbols', 'textDocument/definition', () => []);
 
             await monaco.provider('definition').provideDefinition(target, POSITION, token());
 
@@ -582,12 +592,12 @@ describe('registerLanguageProviders', () => {
         });
 
         it('deduplicates repeated exact locations', async () => {
-            const lookup = vi.fn().mockResolvedValue([]);
-            const { attachment, target } = openCpp({ lookup });
-            attachment.respond('textDocument/definition', () => [
+            const { attachment, target } = openCpp();
+            attachment.respondTo('clangd', 'textDocument/definition', () => [
                 { uri: 'coc-file://ws-1/src/b.cpp', range: { start: { line: 3, character: 1 }, end: { line: 3, character: 4 } } },
                 { uri: 'coc-file://ws-1/src/b.cpp', range: { start: { line: 3, character: 9 }, end: { line: 3, character: 12 } } },
             ]);
+            attachment.respondTo('coc-symbols', 'textDocument/definition', () => []);
 
             const links = await monaco.provider('definition').provideDefinition(target, POSITION, token());
 
@@ -599,9 +609,9 @@ describe('registerLanguageProviders', () => {
             ['an empty list', () => []],
             ['a failure', () => { throw new Error('server died'); }],
         ])('falls back to the symbol index when the server answers with %s', async (_label, responder) => {
-            const lookup = vi.fn().mockResolvedValue(CANDIDATES);
-            const { attachment, target } = openCpp({ lookup });
-            attachment.respond('textDocument/definition', responder as () => unknown);
+            const { attachment, target } = openCpp();
+            attachment.respondTo('clangd', 'textDocument/definition', responder as () => unknown);
+            attachment.respondTo('coc-symbols', 'textDocument/definition', () => CANDIDATES);
 
             const links = await monaco.provider('definition').provideDefinition(target, POSITION, token());
 
@@ -609,27 +619,27 @@ describe('registerLanguageProviders', () => {
                 .toEqual(['coc-file://ws-1/src/candidate.hpp#symbol-index-candidate']);
         });
 
-        it('aborts the speculative index lookup once the server answers', async () => {
-            let lookupSignal: AbortSignal | undefined;
-            const lookup = vi.fn().mockImplementation((_name: string, signal: AbortSignal) => {
-                lookupSignal = signal;
+        it('aborts the speculative symbols request once the semantic server answers', async () => {
+            let symbolsSignal: AbortSignal | undefined;
+            const { attachment, target } = openCpp();
+            attachment.respondTo('coc-symbols', 'textDocument/definition', (_params, signal) => {
+                symbolsSignal = signal;
                 return new Promise(() => {});
             });
-            const { attachment, target } = openCpp({ lookup });
-            attachment.respond('textDocument/definition', () => [{
+            attachment.respondTo('clangd', 'textDocument/definition', () => [{
                 uri: 'coc-file://ws-1/src/b.cpp',
                 range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
             }]);
 
             await monaco.provider('definition').provideDefinition(target, POSITION, token());
 
-            expect(lookupSignal?.aborted).toBe(true);
+            expect(symbolsSignal?.aborted).toBe(true);
         });
 
         it('returns nothing when the request is cancelled before the fallback resolves', async () => {
-            const lookup = vi.fn().mockResolvedValue(CANDIDATES);
-            const { attachment, target } = openCpp({ lookup });
-            attachment.respond('textDocument/definition', () => []);
+            const { attachment, target } = openCpp();
+            attachment.respondTo('clangd', 'textDocument/definition', () => []);
+            attachment.respondTo('coc-symbols', 'textDocument/definition', () => CANDIDATES);
             const cancellation = cancellable();
 
             const pending = monaco.provider('definition').provideDefinition(target, POSITION, cancellation.token);

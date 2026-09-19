@@ -117,9 +117,45 @@ export const CLANGD_PRESET: LanguageServerDefinition = {
     builtIn: true,
 };
 
+/**
+ * CoC's own C-family symbol index, served over the same transport as clangd.
+ *
+ * It claims exactly the files clangd claims, at a lower priority: clangd is
+ * the precise answer when it has a compilation database, and this is the fuzzy
+ * one that still answers across translation units when clangd returns nothing.
+ * Both attach to the same document and the client merges them, so the priority
+ * only orders the merge — it does not pick a winner.
+ *
+ * Unlike every other preset this ships enabled. It needs no installed toolchain
+ * and no project configuration, so there is nothing for a user to set up first;
+ * the per-workspace toggle in settings remains the off switch.
+ */
+export const COC_SYMBOLS_PRESET: LanguageServerDefinition = {
+    id: 'coc-symbols',
+    displayName: 'C / C++ (symbol index)',
+    languageIds: CLANGD_PRESET.languageIds,
+    filePatterns: CLANGD_PRESET.filePatterns,
+    command: 'coc-symbols-lsp',
+    args: [],
+    // The index is one database per workspace, so the workspace root is the
+    // only root that makes sense — a nested marker would shard it.
+    rootMarkers: [],
+    extensionLanguageIds: CLANGD_PRESET.extensionLanguageIds,
+    priority: 50,
+    sessionScope: 'workspace',
+    // One process per workspace, plus room for the per-editing-session fallback
+    // the manager falls back to when two browsers open the same document. More
+    // than that would mean several watchers walking the same tree.
+    maxSessions: 2,
+    requestTimeoutMs: 30_000,
+    idleTimeoutMs: 30 * 60_000,
+    enabled: true,
+    builtIn: true,
+};
+
 /** Definitions shipped with CoC. Callers must not mutate the returned objects. */
 export function builtInLanguageServerDefinitions(): LanguageServerDefinition[] {
-    return [TYPESCRIPT_PRESET, RUST_PRESET, PYTHON_PRESET, CLANGD_PRESET];
+    return [TYPESCRIPT_PRESET, RUST_PRESET, PYTHON_PRESET, CLANGD_PRESET, COC_SYMBOLS_PRESET];
 }
 
 /**

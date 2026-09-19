@@ -10,30 +10,32 @@ import {
 import type { LanguageServerDefinition } from './types';
 
 /**
- * Pick the one semantic server for a document.
- *
- * Ties are broken deterministically so the same file always resolves to the
- * same server: highest priority, then the most specific matching pattern, then
- * the lexicographically smallest id.
+ * Return every enabled server that claims a document, in deterministic
+ * preference order: highest priority, then the most specific matching pattern,
+ * then the lexicographically smallest id.
  */
+export function selectDefinitionsForFile(
+    definitions: LanguageServerDefinition[],
+    relativePath: string,
+): LanguageServerDefinition[] {
+    return definitions
+        .filter((definition) => definition.enabled !== false)
+        .map((definition) => ({
+            definition,
+            pattern: bestMatchingPattern(definition.filePatterns, relativePath),
+        }))
+        .filter((entry): entry is { definition: LanguageServerDefinition; pattern: string } =>
+            entry.pattern !== undefined)
+        .sort(comparePreference)
+        .map((entry) => entry.definition);
+}
+
+/** Preferred server for call sites that intentionally consume one definition. */
 export function selectDefinitionForFile(
     definitions: LanguageServerDefinition[],
     relativePath: string,
 ): LanguageServerDefinition | undefined {
-    let best: { definition: LanguageServerDefinition; pattern: string } | undefined;
-    for (const definition of definitions) {
-        if (definition.enabled === false) {
-            continue;
-        }
-        const pattern = bestMatchingPattern(definition.filePatterns, relativePath);
-        if (pattern === undefined) {
-            continue;
-        }
-        if (best === undefined || comparePreference({ definition, pattern }, best) < 0) {
-            best = { definition, pattern };
-        }
-    }
-    return best?.definition;
+    return selectDefinitionsForFile(definitions, relativePath)[0];
 }
 
 /** Negative when `a` should win over `b`. */

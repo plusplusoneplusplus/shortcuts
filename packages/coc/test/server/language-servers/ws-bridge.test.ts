@@ -113,7 +113,7 @@ class Client {
 
     async attach(filePath: string): Promise<Extract<LanguageServerServerMessage, { type: 'lsp-attached' }>> {
         this.send({ type: 'lsp-attach', requestId: `r-${filePath}`, path: filePath });
-        return await this.next('lsp-attached', (msg) => msg.requestId === `r-${filePath}`);
+        return await this.next('lsp-attached', (msg) => msg.requestId === `r-${filePath}` && msg.complete);
     }
 
     async request(attachmentId: string, id: string, method: string, params?: unknown): Promise<any> {
@@ -231,6 +231,28 @@ describe('language-server WebSocket bridge', () => {
         expect(attached.definitionId).toBe('echo');
         expect(attached.displayName).toBe('Echo Test Server');
         expect(attached.sessionKey).toContain('session-1');
+        expect(attached.complete).toBe(true);
+    });
+
+    it('attaches every matching server in priority order', async () => {
+        const harness = await createHarness({
+            definitions: [
+                echoDefinition({ id: 'fallback', displayName: 'Fallback', priority: 10 }),
+                echoDefinition({ id: 'semantic', displayName: 'Semantic', priority: 100 }),
+            ],
+        });
+        const client = await harness.connect();
+
+        await client.attach('src/notes.txt');
+        const attached = client.received.filter(
+            (message): message is Extract<LanguageServerServerMessage, { type: 'lsp-attached' }> =>
+                message.type === 'lsp-attached',
+        );
+
+        expect(attached.map(({ definitionId }) => definitionId)).toEqual(['semantic', 'fallback']);
+        expect(attached.map(({ complete }) => complete)).toEqual([false, true]);
+        expect(new Set(attached.map(({ attachmentId }) => attachmentId)).size).toBe(2);
+        expect(harness.manager.size).toBe(2);
     });
 
     it('starts the server when a document attaches and reports the ready generation', async () => {

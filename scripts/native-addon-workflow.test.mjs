@@ -34,6 +34,49 @@ test("every job that boots the coc server supplies the addon", () => {
     }
 });
 
+// `build:native` produces two artifacts: the dlopen'd addon and the spawned
+// `coc-symbols-lsp` stdio server. Once the HTTP symbol-index lane was removed,
+// that server became the only thing answering C-family navigation — so an
+// upload that carries just *.node leaves the e2e suite peeking at an index
+// nobody built, and the resolver calls it "not built for this platform".
+// release.yml already ships both; this is the same invariant for CI.
+test("the coc-native artifact carries the symbols language server too", () => {
+    const job = jobBlock(ci, "coc-native");
+    assert.match(job, /path: \|\n\s+packages\/coc-native\/\*\.node\n\s+packages\/coc-native\/coc-symbols-lsp\.\*/,
+        "the upload must list the symbols server beside the addon");
+});
+
+// `if-no-files-found: error` only fires when every pattern misses, so an upload
+// listing two binaries stays green having shipped one. That is not theoretical:
+// the coc-native suite runs the real `buildSymbolsLsp` against this directory,
+// and a version of it removed the server afterwards — the artifact uploaded
+// fine and the e2e suite failed four jobs later on a peek that never opened.
+// The check belongs between the suite and the upload, or it proves nothing.
+test("the coc-native job verifies both binaries after the suite and before the upload", () => {
+    const job = jobBlock(ci, "coc-native");
+    const tests = job.indexOf("npm run test:run -w packages/coc-native");
+    const verify = job.indexOf("ls packages/coc-native/coc-symbols-lsp.*");
+    const upload = job.indexOf("uses: actions/upload-artifact@v4");
+    assert.notEqual(verify, -1, "coc-native must verify the symbols server exists");
+    assert.match(job, /ls packages\/coc-native\/\*\.node/, "coc-native must verify the addon exists");
+    assert.ok(tests < verify, "the verification must run after the suite that can delete a binary");
+    assert.ok(verify < upload, "the verification must run before the upload");
+});
+
+// Artifact download does not preserve the executable bit. The addon is loaded
+// with dlopen and does not need one; this binary is spawned, and without the
+// chmod it fails at exec with EACCES — which the host reports as a server that
+// would not start, a long way from the packaging step that caused it.
+test("every job that spawns the symbols language server restores its executable bit", () => {
+    for (const name of ["e2e"]) {
+        const job = jobBlock(ci, name);
+        const download = job.indexOf("name: coc-native-");
+        const chmod = job.indexOf("chmod +x packages/coc-native/coc-symbols-lsp");
+        assert.notEqual(chmod, -1, `${name} must chmod +x the symbols language server`);
+        assert.ok(download < chmod, `${name} must download the artifact before the chmod`);
+    }
+});
+
 test("the cross-platform coc suite uses its matching addon", () => {
     const job = jobBlock(ci, "coc-test");
     assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/);

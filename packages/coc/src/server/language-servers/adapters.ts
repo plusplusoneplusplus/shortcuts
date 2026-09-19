@@ -13,12 +13,14 @@
 
 import { applyClangdRuntime, resolveClangdRuntime, resolveClangdServerRoot } from './clangd-adapter';
 import type { ClangdRuntimeDeps } from './clangd-adapter';
-import { CLANGD_PRESET, PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { CLANGD_PRESET, COC_SYMBOLS_PRESET, PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
 import { applyPythonRuntime, resolvePythonRuntime, resolvePythonServerRoot } from './python-adapter';
 import type { PythonRuntimeDeps } from './python-adapter';
 import { applyRustRuntime, resolveRustRuntime, resolveRustServerRoot } from './rust-adapter';
 import type { RustRuntimeDeps } from './rust-adapter';
 import { resolveServerRoot } from './selection';
+import { applySymbolsRuntime, resolveSymbolsRuntime } from './symbols-adapter';
+import type { SymbolsRuntimeDeps } from './symbols-adapter';
 import { applyTypeScriptRuntime, resolveTypeScriptRuntime } from './typescript-adapter';
 import type { TypeScriptRuntimeDeps } from './typescript-adapter';
 import type { LanguageServerDefinition } from './types';
@@ -36,7 +38,12 @@ export interface PreparedDefinition {
     recoveryCommand?: string;
 }
 
-export type PrepareDefinitionDeps = TypeScriptRuntimeDeps & RustRuntimeDeps & PythonRuntimeDeps & ClangdRuntimeDeps;
+export type PrepareDefinitionDeps =
+    & TypeScriptRuntimeDeps
+    & RustRuntimeDeps
+    & PythonRuntimeDeps
+    & ClangdRuntimeDeps
+    & SymbolsRuntimeDeps;
 
 export function resolveDefinitionRoot(
     definition: LanguageServerDefinition,
@@ -92,6 +99,16 @@ export function prepareDefinitionForRoot(
             commandLabel: PYTHON_PRESET.command,
         };
     }
+    if (claimsSymbols(definition)) {
+        const runtime = resolveSymbolsRuntime(definition, deps);
+        return {
+            definition: applySymbolsRuntime(definition, runtime),
+            runtimeLabel: runtime.label,
+            commandLabel: COC_SYMBOLS_PRESET.command,
+            notes: runtime.notes,
+            recoveryCommand: runtime.recoveryCommand,
+        };
+    }
     if (claimsClangd(definition)) {
         const runtime = resolveClangdRuntime(definition, deps);
         return {
@@ -122,6 +139,14 @@ function claimsPython(definition: LanguageServerDefinition): boolean {
         definition.id === PYTHON_PRESET.id &&
         definition.builtIn === true &&
         definition.command === PYTHON_PRESET.command
+    );
+}
+
+function claimsSymbols(definition: LanguageServerDefinition): boolean {
+    return (
+        definition.id === COC_SYMBOLS_PRESET.id &&
+        definition.builtIn === true &&
+        definition.command === COC_SYMBOLS_PRESET.command
     );
 }
 

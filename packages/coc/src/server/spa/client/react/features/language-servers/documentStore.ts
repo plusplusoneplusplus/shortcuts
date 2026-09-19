@@ -11,6 +11,8 @@
  *     clone, no matter how many views show it. Two views of the same clone's
  *     file in the Explorer and the right panel share this record; same-id
  *     clones on different hosts do not.
+ *   - Every matching server receives its own open/change/save/close stream and
+ *     tracks its own handshake generation and synchronization mode.
  *   - Versions only ever increase, including across a reconnect. A server that
  *     sees a replayed `didOpen` gets a version higher than anything it saw on
  *     the previous connection, so a late reply from the old session can always
@@ -161,6 +163,8 @@ export interface LanguageDocumentView {
     getStatus(): LanguageDocumentStatus;
     getSnapshot(): LanguageDocumentSnapshot;
     getDiagnostics(): LspDiagnostic[];
+    /** Live servers for this document, ordered by host preference. */
+    getServerInfos(): readonly LanguageServerAttachedInfo[];
     /** Language support is available and the buffer is synchronized. */
     isReady(): boolean;
 
@@ -176,6 +180,12 @@ export interface LanguageDocumentView {
 
     /** Sends an LSP request for this document once it is attached. */
     sendRequest<T = unknown>(method: string, params?: unknown, options?: LanguageServerRequestOptions): Promise<T>;
+    sendRequestTo<T = unknown>(
+        definitionId: string,
+        method: string,
+        params?: unknown,
+        options?: LanguageServerRequestOptions,
+    ): Promise<T>;
     /**
      * Reads a file this document's own language server named outside the
      * workspace, through the attachment that was issued the capability.
@@ -222,6 +232,13 @@ export interface LanguageDocumentStoreOptions {
     client?: LanguageServerClient;
 }
 
+interface DocumentServerRecord {
+    info: LanguageServerAttachedInfo;
+    opened: boolean;
+    openedGeneration: number | null;
+    sync: DocumentSyncOptions;
+}
+
 interface DocumentRecord {
     path: string;
     uri: string;
@@ -230,22 +247,14 @@ interface DocumentRecord {
     dirty: boolean;
     refCount: number;
     closed: boolean;
-    /** True once `didOpen` went out on the current connection. */
-    opened: boolean;
-    /**
-     * Host handshake count the current `didOpen` was sent on, or null when the
-     * server has not handshaken yet. Compared against every status update to
-     * decide whether a replay is due.
-     */
-    openedGeneration: number | null;
-    sync: DocumentSyncOptions;
+    servers: Map<string, DocumentServerRecord>;
     attachment: LanguageServerAttachment;
-    info: LanguageServerAttachedInfo | null;
     unavailable: LanguageServerUnavailableInfo | null;
     state: LanguageServerSessionStateView | null;
     languageId: string | null;
     fallbackLanguageId: string | null;
     diagnostics: LspDiagnostic[];
+    diagnosticsByAttachment: Map<string, LspDiagnostic[]>;
     subscriptions: Array<() => void>;
     diagnosticListeners: Set<(diagnostics: LspDiagnostic[]) => void>;
     textListeners: Set<(text: string, version: number) => void>;
@@ -326,16 +335,14 @@ export class LanguageDocumentStore {
             dirty: options.dirty === true,
             refCount: 0,
             closed: false,
-            opened: false,
-            openedGeneration: null,
-            sync: DEFAULT_SYNC,
+            servers: new Map(),
             attachment,
-            info: null,
             unavailable: attachment.getUnavailable(),
             state: null,
             languageId: null,
             fallbackLanguageId: options.fallbackLanguageId ?? null,
             diagnostics: [],
+            diagnosticsByAttachment: new Map(),
             subscriptions: [],
             diagnosticListeners: new Set(),
             textListeners: new Set(),
@@ -350,30 +357,35 @@ export class LanguageDocumentStore {
             attachment.onDetached(() => {
                 // The host's copy is gone. Drop the derived state but keep the
                 // buffer: the user's unsaved text is the whole point.
-                record.opened = false;
-                record.openedGeneration = null;
-                record.info = null;
-                this.setDiagnostics(record, []);
+                record.servers.clear();
+                record.state = null;
+                this.clearDiagnostics(record);
                 this.emitStatus(record);
             }),
             attachment.onUnavailable((info) => {
-                record.opened = false;
-                record.openedGeneration = null;
-                record.info = null;
+                record.servers.clear();
+                record.state = null;
                 record.unavailable = info;
-                this.setDiagnostics(record, []);
+                this.clearDiagnostics(record);
                 this.emitStatus(record);
             }),
-            attachment.onNotification((method, params) => {
-                this.handleNotification(record, method, params);
+            attachment.onNotification((method, params, info) => {
+                this.handleNotification(record, info.attachmentId, method, params);
             }),
-            attachment.onStatus((state) => {
-                record.state = state;
-                if (this.shouldReplay(record, state)) {
+            attachment.onStatus((state, info) => {
+                const server = record.servers.get(info.attachmentId);
+                if (!server) {
+                    return;
+                }
+                server.info = info;
+                if (firstServer(record) === server) {
+                    record.state = state;
+                }
+                if (this.shouldReplay(record, server, state)) {
                     // A restart, a crash recovery or a lazily started server:
                     // the attachment is the same but the process behind it has
                     // never seen this document.
-                    this.replay(record, state);
+                    this.replay(record, server, state);
                     return;
                 }
                 this.emitStatus(record);
@@ -382,8 +394,7 @@ export class LanguageDocumentStore {
 
         // An attachment can already be live when a second document opens on a
         // session that is up, so do not wait for the next `onAttached`.
-        const existing = attachment.getInfo();
-        if (existing) {
+        for (const existing of attachment.getInfos()) {
             this.handleAttached(record, existing);
         }
         return record;
@@ -391,11 +402,19 @@ export class LanguageDocumentStore {
 
     /** A new attachment: the host session behind it has never seen this file. */
     private handleAttached(record: DocumentRecord, info: LanguageServerAttachedInfo): void {
-        record.info = info;
+        const server = {
+            info,
+            opened: false,
+            openedGeneration: null,
+            sync: DEFAULT_SYNC,
+        };
+        record.servers.set(info.attachmentId, server);
         record.unavailable = null;
-        record.state = info.state;
-        record.languageId = info.languageId;
-        this.replay(record, info.state);
+        if (firstServer(record) === server) {
+            record.state = info.state;
+            record.languageId = info.languageId;
+        }
+        this.replay(record, server, info.state);
     }
 
     /**
@@ -404,19 +423,20 @@ export class LanguageDocumentStore {
      * text at a higher version than anything the previous process saw, which is
      * what lets a late reply from that process be told apart.
      */
-    private replay(record: DocumentRecord, state: LanguageServerSessionStateView | null): void {
-        const info = record.info;
-        if (!info) {
-            return;
-        }
-        record.sync = readSyncOptions(state);
-        record.opened = false;
-        record.openedGeneration = readyGeneration(state);
-        this.setDiagnostics(record, []);
+    private replay(
+        record: DocumentRecord,
+        server: DocumentServerRecord,
+        state: LanguageServerSessionStateView | null,
+    ): void {
+        const info = server.info;
+        server.sync = readSyncOptions(state);
+        server.opened = false;
+        server.openedGeneration = readyGeneration(state);
+        this.setServerDiagnostics(record, info.attachmentId, []);
 
-        if (record.sync.openClose) {
+        if (server.sync.openClose) {
             record.version += 1;
-            record.attachment.sendNotification('textDocument/didOpen', {
+            record.attachment.sendNotificationTo(info.attachmentId, 'textDocument/didOpen', {
                 textDocument: {
                     uri: record.uri,
                     languageId: info.languageId || record.fallbackLanguageId || 'plaintext',
@@ -425,7 +445,7 @@ export class LanguageDocumentStore {
                 },
             });
         }
-        record.opened = true;
+        server.opened = true;
         this.emitStatus(record);
         for (const listener of [...record.synchronizedListeners]) {
             listener(info);
@@ -438,15 +458,24 @@ export class LanguageDocumentStore {
      * happens after the attachment exists, and the crash restart, which leaves
      * the attachment in place while replacing the process behind it.
      */
-    private shouldReplay(record: DocumentRecord, state: LanguageServerSessionStateView): boolean {
-        if (record.closed || !record.info) {
+    private shouldReplay(
+        record: DocumentRecord,
+        server: DocumentServerRecord,
+        state: LanguageServerSessionStateView,
+    ): boolean {
+        if (record.closed) {
             return false;
         }
         const generation = readyGeneration(state);
-        return generation !== null && generation !== record.openedGeneration;
+        return generation !== null && generation !== server.openedGeneration;
     }
 
-    private handleNotification(record: DocumentRecord, method: string, params: unknown): void {
+    private handleNotification(
+        record: DocumentRecord,
+        attachmentId: string,
+        method: string,
+        params: unknown,
+    ): void {
         if (method !== 'textDocument/publishDiagnostics') {
             return;
         }
@@ -460,7 +489,25 @@ export class LanguageDocumentStore {
             // Results for text the user has already replaced.
             return;
         }
-        this.setDiagnostics(record, Array.isArray(payload.diagnostics) ? (payload.diagnostics as LspDiagnostic[]) : []);
+        this.setServerDiagnostics(
+            record,
+            attachmentId,
+            Array.isArray(payload.diagnostics) ? (payload.diagnostics as LspDiagnostic[]) : [],
+        );
+    }
+
+    private setServerDiagnostics(record: DocumentRecord, attachmentId: string, diagnostics: LspDiagnostic[]): void {
+        if (diagnostics.length === 0) {
+            record.diagnosticsByAttachment.delete(attachmentId);
+        } else {
+            record.diagnosticsByAttachment.set(attachmentId, diagnostics);
+        }
+        this.setDiagnostics(record, [...record.diagnosticsByAttachment.values()].flat());
+    }
+
+    private clearDiagnostics(record: DocumentRecord): void {
+        record.diagnosticsByAttachment.clear();
+        this.setDiagnostics(record, []);
     }
 
     private setDiagnostics(record: DocumentRecord, diagnostics: LspDiagnostic[]): void {
@@ -491,10 +538,13 @@ export class LanguageDocumentStore {
         record.text = text;
         record.dirty = true;
         record.version += 1;
-        if (record.opened && record.sync.change !== 0) {
-            record.attachment.sendNotification('textDocument/didChange', {
+        for (const server of record.servers.values()) {
+            if (!server.opened || server.sync.change === 0) {
+                continue;
+            }
+            record.attachment.sendNotificationTo(server.info.attachmentId, 'textDocument/didChange', {
                 textDocument: { uri: record.uri, version: record.version },
-                contentChanges: this.contentChangesFor(record, text, changes),
+                contentChanges: this.contentChangesFor(server.sync, text, changes),
             });
         }
         for (const listener of [...record.textListeners]) {
@@ -503,11 +553,11 @@ export class LanguageDocumentStore {
     }
 
     private contentChangesFor(
-        record: DocumentRecord,
+        sync: DocumentSyncOptions,
         text: string,
         changes?: DocumentContentChange[],
     ): DocumentContentChange[] {
-        if (record.sync.change === 2 && changes && changes.length > 0 && changes.every((change) => change.range)) {
+        if (sync.change === 2 && changes && changes.length > 0 && changes.every((change) => change.range)) {
             return changes;
         }
         return [{ text }];
@@ -522,10 +572,13 @@ export class LanguageDocumentStore {
             this.update(record, text);
         }
         record.dirty = false;
-        if (record.opened) {
-            record.attachment.sendNotification('textDocument/didSave', {
+        for (const server of record.servers.values()) {
+            if (!server.opened) {
+                continue;
+            }
+            record.attachment.sendNotificationTo(server.info.attachmentId, 'textDocument/didSave', {
                 textDocument: { uri: record.uri },
-                ...(record.sync.includeTextOnSave ? { text: record.text } : {}),
+                ...(server.sync.includeTextOnSave ? { text: record.text } : {}),
             });
         }
         this.emitStatus(record);
@@ -560,6 +613,7 @@ export class LanguageDocumentStore {
             getStatus: () => statusOf(record),
             getSnapshot: () => snapshotOf(record),
             getDiagnostics: () => record.diagnostics,
+            getServerInfos: () => record.attachment.getInfos(),
             isReady: () => statusOf(record) === 'ready',
             update: (text, changes) => {
                 store.update(record, text, changes);
@@ -570,6 +624,12 @@ export class LanguageDocumentStore {
             setDiskText: (text) => store.setDiskText(record, text),
             sendRequest: <T>(method: string, params?: unknown, options?: LanguageServerRequestOptions) =>
                 record.attachment.sendRequest<T>(method, params, options),
+            sendRequestTo: <T>(
+                definitionId: string,
+                method: string,
+                params?: unknown,
+                options?: LanguageServerRequestOptions,
+            ) => record.attachment.sendRequestTo<T>(definitionId, method, params, options),
             readExternalSource: (resourceId, options) =>
                 record.attachment.readExternalSource(resourceId, options),
             documentParams: <T extends Record<string, unknown>>(params?: T) =>
@@ -611,12 +671,15 @@ export class LanguageDocumentStore {
             return;
         }
         record.closed = true;
-        if (record.opened && record.sync.openClose) {
-            record.attachment.sendNotification('textDocument/didClose', {
+        for (const server of record.servers.values()) {
+            if (!server.opened || !server.sync.openClose) {
+                continue;
+            }
+            record.attachment.sendNotificationTo(server.info.attachmentId, 'textDocument/didClose', {
                 textDocument: { uri: record.uri },
             });
         }
-        record.opened = false;
+        record.servers.clear();
         for (const unsubscribe of record.subscriptions) {
             unsubscribe();
         }
@@ -650,13 +713,14 @@ function readyGeneration(state: LanguageServerSessionStateView | null | undefine
 }
 
 function statusOf(record: DocumentRecord): LanguageDocumentStatus {
-    if (record.info && record.opened) {
+    if ([...record.servers.values()].some(server => server.opened)) {
         return 'ready';
     }
     return record.unavailable ? 'unavailable' : 'detached';
 }
 
 function snapshotOf(record: DocumentRecord): LanguageDocumentSnapshot {
+    const primary = firstServer(record);
     return {
         uri: record.uri,
         path: record.path,
@@ -665,10 +729,14 @@ function snapshotOf(record: DocumentRecord): LanguageDocumentSnapshot {
         dirty: record.dirty,
         status: statusOf(record),
         languageId: record.languageId ?? record.fallbackLanguageId,
-        displayName: record.info?.displayName ?? null,
+        displayName: primary?.info.displayName ?? null,
         unavailable: record.unavailable,
         state: record.state,
     };
+}
+
+function firstServer(record: DocumentRecord): DocumentServerRecord | undefined {
+    return record.servers.values().next().value;
 }
 
 function subscribe<T>(set: Set<T>, listener: T): () => void {

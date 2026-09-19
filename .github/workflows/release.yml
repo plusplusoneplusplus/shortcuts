@@ -136,18 +136,25 @@ jobs:
       - name: Build the addon
         run: npm run build:native -w packages/coc-native
 
-      - name: Verify the binary matches the target triple
+      - name: Verify the binaries match the target triple
         shell: bash
-        run: test -f "packages/coc-native/coc-native.${{ matrix.triple }}.node"
+        run: |
+          test -f "packages/coc-native/coc-native.${{ matrix.triple }}.node"
+          # The stdio symbol language server, built by the same command. A
+          # release missing it leaves C-family navigation with only clangd.
+          ls "packages/coc-native/coc-symbols-lsp.${{ matrix.triple }}"* >/dev/null
 
       - name: Run N-API boundary and parity tests
         run: npm run test:run -w packages/coc-native
 
-      - name: Upload the addon
+      - name: Upload the native binaries
         uses: actions/upload-artifact@v4
         with:
           name: coc-native-${{ matrix.triple }}
-          path: packages/coc-native/coc-native.${{ matrix.triple }}.node
+          path: |
+            packages/coc-native/coc-native.${{ matrix.triple }}.node
+            packages/coc-native/coc-symbols-lsp.${{ matrix.triple }}
+            packages/coc-native/coc-symbols-lsp.${{ matrix.triple }}.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -200,6 +207,7 @@ jobs:
         run: |
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
           test -f packages/coc-native/prebuilt/darwin-arm64/coc-native.darwin-arm64.node
+          test -f packages/coc-native/prebuilt/darwin-arm64/coc-symbols-lsp.darwin-arm64
 
       - name: Build macOS distributables
         run: npm run dist:mac
@@ -261,6 +269,7 @@ jobs:
         run: |
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
           test -f packages/coc-native/prebuilt/win32-x64-msvc/coc-native.win32-x64-msvc.node
+          test -f packages/coc-native/prebuilt/win32-x64-msvc/coc-symbols-lsp.win32-x64-msvc.exe
 
       # Both scripts run prebuild:sqlite:win before electron-builder.
       - name: Build CoC Windows distributable
@@ -320,7 +329,9 @@ jobs:
         run: |
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
           test -f packages/coc-native/prebuilt/linux-x64-gnu/coc-native.linux-x64-gnu.node
+          test -f packages/coc-native/prebuilt/linux-x64-gnu/coc-symbols-lsp.linux-x64-gnu
           test -f packages/coc-native/prebuilt/linux-arm64-gnu/coc-native.linux-arm64-gnu.node
+          test -f packages/coc-native/prebuilt/linux-arm64-gnu/coc-symbols-lsp.linux-arm64-gnu
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

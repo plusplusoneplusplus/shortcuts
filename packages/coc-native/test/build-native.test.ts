@@ -100,9 +100,9 @@ describe('the committed bindings', () => {
         expect(source).toContain('export declare function buildFileIndex');
     });
 
-    it('declares symbol-index build progress', () => {
-        expect(source).toContain('export interface SymbolIndexBuildProgress');
-        expect(source).toContain('onProgress?:');
+    it('does not expose the symbol store through the Node addon', () => {
+        expect(source).not.toContain('export declare class SymbolIndex');
+        expect(source).not.toContain('export declare function buildSymbolIndex');
     });
 
     it('declares the whole Notes-index surface the capability re-exports', () => {

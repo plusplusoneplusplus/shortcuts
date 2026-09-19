@@ -28,7 +28,6 @@ const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
     writeBlob: vi.fn(),
     readTrustedBlob: vi.fn(),
-    searchSymbols: vi.fn(),
 }));
 
 const transport = vi.hoisted(() => ({ client: null as any }));
@@ -140,7 +139,6 @@ const monacoStub = vi.hoisted(() => {
             languageId: 'typescript',
             uri: { toString: () => 'coc-file://ws-1/src/a.ts' },
             getWordUntilPosition: () => ({ startColumn: 1, endColumn: 5 }),
-            getWordAtPosition: () => ({ word: 'Widget', startColumn: 1, endColumn: 7 }),
             getLanguageId(): string { return this.languageId; },
         },
     };
@@ -190,6 +188,23 @@ function attachWith(attachment: any, capabilities: Record<string, unknown> = FUL
     act(() => { attachment.attach({ state: readyState(capabilities) }); });
 }
 
+function attachCppServers(attachment: any, includeClangd = true) {
+    act(() => {
+        if (includeClangd) {
+            attachment.attach({
+                attachmentId: 'att-clangd',
+                definitionId: 'clangd',
+                state: { ...readyState({ textDocumentSync: 1, definitionProvider: true }), definitionId: 'clangd' },
+            });
+        }
+        attachment.attach({
+            attachmentId: 'att-symbols',
+            definitionId: 'coc-symbols',
+            state: { ...readyState({ textDocumentSync: 1, definitionProvider: true }), definitionId: 'coc-symbols' },
+        });
+    });
+}
+
 async function attachmentFor(path: string) {
     await waitFor(() => expect(transport.client.attachments.has(path)).toBe(true));
     return transport.client.get(path);
@@ -216,7 +231,6 @@ beforeEach(() => {
     mockExplorerApi.readBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
     mockExplorerApi.readTrustedBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
     mockExplorerApi.writeBlob.mockResolvedValue(undefined);
-    mockExplorerApi.searchSymbols.mockResolvedValue({ indexed: true, results: [] });
 });
 
 afterEach(() => {
@@ -345,15 +359,15 @@ describe('PreviewPane — language providers (AC-03)', () => {
         expect((sent!.params as any).position).toEqual({ line: 0, character: 6 });
     });
 
-    it('queries the routed repository symbol index for C++ definitions', async () => {
+    it('queries the routed coc-symbols attachment for C++ definitions', async () => {
         monacoStub.model.languageId = 'cpp';
         renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp', routingRef: 'remote:ws-1' });
         const attachment = await attachmentFor('src/a.cpp');
-        attachWith(attachment, { textDocumentSync: 1 });
-        mockExplorerApi.searchSymbols.mockResolvedValue({
-            indexed: true,
-            results: [{ name: 'Widget', kind: 'class', path: 'include/widget.hpp', line: 5, column: 3 }],
-        });
+        attachCppServers(attachment, false);
+        attachment.respondTo('coc-symbols', 'textDocument/definition', () => [{
+            uri: 'coc-file://ws-1/include/widget.hpp',
+            range: { start: { line: 4, character: 2 }, end: { line: 4, character: 8 } },
+        }]);
 
         await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
         const links = await monacoStub.provider('definition').provideDefinition(
@@ -362,30 +376,31 @@ describe('PreviewPane — language providers (AC-03)', () => {
             token,
         );
 
-        expect(mockExplorerApi.searchSymbols).toHaveBeenCalledWith(
-            'ws-1',
-            'Widget',
-            // A definition peek asks for a short, ranked list rather than the route's
-            // generic search-palette limit of 100.
-            { limit: 10, signal: expect.any(AbortSignal) },
-            'remote:ws-1',
-        );
+        expect(attachment.lastRequest('textDocument/definition')).toMatchObject({
+            definitionId: 'coc-symbols',
+            params: {
+                textDocument: { uri: 'coc-file://ws-1/src/a.cpp' },
+                position: { line: 0, character: 2 },
+            },
+        });
         expect(links[0].uri.toString()).toContain('include/widget.hpp#symbol-index-candidate');
     });
 
-    it('keeps only the macro definition when the symbol index also returns call sites', async () => {
+    it('preserves symbol-server ranges and marks every candidate URI', async () => {
         monacoStub.model.languageId = 'cpp';
         renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
         const attachment = await attachmentFor('src/a.cpp');
-        attachWith(attachment, { textDocumentSync: 1 });
-        mockExplorerApi.searchSymbols.mockResolvedValue({
-            indexed: true,
-            results: [
-                { name: 'Widget', kind: 'macro', path: 'include/Serde.h', line: 42, column: 9 },
-                { name: 'Widget', kind: 'prototype', path: 'src/a.cpp', line: 18, column: 5 },
-                { name: 'Widget', kind: 'prototype', path: 'src/z.cpp', line: 73, column: 3 },
-            ],
-        });
+        attachCppServers(attachment, false);
+        attachment.respondTo('coc-symbols', 'textDocument/definition', () => [
+            {
+                uri: 'coc-file://ws-1/include/Serde.h',
+                range: { start: { line: 41, character: 8 }, end: { line: 41, character: 14 } },
+            },
+            {
+                uri: 'coc-file://ws-1/src/z.cpp',
+                range: { start: { line: 72, character: 2 }, end: { line: 72, character: 8 } },
+            },
+        ]);
 
         await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
         const links = await monacoStub.provider('definition').provideDefinition(
@@ -394,41 +409,19 @@ describe('PreviewPane — language providers (AC-03)', () => {
             token,
         );
 
-        expect(links).toHaveLength(1);
+        expect(links).toHaveLength(2);
         expect(links[0]).toMatchObject({
             range: {
                 startLineNumber: 42,
                 startColumn: 9,
                 endLineNumber: 42,
-                endColumn: 9,
+                endColumn: 15,
             },
         });
         expect(links[0].uri.toString()).toBe('coc-file://ws-1/include/Serde.h#symbol-index-candidate');
-    });
-
-    it('keeps declarations when the symbol index has no definition', async () => {
-        monacoStub.model.languageId = 'cpp';
-        renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
-        const attachment = await attachmentFor('src/a.cpp');
-        attachWith(attachment, { textDocumentSync: 1 });
-        mockExplorerApi.searchSymbols.mockResolvedValue({
-            indexed: true,
-            results: [
-                { name: 'Widget', kind: 'prototype', path: 'include/a.hpp', line: 8, column: 2 },
-                { name: 'Widget', kind: 'prototype', path: 'include/b.hpp', line: 12, column: 4 },
-            ],
-        });
-
-        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
-        const links = await monacoStub.provider('definition').provideDefinition(
-            monacoStub.model,
-            { lineNumber: 1, column: 3 },
-            token,
-        );
-
         expect(links.map((link: any) => link.uri.toString())).toEqual([
-            'coc-file://ws-1/include/a.hpp#symbol-index-candidate',
-            'coc-file://ws-1/include/b.hpp#symbol-index-candidate',
+            'coc-file://ws-1/include/Serde.h#symbol-index-candidate',
+            'coc-file://ws-1/src/z.cpp#symbol-index-candidate',
         ]);
     });
 
@@ -436,18 +429,15 @@ describe('PreviewPane — language providers (AC-03)', () => {
         monacoStub.model.languageId = 'cpp';
         renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
         const attachment = await attachmentFor('src/a.cpp');
-        attachWith(attachment, { textDocumentSync: 1, definitionProvider: true });
-        attachment.respond('textDocument/definition', () => ({
+        attachCppServers(attachment);
+        attachment.respondTo('clangd', 'textDocument/definition', () => ({
             uri: 'coc-file://ws-1/include/Serde.h',
             range: { start: { line: 41, character: 8 }, end: { line: 41, character: 14 } },
         }));
-        mockExplorerApi.searchSymbols.mockResolvedValue({
-            indexed: true,
-            results: [
-                { name: 'Widget', kind: 'macro', path: 'include/Serde.h', line: 42, column: 9 },
-                { name: 'Widget', kind: 'prototype', path: 'src/a.cpp', line: 18, column: 5 },
-            ],
-        });
+        attachment.respondTo('coc-symbols', 'textDocument/definition', () => [{
+            uri: 'coc-file://ws-1/src/candidate.cpp',
+            range: { start: { line: 17, character: 4 }, end: { line: 17, character: 10 } },
+        }]);
 
         await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
         const links = await monacoStub.provider('definition').provideDefinition(
@@ -625,20 +615,20 @@ describe('PreviewPane — language providers (AC-03)', () => {
         monacoStub.model.languageId = 'cpp';
         renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp', routingRef: 'remote:server-a:ws-1' });
         const attachment = await attachmentFor('src/a.cpp');
-        attachWith(attachment, { textDocumentSync: 1, definitionProvider: true });
+        attachCppServers(attachment);
         attachment.externalSources.set('cap-1', {
             content: 'namespace std { class string_view; }',
             displayName: 'string_view',
             languageHint: 'cpp',
         });
-        attachment.respond('textDocument/definition', () => ({
+        attachment.respondTo('clangd', 'textDocument/definition', () => ({
             uri: 'coc-lsp-external://cap-1/string_view',
             range: { start: { line: 41, character: 8 }, end: { line: 41, character: 14 } },
         }));
-        mockExplorerApi.searchSymbols.mockResolvedValue({
-            indexed: true,
-            results: [{ name: 'Widget', kind: 'class', path: 'src/z.cpp', line: 1, column: 1 }],
-        });
+        attachment.respondTo('coc-symbols', 'textDocument/definition', () => [{
+            uri: 'coc-file://ws-1/src/z.cpp',
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } },
+        }]);
 
         await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
         const links = await monacoStub.provider('definition').provideDefinition(
@@ -663,11 +653,12 @@ describe('PreviewPane — language providers (AC-03)', () => {
         monacoStub.model.languageId = 'cpp';
         renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
         const attachment = await attachmentFor('src/a.cpp');
-        attachWith(attachment, { textDocumentSync: 1, definitionProvider: true });
-        attachment.respond('textDocument/definition', () => ({
+        attachCppServers(attachment);
+        attachment.respondTo('clangd', 'textDocument/definition', () => ({
             uri: 'coc-lsp-external://cap-expired/string_view',
             range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
         }));
+        attachment.respondTo('coc-symbols', 'textDocument/definition', () => []);
 
         await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('definition'));
         const links = await monacoStub.provider('definition').provideDefinition(

@@ -54,17 +54,6 @@ import {
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
 
-/** How many symbol-index candidates a go-to-definition jump asks for. */
-const DEFINITION_CANDIDATE_LIMIT = 10;
-
-/**
- * Index kinds that are declarations, not definitions. The index ranks definitions
- * first, but Monaco re-sorts a multi-result Peek by path and focuses by cursor
- * distance, so an unfiltered list can make a macro land on one of its call sites.
- * Declarations remain available as a fallback when no definition was indexed.
- */
-const DECLARATION_KINDS = new Set(['prototype']);
-
 export interface PreviewPaneProps {
     repoId: string;
     /** Concrete clone identity for file I/O and language transport routing. */
@@ -222,27 +211,6 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     // The Monaco language the editor will actually use for this file, so the
     // providers are registered under the same id the model carries.
     const monacoLanguageId = getMonacoLanguage(fileName);
-    const symbolDefinitions = useMemo(() => (
-        monacoLanguageId === 'c' || monacoLanguageId === 'cpp'
-            ? {
-                workspaceId: repoId,
-                lookup: async (name: string, signal: AbortSignal) => {
-                    const response = await explorerApi.searchSymbols(
-                        repoId,
-                        name,
-                        // The route's generic limit of 100 suits a search palette, not a
-                        // definition peek: the index ranks definitions first, so a handful
-                        // of rows is all a jump can usefully show.
-                        { limit: DEFINITION_CANDIDATE_LIMIT, signal },
-                        routingRef,
-                    );
-                    const definitions = response.results.filter(result => !DECLARATION_KINDS.has(result.kind));
-                    return definitions.length > 0 ? definitions : response.results;
-                },
-            }
-            : undefined
-    ), [monacoLanguageId, repoId, routingRef]);
-
     // A jump that leaves this file. It is answered here rather than in the
     // navigation module because only this pane knows which workspace it is
     // showing: a target in another workspace is not this surface's to open, and
@@ -298,7 +266,8 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     // Both casts narrow the real Monaco namespace to the structural slice the
     // provider module describes; `languageProviders.ts` deliberately carries no
     // runtime Monaco dependency, so this boundary is where the two meet.
-    const definitionSupported = supportsFeature(languageDocument.snapshot?.state, 'definition');
+    const definitionSupported = supportsFeature(languageDocument.snapshot?.state, 'definition')
+        || languageView?.getServerInfos().some(info => supportsFeature(info.state, 'definition')) === true;
     const handleModelMount = useCallback(({ editor, monaco, model }: EditorModelMountContext) => {
         const navigationController = createEditorNavigationController(editor);
         navigationControllerRef.current = navigationController;
@@ -367,7 +336,6 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             model: model as unknown as ProviderModel,
             view: languageView,
             languageId: shadow?.languageId ?? monacoLanguageId,
-            symbolDefinitions,
             resolveUri: async (uri, signal, target) => (
                 await previewSource.prepare(uri, signal, target, target.waitForContent)
                     ? (monaco as unknown as MonacoLike).Uri.parse(uri)
@@ -379,7 +347,8 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                 editor,
                 model,
                 view: languageView,
-                isEnabled: () => supportsFeature(languageView.getSnapshot().state, 'definition'),
+                isEnabled: () => supportsFeature(languageView.getSnapshot().state, 'definition')
+                    || languageView.getServerInfos().some(info => supportsFeature(info.state, 'definition')),
             })
             : null;
         // Claim the navigations that START in this model, so the global editor
@@ -400,7 +369,6 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         monacoLanguageId,
         handleNavigate,
         definitionSupported,
-        symbolDefinitions,
         repoId,
         routingRef,
         definitionPreviewOwners,

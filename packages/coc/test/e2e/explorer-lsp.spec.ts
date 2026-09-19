@@ -121,22 +121,6 @@ function createCppSymbolRepoFixture(tmpDir: string): string {
     return repoDir;
 }
 
-async function waitForSymbolIndex(
-    serverUrl: string,
-    workspaceId: string,
-    symbol: string,
-    expectedCount = 2,
-): Promise<void> {
-    await expect.poll(async () => {
-        const response = await request(
-            `${serverUrl}/api/repos/${encodeURIComponent(workspaceId)}/search/symbols?q=${encodeURIComponent(symbol)}`,
-        );
-        if (response.status !== 200) return false;
-        const body = JSON.parse(response.body) as { indexed?: boolean; results?: unknown[] };
-        return body.indexed === true && body.results?.length === expectedCount;
-    }, { timeout: 30_000 }).toBe(true);
-}
-
 /** Navigate to the repo detail and click the Explorer sub-tab. */
 async function gotoExplorer(page: Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
@@ -511,6 +495,35 @@ async function openPeekDefinition(page: Page, spot: { x: number; y: number }): P
     return peek;
 }
 
+/**
+ * Peek at `spot`, retrying until the symbol index has something to answer with.
+ *
+ * The index is built on a worker thread once the symbols server is up, and a
+ * definition asked for before that finishes comes back empty — Monaco then
+ * opens no peek at all, so there is nothing to wait on after the gesture. The
+ * HTTP lane this used to poll is gone, and the status badge reports the
+ * highest-priority server for the document rather than this one, so the gesture
+ * itself is the poll.
+ */
+async function peekIndexedDefinition(
+    page: Page,
+    spot: { x: number; y: number },
+    referenceFiles: number,
+): Promise<Locator> {
+    const peek = page.locator('.reference-zone-widget');
+    await expect(async () => {
+        // A previous attempt that opened on a half-built index is still on
+        // screen, and the right-click below would land inside it.
+        if (await peek.isVisible()) {
+            await page.keyboard.press('Escape');
+            await expect(peek).toBeHidden();
+        }
+        await openPeekDefinition(page, spot);
+        await expect(peek.locator('.reference-file')).toHaveCount(referenceFiles, { timeout: 5_000 });
+    }).toPass({ timeout: 60_000, intervals: [500] });
+    return peek;
+}
+
 // ---------------------------------------------------------------------------
 // 1. Status
 // ---------------------------------------------------------------------------
@@ -744,8 +757,6 @@ test.describe('Explorer language support – TypeScript and definition features'
             await seedWorkspace(serverUrl, WORKSPACE_ID, 'cpp-symbol-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
             await enableLanguageServers(serverUrl, WORKSPACE_ID);
-            await waitForSymbolIndex(serverUrl, WORKSPACE_ID, 'target');
-
             await gotoExplorer(page, serverUrl);
             await openSourceFile(page, 'app.cpp');
 
@@ -755,8 +766,8 @@ test.describe('Explorer language support – TypeScript and definition features'
                 .poll(() => caretLineText(page, CPP_APP_PANEL), { timeout: 10_000 })
                 .toContain('int main()');
 
-            const peek = await openPeekDefinition(page, spot);
-            await expect(peek).toBeVisible({ timeout: 15_000 });
+            const peek = await peekIndexedDefinition(page, spot, 2);
+            await expect(peek).toBeVisible();
             await expect(peek.locator('.reference-file')).toHaveCount(2);
             await expectEditorTabs(page, [CPP_APP_TAB]);
 

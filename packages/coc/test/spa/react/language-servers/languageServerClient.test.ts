@@ -145,6 +145,40 @@ describe('LanguageServerClient', () => {
             client.dispose();
         });
 
+        it('keeps every server attachment for one document in priority order', async () => {
+            const client = makeClient();
+            const handle = client.attach('src/index.ts');
+            const socket = latest();
+            socket.open();
+            socket.emit(attachedMessage(socket, {
+                attachmentId: 'att-semantic',
+                definitionId: 'clangd',
+                displayName: 'clangd',
+                complete: false,
+            }));
+            const request = handle.sendRequestTo('coc-symbols', 'textDocument/definition');
+            expect(socket.sentOfType('lsp-request')).toHaveLength(0);
+            socket.emit(attachedMessage(socket, {
+                attachmentId: 'att-symbols',
+                sessionKey: 'ws-1::::coc-symbols::/repo',
+                definitionId: 'coc-symbols',
+                displayName: 'Symbol Index',
+                complete: true,
+            }));
+
+            expect(handle.getInfos().map(({ definitionId }) => definitionId)).toEqual(['clangd', 'coc-symbols']);
+            handle.sendNotification('textDocument/didOpen', {});
+            expect(socket.sentOfType('lsp-notify').map(({ attachmentId }) => attachmentId))
+                .toEqual(['att-semantic', 'att-symbols']);
+
+            await Promise.resolve();
+            const sent = socket.sentOfType('lsp-request').at(-1)!;
+            expect(sent.attachmentId).toBe('att-symbols');
+            socket.emit({ type: 'lsp-response', attachmentId: 'att-symbols', id: sent.id, result: [] });
+            await expect(request).resolves.toEqual([]);
+            client.dispose();
+        });
+
         it('normalizes windows-style and leading-slash paths to one document', () => {
             const client = makeClient();
             client.attach('src\\index.ts');

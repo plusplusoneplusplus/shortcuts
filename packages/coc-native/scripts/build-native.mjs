@@ -1,9 +1,11 @@
 /**
  * Compile the Rust addon and regenerate the TypeScript view of it.
  *
- * Produces two artifacts:
+ * Produces three artifacts:
  *   - `coc-native.<platform>-<arch>[-abi].node`, next to the loader.
  *   - `src/native-bindings.ts`, the `#[napi]` type surface as TypeScript.
+ *   - `coc-symbols-lsp.<triple>[.exe]`, the stdio language server, via
+ *     `build-symbols-lsp.mjs` (a plain cargo build, no napi involved).
  *
  * `@napi-rs/cli` drives both, because the `.d.ts` is derived from the Rust
  * macros during compilation — a hand-written mirror of the `#[napi]` structs
@@ -26,6 +28,8 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { buildSymbolsLsp } from './build-symbols-lsp.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cargoCwd = path.join('rust', 'napi');
@@ -113,7 +117,7 @@ function main() {
         // A cached crate never reruns the proc macro and so emits no type defs.
         // Writing that emptiness over the committed file would quietly delete
         // the package's whole type surface, so refuse it.
-        const missingExports = ['buildFileIndex', 'buildNotesIndex', 'buildSymbolIndex'].filter(
+        const missingExports = ['buildFileIndex', 'buildNotesIndex'].filter(
             exportName => !generated.includes(exportName),
         );
         if (missingExports.length > 0) {
@@ -137,6 +141,12 @@ function main() {
 
     console.log(`native addon: built ${path.relative(packageRoot, destination)}`);
     console.log(`native addon: generated ${BINDINGS_FILE}`);
+
+    // The stdio language server is the second artifact this package ships. It
+    // is built here rather than behind its own command so that every caller of
+    // `build:native` — CI, the serve loop's staleness check, a fresh clone —
+    // ends up with both, and neither can quietly lag the other.
+    buildSymbolsLsp({ profile, target });
 }
 
 /**
