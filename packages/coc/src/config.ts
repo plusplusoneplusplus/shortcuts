@@ -326,6 +326,8 @@ export interface CLIConfig {
         explorerEditorTabs?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector?: boolean;
+        /** Switch concrete providers between idle follow-up turns. Disabled by default. */
+        chatProviderSwitching?: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle?: ChatStyle;
         /** Admin-edited prompt text per style. An absent key uses the built-in default. */
@@ -693,6 +695,8 @@ export interface ResolvedCLIConfig {
         explorerEditorTabs: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector: boolean;
+        /** Switch concrete providers between idle follow-up turns. Disabled by default. */
+        chatProviderSwitching: boolean;
         /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
         defaultChatStyle: ChatStyle;
         /** Admin-edited prompt text per style. An absent key uses the built-in default. */
@@ -973,6 +977,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         canvasHostApis: false,
         explorerEditorTabs: false,
         chatStyleSelector: true,
+        chatProviderSwitching: false,
         defaultChatStyle: 'default',
         chatStylePrompts: {},
     },

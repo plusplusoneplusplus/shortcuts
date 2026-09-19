@@ -939,6 +939,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-chat-style-selector-enabled',
         },
     }),
+    bool({
+        key: 'features.chatProviderSwitching', default: false, runtime: 'live', runtimeFlag: 'chatProviderSwitchingEnabled',
+        ui: {
+            group: 'aiModes', order: 46, label: 'Follow-up provider switching', badge: 'experimental',
+            hint: 'Allow idle Ask and Autopilot conversations to continue with a different concrete AI provider. Disabled by default.',
+            testId: 'toggle-chat-provider-switching-enabled',
+        },
+    }),
 
     // Deliberately has no `ui` block: the control lives on the dedicated Chat
     // Style settings section (`#admin/settings/chat-style`), not on the

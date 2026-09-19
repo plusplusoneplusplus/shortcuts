@@ -129,6 +129,7 @@ export interface AdminResolvedConfig {
     quickAskSidenotes?: boolean;
     arxivPaperIngest?: boolean;
     gitWorktreeExecution?: boolean;
+    chatProviderSwitching?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
   effortLevels?: { enabled?: boolean };
@@ -217,6 +218,7 @@ export interface AdminConfigUpdate {
   'features.quickAskSidenotes'?: boolean;
   'features.arxivPaperIngest'?: boolean;
   'features.gitWorktreeExecution'?: boolean;
+  'features.chatProviderSwitching'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
 }
@@ -288,6 +290,8 @@ export interface RuntimeDashboardConfig {
      * remote-target capability signal; an older server omits it entirely.
      */
     chatStyleSelectorEnabled: boolean;
+    /** Whether idle Ask/Autopilot follow-ups may select another concrete provider. */
+    chatProviderSwitchingEnabled: boolean;
     /** VS Code-style multiple editor tabs in the File Explorer (`features.explorerEditorTabs`). */
     explorerEditorTabsEnabled: boolean;
     /**

@@ -1223,6 +1223,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
             const fields = normalized.value;
 
+            if (fields.isProviderSwitch && ctx.getLiveFeatureFlags?.().chatProviderSwitchingEnabled !== true) {
+                return handleAPIError(res, new APIError(
+                    400,
+                    'Switching providers in an existing conversation is not enabled on this server.',
+                    'PROVIDER_SWITCHING_DISABLED',
+                ));
+            }
+
             // A different provider means a fresh native session, so it can only
             // start between turns. Rejected outright rather than steered or
             // buffered: both of those would hand the message to the provider

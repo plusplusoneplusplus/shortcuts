@@ -75,15 +75,33 @@ describe('POST /api/processes/:id/message', () => {
     let store: FileProcessStore;
     let baseUrl: string;
     let mockBridge: QueueExecutorBridge;
+    let providerSwitchingEnabled: boolean;
 
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'follow-up-api-test-'));
         store = new FileProcessStore({ dataDir });
 
         mockBridge = createMockBridge();
+        providerSwitchingEnabled = true;
 
         const routes: Route[] = [];
-        registerApiRoutes(routes, store, mockBridge);
+        registerApiRoutes(
+            routes,
+            store,
+            mockBridge,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => ({
+                excalidrawEnabled: false,
+                canvasEnabled: false,
+                kustoEnabled: false,
+                chatStyleSelectorEnabled: false,
+                chatProviderSwitchingEnabled: providerSwitchingEnabled,
+                defaultChatStyle: 'default',
+            }),
+        );
 
         const spaHtml = generateDashboardHtml();
         const handler = createRequestHandler({ routes, spaHtml, store });
@@ -1462,6 +1480,45 @@ describe('POST /api/processes/:id/message', () => {
                 provider: 'codex',
             });
             expect(res.status).toBe(202);
+        });
+
+        it('rejects a different provider when the live capability is disabled', async () => {
+            await addChat('proc-prov-disabled');
+            providerSwitchingEnabled = false;
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-disabled/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCHING_DISABLED');
+            expect((await store.getProcess('proc-prov-disabled'))?.conversationTurns ?? []).toHaveLength(0);
+        });
+
+        it('keeps same-provider follow-ups compatible while the capability is disabled', async () => {
+            await addChat('proc-prov-disabled-same');
+            providerSwitchingEnabled = false;
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-disabled-same/message`, {
+                content: 'Hello',
+                provider: 'copilot',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('observes provider-switch capability changes without restarting', async () => {
+            await addChat('proc-prov-live');
+            providerSwitchingEnabled = false;
+            const disabled = await postJSON(`${baseUrl}/api/processes/proc-prov-live/message`, {
+                content: 'First try',
+                provider: 'codex',
+            });
+            expect(disabled.status).toBe(400);
+
+            providerSwitchingEnabled = true;
+            const enabled = await postJSON(`${baseUrl}/api/processes/proc-prov-live/message`, {
+                content: 'Second try',
+                provider: 'codex',
+            });
+            expect(enabled.status).toBe(202);
         });
 
         it('rejects auto with 400 INVALID_PROVIDER', async () => {
