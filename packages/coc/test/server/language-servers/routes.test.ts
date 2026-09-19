@@ -322,3 +322,112 @@ describe('registerLanguageServerRoutes', () => {
         expect(readLanguageServerConfig(dataDir, WORKSPACE).definitions).toHaveLength(0);
     });
 });
+
+/**
+ * The settings page's read is what seeds a never-configured workspace, so these
+ * cover the route with a workspace-root resolver wired in the way the server does.
+ */
+describe('registerLanguageServerRoutes with workspace-root detection', () => {
+    let dataDir: string;
+    let workspaceRoot: string;
+    let routes: Route[];
+    let resolveRoot: (workspaceId: string) => Promise<string | undefined>;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-lsp-seed-routes-'));
+        workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-lsp-seed-repo-'));
+        fs.writeFileSync(path.join(workspaceRoot, 'Cargo.toml'), '[package]\nname = "demo"\n');
+        fs.mkdirSync(path.join(workspaceRoot, 'src'));
+        fs.writeFileSync(path.join(workspaceRoot, 'src', 'main.rs'), 'fn main() {}\n');
+        routes = [];
+        resolveRoot = async (workspaceId: string) => (workspaceId === WORKSPACE ? workspaceRoot : undefined);
+        registerLanguageServerRoutes(routes, dataDir, () => undefined, (id) => resolveRoot(id));
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+        fs.rmSync(workspaceRoot, { recursive: true, force: true });
+    });
+
+    async function get(workspaceId: string) {
+        const url = `/api/workspaces/${encodeURIComponent(workspaceId)}/language-servers`;
+        const found = findRoute(routes, 'GET', url);
+        const res = fakeRes();
+        await found.route.handler(fakeReq('GET', {}), res, found.match);
+        return { status: res.statusCode, json: JSON.parse(res.body) };
+    }
+
+    async function put(workspaceId: string, body: unknown) {
+        const url = `/api/workspaces/${encodeURIComponent(workspaceId)}/language-servers`;
+        const found = findRoute(routes, 'PUT', url);
+        const res = fakeRes();
+        await found.route.handler(fakeReq('PUT', body), res, found.match);
+        return { status: res.statusCode, json: JSON.parse(res.body) };
+    }
+
+    it('first GET of a rust repo answers with support on and rust enabled', async () => {
+        const { status, json } = await get(WORKSPACE);
+
+        expect(status).toBe(200);
+        expect(json.status).toBe('ok');
+        expect(json.enabled).toBe(true);
+        expect(json.definitions.map((d: LanguageServerDefinition) => d.id)).toEqual(['rust']);
+        const effective = json.effective as LanguageServerDefinition[];
+        expect(effective.find(d => d.id === 'rust')?.enabled).toBe(true);
+        expect(effective.find(d => d.id === 'python')?.enabled).toBe(false);
+        expect(effective.find(d => d.id === 'typescript')?.enabled).toBe(false);
+        expect(effective.find(d => d.id === 'clangd')?.enabled).toBe(false);
+        expect(json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual(['rust', 'coc-symbols']);
+    });
+
+    it('a second GET returns the stored config unchanged', async () => {
+        const first = await get(WORKSPACE);
+        const second = await get(WORKSPACE);
+
+        expect(second.json.enabled).toBe(first.json.enabled);
+        expect(second.json.definitions).toEqual(first.json.definitions);
+        expect(second.json.status).toBe('ok');
+    });
+
+    it('keeps rust disabled after the user unchecks it', async () => {
+        const seeded = await get(WORKSPACE);
+        const disabled = (seeded.json.definitions as LanguageServerDefinition[]).map(d => ({ ...d, enabled: false }));
+
+        const saved = await put(WORKSPACE, { enabled: true, definitions: disabled });
+        expect(saved.status).toBe(200);
+
+        const reread = await get(WORKSPACE);
+        const effective = reread.json.effective as LanguageServerDefinition[];
+        expect(effective.find(d => d.id === 'rust')?.enabled).toBe(false);
+        expect(reread.json.startable.map((d: LanguageServerDefinition) => d.id)).toEqual(['coc-symbols']);
+    });
+
+    it('does not seed a workspace whose root cannot be resolved', async () => {
+        const { json } = await get('ws-unknown');
+
+        expect(json.status).toBe('missing');
+        expect(json.enabled).toBe(false);
+        expect(fs.existsSync(getLanguageServerConfigPath(dataDir, 'ws-unknown'))).toBe(false);
+    });
+
+    it('does not seed over a corrupt config file', async () => {
+        const filePath = getLanguageServerConfigPath(dataDir, WORKSPACE);
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, '{ broken', 'utf-8');
+
+        const { json } = await get(WORKSPACE);
+
+        expect(json.status).toBe('invalid');
+        expect(json.enabled).toBe(false);
+        expect(fs.readFileSync(filePath, 'utf-8')).toBe('{ broken');
+    });
+
+    it('survives a workspace lookup failure by skipping detection', async () => {
+        resolveRoot = async () => { throw new Error('store offline'); };
+
+        const { status, json } = await get(WORKSPACE);
+
+        expect(status).toBe(200);
+        expect(json.status).toBe('missing');
+    });
+});

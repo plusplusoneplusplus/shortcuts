@@ -640,7 +640,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             ]);
         },
     );
-    registerLanguageServerRoutes(routes, dataDir);
+    registerLanguageServerRoutes(routes, dataDir, undefined, async (workspaceId) => {
+        const workspaces = await store.getWorkspaces();
+        return workspaces.find(w => w.id === workspaceId)?.rootPath;
+    });
     registerSeenStateRoutes(routes, store as any);
     registerWhatsNewRoutes(routes, new WhatsNewService({ dataDir }));
     registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);
