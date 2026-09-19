@@ -377,7 +377,7 @@ export class ProcessMessageDeliveryService {
                     path = 'enqueued';
                 }
             } else {
-                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId).catch(() => {
+                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId, { ...(input.provider ? { requestedProvider: input.provider } : {}) }).catch(() => {
                 }).finally(() => {
                     if (input.imageTempDir) { cleanupTempDir(input.imageTempDir); }
                 });

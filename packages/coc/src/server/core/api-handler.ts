@@ -37,6 +37,7 @@ import { registerWorkItemChatRoutes } from '../routes/api-work-item-chat-routes'
 import { registerNoteChatBindingRoutes } from '../notes/note-chat-bindings-handler';
 import type { ApiRouteContext } from '../routes/api-shared';
 import { GIT_MAX_BUFFER } from '../routes/api-shared';
+import type { FollowUpTurnOptions } from '../executors/follow-up-executor';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -44,7 +45,7 @@ import { GIT_MAX_BUFFER } from '../routes/api-shared';
  * and will be moved in a later commit.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;

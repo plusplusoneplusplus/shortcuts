@@ -45,6 +45,7 @@ import {
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
 import { buildConversationHistoryContext } from './prompt-builder';
+import { resolveContinuationMode } from './continuation-mode';
 import { readNoteContent } from './note-chat-executor';
 import { suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
@@ -77,6 +78,22 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * Per-turn options carried by the accepted follow-up message (AC-03/AC-04).
+ *
+ * These describe the message, not the conversation, so they are read from the
+ * request that was accepted rather than from process metadata that may have
+ * changed since.
+ */
+export interface FollowUpTurnOptions {
+    /**
+     * Concrete provider this message was accepted for. Omitted means "the
+     * conversation's current provider", which keeps older clients and every
+     * non-switching caller on the existing native-resume path.
+     */
+    requestedProvider?: ChatProvider;
+}
 
 /** Log prefix for every line this executor writes. */
 const FOLLOW_UP_LOG_LABEL = '[FollowUp]';
@@ -243,6 +260,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
          * treated as a failed follow-up.
          */
         strictResumeSessionId?: string,
+        /**
+         * Per-turn options carried by the accepted message. Kept as an object
+         * so later slices can add to it without growing this already long
+         * positional list.
+         */
+        options?: FollowUpTurnOptions,
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -260,7 +283,19 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         // the previous provider's session. Pre-binding processes get the legacy
         // projection, so behaviour is unchanged for them.
         const activeBinding = readActiveProviderSession(process);
-        const sessionProvider: ChatProvider = activeBinding.provider as ChatProvider;
+
+        // How this turn continues — native resume of the bound session, or a
+        // fresh session on a different provider with context rebuilt from
+        // canonical history. The provider comes from the message that was
+        // accepted, not from conversation metadata that may have changed
+        // since, and the decision is what guarantees a session id created by
+        // one provider is never sent to another.
+        const continuation = resolveContinuationMode({
+            binding: activeBinding,
+            requestedProvider: options?.requestedProvider,
+            strictResumeSessionId,
+        });
+        const sessionProvider: ChatProvider = continuation.provider;
 
         // Resolve the AI service for this provider. This also checks that the
         // provider is still enabled — if not, it throws a clear error that blocks
@@ -348,8 +383,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(wsId, workingDirectory);
 
-        const sessionIdForSend = strictResumeSessionId ?? activeBinding.sessionId;
-        const canResumeSession = !!sessionIdForSend;
+        const sessionIdForSend = continuation.resumeSessionId;
+        const canResumeSession = continuation.mode === 'native-resume';
 
         const historyContext = canResumeSession
             ? undefined
@@ -369,7 +404,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const turnAbort = this.registerTurnAbortController(processId);
         try {
-            if (strictResumeSessionId) {
+            if (continuation.strictResume) {
                 if (!activeBinding.sessionId) {
                     throw new Error('Cannot continue this stopped chat because no SDK session was saved.');
                 }
@@ -621,7 +656,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     // back a different session must not overwrite the stopped
                     // one we are trying to continue.
                     onSessionCreated: (sessionId: string) => {
-                        if (strictResumeSessionId && sessionId !== strictResumeSessionId) {
+                        if (continuation.strictResume && sessionId !== strictResumeSessionId) {
                             strictResumeMismatch = true;
                             logger.warn(LogCategory.AI, `[FollowUp] Provider returned a different SDK session while strict-resuming process ${processId}; preserving the stopped session id.`);
                             return;
@@ -658,7 +693,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     }),
                 }),
                 sessionId: sessionIdForSend,
-                ...(strictResumeSessionId ? { strictSessionResume: true as const } : {}),
+                ...(continuation.strictResume ? { strictSessionResume: true as const } : {}),
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
             };
@@ -679,7 +714,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             if (!result.success) {
                 throw new Error(result.error || 'Follow-up execution failed');
             }
-            if (strictResumeSessionId && (strictResumeMismatch || (result.sessionId !== undefined && result.sessionId !== strictResumeSessionId))) {
+            if (continuation.strictResume && (strictResumeMismatch || (result.sessionId !== undefined && result.sessionId !== strictResumeSessionId))) {
                 throw new Error('Provider did not resume the stopped SDK session.');
             }
 
@@ -830,7 +865,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         status: 'failed',
                         endTime: failedAt,
                         error: errorMsg,
-                        ...(strictResumeSessionId
+                        ...(continuation.strictResume
                             ? {
                                 metadata: {
                                     ...(current.metadata ?? {}),
@@ -858,7 +893,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 status: turnAbort.signal.aborted ? 'cancelled' : 'errored',
             });
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
-            if (strictResumeSessionId) {
+            if (continuation.strictResume) {
                 throw error instanceof Error ? error : new Error(errorMsg);
             }
         } finally {

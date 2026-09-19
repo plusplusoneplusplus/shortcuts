@@ -60,6 +60,7 @@ import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
 import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
 import { bindDetectedPullRequestsForProcess } from '../processes/bind-detected-pull-requests';
+import type { FollowUpTurnOptions } from './follow-up-executor';
 import {
     isChatFollowUp,
     isChatPayload,
@@ -185,6 +186,8 @@ export interface LifecycleRunnerOptions {
         reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh',
         /** Require this exact SDK session ID to be resumed; no fresh-session fallback. */
         strictResumeSessionId?: string,
+        /** Per-turn options carried by the accepted message (provider, ...). */
+        options?: FollowUpTurnOptions,
     ) => Promise<void>;
     /**
      * Resume a process whose durable `pendingAskUserAnswer` was persisted after
@@ -532,6 +535,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         turnSource,
                         followUpEffort,
                         strictResumeSessionId,
+                        // The provider accepted with this message, captured in
+                        // the payload when it was queued. Reading it here
+                        // rather than from process metadata is what stops a
+                        // later metadata change from retargeting a message
+                        // that is already queued.
+                        { ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}) },
                     );
                 }
                 const duration = Date.now() - startTime;
