@@ -40,7 +40,7 @@ import { InjectedBlockChips } from './InjectedBlockChips';
 import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
 import { extractInjectedBlocks, projectChatModeContextForDisplay } from './injectedBlocks';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
-import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
+import { getProviderAvatarClasses, getProviderLabel, type ChatProvider } from '../ProviderBadge';
 import { REWIND_NO_ANCHOR_TOOLTIP, resolveRewindCapability } from '../hooks/rewindCapability';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
 import { CLIENT_PASTE_THRESHOLD, getPastePreviewLines } from '../hooks/useTextPaste';
@@ -159,10 +159,8 @@ interface ConversationTurnBubbleProps {
     /** Re-run one turn of a side-note thread after a failure. */
     onRetrySidenoteTurn?: (id: string, turnIndex: number) => void;
     /**
-     * AI provider that produced the assistant turns (`copilot`, `codex`, or
-     * `claude`). Controls the round avatar's color so it matches the
-     * provider's brand palette (Copilot=green, Claude=orange, Codex=indigo).
-     * Defaults to `copilot` (green) when omitted to preserve the legacy look.
+     * Active conversation provider used only as a display fallback for turns
+     * recorded before per-turn provider attribution existed.
      */
     provider?: ChatProvider;
     /**
@@ -1129,6 +1127,8 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
 
 export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
+    const assistantProvider = turn.provider ?? provider;
+    const assistantProviderLabel = getProviderLabel(assistantProvider);
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
@@ -1510,11 +1510,11 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             ? 'bg-[#1e1e1e] text-[#d4d4d4] border-[#000] font-mono text-[10px]'
                             : turn.isError
                                 ? 'bg-[#ffebe9] text-[#cf222e] border-[#f5c2c2] dark:bg-[#3a1a1a] dark:text-[#f87171] dark:border-[#7a3030] text-[11.5px] font-semibold'
-                                : cn(getProviderAvatarClasses(provider), 'text-[11.5px] font-semibold')
+                                : cn(getProviderAvatarClasses(assistantProvider), 'text-[11.5px] font-semibold')
                     )}
                     title={isScript ? 'Script Output' : turn.isError ? 'Assistant — error' : 'Assistant'}
                     aria-hidden="true"
-                    data-provider={isScript || turn.isError ? undefined : (provider ?? 'copilot')}
+                    data-provider={isScript || turn.isError ? undefined : (assistantProvider ?? 'copilot')}
                 >
                     {isScript ? '$_' : 'C'}
                 </span>
@@ -1550,6 +1550,12 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     >
                         {isUser ? 'You' : isScript ? 'Script Output' : 'Assistant'}
                     </span>
+                    {!isUser && !isScript && (
+                        <span className="assistant-attribution min-w-0 truncate" data-provider={assistantProvider ?? 'copilot'}>
+                            {assistantProviderLabel}
+                            {turn.model && <span className="assistant-model"> · {turn.model}</span>}
+                        </span>
+                    )}
                     {turn.timestamp && (() => {
                         const d = new Date(turn.timestamp);
                         return (

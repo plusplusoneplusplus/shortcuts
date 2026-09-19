@@ -440,10 +440,11 @@ export function useSendMessage({
         const pasteExternalized = rawContent.length > CLIENT_PASTE_THRESHOLD || undefined;
         setTurnsAndRef(prev => {
             const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
+            const providerAttribution = providerOverride ? { provider: providerOverride } : {};
             return [
                 ...prev,
-                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, pasteExternalized, ...(modelOverride ? { model: modelOverride } : {}) },
-                { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
+                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, pasteExternalized, ...providerAttribution, ...(modelOverride ? { model: modelOverride } : {}) },
+                { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1, ...providerAttribution },
             ];
         });
 

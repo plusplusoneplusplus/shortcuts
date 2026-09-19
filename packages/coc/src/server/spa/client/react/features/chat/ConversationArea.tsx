@@ -17,7 +17,7 @@ import type { QueuedMessage } from '../../utils/chatUtils';
 import type { BackgroundTasksState, AskUserBatch, McpOAuthPromptData, RalphGrillPlanningProgress } from './hooks/useChatSSE';
 import { MODE_ICONS, MODE_TEXT_COLORS, normalizeChatMode } from '../../repos/modeConfig';
 import type { ChatMode } from '../../repos/modeConfig';
-import type { ChatProvider } from './ProviderBadge';
+import { getProviderLabel, type ChatProvider } from './ProviderBadge';
 import type { ClientSideNote, QuickAskSelection } from './quick-ask/types';
 
 export const INTERRUPTED_TURN_CONTINUE_MESSAGE = 'Please continue from where the last response was interrupted.';
@@ -30,6 +30,33 @@ export function buildInterruptedTurnFollowUpMessage(reason?: string | null): str
         return INTERRUPTED_TURN_RETRY_MESSAGE;
     }
     return INTERRUPTED_TURN_CONTINUE_MESSAGE;
+}
+
+export function hasProviderSegmentBoundary(
+    turns: ClientConversationTurn[],
+    assistantIndex: number,
+): boolean {
+    const current = turns[assistantIndex];
+    if (current?.role !== 'assistant' || !current.provider) return false;
+
+    for (let i = assistantIndex - 1; i >= 0; i--) {
+        const previous = turns[i];
+        if (previous.role !== 'assistant') continue;
+        if (current.segmentId && previous.segmentId) {
+            return current.segmentId !== previous.segmentId;
+        }
+        return Boolean(previous.provider && previous.provider !== current.provider);
+    }
+    return false;
+}
+
+function compareConversationTurns(a: ClientConversationTurn, b: ClientConversationTurn): number {
+    const ai = a.turnIndex;
+    const bi = b.turnIndex;
+    if (ai == null && bi == null) return 0;
+    if (ai == null) return 1;
+    if (bi == null) return -1;
+    return ai - bi;
 }
 
 export interface ConversationAreaProps {
@@ -365,27 +392,46 @@ export function ConversationArea({
                         {(() => {
                             const hasStreaming = turns.some(t => t.streaming);
                             const nextTurnIndex = Math.max(0, ...turns.map(t => t.turnIndex ?? -1)) + 1;
+                            const latestTurn = [...turns].sort(compareConversationTurns).at(-1);
                             // While compacting, the process is marked `running` (AC-01) but
                             // there is no live assistant generation — suppress the empty
                             // streaming placeholder so the synthetic compaction bubble is the
                             // only in-progress indicator.
                             const renderTurns =
                                 shouldInjectStreamingPlaceholder({ status: task?.status, hasStreaming, turnCount: turns.length, isCompacting: !!isCompacting })
-                                    ? [...turns, { role: 'assistant' as const, content: '', streaming: true, timeline: [], turnIndex: nextTurnIndex }]
+                                    ? [...turns, {
+                                        role: 'assistant' as const,
+                                        content: '',
+                                        streaming: true,
+                                        timeline: [],
+                                        turnIndex: nextTurnIndex,
+                                        provider: latestTurn?.provider ?? provider,
+                                    }]
                                     : turns;
                             const sortedTurns = [...renderTurns]
                                 .filter(t => !t.deletedAt && (!t.archived || showArchived || !onArchiveTurn))
-                                .sort((a, b) => {
-                                const ai = a.turnIndex;
-                                const bi = b.turnIndex;
-                                if (ai == null && bi == null) return 0;
-                                if (ai == null) return 1;
-                                if (bi == null) return -1;
-                                return ai - bi;
-                            });
+                                .sort(compareConversationTurns);
                             return sortedTurns.map((turn, i) => {
                                 const idx = turn.turnIndex ?? i;
                                 const isSelected = isSelecting && selectedTurns?.has(idx);
+                                const turnProvider = turn.provider ?? provider;
+                                const providerBoundary = hasProviderSegmentBoundary(sortedTurns, i) ? (
+                                    <div
+                                        className="provider-segment-divider flex items-center gap-3 mt-3.5 mb-2 ml-9"
+                                        data-testid="provider-segment-divider"
+                                        role="separator"
+                                        aria-label={`Continued with ${getProviderLabel(turn.provider)}`}
+                                        title="Context was reconstructed and may not include every detail from the earlier provider session."
+                                    >
+                                        <span className="provider-segment-divider-label font-mono text-[10.5px] uppercase tracking-[0.1em] text-[#6b7280] dark:text-[#9aa0a6] whitespace-nowrap">
+                                            Continued with{' '}
+                                            <strong className="font-semibold text-[#1f2328] dark:text-[#cccccc]">
+                                                {getProviderLabel(turn.provider)}
+                                            </strong>
+                                        </span>
+                                        <div className="provider-segment-divider-rule flex-1 h-px bg-[#e5e7eb] dark:bg-[#3c3c3c]" />
+                                    </div>
+                                ) : null;
 
                                 // Detect model change: show divider when a user turn
                                 // introduces a different model than the previous model-bearing turn,
@@ -450,6 +496,7 @@ export function ConversationArea({
 
                                 return (
                                     <div key={idx}>
+                                        {providerBoundary}
                                         {modelDivider}
                                         {modeDivider}
                                         <div
@@ -489,7 +536,7 @@ export function ConversationArea({
                                                     processId={processId}
                                                     openNotePath={openNotePath}
                                                     processType={processType}
-                                                    provider={provider}
+                                                    provider={turnProvider}
                                                     rewindProvider={rewindProvider}
                                                     sidenotes={sidenotes}
                                                     onCreateSidenote={onCreateSidenote}

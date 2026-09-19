@@ -136,13 +136,19 @@ describe('useSendMessage', () => {
 
     it('includes the confirmed concrete provider in the follow-up request', async () => {
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
-        const opts = makeOptions({ providerOverride: 'codex' });
+        const setTurnsAndRef = vi.fn();
+        const opts = makeOptions({ providerOverride: 'codex', setTurnsAndRef });
 
         const { result } = renderHook(() => useSendMessage(opts));
         await act(async () => { await result.current.sendFollowUp('hello'); });
 
         const body = JSON.parse(fetchMock.mock.calls[0][1].body);
         expect(body.provider).toBe('codex');
+        const updater = setTurnsAndRef.mock.calls[0][0];
+        expect(updater([])).toEqual([
+            expect.objectContaining({ role: 'user', provider: 'codex' }),
+            expect.objectContaining({ role: 'assistant', provider: 'codex', streaming: true }),
+        ]);
     });
 
     it('omits provider when the composer has no confirmed switch', async () => {

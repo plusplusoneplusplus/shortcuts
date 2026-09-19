@@ -8,10 +8,12 @@ tool calls. Chat list and lens: [chat.md](chat.md). Composer:
 
 ### ConversationTurnBubble
 
-`provider` flows `ChatDetail` → `ConversationArea` → `ConversationTurnBubble`, colouring
-the assistant avatar via `getProviderAvatarClasses` (`ProviderBadge.tsx`): Copilot green,
-Claude coral/orange, Codex indigo, unknown → green. Error and script-output turns use
-their own palettes and ignore `provider`.
+Persisted turn `provider` and `segmentId` attribution flows unchanged through history
+loading and SSE snapshots. `ConversationTurnBubble` prefers the turn provider for its
+assistant avatar, provider label, and model metadata, falling back to the active
+conversation provider only for unattributed records. `ConversationArea` derives a
+non-persisted `Continued with <Provider>` separator before the first assistant response
+of each provable provider segment. Error and script-output turns keep their own palettes.
 
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
