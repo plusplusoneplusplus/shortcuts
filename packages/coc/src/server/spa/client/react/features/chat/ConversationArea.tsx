@@ -174,6 +174,12 @@ export interface ConversationAreaProps {
      * default. Falls back to `provider` in the bubble when omitted.
      */
     rewindProvider?: ChatProvider;
+    /** Authoritative provider segment that may be rewound natively. */
+    activeProviderSegment?: {
+        provider: ChatProvider;
+        segmentId: string;
+        firstTurnIndex: number;
+    };
     /**
      * Quick Ask side-notes for this process (persisted + optimistic). Forwarded
      * to {@link ConversationTurnBubble}; only rendered on assistant turns when
@@ -258,6 +264,7 @@ export function ConversationArea({
     processError,
     provider,
     rewindProvider,
+    activeProviderSegment,
     sidenotes,
     onCreateSidenote,
     onRetrySidenote,
@@ -374,6 +381,7 @@ export function ConversationArea({
                                                 processType={processType}
                                                 provider={provider}
                                                 rewindProvider={rewindProvider}
+                                                activeProviderSegment={activeProviderSegment}
                                             />
                                         ))}
                                     </div>
@@ -538,6 +546,7 @@ export function ConversationArea({
                                                     processType={processType}
                                                     provider={turnProvider}
                                                     rewindProvider={rewindProvider}
+                                                    activeProviderSegment={activeProviderSegment}
                                                     sidenotes={sidenotes}
                                                     onCreateSidenote={onCreateSidenote}
                                                     onRetrySidenote={onRetrySidenote}

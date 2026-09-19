@@ -374,6 +374,62 @@ describe('POST /api/processes/:id/turns/:turnIndex/rewind', () => {
         expect(mockRewindSession).not.toHaveBeenCalled();
     });
 
+    it('rejects rewind into an earlier provider segment before touching the active SDK session', async () => {
+        await seedConversation(store, 'proc-switched');
+        const seeded = store.processes.get('proc-switched')!;
+        store.processes.set('proc-switched', {
+            ...seeded,
+            sdkSessionId: 'claude-session',
+            metadata: { ...seeded.metadata, provider: 'claude' } as any,
+            activeProviderSession: {
+                provider: 'claude',
+                sessionId: 'claude-session',
+                segmentId: 'segment-b',
+                firstTurnIndex: 2,
+            },
+            conversationTurns: seeded.conversationTurns?.map(turn => ({
+                ...turn,
+                provider: turn.turnIndex < 2 ? 'copilot' : 'claude',
+                segmentId: turn.turnIndex < 2 ? 'segment-a' : 'segment-b',
+            })),
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-switched/turns/0/rewind', { method: 'POST', body: '{}' });
+
+        expect(res.status).toBe(409);
+        expect(res.json()).toMatchObject({
+            code: 'CROSS_PROVIDER_REWIND_UNAVAILABLE',
+            error: 'This turn belongs to an earlier provider session. Cross-provider rewind is not available yet.',
+        });
+        expect(mockRewindSession).not.toHaveBeenCalled();
+        expect(store.truncateConversationTurns).not.toHaveBeenCalled();
+    });
+
+    it('rewinds the active segment through its authoritative provider and session binding', async () => {
+        await seedConversation(store, 'proc-bound');
+        const seeded = store.processes.get('proc-bound')!;
+        store.processes.set('proc-bound', {
+            ...seeded,
+            metadata: { ...seeded.metadata, provider: 'copilot' } as any,
+            activeProviderSession: {
+                provider: 'claude',
+                sessionId: 'claude-session',
+                segmentId: 'segment-b',
+                firstTurnIndex: 2,
+            },
+            conversationTurns: seeded.conversationTurns?.map(turn => turn.turnIndex < 2
+                ? { ...turn, provider: 'copilot', segmentId: 'segment-a' }
+                : { ...turn, provider: 'claude', segmentId: 'segment-b' }),
+        });
+        mockRewindSession.mockResolvedValue({ eventsRemoved: 2, upToEventId: 'evt-2' });
+
+        const res = await request(baseUrl, '/api/processes/proc-bound/turns/2/rewind', { method: 'POST', body: '{}' });
+
+        expect(res.status).toBe(200);
+        expect(requestedProviders).toContain('claude');
+        expect(mockRewindSession).toHaveBeenCalledWith('claude-session', 'evt-2');
+    });
+
     it('maps a thrown RewindUnsupportedError to 409 and leaves CoC turns intact', async () => {
         await seedConversation(store);
         const err: any = new Error('Rewind is not supported for provider.');

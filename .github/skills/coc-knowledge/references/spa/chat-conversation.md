@@ -15,6 +15,11 @@ conversation provider only for unattributed records. `ConversationArea` derives 
 non-persisted `Continued with <Provider>` separator before the first assistant response
 of each provable provider segment. Error and script-output turns keep their own palettes.
 
+Native rewind and edit-and-resend are available only for user turns in the active
+provider segment. Earlier-segment controls stay visible but disabled with the
+cross-provider rewind explanation; the REST route enforces the same boundary against
+the authoritative provider/session binding before calling a provider SDK.
+
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
 escaped and never injected); the raw toggle shows literal source. Turns with

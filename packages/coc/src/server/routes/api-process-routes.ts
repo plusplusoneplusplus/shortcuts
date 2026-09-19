@@ -43,23 +43,13 @@ import { buildMetadataProcess } from '../processes/process-metadata-read-model';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { getRepoDataPath } from '../paths';
+import { readActiveProviderSession } from '../processes/active-provider-session';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
 
 /** Terminal statuses that cannot be cancelled. */
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
-
-/** Every provider a chat can run on; the string doubles as the SDK registry key. */
-const CHAT_PROVIDERS: readonly ChatProvider[] = ['copilot', 'codex', 'claude', 'opencode'];
-
-/**
- * Narrow `metadata.provider` to a known provider, defaulting to copilot for
- * legacy records that never stored one.
- */
-function resolveConversationProvider(value: unknown): ChatProvider {
-    return CHAT_PROVIDERS.includes(value as ChatProvider) ? value as ChatProvider : 'copilot';
-}
 
 type AskUserRouteAnswer = {
     questionId?: unknown;
@@ -891,11 +881,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, notFound('Process'));
             }
 
-            // Resolve the conversation's provider — it doubles as the SDK service
-            // registry key. There is no provider allow-list here: whether rewind is
-            // possible is decided by the service itself (a provider without a native
-            // primitive throws RewindUnsupportedError, which becomes the 409 below).
-            const provider = resolveConversationProvider(proc.metadata?.provider);
+            const activeBinding = readActiveProviderSession(proc);
+            const provider = activeBinding.provider as ChatProvider;
 
             // Idle guard: only a settled conversation with no buffered work can be
             // rewound. A running/queued/cancelling status — or any pending message
@@ -913,10 +900,24 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (target.role !== 'user') {
                 return handleAPIError(res, new APIError(400, 'Only user turns can be rewound to.', 'TURN_NOT_REWINDABLE'));
             }
+            if (
+                proc.activeProviderSession
+                && (
+                    target.turnIndex < activeBinding.firstTurnIndex
+                    || (target.segmentId != null && target.segmentId !== activeBinding.segmentId)
+                    || (target.provider != null && target.provider !== activeBinding.provider)
+                )
+            ) {
+                return handleAPIError(res, new APIError(
+                    409,
+                    'This turn belongs to an earlier provider session. Cross-provider rewind is not available yet.',
+                    'CROSS_PROVIDER_REWIND_UNAVAILABLE',
+                ));
+            }
             if (!target.sdkEventId) {
                 return handleAPIError(res, new APIError(400, 'This turn has no captured rewind anchor and cannot be rewound (legacy or pre-fork turn).', 'TURN_NOT_REWINDABLE'));
             }
-            if (!proc.sdkSessionId) {
+            if (!activeBinding.sessionId) {
                 return handleAPIError(res, new APIError(400, 'Conversation has no SDK session to rewind.', 'TURN_NOT_REWINDABLE'));
             }
             if (!store.truncateConversationTurns) {
@@ -937,7 +938,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
             let rewound: { newSessionId?: string } | undefined;
             try {
-                rewound = await sdkService.rewindSession(proc.sdkSessionId, target.sdkEventId);
+                rewound = await sdkService.rewindSession(activeBinding.sessionId, target.sdkEventId);
             } catch (err: any) {
                 if (isRewindUnsupportedError(err)) {
                     return handleAPIError(res, new APIError(409, err?.message || 'Rewind is not supported for this conversation.', 'REWIND_UNSUPPORTED'));
@@ -952,8 +953,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // history is already forked, so a metadata write failure must not fail
             // the rewind.
             const newSessionId = rewound?.newSessionId;
-            if (newSessionId && newSessionId !== proc.sdkSessionId) {
-                const priorSessionId = proc.sdkSessionId;
+            if (newSessionId && newSessionId !== activeBinding.sessionId) {
+                const priorSessionId = activeBinding.sessionId;
                 try {
                     const prior = Array.isArray((proc.metadata as any)?.rewindHistory)
                         ? (proc.metadata as any).rewindHistory

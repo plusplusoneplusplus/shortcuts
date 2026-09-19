@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
-import { EDIT_BUSY_TOOLTIP, REWIND_NO_ANCHOR_TOOLTIP } from '../../../src/server/spa/client/react/features/chat/hooks/rewindCapability';
+import { EDIT_BUSY_TOOLTIP, REWIND_EARLIER_SEGMENT_TOOLTIP, REWIND_NO_ANCHOR_TOOLTIP } from '../../../src/server/spa/client/react/features/chat/hooks/rewindCapability';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
 vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
@@ -130,6 +130,25 @@ describe('ConversationTurnBubble — Edit message pencil', () => {
         expect(btn!.disabled).toBe(true);
         expect(btn!.getAttribute('title')).toBe(EDIT_BUSY_TOOLTIP);
         fireEvent.click(btn!);
+        expect(onEditTurn).not.toHaveBeenCalled();
+    });
+
+    it('disables editing for a turn from an earlier provider segment', () => {
+        const onEditTurn = vi.fn();
+        render(
+            <ConversationTurnBubble
+                turn={makeTurn({ provider: 'copilot', segmentId: 'segment-a' })}
+                turnIndex={0}
+                provider="copilot"
+                rewindProvider="claude"
+                activeProviderSegment={{ provider: 'claude', segmentId: 'segment-b', firstTurnIndex: 2 }}
+                onEditTurn={onEditTurn}
+            />,
+        );
+        const btn = editBtn()!;
+        expect(btn.disabled).toBe(true);
+        expect(btn.title).toBe(REWIND_EARLIER_SEGMENT_TOOLTIP);
+        fireEvent.click(btn);
         expect(onEditTurn).not.toHaveBeenCalled();
     });
 

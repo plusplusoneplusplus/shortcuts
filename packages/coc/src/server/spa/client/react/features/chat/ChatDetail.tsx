@@ -429,6 +429,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         || rawSessionProvider === 'copilot'
         ? rawSessionProvider
         : 'copilot';
+    const activeProviderSegment = metadataProcess?.activeProviderSession as {
+        provider: ChatProvider;
+        segmentId: string;
+        firstTurnIndex: number;
+    } | undefined;
     const composerProvider: ConcreteChatProvider = pendingProvider ?? conversationProvider;
     const owningServerBaseUrl = sourceBaseUrl ?? (workspaceId ? lookupCloneBaseUrl(workspaceId) : undefined);
     const { models: activeProviderModels } = useModels(conversationProvider, owningServerBaseUrl);
@@ -2763,6 +2768,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
                         rewindProvider={conversationProvider}
+                        activeProviderSegment={activeProviderSegment}
                         sidenotes={quickAsk.items}
                         onCreateSidenote={quickAsk.createSidenote}
                         onRetrySidenote={quickAsk.retrySidenote}

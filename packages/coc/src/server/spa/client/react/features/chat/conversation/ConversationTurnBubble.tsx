@@ -41,7 +41,7 @@ import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
 import { extractInjectedBlocks, projectChatModeContextForDisplay } from './injectedBlocks';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, getProviderLabel, type ChatProvider } from '../ProviderBadge';
-import { REWIND_NO_ANCHOR_TOOLTIP, resolveRewindCapability } from '../hooks/rewindCapability';
+import { REWIND_EARLIER_SEGMENT_TOOLTIP, REWIND_NO_ANCHOR_TOOLTIP, resolveRewindCapability } from '../hooks/rewindCapability';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
 import { CLIENT_PASTE_THRESHOLD, getPastePreviewLines } from '../hooks/useTextPaste';
 import {
@@ -172,6 +172,12 @@ interface ConversationTurnBubbleProps {
      * a codex-default user. Falls back to `provider` when omitted.
      */
     rewindProvider?: ChatProvider;
+    /** Authoritative active provider-session segment used to gate rewind/edit. */
+    activeProviderSegment?: {
+        provider: ChatProvider;
+        segmentId: string;
+        firstTurnIndex: number;
+    };
 }
 
 interface RenderToolCall {
@@ -1125,7 +1131,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const assistantProvider = turn.provider ?? provider;
     const assistantProviderLabel = getProviderLabel(assistantProvider);
@@ -1229,6 +1235,17 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     }, []);
 
     const linkHref = contextMenu?.linkHref;
+    const rewindCapability = useMemo(
+        () => resolveRewindCapability(rewindProvider ?? provider, turn.sdkEventId, {
+            turnIndex,
+            turnProvider: turn.provider,
+            turnSegmentId: turn.segmentId,
+            activeProvider: activeProviderSegment?.provider,
+            activeSegmentId: activeProviderSegment?.segmentId,
+            activeSegmentStartTurnIndex: activeProviderSegment?.firstTurnIndex,
+        }),
+        [rewindProvider, provider, turn.sdkEventId, turn.provider, turn.segmentId, turnIndex, activeProviderSegment],
+    );
 
     const contextMenuItems = useMemo((): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [];
@@ -1322,37 +1339,36 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             // provider whose turn carries no anchor shows it disabled with an
             // explanatory tooltip. The backend still gates idle/eligibility and
             // surfaces an error toast on rejection.
-            const rewindCapability = resolveRewindCapability(rewindProvider ?? provider, turn.sdkEventId);
             if (onRewindTurn && isUser && rewindCapability !== 'hidden') {
-                const rewindDisabled = rewindCapability === 'disabled';
+                const rewindDisabled = rewindCapability !== 'enabled';
                 items.push({
                     label: 'Rewind to here',
                     icon: '⏪',
                     disabled: rewindDisabled,
-                    title: rewindDisabled ? REWIND_NO_ANCHOR_TOOLTIP : undefined,
+                    title: rewindCapability === 'earlier-segment'
+                        ? REWIND_EARLIER_SEGMENT_TOOLTIP
+                        : rewindDisabled ? REWIND_NO_ANCHOR_TOOLTIP : undefined,
                     onClick: () => { if (!rewindDisabled) onRewindTurn(turnIndex); },
                 });
             }
         }
         return items;
-    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn, provider, rewindProvider]);
+    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn, rewindCapability]);
 
     // "Edit message" pencil in the user-turn hover strip. Same gating as the
     // rewind menu item (saving an edit *is* a rewind + resend), so the capability
     // resolver is shared rather than duplicated. The busy guard differs: rewind
     // withholds its menu item, while the pencil stays visible but disabled so the
     // affordance does not flicker in and out while the agent is streaming.
-    const editCapability = useMemo(
-        () => resolveRewindCapability(rewindProvider ?? provider, turn.sdkEventId),
-        [rewindProvider, provider, turn.sdkEventId],
-    );
     // While this turn is being edited its own content is replaced by the
     // editor, so the pencil that opened it has nothing left to act on.
     const showInlineEditor = isUser && !!inlineEditor;
-    const showEditButton = isUser && !showInlineEditor && !!onEditTurn && turnIndex != null && editCapability !== 'hidden';
-    const editDisabledTooltip = editCapability === 'disabled'
+    const showEditButton = isUser && !showInlineEditor && !!onEditTurn && turnIndex != null && rewindCapability !== 'hidden';
+    const editDisabledTooltip = rewindCapability === 'disabled'
         ? REWIND_NO_ANCHOR_TOOLTIP
-        : (editTurnDisabledReason ?? null);
+        : rewindCapability === 'earlier-segment'
+            ? REWIND_EARLIER_SEGMENT_TOOLTIP
+            : (editTurnDisabledReason ?? null);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {

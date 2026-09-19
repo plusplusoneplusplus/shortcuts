@@ -21,6 +21,7 @@ import { QueueProvider } from '../../../src/server/spa/client/react/contexts/Que
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
 import { NotificationProvider } from '../../../src/server/spa/client/react/contexts/NotificationContext';
 import { TaskProvider } from '../../../src/server/spa/client/react/contexts/TaskContext';
+import { REWIND_EARLIER_SEGMENT_TOOLTIP } from '../../../src/server/spa/client/react/features/chat/hooks/rewindCapability';
 
 // ── Hoisted mock state ─────────────────────────────────────────────────────
 
@@ -217,7 +218,18 @@ let fetchMock: ReturnType<typeof vi.fn>;
  * Renders ChatDetail over a two-turn completed chat whose process metadata
  * declares `provider`, with the user turn optionally carrying a rewind anchor.
  */
-async function renderChat(opts: { provider: string; sdkEventId?: string }) {
+async function renderChat(opts: {
+    provider: string;
+    sdkEventId?: string;
+    turnProvider?: 'copilot' | 'codex' | 'claude' | 'opencode';
+    turnSegmentId?: string;
+    activeProviderSession?: {
+        provider: 'copilot' | 'codex' | 'claude' | 'opencode';
+        sessionId: string;
+        segmentId: string;
+        firstTurnIndex: number;
+    };
+}) {
     const task = {
         id: 'task-1',
         type: 'chat',
@@ -232,8 +244,17 @@ async function renderChat(opts: { provider: string; sdkEventId?: string }) {
         id: 'proc-1',
         status: 'completed',
         metadata: { mode: 'autopilot', sessionId: 'sess-1', provider: opts.provider },
+        activeProviderSession: opts.activeProviderSession,
         conversationTurns: [
-            { role: 'user', content: 'Hello', turnIndex: 0, timeline: [], sdkEventId: opts.sdkEventId },
+            {
+                role: 'user',
+                content: 'Hello',
+                turnIndex: 0,
+                timeline: [],
+                sdkEventId: opts.sdkEventId,
+                provider: opts.turnProvider,
+                segmentId: opts.turnSegmentId,
+            },
             { role: 'assistant', content: 'Hi there', turnIndex: 1, timeline: [] },
         ],
     };
@@ -310,5 +331,24 @@ describe('ChatDetail rewind provider plumbing', () => {
         const item = openRewindMenu();
         expect(item).toBeTruthy();
         expect(item!.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('disables rewind for a user turn before the active provider segment', async () => {
+        await renderChat({
+            provider: 'claude',
+            sdkEventId: 'evt-old',
+            turnProvider: 'copilot',
+            turnSegmentId: 'segment-a',
+            activeProviderSession: {
+                provider: 'claude',
+                sessionId: 'session-b',
+                segmentId: 'segment-b',
+                firstTurnIndex: 2,
+            },
+        });
+        const item = openRewindMenu();
+        expect(item).toBeTruthy();
+        expect(item!.disabled).toBe(true);
+        expect(item!.closest('[title]')?.getAttribute('title')).toBe(REWIND_EARLIER_SEGMENT_TOOLTIP);
     });
 });
