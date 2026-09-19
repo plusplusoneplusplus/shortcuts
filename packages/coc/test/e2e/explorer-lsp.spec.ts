@@ -40,6 +40,7 @@ import {
     startSecondaryServer,
 } from './fixtures/secondary-server';
 import { execFileSync, spawnSync } from 'child_process';
+import { runMonacoMenuItem } from './helpers/monaco-menu';
 import type { Locator, Page } from '@playwright/test';
 
 const WORKSPACE_ID = 'ws-lsp';
@@ -500,7 +501,7 @@ async function startPeekDefinition(
     await expect(peekDefinition).toBeVisible();
     return {
         peek: page.locator('.reference-zone-widget'),
-        completion: peekDefinition.click(),
+        completion: runMonacoMenuItem(peekDefinition),
     };
 }
 
