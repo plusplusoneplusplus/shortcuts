@@ -159,7 +159,20 @@ describe('FollowUpInputArea — typing-driven prewarm', () => {
         act(() => { vi.advanceTimersByTime(1); });
         expect(prewarmSpy).toHaveBeenCalledTimes(1);
         expect(getClientSpy).toHaveBeenCalledWith('ws-1');
-        expect(prewarmSpy).toHaveBeenCalledWith('proc-1', { workspace: 'ws-1' });
+        expect(prewarmSpy).toHaveBeenCalledWith('proc-1', { workspace: 'ws-1', provider: 'copilot' });
+    });
+
+    it('prewarms and observes the confirmed pending provider', () => {
+        render(<FollowUpInputArea {...makeProps({
+            followUpInput: 'hello',
+            activeProvider: 'copilot',
+            selectedProvider: 'codex',
+        })} />);
+
+        act(() => { vi.advanceTimersByTime(500); });
+
+        expect(prewarmSpy).toHaveBeenCalledWith('proc-1', { workspace: 'ws-1', provider: 'codex' });
+        expect(MockEventSource.last!.url).toContain('warm=1&provider=codex');
     });
 
     it('does not prewarm while a generation is active (suppressed)', () => {

@@ -13,6 +13,7 @@ import { getServerLogger } from '../logging/server-logger';
 import type { RalphGrillPlanningProgress } from '../ralph/grill-planning';
 import { warmStatusBridge, type WarmStatusBridge } from './warm-status-bridge';
 import { backgroundTasksRegistry, type BackgroundTasksRegistry } from './background-tasks-registry';
+import { readActiveProviderSession } from '../processes/active-provider-session';
 
 // ============================================================================
 // SSE Event Payload Types
@@ -172,6 +173,7 @@ export async function handleProcessStream(
     // processes — the dominant warm case is typing a follow-up on a finished
     // conversation whose provider client is still parked warm.
     const warmOnly = parsed.searchParams.get('warm') === '1';
+    const requestedWarmProvider = asProviderId(parsed.searchParams.get('provider'));
 
     // 1. Look up the process — 404 if not found
     let process = await store.getProcess(processId, wsId);
@@ -188,7 +190,7 @@ export async function handleProcessStream(
     getServerLogger().debug({ processId, warmOnly }, 'SSE stream started');
 
     if (warmOnly) {
-        streamWarmStatusOnly(req, res, processId, process, store, warmBridge);
+        streamWarmStatusOnly(req, res, processId, process, store, warmBridge, requestedWarmProvider);
         return;
     }
 
@@ -237,10 +239,11 @@ export async function handleProcessStream(
     // Relay WarmClientRegistry transitions for this conversation process onto
     // this stream as `warm_status` events (AC-01). Interest lives for the life of
     // the stream; providers that never warm (e.g. Claude) simply never fire.
+    const streamProvider = resolveProcessWarmProvider(process);
     const unregisterWarm = warmBridge.register({
         store,
         processId,
-        provider: resolveProviderId(process.metadata?.provider),
+        provider: streamProvider,
         workingDirectory: process.workingDirectory,
     });
 
@@ -363,7 +366,8 @@ export async function handleProcessStream(
             }
         } else if (eventType === 'warm-status') {
             const warmStatus = (event as { warmStatus?: WarmStatus }).warmStatus;
-            if (warmStatus) {
+            const provider = (event as { provider?: string }).provider;
+            if (warmStatus && (!provider || provider === streamProvider)) {
                 writeNamedEvent(res, 'warm_status', { status: warmStatus } satisfies WarmStatusPayload);
             }
         } else if (event.type === 'complete') {
@@ -423,9 +427,10 @@ function streamWarmStatusOnly(
     process: AIProcess,
     store: ProcessStore,
     warmBridge: WarmStatusBridge,
+    requestedProvider?: string,
 ): void {
     let cleaned = false;
-    const provider = resolveProviderId(process.metadata?.provider);
+    const provider = requestedProvider ?? resolveProcessWarmProvider(process);
     const workingDirectory = process.workingDirectory;
 
     const sendWarmStatus = (status: WarmStatus) => {
@@ -444,7 +449,8 @@ function streamWarmStatusOnly(
     const unsubscribe = store.onProcessOutput(processId, (event) => {
         if ((event as { type: string }).type !== 'warm-status') { return; }
         const warmStatus = (event as { warmStatus?: WarmStatus }).warmStatus;
-        if (warmStatus) {
+        const eventProvider = (event as { provider?: string }).provider;
+        if (warmStatus && (!eventProvider || eventProvider === provider)) {
             sendWarmStatus(warmStatus);
         }
     });
@@ -476,14 +482,27 @@ function streamWarmStatusOnly(
 }
 
 /**
- * Normalize a process's `metadata.provider` to the warm-key provider id. Mirrors
- * the prewarm route: unknown/absent providers default to `copilot` so the warm
- * key matches the SDK service that owns the registry for that conversation.
+ * Normalize an attributed provider to the warm-key provider id. Unknown or
+ * absent providers default to `copilot` for never-attributed records.
  */
 function resolveProviderId(provider: unknown): string {
+    return asProviderId(provider) ?? 'copilot';
+}
+
+function asProviderId(provider: unknown): string | undefined {
     return provider === 'codex' || provider === 'claude' || provider === 'copilot' || provider === 'opencode'
         ? provider
-        : 'copilot';
+        : undefined;
+}
+
+function resolveProcessWarmProvider(process: AIProcess): string {
+    const turns = process.conversationTurns ?? [];
+    for (let i = turns.length - 1; i >= 0; i--) {
+        if (turns[i].role === 'user' && turns[i].provider) {
+            return resolveProviderId(turns[i].provider);
+        }
+    }
+    return resolveProviderId(readActiveProviderSession(process).provider);
 }
 
 /**

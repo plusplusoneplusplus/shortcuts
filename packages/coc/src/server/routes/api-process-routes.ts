@@ -28,7 +28,7 @@ import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
-import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, serializeCommitChatMetadata } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProvider, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
     ProcessMessageDeliveryService,
@@ -1031,11 +1031,23 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return void handleAPIError(res, notFound('Process'));
             }
 
-            // Resolve the conversation provider; default to copilot. The provider
-            // string doubles as the SDK service registry key.
-            const provider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
-                ? proc.metadata.provider
-                : 'copilot';
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const requestedProvider = body.provider === undefined
+                ? undefined
+                : resolveChatProvider(body.provider);
+            if (body.provider !== undefined && !requestedProvider) {
+                return void handleAPIError(res, new APIError(400, 'Provider must be a concrete enabled provider.', 'INVALID_PROVIDER'));
+            }
+            const activeProvider = readActiveProviderSession(proc).provider as ChatProvider;
+            const provider = requestedProvider ?? activeProvider;
+            if (provider !== activeProvider && ctx.getLiveFeatureFlags?.().chatProviderSwitchingEnabled !== true) {
+                return void handleAPIError(res, new APIError(
+                    400,
+                    'Switching providers in an existing conversation is not enabled on this server.',
+                    'PROVIDER_SWITCHING_DISABLED',
+                ));
+            }
 
             const { sdkServiceRegistry } = await import('@plusplusoneplusplus/forge');
             const service = sdkServiceRegistry.get(provider);

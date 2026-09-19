@@ -403,6 +403,25 @@ describe('ProcessesClient mock server contract', () => {
     expectJsonRequest(mock.requests[2], 'POST', '/api/processes/proc%2F1/compact', {});
   });
 
+  it('prewarms the selected provider while preserving workspace routing', async () => {
+    mock = await startMockServer();
+    mock.on('POST', '/api/processes/proc%2F1/prewarm', { body: { warming: true, provider: 'codex' } });
+    const client = createClient(mock);
+
+    await expect(client.processes.prewarm('proc/1', {
+      workspace: 'repo/a',
+      provider: 'codex',
+    })).resolves.toEqual({ warming: true, provider: 'codex' });
+
+    expectJsonRequest(
+      mock.requests[0],
+      'POST',
+      '/api/processes/proc%2F1/prewarm',
+      { provider: 'codex' },
+      { workspace: 'repo/a' },
+    );
+  });
+
   it('reads output text fallback and serializes range and offset query params', async () => {
     mock = await startMockServer();
     const markdown = '# Conversation output\n\nHello.';

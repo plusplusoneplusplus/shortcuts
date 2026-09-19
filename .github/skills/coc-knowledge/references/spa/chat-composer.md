@@ -151,18 +151,20 @@ from live `token-usage`; otherwise it falls back to a single-colour bar.
 `WarmIndicatorDot` reflects this conversation process's backend warm-client state, with
 display and side effect split (`features/chat/hooks/`):
 
-- **Display is stream-only.** `useWarmClientStatus({ workspaceId, processId })` opens the
-  warm-only SSE stream (`/processes/:id/stream?warm=1` via `cloneApiBase`), maps
+- **Display is stream-only.** `useWarmClientStatus({ workspaceId, processId, provider })` opens the
+  provider-scoped warm-only SSE stream (`/processes/:id/stream?warm=1&provider=...` via `cloneApiBase`), maps
   `warm_status` frames to `cold | warming | warm | active`, and resets to `cold` on
   process/workspace change, error, or unmount. The initial snapshot makes an already-warm
   conversation show the dot immediately. The dot is **never** set from a POST response —
   the stream is the single source of truth, with no client-side TTL or decay.
-- **Side effect** is `useTypingPrewarmClient({ input, workspaceId, processId, enabled,
-  debounceMs })`: the first non-empty input schedules one debounced
-  `client.processes.prewarm(processId, { workspace })` through `getCocClientForWorkspace`,
-  fires at most once per typing window, re-arms on empty input or a `(workspace, process)`
-  change, and swallows errors. The server prewarms under the process id warm key, so other
-  conversations in the same cwd stay cold. `FollowUpInputArea` gates it with
+- **Side effect** is `useTypingPrewarmClient({ input, workspaceId, processId, provider,
+  enabled, debounceMs })`: the first non-empty input schedules one debounced
+  `client.processes.prewarm(processId, { workspace, provider })` through
+  `getCocClientForWorkspace`, fires at most once per typing window, re-arms on empty input
+  or a `(workspace, process, provider)` change, and swallows errors. The confirmed pending
+  provider drives both the POST and stream; otherwise they use the active provider. The
+  server prewarms under the process id warm key, so other conversations in the same cwd
+  stay cold. `FollowUpInputArea` gates it with
   `enabled: !inputDisabled && !sending && !isActiveGeneration`.
 
 Claude and other non-warming providers only emit `cold`, so their dot is an invisible

@@ -407,6 +407,7 @@ export function FollowUpInputArea({
     const warmStatus = useWarmClientStatus({
         workspaceId: activeWorkspaceId,
         processId: activeProcessId,
+        provider: composerProvider,
     });
 
     // Side-effect half: prewarm the backend client while the user types a
@@ -417,6 +418,7 @@ export function FollowUpInputArea({
         input: followUpInput,
         workspaceId: activeWorkspaceId,
         processId: activeProcessId,
+        provider: composerProvider,
         enabled: !inputDisabled && !sending && !isActiveGeneration,
         debounceMs: getPrewarmDebounceMs(),
     });

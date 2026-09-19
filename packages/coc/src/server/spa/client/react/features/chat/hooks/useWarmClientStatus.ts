@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { cloneApiBase } from '../../../repos/cloneRegistry';
+import type { ChatProviderId } from '@plusplusoneplusplus/coc-client';
 
 /**
  * Real-time process-scoped warm status for a conversation, pushed from the backend
@@ -25,6 +26,8 @@ export interface UseWarmClientStatusOptions {
     workspaceId: string | null | undefined;
     /** Conversation/process id whose warm state should be reflected. */
     processId: string | null | undefined;
+    /** Provider whose `(provider, processId)` warm key should be observed. */
+    provider?: ChatProviderId;
     /**
      * When false, the SSE subscription is suppressed and the status stays
      * `cold` (e.g. there is no live conversation to reflect). Default true.
@@ -46,12 +49,13 @@ export interface UseWarmClientStatusOptions {
  * Truth lives entirely in the stream — there is no client-side debounce, POST,
  * or decay timer. Typing-driven prewarming is a separate side-effect hook
  * (`useTypingPrewarmClient`); this hook only observes. The status resets to
- * `cold` on a processId/workspace change, on unmount, and whenever the stream
+ * `cold` on a processId/workspace/provider change, on unmount, and whenever the stream
  * drops; the next push (an initial snapshot or a transition) restores it.
  */
 export function useWarmClientStatus({
     workspaceId,
     processId,
+    provider,
     enabled = true,
 }: UseWarmClientStatusOptions): WarmClientStatus {
     const [status, setStatus] = useState<WarmClientStatus>('cold');
@@ -73,8 +77,9 @@ export function useWarmClientStatus({
         // snapshot right away, so the dot settles to the real state quickly.
         setStatus('cold');
 
+        const providerQuery = provider ? `&provider=${encodeURIComponent(provider)}` : '';
         const es = new EventSource(
-            `${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/stream?warm=1`,
+            `${cloneApiBase(workspaceId)}/processes/${encodeURIComponent(processId)}/stream?warm=1${providerQuery}`,
         );
 
         es.addEventListener('warm_status', (event: Event) => {
@@ -97,7 +102,7 @@ export function useWarmClientStatus({
         return () => {
             es.close();
         };
-    }, [workspaceId, processId, enabled]);
+    }, [workspaceId, processId, provider, enabled]);
 
     return status;
 }

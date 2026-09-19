@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import type { ChatProviderId } from '@plusplusoneplusplus/coc-client';
 
 export interface UseTypingPrewarmClientOptions {
     /** Current composer text. A non-empty trimmed value opens a typing window. */
@@ -8,6 +9,8 @@ export interface UseTypingPrewarmClientOptions {
     workspaceId: string | null | undefined;
     /** Conversation/process id to prewarm. */
     processId: string | null | undefined;
+    /** Confirmed provider the next follow-up will use. */
+    provider?: ChatProviderId;
     /**
      * When false, no prewarm is scheduled (e.g. the session is expired, a turn is
      * already in flight, or a send is underway). Default true.
@@ -45,6 +48,7 @@ export function useTypingPrewarmClient({
     input,
     workspaceId,
     processId,
+    provider,
     enabled = true,
     debounceMs = 0,
 }: UseTypingPrewarmClientOptions): void {
@@ -60,13 +64,13 @@ export function useTypingPrewarmClient({
         }
     };
 
-    // Reset the latch (and drop any pending timer) whenever the conversation
-    // identity changes, so prewarming is scoped per (workspace, process).
+    // Reset the latch (and drop any pending timer) whenever the warm key
+    // changes, so prewarming is scoped per (workspace, process, provider).
     useEffect(() => {
         prewarmedRef.current = false;
         clearTimer();
         return clearTimer;
-    }, [workspaceId, processId]);
+    }, [workspaceId, processId, provider]);
 
     useEffect(() => {
         const hasText = input.trim().length > 0;
@@ -95,7 +99,7 @@ export function useTypingPrewarmClient({
                 // the correct CoC server. Best-effort: ignore the response and
                 // swallow rejections — the stream owns the dot, not this call.
                 void getCocClientForWorkspace(ws)
-                    .processes.prewarm(pid, { workspace: ws })
+                    .processes.prewarm(pid, { workspace: ws, ...(provider ? { provider } : {}) })
                     .catch(() => {});
             } catch {
                 /* never let a prewarm failure disrupt typing */
@@ -103,5 +107,5 @@ export function useTypingPrewarmClient({
         }, debounceMs);
 
         return clearTimer;
-    }, [input, workspaceId, processId, enabled, debounceMs]);
+    }, [input, workspaceId, processId, provider, enabled, debounceMs]);
 }

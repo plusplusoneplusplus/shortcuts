@@ -52,7 +52,7 @@ describe('WarmStatusBridge', () => {
         copilot.emit(makeWarmKey('copilot', 'p1'), 'warm');
 
         expect(store.emitProcessEvent).toHaveBeenCalledTimes(1);
-        expect(store.emitProcessEvent).toHaveBeenCalledWith('p1', { type: 'warm-status', warmStatus: 'warm' });
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('p1', { type: 'warm-status', warmStatus: 'warm', provider: 'copilot' });
     });
 
     it('relays every status in the lifecycle (warming → active → warm → cold)', () => {
@@ -92,7 +92,7 @@ describe('WarmStatusBridge', () => {
         bridge.register({ store: storeB as any, processId: 'pB', provider: 'copilot', workingDirectory: '/repo' });
         copilot.emit(key, 'active');
 
-        expect(storeA.emitProcessEvent).toHaveBeenCalledWith('pA', { type: 'warm-status', warmStatus: 'active' });
+        expect(storeA.emitProcessEvent).toHaveBeenCalledWith('pA', { type: 'warm-status', warmStatus: 'active', provider: 'copilot' });
         expect(storeB.emitProcessEvent).not.toHaveBeenCalled();
     });
 
@@ -120,7 +120,7 @@ describe('WarmStatusBridge', () => {
         copilot.emit(key, 'cold');
 
         expect(store.emitProcessEvent).toHaveBeenCalledTimes(1);
-        expect(store.emitProcessEvent).toHaveBeenCalledWith('p1', { type: 'warm-status', warmStatus: 'warm' });
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('p1', { type: 'warm-status', warmStatus: 'warm', provider: 'copilot' });
     });
 
     it('unregister is idempotent and only removes its own process', () => {
@@ -138,7 +138,7 @@ describe('WarmStatusBridge', () => {
         copilot.emit(key, 'warm');
 
         expect(storeA.emitProcessEvent).not.toHaveBeenCalled();
-        expect(storeB.emitProcessEvent).toHaveBeenCalledWith('pB', { type: 'warm-status', warmStatus: 'warm' });
+        expect(storeB.emitProcessEvent).toHaveBeenCalledWith('pB', { type: 'warm-status', warmStatus: 'warm', provider: 'copilot' });
     });
 
     it('ref-counts interest per process: a second stream survives the first closing (regression)', () => {
@@ -159,7 +159,7 @@ describe('WarmStatusBridge', () => {
         // The warm-only stream is still open → the parked-client push must arrive.
         copilot.emit(key, 'warm');
         expect(store.emitProcessEvent).toHaveBeenCalledTimes(1);
-        expect(store.emitProcessEvent).toHaveBeenCalledWith('p1', { type: 'warm-status', warmStatus: 'warm' });
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('p1', { type: 'warm-status', warmStatus: 'warm', provider: 'copilot' });
 
         // Once the last stream closes, interest is dropped.
         closeWarm();

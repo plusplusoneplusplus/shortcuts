@@ -2,8 +2,8 @@
  * WarmStatusBridge — relays WarmClientRegistry transitions to process SSE streams.
  *
  * The SDK services own a `WarmClientRegistry` keyed by `(provider, warmKey)`
- * and expose `onWarmStatusChange((key, status) => …)`. A conversation process maps
- * to such a key via its `metadata.provider` + process id. This bridge keeps
+ * and expose `onWarmStatusChange((key, status) => …)`. A conversation maps
+ * to such a key via its active or confirmed pending provider + process id. This bridge keeps
  * a `warmKey → interested-process` map: when an SSE stream opens for a process it
  * registers interest; on every registry transition for that key the bridge emits a
  * `warm-status` process event, which `handleProcessStream` relays to the SPA as a
@@ -134,6 +134,7 @@ export class WarmStatusBridge {
                     store.emitProcessEvent(processId, {
                         type: 'warm-status',
                         warmStatus: status,
+                        provider,
                     } as unknown as ProcessOutputEvent);
                 } catch {
                     // Best-effort: a single bad store must not break the fan-out.

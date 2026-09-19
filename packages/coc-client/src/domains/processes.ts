@@ -1,5 +1,6 @@
 import type {
   AIProcess,
+  ChatProviderId,
   ChatFolderListResponse,
   ChatFolderResponse,
   CreateChatFolderRequest,
@@ -342,11 +343,15 @@ export class ProcessesClient {
    * next send reuses a live process. Best-effort: a `warming: false` result is
    * normal (e.g. the provider can't stay warm) and not an error.
    */
-  prewarm(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<ProcessPrewarmResponse> {
+  prewarm(
+    processId: string,
+    options?: Pick<ProcessListQuery, 'workspace'> & { provider?: ChatProviderId },
+  ): Promise<ProcessPrewarmResponse> {
+    const query = options?.workspace ? { workspace: options.workspace } : undefined;
     return this.transport.request<ProcessPrewarmResponse>(`/processes/${encodePathSegment(processId)}/prewarm`, {
       method: 'POST',
       query,
-      body: {},
+      body: options?.provider ? { provider: options.provider } : {},
     });
   }
 
