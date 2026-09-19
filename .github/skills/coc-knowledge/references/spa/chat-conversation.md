@@ -30,6 +30,11 @@ confirmed composer provider takes precedence, so an intentional retry switch sti
 uses the standard confirmation flow; unattributed old turns preserve active-provider
 fallback behavior.
 
+Native compaction and resume-in-provider-CLI resolve provider and session id together
+from the active binding. Compaction labels its display-only result turn with the active
+provider and segment. Legacy CLI-resume records retain their metadata/default-provider
+and historical session-id fallbacks.
+
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
 escaped and never injected); the raw toggle shows literal source. Turns with

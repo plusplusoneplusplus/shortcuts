@@ -10,6 +10,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { resolveWorkspaceExecutionContextAsync, translatePathForHostFilesystemAsync } from '@plusplusoneplusplus/forge';
 import { sendError, sendJSON, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
+import { readActiveProviderSession } from './active-provider-session';
 
 export type ResumeProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
@@ -399,7 +400,12 @@ export function registerProcessResumeRoutes(
                 return sendError(res, 404, 'Process not found');
             }
 
-            const sessionId = extractProcessSessionId(processRecord);
+            const activeBinding = processRecord.activeProviderSession
+                ? readActiveProviderSession(processRecord)
+                : undefined;
+            const sessionId = activeBinding?.sessionId ?? (
+                activeBinding ? undefined : extractProcessSessionId(processRecord)
+            );
             if (!sessionId) {
                 return sendError(res, 409, 'Process has no resumable session ID');
             }
@@ -412,10 +418,12 @@ export function registerProcessResumeRoutes(
             }
             const launch = body?.launch !== false;
 
-            // Provider = the session's own metadata.provider; fall back to the
-            // configured default provider when absent/invalid. Session IDs are
-            // tool-specific, so the resume command must match the creating tool.
-            let provider = asResumeProvider(processRecord?.metadata?.provider);
+            // A stored active binding is authoritative. Legacy records retain
+            // metadata/default provider resolution alongside their projected
+            // session-id fallbacks.
+            let provider = activeBinding
+                ? asResumeProvider(activeBinding.provider)
+                : asResumeProvider(processRecord?.metadata?.provider);
             if (!provider) {
                 provider = normalizeResumeProvider(await options?.getDefaultProvider?.());
             }

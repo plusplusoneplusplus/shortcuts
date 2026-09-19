@@ -43,7 +43,7 @@ import { buildMetadataProcess } from '../processes/process-metadata-read-model';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { getRepoDataPath } from '../paths';
-import { readActiveProviderSession } from '../processes/active-provider-session';
+import { readActiveProviderSession, turnProviderAttribution } from '../processes/active-provider-session';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -709,7 +709,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!proc) {
                 return void handleAPIError(res, notFound('Process'));
             }
-            if (!proc.sdkSessionId) {
+            const activeBinding = readActiveProviderSession(proc);
+            if (!activeBinding.sessionId) {
                 return void handleAPIError(res, badRequest('Process has no SDK session to compact'));
             }
 
@@ -727,12 +728,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ? body.customInstructions
                 : undefined;
 
-            // Resolve the conversation provider; default to copilot. The provider
-            // string doubles as the SDK service registry key. Non-copilot providers
-            // throw CompactUnsupportedError, which maps to a 422.
-            const provider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
-                ? proc.metadata.provider
-                : 'copilot';
+            const provider = activeBinding.provider as ChatProvider;
 
             // ── Persist in-progress compacting state (AC-01) ──
             // Mark the process running and record compaction metadata BEFORE the
@@ -760,7 +756,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const { sdkServiceRegistry, isCompactUnsupportedError } = await import('@plusplusoneplusplus/forge');
             try {
                 const sdkService = sdkServiceRegistry.getOrThrow(provider);
-                const result = await sdkService.compactSession(proc.sdkSessionId, customInstructions);
+                const result = await sdkService.compactSession(activeBinding.sessionId, customInstructions);
                 const messagesRemoved = result?.messagesRemoved ?? 0;
                 const tokensRemoved = result?.tokensRemoved ?? 0;
                 // Summary text the provider generated for this compaction, kept
@@ -820,6 +816,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     turnIndex,
                     timeline: [],
                     displayOnly: true,
+                    ...turnProviderAttribution(provider, activeBinding.segmentId),
                     // Stored per-turn (not only in `metadata.compaction`) so a
                     // second `/compact` cannot erase the first summary.
                     ...(summaryContent ? { compactionSummary: summaryContent } : {}),
