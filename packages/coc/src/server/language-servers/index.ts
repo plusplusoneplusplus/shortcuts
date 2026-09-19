@@ -34,6 +34,7 @@ export {
     readLanguageServerConfig,
     readLanguageServerConfigWithStatus,
     resolveLanguageServerDefinitions,
+    resolveLanguageServerDefinitionsFromConfig,
     writeLanguageServerConfig,
 } from './repository';
 export type { DetectLanguagesOptions } from './detection';

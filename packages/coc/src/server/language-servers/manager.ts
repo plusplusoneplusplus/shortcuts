@@ -14,7 +14,12 @@ import { LanguageServerSession } from './session';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import type { LanguageServerSessionOptions, LanguageServerSessionState } from './session';
-import { onLanguageServerConfigChanged, resolveLanguageServerDefinitions } from './repository';
+import {
+    onLanguageServerConfigChanged,
+    resolveLanguageServerDefinitions,
+    resolveLanguageServerDefinitionsFromConfig,
+} from './repository';
+import { ensureLanguageServerConfigSeeded } from './seed';
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 import type { PrepareDefinitionDeps } from './adapters';
 import { normalizeRelativePath } from './file-match';
@@ -146,7 +151,7 @@ export class LanguageServerManager {
         if (this.disposed) {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
-        const startable = resolveLanguageServerDefinitions(this.options.dataDir, request.workspaceId);
+        const startable = this.resolveDefinitions(request);
         if (startable.length === 0) {
             return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
         }
@@ -167,7 +172,7 @@ export class LanguageServerManager {
         if (this.disposed) {
             return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
         }
-        const startable = resolveLanguageServerDefinitions(this.options.dataDir, request.workspaceId);
+        const startable = this.resolveDefinitions(request);
         if (startable.length === 0) {
             return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
         }
@@ -187,6 +192,15 @@ export class LanguageServerManager {
             handles.push(result.handle);
         }
         return { ok: true, handles };
+    }
+
+    private resolveDefinitions(request: AcquireRequest): LanguageServerDefinition[] {
+        const config = ensureLanguageServerConfigSeeded(
+            this.options.dataDir,
+            request.workspaceId,
+            request.workspaceRoot,
+        ).value;
+        return resolveLanguageServerDefinitionsFromConfig(config);
     }
 
     private acquireDefinition(

@@ -19,9 +19,10 @@ and transport code stays generic.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
 - `detection.ts` — which presets a workspace's files call for, read from each
   preset's own `rootMarkers` first and a bounded file-extension scan second.
-- `seed.ts` — `ensureLanguageServerConfigSeeded`: a read that, for a workspace
-  with no config file, writes the detected presets enabled and returns that.
-  A workspace with any config file — valid or corrupt — is read, never seeded.
+- `seed.ts` — `ensureLanguageServerConfigSeeded`: the production read used by
+  manager acquisition and settings GET. For a workspace with no config file, it
+  writes the detected presets enabled and returns that. A workspace with any
+  config file — valid or corrupt — is read, never seeded.
 - `adapters.ts` — the language-neutral root and runtime preparation hooks the
   manager calls before starting a session.
 - `typescript-adapter.ts` — TypeScript's answer to that hook: which
@@ -49,11 +50,12 @@ and transport code stays generic.
 
 ## Rules
 
-- Language support is seeded once, on the first read of a workspace that has no
-  `language-servers.json`. After that the file is the user's: detection never
-  re-runs, so a server the user turned off stays off and one added to the repo
-  later is not turned on. Presets keep `enabled: false`; seeding writes workspace
-  overrides, exactly as the settings page does when a user ticks a checkbox.
+- Language support is seeded once, on the first production read with a workspace
+  root, whether manager acquisition or settings GET reaches it first. After that
+  `language-servers.json` is the user's: detection never re-runs, so a server the
+  user turned off stays off and one added to the repo later is not turned on.
+  Presets keep `enabled: false`; seeding writes workspace overrides, exactly as
+  the settings page does when a user ticks a checkbox.
 
 - A definition's `command` is an executable and `args` is a vector. Validation
   rejects shell metacharacters and quotes so a command line can never be passed

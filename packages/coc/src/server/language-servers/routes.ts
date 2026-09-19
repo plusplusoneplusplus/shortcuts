@@ -15,7 +15,7 @@ import { mergeWithBuiltIns } from './presets';
 import type { LanguageServerConfig } from './repository';
 import {
     readLanguageServerConfigWithStatus,
-    resolveLanguageServerDefinitions,
+    resolveLanguageServerDefinitionsFromConfig,
     writeLanguageServerConfig,
 } from './repository';
 import { ensureLanguageServerConfigSeeded } from './seed';
@@ -68,7 +68,7 @@ async function buildResponse(
         enabled: value.enabled,
         definitions: value.definitions,
         effective: mergeWithBuiltIns(value.definitions),
-        startable: resolveLanguageServerDefinitions(dataDir, workspaceId),
+        startable: resolveLanguageServerDefinitionsFromConfig(value),
         status,
         // The on-disk path is a server detail and stays out of the browser payload.
         warnings: warnings.map(({ kind, message }) => ({ kind, message })),
