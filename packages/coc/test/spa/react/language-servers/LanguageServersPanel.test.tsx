@@ -129,6 +129,28 @@ describe('LanguageServersPanel', () => {
         });
     });
 
+    it('renders detected language presets pre-checked from a seeded response', async () => {
+        await renderPanel(response({
+            enabled: true,
+            definitions: [def({ id: 'rust', displayName: 'Rust', enabled: true })],
+            effective: [
+                def(),
+                def({ id: 'rust', displayName: 'Rust', enabled: true }),
+                def({ id: 'python', displayName: 'Python' }),
+                def({ id: 'clangd', displayName: 'C / C++ (clangd)' }),
+                def({ id: 'coc-symbols', displayName: 'CoC Symbols', enabled: true }),
+            ],
+            status: 'valid',
+        }));
+
+        expect((screen.getByTestId('language-support-toggle') as HTMLInputElement).checked).toBe(true);
+        expect((screen.getByRole('checkbox', { name: 'Enable Rust' }) as HTMLInputElement).checked).toBe(true);
+        expect((screen.getByRole('checkbox', { name: 'Enable TypeScript' }) as HTMLInputElement).checked).toBe(false);
+        expect((screen.getByRole('checkbox', { name: 'Enable Python' }) as HTMLInputElement).checked).toBe(false);
+        expect((screen.getByRole('checkbox', { name: 'Enable C / C++ (clangd)' }) as HTMLInputElement).checked).toBe(false);
+        expect((screen.getByRole('checkbox', { name: 'Enable CoC Symbols' }) as HTMLInputElement).checked).toBe(true);
+    });
+
     it('enables a preset by writing an override, not by deleting the preset', async () => {
         await renderPanel();
         update.mockResolvedValue(response({ definitions: [def({ enabled: true })] }));
