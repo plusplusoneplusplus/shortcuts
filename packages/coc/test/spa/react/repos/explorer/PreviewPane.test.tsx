@@ -8,22 +8,49 @@ const mockExplorerApi = vi.hoisted(() => ({
     readTrustedBlob: vi.fn(),
 }));
 
+const mockMonaco = vi.hoisted(() => ({
+    onSave: undefined as (() => void) | undefined,
+    saveAction: undefined as (() => void) | undefined,
+}));
+
+const mockLanguageDocument = vi.hoisted(() => ({
+    handleChange: vi.fn(),
+    markSaved: vi.fn(),
+    restart: vi.fn(),
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: mockExplorerApi,
 }));
 
+vi.mock('../../../../../src/server/spa/client/react/features/language-servers/useLanguageDocument', () => ({
+    useLanguageDocument: () => ({
+        view: null,
+        status: 'detached',
+        snapshot: null,
+        diagnostics: [],
+        markers: [],
+        ready: false,
+        ...mockLanguageDocument,
+    }),
+}));
+
 // Mock MonacoFileEditor since Monaco requires a real DOM/worker environment
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, language, onChange, onSave }: any) => (
-        <div data-testid="mock-monaco-editor" data-language={language} data-value={value}>
-            <textarea
-                data-testid="mock-monaco-textarea"
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-            />
-            {onSave && <button data-testid="mock-monaco-save" onClick={onSave}>Save</button>}
-        </div>
-    ),
+    MonacoFileEditor: ({ value, language, onChange, onSave }: any) => {
+        mockMonaco.onSave = onSave;
+        mockMonaco.saveAction ??= () => mockMonaco.onSave?.();
+        return (
+            <div data-testid="mock-monaco-editor" data-language={language} data-value={value}>
+                <textarea
+                    data-testid="mock-monaco-textarea"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                />
+                {onSave && <button data-testid="mock-monaco-save" onClick={onSave}>Save</button>}
+            </div>
+        );
+    },
     getMonacoLanguage: (name: string) => {
         const ext = name?.split('.').pop()?.toLowerCase();
         const map: Record<string, string> = { ts: 'typescript', js: 'javascript', py: 'python', md: 'markdown' };
@@ -34,6 +61,8 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 describe('PreviewPane', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockMonaco.onSave = undefined;
+        mockMonaco.saveAction = undefined;
     });
 
     it('root container has w-full so it fills the preview area', async () => {
@@ -314,6 +343,33 @@ describe('PreviewPane', () => {
         });
 
         expect(mockExplorerApi.writeBlob).toHaveBeenCalledWith('r1', 'a.ts', 'modified');
+    });
+
+    it('saves the latest editor text through the mounted save action', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({
+            content: 'original',
+            encoding: 'utf-8',
+            mimeType: 'text/plain',
+        });
+        mockExplorerApi.writeBlob.mockResolvedValue({ success: true });
+
+        render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" />);
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+
+        await act(async () => {
+            const textarea = screen.getByTestId('mock-monaco-textarea');
+            const setValue = Object.getOwnPropertyDescriptor(
+                window.HTMLTextAreaElement.prototype,
+                'value',
+            )!.set!;
+            setValue.call(textarea, 'edited through shortcut');
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        await act(async () => { mockMonaco.saveAction?.(); });
+
+        expect(mockExplorerApi.writeBlob).toHaveBeenCalledWith('r1', 'a.ts', 'edited through shortcut');
+        expect(mockLanguageDocument.markSaved).toHaveBeenCalledWith('edited through shortcut');
     });
 
     it('floating toolbar is present when content is loaded', async () => {
