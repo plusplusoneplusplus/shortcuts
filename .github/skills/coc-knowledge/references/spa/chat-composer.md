@@ -109,6 +109,10 @@ Escape, close, and backdrop dismissal preserve the draft and active selection. T
 reasoning, and effort-tier catalogs use the conversation owner's server; returning to the
 active provider clears the pending switch without another warning.
 
+`providerSwitchTelemetry.ts` emits typed browser events for selection attempts, confirmations,
+and cancellations. The payload is limited to source provider, target provider, workspace ID,
+and process ID; dialog telemetry does not call the server or mutate conversation state.
+
 ### Focused-composer shortcuts
 
 Model and slash menus keep first priority. With the input focused and no menu open,

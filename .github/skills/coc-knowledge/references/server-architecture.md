@@ -118,6 +118,11 @@ src/
 | `chat-turn-policy-resolver.ts` | Per-turn model / reasoning effort / Copilot context tier |
 | `chat-turn-runner.ts` | Path-invariant `sendMessage` options + shared SDK callbacks (MCP OAuth dispatch) |
 | `chat-turn-settlement.ts` | Turn completion: cumulative tokens, token-usage event, note snapshots |
+
+Provider switching writes structured records through `server/provider-switch-telemetry.ts`.
+Accepted switch requests, target-session creation, and categorized failures include only source
+and target provider, workspace/process identity, and the handoff-omission boolean. Prompt,
+transcript, file, and attachment content never enter these records.
 | `memory-v2-addon.ts` | Wires Memory V2 facts/recall and the memory tools into chat executors |
 
 ### Runtime capability wiring

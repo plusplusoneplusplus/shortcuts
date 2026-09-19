@@ -10,6 +10,8 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Writable } from 'stream';
+import pino from 'pino';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/forge';
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
@@ -20,6 +22,8 @@ import {
     STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
     STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
 } from '../../src/server/tasks/task-types';
+import { setServerLogger } from '../../src/server/logging/server-logger';
+import { clearLogBuffer, getLogHistory } from '../../src/server/logging/server-log-capture';
 
 // ============================================================================
 // Helpers
@@ -83,6 +87,8 @@ describe('POST /api/processes/:id/message', () => {
 
         mockBridge = createMockBridge();
         providerSwitchingEnabled = true;
+        clearLogBuffer();
+        setServerLogger(pino({ level: 'info' }, new Writable({ write: (_chunk, _encoding, callback) => callback() })));
 
         const routes: Route[] = [];
         registerApiRoutes(
@@ -123,6 +129,8 @@ describe('POST /api/processes/:id/message', () => {
             });
             server = undefined;
         }
+        clearLogBuffer();
+        setServerLogger(pino({ level: 'silent' }));
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
@@ -1508,6 +1516,13 @@ describe('POST /api/processes/:id/message', () => {
                 provider: 'codex',
             });
             expect(res.status).toBe(202);
+            expect(getLogHistory({ component: 'provider-switch' })).toContainEqual(expect.objectContaining({
+                action: 'attempt',
+                sourceProvider: 'copilot',
+                targetProvider: 'codex',
+                processId: 'proc-prov-switch',
+            }));
+            expect(JSON.stringify(getLogHistory({ component: 'provider-switch' }))).not.toContain('Hello');
         });
 
         it('rejects a different provider when the live capability is disabled', async () => {
@@ -1520,6 +1535,13 @@ describe('POST /api/processes/:id/message', () => {
             expect(res.status).toBe(400);
             expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCHING_DISABLED');
             expect((await store.getProcess('proc-prov-disabled'))?.conversationTurns ?? []).toHaveLength(0);
+            expect(getLogHistory({ component: 'provider-switch' })).toContainEqual(expect.objectContaining({
+                action: 'failed',
+                failureReason: 'feature-disabled',
+                sourceProvider: 'copilot',
+                targetProvider: 'codex',
+                processId: 'proc-prov-disabled',
+            }));
         });
 
         it('keeps same-provider follow-ups compatible while the capability is disabled', async () => {
@@ -1577,6 +1599,13 @@ describe('POST /api/processes/:id/message', () => {
             });
             expect(res.status).toBe(409);
             expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+            expect(getLogHistory({ component: 'provider-switch' })).toContainEqual(expect.objectContaining({
+                action: 'failed',
+                failureReason: 'conversation-busy',
+                sourceProvider: 'copilot',
+                targetProvider: 'codex',
+                processId: 'proc-prov-running',
+            }));
         });
 
         it('rejects a cross-provider follow-up on a queued conversation with 409', async () => {
@@ -1741,6 +1770,7 @@ describe('POST /api/processes/:id/message', () => {
                 status: 'failed',
                 startTime: new Date(),
                 sdkSessionId: 'sess-enq-fail2',
+                metadata: { type: 'chat', provider: 'copilot' },
             };
             await store.addProcess(proc);
 
@@ -1751,6 +1781,7 @@ describe('POST /api/processes/:id/message', () => {
 
             const res = await postJSON(`${baseUrl}/api/processes/proc-enq-fail2/message`, {
                 content: 'Retry message',
+                provider: 'codex',
             });
 
             expect(res.status).toBe(500);
@@ -1760,6 +1791,13 @@ describe('POST /api/processes/:id/message', () => {
             // Status must be rolled back to 'failed' (the prior status)
             const updated = await store.getProcess('proc-enq-fail2');
             expect(updated?.status).toBe('failed');
+            expect(getLogHistory({ component: 'provider-switch' })).toContainEqual(expect.objectContaining({
+                action: 'failed',
+                failureReason: 'enqueue-failed',
+                sourceProvider: 'copilot',
+                targetProvider: 'codex',
+                processId: 'proc-enq-fail2',
+            }));
         });
 
         it('should allow a strict-resume-failed chat to reconstruct on a different provider', async () => {

@@ -45,7 +45,7 @@ import {
     resolveModelForProvider,
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
-import { buildConversationHandoff } from './conversation-handoff';
+import { buildConversationHandoff, conversationHandoffOmittedHistory } from './conversation-handoff';
 import { resolveContinuationMode } from './continuation-mode';
 import { readNoteContent } from './note-chat-executor';
 import { suppressesPlanSaveGuidance } from './auto-folder-utils';
@@ -68,6 +68,7 @@ import {
     emitTurnTokenUsage,
 } from './chat-turn-settlement';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
+import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetry';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
 import { buildChatTurnContext } from './chat-turn-context-builder';
@@ -310,7 +311,23 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         // Resolve the AI service for this provider. This also checks that the
         // provider is still enabled — if not, it throws a clear error that blocks
         // the new follow-up turn without affecting already-running turns.
-        const followUpAiService = this.getAiServiceForProvider(sessionProvider);
+        const followUpAiService = (() => {
+            try {
+                return this.getAiServiceForProvider(sessionProvider);
+            } catch (error) {
+                if (continuation.providerChanged) {
+                    recordProviderSwitchServerTelemetry({
+                        action: 'failed',
+                        sourceProvider: activeBinding.provider as ChatProvider,
+                        targetProvider: sessionProvider,
+                        workspaceId: process.metadata?.workspaceId as string | undefined,
+                        processId,
+                        failureReason: 'before-session-creation',
+                    });
+                }
+                throw error;
+            }
+        })();
 
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
@@ -693,6 +710,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             turnIndex: process.conversationTurns?.length ?? 0,
                         });
                         turnSegmentId = next.binding.segmentId;
+                        if (continuation.providerChanged) {
+                            recordProviderSwitchServerTelemetry({
+                                action: 'session-created',
+                                sourceProvider: activeBinding.provider as ChatProvider,
+                                targetProvider: sessionProvider,
+                                workspaceId: wsId,
+                                processId,
+                                handoffOmittedHistory: conversationHandoffOmittedHistory(historyContext),
+                            });
+                        }
                         // One store write: provider, session id, segment id and
                         // segment start can never be persisted apart.
                         this.store.updateProcess(processId, activeProviderSessionUpdate(next.binding)).catch((err: unknown) => {
@@ -870,6 +897,20 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const duration = Date.now() - startTime;
             const failedAt = new Date();
             logger.error(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
+            if (continuation.providerChanged) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'failed',
+                    sourceProvider: activeBinding.provider as ChatProvider,
+                    targetProvider: sessionProvider,
+                    workspaceId: wsId,
+                    processId,
+                    failureReason: turnAbort.signal.aborted
+                        ? 'cancelled'
+                        : turnSegmentId
+                            ? 'after-session-creation'
+                            : 'before-session-creation',
+                });
+            }
 
             const partial = this.capturePartialTurn(processId);
 

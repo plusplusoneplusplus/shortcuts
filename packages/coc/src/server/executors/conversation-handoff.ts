@@ -75,6 +75,11 @@ function tokensToChars(tokens: number): number {
 
 export const IMAGE_MARKER = '[image attachment not transferred]';
 export const TRUNCATION_MARKER = '[… truncated during provider handoff …]';
+const OMISSION_MARKER_PATTERN = /\[… \d+ earlier turns? omitted during provider handoff …\]/;
+
+export function conversationHandoffOmittedHistory(handoff?: string): boolean {
+    return handoff ? OMISSION_MARKER_PATTERN.test(handoff) : false;
+}
 
 function omissionMarker(count: number): string {
     return count === 1

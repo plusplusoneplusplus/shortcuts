@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 import {
     buildConversationHandoff,
+    conversationHandoffOmittedHistory,
     estimateHandoffTokens,
     resolveHandoffTokenBudget,
     IMAGE_MARKER,
@@ -52,6 +53,15 @@ describe('resolveHandoffTokenBudget', () => {
         expect(resolveHandoffTokenBudget(undefined)).toBe(UNKNOWN_WINDOW_HANDOFF_TOKENS);
         expect(resolveHandoffTokenBudget(0)).toBe(UNKNOWN_WINDOW_HANDOFF_TOKENS);
         expect(resolveHandoffTokenBudget(Number.NaN)).toBe(UNKNOWN_WINDOW_HANDOFF_TOKENS);
+    });
+});
+
+describe('conversationHandoffOmittedHistory', () => {
+    it('recognizes only generated count-bearing omission markers', () => {
+        expect(conversationHandoffOmittedHistory('[User]: discuss an earlier turn')).toBe(false);
+        expect(conversationHandoffOmittedHistory('[… 1 earlier turn omitted during provider handoff …]')).toBe(true);
+        expect(conversationHandoffOmittedHistory('[… 2 earlier turns omitted during provider handoff …]')).toBe(true);
+        expect(conversationHandoffOmittedHistory(undefined)).toBe(false);
     });
 });
 

@@ -68,6 +68,7 @@ import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
 import type { ConcreteChatProvider } from '../../utils/providerSelection';
 import type { AgentSelectorProvider } from '../../utils/providerSelection';
 import { ProviderSwitchConfirmDialog } from './conversation/ProviderSwitchConfirmDialog';
+import { recordProviderSwitchUiTelemetry } from './providerSwitchTelemetry';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -378,11 +379,29 @@ export function FollowUpInputArea({
     const currentProvider = activeProvider ?? 'copilot';
     const composerProvider = selectedProvider ?? currentProvider;
     const cancelProviderSwitch = () => {
+        if (providerSwitchTarget) {
+            recordProviderSwitchUiTelemetry({
+                action: 'cancellation',
+                sourceProvider: currentProvider,
+                targetProvider: providerSwitchTarget,
+                workspaceId: activeWorkspaceId,
+                processId: activeProcessId ?? undefined,
+            });
+        }
         setProviderSwitchTarget(null);
         queueMicrotask(() => providerChipRef.current?.focus());
     };
     const confirmProviderSwitch = () => {
-        if (providerSwitchTarget) onProviderChange?.(providerSwitchTarget);
+        if (providerSwitchTarget) {
+            recordProviderSwitchUiTelemetry({
+                action: 'confirmation',
+                sourceProvider: currentProvider,
+                targetProvider: providerSwitchTarget,
+                workspaceId: activeWorkspaceId,
+                processId: activeProcessId ?? undefined,
+            });
+            onProviderChange?.(providerSwitchTarget);
+        }
         setProviderSwitchTarget(null);
         queueMicrotask(() => providerChipRef.current?.focus());
     };
@@ -392,6 +411,13 @@ export function FollowUpInputArea({
             return;
         }
         if (provider === 'copilot' || provider === 'codex' || provider === 'claude' || provider === 'opencode') {
+            recordProviderSwitchUiTelemetry({
+                action: 'attempt',
+                sourceProvider: currentProvider,
+                targetProvider: provider,
+                workspaceId: activeWorkspaceId,
+                processId: activeProcessId ?? undefined,
+            });
             setProviderSwitchTarget(provider);
         }
     };

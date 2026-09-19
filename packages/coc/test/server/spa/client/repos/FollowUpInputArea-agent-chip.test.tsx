@@ -78,6 +78,7 @@ vi.mock('@plusplusoneplusplus/forge', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { FollowUpInputArea } from '../../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
+import { PROVIDER_SWITCH_UI_TELEMETRY_EVENT } from '../../../../../src/server/spa/client/react/features/chat/providerSwitchTelemetry';
 import { createRef } from 'react';
 
 // ---------------------------------------------------------------------------
@@ -270,6 +271,56 @@ describe('FollowUpInputArea – provider switching', () => {
         expect(onProviderChange).toHaveBeenCalledOnce();
         expect(onProviderChange).toHaveBeenCalledWith('codex');
         await waitFor(() => expect(chip).toHaveFocus());
+    });
+
+    it('records attempt, cancellation, and confirmation without transcript content', () => {
+        const events: unknown[] = [];
+        const listener = (event: Event) => events.push((event as CustomEvent).detail);
+        window.addEventListener(PROVIDER_SWITCH_UI_TELEMETRY_EVENT, listener);
+
+        try {
+            renderEnabled({ workspaceId: 'workspace-1', currentProcessId: 'process-1' });
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            fireEvent.click(screen.getByTestId('agent-option-codex'));
+            fireEvent.click(screen.getByTestId('provider-switch-cancel'));
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            fireEvent.click(screen.getByTestId('agent-option-claude'));
+            fireEvent.click(screen.getByTestId('provider-switch-confirm'));
+
+            expect(events).toEqual([
+                {
+                    action: 'attempt',
+                    sourceProvider: 'copilot',
+                    targetProvider: 'codex',
+                    workspaceId: 'workspace-1',
+                    processId: 'process-1',
+                },
+                {
+                    action: 'cancellation',
+                    sourceProvider: 'copilot',
+                    targetProvider: 'codex',
+                    workspaceId: 'workspace-1',
+                    processId: 'process-1',
+                },
+                {
+                    action: 'attempt',
+                    sourceProvider: 'copilot',
+                    targetProvider: 'claude',
+                    workspaceId: 'workspace-1',
+                    processId: 'process-1',
+                },
+                {
+                    action: 'confirmation',
+                    sourceProvider: 'copilot',
+                    targetProvider: 'claude',
+                    workspaceId: 'workspace-1',
+                    processId: 'process-1',
+                },
+            ]);
+            expect(JSON.stringify(events)).not.toContain('content');
+        } finally {
+            window.removeEventListener(PROVIDER_SWITCH_UI_TELEMETRY_EVENT, listener);
+        }
     });
 
     it('choosing the active provider clears a pending switch without another warning', () => {

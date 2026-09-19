@@ -44,6 +44,7 @@ import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-us
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { getRepoDataPath } from '../paths';
 import { readActiveProviderSession, turnProviderAttribution } from '../processes/active-provider-session';
+import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetry';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -1174,7 +1175,25 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
             const fields = normalized.value;
 
+            if (fields.isProviderSwitch) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'attempt',
+                    sourceProvider: sessionProvider,
+                    targetProvider: fields.requestedProvider!,
+                    workspaceId: proc.metadata?.workspaceId as string | undefined,
+                    processId: id,
+                });
+            }
+
             if (fields.isProviderSwitch && ctx.getLiveFeatureFlags?.().chatProviderSwitchingEnabled !== true) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'failed',
+                    sourceProvider: sessionProvider,
+                    targetProvider: fields.requestedProvider!,
+                    workspaceId: proc.metadata?.workspaceId as string | undefined,
+                    processId: id,
+                    failureReason: 'feature-disabled',
+                });
                 return handleAPIError(res, new APIError(
                     400,
                     'Switching providers in an existing conversation is not enabled on this server.',
@@ -1237,6 +1256,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 proc,
                 bridge.findTaskByProcessId?.(id)?.status,
             )) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'failed',
+                    sourceProvider: sessionProvider,
+                    targetProvider: fields.requestedProvider!,
+                    workspaceId: proc.metadata?.workspaceId as string | undefined,
+                    processId: id,
+                    failureReason: 'conversation-busy',
+                });
                 return handleAPIError(res, new APIError(
                     409,
                     'Cannot switch providers while this conversation is busy. Wait for the current response to finish, then try again.',
@@ -1329,6 +1356,16 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 result = await deliveryService.deliver(proc, deliveryInput);
             } catch (err) {
                 if (err instanceof FollowUpDeliveryError) {
+                    if (fields.isProviderSwitch) {
+                        recordProviderSwitchServerTelemetry({
+                            action: 'failed',
+                            sourceProvider: sessionProvider,
+                            targetProvider: fields.requestedProvider!,
+                            workspaceId: proc.metadata?.workspaceId as string | undefined,
+                            processId: id,
+                            failureReason: 'enqueue-failed',
+                        });
+                    }
                     return handleAPIError(res, new APIError(500, 'Failed to enqueue follow-up', 'ENQUEUE_FAILED'));
                 }
                 throw err;

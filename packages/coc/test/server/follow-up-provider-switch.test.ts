@@ -16,6 +16,9 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 
 const sdkMocks = createMockSDKService();
 const { mockSendMessage, mockIsAvailable, mockSoftAbortSession } = sdkMocks;
+const { mockRecordProviderSwitchServerTelemetry } = vi.hoisted(() => ({
+    mockRecordProviderSwitchServerTelemetry: vi.fn(),
+}));
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -24,6 +27,10 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         sdkServiceRegistry: { getOrThrow: () => sdkMocks.service },
     };
 });
+
+vi.mock('../../src/server/provider-switch-telemetry', () => ({
+    recordProviderSwitchServerTelemetry: mockRecordProviderSwitchServerTelemetry,
+}));
 
 describe('follow-up provider switching', () => {
     let store: ReturnType<typeof createMockProcessStore>;
@@ -35,9 +42,10 @@ describe('follow-up provider switching', () => {
         mockSoftAbortSession.mockResolvedValue(true);
         mockIsAvailable.mockReset();
         mockIsAvailable.mockResolvedValue({ available: true });
+        mockRecordProviderSwitchServerTelemetry.mockReset();
     });
 
-    async function seedCopilotChat(processId: string): Promise<void> {
+    async function seedCopilotChat(processId: string, workspaceId?: string, firstQuestion = 'Q1'): Promise<void> {
         const proc: AIProcess = {
             id: processId,
             type: 'clarification',
@@ -52,9 +60,9 @@ describe('follow-up provider switching', () => {
                 segmentId: 'seg-copilot-1',
                 firstTurnIndex: 0,
             },
-            metadata: { type: 'chat', provider: 'copilot' },
+            metadata: { type: 'chat', provider: 'copilot', ...(workspaceId ? { workspaceId } : {}) },
             conversationTurns: [
-                { role: 'user', content: 'Q1', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                { role: 'user', content: firstQuestion, timestamp: new Date(), turnIndex: 0, timeline: [] },
                 { role: 'assistant', content: 'A1', timestamp: new Date(), turnIndex: 1, timeline: [] },
                 { role: 'user', content: 'Q2', timestamp: new Date(), turnIndex: 2, timeline: [] },
             ],
@@ -104,6 +112,14 @@ describe('follow-up provider switching', () => {
         expect(binding?.sessionId).toBe('codex-session-1');
         expect(binding?.segmentId).not.toBe('seg-copilot-1');
         expect(store.processes.get('proc-switch')?.sdkSessionId).toBe('codex-session-1');
+        expect(mockRecordProviderSwitchServerTelemetry).toHaveBeenCalledWith({
+            action: 'session-created',
+            sourceProvider: 'copilot',
+            targetProvider: 'codex',
+            workspaceId: undefined,
+            processId: 'proc-switch',
+            handoffOmittedHistory: false,
+        });
     });
 
     it('keeps the old binding usable when the target fails before creating a session', async () => {
@@ -118,6 +134,14 @@ describe('follow-up provider switching', () => {
         const binding = store.processes.get('proc-switch-fail')?.activeProviderSession;
         expect(binding?.provider).toBe('copilot');
         expect(binding?.sessionId).toBe('copilot-session-1');
+        expect(mockRecordProviderSwitchServerTelemetry).toHaveBeenCalledWith({
+            action: 'failed',
+            sourceProvider: 'copilot',
+            targetProvider: 'codex',
+            workspaceId: undefined,
+            processId: 'proc-switch-fail',
+            failureReason: 'before-session-creation',
+        });
     });
 
     it('does not treat a cross-provider continuation as a failed strict resume', async () => {
@@ -140,6 +164,64 @@ describe('follow-up provider switching', () => {
         expect(sent.strictSessionResume).toBeUndefined();
         expect(store.processes.get('proc-stopped-switch')?.status).not.toBe('failed');
         expect(store.processes.get('proc-stopped-switch')?.activeProviderSession?.provider).toBe('codex');
+    });
+
+    it('isolates concurrent provider switches across workspaces', async () => {
+        await seedCopilotChat('proc-workspace-a', 'workspace-a', 'Alpha goal');
+        await seedCopilotChat('proc-workspace-b', 'workspace-b', 'Beta goal');
+        const codex = createMockSDKService();
+        const claude = createMockSDKService();
+        const sentSystems = new Map<string, string>();
+        codex.mockSendMessage.mockImplementation(async (options: any) => {
+            sentSystems.set('codex', String(options.systemMessage?.content ?? ''));
+            options.onSessionCreated?.('codex-workspace-a-session');
+            return { success: true, response: 'Alpha result', sessionId: 'codex-workspace-a-session' };
+        });
+        claude.mockSendMessage.mockImplementation(async (options: any) => {
+            sentSystems.set('claude', String(options.systemMessage?.content ?? ''));
+            options.onSessionCreated?.('claude-workspace-b-session');
+            return { success: true, response: 'Beta result', sessionId: 'claude-workspace-b-session' };
+        });
+        const executor = new CLITaskExecutor(store, {
+            runtime: {
+                resolveAiServiceForProvider: (provider: string) =>
+                    provider === 'codex' ? codex.service : claude.service,
+            } as any,
+        });
+
+        await Promise.all([
+            executor.executeFollowUp(
+                'proc-workspace-a', 'A follow-up', undefined, 'ask', undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, { requestedProvider: 'codex', historyCutoffTurnIndex: 2 },
+            ),
+            executor.executeFollowUp(
+                'proc-workspace-b', 'B follow-up', undefined, 'ask', undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, { requestedProvider: 'claude', historyCutoffTurnIndex: 2 },
+            ),
+        ]);
+
+        expect(store.processes.get('proc-workspace-a')?.activeProviderSession).toMatchObject({
+            provider: 'codex',
+            sessionId: 'codex-workspace-a-session',
+        });
+        expect(store.processes.get('proc-workspace-b')?.activeProviderSession).toMatchObject({
+            provider: 'claude',
+            sessionId: 'claude-workspace-b-session',
+        });
+        expect(sentSystems.get('codex')).toContain('Alpha goal');
+        expect(sentSystems.get('codex')).not.toContain('Beta goal');
+        expect(sentSystems.get('claude')).toContain('Beta goal');
+        expect(sentSystems.get('claude')).not.toContain('Alpha goal');
+        expect(mockRecordProviderSwitchServerTelemetry).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'session-created',
+            workspaceId: 'workspace-a',
+            processId: 'proc-workspace-a',
+        }));
+        expect(mockRecordProviderSwitchServerTelemetry).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'session-created',
+            workspaceId: 'workspace-b',
+            processId: 'proc-workspace-b',
+        }));
     });
 
     describe('assistant turn attribution (AC-06)', () => {
