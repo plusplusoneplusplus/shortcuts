@@ -26,6 +26,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
+import { readActiveProviderSession, advanceActiveProviderSession, activeProviderSessionUpdate } from '../processes/active-provider-session';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
 import {
     getForEachContext,
@@ -253,10 +254,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             throw new Error(`Process not found: ${processId}`);
         }
 
-        // AC-04 — Use the original chat's provider for follow-ups.
-        // Read provider from process metadata (set at creation time). Processes
-        // created before this feature had no provider metadata; default to 'copilot'.
-        const sessionProvider: ChatProvider = ((process.metadata?.provider as string | undefined) ?? 'copilot') as ChatProvider;
+        // The provider and the native session id must come from the same
+        // authoritative binding — reading one from `metadata.provider` and the
+        // other from `sdkSessionId` is how a new provider ends up paired with
+        // the previous provider's session. Pre-binding processes get the legacy
+        // projection, so behaviour is unchanged for them.
+        const activeBinding = readActiveProviderSession(process);
+        const sessionProvider: ChatProvider = activeBinding.provider as ChatProvider;
 
         // Resolve the AI service for this provider. This also checks that the
         // provider is still enabled — if not, it throws a clear error that blocks
@@ -344,7 +348,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(wsId, workingDirectory);
 
-        const sessionIdForSend = strictResumeSessionId ?? process.sdkSessionId;
+        const sessionIdForSend = strictResumeSessionId ?? activeBinding.sessionId;
         const canResumeSession = !!sessionIdForSend;
 
         const historyContext = canResumeSession
@@ -366,10 +370,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         const turnAbort = this.registerTurnAbortController(processId);
         try {
             if (strictResumeSessionId) {
-                if (!process.sdkSessionId) {
+                if (!activeBinding.sessionId) {
                     throw new Error('Cannot continue this stopped chat because no SDK session was saved.');
                 }
-                if (process.sdkSessionId !== strictResumeSessionId) {
+                if (activeBinding.sessionId !== strictResumeSessionId) {
                     throw new Error('Cannot continue this stopped chat because the saved SDK session changed before execution.');
                 }
             }
@@ -622,8 +626,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             logger.warn(LogCategory.AI, `[FollowUp] Provider returned a different SDK session while strict-resuming process ${processId}; preserving the stopped session id.`);
                             return;
                         }
-                        this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch((err: unknown) => {
-                            logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkSessionId for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
+                        const next = advanceActiveProviderSession(activeBinding, {
+                            provider: sessionProvider,
+                            sessionId,
+                            turnIndex: process.conversationTurns?.length ?? 0,
+                        });
+                        // One store write: provider, session id, segment id and
+                        // segment start can never be persisted apart.
+                        this.store.updateProcess(processId, activeProviderSessionUpdate(next.binding)).catch((err: unknown) => {
+                            logger.warn(LogCategory.AI, `[FollowUp] Failed to persist the provider session binding for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
                         });
                     },
                     onStreamingChunk: this.buildStreamingChunkHandler(processId, FOLLOW_UP_LOG_LABEL),

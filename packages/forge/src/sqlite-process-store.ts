@@ -36,7 +36,7 @@ import {
     ProcessEvent,
     ProcessCompactionState,
 } from './ai/process-types';
-import type { PendingMessage } from './ai/process-interfaces';
+import type { PendingMessage, ActiveProviderSession } from './ai/process-interfaces';
 import type { AIBackendType } from './ai/types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { initializeDatabase } from './sqlite-schema';
@@ -98,6 +98,7 @@ interface ProcessRow {
     structured_result: string | null;
     parent_process_id: string | null;
     sdk_session_id: string | null;
+    active_provider_session: string | null;
     backend: string | null;
     working_directory: string | null;
     title: string | null;
@@ -366,6 +367,7 @@ function processToRow(process: AIProcess): Record<string, unknown> {
         structured_result: process.structuredResult ?? null,
         parent_process_id: process.parentProcessId ?? null,
         sdk_session_id: process.sdkSessionId ?? null,
+        active_provider_session: jsonStringify(process.activeProviderSession),
         backend: process.backend ?? null,
         working_directory: process.workingDirectory ?? null,
         title: process.title ?? null,
@@ -427,6 +429,7 @@ function rowToProcess(row: ProcessRow, turns?: ConversationTurn[]): AIProcess {
         structuredResult: row.structured_result ?? undefined,
         parentProcessId: row.parent_process_id ?? undefined,
         sdkSessionId: row.sdk_session_id ?? undefined,
+        activeProviderSession: jsonParse<ActiveProviderSession>(row.active_provider_session),
         backend: (row.backend ?? undefined) as AIBackendType | undefined,
         workingDirectory: row.working_directory ?? undefined,
         title: row.title ?? undefined,
@@ -653,7 +656,7 @@ export class SqliteProcessStore implements ProcessStore {
                 id, workspace_id, type, prompt_preview, full_prompt, status,
                 start_time, end_time, error, result, result_file_path,
                 raw_stdout_file_path, metadata, group_metadata, structured_result,
-                parent_process_id, sdk_session_id, backend, working_directory,
+                parent_process_id, sdk_session_id, active_provider_session, backend, working_directory,
                 title, custom_title, last_message_preview, token_limit, current_tokens,
                 system_tokens, tool_definitions_tokens, conversation_tokens, cumulative_token_usage,
                 stale, data_file_path, archived, pinned_at, last_event_at
@@ -661,7 +664,7 @@ export class SqliteProcessStore implements ProcessStore {
                 @id, @workspace_id, @type, @prompt_preview, @full_prompt, @status,
                 @start_time, @end_time, @error, @result, @result_file_path,
                 @raw_stdout_file_path, @metadata, @group_metadata, @structured_result,
-                @parent_process_id, @sdk_session_id, @backend, @working_directory,
+                @parent_process_id, @sdk_session_id, @active_provider_session, @backend, @working_directory,
                 @title, @custom_title, @last_message_preview, @token_limit, @current_tokens,
                 @system_tokens, @tool_definitions_tokens, @conversation_tokens, @cumulative_token_usage,
                 @stale, @data_file_path, @archived, @pinned_at, @last_event_at
@@ -811,6 +814,10 @@ export class SqliteProcessStore implements ProcessStore {
                 structured_result: null,
                 parent_process_id: null,
                 sdk_session_id: newSdkSessionId,
+                // A fork never inherits the source's provider/session binding:
+                // the source's native session belongs to the source conversation.
+                // The fork's first follow-up reconstructs a fresh session.
+                active_provider_session: null,
                 backend: sourceRow.backend,
                 working_directory: sourceRow.working_directory,
                 title: forkTitle,
@@ -881,7 +888,7 @@ export class SqliteProcessStore implements ProcessStore {
             ? `id, workspace_id, type, prompt_preview, NULL AS full_prompt, status, ` +
               `start_time, end_time, error, NULL AS result, result_file_path, ` +
               `raw_stdout_file_path, metadata, group_metadata, NULL AS structured_result, ` +
-              `parent_process_id, sdk_session_id, backend, working_directory, ` +
+              `parent_process_id, sdk_session_id, active_provider_session, backend, working_directory, ` +
               `title, custom_title, last_message_preview, token_limit, current_tokens, ` +
               `cumulative_token_usage, stale, data_file_path, archived, pinned_at, ` +
               `seen_at, last_event_at`
@@ -1060,6 +1067,18 @@ export class SqliteProcessStore implements ProcessStore {
         mapField('structured_result', updates.structuredResult);
         mapField('parent_process_id', updates.parentProcessId);
         mapField('sdk_session_id', updates.sdkSessionId);
+        mapField('active_provider_session', updates.activeProviderSession, v => jsonStringify(v));
+        // `sdkSessionId` is a compatibility projection of the binding. A caller
+        // that writes only the projection must not leave the binding pointing at
+        // the previous session, so the binding's session id moves in the same
+        // UPDATE — provider and segment stay put.
+        if (updates.sdkSessionId !== undefined && updates.activeProviderSession === undefined) {
+            setClauses.push(
+                `active_provider_session = CASE WHEN active_provider_session IS NULL THEN NULL ` +
+                `ELSE json_set(active_provider_session, '$.sessionId', ?) END`,
+            );
+            values.push(updates.sdkSessionId);
+        }
         mapField('backend', updates.backend);
         mapField('working_directory', updates.workingDirectory);
         mapField('title', updates.title);
@@ -2488,6 +2507,18 @@ export class SqliteProcessStore implements ProcessStore {
         mapField('structured_result', updates.structuredResult);
         mapField('parent_process_id', updates.parentProcessId);
         mapField('sdk_session_id', updates.sdkSessionId);
+        mapField('active_provider_session', updates.activeProviderSession, v => jsonStringify(v));
+        // `sdkSessionId` is a compatibility projection of the binding. A caller
+        // that writes only the projection must not leave the binding pointing at
+        // the previous session, so the binding's session id moves in the same
+        // UPDATE — provider and segment stay put.
+        if (updates.sdkSessionId !== undefined && updates.activeProviderSession === undefined) {
+            setClauses.push(
+                `active_provider_session = CASE WHEN active_provider_session IS NULL THEN NULL ` +
+                `ELSE json_set(active_provider_session, '$.sessionId', ?) END`,
+            );
+            values.push(updates.sdkSessionId);
+        }
         mapField('backend', updates.backend);
         mapField('working_directory', updates.workingDirectory);
         mapField('title', updates.title);

@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(35);
+        expect(SCHEMA_VERSION).toBe(36);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1178,7 +1178,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(35);
+            expect(SCHEMA_VERSION).toBe(36);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1405,7 +1405,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(35);
+            expect(SCHEMA_VERSION).toBe(36);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1606,7 +1606,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(35);
+            expect(SCHEMA_VERSION).toBe(36);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',
@@ -1740,5 +1740,65 @@ describe('sqlite-schema', () => {
             const columns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
             expect(columns.filter(column => column.name === 'provider')).toHaveLength(1);
         });
+    });
+});
+
+describe('V35 -> V36 migration (active provider/session binding)', () => {
+    let db: Database.Database;
+
+    beforeEach(() => {
+        db = new Database(':memory:');
+    });
+
+    afterEach(() => {
+        db.close();
+    });
+
+    it('adds a nullable active_provider_session column without backfilling', () => {
+        db.exec(`
+            CREATE TABLE processes (
+                id                    TEXT PRIMARY KEY,
+                workspace_id          TEXT NOT NULL,
+                type                  TEXT,
+                status                TEXT NOT NULL,
+                start_time            TEXT NOT NULL,
+                metadata              TEXT,
+                parent_process_id     TEXT,
+                sdk_session_id        TEXT,
+                archived              INTEGER DEFAULT 0,
+                pinned_at             TEXT,
+                seen_at               TEXT,
+                last_event_at         TEXT
+            );
+        `);
+        db.prepare(`
+            INSERT INTO processes (id, workspace_id, type, status, start_time, metadata, sdk_session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run('p-v35', 'ws-1', 'ai', 'completed', '2026-01-01T00:00:00.000Z', '{"provider":"codex"}', 'codex-1');
+        db.pragma('user_version = 35');
+
+        initializeDatabase(db);
+
+        expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+        const columns = db.prepare('PRAGMA table_info(processes)').all() as Array<{ name: string }>;
+        expect(columns.map(column => column.name)).toContain('active_provider_session');
+        // No backfill: an old row keeps reading through the legacy
+        // metadata.provider + sdk_session_id projection.
+        expect(db.prepare(`
+            SELECT sdk_session_id, active_provider_session FROM processes WHERE id = ?
+        `).get('p-v35')).toEqual({
+            sdk_session_id: 'codex-1',
+            active_provider_session: null,
+        });
+    });
+
+    it('is idempotent when initializeDatabase runs twice', () => {
+        initializeDatabase(db);
+        db.pragma('user_version = 35');
+
+        expect(() => initializeDatabase(db)).not.toThrow();
+
+        const columns = db.prepare('PRAGMA table_info(processes)').all() as Array<{ name: string }>;
+        expect(columns.filter(column => column.name === 'active_provider_session')).toHaveLength(1);
     });
 });

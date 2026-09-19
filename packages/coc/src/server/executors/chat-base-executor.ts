@@ -43,6 +43,7 @@ import {
     toForwardSlashes,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
+import { advanceActiveProviderSession, activeProviderSessionUpdate } from '../processes/active-provider-session';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
@@ -1185,7 +1186,15 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     approvePermissions: this.approvePermissions,
                     ...(dangerousCommandGuard ? { dangerousCommandGuard } : {}),
                     onSessionCreated: (sessionId: string) => {
-                        this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
+                        // One store write binds provider and session id
+                        // together, so the pair can never be split by a crash
+                        // between two separate updates.
+                        const binding = advanceActiveProviderSession(undefined, {
+                            provider: taskProvider,
+                            sessionId,
+                            turnIndex: 0,
+                        }).binding;
+                        this.store.updateProcess(processId, activeProviderSessionUpdate(binding)).catch(() => {
                             // Non-fatal: store may be a stub
                         });
                     },

@@ -132,6 +132,7 @@ export {
     TrackedProcessFields,
     ConversationTurn,
     SerializedConversationTurn,
+    ActiveProviderSession,
     TurnSource,
     TimelineItem,
     SerializedTimelineItem,

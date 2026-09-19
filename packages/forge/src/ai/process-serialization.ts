@@ -30,6 +30,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         parentProcessId: process.parentProcessId,
         // Session resume fields
         sdkSessionId: process.sdkSessionId,
+        activeProviderSession: process.activeProviderSession,
         backend: process.backend,
         workingDirectory: process.workingDirectory,
         // Title
@@ -148,6 +149,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         parentProcessId: serialized.parentProcessId,
         // Session resume fields
         sdkSessionId: serialized.sdkSessionId,
+        activeProviderSession: serialized.activeProviderSession,
         backend: serialized.backend,
         workingDirectory: serialized.workingDirectory,
         // Title

@@ -11,13 +11,13 @@ const store = createProcessStore(dataDir, backend?); // 'sqlite' | 'file'
 
 ## SqliteProcessStore
 
-Single `processes.db` at `~/.coc/processes.db`. Schema version 35.
+Single `processes.db` at `~/.coc/processes.db`. Schema version 36.
 
 ### Tables
 
 | Table | Purpose |
 |-------|---------|
-| `processes` | Process metadata, config, status, context-window totals/breakdown, `pinned_at`, `archived`, `last_event_at`, `seen_at` |
+| `processes` | Process metadata, config, status, context-window totals/breakdown, `active_provider_session`, `pinned_at`, `archived`, `last_event_at`, `seen_at` |
 | `conversation_turns` | Per-turn content, role, tool calls, `provider`, `pinned_at`, `archived`, `deleted_at` |
 | `conversation_search` | FTS5 index on `conversation_turns.content` with sync triggers |
 | `queue_tasks` | Queue task persistence |
@@ -82,6 +82,16 @@ empty chat. See [rest-api.md](rest-api.md).
   original attribution after a conversation switches providers. NULL on turns predating the
   field; those fall back to the process provider for display only. Carried through fork copies
   and the shared `serializeProcess`/`deserializeProcess` path used by `FileProcessStore`.
+- **Active provider/session binding** — `AIProcess.activeProviderSession` (`active_provider_session`,
+  JSON) holds `{ provider, sessionId?, segmentId, firstTurnIndex }` as one value, so the provider
+  that owns the conversation and the native session id that continues it can only ever be written
+  together. `metadata.provider` and `sdkSessionId` remain compatibility projections: never combine
+  a provider read from one with a session id read from the other — resolve both through
+  `readActiveProviderSession()` in `packages/coc/src/server/processes/active-provider-session.ts`,
+  which projects pre-binding processes from the legacy fields. An `updateProcess` that writes only
+  `sdkSessionId` moves the binding's session id in the same UPDATE so it cannot go stale. NULL on
+  processes predating the column, and never copied into a fork — a fork's first follow-up
+  reconstructs a fresh session.
 - **Pending messages** — `pendingMessages` in process metadata; append atomically with
   `appendPendingMessage(processId, message)` (read-append-persist under the store write lock).
   Never read-modify-write the array through `updateProcess` — concurrent follow-ups lose
