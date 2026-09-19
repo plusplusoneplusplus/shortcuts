@@ -144,6 +144,7 @@ interface TurnRow {
     compaction_summary: string | null;
     repo_group_context: string | null;
     chat_mode_context: string | null;
+    provider: string | null;
 }
 
 interface PromptAutocompleteHistoryRow {
@@ -482,6 +483,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         compaction_summary: turn.compactionSummary ?? null,
         repo_group_context: turn.repoGroupContext ?? null,
         chat_mode_context: turn.chatModeContext ?? null,
+        provider: turn.provider ?? null,
         deleted_at: dateToIso(turn.deletedAt),
         pinned_at: dateToIso(turn.pinnedAt),
         archived: boolToInt(turn.archived),
@@ -539,6 +541,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         ...(row.chat_mode_context ? { chatModeContext: row.chat_mode_context } : {}),
         ...(row.model ? { model: row.model } : {}),
         ...(row.mode ? { mode: row.mode } : {}),
+        ...(row.provider ? { provider: row.provider as ConversationTurn['provider'] } : {}),
         ...(row.sdk_event_id ? { sdkEventId: row.sdk_event_id } : {}),
         deletedAt: isoToDate(row.deleted_at),
         pinnedAt: isoToDate(row.pinned_at),
@@ -670,12 +673,12 @@ export class SqliteProcessStore implements ProcessStore {
                 process_id, turn_index, role, content, timestamp, streaming,
                 interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
                 token_usage, paste_externalized, model, mode, sdk_event_id, display_only,
-                compaction_summary, repo_group_context, chat_mode_context
+                compaction_summary, repo_group_context, chat_mode_context, provider
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @interrupted, @interruption_reason, @tool_calls, @timeline, @images, @historical, @suggestions,
                 @token_usage, @paste_externalized, @model, @mode, @sdk_event_id, @display_only,
-                @compaction_summary, @repo_group_context, @chat_mode_context
+                @compaction_summary, @repo_group_context, @chat_mode_context, @provider
             )
         `);
 
@@ -836,12 +839,12 @@ export class SqliteProcessStore implements ProcessStore {
                   (process_id, turn_index, role, content, timestamp, streaming,
                    interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
                    token_usage, paste_externalized, model, mode, display_only, compaction_summary,
-                   repo_group_context, chat_mode_context)
+                   repo_group_context, chat_mode_context, provider)
                 SELECT
                   ?, turn_index, role, content, timestamp, 0,
                   interrupted, interruption_reason, tool_calls, timeline, images, 1, suggestions,
                   token_usage, paste_externalized, model, mode, display_only, compaction_summary,
-                  repo_group_context, chat_mode_context
+                  repo_group_context, chat_mode_context, provider
                 FROM conversation_turns
                 WHERE process_id = ?
                   AND deleted_at IS NULL
@@ -1348,6 +1351,7 @@ export class SqliteProcessStore implements ProcessStore {
                     compaction_summary: null,
                     repo_group_context: null,
                     chat_mode_context: null,
+                    provider: null,
                 });
             }
         });

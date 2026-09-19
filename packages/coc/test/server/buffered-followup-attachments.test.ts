@@ -266,6 +266,11 @@ describe('drainPendingMessages copies attachment metadata into the follow-up tas
 
         const payload = (queueManager.getQueued()[0] as QueuedTask).payload as any;
         expect(payload.provider).toBe('codex');
+
+        // The deferred user turn is attributed to the same provider, so a later
+        // retry or handoff cutoff reads the provider the message was accepted for.
+        const after = await store.getProcess('proc-drain-provider');
+        expect(after?.conversationTurns?.at(-1)?.provider).toBe('codex');
     });
 
     it('omits provider when the buffered message predates per-message provider routing', async () => {
@@ -292,5 +297,10 @@ describe('drainPendingMessages copies attachment metadata into the follow-up tas
 
         const payload = (queueManager.getQueued()[0] as QueuedTask).payload as any;
         expect(payload.provider).toBeUndefined();
+
+        // Nothing to attribute: leave the turn unattributed rather than guessing
+        // from the conversation's current metadata.
+        const after = await store.getProcess('proc-drain-legacy');
+        expect(after?.conversationTurns?.at(-1)?.provider).toBeUndefined();
     });
 });

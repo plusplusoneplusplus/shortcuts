@@ -405,6 +405,7 @@ export class ProcessMessageDeliveryService {
                     ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
                     ...(input.model ? { model: input.model } : {}),
                     ...(input.mode ? { mode: input.mode } : {}),
+                    ...(input.provider ? { provider: input.provider } : {}),
                 }),
                 { additionalUpdates: { status: 'running' } },
             );

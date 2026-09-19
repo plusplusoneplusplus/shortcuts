@@ -429,6 +429,31 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(bridge.enqueue.mock.calls[0][0].payload.provider).toBeUndefined();
     });
 
+    it('records the accepted provider on the persisted user turn', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({ status: 'completed', metadata: { provider: 'copilot' } }),
+            makeInput({ provider: 'codex' }),
+        );
+
+        const turn = store.appendConversationTurn.mock.calls[0][1](0);
+        expect(turn.provider).toBe('codex');
+    });
+
+    it('leaves the user turn unattributed when the input carries no provider', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(makeProc({ status: 'completed' }), makeInput({}));
+
+        const turn = store.appendConversationTurn.mock.calls[0][1](0);
+        expect(turn.provider).toBeUndefined();
+    });
+
     it('records the accepted provider on a buffered pending message', async () => {
         const store = makeStore();
         const bridge = {

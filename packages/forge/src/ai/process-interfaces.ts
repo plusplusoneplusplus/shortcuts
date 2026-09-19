@@ -225,6 +225,15 @@ export interface ConversationTurn {
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
     mode?: string;
+    /**
+     * Concrete AI provider that ran this turn. Written when the turn is
+     * recorded, from the provider the request was accepted for — never
+     * re-read later from mutable conversation metadata, so a turn keeps its
+     * original attribution after the conversation switches providers. Absent
+     * on turns recorded before provider attribution existed; those fall back
+     * to the process's provider for display only.
+     */
+    provider?: SupportedProvider;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: Date;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */
@@ -303,6 +312,15 @@ export interface SerializedConversationTurn {
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
     mode?: string;
+    /**
+     * Concrete AI provider that ran this turn. Written when the turn is
+     * recorded, from the provider the request was accepted for — never
+     * re-read later from mutable conversation metadata, so a turn keeps its
+     * original attribution after the conversation switches providers. Absent
+     * on turns recorded before provider attribution existed; those fall back
+     * to the process's provider for display only.
+     */
+    provider?: SupportedProvider;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: string;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */

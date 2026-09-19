@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 35;
 
 /**
  * Read the current schema version from the database.
@@ -98,6 +98,7 @@ export function initializeDatabase(db: Database.Database): void {
                 compaction_summary TEXT,
                 repo_group_context TEXT,
                 chat_mode_context TEXT,
+                provider          TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -550,6 +551,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 34) {
             migrateV33toV34(db);
         }
+        if (versionBefore < 35) {
+            migrateV34toV35(db);
+        }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });
@@ -972,6 +976,17 @@ function migrateV32toV33(db: Database.Database): void {
 /** V33 -> V34: persist the active implement-plan chain gate per repository. */
 function migrateV33toV34(db: Database.Database): void {
     ensureColumn(db, 'queue_repo_state', 'pr_gate', 'TEXT');
+}
+
+/**
+ * V34 -> V35: add `provider` to `conversation_turns` — the concrete AI provider
+ * that ran the turn. Existing rows stay NULL rather than being backfilled from
+ * the process: a conversation can change provider, so the current metadata is
+ * not evidence of what ran an old turn. NULL turns fall back to the process
+ * provider for display only.
+ */
+function migrateV34toV35(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'provider', 'TEXT');
 }
 
 /**

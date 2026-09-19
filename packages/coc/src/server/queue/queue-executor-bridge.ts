@@ -873,6 +873,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
                 ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                 ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
+                // Attribute the turn to the provider the message was accepted
+                // for. A message buffered before provider routing existed has
+                // none; leave it unattributed rather than guessing from the
+                // conversation's current metadata.
+                ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
             }),
         );
 

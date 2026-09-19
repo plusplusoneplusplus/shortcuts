@@ -1524,6 +1524,29 @@ describe('POST /api/processes/:id/message', () => {
             expect(enqueued.payload.provider).toBe('codex');
         });
 
+        it('records the accepted provider on the persisted user turn', async () => {
+            await addChat('proc-prov-turn');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-turn/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(202);
+            const proc = await store.getProcess('proc-prov-turn');
+            expect(proc?.conversationTurns?.at(-1)?.provider).toBe('codex');
+        });
+
+        it('attributes the user turn to the conversation provider when the client names none', async () => {
+            await addChat('proc-prov-turn-default', {
+                metadata: { type: 'chat', provider: 'opencode' },
+            } as Partial<AIProcess>);
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-turn-default/message`, {
+                content: 'Hello',
+            });
+            expect(res.status).toBe(202);
+            const proc = await store.getProcess('proc-prov-turn-default');
+            expect(proc?.conversationTurns?.at(-1)?.provider).toBe('opencode');
+        });
+
         it('falls back to the conversation provider when the client names none', async () => {
             await addChat('proc-prov-payload-default', {
                 metadata: { type: 'chat', provider: 'opencode' },

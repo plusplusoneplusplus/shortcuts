@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(34);
+        expect(SCHEMA_VERSION).toBe(35);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1178,7 +1178,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(34);
+            expect(SCHEMA_VERSION).toBe(35);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1405,7 +1405,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(34);
+            expect(SCHEMA_VERSION).toBe(35);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1606,7 +1606,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(34);
+            expect(SCHEMA_VERSION).toBe(35);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',
@@ -1675,6 +1675,70 @@ describe('sqlite-schema', () => {
                 task_delay_minutes: 15,
                 pr_gate: null,
             });
+        });
+    });
+
+    describe('V34 -> V35 migration (per-turn provider attribution)', () => {
+        it('adds a nullable provider column without backfilling existing turns', () => {
+            db.exec(`
+                CREATE TABLE processes (
+                    id                    TEXT PRIMARY KEY,
+                    workspace_id          TEXT NOT NULL,
+                    type                  TEXT,
+                    status                TEXT NOT NULL,
+                    start_time            TEXT NOT NULL,
+                    parent_process_id     TEXT,
+                    sdk_session_id        TEXT,
+                    archived              INTEGER DEFAULT 0,
+                    pinned_at             TEXT,
+                    seen_at               TEXT,
+                    last_event_at         TEXT
+                );
+                CREATE TABLE conversation_turns (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    process_id        TEXT NOT NULL,
+                    turn_index        INTEGER NOT NULL,
+                    role              TEXT NOT NULL,
+                    content           TEXT,
+                    timestamp         TEXT NOT NULL,
+                    streaming         INTEGER DEFAULT 0,
+                    deleted_at        TEXT,
+                    pinned_at         TEXT,
+                    model             TEXT,
+                    mode              TEXT,
+                    UNIQUE(process_id, turn_index)
+                );
+            `);
+            db.prepare(`
+                INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, model)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run('p-v34', 0, 'user', 'hello', '2026-01-01T00:00:00.000Z', 'gpt-5.4');
+            db.pragma('user_version = 34');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            const columns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
+            expect(columns.map(column => column.name)).toContain('provider');
+            expect(db.prepare(`
+                SELECT role, content, model, provider
+                FROM conversation_turns WHERE process_id = ?
+            `).get('p-v34')).toEqual({
+                role: 'user',
+                content: 'hello',
+                model: 'gpt-5.4',
+                provider: null,
+            });
+        });
+
+        it('is idempotent when initializeDatabase runs twice', () => {
+            initializeDatabase(db);
+            db.pragma('user_version = 34');
+
+            expect(() => initializeDatabase(db)).not.toThrow();
+
+            const columns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
+            expect(columns.filter(column => column.name === 'provider')).toHaveLength(1);
         });
     });
 });

@@ -11,14 +11,14 @@ const store = createProcessStore(dataDir, backend?); // 'sqlite' | 'file'
 
 ## SqliteProcessStore
 
-Single `processes.db` at `~/.coc/processes.db`. Schema version 22.
+Single `processes.db` at `~/.coc/processes.db`. Schema version 35.
 
 ### Tables
 
 | Table | Purpose |
 |-------|---------|
 | `processes` | Process metadata, config, status, context-window totals/breakdown, `pinned_at`, `archived`, `last_event_at`, `seen_at` |
-| `conversation_turns` | Per-turn content, role, tool calls, `pinned_at`, `archived`, `deleted_at` |
+| `conversation_turns` | Per-turn content, role, tool calls, `provider`, `pinned_at`, `archived`, `deleted_at` |
 | `conversation_search` | FTS5 index on `conversation_turns.content` with sync triggers |
 | `queue_tasks` | Queue task persistence |
 | `schedule_runs` | Schedule execution history |
@@ -76,6 +76,12 @@ empty chat. See [rest-api.md](rest-api.md).
 - **Context window tracking** — `tokenLimit`, `currentTokens`, and optional `systemTokens` /
   `toolDefinitionsTokens` / `conversationTokens` persist on the process record for snapshot
   replay.
+- **Per-turn provider attribution** — `ConversationTurn.provider` records the concrete AI
+  provider that ran the turn, written when the turn is recorded from the provider the request
+  was accepted for. It is never re-derived from `metadata.provider`, so turns keep their
+  original attribution after a conversation switches providers. NULL on turns predating the
+  field; those fall back to the process provider for display only. Carried through fork copies
+  and the shared `serializeProcess`/`deserializeProcess` path used by `FileProcessStore`.
 - **Pending messages** — `pendingMessages` in process metadata; append atomically with
   `appendPendingMessage(processId, message)` (read-append-persist under the store write lock).
   Never read-modify-write the array through `updateProcess` — concurrent follow-ups lose
