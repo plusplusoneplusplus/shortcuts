@@ -39,12 +39,13 @@ import {
 } from '../tasks/task-types';
 import {
     getLogger,
+    getModelContextWindow,
     LogCategory,
     mergeConsecutiveContentItems,
     resolveModelForProvider,
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
-import { buildConversationHistoryContext } from './prompt-builder';
+import { buildConversationHandoff } from './conversation-handoff';
 import { resolveContinuationMode } from './continuation-mode';
 import { readNoteContent } from './note-chat-executor';
 import { suppressesPlanSaveGuidance } from './auto-folder-utils';
@@ -93,6 +94,15 @@ export interface FollowUpTurnOptions {
      * non-switching caller on the existing native-resume path.
      */
     requestedProvider?: ChatProvider;
+    /**
+     * Turn index the accepted user message was (or will be) persisted at,
+     * captured when the message was accepted. It is the cutoff for a
+     * reconstructed continuation: only turns strictly before it are quoted, so
+     * the current message reaches the target provider exactly once — as the
+     * prompt. Omitted by callers with no accepted-message identity (cron and
+     * ask_user resume turns), which fall back to dropping a trailing user turn.
+     */
+    historyCutoffTurnIndex?: number;
 }
 
 /** Log prefix for every line this executor writes. */
@@ -392,9 +402,18 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         // `onSessionCreated` fills this in before the response is appended.
         let turnSegmentId = canResumeSession ? activeBinding.segmentId : undefined;
 
+        // A reconstructed continuation starts on a session that has never seen
+        // this conversation, so it gets the bounded handoff built from CoC's
+        // canonical transcript — never the unbounded replay, which also had no
+        // cutoff and so re-sent the message being sent now.
         const historyContext = canResumeSession
             ? undefined
-            : buildConversationHistoryContext(process.conversationTurns);
+            : buildConversationHandoff({
+                turns: process.conversationTurns,
+                cutoffTurnIndex: options?.historyCutoffTurnIndex,
+                targetProvider: continuation.provider,
+                contextWindow: providerModel.model ? getModelContextWindow(providerModel.model) : undefined,
+            });
 
         // No `enqueuedAt`: a follow-up is dispatched directly, so there is no
         // queue wait to reconstruct.

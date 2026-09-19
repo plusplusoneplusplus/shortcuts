@@ -877,7 +877,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // Append the deferred user turn at the correct position (after the
         // assistant response that just completed) before enqueuing the follow-up.
         const turnContent = nextMsg.displayContent ?? nextMsg.content;
-        await this.store.appendConversationTurn(
+        const appendedUserTurn = await this.store.appendConversationTurn(
             processId,
             (turnIndex) => ({
                 role: 'user' as const,
@@ -924,6 +924,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
                 ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                 ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
+                // Cutoff for a reconstructed continuation: the index the
+                // deferred user turn just landed on, so history is quoted
+                // strictly before the message being drained.
+                ...(appendedUserTurn ? { historyCutoffTurnIndex: appendedUserTurn.turn.turnIndex } : {}),
                 ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
                 ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
                 ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),

@@ -821,7 +821,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 // completion is recorded in the transcript itself, not only as a
                 // transient toast. `displayOnly` keeps it out of the provider
                 // model's prompt history on future follow-ups (see
-                // buildConversationHistoryContext); appendConversationTurn
+                // buildConversationHandoff); appendConversationTurn
                 // broadcasts the change via the store's process-updated path.
                 await store.appendConversationTurn(id, (turnIndex) => ({
                     role: 'assistant' as const,

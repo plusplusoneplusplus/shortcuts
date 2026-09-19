@@ -110,6 +110,8 @@ src/
 | `classification-executor.ts` | Diff classification executor; runs with interactive Ask-mode semantics and injects `saveClassification` for persisted hunk results |
 | `process-lifecycle-runner.ts` | Full process lifecycle + pending-message draining |
 | `prompt-builder.ts` | System message, memory context, skill injection |
+| `continuation-mode.ts` | Native resume vs reconstructed continuation; the only place a native session id may travel with a turn |
+| `conversation-handoff.ts` | Deterministic bounded `<conversation_handoff>` rebuilt from CoC's transcript for a reconstructed (cross-provider or cold) continuation |
 | `chat-tool-builder.ts` | Common chat tool bundle assembly |
 | `chat-turn-context-builder.ts` | Per-turn tools, memory, ask-user handles, tool guidance |
 | `chat-turn-system-message.ts` | Canonical chat-turn system-message block order |

@@ -627,6 +627,13 @@ export interface ChatPayload {
      * Supported values: 'copilot' | 'codex' | 'claude' | 'opencode'.
      */
     provider?: ChatProvider;
+    /**
+     * For follow-ups: turn index the accepted user message occupies. Captured
+     * when the message was accepted so a reconstructed continuation quotes only
+     * the turns strictly before it, and the message itself is sent once — as
+     * the prompt rather than as quoted history.
+     */
+    historyCutoffTurnIndex?: number;
     /** Per-turn reasoning-effort override, normalized to task config by queue validation. */
     reasoningEffort?: ReasoningEffort;
     /**

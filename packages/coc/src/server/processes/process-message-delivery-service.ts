@@ -292,6 +292,14 @@ export class ProcessMessageDeliveryService {
         const activeBinding = readActiveProviderSession(proc);
         const events: DeliveryEvent[] = [];
 
+        // Turn index this message will occupy — the cutoff a reconstructed
+        // continuation quotes history strictly before. Captured before the
+        // append so the executor can be told about the message it is running
+        // even when the append has not landed yet, and read from the accepted
+        // snapshot so it can never overshoot and quote the message back to the
+        // provider as if it were history.
+        const historyCutoffTurnIndex = proc.conversationTurns?.length ?? 0;
+
         let path: DeliveryPath = 'enqueued';
         let buffered = false;
         let steerSucceeded = false;
@@ -368,6 +376,7 @@ export class ProcessMessageDeliveryService {
                             ...(input.mode ? { mode: input.mode } : {}),
                             ...(input.model ? { model: input.model } : {}),
                             ...(input.provider ? { provider: input.provider } : {}),
+                            historyCutoffTurnIndex,
                             ...(input.effort ? { reasoningEffort: input.effort } : {}),
                             deliveryMode: input.deliveryMode,
                         },
@@ -379,7 +388,7 @@ export class ProcessMessageDeliveryService {
                     path = 'enqueued';
                 }
             } else {
-                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId, { ...(input.provider ? { requestedProvider: input.provider } : {}) }).catch(() => {
+                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId, { ...(input.provider ? { requestedProvider: input.provider } : {}), historyCutoffTurnIndex }).catch(() => {
                 }).finally(() => {
                     if (input.imageTempDir) { cleanupTempDir(input.imageTempDir); }
                 });

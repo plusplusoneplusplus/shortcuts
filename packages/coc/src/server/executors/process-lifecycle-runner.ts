@@ -541,7 +541,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         // rather than from process metadata is what stops a
                         // later metadata change from retargeting a message
                         // that is already queued.
-                        { ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}) },
+                        {
+                            ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),
+                            ...(typeof followUpPayload.historyCutoffTurnIndex === 'number'
+                                ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }
+                                : {}),
+                        },
                     );
                 }
                 const duration = Date.now() - startTime;

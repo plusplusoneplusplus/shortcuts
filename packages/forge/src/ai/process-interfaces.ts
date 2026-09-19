@@ -192,7 +192,7 @@ export interface ConversationTurn {
      * True for turns synthesized for display only (e.g. the `/compact` result
      * notice). Rendered in the transcript but deliberately excluded from the
      * provider model's prompt history on future follow-ups — see
-     * `buildConversationHistoryContext`.
+     * `buildConversationHandoff`.
      */
     displayOnly?: boolean;
     /**
