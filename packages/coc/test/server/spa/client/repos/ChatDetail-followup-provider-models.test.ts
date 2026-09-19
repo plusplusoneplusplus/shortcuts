@@ -20,6 +20,10 @@ describe('ChatDetail follow-up provider model wiring', () => {
         expect(source).toContain('providerOverride: pendingProvider ?? undefined');
     });
 
+    it('retries with the failed user turn provider unless another provider was confirmed', () => {
+        expect(source).toContain('providerOverride: getRetryProvider(turnsRef.current, pendingProvider)');
+    });
+
     it('seeds token limits from the same provider-scoped catalog', () => {
         expect(source).toContain('const info = activeProviderModels.find((m: ModelInfo) => m.id === sessionModel);');
         expect(source).not.toContain('agentProviders.listModels(getActiveProvider())');

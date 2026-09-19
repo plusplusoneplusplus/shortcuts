@@ -18,7 +18,7 @@ import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { useWorkspaceRemoteUrl } from '../../repos/useWorkspaceRemoteUrl';
-import { getConversationTurns } from './conversation/chatConversationUtils';
+import { getConversationTurns, getRetryProvider } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import type { ChatHeaderMetadata } from './conversation/ChatMetadataButton';
 import { useQueue } from '../../contexts/QueueContext';
@@ -2213,7 +2213,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     const retryLastMessage = () => {
         if (!lastFailedMessageRef.current) return;
-        void sendFollowUp(lastFailedMessageRef.current);
+        void sendFollowUp(lastFailedMessageRef.current, 'enqueue', {
+            providerOverride: getRetryProvider(turnsRef.current, pendingProvider),
+        });
     };
 
     const handleStop = useCallback(async () => {

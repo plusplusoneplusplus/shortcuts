@@ -1,4 +1,5 @@
 import type { ClientConversationTurn } from '../../../types/dashboard';
+import type { ChatProviderId } from '@plusplusoneplusplus/coc-client';
 
 /**
  * Extract conversation turns from a process/queue API response.
@@ -36,4 +37,17 @@ export function getConversationTurns(data: any, task?: any): ClientConversationT
         return [{ role: 'user', content: task.payload.prompt, turnIndex: 0, timeline: [] }];
     }
     return [];
+}
+
+export function getRetryProvider(
+    turns: readonly ClientConversationTurn[],
+    confirmedProvider?: ChatProviderId | null,
+): ChatProviderId | undefined {
+    if (confirmedProvider) return confirmedProvider;
+    for (let i = turns.length - 1; i >= 0; i--) {
+        if (turns[i].role === 'user') {
+            return turns[i].provider;
+        }
+    }
+    return undefined;
 }

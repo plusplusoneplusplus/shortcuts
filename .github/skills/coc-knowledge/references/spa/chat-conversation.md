@@ -25,6 +25,11 @@ guards. Same-provider continuation requires the saved native session and preserv
 `SESSION_NOT_RESUMABLE`; a different provider bypasses outgoing-session liveness and
 queues a reconstructed continuation without a resume session id.
 
+Follow-up retry resolves its provider from the latest recorded user turn. A newly
+confirmed composer provider takes precedence, so an intentional retry switch still
+uses the standard confirmation flow; unattributed old turns preserve active-provider
+fallback behavior.
+
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
 escaped and never injected); the raw toggle shows literal source. Turns with
