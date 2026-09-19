@@ -20,6 +20,11 @@ provider segment. Earlier-segment controls stay visible but disabled with the
 cross-provider rewind explanation; the REST route enforces the same boundary against
 the authoritative provider/session binding before calling a provider SDK.
 
+Stopped-chat continuation resolves the requested provider before applying strict-resume
+guards. Same-provider continuation requires the saved native session and preserves
+`SESSION_NOT_RESUMABLE`; a different provider bypasses outgoing-session liveness and
+queues a reconstructed continuation without a resume session id.
+
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
 escaped and never injected); the raw toggle shows literal source. Turns with

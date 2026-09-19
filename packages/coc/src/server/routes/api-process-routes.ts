@@ -28,7 +28,7 @@ import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
-import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProviderOrDefault, serializeCommitChatMetadata } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
     ProcessMessageDeliveryService,
@@ -1163,8 +1163,30 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, missingFields(['content']));
             }
 
+            const activeBinding = readActiveProviderSession(proc);
+            const sessionProvider = activeBinding.provider as ChatProvider;
+            const normalized = normalizeFollowUpInput(
+                body,
+                sessionProvider,
+                ctx.getLiveFeatureFlags?.().defaultChatStyle,
+            );
+            if (!normalized.ok) {
+                return handleAPIError(res, normalized.code
+                    ? new APIError(400, normalized.error, normalized.code)
+                    : badRequest(normalized.error));
+            }
+            const fields = normalized.value;
+
+            if (fields.isProviderSwitch && ctx.getLiveFeatureFlags?.().chatProviderSwitchingEnabled !== true) {
+                return handleAPIError(res, new APIError(
+                    400,
+                    'Switching providers in an existing conversation is not enabled on this server.',
+                    'PROVIDER_SWITCHING_DISABLED',
+                ));
+            }
+
             const stoppedChatResumeUnavailable = getStoppedChatResumeUnavailableMessage(proc);
-            if (stoppedChatResumeUnavailable) {
+            if (stoppedChatResumeUnavailable && !fields.isProviderSwitch) {
                 return handleAPIError(res, new APIError(
                     409,
                     stoppedChatResumeUnavailable,
@@ -1173,8 +1195,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             const isCancelledResume = proc.status === 'cancelled';
-            const resumeSessionId = isCancelledResume ? proc.sdkSessionId : undefined;
-            if (isCancelledResume && !resumeSessionId) {
+            const resumeSessionId = isCancelledResume && !fields.isProviderSwitch
+                ? activeBinding.sessionId
+                : undefined;
+            if (isCancelledResume && !fields.isProviderSwitch && !resumeSessionId) {
                 return handleAPIError(res, new APIError(
                     409,
                     'Cannot continue this stopped chat because no SDK session was saved. Start a new chat manually.',
@@ -1198,38 +1222,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ? (body.content as string) + textContext
                 : undefined;
 
-            // Check session liveness before forwarding the prompt
-            if (!isCancelledResume && bridge && !(await bridge.isSessionAlive(id))) {
+            // Reconstructed provider switches do not depend on the outgoing
+            // provider's native session being alive.
+            if (!fields.isProviderSwitch && !isCancelledResume && bridge && !(await bridge.isSessionAlive(id))) {
                 return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));
             }
 
             if (!bridge) {
                 return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
-            }
-
-            // Normalize the optional scalar follow-up fields (mode, delivery mode,
-            // selected skills, model override, reasoning effort) against the
-            // conversation provider. The only client error here is an invalid
-            // deliveryMode, which maps to 400.
-            const sessionProvider: ChatProvider = resolveChatProviderOrDefault(proc.metadata?.provider);
-            const normalized = normalizeFollowUpInput(
-                body,
-                sessionProvider,
-                ctx.getLiveFeatureFlags?.().defaultChatStyle,
-            );
-            if (!normalized.ok) {
-                return handleAPIError(res, normalized.code
-                    ? new APIError(400, normalized.error, normalized.code)
-                    : badRequest(normalized.error));
-            }
-            const fields = normalized.value;
-
-            if (fields.isProviderSwitch && ctx.getLiveFeatureFlags?.().chatProviderSwitchingEnabled !== true) {
-                return handleAPIError(res, new APIError(
-                    400,
-                    'Switching providers in an existing conversation is not enabled on this server.',
-                    'PROVIDER_SWITCHING_DISABLED',
-                ));
             }
 
             // A different provider means a fresh native session, so it can only

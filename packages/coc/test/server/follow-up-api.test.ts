@@ -816,6 +816,34 @@ describe('POST /api/processes/:id/message', () => {
             expect(updated?.conversationTurns).toHaveLength(0);
         });
 
+        it('should allow a cancelled chat with no saved session to switch providers', async () => {
+            const proc: AIProcess = {
+                id: 'proc-cancelled-switch',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'cancelled',
+                startTime: new Date(),
+                endTime: new Date(),
+                metadata: { type: 'chat', provider: 'copilot' },
+                conversationTurns: [
+                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [], provider: 'copilot' },
+                ],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-cancelled-switch/message`, {
+                content: 'continue with codex',
+                provider: 'codex',
+            });
+
+            expect(res.status).toBe(202);
+            expect(mockBridge.isSessionAlive).not.toHaveBeenCalled();
+            const call = (mockBridge.enqueue as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.payload.provider).toBe('codex');
+            expect(call.payload.resumeSessionId).toBeUndefined();
+        });
+
         it('should reject follow-up after stopped-chat strict resume failure', async () => {
             const proc: AIProcess = {
                 id: 'proc-strict-resume-failed',
@@ -1732,6 +1760,89 @@ describe('POST /api/processes/:id/message', () => {
             // Status must be rolled back to 'failed' (the prior status)
             const updated = await store.getProcess('proc-enq-fail2');
             expect(updated?.status).toBe('failed');
+        });
+
+        it('should allow a strict-resume-failed chat to reconstruct on a different provider', async () => {
+            const proc: AIProcess = {
+                id: 'proc-strict-resume-switch',
+                type: 'chat',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'failed',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'stopped-session',
+                metadata: {
+                    type: 'chat',
+                    provider: 'copilot',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: new Date().toISOString(),
+                        sdkSessionId: 'stopped-session',
+                    },
+                },
+                conversationTurns: [
+                    { role: 'user', content: 'continue', timestamp: new Date(), turnIndex: 0, timeline: [], provider: 'copilot' },
+                    { role: 'assistant', content: 'Strict resume failed.', timestamp: new Date(), turnIndex: 1, timeline: [], provider: 'copilot' },
+                ],
+            };
+            await store.addProcess(proc);
+            (mockBridge.isSessionAlive as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-strict-resume-switch/message`, {
+                content: 'reconstruct with claude',
+                provider: 'claude',
+            });
+
+            expect(res.status).toBe(202);
+            expect(mockBridge.isSessionAlive).not.toHaveBeenCalled();
+            const call = (mockBridge.enqueue as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.payload.provider).toBe('claude');
+            expect(call.payload.resumeSessionId).toBeUndefined();
+        });
+
+        it('should classify a stopped provider switch from the authoritative active binding', async () => {
+            const proc: AIProcess = {
+                id: 'proc-strict-binding-switch',
+                type: 'chat',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'failed',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'claude-session',
+                activeProviderSession: {
+                    provider: 'claude',
+                    sessionId: 'claude-session',
+                    segmentId: 'segment-claude',
+                    firstTurnIndex: 2,
+                },
+                metadata: {
+                    type: 'chat',
+                    provider: 'copilot',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: new Date().toISOString(),
+                        sdkSessionId: 'claude-session',
+                    },
+                },
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-strict-binding-switch/message`, {
+                content: 'reconstruct with copilot',
+                provider: 'copilot',
+            });
+
+            expect(res.status).toBe(202);
+            const call = (mockBridge.enqueue as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.payload.provider).toBe('copilot');
+            expect(call.payload.resumeSessionId).toBeUndefined();
         });
     });
 
