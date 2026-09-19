@@ -17,6 +17,8 @@ and transport code stays generic.
   specificity, then id), preferred-server selection for single-server callers,
   LSP language-id resolution, and nearest-marker project-root discovery.
 - `presets.ts` — built-in definitions and merging with workspace configuration.
+- `detection.ts` — which presets a workspace's files call for, read from each
+  preset's own `rootMarkers` first and a bounded file-extension scan second.
 - `adapters.ts` — the language-neutral root and runtime preparation hooks the
   manager calls before starting a session.
 - `typescript-adapter.ts` — TypeScript's answer to that hook: which

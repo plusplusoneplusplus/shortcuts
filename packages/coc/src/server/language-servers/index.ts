@@ -36,6 +36,14 @@ export {
     resolveLanguageServerDefinitions,
     writeLanguageServerConfig,
 } from './repository';
+export type { DetectLanguagesOptions } from './detection';
+export {
+    DETECTION_EXCLUDED_DIRECTORIES,
+    DETECTION_MAX_DEPTH,
+    DETECTION_MAX_ENTRIES,
+    detectWorkspaceLanguages,
+    detectableLanguageServerDefinitions,
+} from './detection';
 export type { PreparedDefinition, PrepareDefinitionDeps } from './adapters';
 export { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 export type { TypeScriptRuntime, TypeScriptRuntimeDeps, TypeScriptRuntimeOrigin } from './typescript-adapter';
