@@ -28,7 +28,7 @@ import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
-import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, serializeCommitChatMetadata } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProviderOrDefault, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
     ProcessMessageDeliveryService,
@@ -1210,9 +1210,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // selected skills, model override, reasoning effort) against the
             // conversation provider. The only client error here is an invalid
             // deliveryMode, which maps to 400.
-            const sessionProvider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
-                ? proc.metadata.provider
-                : 'copilot';
+            const sessionProvider: ChatProvider = resolveChatProviderOrDefault(proc.metadata?.provider);
             const normalized = normalizeFollowUpInput(
                 body,
                 sessionProvider,
@@ -1313,6 +1311,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ...(resumeSessionId ? { resumeSessionId } : {}),
                 ...(fields.optimisticId !== undefined ? { optimisticId: fields.optimisticId } : {}),
                 pasteExternalized: isPasteExternalized,
+                // Resolved once, here. Every delivery path carries this value
+                // with the message, so a metadata change after acceptance
+                // cannot retarget a queued or buffered follow-up.
+                provider: fields.requestedProvider ?? sessionProvider,
             };
 
             const deliveryService = new ProcessMessageDeliveryService({ store, bridge });

@@ -406,6 +406,46 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(result.events.map(e => e.kind)).toEqual(['message-queued']);
     });
 
+    it('carries the accepted provider into the enqueue payload', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({ status: 'completed', metadata: { provider: 'copilot' } }),
+            makeInput({ provider: 'codex' }),
+        );
+
+        expect(bridge.enqueue.mock.calls[0][0].payload.provider).toBe('codex');
+    });
+
+    it('omits provider from the enqueue payload when the input carries none', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(makeProc({ status: 'completed' }), makeInput({}));
+
+        expect(bridge.enqueue.mock.calls[0][0].payload.provider).toBeUndefined();
+    });
+
+    it('records the accepted provider on a buffered pending message', async () => {
+        const store = makeStore();
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn().mockReturnValue({ id: 't1', type: 'chat', status: 'running' }),
+            steerProcess: vi.fn(),
+        };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({ status: 'running' }),
+            makeInput({ deliveryMode: 'enqueue', provider: 'claude' }),
+        );
+
+        expect(store.appendPendingMessage.mock.calls[0][1].provider).toBe('claude');
+    });
+
     it('carries resumeSessionId into the enqueue payload for a cancelled strict resume', async () => {
         const store = makeStore();
         const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };

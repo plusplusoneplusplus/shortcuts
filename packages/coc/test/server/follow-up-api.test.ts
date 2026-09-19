@@ -1513,6 +1513,44 @@ describe('POST /api/processes/:id/message', () => {
             expect(res.status).toBe(202);
         });
 
+        it('sends the requested provider to the queue payload', async () => {
+            await addChat('proc-prov-payload');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-payload/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(202);
+            const enqueued = (mockBridge.enqueue as unknown as { mock: { calls: any[][] } }).mock.calls.at(-1)![0];
+            expect(enqueued.payload.provider).toBe('codex');
+        });
+
+        it('falls back to the conversation provider when the client names none', async () => {
+            await addChat('proc-prov-payload-default', {
+                metadata: { type: 'chat', provider: 'opencode' },
+            } as Partial<AIProcess>);
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-payload-default/message`, {
+                content: 'Hello',
+            });
+            expect(res.status).toBe(202);
+            const enqueued = (mockBridge.enqueue as unknown as { mock: { calls: any[][] } }).mock.calls.at(-1)![0];
+            expect(enqueued.payload.provider).toBe('opencode');
+        });
+
+        it('treats the same opencode provider as a same-provider follow-up while running', async () => {
+            // Regression: the route's provider check omitted `opencode`, so an
+            // OpenCode conversation looked like Copilot and an opencode
+            // follow-up was misread as a cross-provider switch and rejected.
+            await addChat('proc-prov-opencode-running', {
+                status: 'running',
+                metadata: { type: 'chat', provider: 'opencode' },
+            } as Partial<AIProcess>);
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-opencode-running/message`, {
+                content: 'Hello',
+                provider: 'opencode',
+            });
+            expect(res.status).toBe(202);
+        });
+
         it('rejects a cross-provider follow-up while an ask_user batch is waiting', async () => {
             await addChat('proc-prov-ask', {
                 pendingAskUser: [{ id: 'q1', question: 'which one?' }],

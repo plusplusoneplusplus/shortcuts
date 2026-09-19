@@ -540,6 +540,23 @@ export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 export const VALID_CHAT_PROVIDERS: ReadonlySet<ChatProvider> = new Set(['copilot', 'codex', 'claude', 'opencode']);
 
+/** Narrow an unknown value (e.g. `process.metadata.provider`) to a concrete provider. */
+export function resolveChatProvider(value: unknown): ChatProvider | undefined {
+    return typeof value === 'string' && VALID_CHAT_PROVIDERS.has(value as ChatProvider)
+        ? value as ChatProvider
+        : undefined;
+}
+
+/**
+ * Resolve a conversation's active provider, falling back for processes created
+ * before per-chat provider routing existed. Use this instead of hand-rolled
+ * equality chains — one of those silently omitted `opencode` and so treated an
+ * OpenCode conversation as Copilot.
+ */
+export function resolveChatProviderOrDefault(value: unknown, fallback: ChatProvider = 'copilot'): ChatProvider {
+    return resolveChatProvider(value) ?? fallback;
+}
+
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
 export const VALID_REASONING_EFFORTS: ReadonlySet<ReasoningEffort> = new Set(['low', 'medium', 'high', 'xhigh']);

@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
-import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
@@ -844,9 +844,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
         const [nextMsg, ...rest] = proc.pendingMessages;
-        const sessionProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot' || proc.metadata?.provider === 'opencode'
-            ? proc.metadata.provider
-            : 'copilot';
+        // The provider captured on the message wins over the conversation's
+        // current metadata: a message accepted for one provider must drain on
+        // that provider even if the conversation moved on in the meantime.
+        const sessionProvider = resolveChatProviderOrDefault(
+            nextMsg.provider ?? proc.metadata?.provider,
+        );
         const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
         if (resolvedModel.coerced) {
             getLogger().warn(
@@ -894,6 +897,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 prompt: nextMsg.content,
                 ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
                 ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
+                ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
                 ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
                 ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
                 ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),

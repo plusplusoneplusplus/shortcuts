@@ -7,7 +7,7 @@
  */
 
 import { AIBackendType } from './types';
-import type { TokenUsage, Attachment } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { TokenUsage, Attachment, SupportedProvider } from '@plusplusoneplusplus/coc-agent-sdk';
 import type {
     CodeReviewProcessMetadata,
     DiscoveryProcessMetadata,
@@ -431,6 +431,14 @@ export interface PendingMessage {
     pasteExternalized?: boolean;
     /** Model override used for this turn */
     model?: string;
+    /**
+     * Concrete AI provider this message was accepted for, resolved once when
+     * the follow-up was received. Carried on the message itself so a later
+     * change to the conversation's provider metadata cannot retarget a message
+     * that was already buffered. Absent on messages buffered before per-message
+     * provider routing existed — those drain on the conversation provider.
+     */
+    provider?: SupportedProvider;
     /** Interaction mode when the message was queued */
     mode?: string;
     /**

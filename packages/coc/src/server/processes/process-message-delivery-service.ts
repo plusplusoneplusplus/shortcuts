@@ -218,6 +218,15 @@ export interface FollowUpMessageInput {
     optimisticId?: string;
     /** True when the user's large paste was externalized to a temp-file reference. */
     pasteExternalized: boolean;
+    /**
+     * Concrete provider this message runs on, resolved once when the request
+     * was accepted (the requested provider, or the conversation's active one
+     * when the client named none). Every delivery path carries this value with
+     * the message — the pending-message buffer, the queue payload, and the
+     * drained replay — so nothing downstream has to re-read the provider from
+     * process metadata that may since have changed.
+     */
+    provider?: ChatProvider;
 }
 
 /** Which delivery branch handled the message. */
@@ -300,6 +309,7 @@ export class ProcessMessageDeliveryService {
                 ...(input.images ? { images: input.images } : {}),
                 ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
                 ...(input.model ? { model: input.model } : {}),
+                ...(input.provider ? { provider: input.provider } : {}),
                 ...(input.effort ? { reasoningEffort: input.effort } : {}),
                 ...(input.mode ? { mode: input.mode } : {}),
                 ...(input.attachments ? { attachments: input.attachments } : {}),
@@ -355,6 +365,7 @@ export class ProcessMessageDeliveryService {
                             ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { context: { skills: input.selectedSkillNames } } : {}),
                             ...(input.mode ? { mode: input.mode } : {}),
                             ...(input.model ? { model: input.model } : {}),
+                            ...(input.provider ? { provider: input.provider } : {}),
                             ...(input.effort ? { reasoningEffort: input.effort } : {}),
                             deliveryMode: input.deliveryMode,
                         },
