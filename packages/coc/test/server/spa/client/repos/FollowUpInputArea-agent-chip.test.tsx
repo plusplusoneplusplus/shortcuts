@@ -5,7 +5,7 @@
  * FollowUpInputArea toolbar and reflects the active provider.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -181,5 +181,117 @@ describe('FollowUpInputArea – disabled AgentSelectorChip', () => {
         chip.click();
         expect(screen.queryByTestId('agent-selector-menu')).toBeNull();
         expect(screen.queryByTestId('agent-option-auto')).toBeNull();
+    });
+});
+
+const PROVIDERS = [
+    { id: 'copilot' as const, label: 'Copilot', enabled: true, available: true },
+    { id: 'codex' as const, label: 'Codex', enabled: true, available: true },
+    { id: 'claude' as const, label: 'Claude', enabled: true, available: true },
+    { id: 'opencode' as const, label: 'OpenCode', enabled: false, available: false, reason: 'Not configured' },
+];
+
+describe('FollowUpInputArea – provider switching', () => {
+    beforeEach(() => {
+        Element.prototype.scrollIntoView = vi.fn();
+    });
+
+    function renderEnabled(overrides: Partial<Parameters<typeof FollowUpInputArea>[0]> = {}) {
+        const onProviderChange = vi.fn();
+        render(<FollowUpInputArea {...defaultProps({
+            activeProvider: 'copilot',
+            selectedProvider: 'copilot',
+            providerOptions: PROVIDERS,
+            onProviderChange,
+            ...overrides,
+        })} />);
+        return onProviderChange;
+    }
+
+    it('lists concrete owning-server providers without Auto and exposes unavailable reasons', () => {
+        renderEnabled();
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+
+        expect(screen.queryByTestId('agent-option-auto')).toBeNull();
+        expect(screen.getByTestId('agent-option-codex')).toBeEnabled();
+        expect(screen.getByTestId('agent-option-opencode')).toBeDisabled();
+        expect(screen.getByTestId('agent-option-opencode')).toHaveAttribute('title', 'Not configured');
+    });
+
+    it('requires the exact non-lossless warning before changing the pending provider', () => {
+        const onProviderChange = renderEnabled();
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+
+        expect(onProviderChange).not.toHaveBeenCalled();
+        expect(screen.getByText('Switch from Copilot to Codex?')).toBeTruthy();
+        expect(screen.getByText(/bounded reconstruction of this conversation, but the transfer is not lossless/)).toBeTruthy();
+        expect(screen.getByText(/Some earlier details, tool results, images, or provider-specific state may be omitted/)).toBeTruthy();
+        expect(screen.getByText(/visible chat history, workspace files, and git state will not be changed/)).toBeTruthy();
+    });
+
+    it('Cancel leaves the pending provider unchanged and restores focus', async () => {
+        const onProviderChange = renderEnabled();
+        const chip = screen.getByTestId('agent-selector-chip-btn');
+        fireEvent.click(chip);
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+        fireEvent.click(screen.getByTestId('provider-switch-cancel'));
+
+        expect(onProviderChange).not.toHaveBeenCalled();
+        expect(screen.queryByText('Switch from Copilot to Codex?')).toBeNull();
+        await waitFor(() => expect(chip).toHaveFocus());
+    });
+
+    it('Escape, close, and backdrop clicks cancel without changing the provider', () => {
+        const onProviderChange = renderEnabled();
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onProviderChange).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+        fireEvent.click(screen.getByTestId('dialog-close-btn'));
+        expect(onProviderChange).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+        fireEvent.click(screen.getByTestId('dialog-overlay'));
+        expect(onProviderChange).not.toHaveBeenCalled();
+    });
+
+    it('confirm changes only the pending selection and restores focus', async () => {
+        const onProviderChange = renderEnabled();
+        const chip = screen.getByTestId('agent-selector-chip-btn');
+        fireEvent.click(chip);
+        fireEvent.click(screen.getByTestId('agent-option-codex'));
+        fireEvent.click(screen.getByTestId('provider-switch-confirm'));
+
+        expect(onProviderChange).toHaveBeenCalledOnce();
+        expect(onProviderChange).toHaveBeenCalledWith('codex');
+        await waitFor(() => expect(chip).toHaveFocus());
+    });
+
+    it('choosing the active provider clears a pending switch without another warning', () => {
+        const onProviderChange = renderEnabled({ selectedProvider: 'codex' });
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-copilot'));
+
+        expect(onProviderChange).toHaveBeenCalledWith('copilot');
+        expect(screen.queryByTestId('provider-switch-confirm-dialog')).toBeNull();
+    });
+
+    it('describes the active provider as source when replacing a pending target', () => {
+        renderEnabled({ selectedProvider: 'codex' });
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        fireEvent.click(screen.getByTestId('agent-option-claude'));
+        expect(screen.getByText('Switch from Copilot to Claude?')).toBeTruthy();
+    });
+
+    it('announces the eligibility reason when switching is disabled', () => {
+        renderEnabled({ providerSwitchDisabledReason: 'Wait for the conversation to become idle before switching provider' });
+        const chip = screen.getByTestId('agent-selector-chip-btn');
+        expect(chip).toBeDisabled();
+        expect(chip).toHaveAttribute('aria-label', 'Agent: Copilot (Wait for the conversation to become idle before switching provider)');
     });
 });

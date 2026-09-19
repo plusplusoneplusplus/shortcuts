@@ -66,6 +66,8 @@ import { findComposerEditable, textOffsetFromPoint } from './filePathDropCaret';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
 import type { ConcreteChatProvider } from '../../utils/providerSelection';
+import type { AgentSelectorProvider } from '../../utils/providerSelection';
+import { ProviderSwitchConfirmDialog } from './conversation/ProviderSwitchConfirmDialog';
 
 export interface FollowUpInputAreaProps {
     richTextRef: React.RefObject<RichTextInputHandle>;
@@ -176,8 +178,17 @@ export interface FollowUpInputAreaProps {
     sessionToolTokens?: number;
     /** Conversation-history token count (Copilot SDK only). */
     sessionConversationTokens?: number;
-    /** Active AI provider — shown as a read-only badge in the toolbar when set to 'codex' or 'claude'. */
+    /** Provider of the active native session; pending composer selection is kept separate. */
     activeProvider?: 'copilot' | 'codex' | 'claude' | 'opencode';
+    /** Confirmed composer provider. It may differ from activeProvider until Send. */
+    selectedProvider?: ConcreteChatProvider;
+    /** Concrete providers reported by the server that owns this conversation. */
+    providerOptions?: readonly AgentSelectorProvider[];
+    providerOptionsLoading?: boolean;
+    /** Called only after the cross-provider loss warning is confirmed. */
+    onProviderChange?: (provider: ConcreteChatProvider) => void;
+    /** When set, the provider menu is unavailable and this reason is announced. */
+    providerSwitchDisabledReason?: string;
     /**
      * Current per-turn reasoning-effort override (`'low' | 'medium' | 'high' | 'xhigh'`).
      * `null` means no override — the executor falls back to the persisted
@@ -286,6 +297,11 @@ export function FollowUpInputArea({
     sessionToolTokens,
     sessionConversationTokens,
     activeProvider,
+    selectedProvider,
+    providerOptions = [],
+    providerOptionsLoading = false,
+    onProviderChange,
+    providerSwitchDisabledReason,
     effortOverride = null,
     onEffortChange,
     effortOptions,
@@ -336,6 +352,8 @@ export function FollowUpInputArea({
     const chipsCtrlHeld = useModifierKey();
 
     const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+    const [providerSwitchTarget, setProviderSwitchTarget] = useState<ConcreteChatProvider | null>(null);
+    const providerChipRef = useRef<HTMLButtonElement>(null);
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
     const [sessionContextDragActive, setSessionContextDragActive] = useState(false);
     const sessionContextDragDepthRef = useRef(0);
@@ -357,6 +375,26 @@ export function FollowUpInputArea({
         sessionContextAttachmentsEnabled && canRetrieveConversationsProp === undefined,
     );
     const canRetrieveConversations = canRetrieveConversationsProp ?? localCanRetrieveConversations;
+    const currentProvider = activeProvider ?? 'copilot';
+    const composerProvider = selectedProvider ?? currentProvider;
+    const cancelProviderSwitch = () => {
+        setProviderSwitchTarget(null);
+        queueMicrotask(() => providerChipRef.current?.focus());
+    };
+    const confirmProviderSwitch = () => {
+        if (providerSwitchTarget) onProviderChange?.(providerSwitchTarget);
+        setProviderSwitchTarget(null);
+        queueMicrotask(() => providerChipRef.current?.focus());
+    };
+    const requestProviderChange = (provider: string) => {
+        if (provider === currentProvider) {
+            onProviderChange?.(currentProvider);
+            return;
+        }
+        if (provider === 'copilot' || provider === 'codex' || provider === 'claude' || provider === 'opencode') {
+            setProviderSwitchTarget(provider);
+        }
+    };
 
     // Subscribe to the conversation process's real-time warm status, pushed from the
     // backend WarmClientRegistry over a warm-only SSE channel (AC-02). The
@@ -1003,19 +1041,18 @@ export function FollowUpInputArea({
                             className="flex flex-nowrap lg:flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
-                            {/* Agent provider chip — leftmost, always disabled because
-                                 agent switching mid-session is not yet supported. The chip
-                                 mirrors the NewChatArea layout ("provider · mode · model")
-                                 so both composers share the same visual order. */}
+                            {/* The active session stays unchanged until Send. A different
+                                 composer selection is accepted only through the warning. */}
                             <AgentSelectorChip
-                                providers={[]}
-                                loading={false}
-                                selected={activeProvider ?? 'copilot'}
-                                onChange={() => {}}
-                                disabled={true}
-                                disabledReason="locked to this conversation"
+                                providers={providerOptions}
+                                loading={providerOptionsLoading}
+                                selected={composerProvider}
+                                onChange={requestProviderChange}
+                                disabled={!onProviderChange || !!providerSwitchDisabledReason}
+                                disabledReason={providerSwitchDisabledReason ?? 'locked to this conversation'}
                                 mobileTapTarget={true}
                                 iconOnly={isToolbarMinimal}
+                                buttonRef={providerChipRef}
                             />
                             <span aria-hidden="true" data-testid="chat-toolbar-divider-provider" className="inline-block w-px h-[14px] bg-[#e0e0e0] dark:bg-[#3c3c3c] mx-1 self-center shrink-0" />
                             {/* Mode pill selector — desktop (≥1024px viewport) with
@@ -1319,6 +1356,12 @@ export function FollowUpInputArea({
                                 />
                             )}
                         </div>
+                        <ProviderSwitchConfirmDialog
+                            source={currentProvider}
+                            target={providerSwitchTarget}
+                            onConfirm={confirmProviderSwitch}
+                            onCancel={cancelProviderSwitch}
+                        />
                         <SlashCommandMenu
                             skills={skills}
                             filter={slashCommands.menuFilter}
