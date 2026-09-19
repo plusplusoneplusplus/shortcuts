@@ -114,7 +114,7 @@ describe('SqliteProcessStore — displayOnly persistence', () => {
         });
         await store.addProcess(source);
 
-        const forked = await store.forkProcess!('source-fork', 'fork-1', 'sdk-session-forked');
+        const forked = await store.forkProcess!('source-fork', 'fork-1');
 
         expect(forked.conversationTurns).toHaveLength(2);
         expect(forked.conversationTurns?.[1].displayOnly).toBe(true);

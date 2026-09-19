@@ -123,11 +123,13 @@ describe('activeProviderSession persistence', () => {
             sdkSessionId: binding.sessionId,
         }));
 
-        const forked = await store.forkProcess('p7', 'p7-fork', 'fork-session-1');
+        const forked = await store.forkProcess('p7', 'p7-fork');
 
         expect(forked.activeProviderSession).toBeUndefined();
+        expect(forked.sdkSessionId).toBeUndefined();
         const reloaded = await store.getProcess('p7-fork');
         expect(reloaded?.activeProviderSession).toBeUndefined();
+        expect(reloaded?.sdkSessionId).toBeUndefined();
         // The source keeps its own binding.
         expect((await store.getProcess('p7'))?.activeProviderSession).toEqual(binding);
     });

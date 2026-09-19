@@ -642,25 +642,13 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!proc) {
                 return void handleAPIError(res, notFound('Process'));
             }
-            if (!proc.sdkSessionId) {
-                return void handleAPIError(res, badRequest('Process has no SDK session to fork'));
-            }
             if (!store.forkProcess) {
                 return void handleAPIError(res, badRequest('Fork not supported by this store'));
             }
 
             const newId = crypto.randomUUID();
-            let newSdkSessionId: string;
             try {
-                const { sdkServiceRegistry, SDK_PROVIDER_COPILOT } = await import('@plusplusoneplusplus/forge');
-                const sdkService = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-                newSdkSessionId = await sdkService.forkSession(proc.sdkSessionId);
-            } catch (err: any) {
-                return void handleAPIError(res, internalError(`Failed to fork SDK session: ${err?.message || err}`));
-            }
-
-            try {
-                const forked = await store.forkProcess(proc.id, newId, newSdkSessionId);
+                const forked = await store.forkProcess(proc.id, newId);
                 const wsServer = getWsServer?.();
                 if (wsServer && forked.metadata?.workspaceId) {
                     wsServer.broadcastProcessEvent({

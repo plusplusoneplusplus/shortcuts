@@ -114,7 +114,7 @@ describe('SqliteProcessStore — conversation turn `provider` round-trip', () =>
         await store.appendConversationTurn('proc-provider-5', (idx) => makeUserTurn(idx, { provider: 'copilot' }));
         await store.appendConversationTurn('proc-provider-5', (idx) => makeUserTurn(idx, { provider: 'codex' }));
 
-        const forked = await store.forkProcess('proc-provider-5', 'proc-provider-5-fork', 'sdk-session-fork');
+        const forked = await store.forkProcess('proc-provider-5', 'proc-provider-5-fork');
 
         expect((forked?.conversationTurns ?? []).map(t => t.provider)).toEqual(['copilot', 'codex']);
     });
@@ -184,7 +184,7 @@ describe('SqliteProcessStore — conversation turn `segmentId` round-trip', () =
             makeUserTurn(idx, { provider: 'codex', segmentId: 'seg-b' })
         );
 
-        const forked = await store.forkProcess('proc-segment-4', 'proc-segment-4-fork', 'sdk-session-fork');
+        const forked = await store.forkProcess('proc-segment-4', 'proc-segment-4-fork');
 
         expect((forked?.conversationTurns ?? []).map(t => t.segmentId)).toEqual(['seg-a', 'seg-b']);
     });

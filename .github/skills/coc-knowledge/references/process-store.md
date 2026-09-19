@@ -11,7 +11,7 @@ const store = createProcessStore(dataDir, backend?); // 'sqlite' | 'file'
 
 ## SqliteProcessStore
 
-Single `processes.db` at `~/.coc/processes.db`. Schema version 36.
+Single `processes.db` at `~/.coc/processes.db`. Schema version 37.
 
 ### Tables
 
@@ -96,7 +96,8 @@ empty chat. See [rest-api.md](rest-api.md).
   `readActiveProviderSession()` in `packages/coc/src/server/processes/active-provider-session.ts`,
   which projects pre-binding processes from the legacy fields. An `updateProcess` that writes only
   `sdkSessionId` moves the binding's session id in the same UPDATE so it cannot go stale. NULL on
-  processes predating the column, and never copied into a fork — a fork's first follow-up
+  processes predating the column. Forks copy the canonical transcript and provider attribution
+  but start with neither an SDK session id nor an active binding, so their first follow-up
   reconstructs a fresh session. During a cross-provider turn the binding still names the
   outgoing provider until the target reports a session id, so stop/cancel resolves the running
   provider from the bridge's `inFlightTurns` registry first and skips the persisted session id

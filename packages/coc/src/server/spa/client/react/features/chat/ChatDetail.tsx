@@ -815,10 +815,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         ? 'This stopped chat cannot be continued because no SDK session was saved. Start a new chat manually.'
         : null);
     const inputDisabled = loading || isPending || isCancelling || sessionExpired || isCompacting || !!nonRetryableFollowUpError;
+    const isCanonicalFork = typeof processDetails?.metadata?.forkSourceId === 'string';
     const noSessionForFollowUp = isTerminal
         && effectiveStatus !== 'cancelled'
         && processDetails !== null
         && !resumeSessionId
+        && !isCanonicalFork
         && !nonRetryableFollowUpError;
 
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
@@ -2597,7 +2599,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         resumeLaunching,
         onLaunchInteractiveResume: () => { void launchInteractiveResume(); },
         onCopyResumeCommand: () => { void copyResumeCommand(); },
-        onFork: metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined,
+        onFork: metadataProcess && task?.status === 'completed' ? handleFork : undefined,
         forking,
         onStartFreshSameContext,
         startingFreshSameContext,

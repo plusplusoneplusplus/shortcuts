@@ -781,7 +781,6 @@ export class SqliteProcessStore implements ProcessStore {
     async forkProcess(
         sourceId: string,
         newId: string,
-        newSdkSessionId: string,
         upToTurnIndex?: number,
     ): Promise<AIProcess> {
         const forkTxn = this.db.transaction(() => {
@@ -796,6 +795,8 @@ export class SqliteProcessStore implements ProcessStore {
                 ...(jsonParse<Record<string, unknown>>(sourceRow.metadata) ?? {}),
                 forkSourceId: sourceId,
             };
+            delete metadata.stoppedChatResume;
+            delete metadata.rewindHistory;
 
             const now = new Date();
             const newRow: Record<string, unknown> = {
@@ -816,10 +817,7 @@ export class SqliteProcessStore implements ProcessStore {
                 group_metadata: null,
                 structured_result: null,
                 parent_process_id: null,
-                sdk_session_id: newSdkSessionId,
-                // A fork never inherits the source's provider/session binding:
-                // the source's native session belongs to the source conversation.
-                // The fork's first follow-up reconstructs a fresh session.
+                sdk_session_id: null,
                 active_provider_session: null,
                 backend: sourceRow.backend,
                 working_directory: sourceRow.working_directory,
