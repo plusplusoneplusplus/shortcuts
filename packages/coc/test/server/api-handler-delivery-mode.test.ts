@@ -114,6 +114,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined, // turnSource
             undefined, // reasoningEffort
             undefined, // strictResumeSessionId
+            expect.objectContaining({ historyCutoffTurnIndex: expect.any(Number) }), // options
         );
     });
 
@@ -136,6 +137,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined, // turnSource
             undefined, // reasoningEffort
             undefined, // strictResumeSessionId
+            expect.objectContaining({ historyCutoffTurnIndex: expect.any(Number) }), // options
         );
     });
 
@@ -158,6 +160,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined, // turnSource
             undefined, // reasoningEffort
             undefined, // strictResumeSessionId
+            expect.objectContaining({ historyCutoffTurnIndex: expect.any(Number) }), // options
         );
     });
 

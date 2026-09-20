@@ -370,6 +370,7 @@ describe('MultiRepoQueueRouter', () => {
                 undefined,
                 'high',
                 undefined, // strictResumeSessionId
+                undefined, // options
             );
 
             bridge.dispose();
