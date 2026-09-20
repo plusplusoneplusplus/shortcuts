@@ -16,8 +16,10 @@ import {
     normalizeFollowUpInput,
     isIdleForProviderSwitch,
     FollowUpDeliveryError,
+    ProviderSwitchRequiresIdleError,
     type FollowUpMessageInput,
 } from '../../src/server/processes/process-message-delivery-service';
+import { ProcessOperationAdmission } from '../../src/server/processes/process-operation-admission';
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 
 // ============================================================================
@@ -31,9 +33,12 @@ interface FakeStore {
     appendConversationTurn: ReturnType<typeof vi.fn>;
     appendPendingMessage: ReturnType<typeof vi.fn>;
     updateProcess: ReturnType<typeof vi.fn>;
+    getProcess: ReturnType<typeof vi.fn>;
+    setCurrentProcess: (proc: AIProcess) => void;
 }
 
 function makeStore(initialTurns: ConversationTurn[] = []): FakeStore {
+    let currentProcess: AIProcess | undefined;
     const store: FakeStore = {
         turns: [...initialTurns],
         pending: [],
@@ -41,10 +46,21 @@ function makeStore(initialTurns: ConversationTurn[] = []): FakeStore {
         appendConversationTurn: vi.fn(),
         appendPendingMessage: vi.fn(),
         updateProcess: vi.fn(),
+        getProcess: vi.fn(async () => currentProcess),
+        setCurrentProcess: (proc: AIProcess) => {
+            currentProcess = proc;
+        },
     };
     store.appendConversationTurn.mockImplementation(async (_id: string, makeTurn: (i: number) => ConversationTurn) => {
         const turn = makeTurn(store.turns.length);
         store.turns.push(turn);
+        if (currentProcess) {
+            currentProcess = {
+                ...currentProcess,
+                conversationTurns: [...store.turns],
+                status: 'running',
+            };
+        }
         return { turn, allTurns: [...store.turns] };
     });
     store.appendPendingMessage.mockImplementation(async (_id: string, message: PendingMessage) => {
@@ -53,6 +69,7 @@ function makeStore(initialTurns: ConversationTurn[] = []): FakeStore {
     });
     store.updateProcess.mockImplementation(async (_id: string, updates: Record<string, unknown>) => {
         store.updates.push(updates);
+        if (currentProcess) currentProcess = { ...currentProcess, ...updates } as AIProcess;
     });
     return store;
 }
@@ -292,6 +309,82 @@ describe('normalizeFollowUpInput', () => {
 // ============================================================================
 
 describe('ProcessMessageDeliveryService.deliver', () => {
+    it('rejects a provider switch when the task becomes busy after the route snapshot', async () => {
+        const store = makeStore();
+        const current = makeProc({
+            status: 'completed',
+            metadata: { provider: 'copilot' },
+        });
+        store.setCurrentProcess(current);
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn().mockReturnValue({ id: 't1', type: 'chat', status: 'running' }),
+            steerProcess: vi.fn(),
+        };
+        const service = makeService(store, bridge);
+
+        await expect(service.deliver(
+            makeProc({ status: 'completed', metadata: { provider: 'copilot' } }),
+            makeInput({
+                provider: 'codex',
+                deliveryMode: 'immediate',
+                metadataUpdate: { type: 'chat', chatStyle: 'direct' },
+            }),
+        )).rejects.toBeInstanceOf(ProviderSwitchRequiresIdleError);
+
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect(store.appendPendingMessage).not.toHaveBeenCalled();
+        expect(store.appendConversationTurn).not.toHaveBeenCalled();
+        expect(store.updateProcess).not.toHaveBeenCalled();
+    });
+
+    it('serializes delivery admission so a provider switch that loses the idle race is rejected', async () => {
+        const store = makeStore();
+        const current = makeProc({
+            status: 'completed',
+            metadata: { provider: 'copilot' },
+        });
+        store.setCurrentProcess(current);
+        let taskStatus: string | undefined;
+        let releaseEnqueue!: () => void;
+        const enqueueBlocked = new Promise<void>(resolve => {
+            releaseEnqueue = resolve;
+        });
+        const bridge = {
+            enqueue: vi.fn(async () => {
+                taskStatus = 'running';
+                await enqueueBlocked;
+                return 'task-id';
+            }),
+            findTaskByProcessId: vi.fn(() => taskStatus
+                ? { id: 't1', type: 'chat' as const, status: taskStatus as 'running' }
+                : undefined),
+            steerProcess: vi.fn(),
+        };
+        const admission = new ProcessOperationAdmission();
+        const service = new ProcessMessageDeliveryService({
+            store: store as never,
+            bridge: bridge as QueueExecutorBridge,
+            admission,
+        });
+
+        const accepted = service.deliver(current, makeInput({ provider: 'copilot' }));
+        await vi.waitFor(() => expect(bridge.enqueue).toHaveBeenCalledOnce());
+        const rejected = service.deliver(current, makeInput({
+            provider: 'codex',
+            deliveryMode: 'immediate',
+        }));
+
+        releaseEnqueue();
+        await expect(accepted).resolves.toMatchObject({ path: 'enqueued' });
+        await expect(rejected).rejects.toBeInstanceOf(ProviderSwitchRequiresIdleError);
+        expect(bridge.enqueue).toHaveBeenCalledOnce();
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect(store.appendPendingMessage).not.toHaveBeenCalled();
+        expect(store.appendConversationTurn).toHaveBeenCalledOnce();
+    });
+
     it('steers immediately when a running parent task accepts steering', async () => {
         const store = makeStore();
         const steerProcess = vi.fn().mockResolvedValue(true);
@@ -509,7 +602,7 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         const service = makeService(store, bridge);
 
         await service.deliver(
-            makeProc({ status: 'running' }),
+            makeProc({ status: 'running', metadata: { provider: 'claude' } }),
             makeInput({ deliveryMode: 'enqueue', provider: 'claude' }),
         );
 

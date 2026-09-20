@@ -76,6 +76,11 @@ all have their own `references/*.md`.
   is table-driven over every capability and fails if a hop is dropped.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
+- **Process mutation admission** uses the shared keyed coordinator in
+  `src/server/processes/process-operation-admission.ts`. Follow-up delivery
+  re-reads process/task state inside that section before any steer, buffer,
+  enqueue, or transcript write; cross-provider requests that lose the idle
+  race fail with `PROVIDER_SWITCH_REQUIRES_IDLE`.
 - **Docker image contract tests** live under `packages/coc/test/docker/`
   (root `Dockerfile`, `docker-compose.example.yml`, `deploy/tenant/*`,
   `docker/entrypoint.sh` run under `sh` with fake `coc`/`git`/`curl`). Any

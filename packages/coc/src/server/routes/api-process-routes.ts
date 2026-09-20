@@ -35,6 +35,7 @@ import {
     normalizeFollowUpInput,
     isIdleForProviderSwitch,
     FollowUpDeliveryError,
+    ProviderSwitchRequiresIdleError,
 } from '../processes/process-message-delivery-service';
 import type { FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import type { ApiRouteContext } from './api-shared';
@@ -1289,15 +1290,13 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // The recorded style is updated on every in-scope turn, including
             // the turns that inject nothing, so switching to Default is a real
             // state and not a gap. Only an actual change needs a write.
-            if (styleGateOpen && fields.chatStyle !== recordedStyle) {
-                await store.updateProcess(id, {
-                    metadata: {
-                        type: proc.metadata?.type ?? 'chat',
-                        ...(proc.metadata ?? {}),
-                        chatStyle: fields.chatStyle,
-                    },
-                });
-            }
+            const metadataUpdate = styleGateOpen && fields.chatStyle !== recordedStyle
+                ? {
+                    type: proc.metadata?.type ?? 'chat',
+                    ...(proc.metadata ?? {}),
+                    chatStyle: fields.chatStyle,
+                }
+                : undefined;
             const applyStyle = (text: string): string =>
                 injectStyle ? prependChatStyleBlock(text, fields.chatStyle) : text;
 
@@ -1344,6 +1343,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ...(resumeSessionId ? { resumeSessionId } : {}),
                 ...(fields.optimisticId !== undefined ? { optimisticId: fields.optimisticId } : {}),
                 pasteExternalized: isPasteExternalized,
+                ...(metadataUpdate ? { metadataUpdate } : {}),
                 // Resolved once, here. Every delivery path carries this value
                 // with the message, so a metadata change after acceptance
                 // cannot retarget a queued or buffered follow-up.
@@ -1355,6 +1355,22 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             try {
                 result = await deliveryService.deliver(proc, deliveryInput);
             } catch (err) {
+                if (err instanceof ProviderSwitchRequiresIdleError) {
+                    fs.rmSync(tempDir, { recursive: true, force: true });
+                    recordProviderSwitchServerTelemetry({
+                        action: 'failed',
+                        sourceProvider: sessionProvider,
+                        targetProvider: fields.requestedProvider!,
+                        workspaceId: proc.metadata?.workspaceId as string | undefined,
+                        processId: id,
+                        failureReason: 'conversation-busy',
+                    });
+                    return handleAPIError(res, new APIError(
+                        409,
+                        err.message,
+                        'PROVIDER_SWITCH_REQUIRES_IDLE',
+                    ));
+                }
                 if (err instanceof FollowUpDeliveryError) {
                     if (fields.isProviderSwitch) {
                         recordProviderSwitchServerTelemetry({

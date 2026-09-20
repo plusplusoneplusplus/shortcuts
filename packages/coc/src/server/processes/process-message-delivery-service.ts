@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'crypto';
 import type {
-    ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage,
+    ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage, GenericProcessMetadata,
 } from '@plusplusoneplusplus/forge';
 import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
@@ -21,6 +21,10 @@ import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
 import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
+import {
+    ProcessOperationAdmission,
+    processOperationAdmission,
+} from './process-operation-admission';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
@@ -219,6 +223,8 @@ export interface FollowUpMessageInput {
     optimisticId?: string;
     /** True when the user's large paste was externalized to a temp-file reference. */
     pasteExternalized: boolean;
+    /** Process metadata to persist only after this request wins admission. */
+    metadataUpdate?: GenericProcessMetadata;
     /**
      * Concrete provider this message runs on, resolved once when the request
      * was accepted (the requested provider, or the conversation's active one
@@ -258,9 +264,18 @@ export class FollowUpDeliveryError extends Error {
     }
 }
 
+/** Thrown when a cross-provider request loses the idle admission race. */
+export class ProviderSwitchRequiresIdleError extends Error {
+    constructor() {
+        super('Cannot switch providers while this conversation is busy. Wait for the current response to finish, then try again.');
+        this.name = 'ProviderSwitchRequiresIdleError';
+    }
+}
+
 export interface ProcessMessageDeliveryDeps {
     store: ProcessStore;
     bridge: QueueExecutorBridge;
+    admission?: ProcessOperationAdmission;
     /** Clock provider — injectable for deterministic timestamps in tests. */
     now?: () => Date;
     /** ID provider — injectable for deterministic pending-message IDs in tests. */
@@ -276,17 +291,35 @@ export interface ProcessMessageDeliveryDeps {
 export class ProcessMessageDeliveryService {
     private readonly store: ProcessStore;
     private readonly bridge: QueueExecutorBridge;
+    private readonly admission: ProcessOperationAdmission;
     private readonly now: () => Date;
     private readonly newId: () => string;
 
     constructor(deps: ProcessMessageDeliveryDeps) {
         this.store = deps.store;
         this.bridge = deps.bridge;
+        this.admission = deps.admission ?? processOperationAdmission;
         this.now = deps.now ?? (() => new Date());
         this.newId = deps.newId ?? (() => randomUUID());
     }
 
     async deliver(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
+        return this.admission.runExclusive(proc.id, async () => {
+            const currentProc = await this.store.getProcess(proc.id) ?? proc;
+            const currentBinding = readActiveProviderSession(currentProc);
+            const isProviderSwitch = input.provider !== undefined
+                && input.provider !== currentBinding.provider;
+            if (isProviderSwitch && !isIdleForProviderSwitch(
+                currentProc,
+                this.bridge.findTaskByProcessId?.(currentProc.id)?.status,
+            )) {
+                throw new ProviderSwitchRequiresIdleError();
+            }
+            return this.deliverAdmitted(currentProc, input);
+        });
+    }
+
+    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
         const activeBinding = readActiveProviderSession(proc);
@@ -333,6 +366,9 @@ export class ProcessMessageDeliveryService {
         };
 
         try {
+            if (input.metadataUpdate) {
+                await this.store.updateProcess(id, { metadata: input.metadataUpdate });
+            }
             if (this.bridge.enqueue) {
                 const displayName = truncateDisplayName(input.content.trim());
                 const parentTask = this.bridge.findTaskByProcessId?.(id);

@@ -1608,6 +1608,31 @@ describe('POST /api/processes/:id/message', () => {
             }));
         });
 
+        it('rejects with 409 when a provider switch loses the idle race inside delivery', async () => {
+            await addChat('proc-prov-idle-race');
+            const findTask = vi.fn();
+            mockBridge.findTaskByProcessId = findTask;
+            findTask
+                .mockReturnValueOnce(undefined)
+                .mockReturnValueOnce({ id: 'task-race', type: 'chat', status: 'running' });
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-idle-race/message`, {
+                content: 'Hello',
+                provider: 'codex',
+                deliveryMode: 'immediate',
+                chatStyle: 'direct',
+            });
+
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+            expect(mockBridge.steerProcess).not.toHaveBeenCalled();
+            expect(mockBridge.enqueue).not.toHaveBeenCalled();
+            const persisted = await store.getProcess('proc-prov-idle-race');
+            expect(persisted?.conversationTurns ?? []).toHaveLength(0);
+            expect(persisted?.pendingMessages ?? []).toHaveLength(0);
+            expect(persisted?.status).toBe('completed');
+        });
+
         it('rejects a cross-provider follow-up on a queued conversation with 409', async () => {
             await addChat('proc-prov-queued', { status: 'queued' });
             const res = await postJSON(`${baseUrl}/api/processes/proc-prov-queued/message`, {
