@@ -152,6 +152,54 @@ When `python.pythonPath` is absent, the adapter selects an executable interprete
 from project-root `.venv`, then `venv`, while preserving all explicit and
 unrelated settings.
 
+### Workspace symbol search (Go To All)
+
+A symbol palette needs a live session with no file open. `acquireWorkspace`
+takes every enabled definition for a workspace, selected by definition rather
+than by file pattern, and roots each session at the workspace root; the browser
+reaches it through the `lsp-attach-workspace` client message, which returns the
+same `lsp-attached` stream and uses the same request, cancel, and detach
+framing as a document attach. No sentinel document path is involved.
+
+The palette holds one workspace attachment per repository for as long as the
+dialog is open — up to six in a repo group — and fans `workspace/symbol` out to
+every attached server advertising `workspaceSymbolProvider`, merging each
+answer as it arrives. A server that times out, dies, or does not support the
+method is "no answer": some failing is `partial`, all failing is `failed`, and
+none of it throws into the dialog. There is no HTTP symbol route; the fan-out
+is browser-side, so a group member on another host is reached directly.
+
+`coc-symbols-lsp` answers `workspace/symbol` with a camel-case-aware scorer: a
+subsequence match weighted by word starts, with an all-word-starts acronym
+(`fwc` → `findWorkspaceConfig`) ranked above an incidental one, and the prefix
+index kept as the fast path. The cap applies after ranking. Each result carries
+`cocMatchIndices`, the UTF-16 offsets the score used, which the palette
+highlights from so the highlight and the ranking cannot disagree.
+
+### Workspace symbol search (Go To All)
+
+A symbol palette needs a live session with no file open. `acquireWorkspace`
+takes every enabled definition for a workspace, selected by definition rather
+than by file pattern, and roots each session at the workspace root; the browser
+reaches it through the `lsp-attach-workspace` client message, which returns the
+same `lsp-attached` stream and uses the same request, cancel, and detach
+framing as a document attach. No sentinel document path is involved.
+
+The palette holds one workspace attachment per repository for as long as the
+dialog is open — up to six in a repo group — and fans `workspace/symbol` out to
+every attached server advertising `workspaceSymbolProvider`, merging each
+answer as it arrives. A server that times out, dies, or does not support the
+method is "no answer": some failing is `partial`, all failing is `failed`, and
+none of it throws into the dialog. There is no HTTP symbol route; the fan-out
+is browser-side, so a group member on another host is reached directly.
+
+`coc-symbols-lsp` answers `workspace/symbol` with a camel-case-aware scorer: a
+subsequence match weighted by word starts, with an all-word-starts acronym
+(`fwc` → `findWorkspaceConfig`) ranked above an incidental one, and the prefix
+index kept as the fast path. The cap applies after ranking. Each result carries
+`cocMatchIndices`, the UTF-16 offsets the score used, which the palette
+highlights from so the highlight and the ranking cannot disagree.
+
 ### User surfaces
 
 The editor badge derives its label, tone, detail, and retry availability from the

@@ -119,6 +119,14 @@ describe('quickOpenShortcut', () => {
         expect(quickOpenShortcut(evt({ metaKey: true, key: 'o' }))).toBe('exact');
     });
 
+    it('claims Ctrl+, and Cmd+, as Go To All', () => {
+        expect(quickOpenShortcut(evt({ ctrlKey: true, key: ',' }))).toBe('goto');
+        expect(quickOpenShortcut(evt({ metaKey: true, key: ',' }))).toBe('goto');
+        // A bare comma is a comma; the router must not eat ordinary typing.
+        expect(quickOpenShortcut(evt({ key: ',' }))).toBeNull();
+        expect(quickOpenShortcut(evt({ ctrlKey: true, altKey: true, key: ',' }))).toBeNull();
+    });
+
     it('claims the capitalised form, so Shift or Caps Lock does not drop the shortcut', () => {
         expect(quickOpenShortcut(evt({ ctrlKey: true, key: 'P' }))).toBe('quick');
         expect(quickOpenShortcut(evt({ ctrlKey: true, key: 'O' }))).toBe('exact');

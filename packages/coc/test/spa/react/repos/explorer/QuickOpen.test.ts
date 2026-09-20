@@ -106,7 +106,7 @@ describe('QuickOpen component', () => {
         });
 
         it('re-searches when the query or scope changes', () => {
-            expect(source).toContain('}, [query, open, retry, scopeKey]);');
+            expect(source).toContain('}, [parsed.term, symbolsMode, open, retry, scopeKey]);');
         });
 
         it('shows an empty list, and issues no request, when the query is empty', () => {
@@ -187,11 +187,11 @@ describe('QuickOpen component', () => {
 
         it('shows the loading state only before the first results arrive', () => {
             expect(source).toContain('Searching files');
-            expect(source).toContain('loading && results.length === 0');
+            expect(source).toContain("(symbolsMode ? symbols.loading : loading) && rows.length === 0");
         });
 
         it('shows result count in footer', () => {
-            expect(source).toContain('results.length');
+            expect(source).toContain('{rows.length} results');
         });
 
         it('shows keyboard hints in footer', () => {

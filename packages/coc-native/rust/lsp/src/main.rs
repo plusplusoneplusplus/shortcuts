@@ -7,6 +7,7 @@
 //! lifecycle and status plumbing.
 
 mod framing;
+mod fuzzy;
 mod indexer;
 mod locations;
 mod positions;

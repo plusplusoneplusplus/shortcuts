@@ -76,6 +76,63 @@ describe('LanguageServerClient', () => {
         vi.useRealTimers();
     });
 
+    describe('workspace attachment', () => {
+        it('attaches the workspace with no path, and shares one host attachment', () => {
+            const client = makeClient();
+            const first = client.attachWorkspace();
+            const socket = latest();
+            socket.open();
+            const second = client.attachWorkspace();
+
+            const attaches = socket.sentOfType('lsp-attach-workspace');
+            expect(attaches).toHaveLength(1);
+            expect(attaches[0]).not.toHaveProperty('path');
+            expect(socket.sentOfType('lsp-attach')).toHaveLength(0);
+
+            // Two views, one host session reference: releasing one keeps it.
+            first.release();
+            expect(socket.sentOfType('lsp-detach')).toHaveLength(0);
+            socket.emit({
+                type: 'lsp-attached',
+                requestId: attaches[0].requestId,
+                attachmentId: 'att-ws',
+                sessionKey: 'ws-1::coc-symbols',
+                documentUri: 'coc-file://ws-1/',
+                languageId: 'cpp',
+                definitionId: 'coc-symbols',
+                displayName: 'Symbols',
+                state: { status: 'ready', definitionId: 'coc-symbols', displayName: 'Symbols' },
+                complete: true,
+            });
+            second.release();
+            expect(socket.sentOfType('lsp-detach').map(m => m.attachmentId)).toEqual(['att-ws']);
+            client.dispose();
+        });
+
+        it('keeps a workspace view separate from a document view of any path', () => {
+            const client = makeClient();
+            client.attachWorkspace();
+            client.attach('src/index.ts');
+            const socket = latest();
+            socket.open();
+            expect(socket.sentOfType('lsp-attach-workspace')).toHaveLength(1);
+            expect(socket.sentOfType('lsp-attach')).toHaveLength(1);
+            client.dispose();
+        });
+
+        it('re-attaches the workspace after the socket drops', () => {
+            vi.useFakeTimers();
+            const client = makeClient();
+            client.attachWorkspace();
+            latest().open();
+            latest().drop();
+            vi.advanceTimersByTime(50);
+            latest().open();
+            expect(latest().sentOfType('lsp-attach-workspace')).toHaveLength(1);
+            client.dispose();
+        });
+    });
+
     describe('connection', () => {
         it('opens one socket carrying the workspace and editing session', () => {
             const client = makeClient();

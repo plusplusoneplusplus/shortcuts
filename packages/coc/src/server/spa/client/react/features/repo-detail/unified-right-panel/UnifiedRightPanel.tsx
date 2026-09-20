@@ -66,6 +66,7 @@ import { ExplorerCloseTabsDialog } from '../explorer/ExplorerCloseTabsDialog';
 import { ContentSearchPanel } from '../explorer/ContentSearchPanel';
 import { ExplorerPanel } from '../explorer/ExplorerPanel';
 import { QuickOpen, type QuickOpenResult } from '../explorer/QuickOpen';
+import type { PaletteMode } from '../explorer/paletteQuery';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as trustedFileName } from '../explorer/ExactOpen';
 import {
     explorerQuickOpenHasFocus,
@@ -177,6 +178,11 @@ export interface UnifiedRightPanelProps {
         liveRepoCount: number;
         baseUrl?: string;
     };
+}
+
+/** Basename of a workspace-relative path. */
+function fileNameOf(path: string): string {
+    return path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
 }
 
 export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock, targets, repoGroup }: UnifiedRightPanelProps) {
@@ -744,6 +750,8 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     // it closed, and with the panel showing nothing but its empty state.
 
     const [quickOpenVisible, setQuickOpenVisible] = useState(false);
+    /** Which question the palette opens on: Ctrl+P files, Ctrl+, symbols. */
+    const [paletteMode, setPaletteMode] = useState<PaletteMode>('files');
     const [exactOpenVisible, setExactOpenVisible] = useState(false);
 
     /**
@@ -827,8 +835,26 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         openTreeFile({ path: filePath, name }, { preview: true });
     }, [tree, openTreeFile]);
 
-    const handleQuickOpenSelect = useCallback(async (result: QuickOpenResult) => {
+    /**
+     * A row picked in the palette, file or symbol. `position` is what tells the
+     * two apart: a file opens in the preview slot the way a tree click would,
+     * a symbol opens pinned on its declaration the way a definition jump does.
+     * Everything between — group liveness, routing, dock retargeting — is the
+     * same question for both and is asked once, here.
+     */
+    const handleQuickOpenSelect = useCallback(async (
+        result: QuickOpenResult,
+        position?: { line: number; column: number },
+    ) => {
         if (!('workspaceId' in result) || !repoGroup) {
+            if (position) {
+                openNavigationFile(
+                    { path: result.path, name: fileNameOf(result.path), ...position },
+                    { ownerWorkspaceId: target, ownerRoutingRef: targetRoutingRef, repoLabel: targetLabel },
+                );
+                setQuickOpenVisible(false);
+                return;
+            }
             handlePanelFileSelect(result.path);
             return;
         }
@@ -858,9 +884,15 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
 
         if (!isOpen || mode !== 'explorer') dock.selectMode('explorer');
         tree.setOpen(true);
-        const name = result.path.includes('/')
-            ? result.path.slice(result.path.lastIndexOf('/') + 1)
-            : result.path;
+        const name = fileNameOf(result.path);
+        if (position) {
+            openNavigationFile({ path: result.path, name, ...position }, {
+                ownerWorkspaceId: result.workspaceId,
+                ownerRoutingRef: routingRefForPanelOwner(routingRef, result.workspaceId),
+                repoLabel: result.repoName,
+            });
+            return;
+        }
         openFileForOwner(
             { path: result.path, name },
             { preview: true },
@@ -869,6 +901,9 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
             result.repoName,
         );
     }, [
+        openNavigationFile,
+        targetRoutingRef,
+        targetLabel,
         repoGroup,
         target,
         dock,
@@ -905,17 +940,18 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                 panelHasFocus,
                 explorerMounted: isExplorerQuickOpenMounted(),
                 explorerHasFocus: explorerQuickOpenHasFocus(),
-                panelEligibleWhenClosed: shortcut === 'quick' && repoGroup !== undefined,
+                panelEligibleWhenClosed: shortcut !== 'exact' && repoGroup !== undefined,
             });
             if (owner !== 'panel') return;
             event.preventDefault();
             event.stopPropagation();
-            if (shortcut === 'quick') {
-                setExactOpenVisible(false);
-                setQuickOpenVisible(true);
-            } else {
+            if (shortcut === 'exact') {
                 setQuickOpenVisible(false);
                 setExactOpenVisible(true);
+            } else {
+                setExactOpenVisible(false);
+                setPaletteMode(shortcut === 'goto' ? 'symbols' : 'files');
+                setQuickOpenVisible(true);
             }
         };
         document.addEventListener('keydown', onKeyDown, true);
@@ -1419,8 +1455,18 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                         }
                         : { kind: 'repo', workspaceId: target, routingRef: targetRoutingRef }}
                     open={quickOpenVisible}
+                    mode={paletteMode}
                     onClose={() => setQuickOpenVisible(false)}
                     onFileSelect={handleQuickOpenSelect}
+                    onSymbolSelect={result => handleQuickOpenSelect(
+                        {
+                            path: result.path,
+                            ...(result.workspaceId
+                                ? { workspaceId: result.workspaceId, repoName: result.repoName ?? '' }
+                                : {}),
+                        } as QuickOpenResult,
+                        { line: result.line, column: result.col },
+                    )}
                 />
                 <ExactOpen
                     workspaceId={target}

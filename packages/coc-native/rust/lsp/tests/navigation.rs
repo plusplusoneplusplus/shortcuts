@@ -212,3 +212,28 @@ fn a_workspace_query_matches_a_prefix_and_an_empty_one_matches_nothing() {
     assert_eq!(request(&mut server, 17, "workspace/symbol", json!({})), json!([]));
     server.shutdown(99);
 }
+
+#[test]
+fn a_camel_case_query_matches_and_reports_the_characters_it_matched() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(
+        root.join("src/config.cpp"),
+        "int findWorkspaceConfig(int value) { return value; }\n",
+    )
+    .unwrap();
+    let mut server = Server::start(root, &root.join("index.sqlite"));
+    initialize(&mut server, root);
+    index(&mut server);
+
+    let matched = request(&mut server, 20, "workspace/symbol", json!({ "query": "fwc" }));
+    let symbols = matched.as_array().expect("an array of symbols");
+    let found = symbols
+        .iter()
+        .find(|symbol| symbol["name"] == json!("findWorkspaceConfig"))
+        .unwrap_or_else(|| panic!("`fwc` should reach `findWorkspaceConfig`: {matched}"));
+    // The offsets name `f`, `W` and `C` — the camel humps the ranking scored on.
+    assert_eq!(found["cocMatchIndices"], json!([0, 4, 13]));
+    server.shutdown(99);
+}

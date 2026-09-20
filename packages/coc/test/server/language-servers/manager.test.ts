@@ -261,6 +261,88 @@ describe('LanguageServerManager selection', () => {
     });
 });
 
+describe('LanguageServerManager workspace acquire', () => {
+    it('acquires every enabled definition without naming a document', () => {
+        // Neither definition claims a file the caller could have named: the
+        // palette asks about the repository, not about a buffer.
+        const harness = createHarness([
+            echoDefinition({ id: 'fallback', priority: 10, filePatterns: ['**/*.md'] }),
+            echoDefinition({ id: 'semantic', priority: 100, filePatterns: ['**/*.rs'] }),
+        ]);
+
+        const result = harness.manager.acquireWorkspace({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) {
+            return;
+        }
+        // The built-in symbol index is seeded alongside, so assert on the two
+        // definitions this test configured and on their relative order.
+        const ids = result.handles.map(({ definition }) => definition.id);
+        expect(ids).toContain('semantic');
+        expect(ids.indexOf('semantic')).toBeLessThan(ids.indexOf('fallback'));
+        // Rooted at the workspace, not at some file's directory.
+        expect(result.handles[0].rootPath).toBe(path.resolve(harness.workspaceRoot));
+        result.handles.forEach(({ release }) => release());
+        expect(harness.manager.size).toBe(ids.length);
+    });
+
+    it('shares a session with an open document rather than starting a second', () => {
+        const harness = createHarness();
+        const document = acquireTxt(harness, 'browser-1');
+        const workspace = harness.manager.acquireWorkspace({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+        });
+        expect(document.ok && workspace.ok).toBe(true);
+        if (!document.ok || !workspace.ok) {
+            return;
+        }
+        const echoHandle = workspace.handles.find(({ definition }) => definition.id === 'echo');
+        expect(echoHandle?.session).toBe(document.handle.session);
+        document.handle.release();
+        workspace.handles.forEach(({ release }) => release());
+    });
+
+    it('reports disabled when language support is off for the workspace', () => {
+        const harness = createHarness([echoDefinition()], { enabled: false });
+        const result = harness.manager.acquireWorkspace({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.reason).toBe('disabled');
+        }
+    });
+
+    it('releases everything it did acquire when one definition hits the cap', () => {
+        const harness = createHarness([
+            echoDefinition({ id: 'one', priority: 100 }),
+            echoDefinition({ id: 'two', priority: 50 }),
+        ], { maxSessionsPerWorkspace: 1 });
+
+        const result = harness.manager.acquireWorkspace({
+            workspaceId: 'ws-a',
+            workspaceRoot: harness.workspaceRoot,
+            editingSessionId: 'browser-1',
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+            expect(result.reason).toBe('capacity');
+        }
+        // No half-acquired session is left referenced and holding a process.
+        expect(harness.manager.size).toBeLessThanOrEqual(1);
+    });
+});
+
 describe('LanguageServerManager session identity', () => {
     it('reuses one session for two documents in the same editing session', () => {
         const harness = createHarness();

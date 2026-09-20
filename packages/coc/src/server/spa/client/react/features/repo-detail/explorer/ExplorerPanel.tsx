@@ -37,6 +37,8 @@ import {
 import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
 import { setExplorerInstanceDirty } from './explorerDirtyStore';
 import { quickOpenShortcut, registerExplorerQuickOpen } from '../unified-right-panel/quickOpenRouting';
+import type { PaletteMode } from './paletteQuery';
+import type { WorkspaceSymbolResult } from '../../language-servers/workspaceSymbols';
 
 /**
  * How much of the Explorer this mount renders.
@@ -473,6 +475,8 @@ export function ExplorerPanel({
 
     // Quick Open state (Ctrl+P)
     const [quickOpenVisible, setQuickOpenVisible] = useState(false);
+    /** Which question the palette opens on: Ctrl+P files, Ctrl+, symbols. */
+    const [paletteMode, setPaletteMode] = useState<PaletteMode>('files');
 
     // Exact Open state (Ctrl+O)
     const [exactOpenVisible, setExactOpenVisible] = useState(false);
@@ -782,6 +786,21 @@ export function ExplorerPanel({
         setMobileTreeVisible(false);
         openSearchTab({ query, name: `Search: ${query}` });
     }, [tabsEnabled, setSearchBuffers, openSearchTab]);
+
+    /**
+     * A symbol picked in the palette. It goes through the same opener a
+     * language-server jump uses, so the target lands pinned at `line:col`
+     * rather than in the preview slot a tree click would take.
+     */
+    const handleSymbolSelect = useCallback((result: WorkspaceSymbolResult) => {
+        setSelectedPath(result.path);
+        navigateToFile({
+            path: result.path,
+            name: result.path.slice(result.path.lastIndexOf('/') + 1),
+            line: result.line,
+            column: result.col,
+        });
+    }, [navigateToFile, setSelectedPath]);
 
     const handleQuickOpenSelect = useCallback((filePath: string) => {
         // Trusted absolute-path from ExactOpen — skip tree expansion and hash update
@@ -1178,8 +1197,12 @@ export function ExplorerPanel({
             const shortcut = navigatorMode ? null : quickOpenShortcut(e);
             if (shortcut !== null) {
                 e.preventDefault();
-                if (shortcut === 'quick') setQuickOpenVisible(true);
-                else setExactOpenVisible(true);
+                if (shortcut === 'exact') {
+                    setExactOpenVisible(true);
+                } else {
+                    setPaletteMode(shortcut === 'goto' ? 'symbols' : 'files');
+                    setQuickOpenVisible(true);
+                }
                 return;
             }
             if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA' && !(document.activeElement as HTMLElement)?.isContentEditable) {
@@ -1664,12 +1687,20 @@ export function ExplorerPanel({
                 />
             )}
 
-            {/* Quick Open (Ctrl+P) */}
+            {/* Quick Open (Ctrl+P) and Go To All (Ctrl+,) — one dialog */}
             <QuickOpen
                 scope={{ kind: 'repo', workspaceId, routingRef }}
                 open={quickOpenVisible}
+                mode={paletteMode}
                 onClose={() => setQuickOpenVisible(false)}
                 onFileSelect={result => handleQuickOpenSelect(result.path)}
+                onSymbolSelect={handleSymbolSelect}
+                onLineSelect={openFilePath ? line => navigateToFile({
+                    path: openFilePath,
+                    name: openFilePath.slice(openFilePath.lastIndexOf('/') + 1),
+                    line,
+                    column: 1,
+                }) : undefined}
             />
 
             {/* Exact Open (Ctrl+O) */}

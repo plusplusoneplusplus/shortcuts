@@ -210,6 +210,11 @@ Notes, and Settings. Opening or cancelling the portal does not change the
 panel's open bit; accepting a result opens Explorer mode through the atomic
 selection transaction. Mobile mounts no panel and remains unchanged.
 
+`quickOpenShortcut` also claims Ctrl/Cmd+, and returns `'goto'`; both owners
+open the same `QuickOpen` on `mode: 'symbols'`. Claiming it here rather than in
+the palette keeps panel-vs-Explorer ownership one decision, so two dialogs can
+never stack.
+
 The dialogs are the Explorer's own `QuickOpen` / `ExactOpen` (portalled to
 `document.body`). Exact Open and ordinary-repo Quick Open point at the dock
 target. Repo-group Quick Open receives the group id, name, live-member count,

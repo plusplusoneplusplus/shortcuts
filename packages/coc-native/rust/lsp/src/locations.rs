@@ -72,6 +72,20 @@ pub fn symbol_location(cache: &mut LineCache, root: &Path, symbol: &Symbol) -> V
 /// shape says exactly as much as the index knows, with `parent` as
 /// `containerName`.
 pub fn symbol_information(cache: &mut LineCache, root: &Path, symbol: &Symbol) -> Value {
+    symbol_information_matched(cache, root, symbol, &[])
+}
+
+/// `symbol_information` plus the offsets in `name` a palette query scored on.
+///
+/// The indices ride along as an extension field: a standard LSP client ignores
+/// it, and CoC's palette reads it to highlight exactly the characters the
+/// ranking was based on instead of re-deriving a match that can disagree.
+pub fn symbol_information_matched(
+    cache: &mut LineCache,
+    root: &Path,
+    symbol: &Symbol,
+    matches: &[u32],
+) -> Value {
     let mut information = json!({
         "name": symbol.name,
         "kind": symbol_kind(&symbol.kind),
@@ -79,6 +93,9 @@ pub fn symbol_information(cache: &mut LineCache, root: &Path, symbol: &Symbol) -
     });
     if let Some(parent) = &symbol.parent {
         information["containerName"] = json!(parent);
+    }
+    if !matches.is_empty() {
+        information["cocMatchIndices"] = json!(matches);
     }
     information
 }

@@ -194,6 +194,48 @@ impl SymbolStore {
         rows
     }
 
+    /// Candidate rows for a fuzzy palette query: every symbol whose name
+    /// contains the query's characters in order, case-insensitively.
+    ///
+    /// The ordering is left to the caller's scorer — SQLite cannot rank a
+    /// camel-hump match — so this only narrows the table. `LIKE '%f%w%c%'`
+    /// does that in one scan without serialising the whole index, and `limit`
+    /// is a candidate cap, deliberately larger than the number of rows the
+    /// caller will finally show.
+    pub fn search_subsequence(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<Symbol>> {
+        let mut pattern = String::with_capacity(query.len() * 2 + 1);
+        pattern.push('%');
+        for character in query.chars() {
+            if matches!(character, '%' | '_' | '\\') {
+                pattern.push('\\');
+            }
+            pattern.push(character);
+            pattern.push('%');
+        }
+        let connection = self.connection.lock().unwrap_or_else(|error| error.into_inner());
+        let sql = format!(
+            "SELECT s.name, s.kind, f.path, s.line, s.col, s.parent
+             FROM symbols s JOIN files f ON f.id = s.file_id
+             WHERE s.name LIKE ?1 ESCAPE '\\'
+             ORDER BY length(s.name), s.name, {KIND_PRIORITY}, f.path, s.line, s.col LIMIT ?2"
+        );
+        let mut statement = connection.prepare(&sql)?;
+        let rows = statement
+            .query_map(params![pattern, i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
+                Ok(Symbol {
+                    name: row.get(0)?,
+                    kind: row.get(1)?,
+                    path: row.get(2)?,
+                    line: row.get(3)?,
+                    column: row.get(4)?,
+                    parent: row.get(5)?,
+                    docs: None,
+                })
+            })?
+            .collect();
+        rows
+    }
+
     /// Every stored occurrence of one name, ordered by position.
     ///
     /// Only call sites and type usages are stored (see `C_REFERENCE_QUERY`), and the match is on
@@ -905,6 +947,37 @@ mod tests {
         );
         assert!(store.search("missing", false, 10).expect("miss").is_empty());
         assert_eq!(store.search("alph", true, 1).expect("limited").len(), 1);
+    }
+
+    #[test]
+    fn a_subsequence_search_finds_camel_case_candidates_and_escapes_wildcards() {
+        let root = tempdir().expect("root");
+        let data = tempdir().expect("data");
+        std::fs::write(
+            root.path().join("symbols.cpp"),
+            "int findWorkspaceConfig() { return 1; }\nint find_widget() { return 2; }\nint other() { return 3; }\n",
+        )
+        .expect("symbols");
+        let store = SymbolStore::open(&data.path().join("symbols.sqlite")).expect("store");
+        store.sync_repository(root.path(), ExtractionLimits::default()).expect("sync");
+
+        let names = |query: &str| {
+            let mut found = store
+                .search_subsequence(query, 10)
+                .expect("subsequence")
+                .into_iter()
+                .map(|symbol| symbol.name)
+                .collect::<Vec<_>>();
+            found.sort();
+            found.dedup();
+            found
+        };
+        assert_eq!(names("fwc"), ["findWorkspaceConfig"]);
+        assert!(names("fw").contains(&"find_widget".to_string()));
+        assert!(names("zzz").is_empty());
+        // `_` is a LIKE wildcard and a real identifier character; it must be
+        // escaped, or `find_` would also match `findWorkspaceConfig`.
+        assert_eq!(names("find_"), ["find_widget"]);
     }
 
     #[test]

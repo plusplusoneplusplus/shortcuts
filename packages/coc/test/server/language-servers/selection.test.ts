@@ -17,6 +17,7 @@ import {
     resolveServerRoot,
     selectDefinitionForFile,
     selectDefinitionsForFile,
+    selectDefinitionsForWorkspace,
 } from '../../../src/server/language-servers/selection';
 import {
     CLANGD_PRESET,
@@ -135,6 +136,24 @@ describe('selectDefinitionForFile', () => {
 
             expect(selectDefinitionsForFile([low, narrow, disabled, high], 'src/a.spec.ts').map(({ id }) => id))
                 .toEqual(['narrow', 'high', 'low']);
+        });
+    });
+
+    describe('selectDefinitionsForWorkspace', () => {
+        it('takes every enabled definition, in priority then id order', () => {
+            const low = definition({ id: 'low', filePatterns: ['**/*.ts'], priority: 1 });
+            const high = definition({ id: 'high', filePatterns: ['**/*.rs'], priority: 5 });
+            const alsoHigh = definition({ id: 'a-high', filePatterns: ['**/*.py'], priority: 5 });
+            const disabled = definition({ id: 'off', filePatterns: ['**/*.ts'], priority: 10, enabled: false });
+
+            expect(selectDefinitionsForWorkspace([low, high, disabled, alsoHigh]).map(({ id }) => id))
+                .toEqual(['a-high', 'high', 'low']);
+        });
+
+        it('ignores file patterns entirely — a workspace query names no file', () => {
+            const rust = definition({ id: 'rust', filePatterns: ['**/*.rs'] });
+            expect(selectDefinitionsForWorkspace([rust]).map(({ id }) => id)).toEqual(['rust']);
+            expect(selectDefinitionsForWorkspace([])).toEqual([]);
         });
     });
 

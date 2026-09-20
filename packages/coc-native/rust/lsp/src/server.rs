@@ -11,8 +11,11 @@ use coc_native_core::symbol_index::{
 use serde_json::{json, Value};
 
 use crate::framing::read_message;
+use crate::fuzzy;
 use crate::indexer::Indexer;
-use crate::locations::{symbol_information, symbol_location, LineCache};
+use crate::locations::{
+    symbol_information, symbol_information_matched, symbol_location, LineCache,
+};
 use crate::positions::word_at;
 use crate::transport::Transport;
 use crate::uri::uri_to_path;
@@ -40,9 +43,16 @@ const DEFINITION_RESULT_LIMIT: usize = 100;
 /// most of what they asked for.
 const REFERENCE_RESULT_LIMIT: usize = 500;
 
-/// `workspace/symbol` is a palette query, matched as a prefix. It is capped
-/// harder than a definition: the caller is typing and only ever reads the top.
+/// `workspace/symbol` is a palette query. It is capped harder than a
+/// definition: the caller is typing and only ever reads the top. The cap is
+/// applied AFTER ranking — capping the SQL would hand the scorer an arbitrary
+/// slice of the table and silently drop the best matches.
 const WORKSPACE_SYMBOL_LIMIT: usize = 200;
+
+/// How many rows the fuzzy pass may pull out of SQLite before ranking. Large
+/// enough that the best match is almost always inside it, small enough that a
+/// one-letter query on a 30M-line repository does not serialise the index.
+const WORKSPACE_SYMBOL_CANDIDATES: usize = 2_000;
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_REQUEST: i64 = -32600;
@@ -344,7 +354,12 @@ impl Server {
         )
     }
 
-    /// `workspace/symbol` — a prefix query across the whole index.
+    /// `workspace/symbol` — a camel-case-aware query across the whole index.
+    ///
+    /// Two sources feed one ranking. The prefix index is the fast path and
+    /// still wins on score; the `LIKE` pass adds the subsequence matches a
+    /// prefix cannot see (`fwc` → `findWorkspaceConfig`). Both are merged,
+    /// deduplicated on their location, scored, and only then truncated.
     fn workspace_symbol(&self, params: &Value) -> Value {
         let (Some(store), Some(root)) = (self.store.as_ref(), self.root.as_ref()) else {
             return json!([]);
@@ -356,12 +371,41 @@ impl Server {
         if query.is_empty() {
             return json!([]);
         }
-        let Ok(symbols) = store.search(query, true, WORKSPACE_SYMBOL_LIMIT) else {
+        let Ok(prefixed) = store.search(query, true, WORKSPACE_SYMBOL_LIMIT) else {
             return json!([]);
         };
+        let fuzzy_matches =
+            store.search_subsequence(query, WORKSPACE_SYMBOL_CANDIDATES).unwrap_or_default();
+
+        let mut seen = HashSet::new();
+        let mut ranked: Vec<(i32, Vec<u32>, _)> = prefixed
+            .into_iter()
+            .chain(fuzzy_matches)
+            .filter(|symbol| {
+                seen.insert((symbol.path.clone(), symbol.line, symbol.column, symbol.name.clone()))
+            })
+            .filter_map(|symbol| {
+                let matched = fuzzy::score(query, &symbol.name)?;
+                Some((matched.score, matched.indices, symbol))
+            })
+            .collect();
+        ranked.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then_with(|| a.2.name.cmp(&b.2.name))
+                .then_with(|| a.2.path.cmp(&b.2.path))
+                .then_with(|| a.2.line.cmp(&b.2.line))
+                .then_with(|| a.2.column.cmp(&b.2.column))
+        });
+        ranked.truncate(WORKSPACE_SYMBOL_LIMIT);
+
         let mut cache = LineCache::new();
         Value::Array(
-            symbols.iter().map(|symbol| symbol_information(&mut cache, root, symbol)).collect(),
+            ranked
+                .iter()
+                .map(|(_, indices, symbol)| {
+                    symbol_information_matched(&mut cache, root, symbol, indices)
+                })
+                .collect(),
         )
     }
 
