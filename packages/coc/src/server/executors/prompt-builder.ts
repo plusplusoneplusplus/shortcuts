@@ -390,37 +390,6 @@ export function prependSelectedSkillsDirective(
 }
 
 // ============================================================================
-// Conversation History
-// ============================================================================
-
-/**
- * Build a conversation history context string from prior turns.
- * Injected as a system message so a fresh session has context from earlier turns.
- */
-export function buildConversationHistoryContext(turns?: ConversationTurn[]): string | undefined {
-    if (!turns || turns.length === 0) return undefined;
-
-    // Skip interrupted (partial) turns and display-only turns (e.g. the
-    // `/compact` result notice) — neither should be replayed into the model.
-    const replayableTurns = turns.filter(turn => !turn.interrupted && !turn.displayOnly);
-    if (replayableTurns.length === 0) return undefined;
-
-    const lines: string[] = ['<conversation_history>'];
-    for (const turn of replayableTurns) {
-        const role = turn.role === 'user' ? 'User' : 'Assistant';
-        // Trim long assistant responses to avoid blowing up the context window
-        const content =
-            turn.role === 'assistant' && turn.content.length > 2000
-                ? turn.content.slice(0, 2000) + '… (truncated)'
-                : turn.content;
-        lines.push(`[${role}]: ${content}`);
-    }
-    lines.push('</conversation_history>');
-    lines.push("Continue this conversation. The user's next message follows.");
-    return lines.join('\n');
-}
-
-// ============================================================================
 // Follow-Up Suggestions
 // ============================================================================
 

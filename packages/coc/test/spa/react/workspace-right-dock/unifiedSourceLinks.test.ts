@@ -1,8 +1,8 @@
 /**
  * AC-04: the descriptor a clicked chat source link opens in the unified panel.
  *
- * The rules being pinned: a source link is always READ-ONLY (a reference, not an
- * authorization), it is owned by the clone the resolution picked rather than the
+ * The rules being pinned: a source link opens an editable file tab owned by the
+ * clone the resolution picked rather than the
  * panel's own workspace, its `resourceId` is repo-relative because the panel's
  * file view reads through a repo's blob API, and it declines — returning null —
  * for every ref only the docked source canvas's probing transport can fetch, so
@@ -33,7 +33,7 @@ function input(fileRef: Record<string, unknown>, scopeWorkspaceId = 'ws-1') {
 }
 
 describe('sourceLinkTabInput — what a chat source link opens', () => {
-    it('opens an absolute in-repo path as a read-only, chat-scoped file tab', () => {
+    it('opens an absolute in-repo path as an editable, chat-scoped file tab', () => {
         expect(input({ fullPath: '/repos/main/src/app.ts', wsId: 'ws-1', line: 42 })).toEqual({
             kind: 'file',
             ownerWorkspaceId: 'ws-1',
@@ -41,7 +41,6 @@ describe('sourceLinkTabInput — what a chat source link opens', () => {
             chatId: 'task-A',
             resourceId: 'src/app.ts',
             label: 'app.ts',
-            readOnly: true,
             line: 42,
         });
     });

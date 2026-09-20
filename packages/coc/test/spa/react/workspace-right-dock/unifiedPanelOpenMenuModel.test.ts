@@ -185,7 +185,7 @@ describe('selection descriptors', () => {
         });
         // The "+" menu is an authorized entry point; it must not mark the tab
         // read-only, and it must not silently grant anything else either.
-        expect(input.readOnly).toBeUndefined();
+        expect(input).not.toHaveProperty('readOnly');
     });
 
     it('omits the repo label when the resource comes from the panel own workspace', () => {

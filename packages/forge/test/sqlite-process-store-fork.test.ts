@@ -60,18 +60,27 @@ describe('SqliteProcessStore.forkProcess', () => {
     it('creates a new process with copied turns and metadata', async () => {
         const source = makeProcess('source-1', {
             conversationTurns: [makeTurn(0), makeTurn(1), makeTurn(2), makeTurn(3)],
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-test',
+                stoppedChatResume: { resumable: false, reason: 'strict-resume-failed' },
+                rewindHistory: [{ previousSessionId: 'old-session' }],
+            },
         });
         await store.addProcess(source);
 
-        const forked = await store.forkProcess!('source-1', 'fork-1', 'sdk-session-forked');
+        const forked = await store.forkProcess!('source-1', 'fork-1');
 
         expect(forked.id).toBe('fork-1');
-        expect(forked.sdkSessionId).toBe('sdk-session-forked');
+        expect(forked.sdkSessionId).toBeUndefined();
+        expect(forked.activeProviderSession).toBeUndefined();
         expect(forked.status).toBe('completed');
         expect(forked.title).toBe('[Fork] Original Chat');
         expect(forked.promptPreview).toBe('[Fork] test prompt');
         expect(forked.metadata?.forkSourceId).toBe('source-1');
         expect(forked.metadata?.workspaceId).toBe('ws-test');
+        expect(forked.metadata?.stoppedChatResume).toBeUndefined();
+        expect(forked.metadata?.rewindHistory).toBeUndefined();
         expect(forked.workingDirectory).toBe('/tmp/test');
         expect(forked.conversationTurns).toHaveLength(4);
     });
@@ -85,7 +94,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         });
         await store.addProcess(source);
 
-        const forked = await store.forkProcess!('source-2', 'fork-2', 'sdk-forked-2');
+        const forked = await store.forkProcess!('source-2', 'fork-2');
 
         for (const turn of forked.conversationTurns!) {
             expect(turn.historical).toBe(true);
@@ -102,7 +111,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         });
         await store.addProcess(source);
 
-        const forked = await store.forkProcess!('source-3', 'fork-3', 'sdk-forked-3');
+        const forked = await store.forkProcess!('source-3', 'fork-3');
 
         expect(forked.conversationTurns![0].role).toBe('user');
         expect(forked.conversationTurns![0].content).toBe('Hello');
@@ -116,7 +125,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         });
         await store.addProcess(source);
 
-        const forked = await store.forkProcess!('source-4', 'fork-4', 'sdk-forked-4', 1);
+        const forked = await store.forkProcess!('source-4', 'fork-4', 1);
 
         expect(forked.conversationTurns).toHaveLength(2);
         expect(forked.conversationTurns![0].turnIndex).toBe(0);
@@ -134,7 +143,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         db.prepare('UPDATE conversation_turns SET deleted_at = ? WHERE process_id = ? AND turn_index = ?')
             .run(new Date().toISOString(), 'source-5', 1);
 
-        const forked = await store.forkProcess!('source-5', 'fork-5', 'sdk-forked-5');
+        const forked = await store.forkProcess!('source-5', 'fork-5');
 
         expect(forked.conversationTurns).toHaveLength(2);
         const indices = forked.conversationTurns!.map(t => t.turnIndex);
@@ -143,7 +152,7 @@ describe('SqliteProcessStore.forkProcess', () => {
 
     it('throws when source process does not exist', async () => {
         await expect(
-            store.forkProcess!('nonexistent', 'fork-x', 'sdk-x')
+            store.forkProcess!('nonexistent', 'fork-x')
         ).rejects.toThrow('Source process not found');
     });
 
@@ -156,7 +165,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         const changeSpy = vi.fn();
         store.onProcessChange = changeSpy;
 
-        await store.forkProcess!('source-6', 'fork-6', 'sdk-forked-6');
+        await store.forkProcess!('source-6', 'fork-6');
 
         expect(changeSpy).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -172,7 +181,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         });
         await store.addProcess(source);
 
-        const forked = await store.forkProcess!('source-7', 'fork-7', 'sdk-forked-7');
+        const forked = await store.forkProcess!('source-7', 'fork-7');
 
         expect(forked.parentProcessId).toBeUndefined();
     });
@@ -183,7 +192,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         });
         await store.addProcess(source);
 
-        const forked = await store.forkProcess!('source-8', 'fork-8', 'sdk-forked-8');
+        const forked = await store.forkProcess!('source-8', 'fork-8');
 
         expect(forked.conversationTurns).toHaveLength(0);
     });
@@ -196,7 +205,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         });
         await store.addProcess(source);
 
-        const forked = await store.forkProcess!('source-9', 'fork-9', 'sdk-forked-9');
+        const forked = await store.forkProcess!('source-9', 'fork-9');
 
         expect(forked.title).toBe('[Fork] my prompt');
     });
@@ -212,7 +221,7 @@ describe('SqliteProcessStore.forkProcess — commit-chat association', () => {
             metadata: { type: 'chat', workspaceId: 'ws-test', commitChat },
         }));
 
-        const forked = await store.forkProcess('src-commit', 'fork-commit', 'sdk-session-fork');
+        const forked = await store.forkProcess('src-commit', 'fork-commit');
 
         expect(forked.metadata?.commitChat).toEqual(commitChat);
         expect((await store.getProcess('fork-commit'))?.metadata?.commitChat).toEqual(commitChat);

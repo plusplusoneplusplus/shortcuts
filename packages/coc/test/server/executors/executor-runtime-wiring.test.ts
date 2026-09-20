@@ -182,9 +182,9 @@ describe('Executor runtime capability wiring', () => {
             const { executor } = makeBridge(runtime);
             const parts = internals(executor);
 
-            expect(parts.bridgeRuntime.processAbortControllers).toBeInstanceOf(Map);
-            expect(parts.chatExecutor.runtime.processAbortControllers)
-                .toBe((executor as any).processAbortControllers);
+            expect(parts.bridgeRuntime.inFlightTurns).toBeInstanceOf(Map);
+            expect(parts.chatExecutor.runtime.inFlightTurns)
+                .toBe((executor as any).inFlightTurns);
             expect(parts.chatExecutor.runtime.getCronInfra).toBe(runtime.getCronInfra);
         });
 

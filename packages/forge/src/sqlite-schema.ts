@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 37;
 
 /**
  * Read the current schema version from the database.
@@ -49,6 +49,7 @@ export function initializeDatabase(db: Database.Database): void {
                 structured_result     TEXT,
                 parent_process_id     TEXT,
                 sdk_session_id        TEXT,
+                active_provider_session TEXT,
                 backend               TEXT,
                 working_directory     TEXT,
                 title                 TEXT,
@@ -98,6 +99,8 @@ export function initializeDatabase(db: Database.Database): void {
                 compaction_summary TEXT,
                 repo_group_context TEXT,
                 chat_mode_context TEXT,
+                provider          TEXT,
+                segment_id        TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -550,6 +553,15 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 34) {
             migrateV33toV34(db);
         }
+        if (versionBefore < 35) {
+            migrateV34toV35(db);
+        }
+        if (versionBefore < 36) {
+            migrateV35toV36(db);
+        }
+        if (versionBefore < 37) {
+            migrateV36toV37(db);
+        }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });
@@ -972,6 +984,38 @@ function migrateV32toV33(db: Database.Database): void {
 /** V33 -> V34: persist the active implement-plan chain gate per repository. */
 function migrateV33toV34(db: Database.Database): void {
     ensureColumn(db, 'queue_repo_state', 'pr_gate', 'TEXT');
+}
+
+/**
+ * V34 -> V35: add `provider` to `conversation_turns` — the concrete AI provider
+ * that ran the turn. Existing rows stay NULL rather than being backfilled from
+ * the process: a conversation can change provider, so the current metadata is
+ * not evidence of what ran an old turn. NULL turns fall back to the process
+ * provider for display only.
+ */
+function migrateV34toV35(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'provider', 'TEXT');
+}
+
+/**
+ * V35 -> V36: add `active_provider_session` to `processes` — the authoritative
+ * provider/native-session binding, stored as one JSON value so provider,
+ * session id, segment id and segment start can only ever be written together.
+ * Existing rows stay NULL and keep reading through the legacy
+ * `metadata.provider` + `sdk_session_id` projection.
+ */
+function migrateV35toV36(db: Database.Database): void {
+    ensureColumn(db, 'processes', 'active_provider_session', 'TEXT');
+}
+
+/**
+ * V36 -> V37: add `segment_id` to `conversation_turns` — which provider
+ * segment the turn belongs to. Existing rows stay NULL for the same reason
+ * `provider` is not backfilled: the current binding is not evidence about
+ * which session ran an old turn.
+ */
+function migrateV36toV37(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'segment_id', 'TEXT');
 }
 
 /**

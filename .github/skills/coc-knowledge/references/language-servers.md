@@ -11,6 +11,10 @@ definition, and resolved project root by default. Definitions may select
 workspace scope to share an expensive process across editing sessions when they
 open different files. A second editing session opening the same path receives
 an isolated process so its unsaved buffer and diagnostics remain independent.
+The first manager acquisition or settings GET for a workspace without
+`language-servers.json` detects its languages and persists the matching presets
+as enabled workspace overrides. The persisted file prevents later reads from
+running detection again, including when the user disables a seeded preset.
 Windows document paths are case-folded and have trailing dots/spaces removed at
 the path boundary, matching Win32 file identity before definition selection,
 URI mapping, and shared-session ownership checks.

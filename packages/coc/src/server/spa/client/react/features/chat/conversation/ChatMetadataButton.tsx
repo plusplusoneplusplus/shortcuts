@@ -25,7 +25,7 @@ export interface ChatHeaderMetadata {
     resumeLaunching: boolean;
     onLaunchInteractiveResume: () => void;
     onCopyResumeCommand?: () => void;
-    /** Only set when forking is available (completed chat with an SDK session id). */
+    /** Only set when forking is available for a completed chat. */
     onFork?: () => void;
     forking?: boolean;
     onStartFreshSameContext?: () => Promise<boolean> | boolean | void;

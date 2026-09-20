@@ -208,7 +208,15 @@ export function useChatSSE({
             const last = prev[prev.length - 1];
             if (last && last.role === 'assistant') return prev;
             const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
-            return [...prev, { role: 'assistant', content: '', streaming: true, timeline: [], turnIndex: nextIdx }];
+            return [...prev, {
+                role: 'assistant',
+                content: '',
+                streaming: true,
+                timeline: [],
+                turnIndex: nextIdx,
+                provider: last?.provider,
+                segmentId: last?.segmentId,
+            }];
         };
 
         es.addEventListener('conversation-snapshot', (event: Event) => {

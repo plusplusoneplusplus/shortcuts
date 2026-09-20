@@ -37,6 +37,7 @@ import { registerWorkItemChatRoutes } from '../routes/api-work-item-chat-routes'
 import { registerNoteChatBindingRoutes } from '../notes/note-chat-bindings-handler';
 import type { ApiRouteContext } from '../routes/api-shared';
 import { GIT_MAX_BUFFER } from '../routes/api-shared';
+import type { FollowUpTurnOptions } from '../executors/follow-up-executor';
 
 /**
  * Bridge interface for executing follow-up messages on existing AI sessions.
@@ -44,7 +45,7 @@ import { GIT_MAX_BUFFER } from '../routes/api-shared';
  * and will be moved in a later commit.
  */
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;
@@ -233,7 +234,7 @@ export function registerApiRoutes(
     routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge,
     dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined,
     db?: Database.Database, cronEnabled?: boolean,
-    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; chatStyleSelectorEnabled: boolean; defaultChatStyle: ChatStyle },
+    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; chatStyleSelectorEnabled: boolean; chatProviderSwitchingEnabled: boolean; defaultChatStyle: ChatStyle },
     activeWorkspaceTracker?: ActiveWorkspaceTracker,
 ): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).

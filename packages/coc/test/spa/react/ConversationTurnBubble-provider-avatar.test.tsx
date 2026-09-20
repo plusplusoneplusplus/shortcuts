@@ -86,6 +86,22 @@ describe('ConversationTurnBubble — provider-driven avatar palette', () => {
         expect(avatar.getAttribute('data-provider')).toBe('codex');
     });
 
+    it('prefers persisted turn attribution over the active conversation provider', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeAssistantTurn({ provider: 'claude', model: 'claude-sonnet-4.6' })}
+                provider="codex"
+            />,
+        );
+        const avatar = container.querySelector('.turn-avatar') as HTMLElement;
+        const attribution = container.querySelector('.assistant-attribution') as HTMLElement;
+
+        expect(avatar.className).toContain('bg-[#fdece1]');
+        expect(avatar.getAttribute('data-provider')).toBe('claude');
+        expect(attribution.getAttribute('data-provider')).toBe('claude');
+        expect(attribution.textContent).toBe('Claude · claude-sonnet-4.6');
+    });
+
     it('error assistant avatar keeps the red error palette and ignores provider', () => {
         const { container } = render(
             <ConversationTurnBubble turn={makeAssistantTurn({ isError: true })} provider="claude" />,

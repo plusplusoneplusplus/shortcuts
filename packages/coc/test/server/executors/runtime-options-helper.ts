@@ -23,7 +23,7 @@ export const RUNTIME_CAPABILITY_KEYS = [
     'getDefaultChatStyle',
     'resolveAiServiceForProvider',
     'getDreamRunExecutor',
-    'processAbortControllers',
+    'inFlightTurns',
 ] as const;
 
 /**

@@ -17,9 +17,9 @@
  *  - **Promotion is a gesture, not a button.** Double-clicking a preview tab
  *    (or pressing Enter on it) makes it permanent; the strip only reports the
  *    gesture, the model owns the one-way rule (AC-04).
- *  - **State without color.** Dirty is a dot, errors a warning sign, read-only
- *    a lock, and the active tab carries `aria-selected` plus an underline — the
- *    strip stays readable to anyone who cannot separate the accents.
+ *  - **State without color.** Dirty is a dot, errors a warning sign, and the
+ *    active tab carries `aria-selected` plus an underline — the strip stays
+ *    readable to anyone who cannot separate the accents.
  *  - **Overflow scrolls, chrome does not.** Tabs are `flex-shrink-0` inside a
  *    scrolling row so labels truncate at a sane width instead of collapsing to
  *    nothing, and the trailing "+" sits outside that row so it stays reachable
@@ -233,7 +233,6 @@ export function UnifiedPanelTabStrip({
                             data-active={isActive || undefined}
                             data-dirty={isDirty || undefined}
                             data-preview={tab.preview || undefined}
-                            data-readonly={tab.readOnly || undefined}
                             data-section-start={startsChatSection || undefined}
                             onClick={() => onActivate(tab.id)}
                             onDoubleClick={() => onPromote?.(tab.id)}
@@ -278,9 +277,6 @@ export function UnifiedPanelTabStrip({
                             )}
                         >
                             <span className="flex-shrink-0 opacity-80" aria-hidden="true">{KIND_ICONS[tab.kind]}</span>
-                            {tab.readOnly && (
-                                <span aria-hidden="true" className="flex-shrink-0" data-testid={`unified-panel-tab-readonly-${tab.id}`}>🔒</span>
-                            )}
                             {hasError && (
                                 <span aria-hidden="true" className="flex-shrink-0" data-testid={`unified-panel-tab-error-${tab.id}`}>⚠</span>
                             )}
@@ -300,7 +296,6 @@ export function UnifiedPanelTabStrip({
                             )}
                             <span className="sr-only">
                                 {tab.preview ? ' (preview — double-click to keep open)' : ''}
-                                {tab.readOnly ? ' (read-only)' : ''}
                                 {isDirty ? ' (unsaved changes)' : ''}
                                 {hasError ? ' (unavailable)' : ''}
                             </span>

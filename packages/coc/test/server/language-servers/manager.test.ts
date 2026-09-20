@@ -18,7 +18,11 @@ import { LanguageServerManager } from '../../../src/server/language-servers/mana
 import type { SessionClosedEvent } from '../../../src/server/language-servers/manager';
 import { LanguageServerSession } from '../../../src/server/language-servers/session';
 import type { LanguageServerSessionOptions } from '../../../src/server/language-servers/session';
-import { writeLanguageServerConfig } from '../../../src/server/language-servers/repository';
+import {
+    getLanguageServerConfigPath,
+    readLanguageServerConfigWithStatus,
+    writeLanguageServerConfig,
+} from '../../../src/server/language-servers/repository';
 import type { PrepareDefinitionDeps } from '../../../src/server/language-servers/adapters';
 import {
     CLANGD_PRESET,
@@ -138,6 +142,52 @@ function acquireTxt(
 }
 
 describe('LanguageServerManager selection', () => {
+    it('seeds a fresh workspace before the settings route reads its config', () => {
+        const dataDir = tempDir('coc-lsp-manager-seed-data-');
+        const workspaceRoot = tempDir('coc-lsp-manager-seed-repo-');
+        fs.writeFileSync(path.join(workspaceRoot, 'package.json'), '{"name":"demo"}');
+        fs.mkdirSync(path.join(workspaceRoot, 'src'));
+        fs.writeFileSync(path.join(workspaceRoot, 'src', 'main.ts'), 'export {};\n');
+        const manager = new LanguageServerManager({ dataDir });
+        managers.push(manager);
+
+        expect(fs.existsSync(getLanguageServerConfigPath(dataDir, 'ws-fresh'))).toBe(false);
+        const first = manager.acquireAll({
+            workspaceId: 'ws-fresh',
+            workspaceRoot,
+            editingSessionId: 'browser-1',
+            relativePath: 'src/main.ts',
+        });
+
+        expect(first.ok).toBe(true);
+        const seeded = readLanguageServerConfigWithStatus(dataDir, 'ws-fresh');
+        expect(seeded.status).toBe('ok');
+        expect(seeded.value.enabled).toBe(true);
+        expect(seeded.value.definitions.map(({ id }) => id)).toEqual(['typescript']);
+
+        if (first.ok) {
+            first.handles.forEach(({ release }) => release());
+        }
+        expect(writeLanguageServerConfig(dataDir, 'ws-fresh', {
+            enabled: false,
+            definitions: seeded.value.definitions.map(definition => ({ ...definition, enabled: false })),
+        }).ok).toBe(true);
+        fs.writeFileSync(path.join(workspaceRoot, 'Cargo.toml'), '[package]\nname = "demo"\n');
+
+        const second = manager.acquireAll({
+            workspaceId: 'ws-fresh',
+            workspaceRoot,
+            editingSessionId: 'browser-2',
+            relativePath: 'src/main.rs',
+        });
+
+        expect(second.ok).toBe(false);
+        expect(readLanguageServerConfigWithStatus(dataDir, 'ws-fresh').value).toEqual({
+            enabled: false,
+            definitions: seeded.value.definitions.map(definition => ({ ...definition, enabled: false })),
+        });
+    });
+
     it('starts one session for a document and reports the resolved definition', () => {
         const harness = createHarness();
         const result = acquireTxt(harness, 'browser-1');

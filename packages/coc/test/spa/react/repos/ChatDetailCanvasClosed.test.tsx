@@ -109,6 +109,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isCanvasEnabled: () => true,
     isRemoteShellEnabled: () => false,
     isQuickAskSidenotesEnabled: () => false,
+    isChatProviderSwitchingEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 
@@ -712,7 +713,7 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         });
     }
 
-    it('files a READ-ONLY file tab in the hosting panel instead of the docked source canvas', async () => {
+    it('files an editable file tab in the hosting panel instead of the docked source canvas', async () => {
         renderHostedChat('task-A');
         dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID, line: 12 });
 
@@ -728,8 +729,7 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         expect(tab.chatId).toBe('task-A');
         expect(tab.resourceId).toBe('src/app.ts');
         expect(tab.line).toBe(12);
-        // A link is a reference, not an authorization — the tab stays read-only.
-        expect(tab.readOnly).toBe(true);
+        expect(tab).not.toHaveProperty('readOnly');
     });
 
     it('files a note ref as an editable, workspace-owned note tab', async () => {
@@ -746,7 +746,7 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         // Workspace-owned, so it survives a chat switch, and editable: a plan
         // note reached through a link keeps the capability the docked editor had.
         expect(tab.chatId).toBeNull();
-        expect(tab.readOnly).toBeUndefined();
+        expect(tab).not.toHaveProperty('readOnly');
         expect(tab.ownerWorkspaceId).toBe(WS_ID);
         expect(tab.resourceId).toBe('auto||/repos/main/notes/n.md');
         expect(tab.line).toBe(3);

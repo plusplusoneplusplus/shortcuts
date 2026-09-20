@@ -1,6 +1,7 @@
 /**
  * Canonical type definitions for all React code.
  */
+import type { ChatProviderId } from '@plusplusoneplusplus/coc-client';
 
 /** Token usage data for a single conversation turn (client-side representation) */
 export interface ClientTokenUsage {
@@ -134,8 +135,12 @@ export interface ClientConversationTurn {
     repoGroupContext?: string;
     /** Verbatim `<coc-chat-mode>` directive injected into this user turn's prompt, revealed behind a disclosure. */
     chatModeContext?: string;
-    /** Model override used for this turn (set on user turns when /model was active) */
+    /** Effective model for this turn when recorded by the execution path. */
     model?: string;
+    /** Concrete provider that produced or accepted this turn. */
+    provider?: ChatProviderId;
+    /** Stable provider-session segment attribution for this turn. */
+    segmentId?: string;
     /** Chat mode used for this turn (set on user turns when mode override was active) */
     mode?: string;
     /**

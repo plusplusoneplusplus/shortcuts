@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
 import { MonacoFileEditor } from './MonacoFileEditor';
+import { mountNonEditableModel } from './nonEditableMonacoModel';
 import type { LineRange } from './types';
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
@@ -89,7 +90,7 @@ export function MarkdownFileView({ content, range, codeTestId }: {
                         <MonacoFileEditor
                             value={content}
                             language="markdown"
-                            readOnly
+                            onModelMount={mountNonEditableModel}
                             highlightRange={range ?? null}
                         />
                     </div>

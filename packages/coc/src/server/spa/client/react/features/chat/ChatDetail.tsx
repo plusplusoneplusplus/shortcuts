@@ -13,11 +13,12 @@ import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
+import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { useWorkspaceRemoteUrl } from '../../repos/useWorkspaceRemoteUrl';
-import { getConversationTurns } from './conversation/chatConversationUtils';
+import { getConversationTurns, getRetryProvider } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
 import type { ChatHeaderMetadata } from './conversation/ChatMetadataButton';
 import { useQueue } from '../../contexts/QueueContext';
@@ -62,6 +63,7 @@ import { useSendMessage } from './hooks/useSendMessage';
 import { useQueuedTaskPoll } from '../../queue/hooks/useQueuedTaskPoll';
 import { useChatWindowActions } from './hooks/useChatWindowActions';
 import { useModels } from '../../hooks/useModels';
+import { useAgentProviders } from '../../hooks/useAgentProviders';
 import type { ModelInfo } from '../../hooks/useModels';
 import { ChatHeader } from './ChatHeader';
 import { ConversationArea } from './ConversationArea';
@@ -119,6 +121,7 @@ import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { popOutOpened } from '../../utils/popOutWindow';
+import { isConcreteChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -264,6 +267,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedFollowUpEffortTier, setSelectedFollowUpEffortTier] = useState<EffortTierKey>('medium');
+    const [pendingProvider, setPendingProvider] = useState<ConcreteChatProvider | null>(null);
     // Style belongs to THIS conversation, not to the workspace. `null` means the
     // user has not touched the selector here, so the value follows whatever the
     // process record last recorded (`metadata.chatStyle`, written on every turn);
@@ -343,7 +347,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const afterTierInitializedRef = useRef(false);
     /** Tracks first mount of the model-override effect so we don't re-derive on initial render. */
     const modelOverrideMountedRef = useRef(false);
-    const previousSessionProviderRef = useRef<string | null>(null);
+    const providerComposerSettingsRef = useRef<Partial<Record<ConcreteChatProvider, {
+        model: string | null;
+        effort: EffortLevel | null;
+        tier: EffortTierKey;
+    }>>>({});
 
     const { attachments, images, addFromPaste, addFromFileInput, addScreenshotDataUrl, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
     // AC-04: receive desktop-shell screenshot pushes into this conversation's draft.
@@ -421,14 +429,41 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         || rawSessionProvider === 'copilot'
         ? rawSessionProvider
         : 'copilot';
-    const { models: availableModels } = useModels(sessionProvider);
+    const activeProviderSegment = metadataProcess?.activeProviderSession as {
+        provider: ChatProvider;
+        segmentId: string;
+        firstTurnIndex: number;
+    } | undefined;
+    const composerProvider: ConcreteChatProvider = pendingProvider ?? conversationProvider;
+    const owningServerBaseUrl = sourceBaseUrl ?? (workspaceId ? lookupCloneBaseUrl(workspaceId) : undefined);
+    const { models: activeProviderModels } = useModels(conversationProvider, owningServerBaseUrl);
+    const { models: availableModels } = useModels(composerProvider, owningServerBaseUrl);
     // Per-provider, per-model reasoning-effort preferences for mid-conversation model-swap re-derive.
-    const reasoningEfforts = useProviderReasoningEfforts(sessionProvider);
-    const { tiers: followUpEffortTierMap, loading: followUpEffortTiersLoading } = useProviderEffortTiers(sessionProvider);
+    const reasoningEfforts = useProviderReasoningEfforts(composerProvider, owningServerBaseUrl);
+    const { tiers: followUpEffortTierMap, loading: followUpEffortTiersLoading } = useProviderEffortTiers(composerProvider, owningServerBaseUrl);
     const followUpHasTiers = !followUpEffortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!followUpEffortTierMap[k]?.model);
     const useFollowUpEffortTierMode = isEffortLevelsEnabled() && followUpHasTiers;
     const pickableModels = selectPickableModels(availableModels);
     const modelCommand = useModelCommand(pickableModels);
+    const { providers: rawFollowUpProviders, loading: followUpProvidersLoading } = useAgentProviders(owningServerBaseUrl);
+    const followUpProviderOptions = useMemo<AgentSelectorProvider[]>(() => rawFollowUpProviders
+        .filter(provider => isConcreteChatProvider(provider.id))
+        .map(provider => provider.id === conversationProvider
+            ? { ...provider, id: provider.id as ConcreteChatProvider, enabled: true, available: true, reason: undefined }
+            : { ...provider, id: provider.id as ConcreteChatProvider }), [rawFollowUpProviders, conversationProvider]);
+
+    const handleFollowUpProviderChange = useCallback((provider: ConcreteChatProvider) => {
+        providerComposerSettingsRef.current[composerProvider] = {
+            model: modelCommand.modelOverride,
+            effort: effortOverride,
+            tier: selectedFollowUpEffortTier,
+        };
+        const restored = providerComposerSettingsRef.current[provider];
+        setPendingProvider(provider === conversationProvider ? null : provider);
+        modelCommand.setModelOverride(restored?.model ?? null);
+        setEffortOverride(restored?.effort ?? null);
+        if (restored?.tier) setSelectedFollowUpEffortTier(restored.tier);
+    }, [composerProvider, conversationProvider, effortOverride, modelCommand.modelOverride, modelCommand.setModelOverride, selectedFollowUpEffortTier]);
     const cronEnabled = isCronEnabled();
     const canvasEnabled = isCanvasEnabled();
     const slashCommandFeatures = useMemo(() => ({ cronEnabled, canvasEnabled }), [cronEnabled, canvasEnabled]);
@@ -439,15 +474,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const slashCommands = useSlashCommands(augmentedSkills, slashCommandFeatures);
 
     useEffect(() => {
-        if (previousSessionProviderRef.current === null) {
-            previousSessionProviderRef.current = sessionProvider;
-            return;
-        }
-        if (previousSessionProviderRef.current !== sessionProvider) {
-            previousSessionProviderRef.current = sessionProvider;
-            modelCommand.setModelOverride(null);
-        }
-    }, [sessionProvider, modelCommand.setModelOverride]);
+        setPendingProvider(null);
+        providerComposerSettingsRef.current = {};
+    }, [taskId]);
+    useEffect(() => {
+        if (pendingProvider === conversationProvider) setPendingProvider(null);
+    }, [conversationProvider, pendingProvider]);
 
     const cronsHook = useCrons(workspaceId, processId);
     const [cronPanelOpen, setCronPanelOpen] = useState(false);
@@ -525,6 +557,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // Resolve the Style flag from the server that owns this process, so a remote
     // conversation follows its own server's setting, not the local one's.
     const chatStyleSelectorEnabled = useChatStyleSelectorEnabled(sourceRemoteInfo.baseUrl);
+    const chatProviderSwitchingEnabled = useChatProviderSwitchingEnabled(owningServerBaseUrl);
+    useEffect(() => {
+        if (!chatProviderSwitchingEnabled) setPendingProvider(null);
+    }, [chatProviderSwitchingEnabled]);
 
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
@@ -779,10 +815,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         ? 'This stopped chat cannot be continued because no SDK session was saved. Start a new chat manually.'
         : null);
     const inputDisabled = loading || isPending || isCancelling || sessionExpired || isCompacting || !!nonRetryableFollowUpError;
+    const isCanonicalFork = typeof processDetails?.metadata?.forkSourceId === 'string';
     const noSessionForFollowUp = isTerminal
         && effectiveStatus !== 'cancelled'
         && processDetails !== null
         && !resumeSessionId
+        && !isCanonicalFork
         && !nonRetryableFollowUpError;
 
     const createdFiles = useMemo(() => scanTurnsForCreatedFiles(turns), [turns]);
@@ -1225,11 +1263,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // a value already received via SSE (conversation-snapshot / token-usage).
     useEffect(() => {
         if (!sessionModel || sessionTokenLimit !== undefined) return;
-        const info = availableModels.find((m: ModelInfo) => m.id === sessionModel);
+        const info = activeProviderModels.find((m: ModelInfo) => m.id === sessionModel);
         if (info?.tokenLimit && info.tokenLimit > 0) {
             setSessionTokenLimit(info.tokenLimit);
         }
-    }, [availableModels, sessionModel, sessionTokenLimit]);
+    }, [activeProviderModels, sessionModel, sessionTokenLimit]);
 
     // Seed session token state from a freshly-fetched process record so the
     // ContextWindowIndicator shows real usage immediately on cold load —
@@ -1251,9 +1289,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // Derive effort picker options from the effective model (override or session model).
     // `chatEffectiveModelInfo` drives both option-set and disabled state so that
     // switching model mid-conversation updates the pill immediately.
-    const chatEffectiveModelId = modelCommand.modelOverride ?? sessionModel;
+    const composerSessionModel = pendingProvider ? undefined : sessionModel;
+    const chatEffectiveModelId = modelCommand.modelOverride ?? composerSessionModel;
     const chatEffectiveModelInfo = availableModels.find((m: ModelInfo) => m.id === chatEffectiveModelId);
-    const sessionModelInfo = availableModels.find((m: ModelInfo) => m.id === sessionModel);
+    const sessionModelInfo = activeProviderModels.find((m: ModelInfo) => m.id === sessionModel);
     const effortOptions = buildEffortOptionsForModel(chatEffectiveModelInfo?.supportedReasoningEfforts);
     // Disable the effort picker when the model's capabilities explicitly report no reasoning support.
     const effortPickerDisabled = Boolean(chatEffectiveModelInfo && chatEffectiveModelInfo.capabilities?.supports.reasoningEffort === false);
@@ -1495,6 +1534,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         getAttachedContext: attachedContext.getItems,
         clearAttachedContext: attachedContext.clear,
         modelOverride: effectiveFollowUpModelOverride,
+        providerOverride: pendingProvider ?? undefined,
         effortOverride: effectiveFollowUpEffort,
         // Omitted entirely when the owning server has the flag off, so an older
         // or opted-out server never receives a field it would reject.
@@ -2175,7 +2215,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     const retryLastMessage = () => {
         if (!lastFailedMessageRef.current) return;
-        void sendFollowUp(lastFailedMessageRef.current);
+        void sendFollowUp(lastFailedMessageRef.current, 'enqueue', {
+            providerOverride: getRetryProvider(turnsRef.current, pendingProvider),
+        });
     };
 
     const handleStop = useCallback(async () => {
@@ -2274,6 +2316,30 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // error toast for anything it still rejects.
     const rewindUnsupportedProvider = conversationProvider === 'codex';
     const rewindAction = planChatBusy || rewindUnsupportedProvider ? undefined : rewind.requestRewind;
+    const loadedConversationMode = resolveLoadedTaskMode(task);
+    const workflowOwnsProvider = !!getRalphContext(task)
+        || !!forEachGeneration
+        || !!mapReduceGeneration
+        || loadedConversationMode === 'ralph'
+        || loadedConversationMode === 'for-each'
+        || loadedConversationMode === 'map-reduce'
+        || loadedConversationMode === 'sentinel'
+        || (selectedMode !== 'ask' && selectedMode !== 'autopilot');
+    const providerSwitchDisabledReason = !chatProviderSwitchingEnabled
+        ? 'locked to this conversation'
+        : workflowOwnsProvider
+            ? 'Provider switching is unavailable for workflow conversations'
+            : pendingAskUserBatch
+                ? 'Answer the pending question before switching provider'
+                : isCompacting
+                    ? 'Wait for compaction to finish before switching provider'
+                    : rewind.pending || rewind.targetIndex !== null
+                        ? 'Finish or cancel the rewind before switching provider'
+                        : sending || isActiveGeneration || isPending || (pendingQueue?.length ?? 0) > 0
+                            ? 'Wait for the conversation to become idle before switching provider'
+                            : inputDisabled
+                                ? 'Provider switching is unavailable for this conversation'
+                                : undefined;
 
     // Inline "Edit message" editor: at most one turn is in edit mode at a time,
     // so a single index is the whole state — opening a second editor implicitly
@@ -2533,7 +2599,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         resumeLaunching,
         onLaunchInteractiveResume: () => { void launchInteractiveResume(); },
         onCopyResumeCommand: () => { void copyResumeCommand(); },
-        onFork: metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined,
+        onFork: metadataProcess && task?.status === 'completed' ? handleFork : undefined,
         forking,
         onStartFreshSameContext,
         startingFreshSameContext,
@@ -2706,6 +2772,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         processError={processDetails?.error ?? null}
                         provider={sessionProvider}
                         rewindProvider={conversationProvider}
+                        activeProviderSegment={activeProviderSegment}
                         sidenotes={quickAsk.items}
                         onCreateSidenote={quickAsk.createSidenote}
                         onRetrySidenote={quickAsk.retrySidenote}
@@ -2877,7 +2944,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             task={task}
                             slashCommands={slashCommands}
                             modelCommand={modelCommand}
-                            sessionModel={sessionModel}
+                            sessionModel={composerSessionModel}
                             hideModeSelector={hideModeSelector}
                             allowedModes={effectiveAllowedModes}
                             workingDirectory={workingDirectory}
@@ -2886,7 +2953,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             sessionSystemTokens={sessionSystemTokens}
                             sessionToolTokens={sessionToolTokens}
                             sessionConversationTokens={sessionConversationTokens}
-                            activeProvider={sessionProvider}
+                            activeProvider={conversationProvider}
+                            selectedProvider={composerProvider}
+                            providerOptions={followUpProviderOptions}
+                            providerOptionsLoading={followUpProvidersLoading}
+                            onProviderChange={handleFollowUpProviderChange}
+                            providerSwitchDisabledReason={providerSwitchDisabledReason}
                             effortOverride={effortOverride}
                             effortOptions={effortOptions}
                             effortDisabled={effortPickerDisabled}
@@ -3020,7 +3092,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     task={task}
                     slashCommands={slashCommands}
                     modelCommand={modelCommand}
-                    sessionModel={sessionModel}
+                    sessionModel={composerSessionModel}
                     hideModeSelector={hideModeSelector}
                     allowedModes={effectiveAllowedModes}
                     workingDirectory={workingDirectory}
@@ -3029,7 +3101,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     sessionSystemTokens={sessionSystemTokens}
                     sessionToolTokens={sessionToolTokens}
                     sessionConversationTokens={sessionConversationTokens}
-                    activeProvider={sessionProvider}
+                    activeProvider={conversationProvider}
+                    selectedProvider={composerProvider}
+                    providerOptions={followUpProviderOptions}
+                    providerOptionsLoading={followUpProvidersLoading}
+                    onProviderChange={handleFollowUpProviderChange}
+                    providerSwitchDisabledReason={providerSwitchDisabledReason}
                     effortOverride={effortOverride}
                     effortOptions={effortOptions}
                     effortDisabled={effortPickerDisabled}

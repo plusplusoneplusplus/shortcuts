@@ -259,8 +259,8 @@ export interface ChatModeInjectionCheck {
     /**
      * False when the turn cannot resume a live SDK session and the executor
      * instead rebuilds history from persisted turns. Those turns inline the
-     * *display* copy of the block, and `buildConversationHistoryContext` wraps
-     * the replay in `<conversation_history>` — a quoted instruction, not an
+     * *display* copy of the block, and `buildConversationHandoff` wraps
+     * the replay in `<conversation_handoff>` — a quoted instruction, not an
      * active one.
      */
     canResumeSession: boolean;

@@ -53,7 +53,6 @@ import {
     applySkillContent,
     prependSelectedSkillsDirective,
     resolveSelectedSkillReferences,
-    buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
 } from '../../src/server/executors/prompt-builder';
@@ -480,113 +479,6 @@ describe('resolveSelectedSkillReferences', () => {
         expect(result).toEqual([
             { name: 'impl', skillFilePath: path.join('/skills', 'impl', 'SKILL.md') },
         ]);
-    });
-});
-
-// ============================================================================
-// buildConversationHistoryContext
-// ============================================================================
-
-describe('buildConversationHistoryContext', () => {
-    it('returns undefined for empty turns', () => {
-        expect(buildConversationHistoryContext([])).toBeUndefined();
-        expect(buildConversationHistoryContext(undefined)).toBeUndefined();
-    });
-
-    it('wraps turns in conversation_history tags', () => {
-        const turns = [
-            { role: 'user' as const, content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
-            { role: 'assistant' as const, content: 'Hi!', timestamp: new Date(), turnIndex: 1, timeline: [] },
-        ];
-        const result = buildConversationHistoryContext(turns);
-        expect(result).toContain('<conversation_history>');
-        expect(result).toContain('[User]: Hello');
-        expect(result).toContain('[Assistant]: Hi!');
-        expect(result).toContain('</conversation_history>');
-    });
-
-    it('truncates long assistant responses at 2000 chars', () => {
-        const longContent = 'x'.repeat(2100);
-        const turns = [
-            { role: 'assistant' as const, content: longContent, timestamp: new Date(), turnIndex: 0, timeline: [] },
-        ];
-        const result = buildConversationHistoryContext(turns);
-        expect(result).toContain('(truncated)');
-        const assistantLine = result!.split('\n').find(l => l.startsWith('[Assistant]:'))!;
-        expect(assistantLine.length).toBeLessThan(2200);
-    });
-
-    it('does not truncate user messages', () => {
-        const longContent = 'y'.repeat(2100);
-        const turns = [
-            { role: 'user' as const, content: longContent, timestamp: new Date(), turnIndex: 0, timeline: [] },
-        ];
-        const result = buildConversationHistoryContext(turns);
-        expect(result).not.toContain('(truncated)');
-    });
-
-    it('skips interrupted assistant turns so partial output is not replayed', () => {
-        const turns = [
-            { role: 'user' as const, content: 'Original question', timestamp: new Date(), turnIndex: 0, timeline: [] },
-            {
-                role: 'assistant' as const,
-                content: 'Partial output that timed out',
-                timestamp: new Date(),
-                turnIndex: 1,
-                timeline: [],
-                interrupted: true,
-                interruptionReason: 'Timed out',
-            },
-            { role: 'user' as const, content: 'Continue', timestamp: new Date(), turnIndex: 2, timeline: [] },
-        ];
-        const result = buildConversationHistoryContext(turns);
-        expect(result).toContain('[User]: Original question');
-        expect(result).toContain('[User]: Continue');
-        expect(result).not.toContain('Partial output that timed out');
-    });
-
-    it('skips display-only turns (e.g. the /compact result notice) so they are not replayed', () => {
-        const turns = [
-            { role: 'user' as const, content: 'Original question', timestamp: new Date(), turnIndex: 0, timeline: [] },
-            { role: 'assistant' as const, content: 'Real answer', timestamp: new Date(), turnIndex: 1, timeline: [] },
-            {
-                role: 'assistant' as const,
-                content: 'Context compacted — removed 7 messages, freed ~4200 tokens',
-                timestamp: new Date(),
-                turnIndex: 2,
-                timeline: [],
-                displayOnly: true,
-            },
-            { role: 'user' as const, content: 'Continue', timestamp: new Date(), turnIndex: 3, timeline: [] },
-        ];
-        const result = buildConversationHistoryContext(turns);
-        expect(result).toContain('[User]: Original question');
-        expect(result).toContain('[Assistant]: Real answer');
-        expect(result).toContain('[User]: Continue');
-        expect(result).not.toContain('Context compacted');
-    });
-
-    it('excludes a display-only user guidance turn (Ralph promote) so it is not double-fed', () => {
-        // The Ralph-promote route persists the user's typed guidance as a
-        // displayOnly user turn purely for the UI; the same guidance is already
-        // embedded in the synthesis prompt, so replaying it here would
-        // double-count it.
-        const turns = [
-            { role: 'user' as const, content: 'Original question', timestamp: new Date(), turnIndex: 0, timeline: [] },
-            { role: 'assistant' as const, content: 'Real answer', timestamp: new Date(), turnIndex: 1, timeline: [] },
-            {
-                role: 'user' as const,
-                content: 'focus the goal on the queue refactor',
-                timestamp: new Date(),
-                turnIndex: 2,
-                timeline: [],
-                displayOnly: true,
-            },
-        ];
-        const result = buildConversationHistoryContext(turns);
-        expect(result).toContain('[User]: Original question');
-        expect(result).toContain('[Assistant]: Real answer');
-        expect(result).not.toContain('focus the goal on the queue refactor');
     });
 });
 

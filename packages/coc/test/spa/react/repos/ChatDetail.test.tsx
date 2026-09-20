@@ -72,6 +72,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getActiveProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => mockState.effortLevelsEnabled,
     isChatStyleSelectorEnabled: () => mockState.chatStyleSelectorEnabled,
+    isChatProviderSwitchingEnabled: () => false,
     getDefaultChatStyle: () => mockState.defaultChatStyle,
     isSessionContextAttachmentsEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
@@ -1349,6 +1350,22 @@ describe('ChatDetail', () => {
             });
         });
 
+        it('shows follow-up input for an unbound canonical transcript fork', async () => {
+            const task = makeTask({ status: 'completed', processId: 'proc-1' });
+            const proc = makeProcess({
+                sdkSessionId: undefined,
+                activeProviderSession: undefined,
+                metadata: { mode: 'autopilot', forkSourceId: 'source-process' },
+            });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" /></Wrap>);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+            });
+            expect(screen.queryByText('Follow-up chat is not available for this process type.')).toBeNull();
+        });
+
         it('shows follow-up input when task is running', async () => {
             const task = makeTask({ status: 'running', processId: 'proc-1' });
             const proc = makeProcess({ status: 'running', metadata: {} });
@@ -2391,7 +2408,7 @@ describe('ChatDetail', () => {
 describe('ChatDetail — onHeaderMetadataChange', () => {
     it('publishes the merged process and turn count when the header is hidden', async () => {
         const onHeaderMetadataChange = vi.fn();
-        setupStandardFetch(makeTask(), makeProcess({ sdkSessionId: 'sdk-sess-1' }));
+        setupStandardFetch(makeTask(), makeProcess({ sdkSessionId: undefined }));
 
         render(
             <Wrap>
@@ -2401,12 +2418,12 @@ describe('ChatDetail — onHeaderMetadataChange', () => {
 
         await waitFor(() => {
             const meta = onHeaderMetadataChange.mock.calls.at(-1)?.[0];
-            expect(meta?.metadataProcess?.sdkSessionId).toBe('sdk-sess-1');
+            expect(meta?.metadataProcess?.sdkSessionId).toBeUndefined();
             // Merged from the queue task, which the process record alone lacks.
             expect(meta?.metadataProcess?.metadata?.queueTaskId).toBe('task-1');
             expect(meta?.turnsCount).toBe(2);
             expect(meta?.isPending).toBe(false);
-            // Completed chat with an SDK session id — forking is offered.
+            // Forking uses the canonical transcript and does not require a native session.
             expect(typeof meta?.onFork).toBe('function');
         });
     });

@@ -98,6 +98,7 @@ describe('POST /api/processes/:id/prewarm', () => {
     let server: http.Server;
     let baseUrl: string;
     let store: MockProcessStore;
+    let providerSwitchingEnabled = true;
 
     beforeAll(async () => {
         store = createMockProcessStore();
@@ -109,6 +110,7 @@ describe('POST /api/processes/:id/prewarm', () => {
             dataDir: '/tmp/test-coc',
             gitOpsStore: {} as any,
             getWsServer: (() => undefined) as any,
+            getLiveFeatureFlags: () => ({ chatProviderSwitchingEnabled: providerSwitchingEnabled }) as any,
         });
 
         const router = createRouter({ routes });
@@ -124,6 +126,7 @@ describe('POST /api/processes/:id/prewarm', () => {
 
     beforeEach(() => {
         store.processes.clear();
+        providerSwitchingEnabled = true;
         mockPrewarm.mockReset();
         mockPrewarm.mockResolvedValue(undefined);
         for (const key of Object.keys(providerServices)) delete providerServices[key];
@@ -173,6 +176,75 @@ describe('POST /api/processes/:id/prewarm', () => {
         expect(res.status).toBe(200);
         expect(res.json()).toEqual({ warming: true, provider: 'codex' });
         expect(mockPrewarm).toHaveBeenCalledWith({ warmKey: 'proc-codex', workingDirectory: '/tmp/cx' });
+    });
+
+    it('warms a confirmed pending provider without changing the active binding', async () => {
+        await store.addProcess({
+            id: 'proc-switch',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hi',
+            workingDirectory: '/tmp/switch',
+            metadata: { type: 'chat', provider: 'copilot' },
+            activeProviderSession: {
+                provider: 'copilot',
+                sessionId: 'copilot-session',
+                segmentId: 'segment-a',
+                firstTurnIndex: 0,
+            },
+        } as any);
+
+        const res = await request(baseUrl, '/api/processes/proc-switch/prewarm', {
+            method: 'POST',
+            body: JSON.stringify({ provider: 'codex' }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json()).toEqual({ warming: true, provider: 'codex' });
+        expect(mockPrewarm).toHaveBeenCalledWith({ warmKey: 'proc-switch', workingDirectory: '/tmp/switch' });
+        expect(store.processes.get('proc-switch')?.activeProviderSession?.provider).toBe('copilot');
+    });
+
+    it('rejects an invalid requested provider', async () => {
+        await store.addProcess({
+            id: 'proc-invalid',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hi',
+            metadata: { type: 'chat', provider: 'copilot' },
+        } as any);
+
+        const res = await request(baseUrl, '/api/processes/proc-invalid/prewarm', {
+            method: 'POST',
+            body: JSON.stringify({ provider: 'auto' }),
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().code).toBe('INVALID_PROVIDER');
+        expect(mockPrewarm).not.toHaveBeenCalled();
+    });
+
+    it('does not prewarm a different provider while switching is disabled', async () => {
+        providerSwitchingEnabled = false;
+        await store.addProcess({
+            id: 'proc-disabled',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hi',
+            metadata: { type: 'chat', provider: 'copilot' },
+        } as any);
+
+        const res = await request(baseUrl, '/api/processes/proc-disabled/prewarm', {
+            method: 'POST',
+            body: JSON.stringify({ provider: 'codex' }),
+        });
+
+        expect(res.status).toBe(400);
+        expect(res.json().code).toBe('PROVIDER_SWITCHING_DISABLED');
+        expect(mockPrewarm).not.toHaveBeenCalled();
     });
 
     it('defaults to copilot when the process has no provider metadata', async () => {

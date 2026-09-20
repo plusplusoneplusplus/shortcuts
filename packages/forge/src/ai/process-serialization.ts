@@ -30,6 +30,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
         parentProcessId: process.parentProcessId,
         // Session resume fields
         sdkSessionId: process.sdkSessionId,
+        activeProviderSession: process.activeProviderSession,
         backend: process.backend,
         workingDirectory: process.workingDirectory,
         // Title
@@ -105,6 +106,8 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
             repoGroupContext: turn.repoGroupContext,
             chatModeContext: turn.chatModeContext,
             model: turn.model,
+            provider: turn.provider,
+            segmentId: turn.segmentId,
             sdkEventId: turn.sdkEventId,
             deletedAt: turn.deletedAt?.toISOString(),
             pinnedAt: turn.pinnedAt?.toISOString(),
@@ -147,6 +150,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
         parentProcessId: serialized.parentProcessId,
         // Session resume fields
         sdkSessionId: serialized.sdkSessionId,
+        activeProviderSession: serialized.activeProviderSession,
         backend: serialized.backend,
         workingDirectory: serialized.workingDirectory,
         // Title
@@ -221,6 +225,8 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
             repoGroupContext: turn.repoGroupContext,
             chatModeContext: turn.chatModeContext,
             model: turn.model,
+            provider: turn.provider,
+            segmentId: turn.segmentId,
             sdkEventId: turn.sdkEventId,
             deletedAt: turn.deletedAt ? new Date(turn.deletedAt) : undefined,
             pinnedAt: turn.pinnedAt ? new Date(turn.pinnedAt) : undefined,

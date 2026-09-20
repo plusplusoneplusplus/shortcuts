@@ -10,6 +10,8 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Writable } from 'stream';
+import pino from 'pino';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/forge';
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
@@ -20,6 +22,8 @@ import {
     STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
     STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
 } from '../../src/server/tasks/task-types';
+import { setServerLogger } from '../../src/server/logging/server-logger';
+import { clearLogBuffer, getLogHistory } from '../../src/server/logging/server-log-capture';
 
 // ============================================================================
 // Helpers
@@ -75,15 +79,35 @@ describe('POST /api/processes/:id/message', () => {
     let store: FileProcessStore;
     let baseUrl: string;
     let mockBridge: QueueExecutorBridge;
+    let providerSwitchingEnabled: boolean;
 
     beforeEach(async () => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'follow-up-api-test-'));
         store = new FileProcessStore({ dataDir });
 
         mockBridge = createMockBridge();
+        providerSwitchingEnabled = true;
+        clearLogBuffer();
+        setServerLogger(pino({ level: 'info' }, new Writable({ write: (_chunk, _encoding, callback) => callback() })));
 
         const routes: Route[] = [];
-        registerApiRoutes(routes, store, mockBridge);
+        registerApiRoutes(
+            routes,
+            store,
+            mockBridge,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => ({
+                excalidrawEnabled: false,
+                canvasEnabled: false,
+                kustoEnabled: false,
+                chatStyleSelectorEnabled: false,
+                chatProviderSwitchingEnabled: providerSwitchingEnabled,
+                defaultChatStyle: 'default',
+            }),
+        );
 
         const spaHtml = generateDashboardHtml();
         const handler = createRequestHandler({ routes, spaHtml, store });
@@ -105,6 +129,8 @@ describe('POST /api/processes/:id/message', () => {
             });
             server = undefined;
         }
+        clearLogBuffer();
+        setServerLogger(pino({ level: 'silent' }));
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
@@ -798,6 +824,34 @@ describe('POST /api/processes/:id/message', () => {
             expect(updated?.conversationTurns).toHaveLength(0);
         });
 
+        it('should allow a cancelled chat with no saved session to switch providers', async () => {
+            const proc: AIProcess = {
+                id: 'proc-cancelled-switch',
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'cancelled',
+                startTime: new Date(),
+                endTime: new Date(),
+                metadata: { type: 'chat', provider: 'copilot' },
+                conversationTurns: [
+                    { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [], provider: 'copilot' },
+                ],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-cancelled-switch/message`, {
+                content: 'continue with codex',
+                provider: 'codex',
+            });
+
+            expect(res.status).toBe(202);
+            expect(mockBridge.isSessionAlive).not.toHaveBeenCalled();
+            const call = (mockBridge.enqueue as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.payload.provider).toBe('codex');
+            expect(call.payload.resumeSessionId).toBeUndefined();
+        });
+
         it('should reject follow-up after stopped-chat strict resume failure', async () => {
             const proc: AIProcess = {
                 id: 'proc-strict-resume-failed',
@@ -1420,6 +1474,259 @@ describe('POST /api/processes/:id/message', () => {
     });
 
     // ========================================================================
+    // Requested provider (provider switching contract)
+    // ========================================================================
+
+    describe('requested provider', () => {
+        async function addChat(id: string, overrides: Partial<AIProcess> = {}): Promise<void> {
+            await store.addProcess({
+                id,
+                type: 'chat',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: `sess-${id}`,
+                metadata: { type: 'chat', provider: 'copilot' },
+                ...overrides,
+            } as AIProcess);
+        }
+
+        it('accepts a follow-up that omits provider, as older clients send', async () => {
+            await addChat('proc-prov-omitted');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-omitted/message`, {
+                content: 'Hello',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('accepts a same-provider follow-up', async () => {
+            await addChat('proc-prov-same');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-same/message`, {
+                content: 'Hello',
+                provider: 'copilot',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('accepts a different provider on an idle conversation', async () => {
+            await addChat('proc-prov-switch');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-switch/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(202);
+            expect(getLogHistory({ component: 'provider-switch' })).toContainEqual(expect.objectContaining({
+                action: 'attempt',
+                sourceProvider: 'copilot',
+                targetProvider: 'codex',
+                processId: 'proc-prov-switch',
+            }));
+            expect(JSON.stringify(getLogHistory({ component: 'provider-switch' }))).not.toContain('Hello');
+        });
+
+        it('rejects a different provider when the live capability is disabled', async () => {
+            await addChat('proc-prov-disabled');
+            providerSwitchingEnabled = false;
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-disabled/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCHING_DISABLED');
+            expect((await store.getProcess('proc-prov-disabled'))?.conversationTurns ?? []).toHaveLength(0);
+            expect(getLogHistory({ component: 'provider-switch' })).toContainEqual(expect.objectContaining({
+                action: 'failed',
+                failureReason: 'feature-disabled',
+                sourceProvider: 'copilot',
+                targetProvider: 'codex',
+                processId: 'proc-prov-disabled',
+            }));
+        });
+
+        it('keeps same-provider follow-ups compatible while the capability is disabled', async () => {
+            await addChat('proc-prov-disabled-same');
+            providerSwitchingEnabled = false;
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-disabled-same/message`, {
+                content: 'Hello',
+                provider: 'copilot',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('observes provider-switch capability changes without restarting', async () => {
+            await addChat('proc-prov-live');
+            providerSwitchingEnabled = false;
+            const disabled = await postJSON(`${baseUrl}/api/processes/proc-prov-live/message`, {
+                content: 'First try',
+                provider: 'codex',
+            });
+            expect(disabled.status).toBe(400);
+
+            providerSwitchingEnabled = true;
+            const enabled = await postJSON(`${baseUrl}/api/processes/proc-prov-live/message`, {
+                content: 'Second try',
+                provider: 'codex',
+            });
+            expect(enabled.status).toBe(202);
+        });
+
+        it('rejects auto with 400 INVALID_PROVIDER', async () => {
+            await addChat('proc-prov-auto');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-auto/message`, {
+                content: 'Hello',
+                provider: 'auto',
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).code).toBe('INVALID_PROVIDER');
+        });
+
+        it('rejects an unknown provider with 400 INVALID_PROVIDER', async () => {
+            await addChat('proc-prov-unknown');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-unknown/message`, {
+                content: 'Hello',
+                provider: 'gemini',
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).code).toBe('INVALID_PROVIDER');
+        });
+
+        it('rejects a cross-provider follow-up on a running conversation with 409', async () => {
+            await addChat('proc-prov-running', { status: 'running' });
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-running/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+            expect(getLogHistory({ component: 'provider-switch' })).toContainEqual(expect.objectContaining({
+                action: 'failed',
+                failureReason: 'conversation-busy',
+                sourceProvider: 'copilot',
+                targetProvider: 'codex',
+                processId: 'proc-prov-running',
+            }));
+        });
+
+        it('rejects with 409 when a provider switch loses the idle race inside delivery', async () => {
+            await addChat('proc-prov-idle-race');
+            const findTask = vi.fn();
+            mockBridge.findTaskByProcessId = findTask;
+            findTask
+                .mockReturnValueOnce(undefined)
+                .mockReturnValueOnce({ id: 'task-race', type: 'chat', status: 'running' });
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-idle-race/message`, {
+                content: 'Hello',
+                provider: 'codex',
+                deliveryMode: 'immediate',
+                chatStyle: 'direct',
+            });
+
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+            expect(mockBridge.steerProcess).not.toHaveBeenCalled();
+            expect(mockBridge.enqueue).not.toHaveBeenCalled();
+            const persisted = await store.getProcess('proc-prov-idle-race');
+            expect(persisted?.conversationTurns ?? []).toHaveLength(0);
+            expect(persisted?.pendingMessages ?? []).toHaveLength(0);
+            expect(persisted?.status).toBe('completed');
+        });
+
+        it('rejects a cross-provider follow-up on a queued conversation with 409', async () => {
+            await addChat('proc-prov-queued', { status: 'queued' });
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-queued/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+        });
+
+        it('still allows a same-provider follow-up while running (buffered as today)', async () => {
+            await addChat('proc-prov-running-same', { status: 'running' });
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-running-same/message`, {
+                content: 'Hello',
+                provider: 'copilot',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('sends the requested provider to the queue payload', async () => {
+            await addChat('proc-prov-payload');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-payload/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(202);
+            const enqueued = (mockBridge.enqueue as unknown as { mock: { calls: any[][] } }).mock.calls.at(-1)![0];
+            expect(enqueued.payload.provider).toBe('codex');
+        });
+
+        it('records the accepted provider on the persisted user turn', async () => {
+            await addChat('proc-prov-turn');
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-turn/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(202);
+            const proc = await store.getProcess('proc-prov-turn');
+            expect(proc?.conversationTurns?.at(-1)?.provider).toBe('codex');
+        });
+
+        it('attributes the user turn to the conversation provider when the client names none', async () => {
+            await addChat('proc-prov-turn-default', {
+                metadata: { type: 'chat', provider: 'opencode' },
+            } as Partial<AIProcess>);
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-turn-default/message`, {
+                content: 'Hello',
+            });
+            expect(res.status).toBe(202);
+            const proc = await store.getProcess('proc-prov-turn-default');
+            expect(proc?.conversationTurns?.at(-1)?.provider).toBe('opencode');
+        });
+
+        it('falls back to the conversation provider when the client names none', async () => {
+            await addChat('proc-prov-payload-default', {
+                metadata: { type: 'chat', provider: 'opencode' },
+            } as Partial<AIProcess>);
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-payload-default/message`, {
+                content: 'Hello',
+            });
+            expect(res.status).toBe(202);
+            const enqueued = (mockBridge.enqueue as unknown as { mock: { calls: any[][] } }).mock.calls.at(-1)![0];
+            expect(enqueued.payload.provider).toBe('opencode');
+        });
+
+        it('treats the same opencode provider as a same-provider follow-up while running', async () => {
+            // Regression: the route's provider check omitted `opencode`, so an
+            // OpenCode conversation looked like Copilot and an opencode
+            // follow-up was misread as a cross-provider switch and rejected.
+            await addChat('proc-prov-opencode-running', {
+                status: 'running',
+                metadata: { type: 'chat', provider: 'opencode' },
+            } as Partial<AIProcess>);
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-opencode-running/message`, {
+                content: 'Hello',
+                provider: 'opencode',
+            });
+            expect(res.status).toBe(202);
+        });
+
+        it('rejects a cross-provider follow-up while an ask_user batch is waiting', async () => {
+            await addChat('proc-prov-ask', {
+                pendingAskUser: [{ id: 'q1', question: 'which one?' }],
+            } as Partial<AIProcess>);
+            const res = await postJSON(`${baseUrl}/api/processes/proc-prov-ask/message`, {
+                content: 'Hello',
+                provider: 'codex',
+            });
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+        });
+    });
+
+    // ========================================================================
     // Large content payload
     // ========================================================================
 
@@ -1488,6 +1795,7 @@ describe('POST /api/processes/:id/message', () => {
                 status: 'failed',
                 startTime: new Date(),
                 sdkSessionId: 'sess-enq-fail2',
+                metadata: { type: 'chat', provider: 'copilot' },
             };
             await store.addProcess(proc);
 
@@ -1498,6 +1806,7 @@ describe('POST /api/processes/:id/message', () => {
 
             const res = await postJSON(`${baseUrl}/api/processes/proc-enq-fail2/message`, {
                 content: 'Retry message',
+                provider: 'codex',
             });
 
             expect(res.status).toBe(500);
@@ -1507,6 +1816,96 @@ describe('POST /api/processes/:id/message', () => {
             // Status must be rolled back to 'failed' (the prior status)
             const updated = await store.getProcess('proc-enq-fail2');
             expect(updated?.status).toBe('failed');
+            expect(getLogHistory({ component: 'provider-switch' })).toContainEqual(expect.objectContaining({
+                action: 'failed',
+                failureReason: 'enqueue-failed',
+                sourceProvider: 'copilot',
+                targetProvider: 'codex',
+                processId: 'proc-enq-fail2',
+            }));
+        });
+
+        it('should allow a strict-resume-failed chat to reconstruct on a different provider', async () => {
+            const proc: AIProcess = {
+                id: 'proc-strict-resume-switch',
+                type: 'chat',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'failed',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'stopped-session',
+                metadata: {
+                    type: 'chat',
+                    provider: 'copilot',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: new Date().toISOString(),
+                        sdkSessionId: 'stopped-session',
+                    },
+                },
+                conversationTurns: [
+                    { role: 'user', content: 'continue', timestamp: new Date(), turnIndex: 0, timeline: [], provider: 'copilot' },
+                    { role: 'assistant', content: 'Strict resume failed.', timestamp: new Date(), turnIndex: 1, timeline: [], provider: 'copilot' },
+                ],
+            };
+            await store.addProcess(proc);
+            (mockBridge.isSessionAlive as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-strict-resume-switch/message`, {
+                content: 'reconstruct with claude',
+                provider: 'claude',
+            });
+
+            expect(res.status).toBe(202);
+            expect(mockBridge.isSessionAlive).not.toHaveBeenCalled();
+            const call = (mockBridge.enqueue as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.payload.provider).toBe('claude');
+            expect(call.payload.resumeSessionId).toBeUndefined();
+        });
+
+        it('should classify a stopped provider switch from the authoritative active binding', async () => {
+            const proc: AIProcess = {
+                id: 'proc-strict-binding-switch',
+                type: 'chat',
+                promptPreview: 'test',
+                fullPrompt: 'test prompt',
+                status: 'failed',
+                startTime: new Date(),
+                endTime: new Date(),
+                sdkSessionId: 'claude-session',
+                activeProviderSession: {
+                    provider: 'claude',
+                    sessionId: 'claude-session',
+                    segmentId: 'segment-claude',
+                    firstTurnIndex: 2,
+                },
+                metadata: {
+                    type: 'chat',
+                    provider: 'copilot',
+                    stoppedChatResume: {
+                        resumable: false,
+                        reason: STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
+                        message: STOPPED_CHAT_STRICT_RESUME_FAILED_MESSAGE,
+                        failedAt: new Date().toISOString(),
+                        sdkSessionId: 'claude-session',
+                    },
+                },
+                conversationTurns: [],
+            };
+            await store.addProcess(proc);
+
+            const res = await postJSON(`${baseUrl}/api/processes/proc-strict-binding-switch/message`, {
+                content: 'reconstruct with copilot',
+                provider: 'copilot',
+            });
+
+            expect(res.status).toBe(202);
+            const call = (mockBridge.enqueue as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.payload.provider).toBe('copilot');
+            expect(call.payload.resumeSessionId).toBeUndefined();
         });
     });
 

@@ -670,12 +670,12 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     const openFileForOwner = useCallback(
         (
             file: { path: string; name: string; line?: number },
-            options: { preview: boolean; readOnly?: boolean },
+            options: { preview: boolean },
             ownerWorkspaceId: string,
             ownerRoutingRef?: string | null,
             ownerLabel?: string,
         ) => {
-            const input = explorerFileTabInput(file, options, {
+            const input = explorerFileTabInput(file, {
                 ownerWorkspaceId,
                 ownerRoutingRef,
                 scopeWorkspaceId: workspaceId,
@@ -713,7 +713,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     const openTreeFile = useCallback(
         (
             file: { path: string; name: string; line?: number },
-            options: { preview: boolean; readOnly?: boolean },
+            options: { preview: boolean },
         ) => openFileForOwner(file, options, target, targetRoutingRef, targetLabel),
         [openFileForOwner, target, targetRoutingRef, targetLabel],
     );
@@ -758,7 +758,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
             file: { path: string; name: string; line: number; column: number; symbolCandidate?: true },
             origin: { ownerWorkspaceId: string; ownerRoutingRef?: string | null; repoLabel?: string },
         ) => {
-            const input = explorerFileTabInput(file, {}, {
+            const input = explorerFileTabInput(file, {
                 ownerWorkspaceId: origin.ownerWorkspaceId,
                 ownerRoutingRef: origin.ownerRoutingRef,
                 scopeWorkspaceId: workspaceId,
@@ -775,7 +775,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
 
     /**
      * A definition that landed outside every workspace — a standard-library
-     * header, a dependency source. It opens as a pinned read-only tab owned by
+     * header, a dependency source. It opens as a pinned external tab owned by
      * the member and concrete clone whose language server produced it, because
      * that host is the only one holding the capability behind it.
      */
@@ -792,7 +792,6 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                 resourceId: source.resourceId,
                 label: source.name,
                 ...(origin.repoLabel === undefined ? {} : { repoLabel: origin.repoLabel }),
-                readOnly: true,
                 line: source.line,
                 column: source.column,
             });
@@ -803,7 +802,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     /**
      * A file picked in either dialog. Same shape as the Explorer's own
      * `handleQuickOpenSelect`: a trusted absolute path is deliberate and
-     * unwritable, so it lands as a pinned read-only tab, and everything else
+     * unwritable, so it lands as a pinned tab, and everything else
      * takes the preview slot exactly as a single click in the tree would.
      *
      * Picking also opens the tree column. Revealing the row needs no new
@@ -821,7 +820,7 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         tree.setOpen(true);
         if (filePath.startsWith(TRUSTED_PATH_PREFIX)) {
             const name = trustedFileName(filePath.slice(TRUSTED_PATH_PREFIX.length));
-            openTreeFile({ path: filePath, name }, { preview: false, readOnly: true });
+            openTreeFile({ path: filePath, name }, { preview: false });
             return;
         }
         const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;

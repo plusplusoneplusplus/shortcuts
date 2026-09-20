@@ -26,6 +26,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
+import { readActiveProviderSession, advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
 import {
     getForEachContext,
@@ -38,12 +39,14 @@ import {
 } from '../tasks/task-types';
 import {
     getLogger,
+    getModelContextWindow,
     LogCategory,
     mergeConsecutiveContentItems,
     resolveModelForProvider,
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
-import { buildConversationHistoryContext } from './prompt-builder';
+import { buildConversationHandoff, conversationHandoffOmittedHistory } from './conversation-handoff';
+import { resolveContinuationMode } from './continuation-mode';
 import { readNoteContent } from './note-chat-executor';
 import { suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { emitMessageSteering } from '../streaming/sse-handler';
@@ -65,6 +68,7 @@ import {
     emitTurnTokenUsage,
 } from './chat-turn-settlement';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
+import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetry';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
 import { buildChatTurnContext } from './chat-turn-context-builder';
@@ -76,6 +80,31 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * Per-turn options carried by the accepted follow-up message (AC-03/AC-04).
+ *
+ * These describe the message, not the conversation, so they are read from the
+ * request that was accepted rather than from process metadata that may have
+ * changed since.
+ */
+export interface FollowUpTurnOptions {
+    /**
+     * Concrete provider this message was accepted for. Omitted means "the
+     * conversation's current provider", which keeps older clients and every
+     * non-switching caller on the existing native-resume path.
+     */
+    requestedProvider?: ChatProvider;
+    /**
+     * Turn index the accepted user message was (or will be) persisted at,
+     * captured when the message was accepted. It is the cutoff for a
+     * reconstructed continuation: only turns strictly before it are quoted, so
+     * the current message reaches the target provider exactly once — as the
+     * prompt. Omitted by callers with no accepted-message identity (cron and
+     * ask_user resume turns), which fall back to dropping a trailing user turn.
+     */
+    historyCutoffTurnIndex?: number;
+}
 
 /** Log prefix for every line this executor writes. */
 const FOLLOW_UP_LOG_LABEL = '[FollowUp]';
@@ -242,6 +271,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
          * treated as a failed follow-up.
          */
         strictResumeSessionId?: string,
+        /**
+         * Per-turn options carried by the accepted message. Kept as an object
+         * so later slices can add to it without growing this already long
+         * positional list.
+         */
+        options?: FollowUpTurnOptions,
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -253,15 +288,46 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             throw new Error(`Process not found: ${processId}`);
         }
 
-        // AC-04 — Use the original chat's provider for follow-ups.
-        // Read provider from process metadata (set at creation time). Processes
-        // created before this feature had no provider metadata; default to 'copilot'.
-        const sessionProvider: ChatProvider = ((process.metadata?.provider as string | undefined) ?? 'copilot') as ChatProvider;
+        // The provider and the native session id must come from the same
+        // authoritative binding — reading one from `metadata.provider` and the
+        // other from `sdkSessionId` is how a new provider ends up paired with
+        // the previous provider's session. Pre-binding processes get the legacy
+        // projection, so behaviour is unchanged for them.
+        const activeBinding = readActiveProviderSession(process);
+
+        // How this turn continues — native resume of the bound session, or a
+        // fresh session on a different provider with context rebuilt from
+        // canonical history. The provider comes from the message that was
+        // accepted, not from conversation metadata that may have changed
+        // since, and the decision is what guarantees a session id created by
+        // one provider is never sent to another.
+        const continuation = resolveContinuationMode({
+            binding: activeBinding,
+            requestedProvider: options?.requestedProvider,
+            strictResumeSessionId,
+        });
+        const sessionProvider: ChatProvider = continuation.provider;
 
         // Resolve the AI service for this provider. This also checks that the
         // provider is still enabled — if not, it throws a clear error that blocks
         // the new follow-up turn without affecting already-running turns.
-        const followUpAiService = this.getAiServiceForProvider(sessionProvider);
+        const followUpAiService = (() => {
+            try {
+                return this.getAiServiceForProvider(sessionProvider);
+            } catch (error) {
+                if (continuation.providerChanged) {
+                    recordProviderSwitchServerTelemetry({
+                        action: 'failed',
+                        sourceProvider: activeBinding.provider as ChatProvider,
+                        targetProvider: sessionProvider,
+                        workspaceId: process.metadata?.workspaceId as string | undefined,
+                        processId,
+                        failureReason: 'before-session-creation',
+                    });
+                }
+                throw error;
+            }
+        })();
 
         const workingDirectory = process.workingDirectory || this.defaultWorkingDirectory;
 
@@ -344,12 +410,27 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const { skillDirectories, disabledSkills } = await this.resolveSkillConfigFn(wsId, workingDirectory);
 
-        const sessionIdForSend = strictResumeSessionId ?? process.sdkSessionId;
-        const canResumeSession = !!sessionIdForSend;
+        const sessionIdForSend = continuation.resumeSessionId;
+        const canResumeSession = continuation.mode === 'native-resume';
 
+        // Provider segment the turns recorded below belong to. A native resume
+        // continues the bound segment; a reconstructed continuation has no
+        // segment until the target provider reports a session, at which point
+        // `onSessionCreated` fills this in before the response is appended.
+        let turnSegmentId = canResumeSession ? activeBinding.segmentId : undefined;
+
+        // A reconstructed continuation starts on a session that has never seen
+        // this conversation, so it gets the bounded handoff built from CoC's
+        // canonical transcript — never the unbounded replay, which also had no
+        // cutoff and so re-sent the message being sent now.
         const historyContext = canResumeSession
             ? undefined
-            : buildConversationHistoryContext(process.conversationTurns);
+            : buildConversationHandoff({
+                turns: process.conversationTurns,
+                cutoffTurnIndex: options?.historyCutoffTurnIndex,
+                targetProvider: continuation.provider,
+                contextWindow: providerModel.model ? getModelContextWindow(providerModel.model) : undefined,
+            });
 
         // No `enqueuedAt`: a follow-up is dispatched directly, so there is no
         // queue wait to reconstruct.
@@ -363,13 +444,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         let chatCtx: ChatTurnContext | undefined;
 
-        const turnAbort = this.registerTurnAbortController(processId);
+        const turnAbort = this.registerTurnAbortController(processId, continuation.provider);
         try {
-            if (strictResumeSessionId) {
-                if (!process.sdkSessionId) {
+            if (continuation.strictResume) {
+                if (!activeBinding.sessionId) {
                     throw new Error('Cannot continue this stopped chat because no SDK session was saved.');
                 }
-                if (process.sdkSessionId !== strictResumeSessionId) {
+                if (activeBinding.sessionId !== strictResumeSessionId) {
                     throw new Error('Cannot continue this stopped chat because the saved SDK session changed before execution.');
                 }
             }
@@ -401,6 +482,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         turnIndex: idx,
                         timeline: [],
                         turnSource,
+                        ...turnProviderAttribution(sessionProvider, turnSegmentId),
                     }),
                     { additionalUpdates: { status: 'running' } },
                 );
@@ -617,13 +699,31 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     // back a different session must not overwrite the stopped
                     // one we are trying to continue.
                     onSessionCreated: (sessionId: string) => {
-                        if (strictResumeSessionId && sessionId !== strictResumeSessionId) {
+                        if (continuation.strictResume && sessionId !== strictResumeSessionId) {
                             strictResumeMismatch = true;
                             logger.warn(LogCategory.AI, `[FollowUp] Provider returned a different SDK session while strict-resuming process ${processId}; preserving the stopped session id.`);
                             return;
                         }
-                        this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch((err: unknown) => {
-                            logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkSessionId for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
+                        const next = advanceActiveProviderSession(activeBinding, {
+                            provider: sessionProvider,
+                            sessionId,
+                            turnIndex: process.conversationTurns?.length ?? 0,
+                        });
+                        turnSegmentId = next.binding.segmentId;
+                        if (continuation.providerChanged) {
+                            recordProviderSwitchServerTelemetry({
+                                action: 'session-created',
+                                sourceProvider: activeBinding.provider as ChatProvider,
+                                targetProvider: sessionProvider,
+                                workspaceId: wsId,
+                                processId,
+                                handoffOmittedHistory: conversationHandoffOmittedHistory(historyContext),
+                            });
+                        }
+                        // One store write: provider, session id, segment id and
+                        // segment start can never be persisted apart.
+                        this.store.updateProcess(processId, activeProviderSessionUpdate(next.binding)).catch((err: unknown) => {
+                            logger.warn(LogCategory.AI, `[FollowUp] Failed to persist the provider session binding for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
                         });
                     },
                     onStreamingChunk: this.buildStreamingChunkHandler(processId, FOLLOW_UP_LOG_LABEL),
@@ -647,7 +747,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     }),
                 }),
                 sessionId: sessionIdForSend,
-                ...(strictResumeSessionId ? { strictSessionResume: true as const } : {}),
+                ...(continuation.strictResume ? { strictSessionResume: true as const } : {}),
                 attachments,
                 deliveryMode: resolvedDeliveryMode,
             };
@@ -668,7 +768,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             if (!result.success) {
                 throw new Error(result.error || 'Follow-up execution failed');
             }
-            if (strictResumeSessionId && (strictResumeMismatch || (result.sessionId !== undefined && result.sessionId !== strictResumeSessionId))) {
+            if (continuation.strictResume && (strictResumeMismatch || (result.sessionId !== undefined && result.sessionId !== strictResumeSessionId))) {
                 throw new Error('Provider did not resume the stopped SDK session.');
             }
 
@@ -692,6 +792,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         tokenUsage: result.tokenUsage,
                         ...(result.effectiveModel ? { model: result.effectiveModel } : {}),
                         ...(turnSource ? { turnSource } : {}),
+                        ...turnProviderAttribution(sessionProvider, turnSegmentId),
                     };
                 },
                 {
@@ -796,6 +897,20 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const duration = Date.now() - startTime;
             const failedAt = new Date();
             logger.error(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
+            if (continuation.providerChanged) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'failed',
+                    sourceProvider: activeBinding.provider as ChatProvider,
+                    targetProvider: sessionProvider,
+                    workspaceId: wsId,
+                    processId,
+                    failureReason: turnAbort.signal.aborted
+                        ? 'cancelled'
+                        : turnSegmentId
+                            ? 'after-session-creation'
+                            : 'before-session-creation',
+                });
+            }
 
             const partial = this.capturePartialTurn(processId);
 
@@ -811,6 +926,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         ...(partial.hasPartial ? { interrupted: true, interruptionReason: errorMsg } : {}),
                         ...(partial.hasPartial && partial.suggestions ? { suggestions: partial.suggestions } : {}),
                         ...(turnSource ? { turnSource } : {}),
+                        ...turnProviderAttribution(sessionProvider, turnSegmentId),
                     };
                 },
                 {
@@ -819,7 +935,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         status: 'failed',
                         endTime: failedAt,
                         error: errorMsg,
-                        ...(strictResumeSessionId
+                        ...(continuation.strictResume
                             ? {
                                 metadata: {
                                     ...(current.metadata ?? {}),
@@ -847,7 +963,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 status: turnAbort.signal.aborted ? 'cancelled' : 'errored',
             });
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
-            if (strictResumeSessionId) {
+            if (continuation.strictResume) {
                 throw error instanceof Error ? error : new Error(errorMsg);
             }
         } finally {

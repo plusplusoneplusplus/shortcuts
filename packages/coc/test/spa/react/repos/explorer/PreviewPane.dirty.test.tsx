@@ -75,17 +75,4 @@ describe('PreviewPane — onDirtyChange (AC-03)', () => {
         expect(onDirtyChange).toHaveBeenLastCalledWith(false);
     });
 
-    it('never reports dirty for a read-only preview', async () => {
-        mockExplorerApi.readBlob.mockResolvedValue({ content: 'hello', encoding: 'utf-8', mimeType: 'text/plain' });
-        const onDirtyChange = vi.fn();
-
-        render(<PreviewPane repoId="ws-1" filePath="a.ts" fileName="a.ts" readOnly onDirtyChange={onDirtyChange} />);
-        await waitFor(() => expect(screen.getByTestId('mock-monaco-textarea')).toBeInTheDocument());
-
-        act(() => {
-            fireEvent.change(screen.getByTestId('mock-monaco-textarea'), { target: { value: 'edited' } });
-        });
-        // read-only ignores edits → dirty never becomes true.
-        expect(onDirtyChange).not.toHaveBeenCalledWith(true);
-    });
 });

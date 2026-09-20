@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ConversationTurnBubble } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { REWIND_EARLIER_SEGMENT_TOOLTIP } from '../../../src/server/spa/client/react/features/chat/hooks/rewindCapability';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 
 vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
@@ -118,6 +119,26 @@ describe('ConversationTurnBubble — Rewind to here', () => {
         const item = screen.getByText('Rewind to here').closest('button')!;
         expect(item.hasAttribute('disabled')).toBe(true);
         expect(item.closest('[title]')?.getAttribute('title')).toBe('This turn predates rewind support');
+        fireEvent.click(item);
+        expect(onRewind).not.toHaveBeenCalled();
+    });
+
+    it('disables an anchored turn from an earlier provider segment', () => {
+        const onRewind = vi.fn();
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn({ provider: 'codex', segmentId: 'segment-a' })}
+                turnIndex={1}
+                provider="codex"
+                rewindProvider="claude"
+                activeProviderSegment={{ provider: 'claude', segmentId: 'segment-b', firstTurnIndex: 2 }}
+                onRewindTurn={onRewind}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        const item = screen.getByText('Rewind to here').closest('button')!;
+        expect(item.disabled).toBe(true);
+        expect(item.closest('[title]')?.getAttribute('title')).toBe(REWIND_EARLIER_SEGMENT_TOOLTIP);
         fireEvent.click(item);
         expect(onRewind).not.toHaveBeenCalled();
     });

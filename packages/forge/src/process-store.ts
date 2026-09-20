@@ -657,14 +657,12 @@ export interface ProcessStore {
      *
      * @param sourceId - ID of the process to fork from.
      * @param newId - ID for the new forked process.
-     * @param newSdkSessionId - SDK session ID for the forked session.
      * @param upToTurnIndex - If provided, only copy turns up to (and including) this index.
      * @returns The newly created process with its conversation turns.
      */
     forkProcess?(
         sourceId: string,
         newId: string,
-        newSdkSessionId: string,
         upToTurnIndex?: number,
     ): Promise<AIProcess>;
 }

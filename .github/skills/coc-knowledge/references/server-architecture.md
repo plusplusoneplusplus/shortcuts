@@ -63,7 +63,7 @@ src/
 | `logging/` | pino-backed logger, in-memory ring buffer, /api/logs routes |
 | `admin/` | admin-handler, db-browser (read-only SQLite), heap-monitor, stats |
 | `workspaces/` | global-workspace, my-work, my-life, repo-group, workspace-summary. In `repo-group-workspace.ts` a group is a virtual workspace (`group-<slug>` ID, root `~/.coc/repos/<groupId>/`) whose `group.json` holds member IDs plus optional per-member descriptions and `readOnlyMembers`; omitted policy defaults every member to read-write. Names/paths resolve from the registry at read time, removed or missing-path members come back stale, and membership changes prune both descriptions and policy. `repo-group-handler.ts` serves CRUD and partial `{ readOnly: { [id]: boolean } }` patches. `packages/coc/src/server/workspaces/repo-group-access-policy.ts` canonicalizes live roots, separates writable from protected members, and rejects overlapping policies. `resolveRepoGroupChatContext` returns `[read-write]`/`[read-only]` prompt rows plus `additionalDirectories` and `readOnlyDirectories`; first and follow-up turns resend both policy lists every turn. Copilot and Claude enforce protected roots in their provider sandboxes; Codex and OpenCode fail before session creation because their adapters cannot express mixed access safely. The prompt block remains session state and is re-injected on cold resume, membership/policy drift, or compaction. Turns that carry it persist `repoGroupContext` for disclosure and drift detection |
-| `processes/` | in-memory store, output-file-manager, stale-task-detector, pin/archive, seen-state, turn-actions, history, resume |
+| `processes/` | in-memory store, output-file-manager, stale-task-detector, pin/archive, seen-state, turn-actions, history, resume, and process-scoped mutation admission. Follow-up delivery and rewind share one keyed critical section. Delivery re-reads process/task state before mutation, so a contending cross-provider request fails with `PROVIDER_SWITCH_REQUIRES_IDLE`. Rewind holds a visible running reservation through native and store mutation and restores the prior terminal state on every outcome |
 | `queue/` | queue-handler, executor-bridge, multi-repo-router, image-blob-store, partitioner |
 | `schedule/` | cron-utils, schedule-handler/manager/executor, run-persistence, async yaml-persistence, repo-schedule-loader/overrides, plus pure `schedule-request-parser.ts` (REST body validation) and `schedule-task-builder.ts` (queue payload). User schedules are per-entry YAML under each repo data directory (`schedules.json` migrates at init); writes/deletes and async repo-schedule reload scans serialize per repo, and a failed scan keeps the previously loaded set. Run records stay `running` after enqueue and finalize from queue terminal events; scheduled Ralph runs finalize from the full `ralphSessionComplete` lifecycle. Overlapping fires record `missed` and rearm after the active run. Runtime state keys on `(repoId, scheduleId)` via `schedule-runtime-key.ts` because repo schedules derive deterministic `repo:<stem>` IDs that repeat across clones; `isAnyRepoRunning` is the only cross-repo lookup |
 | `tasks/` | task-types, cache, watcher, migration, root-resolver, generation, read/write handlers, comments/. The read-only file-preview route accepts the workspace root, trusted read-only roots, the task root, and, for a repo-group workspace only, live registered member roots returned in group order by `resolveRepoGroupReadRoots`; a relative group path probes those roots in order, selects the first existing contained candidate, reports attempted paths on a miss, and returns the owning `resolvedWorkspaceId` with successful previews. Stale members add no access and write routes keep workspace-only scope |
@@ -110,12 +110,19 @@ src/
 | `classification-executor.ts` | Diff classification executor; runs with interactive Ask-mode semantics and injects `saveClassification` for persisted hunk results |
 | `process-lifecycle-runner.ts` | Full process lifecycle + pending-message draining |
 | `prompt-builder.ts` | System message, memory context, skill injection |
+| `continuation-mode.ts` | Native resume vs reconstructed continuation; the only place a native session id may travel with a turn |
+| `conversation-handoff.ts` | Deterministic bounded `<conversation_handoff>` rebuilt from CoC's transcript for a reconstructed (cross-provider or cold) continuation |
 | `chat-tool-builder.ts` | Common chat tool bundle assembly |
 | `chat-turn-context-builder.ts` | Per-turn tools, memory, ask-user handles, tool guidance |
 | `chat-turn-system-message.ts` | Canonical chat-turn system-message block order |
 | `chat-turn-policy-resolver.ts` | Per-turn model / reasoning effort / Copilot context tier |
 | `chat-turn-runner.ts` | Path-invariant `sendMessage` options + shared SDK callbacks (MCP OAuth dispatch) |
 | `chat-turn-settlement.ts` | Turn completion: cumulative tokens, token-usage event, note snapshots |
+
+Provider switching writes structured records through `server/provider-switch-telemetry.ts`.
+Accepted switch requests, target-session creation, and categorized failures include only source
+and target provider, workspace/process identity, and the handoff-omission boolean. Prompt,
+transcript, file, and attachment content never enter these records.
 | `memory-v2-addon.ts` | Wires Memory V2 facts/recall and the memory tools into chat executors |
 
 ### Runtime capability wiring
@@ -130,7 +137,7 @@ as getters rather than captured values.
 
 ```
 createQueueInfrastructure → MultiRepoQueueRouter.defaultOptions.runtime
-    → CLITaskExecutorOptions.runtime      (bridge adds processAbortControllers + getDreamRunExecutor)
+    → CLITaskExecutorOptions.runtime      (bridge adds inFlightTurns + getDreamRunExecutor)
     → ExecutorRegistryOptions.runtime     (required)
     → ChatModeExecutorOptions.runtime     (read as this.runtime.getX?.())
     → LifecycleRuntime / DreamRuntime     (narrow Pick views)

@@ -262,6 +262,62 @@ describe('POST /api/processes/:id/resume-cli', () => {
             });
         });
 
+        it('uses the authoritative active provider and session binding', async () => {
+            await store.addProcess({
+                id: 'proc-active-binding',
+                type: 'clarification',
+                promptPreview: 'p',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'stale-copilot-session',
+                workingDirectory: dataDir,
+                metadata: { provider: 'copilot' },
+                activeProviderSession: {
+                    provider: 'claude',
+                    sessionId: 'active-claude-session',
+                    segmentId: 'segment-claude',
+                    firstTurnIndex: 2,
+                },
+            } as AIProcess);
+            mockLauncher.mockResolvedValue({ launched: true, command: 'cmd', terminal: 'Terminal' });
+
+            const res = await request(`${baseUrl}/api/processes/proc-active-binding/resume-cli`, { method: 'POST' });
+
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toMatchObject({
+                provider: 'claude',
+                sessionId: 'active-claude-session',
+            });
+            expect(mockLauncher).toHaveBeenCalledWith({
+                sessionId: 'active-claude-session',
+                workingDirectory: dataDir,
+                provider: 'claude',
+            });
+        });
+
+        it('does not fall back to a stale projected session when the active binding has none', async () => {
+            await store.addProcess({
+                id: 'proc-binding-without-session',
+                type: 'clarification',
+                promptPreview: 'p',
+                status: 'completed',
+                startTime: new Date(),
+                sdkSessionId: 'stale-copilot-session',
+                workingDirectory: dataDir,
+                metadata: { provider: 'copilot' },
+                activeProviderSession: {
+                    provider: 'claude',
+                    segmentId: 'segment-claude',
+                    firstTurnIndex: 2,
+                },
+            } as AIProcess);
+
+            const res = await request(`${baseUrl}/api/processes/proc-binding-without-session/resume-cli`, { method: 'POST' });
+
+            expect(res.status).toBe(409);
+            expect(mockLauncher).not.toHaveBeenCalled();
+        });
+
         it('falls back to the configured default provider when metadata.provider is missing', async () => {
             await store.addProcess({
                 id: 'proc-default',

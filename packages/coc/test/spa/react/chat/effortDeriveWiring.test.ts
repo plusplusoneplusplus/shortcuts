@@ -80,8 +80,8 @@ describe('ChatDetail effort-derive wiring', () => {
         expect(src).toContain("import { useProviderReasoningEfforts }");
     });
 
-    it('calls useProviderReasoningEfforts with sessionProvider', () => {
-        expect(src).toContain('useProviderReasoningEfforts(sessionProvider)');
+    it('calls useProviderReasoningEfforts with the composer provider', () => {
+        expect(src).toContain('useProviderReasoningEfforts(composerProvider');
     });
 
     it('uses EffortLevel type for effortOverride', () => {
@@ -109,10 +109,12 @@ describe('ChatDetail effort-derive wiring', () => {
         expect(src).toContain('modelCommand.modelOverride]');
     });
 
-    it('clears stale modelOverride when sessionProvider changes', () => {
-        expect(src).toContain('previousSessionProviderRef');
-        expect(src).toContain('modelCommand.setModelOverride(null)');
-        expect(src).toContain('[sessionProvider, modelCommand.setModelOverride]');
+    it('swaps composer settings per provider instead of keeping a stale modelOverride', () => {
+        // Switching the follow-up provider parks the current model/effort/tier
+        // under the outgoing provider and restores the incoming one's, falling
+        // back to null so a model from the old provider never carries over.
+        expect(src).toContain('providerComposerSettingsRef');
+        expect(src).toContain('modelCommand.setModelOverride(restored?.model ?? null)');
     });
 
     it('uses chatEffectiveModelId for the mid-conversation derive', () => {

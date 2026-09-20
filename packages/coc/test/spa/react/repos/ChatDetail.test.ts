@@ -495,7 +495,7 @@ describe('ChatDetail', () => {
         });
 
         it('retryLastMessage calls sendFollowUp with stored content', () => {
-            expect(source).toContain('sendFollowUp(lastFailedMessageRef.current)');
+            expect(source).toContain('sendFollowUp(lastFailedMessageRef.current,');
         });
     });
 
@@ -763,14 +763,14 @@ describe('ChatDetail', () => {
         });
 
         it('inputDisabled includes cancelled so input is disabled when cancelled', () => {
-            // Window spans the inputDisabled expression plus the adjacent
-            // noSessionForFollowUp line that carries the `'cancelled'` literal;
-            // sized with headroom so additions to inputDisabled (e.g.
-            // isCompacting) don't push the literal out of frame.
-            const expr = source.substring(
-                source.indexOf('const inputDisabled'),
-                source.indexOf('const inputDisabled') + 256,
-            );
+            // Window spans the inputDisabled expression through the
+            // noSessionForFollowUp declaration that carries the `'cancelled'`
+            // literal. Anchored on that declaration rather than a fixed
+            // character count, so lines added in between (e.g. isCanonicalFork)
+            // don't push the literal out of frame.
+            const start = source.indexOf('const inputDisabled');
+            const noSessionStart = source.indexOf('const noSessionForFollowUp', start);
+            const expr = source.substring(start, source.indexOf(';', noSessionStart) + 1);
             expect(expr).toContain("'cancelled'");
         });
 

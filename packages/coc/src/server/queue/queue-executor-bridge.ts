@@ -1,10 +1,11 @@
 import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
-import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
+import type { FollowUpTurnOptions } from '../executors/follow-up-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
 import { ExecutorRegistry } from '../executors/executor-registry';
@@ -21,7 +22,8 @@ import { ASK_USER_RESUME_FAILED_MESSAGE, buildAskUserResumeMessage, buildPending
 import { buildAskUserResumeTaskInput } from '../processes/resume-pending-ask-user-answers';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
 import { EMPTY_EXECUTOR_RUNTIME } from '../executors/executor-runtime-contracts';
-import type { ExecutorRuntimeCapabilities } from '../executors/executor-runtime-contracts';
+import type { ExecutorRuntimeCapabilities, InFlightTurn } from '../executors/executor-runtime-contracts';
+import { readActiveProviderSession, resolveRecordedProvider, turnProviderAttribution } from '../processes/active-provider-session';
 import { executeImplementPlanWithPrGate } from './implement-plan-pr-gate';
 
 /**
@@ -103,7 +105,7 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
@@ -179,7 +181,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly titleGenerationService: TitleGenerationService;
     /**
      * The capability object shared with the executor registry, held by
-     * identity. Includes the bridge-owned `processAbortControllers` and
+     * identity. Includes the bridge-owned `inFlightTurns` and
      * `getDreamRunExecutor`.
      */
     private readonly runtime: ExecutorRuntimeCapabilities;
@@ -196,11 +198,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private getEffortTiersForProvider?: GetEffortTiersForProvider;
     private dreamRunExecutor?: DreamRunExecutor;
     /**
-     * Per-process AbortControllers registered by chat-mode executors when a
-     * turn starts. Aborting one interrupts the in-flight `sendMessage` even
-     * when no `sdkSessionId` has been persisted yet (early-turn cancel).
+     * In-flight turns registered by chat-mode executors when a turn starts.
+     * Aborting one interrupts the in-flight `sendMessage` even when no
+     * `sdkSessionId` has been persisted yet (early-turn cancel), and the
+     * recorded provider names the provider actually running the turn.
      */
-    private readonly processAbortControllers = new Map<string, AbortController>();
+    private readonly inFlightTurns = new Map<string, InFlightTurn>();
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
         super(store, options.dataDir);
@@ -222,7 +225,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.runtime = {
             ...(options.runtime ?? EMPTY_EXECUTOR_RUNTIME),
             getDreamRunExecutor: () => this.dreamRunExecutor,
-            processAbortControllers: this.processAbortControllers,
+            inFlightTurns: this.inFlightTurns,
         };
         this.titleGenerationService = new TitleGenerationService({
             store,
@@ -579,7 +582,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         try {
             const runTask = () => this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
-                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re, strictResumeSessionId) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re, strictResumeSessionId),
+                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re, strictResumeSessionId, options) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re, strictResumeSessionId, options),
                 resumePendingAskUserFn: (pid) => this.resumePendingAskUser(pid),
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
@@ -616,19 +619,18 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // not depend on an sdkSessionId lookup. Follow-up tasks may carry an
         // auto-generated id that does not map back to a process id; that path
         // is covered by cancelProcess() aborting by process id directly.
-        this.processAbortControllers.get(toQueueProcessId(taskId))?.abort();
+        this.inFlightTurns.get(toQueueProcessId(taskId))?.controller.abort();
     }
 
     /**
-     * Resolve the ISDKService that owns a process's live session, routing by
-     * `metadata.provider` so cancel/steer reach the same service that ran the
-     * turn (codex/claude/opencode), not just the server default. Falls back to
-     * the default aiService when the provider is missing, the resolver is
-     * absent, or the resolver rejects the provider (e.g. disabled mid-turn) —
-     * a best-effort abort against the default beats doing nothing.
+     * Resolve the ISDKService for a provider so cancel/steer reach the same
+     * service that ran the turn (codex/claude/opencode), not just the server
+     * default. Falls back to the default aiService when the provider is
+     * missing, the resolver is absent, or the resolver rejects the provider
+     * (e.g. disabled mid-turn) — a best-effort abort against the default beats
+     * doing nothing.
      */
-    private getAiServiceForProcess(proc: AIProcess | null | undefined): ISDKService {
-        const provider = proc?.metadata?.provider;
+    private getAiServiceForProvider(provider: string | undefined): ISDKService {
         if (provider && VALID_CHAT_PROVIDERS.has(provider as ChatProvider) && this.runtime.resolveAiServiceForProvider) {
             try {
                 return this.runtime.resolveAiServiceForProvider(provider as ChatProvider);
@@ -652,10 +654,20 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // Abort by process id as well: covers turns whose queue task id is
         // auto-generated (follow-up requeues) and turns that have not yet
         // persisted an sdkSessionId.
-        this.processAbortControllers.get(processId)?.abort();
+        this.inFlightTurns.get(processId)?.controller.abort();
         try {
             const proc = await this.store.getProcess(processId);
-            if (proc?.sdkSessionId) { await this.getAiServiceForProcess(proc).softAbortSession(proc.sdkSessionId); }
+            if (!proc) return;
+            // The in-flight provider wins over the persisted binding: during a
+            // cross-provider switch the binding still names the outgoing
+            // provider until the target reports a session id. In that window
+            // the persisted session id belongs to the *other* provider, so it
+            // is not sent anywhere — the AbortController above is the stop.
+            const binding = readActiveProviderSession(proc);
+            const inFlight = this.inFlightTurns.get(processId);
+            const provider = inFlight?.provider ?? resolveRecordedProvider(proc);
+            const sessionId = !inFlight || inFlight.provider === binding.provider ? binding.sessionId : undefined;
+            if (sessionId) { await this.getAiServiceForProvider(provider).softAbortSession(sessionId); }
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to abort SDK session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -666,10 +678,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     async steerProcess(processId: string, message: string): Promise<boolean> {
         try {
             const proc = await this.store.getProcess(processId);
-            if (!proc?.sdkSessionId) return false;
+            if (!proc) return false;
+            const binding = readActiveProviderSession(proc);
+            if (!binding.sessionId) return false;
             // SDK steering targets the already-running session; it cannot change
-            // that live session's custom tool registry.
-            return await this.getAiServiceForProcess(proc).steerSession(proc.sdkSessionId, message);
+            // that live session's custom tool registry. Steering stays
+            // same-provider, so the binding is the right pair to use.
+            return await this.getAiServiceForProvider(resolveRecordedProvider(proc)).steerSession(binding.sessionId, message);
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
             return false;
@@ -826,8 +841,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string): Promise<void> {
-        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort, strictResumeSessionId);
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void> {
+        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort, strictResumeSessionId, options);
     }
 
     /**
@@ -844,9 +859,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (!proc?.pendingMessages?.length) return;
         if (!this.queueManager) return;
         const [nextMsg, ...rest] = proc.pendingMessages;
-        const sessionProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot' || proc.metadata?.provider === 'opencode'
-            ? proc.metadata.provider
-            : 'copilot';
+        // The provider captured on the message wins over the conversation's
+        // current metadata: a message accepted for one provider must drain on
+        // that provider even if the conversation moved on in the meantime.
+        const sessionProvider = resolveChatProviderOrDefault(
+            nextMsg.provider ?? proc.metadata?.provider,
+        );
+        const binding = readActiveProviderSession(proc);
         const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
         if (resolvedModel.coerced) {
             getLogger().warn(
@@ -858,7 +877,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // Append the deferred user turn at the correct position (after the
         // assistant response that just completed) before enqueuing the follow-up.
         const turnContent = nextMsg.displayContent ?? nextMsg.content;
-        await this.store.appendConversationTurn(
+        const appendedUserTurn = await this.store.appendConversationTurn(
             processId,
             (turnIndex) => ({
                 role: 'user' as const,
@@ -870,6 +889,16 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
                 ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
                 ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
+                // Attribute the turn to the provider the message was accepted
+                // for. A message buffered before provider routing existed has
+                // none; leave it unattributed rather than guessing from the
+                // conversation's current metadata. Buffering is same-provider
+                // only, so a matching provider means the turn belongs to the
+                // segment that is already active.
+                ...turnProviderAttribution(
+                    nextMsg.provider,
+                    nextMsg.provider === binding.provider ? binding.segmentId : undefined,
+                ),
             }),
         );
 
@@ -894,6 +923,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 prompt: nextMsg.content,
                 ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
                 ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
+                ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
+                // Cutoff for a reconstructed continuation: the index the
+                // deferred user turn just landed on, so history is quoted
+                // strictly before the message being drained.
+                ...(appendedUserTurn ? { historyCutoffTurnIndex: appendedUserTurn.turn.turnIndex } : {}),
                 ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
                 ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
                 ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),

@@ -107,6 +107,16 @@ export function getProviderAvatarClasses(provider: ChatProvider | undefined): st
     return PROVIDER_VARIANTS.copilot.avatar;
 }
 
+export function getProviderLabel(provider: ChatProvider | undefined): string {
+    return provider === 'codex'
+        ? 'Codex'
+        : provider === 'claude'
+            ? 'Claude'
+            : provider === 'opencode'
+                ? 'OpenCode'
+                : 'Copilot';
+}
+
 export function getProviderDotClasses(provider: ChatProvider | undefined): string {
     if (provider && PROVIDER_VARIANTS[provider]) {
         return PROVIDER_VARIANTS[provider].dot;
@@ -122,13 +132,7 @@ export interface ProviderBadgeProps {
 export function ProviderBadge({ provider, className }: ProviderBadgeProps) {
     const label = provider === 'auto-pending'
         ? 'Auto (pending)'
-        : provider === 'codex'
-            ? 'Codex'
-            : provider === 'claude'
-                ? 'Claude'
-                : provider === 'opencode'
-                    ? 'OpenCode'
-                    : 'Copilot';
+        : getProviderLabel(provider);
     const variant = provider === 'auto-pending'
         ? AUTO_PENDING_VARIANT
         : PROVIDER_VARIANTS[provider] ?? PROVIDER_VARIANTS.copilot;

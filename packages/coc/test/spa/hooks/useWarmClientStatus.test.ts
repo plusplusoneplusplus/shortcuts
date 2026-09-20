@@ -205,6 +205,20 @@ describe('useWarmClientStatus — SSE subscription', () => {
         expect(result.current).toBe('cold');
     });
 
+    it('reopens the stream on the confirmed provider warm key', () => {
+        const { result, rerender } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
+            initialProps: baseProps({ provider: 'copilot' }),
+        });
+        act(() => { MockEventSource.last!.emitWarm('warm'); });
+        const first = MockEventSource.last!;
+
+        rerender(baseProps({ provider: 'codex' }));
+
+        expect(first.closed).toBe(true);
+        expect(MockEventSource.last!.url).toContain('warm=1&provider=codex');
+        expect(result.current).toBe('cold');
+    });
+
     it('closes the stream on unmount', () => {
         const { unmount } = renderHook((props: UseWarmClientStatusOptions) => useWarmClientStatus(props), {
             initialProps: baseProps(),

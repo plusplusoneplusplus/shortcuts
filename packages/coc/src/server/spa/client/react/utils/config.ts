@@ -82,6 +82,8 @@ interface DashboardConfig {
      * target-server capability signal exposed via GET /api/config/runtime.
      */
     chatStyleSelectorEnabled?: boolean;
+    /** Whether idle follow-ups may select a different concrete provider. */
+    chatProviderSwitchingEnabled?: boolean;
     /**
      * Style new conversations start on, server-wide. Absent on a server that
      * predates the setting, which reads as `'default'` (no style instruction).
@@ -589,6 +591,11 @@ export function isExplorerEditorTabsEnabled(): boolean {
  */
 export function isChatStyleSelectorEnabled(): boolean {
     return getConfig().chatStyleSelectorEnabled === true;
+}
+
+/** Whether the active server allows concrete provider selection on follow-ups. */
+export function isChatProviderSwitchingEnabled(): boolean {
+    return getConfig().chatProviderSwitchingEnabled === true;
 }
 
 /**

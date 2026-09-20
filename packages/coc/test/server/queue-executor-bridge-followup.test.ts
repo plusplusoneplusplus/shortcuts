@@ -132,8 +132,9 @@ describe('execute() short-circuit for chat-followup tasks', () => {
 
         await executor.execute(task);
 
-        // 10th arg = per-turn reasoningEffort override; 11th = strict resume session id.
-        expect(spy).toHaveBeenCalledWith('proc-1', 'follow up', attachments, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined);
+        // 10th arg = per-turn reasoningEffort override; 11th = strict resume
+        // session id; 12th = per-message turn options (no requested provider here).
+        expect(spy).toHaveBeenCalledWith('proc-1', 'follow up', attachments, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, {});
 
         spy.mockRestore();
     });

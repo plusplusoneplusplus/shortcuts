@@ -1,12 +1,13 @@
 /**
- * Language support ships off. A workspace turns it on in its own settings, so a
- * spec that wants a real language server has to write that config for its own
- * server before the page loads the file.
+ * A workspace with no stored config is seeded from the languages its own files
+ * call for, so a spec gets whatever detection found rather than a known state.
+ * Both helpers here write the config before the page loads, which also settles
+ * the question of seeding: a workspace with a file on disk is never seeded.
  *
- * The helper reads `effective` (presets layered with any stored override) and
- * writes it back with every definition enabled, which is exactly what the
- * settings panel does when a user ticks the TypeScript preset. Doing it that
- * way keeps the fixture free of a second copy of the preset literal.
+ * `enableLanguageServers` reads `effective` (presets layered with any stored
+ * override) and writes it back with every definition enabled, which is exactly
+ * what the settings panel does when a user ticks the TypeScript preset. Doing
+ * it that way keeps the fixture free of a second copy of the preset literal.
  */
 
 import * as fs from 'fs';
@@ -40,6 +41,28 @@ export async function enableLanguageServers(
     });
     if (write.status !== 200) {
         throw new Error(`Failed to enable language servers: ${write.status} ${write.body}`);
+    }
+}
+
+/**
+ * Turn language support off for one workspace. Call before `page.goto`.
+ *
+ * Writing the config is what makes "off" mean off: leaving the workspace
+ * unconfigured would let the first read seed it from the detected languages
+ * and start a server after all.
+ */
+export async function disableLanguageServers(
+    baseURL: string,
+    workspaceId: string,
+): Promise<void> {
+    const url = `${baseURL}/api/workspaces/${encodeURIComponent(workspaceId)}/language-servers`;
+
+    const write = await request(url, {
+        method: 'PUT',
+        body: JSON.stringify({ enabled: false, definitions: [] }),
+    });
+    if (write.status !== 200) {
+        throw new Error(`Failed to disable language servers: ${write.status} ${write.body}`);
     }
 }
 

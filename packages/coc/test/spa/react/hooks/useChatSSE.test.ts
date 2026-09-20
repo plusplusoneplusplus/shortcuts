@@ -188,12 +188,43 @@ describe('useChatSSE', () => {
     it('calls setTurnsAndRef on conversation-snapshot event', () => {
         const setTurnsAndRef = vi.fn();
         renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+        const turns = [{
+            role: 'assistant',
+            content: 'hi',
+            provider: 'claude',
+            segmentId: 'segment-2',
+            model: 'claude-sonnet-4.6',
+        }];
         act(() => {
             MockEventSource.last._emit('conversation-snapshot', {
-                turns: [{ role: 'user', content: 'hi' }],
+                turns,
             });
         });
-        expect(setTurnsAndRef).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }]);
+        expect(setTurnsAndRef).toHaveBeenCalledWith(turns);
+    });
+
+    it('attributes an SSE-created assistant placeholder to the accepted user-turn provider', () => {
+        const setTurnsAndRef = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+
+        act(() => {
+            MockEventSource.last._emit('chunk', { content: 'Working' });
+        });
+
+        const updater = setTurnsAndRef.mock.calls[0][0];
+        const turns = updater([{
+            role: 'user',
+            content: 'Continue with Codex',
+            provider: 'codex',
+            turnIndex: 2,
+            timeline: [],
+        }]);
+        expect(turns.at(-1)).toMatchObject({
+            role: 'assistant',
+            content: 'Working',
+            provider: 'codex',
+            streaming: true,
+        });
     });
 
     it('rehydrates preserved interrupted turns with tool history and later follow-ups from snapshots only', () => {

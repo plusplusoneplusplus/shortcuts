@@ -195,8 +195,8 @@ describe('Multi-repo executor runtime scoping', () => {
         expect(graphB.defaultWorkingDirectory).toBe(ROOT_B);
         // The abort registry is bridge-owned, so a cancel in one repo cannot
         // reach a turn running in the other.
-        expect(graphA.runtime.processAbortControllers)
-            .not.toBe(graphB.runtime.processAbortControllers);
+        expect(graphA.runtime.inFlightTurns)
+            .not.toBe(graphB.runtime.inFlightTurns);
 
         spy.mockRestore();
         router.dispose();

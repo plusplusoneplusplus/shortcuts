@@ -257,6 +257,7 @@ describe('chat style on follow-up turns', () => {
             canvasEnabled: false,
             kustoEnabled: false,
             chatStyleSelectorEnabled: flagEnabled,
+            chatProviderSwitchingEnabled: false,
             defaultChatStyle: followUpDefaultChatStyle,
         }));
 

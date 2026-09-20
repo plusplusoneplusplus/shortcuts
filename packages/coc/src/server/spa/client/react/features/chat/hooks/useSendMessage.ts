@@ -8,7 +8,7 @@ import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { ChatMode } from '../../../repos/modeConfig';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload, ChatAttachment } from '../../../types/attachments';
-import { CocApiError, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
+import { CocApiError, type ChatProviderId, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
@@ -22,6 +22,8 @@ export interface SendFollowUpOptions {
     includeComposerContext?: boolean;
     /** Optional mode override for generated sends that should not follow the current composer mode. */
     modeOverride?: ChatMode;
+    /** Provider captured by the turn being retried; overrides composer state for this send. */
+    providerOverride?: ChatProviderId;
     /**
      * Attachments to send *instead of* the composer's current ones.
      *
@@ -71,6 +73,11 @@ export interface UseSendMessageOptions {
     clearAttachedContext?: () => void;
     /** Optional model override to include in the POST body. */
     modelOverride?: string | null;
+    /**
+     * Confirmed concrete provider for this follow-up. Omit it to preserve the
+     * active conversation provider and the request shape used by older servers.
+     */
+    providerOverride?: ChatProviderId;
     /**
      * Optional per-turn reasoning-effort override to include in the POST body.
      * `null` (or omitted) means no override — the executor falls back to the
@@ -145,6 +152,7 @@ export function useSendMessage({
     getAttachedContext,
     clearAttachedContext,
     modelOverride,
+    providerOverride,
     effortOverride,
     chatStyle,
     workspaceId,
@@ -178,6 +186,7 @@ export function useSendMessage({
         const outAttachments: AttachmentPayload[] = override
             ? override.map(a => ({ name: a.name, mimeType: a.mimeType, size: a.size, dataUrl: a.dataUrl }))
             : (options.includeComposerContext === false || !toPayload ? [] : toPayload());
+        const requestedProvider = options.providerOverride ?? providerOverride;
         return ({
         content,
         images: outImages.length > 0 ? outImages : undefined,
@@ -185,11 +194,12 @@ export function useSendMessage({
         mode: options.modeOverride ?? selectedMode,
         deliveryMode,
         ...(skillNames.length > 0 ? { skillNames } : {}),
+        ...(requestedProvider ? { provider: requestedProvider } : {}),
         ...(modelOverride ? { model: modelOverride } : {}),
         ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
         ...(chatStyle ? { chatStyle } : {}),
         });
-    }, [images, modelOverride, effortOverride, chatStyle, selectedMode, toPayload]);
+    }, [images, providerOverride, modelOverride, effortOverride, chatStyle, selectedMode, toPayload]);
 
     const closeFollowUpStream = useCallback(() => {
         if (followUpEventSourceRef.current) {
@@ -281,6 +291,7 @@ export function useSendMessage({
 
     const sendFollowUp = useCallback(async (overrideContent?: string, deliveryMode: DeliveryMode = 'enqueue', options: SendFollowUpOptions = {}) => {
         const includeComposerContext = options.includeComposerContext !== false;
+        const requestedProvider = options.providerOverride ?? providerOverride;
         const messageMode = options.modeOverride ?? selectedMode;
         const userText = (overrideContent ?? followUpInputRef.current).trim();
         const pastedContent = includeComposerContext ? (getPastedContent?.() ?? null) : null;
@@ -433,10 +444,11 @@ export function useSendMessage({
         const pasteExternalized = rawContent.length > CLIENT_PASTE_THRESHOLD || undefined;
         setTurnsAndRef(prev => {
             const nextIdx = Math.max(0, ...prev.map(t => t.turnIndex ?? -1)) + 1;
+            const providerAttribution = requestedProvider ? { provider: requestedProvider } : {};
             return [
                 ...prev,
-                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, pasteExternalized, ...(modelOverride ? { model: modelOverride } : {}) },
-                { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1 },
+                { role: 'user' as const, content: rawContent, timestamp, timeline: [], turnIndex: nextIdx, pasteExternalized, ...providerAttribution, ...(modelOverride ? { model: modelOverride } : {}) },
+                { role: 'assistant' as const, content: '', timestamp, streaming: true, timeline: [], turnIndex: nextIdx + 1, ...providerAttribution },
             ];
         });
 
@@ -469,7 +481,7 @@ export function useSendMessage({
             queueDispatch({ type: 'SET_FOLLOW_UP_STREAMING', value: false, turnIndex: null });
             void refreshConversation(processId);
         }
-    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, compactConversation]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [processId, taskId, inputDisabled, sending, isActiveGeneration, selectedMode, images, archivedChatIds, unarchiveChat, modelOverride, providerOverride, buildMessageRequest, sessionContextAttachmentsEnabled, conversationRetrievalAvailable, workspaceId, compactConversation]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return { sendFollowUp, closeFollowUpStream, onSendComplete };
 }

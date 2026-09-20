@@ -141,12 +141,6 @@ export interface UnifiedPanelTab {
      * with the same filename, or a resource from a remote clone.
      */
     repoLabel?: string;
-    /**
-     * True when this tab may never write. Set by read-only entry points (a chat
-     * source link); restoring or reordering a tab must never clear it, which is
-     * why it travels with the descriptor rather than being re-derived.
-     */
-    readOnly?: boolean;
     /** One-based line to reveal when the resource loads, for a deep link. */
     line?: number;
     /**
@@ -302,7 +296,6 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.resourceId === b.resourceId
         && a.label === b.label
         && a.repoLabel === b.repoLabel
-        && a.readOnly === b.readOnly
         && a.line === b.line
         && a.column === b.column
         && a.symbolCandidate === b.symbolCandidate
@@ -379,7 +372,6 @@ export interface OpenUnifiedTabInput {
     resourceId: string;
     label: string;
     repoLabel?: string;
-    readOnly?: boolean;
     line?: number;
     column?: number;
     /** Present when a fuzzy repository symbol lookup opened this location. */
@@ -401,10 +393,7 @@ function revealFields(input: { line?: number; column?: number }): { line?: numbe
  * Open a resource, or focus its existing tab.
  *
  * Already open → activate it and refresh the presentation fields (a new reveal
- * line navigates the existing tab rather than stacking a second one). `readOnly`
- * is only ever tightened: an authorized editable entry point may open an
- * already-read-only tab for editing, but a read-only open can never widen an
- * editable tab's capability, and neither can a restore.
+ * line navigates the existing tab rather than stacking a second one).
  *
  * Not open → append to the end of its own scope section, or just before the
  * preview tab when that section has one, so the preview slot stays last.
@@ -438,7 +427,6 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         resourceId: input.resourceId,
         label: input.label,
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
-        ...(input.readOnly ? { readOnly: true } : {}),
         ...revealFields(input),
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
     };
@@ -453,12 +441,6 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
             // travels with its line and is never kept without one.
             ...(input.line === undefined ? revealFields(existing) : {}),
         };
-        // `merged` takes `readOnly` from `opened`, i.e. from THIS open's entry
-        // point: an authorized editable entry point unlocks a tab previously
-        // opened read-only, and a read-only entry point re-locks it. Only an
-        // open can move that bit — `moveTab`, `activateTab`, and the codec all
-        // carry the descriptor through untouched, so restoring or dragging a
-        // read-only source reference can never make it editable.
         const copy = [...list];
         copy[index] = sameTab(existing, merged) ? existing : merged;
         nextList = copy;
@@ -526,7 +508,6 @@ export function openPreviewTab(state: UnifiedPanelState, input: OpenUnifiedPrevi
         resourceId: input.resourceId,
         label: input.label,
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
-        ...(input.readOnly ? { readOnly: true } : {}),
         ...revealFields(input),
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
         preview: true,
@@ -779,7 +760,6 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         id, kind, ownerWorkspaceId, chatId, resourceId, label,
         ...(ownerRoutingRef === undefined ? {} : { ownerRoutingRef }),
         ...(typeof value.repoLabel === 'string' ? { repoLabel: value.repoLabel } : {}),
-        ...(value.readOnly === true ? { readOnly: true } : {}),
         ...(typeof value.line === 'number' && Number.isFinite(value.line) && value.line > 0
             ? {
                 line: value.line,

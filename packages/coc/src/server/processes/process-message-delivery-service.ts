@@ -13,13 +13,18 @@
 
 import { randomUUID } from 'crypto';
 import type {
-    ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage,
+    ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage, GenericProcessMetadata,
 } from '@plusplusoneplusplus/forge';
 import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
-import { normalizeChatMode } from '../tasks/task-types';
+import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
+import {
+    ProcessOperationAdmission,
+    processOperationAdmission,
+} from './process-operation-admission';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
@@ -66,11 +71,22 @@ export interface NormalizedFollowUpFields {
      * to read.
      */
     chatStyle: ChatStyle;
+    /**
+     * Concrete provider the caller asked to run this turn on, when it named one.
+     * Undefined means "use the conversation's active provider" — what every
+     * client that predates provider switching sends. This value travels with
+     * the message from here on; nothing downstream re-reads the provider from
+     * mutable process metadata, so a metadata change after the message was
+     * accepted cannot retarget it.
+     */
+    requestedProvider?: ChatProvider;
+    /** True when {@link requestedProvider} differs from the active provider. */
+    isProviderSwitch: boolean;
 }
 
 export type NormalizeFollowUpResult =
     | { ok: true; value: NormalizedFollowUpFields }
-    | { ok: false; error: string };
+    | { ok: false; error: string; code?: string };
 
 /**
  * Normalize the optional scalar fields of a follow-up request body. Pure — the
@@ -83,6 +99,26 @@ export function normalizeFollowUpInput(
     provider: ChatProvider,
     defaultChatStyle: ChatStyle = DEFAULT_CHAT_STYLE,
 ): NormalizeFollowUpResult {
+    // Requested provider. Omitted keeps the active provider. `auto` is
+    // deliberately rejected rather than resolved: a follow-up must name one
+    // concrete provider so the message carries an unambiguous target through
+    // queueing and retry.
+    let requestedProvider: ChatProvider | undefined;
+    if (body.provider !== undefined && body.provider !== null) {
+        if (typeof body.provider !== 'string' || !VALID_CHAT_PROVIDERS.has(body.provider as ChatProvider)) {
+            return {
+                ok: false,
+                code: 'INVALID_PROVIDER',
+                error: `Invalid provider: must be one of ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
+            };
+        }
+        requestedProvider = body.provider as ChatProvider;
+    }
+    // The provider that will actually run the turn — what the model override
+    // must be valid for. Validating against the conversation provider instead
+    // would let a model belonging to the old provider reach the new one.
+    const targetProvider: ChatProvider = requestedProvider ?? provider;
+
     // Mode: legacy `plan` is accepted as Ask; `ralph` is not a per-turn override.
     const normalizedMode = normalizeChatMode(body.mode);
     const mode: string | undefined = normalizedMode === 'ralph' ? undefined : normalizedMode;
@@ -105,7 +141,7 @@ export function normalizeFollowUpInput(
 
     // Model override, validated against the conversation provider.
     const rawModelOverride: string | undefined = typeof body.model === 'string' && body.model.trim().length > 0 ? body.model.trim() : undefined;
-    const resolvedModelOverride = resolveModelForProvider(provider, rawModelOverride);
+    const resolvedModelOverride = resolveModelForProvider(targetProvider, rawModelOverride);
 
     // Per-turn reasoning-effort override; unknown values are silently dropped so
     // a stale client never breaks an otherwise-valid follow-up.
@@ -134,8 +170,31 @@ export function normalizeFollowUpInput(
             modelCoerced: resolvedModelOverride.coerced,
             ...(resolvedModelOverride.requestedModel ? { requestedModel: resolvedModelOverride.requestedModel } : {}),
             ...(effort ? { effort } : {}),
+            ...(requestedProvider ? { requestedProvider } : {}),
+            isProviderSwitch: requestedProvider !== undefined && requestedProvider !== provider,
         },
     };
+}
+
+/**
+ * Whether a conversation is idle enough to accept a provider switch. A switch
+ * starts a brand-new native session, so it can only happen between turns —
+ * never steered into or buffered behind an in-flight one.
+ *
+ * `taskStatus` is the status of the queue task that owns this process, when one
+ * exists; the process status is the fallback for the restart case where the
+ * task is gone but the process never reached a terminal state.
+ */
+export function isIdleForProviderSwitch(
+    proc: Pick<AIProcess, 'status'> & { pendingAskUser?: unknown },
+    taskStatus?: string,
+): boolean {
+    if (taskStatus === 'running' || taskStatus === 'queued') return false;
+    if (!taskStatus && NONTERMINAL_STATUSES.has(proc.status)) return false;
+    // A waiting ask_user batch means the provider owns an open turn even though
+    // nothing is streaming.
+    if (Array.isArray(proc.pendingAskUser) && proc.pendingAskUser.length > 0) return false;
+    return true;
 }
 
 /**
@@ -164,6 +223,17 @@ export interface FollowUpMessageInput {
     optimisticId?: string;
     /** True when the user's large paste was externalized to a temp-file reference. */
     pasteExternalized: boolean;
+    /** Process metadata to persist only after this request wins admission. */
+    metadataUpdate?: GenericProcessMetadata;
+    /**
+     * Concrete provider this message runs on, resolved once when the request
+     * was accepted (the requested provider, or the conversation's active one
+     * when the client named none). Every delivery path carries this value with
+     * the message — the pending-message buffer, the queue payload, and the
+     * drained replay — so nothing downstream has to re-read the provider from
+     * process metadata that may since have changed.
+     */
+    provider?: ChatProvider;
 }
 
 /** Which delivery branch handled the message. */
@@ -194,9 +264,18 @@ export class FollowUpDeliveryError extends Error {
     }
 }
 
+/** Thrown when a cross-provider request loses the idle admission race. */
+export class ProviderSwitchRequiresIdleError extends Error {
+    constructor() {
+        super('Cannot switch providers while this conversation is busy. Wait for the current response to finish, then try again.');
+        this.name = 'ProviderSwitchRequiresIdleError';
+    }
+}
+
 export interface ProcessMessageDeliveryDeps {
     store: ProcessStore;
     bridge: QueueExecutorBridge;
+    admission?: ProcessOperationAdmission;
     /** Clock provider — injectable for deterministic timestamps in tests. */
     now?: () => Date;
     /** ID provider — injectable for deterministic pending-message IDs in tests. */
@@ -212,20 +291,50 @@ export interface ProcessMessageDeliveryDeps {
 export class ProcessMessageDeliveryService {
     private readonly store: ProcessStore;
     private readonly bridge: QueueExecutorBridge;
+    private readonly admission: ProcessOperationAdmission;
     private readonly now: () => Date;
     private readonly newId: () => string;
 
     constructor(deps: ProcessMessageDeliveryDeps) {
         this.store = deps.store;
         this.bridge = deps.bridge;
+        this.admission = deps.admission ?? processOperationAdmission;
         this.now = deps.now ?? (() => new Date());
         this.newId = deps.newId ?? (() => randomUUID());
     }
 
     async deliver(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
+        return this.admission.runExclusive(proc.id, async (contended) => {
+            const currentProc = await this.store.getProcess(proc.id) ?? proc;
+            const currentBinding = readActiveProviderSession(currentProc);
+            const isProviderSwitch = input.provider !== undefined
+                && input.provider !== currentBinding.provider;
+            if (isProviderSwitch && (
+                contended
+                || !isIdleForProviderSwitch(
+                    currentProc,
+                    this.bridge.findTaskByProcessId?.(currentProc.id)?.status,
+                )
+            )) {
+                throw new ProviderSwitchRequiresIdleError();
+            }
+            return this.deliverAdmitted(currentProc, input);
+        });
+    }
+
+    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
+        const activeBinding = readActiveProviderSession(proc);
         const events: DeliveryEvent[] = [];
+
+        // Turn index this message will occupy — the cutoff a reconstructed
+        // continuation quotes history strictly before. Captured before the
+        // append so the executor can be told about the message it is running
+        // even when the append has not landed yet, and read from the accepted
+        // snapshot so it can never overshoot and quote the message back to the
+        // provider as if it were history.
+        const historyCutoffTurnIndex = proc.conversationTurns?.length ?? 0;
 
         let path: DeliveryPath = 'enqueued';
         let buffered = false;
@@ -246,6 +355,7 @@ export class ProcessMessageDeliveryService {
                 ...(input.images ? { images: input.images } : {}),
                 ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
                 ...(input.model ? { model: input.model } : {}),
+                ...(input.provider ? { provider: input.provider } : {}),
                 ...(input.effort ? { reasoningEffort: input.effort } : {}),
                 ...(input.mode ? { mode: input.mode } : {}),
                 ...(input.attachments ? { attachments: input.attachments } : {}),
@@ -259,6 +369,9 @@ export class ProcessMessageDeliveryService {
         };
 
         try {
+            if (input.metadataUpdate) {
+                await this.store.updateProcess(id, { metadata: input.metadataUpdate });
+            }
             if (this.bridge.enqueue) {
                 const displayName = truncateDisplayName(input.content.trim());
                 const parentTask = this.bridge.findTaskByProcessId?.(id);
@@ -301,6 +414,8 @@ export class ProcessMessageDeliveryService {
                             ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { context: { skills: input.selectedSkillNames } } : {}),
                             ...(input.mode ? { mode: input.mode } : {}),
                             ...(input.model ? { model: input.model } : {}),
+                            ...(input.provider ? { provider: input.provider } : {}),
+                            historyCutoffTurnIndex,
                             ...(input.effort ? { reasoningEffort: input.effort } : {}),
                             deliveryMode: input.deliveryMode,
                         },
@@ -312,7 +427,7 @@ export class ProcessMessageDeliveryService {
                     path = 'enqueued';
                 }
             } else {
-                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId).catch(() => {
+                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId, { ...(input.provider ? { requestedProvider: input.provider } : {}), historyCutoffTurnIndex }).catch(() => {
                 }).finally(() => {
                     if (input.imageTempDir) { cleanupTempDir(input.imageTempDir); }
                 });
@@ -340,6 +455,14 @@ export class ProcessMessageDeliveryService {
                     ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
                     ...(input.model ? { model: input.model } : {}),
                     ...(input.mode ? { mode: input.mode } : {}),
+                    // The segment is only known when this message continues the
+                    // active one. A cross-provider message has no segment until
+                    // the target provider reports a session, so it stays
+                    // unattributed rather than claiming the outgoing segment.
+                    ...turnProviderAttribution(
+                        input.provider,
+                        input.provider === activeBinding.provider ? activeBinding.segmentId : undefined,
+                    ),
                 }),
                 { additionalUpdates: { status: 'running' } },
             );

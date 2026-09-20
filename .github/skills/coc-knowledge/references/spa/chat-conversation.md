@@ -8,10 +8,32 @@ tool calls. Chat list and lens: [chat.md](chat.md). Composer:
 
 ### ConversationTurnBubble
 
-`provider` flows `ChatDetail` → `ConversationArea` → `ConversationTurnBubble`, colouring
-the assistant avatar via `getProviderAvatarClasses` (`ProviderBadge.tsx`): Copilot green,
-Claude coral/orange, Codex indigo, unknown → green. Error and script-output turns use
-their own palettes and ignore `provider`.
+Persisted turn `provider` and `segmentId` attribution flows unchanged through history
+loading and SSE snapshots. `ConversationTurnBubble` prefers the turn provider for its
+assistant avatar, provider label, and model metadata, falling back to the active
+conversation provider only for unattributed records. `ConversationArea` derives a
+non-persisted `Continued with <Provider>` separator before the first assistant response
+of each provable provider segment. Error and script-output turns keep their own palettes.
+
+Native rewind and edit-and-resend are available only for user turns in the active
+provider segment. Earlier-segment controls stay visible but disabled with the
+cross-provider rewind explanation; the REST route enforces the same boundary against
+the authoritative provider/session binding before calling a provider SDK.
+
+Stopped-chat continuation resolves the requested provider before applying strict-resume
+guards. Same-provider continuation requires the saved native session and preserves
+`SESSION_NOT_RESUMABLE`; a different provider bypasses outgoing-session liveness and
+queues a reconstructed continuation without a resume session id.
+
+Follow-up retry resolves its provider from the latest recorded user turn. A newly
+confirmed composer provider takes precedence, so an intentional retry switch still
+uses the standard confirmation flow; unattributed old turns preserve active-provider
+fallback behavior.
+
+Native compaction and resume-in-provider-CLI resolve provider and session id together
+from the active binding. Compaction labels its display-only result turn with the active
+provider and segment. Legacy CLI-resume records retain their metadata/default-provider
+and historical session-id fallbacks.
 
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML

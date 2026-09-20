@@ -80,7 +80,7 @@ completed ask-mode chat into a Ralph session in place. It:
 1. Attaches a `grilling`-phase Ralph context to the existing process.
 2. Persists typed `extraGuidance` as a `displayOnly: true` **user** turn so it renders as the
    user's own bubble just before the synthesized `## Goal` turn. `displayOnly` keeps it out of
-   model replay history (`buildConversationHistoryContext`) — the same guidance is already in
+   model replay history (`buildConversationHandoff`) — the same guidance is already in
    the synthesis prompt, so replay would double-count it. Best-effort: a failed append does
    not fail promotion, and empty guidance appends no turn.
 3. Enqueues a synthesis follow-up with `mode=ask`, `context.skills=['grill-me']`,

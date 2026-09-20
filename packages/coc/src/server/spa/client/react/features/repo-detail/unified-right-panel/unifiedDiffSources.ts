@@ -210,7 +210,7 @@ export function useUnifiedDiffSource(sourceId: string): UnifiedDiffSource | null
 /**
  * Turn a group into the descriptor an entry point opens, registering its
  * context on the way. The tab is chat-owned (a diff belongs to the chat whose
- * transcript produced it) and carries no `readOnly` flag: a diff surface has no
+ * transcript produced it) and carries no file-write capability: a diff surface has no
  * write path to suppress in the first place.
  */
 export function whisperDiffTabInput(input: {

@@ -509,6 +509,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             canvasEnabled: opts.runtimeConfigService!.config.canvas?.enabled ?? false,
             kustoEnabled: opts.runtimeConfigService!.config.kusto?.enabled ?? false,
             chatStyleSelectorEnabled: opts.runtimeConfigService!.config.features?.chatStyleSelector === true,
+            chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
             defaultChatStyle: coerceChatStyle(opts.runtimeConfigService!.config.features?.defaultChatStyle),
         })
         : () => ({
@@ -516,6 +517,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             canvasEnabled: opts.resolvedConfig?.canvas?.enabled ?? false,
             kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
             chatStyleSelectorEnabled: opts.resolvedConfig?.features?.chatStyleSelector === true,
+            chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
             defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
@@ -640,7 +642,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             ]);
         },
     );
-    registerLanguageServerRoutes(routes, dataDir);
+    registerLanguageServerRoutes(routes, dataDir, undefined, async (workspaceId) => {
+        const workspaces = await store.getWorkspaces();
+        return workspaces.find(w => w.id === workspaceId)?.rootPath;
+    });
     registerSeenStateRoutes(routes, store as any);
     registerWhatsNewRoutes(routes, new WhatsNewService({ dataDir }));
     registerPromptSuggestionRoutes(routes, store as any, dataDir, resolvedAiService);

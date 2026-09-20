@@ -17,16 +17,6 @@ import type { MockProcessStore } from '../helpers/mock-process-store';
 // Mocks
 // ============================================================================
 
-const mockForkSession = vi.fn();
-
-vi.mock('@plusplusoneplusplus/forge', async () => {
-    const actual = await vi.importActual('@plusplusoneplusplus/forge');
-    return {
-        ...actual as object,
-        sdkServiceRegistry: { getOrThrow: () => ({ forkSession: mockForkSession }) },
-    };
-});
-
 // Stub SSE handler
 vi.mock('../../../src/server/streaming/sse-handler', () => ({
     handleProcessStream: vi.fn(),
@@ -110,7 +100,7 @@ describe('POST /api/processes/:id/fork', () => {
 
         // Add forkProcess to the mock store
         (store as any).forkProcess = vi.fn().mockImplementation(
-            async (sourceId: string, newId: string, newSdkSessionId: string) => {
+            async (sourceId: string, newId: string) => {
                 const source = store.processes.get(sourceId);
                 if (!source) throw new Error('Source process not found: ' + sourceId);
                 const forked = {
@@ -121,7 +111,8 @@ describe('POST /api/processes/:id/fork', () => {
                     fullPrompt: source.fullPrompt,
                     startTime: new Date(),
                     endTime: new Date(),
-                    sdkSessionId: newSdkSessionId,
+                    sdkSessionId: undefined,
+                    activeProviderSession: undefined,
                     title: `[Fork] ${source.title || source.promptPreview}`,
                     metadata: { ...source.metadata, forkSourceId: sourceId },
                     workingDirectory: source.workingDirectory,
@@ -167,7 +158,6 @@ describe('POST /api/processes/:id/fork', () => {
 
     beforeEach(() => {
         store.processes.clear();
-        mockForkSession.mockReset();
         broadcastSpy.mockClear();
         ((store as any).forkProcess as ReturnType<typeof vi.fn>).mockClear();
     });
@@ -180,7 +170,7 @@ describe('POST /api/processes/:id/fork', () => {
         expect(res.status).toBe(404);
     });
 
-    it('returns 400 when process has no sdkSessionId', async () => {
+    it('forks a canonical transcript without a native session', async () => {
         await store.addProcess({
             id: 'no-sdk',
             type: 'chat',
@@ -193,8 +183,8 @@ describe('POST /api/processes/:id/fork', () => {
             method: 'POST',
             body: '{}',
         });
-        expect(res.status).toBe(400);
-        expect(res.json().error).toContain('SDK session');
+        expect(res.status).toBe(201);
+        expect(res.json().process.sdkSessionId).toBeUndefined();
     });
 
     it('forks a process and returns 201 with the new process', async () => {
@@ -214,8 +204,6 @@ describe('POST /api/processes/:id/fork', () => {
             ],
         });
 
-        mockForkSession.mockResolvedValue('sdk-forked-456');
-
         const res = await request(baseUrl, '/api/processes/proc-1/fork', {
             method: 'POST',
             body: '{}',
@@ -225,12 +213,11 @@ describe('POST /api/processes/:id/fork', () => {
         const data = res.json();
         expect(data.process).toBeDefined();
         expect(data.process.id).toBeTruthy();
-        expect(data.process.sdkSessionId).toBe('sdk-forked-456');
+        expect(data.process.sdkSessionId).toBeUndefined();
+        expect(data.process.activeProviderSession).toBeUndefined();
         expect(data.process.title).toBe('[Fork] My Chat');
         expect(data.process.metadata.forkSourceId).toBe('proc-1');
-
-        // Verify SDK fork was called
-        expect(mockForkSession).toHaveBeenCalledWith('sdk-123');
+        expect((store as any).forkProcess).toHaveBeenCalledWith('proc-1', expect.any(String));
     });
 
     it('broadcasts process-added WebSocket event on fork', async () => {
@@ -243,8 +230,6 @@ describe('POST /api/processes/:id/fork', () => {
             sdkSessionId: 'sdk-abc',
             metadata: { type: 'chat', workspaceId: 'ws-broadcast' },
         });
-
-        mockForkSession.mockResolvedValue('sdk-forked-ws');
 
         await request(baseUrl, '/api/processes/proc-ws/fork', {
             method: 'POST',
@@ -260,27 +245,5 @@ describe('POST /api/processes/:id/fork', () => {
                 }),
             }),
         );
-    });
-
-    it('returns 500 when SDK fork fails', async () => {
-        await store.addProcess({
-            id: 'proc-sdk-fail',
-            type: 'chat',
-            status: 'completed',
-            startTime: new Date(),
-            promptPreview: 'test',
-            sdkSessionId: 'sdk-fail',
-            metadata: { type: 'chat', workspaceId: 'ws-test' },
-        });
-
-        mockForkSession.mockRejectedValue(new Error('SDK unavailable'));
-
-        const res = await request(baseUrl, '/api/processes/proc-sdk-fail/fork', {
-            method: 'POST',
-            body: '{}',
-        });
-
-        expect(res.status).toBe(500);
-        expect(res.json().error).toContain('SDK session');
     });
 });

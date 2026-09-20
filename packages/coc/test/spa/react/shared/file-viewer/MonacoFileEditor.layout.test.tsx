@@ -100,15 +100,12 @@ describe('MonacoFileEditor — layout ownership', () => {
         expect('automaticLayout' in EXPLORER_EDITOR_OPTIONS).toBe(true);
     });
 
-    it.each([
-        ['editable', false],
-        ['read-only', true],
-    ])('passes automaticLayout: false to Monaco in the %s branch', async (_label, readOnly) => {
-        render(<MonacoFileEditor value="a" language="typescript" readOnly={readOnly} />);
+    it('passes automaticLayout: false to Monaco', async () => {
+        render(<MonacoFileEditor value="a" language="typescript" />);
         await flushMount();
 
         expect(stub.options?.automaticLayout).toBe(false);
-        expect(stub.options?.readOnly).toBe(readOnly);
+        expect(stub.options).not.toHaveProperty('readOnly');
     });
 
     it('lays the editor out from its own measurement once mounted', async () => {

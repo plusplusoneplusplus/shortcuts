@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getConversationTurns } from '../../../../src/server/spa/client/react/features/chat/conversation/chatConversationUtils';
+import { getConversationTurns, getRetryProvider } from '../../../../src/server/spa/client/react/features/chat/conversation/chatConversationUtils';
 
 describe('getConversationTurns', () => {
     describe('process.conversationTurns (highest priority)', () => {
@@ -7,6 +7,32 @@ describe('getConversationTurns', () => {
             const turns = [{ role: 'user', content: 'hello', timeline: [] }];
             const result = getConversationTurns({ process: { conversationTurns: turns } });
             expect(result).toEqual(turns);
+        });
+
+        describe('getRetryProvider', () => {
+            it('uses the latest recorded user-turn provider', () => {
+                expect(getRetryProvider([
+                    { role: 'user', content: 'first', provider: 'copilot', timeline: [] },
+                    { role: 'assistant', content: 'reply', provider: 'copilot', timeline: [] },
+                    { role: 'user', content: 'failed', provider: 'codex', timeline: [] },
+                    { role: 'assistant', content: 'error', provider: 'codex', isError: true, timeline: [] },
+                ])).toBe('codex');
+            });
+
+            it('lets an explicitly confirmed retry switch override the recorded provider', () => {
+                expect(getRetryProvider([
+                    { role: 'user', content: 'failed', provider: 'codex', timeline: [] },
+                ], 'claude')).toBe('claude');
+            });
+
+            it('leaves old unattributed retries on the active-provider fallback path', () => {
+                expect(getRetryProvider([
+                    { role: 'user', content: 'older', provider: 'copilot', timeline: [] },
+                    { role: 'assistant', content: 'older reply', provider: 'copilot', timeline: [] },
+                    { role: 'user', content: 'legacy', timeline: [] },
+                    { role: 'assistant', content: 'error', isError: true, timeline: [] },
+                ])).toBeUndefined();
+            });
         });
 
         it('ignores empty conversationTurns array', () => {

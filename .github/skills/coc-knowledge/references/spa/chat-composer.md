@@ -96,7 +96,22 @@ and sheds progressively: below 820px an icon-only model chip and cwd basename; b
 mobile controls (mode pills become tap-to-cycle, slash/attach fold into a "⋯" menu) driven
 by the container signal, not the `lg:` viewport gate; below 380px provider chip and Send go
 `iconOnly` with accessible names preserved; below ~300px `lg:flex-wrap` wraps to a second
-row. Provider is locked to the session on a follow-up, so its chip is read-only.
+row. With `features.chatProviderSwitching` enabled, idle Ask and Autopilot conversations
+list concrete providers from the owning server. Workflow-owned, active, queued, cancelling,
+compacting, rewinding, and interactive-waiting conversations expose an accessible disabled
+reason. `Auto` and the new-chat provider keyboard shortcut remain unavailable in follow-ups.
+
+A cross-provider choice opens `ProviderSwitchConfirmDialog` before changing composer state.
+The dialog identifies the active and target providers, explains that the bounded transfer is
+not lossless, and confirms that visible history and workspace state stay unchanged. Confirm
+sets only a pending provider; Send adds that provider to `ProcessMessageRequest`. Cancel,
+Escape, close, and backdrop dismissal preserve the draft and active selection. Target model,
+reasoning, and effort-tier catalogs use the conversation owner's server; returning to the
+active provider clears the pending switch without another warning.
+
+`providerSwitchTelemetry.ts` emits typed browser events for selection attempts, confirmations,
+and cancellations. The payload is limited to source provider, target provider, workspace ID,
+and process ID; dialog telemetry does not call the server or mutate conversation state.
 
 ### Focused-composer shortcuts
 
@@ -140,18 +155,20 @@ from live `token-usage`; otherwise it falls back to a single-colour bar.
 `WarmIndicatorDot` reflects this conversation process's backend warm-client state, with
 display and side effect split (`features/chat/hooks/`):
 
-- **Display is stream-only.** `useWarmClientStatus({ workspaceId, processId })` opens the
-  warm-only SSE stream (`/processes/:id/stream?warm=1` via `cloneApiBase`), maps
+- **Display is stream-only.** `useWarmClientStatus({ workspaceId, processId, provider })` opens the
+  provider-scoped warm-only SSE stream (`/processes/:id/stream?warm=1&provider=...` via `cloneApiBase`), maps
   `warm_status` frames to `cold | warming | warm | active`, and resets to `cold` on
   process/workspace change, error, or unmount. The initial snapshot makes an already-warm
   conversation show the dot immediately. The dot is **never** set from a POST response —
   the stream is the single source of truth, with no client-side TTL or decay.
-- **Side effect** is `useTypingPrewarmClient({ input, workspaceId, processId, enabled,
-  debounceMs })`: the first non-empty input schedules one debounced
-  `client.processes.prewarm(processId, { workspace })` through `getCocClientForWorkspace`,
-  fires at most once per typing window, re-arms on empty input or a `(workspace, process)`
-  change, and swallows errors. The server prewarms under the process id warm key, so other
-  conversations in the same cwd stay cold. `FollowUpInputArea` gates it with
+- **Side effect** is `useTypingPrewarmClient({ input, workspaceId, processId, provider,
+  enabled, debounceMs })`: the first non-empty input schedules one debounced
+  `client.processes.prewarm(processId, { workspace, provider })` through
+  `getCocClientForWorkspace`, fires at most once per typing window, re-arms on empty input
+  or a `(workspace, process, provider)` change, and swallows errors. The confirmed pending
+  provider drives both the POST and stream; otherwise they use the active provider. The
+  server prewarms under the process id warm key, so other conversations in the same cwd
+  stay cold. `FollowUpInputArea` gates it with
   `enabled: !inputDisabled && !sending && !isActiveGeneration`.
 
 Claude and other non-warming providers only emit `cold`, so their dot is an invisible
@@ -215,8 +232,9 @@ selecting it persists `lastChatProvider: "auto"` for the workspace, omits an exp
 provider override, and sends only `context.autoProviderRouting.requested` so the server
 resolves a concrete provider at scheduling time. With the flag disabled, persisted `auto`
 selections are ignored and the composer falls back to a concrete provider. Concrete
-selections send `payload.provider`. Follow-ups show the concrete provider from process
-metadata and never offer Auto.
+selections send `payload.provider`. Follow-ups show the pending concrete provider in the
+composer and the active binding everywhere else, never offer Auto, and omit the provider
+field unless the user confirms a different provider.
 
 `repos/modeConfig.ts` owns the central `WORKFLOW_REGISTRY` — labels, icons, tooltips, pill
 dots, accent colors, categories, surfaces, and feature flags for every chat and workflow

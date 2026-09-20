@@ -153,7 +153,13 @@ export function resolveLanguageServerDefinitions(
     dataDir: string,
     workspaceId: string,
 ): LanguageServerDefinition[] {
-    const config = readLanguageServerConfig(dataDir, workspaceId);
+    return resolveLanguageServerDefinitionsFromConfig(readLanguageServerConfig(dataDir, workspaceId));
+}
+
+/** Resolves startable definitions from an already-read workspace config. */
+export function resolveLanguageServerDefinitionsFromConfig(
+    config: LanguageServerConfig,
+): LanguageServerDefinition[] {
     if (!config.enabled) {
         return [];
     }

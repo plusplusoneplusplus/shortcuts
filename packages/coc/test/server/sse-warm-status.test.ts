@@ -164,10 +164,15 @@ describe('SSE warm_status relay', () => {
 
 describe('handleProcessStream warm-interest wiring', () => {
     let store: MockProcessStore;
+    let outputCallback: ((event: ProcessOutputEvent) => void) | undefined;
 
     beforeEach(() => {
         store = createMockProcessStore();
-        store.onProcessOutput = vi.fn(() => () => { /* unsubscribe */ });
+        outputCallback = undefined;
+        store.onProcessOutput = vi.fn((_id: string, cb: (event: ProcessOutputEvent) => void) => {
+            outputCallback = cb;
+            return () => { outputCallback = undefined; };
+        });
     });
 
     it('registers interest with the bridge using the process provider + cwd', async () => {
@@ -189,6 +194,64 @@ describe('handleProcessStream warm-interest wiring', () => {
             provider: 'codex',
             workingDirectory: '/repo',
         });
+    });
+
+    it('registers the in-flight provider from the latest accepted user turn', async () => {
+        const proc = createProcessFixture({
+            id: 'p-reg-switch',
+            status: 'running',
+            workingDirectory: '/repo',
+            metadata: { provider: 'copilot' } as any,
+            activeProviderSession: {
+                provider: 'copilot',
+                sessionId: 'copilot-session',
+                segmentId: 'segment-a',
+                firstTurnIndex: 0,
+            },
+            conversationTurns: [
+                {
+                    role: 'user',
+                    content: 'switch',
+                    timestamp: new Date(),
+                    turnIndex: 2,
+                    timeline: [],
+                    provider: 'codex',
+                },
+            ],
+        });
+        store.processes.set(proc.id, proc);
+
+        const bridge = createSpyBridge();
+        await handleProcessStream(createMockReq(), createMockRes(), proc.id, store, bridge);
+
+        expect(bridge.register).toHaveBeenCalledWith(expect.objectContaining({
+            processId: proc.id,
+            provider: 'codex',
+        }));
+    });
+
+    it('scopes a warm-only stream to its requested provider', async () => {
+        const proc = createProcessFixture({
+            id: 'p-reg-pending',
+            status: 'completed',
+            workingDirectory: '/repo',
+            metadata: { provider: 'copilot' } as any,
+        });
+        store.processes.set(proc.id, proc);
+        const req = createMockReq();
+        req.url = `/api/processes/${proc.id}/stream?warm=1&provider=codex`;
+        const res = createMockRes();
+        const bridge = createSpyBridge();
+
+        await handleProcessStream(req, res, proc.id, store, bridge);
+
+        expect(bridge.register).toHaveBeenCalledWith(expect.objectContaining({ provider: 'codex' }));
+        outputCallback!({ type: 'warm-status', warmStatus: 'warm', provider: 'copilot' } as unknown as ProcessOutputEvent);
+        outputCallback!({ type: 'warm-status', warmStatus: 'active', provider: 'codex' } as unknown as ProcessOutputEvent);
+        const statuses = parseSSEFrames(res._chunks)
+            .filter(frame => frame.event === 'warm_status')
+            .map(frame => (frame.data as { status: string }).status);
+        expect(statuses).toEqual(['cold', 'active']);
     });
 
     it('defaults an unknown/absent provider to copilot', async () => {

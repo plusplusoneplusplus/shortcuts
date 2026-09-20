@@ -28,10 +28,9 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
 }));
 // Monaco never loads in jsdom; the textarea stands in for the edit buffer.
 vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, onChange, readOnly }: any) => (
+    MonacoFileEditor: ({ value, onChange }: any) => (
         <textarea
             data-testid="mock-monaco-textarea"
-            data-readonly={readOnly ? 'true' : 'false'}
             value={value}
             onChange={e => onChange?.(e.target.value)}
         />
@@ -171,14 +170,13 @@ function renderPanel(props: Partial<React.ComponentProps<typeof UnifiedRightPane
 }
 
 /** File the descriptor the way an entry point does, before the panel mounts. */
-function openFile(opts: { owner?: string; path: string; readOnly?: boolean; line?: number } = { path: 'src/a.ts' }) {
+function openFile(opts: { owner?: string; path: string; line?: number } = { path: 'src/a.ts' }) {
     return openUnifiedPanelTab(WS, {
         kind: 'file',
         ownerWorkspaceId: opts.owner ?? WS,
         chatId: CHAT,
         resourceId: opts.path,
         label: opts.path.split('/').pop() ?? opts.path,
-        ...(opts.readOnly ? { readOnly: true } : {}),
         ...(opts.line === undefined ? {} : { line: opts.line }),
     });
 }
@@ -227,19 +225,6 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         fireEvent.change(screen.getByTestId('mock-monaco-textarea'), { target: { value: 'edited' } });
         fireEvent.click(screen.getByTestId('save-btn'));
         await waitFor(() => expect(mockExplorerApi.writeBlob).toHaveBeenCalledWith(MEMBER, 'src/a.ts', 'edited'));
-    });
-
-    it('keeps a read-only descriptor read-only: no save path at all', async () => {
-        const tabId = openFile({ path: 'src/a.ts', readOnly: true });
-        renderPanel();
-
-        const editor = await screen.findByTestId('mock-monaco-textarea');
-        expect(editor.getAttribute('data-readonly')).toBe('true');
-        expect(screen.getByTestId(`unified-panel-tab-${tabId}`).getAttribute('data-readonly')).toBe('true');
-
-        fireEvent.change(editor, { target: { value: 'sneaky' } });
-        expect(screen.queryByTestId('save-btn')).toBeNull();
-        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
     });
 
     it('shows a hidden tab\'s unsaved edits in the strip, and clears them when it closes', async () => {

@@ -445,6 +445,20 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { chatStyleSelector: false } }).chatStyleSelectorEnabled).toBe(false);
     });
 
+    it('exposes follow-up provider switching as a live default-off capability', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.chatProviderSwitching');
+        expect(def).toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default).toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('chatProviderSwitchingEnabled');
+        expect(def!.ui?.group).toBe('aiModes');
+        expect(def!.ui?.badge).toBe('experimental');
+        expect(DEFAULT_CONFIG.features.chatProviderSwitching).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).chatProviderSwitchingEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { chatProviderSwitching: true } }).chatProviderSwitchingEnabled).toBe(true);
+    });
+
     // AC-03 (chat-folders): a default-off Features toggle on the dashboard card
     // with a live runtime flag, so the SPA can gate all folder UI while the
     // REST routes and the schema migration ship regardless of the flag.

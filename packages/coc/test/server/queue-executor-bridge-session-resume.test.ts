@@ -149,7 +149,7 @@ describe('executeFollowUp() — session resume behavior', () => {
     });
 
     // 3 -----------------------------------------------------------------------
-    it('should skip conversation history injection when resuming a session', async () => {
+    it('should skip the conversation handoff when resuming a session', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createCompletedProcessWithSession('proc-resume', 'sess-resume', [
             { role: 'user', content: 'first question', timestamp: new Date(), turnIndex: 0, timeline: [] },
@@ -161,15 +161,15 @@ describe('executeFollowUp() — session resume behavior', () => {
         await executor.execute(task);
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
-        // When resuming, systemMessage should NOT contain conversation_history
+        // When resuming, systemMessage should NOT carry a reconstructed handoff
         const systemContent = callArgs.systemMessage?.content ?? '';
-        expect(systemContent).not.toContain('<conversation_history>');
+        expect(systemContent).not.toContain('<conversation_handoff>');
         expect(systemContent).not.toContain('first question');
         expect(systemContent).not.toContain('first answer');
     });
 
     // 4 -----------------------------------------------------------------------
-    it('should inject conversation history when no sdkSessionId (legacy path)', async () => {
+    it('should inject the bounded conversation handoff when no sdkSessionId (legacy path)', async () => {
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const proc = createProcessFixture({
             id: 'proc-legacy',
@@ -187,7 +187,7 @@ describe('executeFollowUp() — session resume behavior', () => {
 
         const callArgs = sdkMocks.mockSendMessage.mock.calls[0][0];
         const systemContent = callArgs.systemMessage?.content ?? '';
-        expect(systemContent).toContain('<conversation_history>');
+        expect(systemContent).toContain('<conversation_handoff>');
         expect(systemContent).toContain('original question');
         expect(systemContent).toContain('original answer');
     });

@@ -235,4 +235,72 @@ describe('drainPendingMessages copies attachment metadata into the follow-up tas
         const after = await store.getProcess('proc-drain');
         expect(after?.pendingMessages ?? []).toHaveLength(0);
     });
+
+    it('drains on the provider captured with the message, not the conversation metadata', async () => {
+        const store = createMockProcessStore();
+        const queueManager = new TaskQueueManager();
+        const executor = new CLITaskExecutor(store);
+        executor.setQueueManager(queueManager);
+
+        await store.addProcess({
+            id: 'proc-drain-provider',
+            type: 'chat',
+            promptPreview: 'first',
+            fullPrompt: 'first',
+            status: 'running',
+            startTime: new Date(),
+            sdkSessionId: 'sess-drain-provider',
+            // The conversation says copilot; the message was accepted for codex.
+            metadata: { type: 'chat', provider: 'copilot' },
+            pendingMessages: [
+                {
+                    id: 'pending-provider',
+                    content: 'next',
+                    provider: 'codex',
+                    createdAt: new Date().toISOString(),
+                },
+            ],
+        } as AIProcess);
+
+        await (executor as any).drainPendingMessages('proc-drain-provider', 'task-original');
+
+        const payload = (queueManager.getQueued()[0] as QueuedTask).payload as any;
+        expect(payload.provider).toBe('codex');
+
+        // The deferred user turn is attributed to the same provider, so a later
+        // retry or handoff cutoff reads the provider the message was accepted for.
+        const after = await store.getProcess('proc-drain-provider');
+        expect(after?.conversationTurns?.at(-1)?.provider).toBe('codex');
+    });
+
+    it('omits provider when the buffered message predates per-message provider routing', async () => {
+        const store = createMockProcessStore();
+        const queueManager = new TaskQueueManager();
+        const executor = new CLITaskExecutor(store);
+        executor.setQueueManager(queueManager);
+
+        await store.addProcess({
+            id: 'proc-drain-legacy',
+            type: 'chat',
+            promptPreview: 'first',
+            fullPrompt: 'first',
+            status: 'running',
+            startTime: new Date(),
+            sdkSessionId: 'sess-drain-legacy',
+            metadata: { type: 'chat', provider: 'copilot' },
+            pendingMessages: [
+                { id: 'pending-legacy', content: 'next', createdAt: new Date().toISOString() },
+            ],
+        } as AIProcess);
+
+        await (executor as any).drainPendingMessages('proc-drain-legacy', 'task-original');
+
+        const payload = (queueManager.getQueued()[0] as QueuedTask).payload as any;
+        expect(payload.provider).toBeUndefined();
+
+        // Nothing to attribute: leave the turn unattributed rather than guessing
+        // from the conversation's current metadata.
+        const after = await store.getProcess('proc-drain-legacy');
+        expect(after?.conversationTurns?.at(-1)?.provider).toBeUndefined();
+    });
 });

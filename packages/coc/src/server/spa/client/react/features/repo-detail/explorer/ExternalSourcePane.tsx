@@ -10,7 +10,11 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { MonacoFileEditor, getMonacoLanguage } from '../../../shared/file-viewer/MonacoFileEditor';
+import {
+    MonacoFileEditor,
+    getMonacoLanguage,
+} from '../../../shared/file-viewer/MonacoFileEditor';
+import { mountNonEditableModel } from '../../../shared/file-viewer/nonEditableMonacoModel';
 import { EXTERNAL_SOURCE_LABEL, externalSourceLanguageId } from '../../language-servers/externalSource';
 import {
     readExternalSourceRecord,
@@ -78,7 +82,7 @@ export function ExternalSourcePane({ resourceId, name, revealLine, revealColumn,
                         <MonacoFileEditor
                             value={record.content}
                             language={language}
-                            readOnly
+                            onModelMount={mountNonEditableModel}
                             revealLine={revealLine}
                             revealColumn={revealColumn}
                         />

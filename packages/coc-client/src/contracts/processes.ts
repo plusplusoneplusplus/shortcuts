@@ -1,5 +1,8 @@
 import type { ChatStyle, JsonObject } from './common';
 
+/** Concrete AI providers a conversation turn can run on. */
+export type ChatProviderId = 'copilot' | 'codex' | 'claude' | 'opencode';
+
 export type AIProcessStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 export interface ConversationTurn {
@@ -131,6 +134,16 @@ export interface ProcessMessageRequest {
    * value is rejected with HTTP 400.
    */
   chatStyle?: ChatStyle;
+  /**
+   * Concrete AI provider that should run this follow-up. Omitted means "keep
+   * the conversation's active provider", which is what every pre-provider-
+   * switching client sends. `'auto'` is not accepted here: a follow-up must
+   * name one concrete provider, otherwise the request fails with HTTP 400
+   * `INVALID_PROVIDER`. Requesting a provider other than the active one while
+   * the conversation is busy fails with HTTP 409
+   * `PROVIDER_SWITCH_REQUIRES_IDLE`.
+   */
+  provider?: ChatProviderId;
   [key: string]: unknown;
 }
 

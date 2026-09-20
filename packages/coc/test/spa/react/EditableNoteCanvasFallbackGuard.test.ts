@@ -136,12 +136,12 @@ describe('AC-06 — read-only MarkdownFileView preserved', () => {
         // Raw mode is a read-only Monaco, not an editor: no onChange/onSave.
         const monaco = view.slice(view.indexOf('<MonacoFileEditor'), view.indexOf('/>', view.indexOf('<MonacoFileEditor')));
         expect(monaco).toBeTruthy();
-        expect(monaco).toContain('readOnly');
+        expect(monaco).toContain('onModelMount={mountNonEditableModel}');
         expect(monaco).not.toContain('onChange');
     });
 
     it('the read-only body never mounts the editable NoteEditor', () => {
-        expect(body).toContain('readOnly');
+        expect(body).toContain('onModelMount={mountNonEditableModel}');
         expect(body).not.toContain('NoteEditor');
         expect(view).not.toContain('NoteEditor');
     });

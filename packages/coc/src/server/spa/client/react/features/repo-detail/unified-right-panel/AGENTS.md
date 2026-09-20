@@ -218,8 +218,9 @@ the page and panel stay group-scoped. Because the dialogs portal outside the
 panel root, "my dialog is already up" counts as panel focus.
 
 A repo pick goes through `openTreeFile`: a trusted `__trusted__:` path lands
-pinned and read-only, everything else takes the preview slot, exactly like a
-tree click. A group pick first re-reads membership from the group owner, binds a
+pinned and relies on `PreviewPane`'s trusted-path guard to omit its write route;
+everything else takes the preview slot, exactly like a tree click. A group pick
+first re-reads membership from the group owner, binds a
 remote bare member id to that exact owner route, and asks `dock.setTarget()` to
 run the dirty-editor guard. Missing/stale members, unknown remote routes, and a
 declined guard leave tabs, target, tree, and dialog unchanged. An accepted pick
@@ -337,19 +338,13 @@ discarded: only the tree's single click creates the slot, and it opens files.
 The `+` menu keeps its **Explorer** entry, in place and with its label. The action
 selects Explorer mode and opens the navigator instead of opening a tab.
 
-## Permissions ride on one bit
+## File write permissions
 
-`tab.readOnly` moves only on an explicit `openTab` — the entry point decides, and
-moving or restoring a tab can never widen it. `PreviewPane` drops its write when
-read-only (no save button, no `writeBlob`, and `onRegisterSave(null)`), so a
-read-only tab has no write path at all.
-
-- `sourceLinkTabInput` (chat source links) → always `readOnly: true`. A link is a
-  reference, not an authorization.
-- `explorerFileTabInput` (Explorer selections, `+` results) → editable, because
-  the Explorer is an authorized entry point.
-- `noteTabInput` → editable; a note link opens the editor the docked canvas
-  would have shown.
+Repo and clone file tabs are editable regardless of whether they came from a
+chat source link, Explorer selection, or Quick Open result. Their owner workspace
+and concrete route select the existing blob write endpoint. Trusted absolute
+paths keep the `__trusted__:` prefix and rely on `PreviewPane`'s path guard,
+which omits the write route, Save button, and registered save handler.
 
 ## Keep-alive and terminals
 

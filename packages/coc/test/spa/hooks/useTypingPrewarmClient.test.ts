@@ -135,6 +135,20 @@ describe('useTypingPrewarmClient', () => {
         expect(prewarmSpy).toHaveBeenLastCalledWith('proc-2', { workspace: 'ws-1' });
     });
 
+    it('re-arms the latch when the confirmed provider changes', () => {
+        const { rerender } = renderHook((p: UseTypingPrewarmClientOptions) => useTypingPrewarmClient(p), {
+            initialProps: baseProps({ input: 'h', provider: 'copilot' }),
+        });
+        act(() => { vi.advanceTimersByTime(DEBOUNCE); });
+        expect(prewarmSpy).toHaveBeenLastCalledWith('proc-1', { workspace: 'ws-1', provider: 'copilot' });
+
+        rerender(baseProps({ input: 'h', provider: 'codex' }));
+        act(() => { vi.advanceTimersByTime(DEBOUNCE); });
+
+        expect(prewarmSpy).toHaveBeenCalledTimes(2);
+        expect(prewarmSpy).toHaveBeenLastCalledWith('proc-1', { workspace: 'ws-1', provider: 'codex' });
+    });
+
     it('re-arms the latch when the workspaceId changes', () => {
         const { rerender } = renderHook((p: UseTypingPrewarmClientOptions) => useTypingPrewarmClient(p), {
             initialProps: baseProps({ input: 'h' }),

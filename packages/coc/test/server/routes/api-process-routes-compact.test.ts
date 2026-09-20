@@ -22,6 +22,7 @@ import { CompactUnsupportedError } from '@plusplusoneplusplus/forge';
 // ============================================================================
 
 const mockCompactSession = vi.fn();
+const requestedProviders: string[] = [];
 
 // Stub the SDK registry but keep the REAL isCompactUnsupportedError guard and the
 // REAL CompactUnsupportedError class (the route imports the guard dynamically).
@@ -29,7 +30,12 @@ vi.mock('@plusplusoneplusplus/forge', async () => {
     const actual = await vi.importActual('@plusplusoneplusplus/forge');
     return {
         ...actual as object,
-        sdkServiceRegistry: { getOrThrow: () => ({ compactSession: mockCompactSession }) },
+        sdkServiceRegistry: {
+            getOrThrow: (provider: string) => {
+                requestedProviders.push(provider);
+                return { compactSession: mockCompactSession };
+            },
+        },
     };
 });
 
@@ -137,6 +143,7 @@ describe('POST /api/processes/:id/compact', () => {
     beforeEach(() => {
         store.processes.clear();
         mockCompactSession.mockReset();
+        requestedProviders.length = 0;
     });
 
     it('returns 404 when process does not exist', async () => {
@@ -283,6 +290,39 @@ describe('POST /api/processes/:id/compact', () => {
         // AC-01: the provider's summary is persisted verbatim as a sibling field
         // on the same turn — the counts line itself is untouched.
         expect((resultTurn as any).compactionSummary).toBe('Summary of the conversation so far.');
+    });
+
+    it('compacts only the authoritative active provider session and attributes the result turn', async () => {
+        await store.addProcess({
+            id: 'proc-active-binding',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hello',
+            sdkSessionId: 'stale-copilot-session',
+            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
+            activeProviderSession: {
+                provider: 'claude',
+                sessionId: 'active-claude-session',
+                segmentId: 'segment-claude',
+                firstTurnIndex: 2,
+            },
+        });
+        mockCompactSession.mockResolvedValue({ success: true, tokensRemoved: 10, messagesRemoved: 1 });
+
+        const res = await request(baseUrl, '/api/processes/proc-active-binding/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+
+        expect(res.status).toBe(200);
+        expect(requestedProviders).toContain('claude');
+        expect(mockCompactSession).toHaveBeenCalledWith('active-claude-session', undefined);
+        expect(store.processes.get('proc-active-binding')?.conversationTurns?.at(-1)).toMatchObject({
+            provider: 'claude',
+            segmentId: 'segment-claude',
+            displayOnly: true,
+        });
     });
 
     it('stores the summary verbatim without truncating it', async () => {

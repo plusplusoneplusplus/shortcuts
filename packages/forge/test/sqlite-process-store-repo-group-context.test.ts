@@ -90,7 +90,7 @@ describe('SqliteProcessStore — repoGroupContext persistence', () => {
             ],
         }));
 
-        const forked = await store.forkProcess!('source-fork', 'fork-1', 'sdk-session-forked');
+        const forked = await store.forkProcess!('source-fork', 'fork-1');
 
         expect(forked.conversationTurns?.[0].repoGroupContext).toBe(BLOCK);
     });

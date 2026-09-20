@@ -82,14 +82,6 @@ describe('PreviewPane — onRegisterSave (AC-04)', () => {
         expect(await screen.findByTestId('preview-error')).toHaveTextContent('EACCES: permission denied');
     });
 
-    it('registers null for a read-only buffer, so no close path can write it', async () => {
-        const registry = saveRegistry();
-        render(<PreviewPane repoId="ws-1" filePath="a.ts" fileName="a.ts" readOnly onRegisterSave={registry.onRegisterSave} />);
-        await waitFor(() => expect(screen.getByTestId('mock-monaco-textarea')).toBeInTheDocument());
-        expect(registry.save).toBeNull();
-        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
-    });
-
     it('registers null for a trusted absolute-path buffer', async () => {
         const registry = saveRegistry();
         render(

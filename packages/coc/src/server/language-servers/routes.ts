@@ -15,9 +15,10 @@ import { mergeWithBuiltIns } from './presets';
 import type { LanguageServerConfig } from './repository';
 import {
     readLanguageServerConfigWithStatus,
-    resolveLanguageServerDefinitions,
+    resolveLanguageServerDefinitionsFromConfig,
     writeLanguageServerConfig,
 } from './repository';
+import { ensureLanguageServerConfigSeeded } from './seed';
 import type { LanguageServerDefinition } from './types';
 
 /** Body of a read response: stored config plus what the workspace would start. */
@@ -44,17 +45,30 @@ interface LanguageServerConfigResponse {
     }>;
 }
 
-function buildResponse(
+/**
+ * Resolves a workspace's filesystem root, used to seed a never-configured
+ * workspace from the languages its files call for. Returns undefined when the
+ * workspace is unknown, which simply means no seeding.
+ */
+export type WorkspaceRootResolver = (workspaceId: string) => Promise<string | undefined>;
+
+async function buildResponse(
     dataDir: string,
     workspaceId: string,
     manager = getActiveLanguageServerManager(),
-): LanguageServerConfigResponse {
-    const { value, status, warnings } = readLanguageServerConfigWithStatus(dataDir, workspaceId);
+    resolveWorkspaceRoot?: WorkspaceRootResolver,
+): Promise<LanguageServerConfigResponse> {
+    const workspaceRoot = await resolveRootQuietly(resolveWorkspaceRoot, workspaceId);
+    // Seeding only ever fires for a workspace with no config file, so a read
+    // stays a read for every workspace the user has already configured.
+    const { value, status, warnings } = workspaceRoot
+        ? ensureLanguageServerConfigSeeded(dataDir, workspaceId, workspaceRoot)
+        : readLanguageServerConfigWithStatus(dataDir, workspaceId);
     return {
         enabled: value.enabled,
         definitions: value.definitions,
         effective: mergeWithBuiltIns(value.definitions),
-        startable: resolveLanguageServerDefinitions(dataDir, workspaceId),
+        startable: resolveLanguageServerDefinitionsFromConfig(value),
         status,
         // The on-disk path is a server detail and stays out of the browser payload.
         warnings: warnings.map(({ kind, message }) => ({ kind, message })),
@@ -82,6 +96,7 @@ export function registerLanguageServerRoutes(
     routes: Route[],
     dataDir: string,
     getManager: () => LanguageServerManager | undefined = getActiveLanguageServerManager,
+    resolveWorkspaceRoot?: WorkspaceRootResolver,
 ): void {
     // ------------------------------------------------------------------
     // GET /api/workspaces/:id/language-servers — Read the workspace config
@@ -91,7 +106,7 @@ export function registerLanguageServerRoutes(
         pattern: /^\/api\/workspaces\/([^/]+)\/language-servers$/,
         handler: async (_req, res, match) => {
             const workspaceId = decodeURIComponent(match![1]);
-            sendJSON(res, 200, buildResponse(dataDir, workspaceId, getManager()));
+            sendJSON(res, 200, await buildResponse(dataDir, workspaceId, getManager(), resolveWorkspaceRoot));
         },
     });
 
@@ -117,7 +132,7 @@ export function registerLanguageServerRoutes(
             if (!await manager.retry(workspaceId, sessionId)) {
                 return sendJSON(res, 404, { error: 'Language-server session was not found' });
             }
-            sendJSON(res, 200, buildResponse(dataDir, workspaceId, manager));
+            sendJSON(res, 200, await buildResponse(dataDir, workspaceId, manager, resolveWorkspaceRoot));
         },
     });
 
@@ -133,7 +148,7 @@ export function registerLanguageServerRoutes(
                 return;
             }
             const workspaceId = decodeURIComponent(match![1]);
-            save(res, dataDir, workspaceId, body, 'replace', getManager());
+            await save(res, dataDir, workspaceId, body, 'replace', getManager());
         },
     });
 
@@ -149,7 +164,7 @@ export function registerLanguageServerRoutes(
                 return;
             }
             const workspaceId = decodeURIComponent(match![1]);
-            save(res, dataDir, workspaceId, body, 'patch', getManager());
+            await save(res, dataDir, workspaceId, body, 'patch', getManager());
         },
     });
 }
@@ -161,14 +176,14 @@ export function registerLanguageServerRoutes(
  * A field-level error aborts the whole write, so the last valid configuration
  * survives an invalid submission and the UI can address errors by field path.
  */
-function save(
+async function save(
     res: Parameters<typeof sendJSON>[0],
     dataDir: string,
     workspaceId: string,
     body: unknown,
     mode: 'replace' | 'patch',
     manager?: LanguageServerManager,
-): void {
+): Promise<void> {
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
         return sendJSON(res, 400, { error: 'Request body must be a JSON object', errors: [] });
     }
@@ -201,5 +216,20 @@ function save(
             config: { enabled: stored.enabled, definitions: stored.definitions },
         });
     }
-    sendJSON(res, 200, buildResponse(dataDir, workspaceId, manager));
+    sendJSON(res, 200, await buildResponse(dataDir, workspaceId, manager));
+}
+
+/** A workspace lookup failure must not fail a settings read — it just skips seeding. */
+async function resolveRootQuietly(
+    resolve: WorkspaceRootResolver | undefined,
+    workspaceId: string,
+): Promise<string | undefined> {
+    if (!resolve) {
+        return undefined;
+    }
+    try {
+        return await resolve(workspaceId);
+    } catch {
+        return undefined;
+    }
 }

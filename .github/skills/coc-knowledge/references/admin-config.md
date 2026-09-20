@@ -98,6 +98,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
 | `chatStyleSelector` | on | Chat Style chip (below) |
 | `defaultChatStyle` | `default` | Enum (`default`\|`human`\|`direct`\|`terse`\|`structured`); style new conversations start on (below) |
+| `chatProviderSwitching` | off | Concrete provider changes between idle Ask/Autopilot follow-up turns (below) |
 | `autoAgentProviderRouting` | off | Auto provider routing; edited from Admin -> AI Provider |
 
 `features.canvasHostApis` (live) is the single gate for extension-canvas host APIs: capabilities declared `async: true` run in a terminable `worker_threads` worker with a 30s budget instead of the 1s `node:vm` path, and receive `host.complete` (max 3 one-shot model calls per run, logged with workspace/canvas/process). One flag covers both because `host.complete` exists only inside an async capability; sync capabilities are unaffected.
@@ -114,6 +115,8 @@ The setting is both a SPA seed and a server-side fallback, so an API caller or a
 - An explicit `chatStyle: 'default'` always wins and injects nothing.
 
 The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a new conversation has recorded nothing, so comparing against the configured default would make it equal to itself and never inject on turn 1.
+
+`features.chatProviderSwitching` (Admin -> Configure -> AI Execution Modes, live, default off, runtime flag `chatProviderSwitchingEnabled`) gates concrete provider changes between idle Ask/Autopilot follow-up turns. The follow-up REST route reads the flag live and rejects cross-provider requests while it is off. The dashboard resolves the capability from the server that owns the conversation; an absent flag on an older remote server means unsupported.
 
 ## AI Provider Routing
 

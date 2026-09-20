@@ -11,6 +11,7 @@
  * top with no highlight.
  */
 import { FileViewer } from '../../../shared/file-viewer/FileViewer';
+import { mountNonEditableModel } from '../../../shared/file-viewer/nonEditableMonacoModel';
 import { toLines, resolveLineRange } from '../../../shared/file-viewer/lineRange';
 import type { FileBlob } from '../../../shared/file-viewer/types';
 
@@ -38,9 +39,9 @@ export function SourceCanvasBody({
             blob={{ content, encoding, mimeType }}
             fileName={fileName}
             language={language}
-            readOnly
             markdown="toggle"
             highlightRange={range}
+            onModelMount={mountNonEditableModel}
             codeTestId="source-canvas-source"
         />
     );

@@ -473,7 +473,7 @@ describe('unified panel quick open', () => {
         expect(screen.queryByTestId('quick-open-dialog')).toBeNull();
     });
 
-    it('opens an Exact Open pick pinned and read-only', () => {
+    it('opens an Exact Open pick pinned without storing file permissions', () => {
         renderPanel();
         press('o');
         fireEvent.click(screen.getByTestId('exact-open-pick'));
@@ -481,7 +481,7 @@ describe('unified panel quick open', () => {
         // Pinned, not preview — the distinction between the two entry points.
         expect(fileTabs()).toEqual([{ label: 'config.json', preview: false }]);
         const tab = storedFileTab();
-        expect(tab?.readOnly).toBe(true);
+        expect(tab).not.toHaveProperty('readOnly');
         expect(tab?.resourceId).toBe('__trusted__:/home/me/.copilot/config.json');
     });
 

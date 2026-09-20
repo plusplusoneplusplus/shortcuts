@@ -34,8 +34,17 @@ export {
     readLanguageServerConfig,
     readLanguageServerConfigWithStatus,
     resolveLanguageServerDefinitions,
+    resolveLanguageServerDefinitionsFromConfig,
     writeLanguageServerConfig,
 } from './repository';
+export type { DetectLanguagesOptions } from './detection';
+export {
+    DETECTION_EXCLUDED_DIRECTORIES,
+    DETECTION_MAX_DEPTH,
+    DETECTION_MAX_ENTRIES,
+    detectWorkspaceLanguages,
+    detectableLanguageServerDefinitions,
+} from './detection';
 export type { PreparedDefinition, PrepareDefinitionDeps } from './adapters';
 export { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 export type { TypeScriptRuntime, TypeScriptRuntimeDeps, TypeScriptRuntimeOrigin } from './typescript-adapter';
@@ -69,6 +78,9 @@ export {
     resolveSymbolsRuntime,
     symbolIndexDatabasePath,
 } from './symbols-adapter';
+export type { SeedLanguageServerConfigOptions } from './seed';
+export { ensureLanguageServerConfigSeeded } from './seed';
+export type { WorkspaceRootResolver } from './routes';
 export { registerLanguageServerRoutes } from './routes';
 export type {
     JsonRpcErrorBody,

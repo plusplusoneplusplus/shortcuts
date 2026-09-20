@@ -43,6 +43,7 @@ import {
     toForwardSlashes,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
+import { advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
@@ -199,6 +200,10 @@ export interface ChatModeExecutionResult {
     tokenUsage?: TokenUsage;
     /** Model that the provider actually used. Omitted means provider default. */
     effectiveModel?: string;
+    /** Concrete provider that ran the turn, recorded on the assistant turn. */
+    provider?: ChatProvider;
+    /** Provider segment the turn ran in; absent when no session was reported. */
+    segmentId?: string;
 }
 
 /** Mode-specific AI call parameters supplied by each concrete executor. */
@@ -298,21 +303,23 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
-     * Register a fresh AbortController for this turn in the shared bridge
-     * registry (when wired) so a cancel can abort the in-flight `sendMessage`
-     * before any `sdkSessionId` exists. Always returns a controller so the
+     * Register this turn in the shared bridge registry (when wired) so a cancel
+     * can abort the in-flight `sendMessage` before any `sdkSessionId` exists,
+     * and so the bridge aborts against `provider` — the provider this turn is
+     * really being sent to, which during a cross-provider switch is not yet the
+     * provider persisted on the process. Always returns a controller so the
      * signal can be passed to the SDK unconditionally.
      */
-    protected registerTurnAbortController(processId: string): AbortController {
+    protected registerTurnAbortController(processId: string, provider: ChatProvider): AbortController {
         const controller = new AbortController();
-        this.runtime.processAbortControllers?.set(processId, controller);
+        this.runtime.inFlightTurns?.set(processId, { provider, controller });
         return controller;
     }
 
-    /** Remove this turn's controller unless a newer turn has already replaced it. */
+    /** Remove this turn unless a newer turn has already replaced it. */
     protected releaseTurnAbortController(processId: string, controller: AbortController): void {
-        if (this.runtime.processAbortControllers?.get(processId) === controller) {
-            this.runtime.processAbortControllers.delete(processId);
+        if (this.runtime.inFlightTurns?.get(processId)?.controller === controller) {
+            this.runtime.inFlightTurns.delete(processId);
         }
     }
 
@@ -1024,7 +1031,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         let policyModelId: string | undefined;
         let policyReasoningEffort: string | undefined;
 
-        const turnAbort = this.registerTurnAbortController(processId);
+        const turnAbort = this.registerTurnAbortController(processId, taskProvider);
+
+        // Provider segment this turn's response belongs to, known once the
+        // provider reports its session. Handed back with the result so the
+        // lifecycle runner can attribute the assistant turn it appends.
+        let turnSegmentId: string | undefined;
         try {
             // Rewrite large prompts to file-path references
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
@@ -1185,7 +1197,16 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     approvePermissions: this.approvePermissions,
                     ...(dangerousCommandGuard ? { dangerousCommandGuard } : {}),
                     onSessionCreated: (sessionId: string) => {
-                        this.store.updateProcess(processId, { sdkSessionId: sessionId }).catch(() => {
+                        // One store write binds provider and session id
+                        // together, so the pair can never be split by a crash
+                        // between two separate updates.
+                        const binding = advanceActiveProviderSession(undefined, {
+                            provider: taskProvider,
+                            sessionId,
+                            turnIndex: 0,
+                        }).binding;
+                        turnSegmentId = binding.segmentId;
+                        this.store.updateProcess(processId, activeProviderSessionUpdate(binding)).catch(() => {
                             // Non-fatal: store may be a stub
                         });
                     },
@@ -1239,6 +1260,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 pendingSuggestions,
                 tokenUsage: result.tokenUsage,
                 effectiveModel: result.effectiveModel ?? policy.modelId,
+                ...turnProviderAttribution(taskProvider, turnSegmentId),
             };
         } catch (err) {
             // Settle before the interrupted-turn append below so the ordinal
@@ -1270,6 +1292,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             interrupted: true,
                             interruptionReason: errorMsg,
                             ...(partial.suggestions ? { suggestions: partial.suggestions } : {}),
+                            ...turnProviderAttribution(taskProvider, turnSegmentId),
                         }),
                         { filterStreaming: true },
                     );

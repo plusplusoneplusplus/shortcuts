@@ -28,12 +28,14 @@ import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
-import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, serializeCommitChatMetadata } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProvider, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
     ProcessMessageDeliveryService,
     normalizeFollowUpInput,
+    isIdleForProviderSwitch,
     FollowUpDeliveryError,
+    ProviderSwitchRequiresIdleError,
 } from '../processes/process-message-delivery-service';
 import type { FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import type { ApiRouteContext } from './api-shared';
@@ -42,23 +44,15 @@ import { buildMetadataProcess } from '../processes/process-metadata-read-model';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { getRepoDataPath } from '../paths';
+import { readActiveProviderSession, turnProviderAttribution } from '../processes/active-provider-session';
+import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetry';
+import { processOperationAdmission } from '../processes/process-operation-admission';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
 
 /** Terminal statuses that cannot be cancelled. */
 const TERMINAL_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
-
-/** Every provider a chat can run on; the string doubles as the SDK registry key. */
-const CHAT_PROVIDERS: readonly ChatProvider[] = ['copilot', 'codex', 'claude', 'opencode'];
-
-/**
- * Narrow `metadata.provider` to a known provider, defaulting to copilot for
- * legacy records that never stored one.
- */
-function resolveConversationProvider(value: unknown): ChatProvider {
-    return CHAT_PROVIDERS.includes(value as ChatProvider) ? value as ChatProvider : 'copilot';
-}
 
 type AskUserRouteAnswer = {
     questionId?: unknown;
@@ -651,25 +645,13 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!proc) {
                 return void handleAPIError(res, notFound('Process'));
             }
-            if (!proc.sdkSessionId) {
-                return void handleAPIError(res, badRequest('Process has no SDK session to fork'));
-            }
             if (!store.forkProcess) {
                 return void handleAPIError(res, badRequest('Fork not supported by this store'));
             }
 
             const newId = crypto.randomUUID();
-            let newSdkSessionId: string;
             try {
-                const { sdkServiceRegistry, SDK_PROVIDER_COPILOT } = await import('@plusplusoneplusplus/forge');
-                const sdkService = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-                newSdkSessionId = await sdkService.forkSession(proc.sdkSessionId);
-            } catch (err: any) {
-                return void handleAPIError(res, internalError(`Failed to fork SDK session: ${err?.message || err}`));
-            }
-
-            try {
-                const forked = await store.forkProcess(proc.id, newId, newSdkSessionId);
+                const forked = await store.forkProcess(proc.id, newId);
                 const wsServer = getWsServer?.();
                 if (wsServer && forked.metadata?.workspaceId) {
                     wsServer.broadcastProcessEvent({
@@ -718,7 +700,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!proc) {
                 return void handleAPIError(res, notFound('Process'));
             }
-            if (!proc.sdkSessionId) {
+            const activeBinding = readActiveProviderSession(proc);
+            if (!activeBinding.sessionId) {
                 return void handleAPIError(res, badRequest('Process has no SDK session to compact'));
             }
 
@@ -736,12 +719,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ? body.customInstructions
                 : undefined;
 
-            // Resolve the conversation provider; default to copilot. The provider
-            // string doubles as the SDK service registry key. Non-copilot providers
-            // throw CompactUnsupportedError, which maps to a 422.
-            const provider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
-                ? proc.metadata.provider
-                : 'copilot';
+            const provider = activeBinding.provider as ChatProvider;
 
             // ── Persist in-progress compacting state (AC-01) ──
             // Mark the process running and record compaction metadata BEFORE the
@@ -769,7 +747,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const { sdkServiceRegistry, isCompactUnsupportedError } = await import('@plusplusoneplusplus/forge');
             try {
                 const sdkService = sdkServiceRegistry.getOrThrow(provider);
-                const result = await sdkService.compactSession(proc.sdkSessionId, customInstructions);
+                const result = await sdkService.compactSession(activeBinding.sessionId, customInstructions);
                 const messagesRemoved = result?.messagesRemoved ?? 0;
                 const tokensRemoved = result?.tokensRemoved ?? 0;
                 // Summary text the provider generated for this compaction, kept
@@ -820,7 +798,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 // completion is recorded in the transcript itself, not only as a
                 // transient toast. `displayOnly` keeps it out of the provider
                 // model's prompt history on future follow-ups (see
-                // buildConversationHistoryContext); appendConversationTurn
+                // buildConversationHandoff); appendConversationTurn
                 // broadcasts the change via the store's process-updated path.
                 await store.appendConversationTurn(id, (turnIndex) => ({
                     role: 'assistant' as const,
@@ -829,6 +807,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     turnIndex,
                     timeline: [],
                     displayOnly: true,
+                    ...turnProviderAttribution(provider, activeBinding.segmentId),
                     // Stored per-turn (not only in `metadata.compaction`) so a
                     // second `/compact` cannot erase the first summary.
                     ...(summaryContent ? { compactionSummary: summaryContent } : {}),
@@ -884,17 +863,21 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const id = decodeURIComponent(match![1]);
             const turnIndex = parseInt(match![2], 10);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const initialProc = await resolveProcess(store, id, wsId);
+            if (!initialProc) {
+                return handleAPIError(res, notFound('Process'));
+            }
 
-            const proc = await resolveProcess(store, id, wsId);
+            return processOperationAdmission.runExclusive(initialProc.id, async () => {
+            let reservationStartedAt: string | undefined;
+            try {
+            const proc = await resolveProcess(store, initialProc.id, wsId);
             if (!proc) {
                 return handleAPIError(res, notFound('Process'));
             }
 
-            // Resolve the conversation's provider — it doubles as the SDK service
-            // registry key. There is no provider allow-list here: whether rewind is
-            // possible is decided by the service itself (a provider without a native
-            // primitive throws RewindUnsupportedError, which becomes the 409 below).
-            const provider = resolveConversationProvider(proc.metadata?.provider);
+            const activeBinding = readActiveProviderSession(proc);
+            const provider = activeBinding.provider as ChatProvider;
 
             // Idle guard: only a settled conversation with no buffered work can be
             // rewound. A running/queued/cancelling status — or any pending message
@@ -912,10 +895,24 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (target.role !== 'user') {
                 return handleAPIError(res, new APIError(400, 'Only user turns can be rewound to.', 'TURN_NOT_REWINDABLE'));
             }
+            if (
+                proc.activeProviderSession
+                && (
+                    target.turnIndex < activeBinding.firstTurnIndex
+                    || (target.segmentId != null && target.segmentId !== activeBinding.segmentId)
+                    || (target.provider != null && target.provider !== activeBinding.provider)
+                )
+            ) {
+                return handleAPIError(res, new APIError(
+                    409,
+                    'This turn belongs to an earlier provider session. Cross-provider rewind is not available yet.',
+                    'CROSS_PROVIDER_REWIND_UNAVAILABLE',
+                ));
+            }
             if (!target.sdkEventId) {
                 return handleAPIError(res, new APIError(400, 'This turn has no captured rewind anchor and cannot be rewound (legacy or pre-fork turn).', 'TURN_NOT_REWINDABLE'));
             }
-            if (!proc.sdkSessionId) {
+            if (!activeBinding.sessionId) {
                 return handleAPIError(res, new APIError(400, 'Conversation has no SDK session to rewind.', 'TURN_NOT_REWINDABLE'));
             }
             if (!store.truncateConversationTurns) {
@@ -934,9 +931,21 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!sdkService || typeof sdkService.rewindSession !== 'function') {
                 return handleAPIError(res, new APIError(409, `Rewind is not supported for provider '${provider}'.`, 'REWIND_UNSUPPORTED'));
             }
+            const priorStatus = proc.status;
+            const baseMetadata = (proc.metadata ?? { type: proc.type ?? 'chat' }) as GenericProcessMetadata;
+            const startedAt = new Date().toISOString();
+            const rewindReservation = { state: 'running', priorStatus, startedAt, turnIndex };
+            await store.updateProcess(proc.id, {
+                status: 'running',
+                metadata: {
+                    ...baseMetadata,
+                    rewind: rewindReservation,
+                },
+            });
+            reservationStartedAt = startedAt;
             let rewound: { newSessionId?: string } | undefined;
             try {
-                rewound = await sdkService.rewindSession(proc.sdkSessionId, target.sdkEventId);
+                rewound = await sdkService.rewindSession(activeBinding.sessionId, target.sdkEventId);
             } catch (err: any) {
                 if (isRewindUnsupportedError(err)) {
                     return handleAPIError(res, new APIError(409, err?.message || 'Rewind is not supported for this conversation.', 'REWIND_UNSUPPORTED'));
@@ -951,8 +960,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // history is already forked, so a metadata write failure must not fail
             // the rewind.
             const newSessionId = rewound?.newSessionId;
-            if (newSessionId && newSessionId !== proc.sdkSessionId) {
-                const priorSessionId = proc.sdkSessionId;
+            if (newSessionId && newSessionId !== activeBinding.sessionId) {
+                const priorSessionId = activeBinding.sessionId;
                 try {
                     const prior = Array.isArray((proc.metadata as any)?.rewindHistory)
                         ? (proc.metadata as any).rewindHistory
@@ -961,6 +970,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         sdkSessionId: newSessionId,
                         metadata: {
                             ...(proc.metadata ?? {}),
+                            rewind: rewindReservation,
                             rewindHistory: [
                                 ...prior,
                                 { previousSessionId: priorSessionId, newSessionId, turnIndex, rewoundAt: new Date().toISOString() },
@@ -1010,6 +1020,31 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 },
                 turnsRemoved: result.removed.length,
             });
+            } finally {
+                if (reservationStartedAt) {
+                    const current = await store.getProcess(initialProc.id, wsId);
+                    const rewind = current?.metadata?.rewind as {
+                        state?: string;
+                        priorStatus?: AIProcessStatus;
+                        startedAt?: string;
+                    } | undefined;
+                    if (
+                        current
+                        && rewind?.state === 'running'
+                        && rewind.startedAt === reservationStartedAt
+                    ) {
+                        const metadata = { ...(current.metadata ?? {}) };
+                        delete metadata.rewind;
+                        await store.updateProcess(current.id, {
+                            status: rewind.priorStatus && TERMINAL_STATUSES.has(rewind.priorStatus)
+                                ? rewind.priorStatus
+                                : 'completed',
+                            metadata: metadata as GenericProcessMetadata,
+                        });
+                    }
+                }
+            }
+            });
         },
     });
 
@@ -1032,11 +1067,23 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return void handleAPIError(res, notFound('Process'));
             }
 
-            // Resolve the conversation provider; default to copilot. The provider
-            // string doubles as the SDK service registry key.
-            const provider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
-                ? proc.metadata.provider
-                : 'copilot';
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const requestedProvider = body.provider === undefined
+                ? undefined
+                : resolveChatProvider(body.provider);
+            if (body.provider !== undefined && !requestedProvider) {
+                return void handleAPIError(res, new APIError(400, 'Provider must be a concrete enabled provider.', 'INVALID_PROVIDER'));
+            }
+            const activeProvider = readActiveProviderSession(proc).provider as ChatProvider;
+            const provider = requestedProvider ?? activeProvider;
+            if (provider !== activeProvider && ctx.getLiveFeatureFlags?.().chatProviderSwitchingEnabled !== true) {
+                return void handleAPIError(res, new APIError(
+                    400,
+                    'Switching providers in an existing conversation is not enabled on this server.',
+                    'PROVIDER_SWITCHING_DISABLED',
+                ));
+            }
 
             const { sdkServiceRegistry } = await import('@plusplusoneplusplus/forge');
             const service = sdkServiceRegistry.get(provider);
@@ -1161,8 +1208,48 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, missingFields(['content']));
             }
 
+            const activeBinding = readActiveProviderSession(proc);
+            const sessionProvider = activeBinding.provider as ChatProvider;
+            const normalized = normalizeFollowUpInput(
+                body,
+                sessionProvider,
+                ctx.getLiveFeatureFlags?.().defaultChatStyle,
+            );
+            if (!normalized.ok) {
+                return handleAPIError(res, normalized.code
+                    ? new APIError(400, normalized.error, normalized.code)
+                    : badRequest(normalized.error));
+            }
+            const fields = normalized.value;
+
+            if (fields.isProviderSwitch) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'attempt',
+                    sourceProvider: sessionProvider,
+                    targetProvider: fields.requestedProvider!,
+                    workspaceId: proc.metadata?.workspaceId as string | undefined,
+                    processId: id,
+                });
+            }
+
+            if (fields.isProviderSwitch && ctx.getLiveFeatureFlags?.().chatProviderSwitchingEnabled !== true) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'failed',
+                    sourceProvider: sessionProvider,
+                    targetProvider: fields.requestedProvider!,
+                    workspaceId: proc.metadata?.workspaceId as string | undefined,
+                    processId: id,
+                    failureReason: 'feature-disabled',
+                });
+                return handleAPIError(res, new APIError(
+                    400,
+                    'Switching providers in an existing conversation is not enabled on this server.',
+                    'PROVIDER_SWITCHING_DISABLED',
+                ));
+            }
+
             const stoppedChatResumeUnavailable = getStoppedChatResumeUnavailableMessage(proc);
-            if (stoppedChatResumeUnavailable) {
+            if (stoppedChatResumeUnavailable && !fields.isProviderSwitch) {
                 return handleAPIError(res, new APIError(
                     409,
                     stoppedChatResumeUnavailable,
@@ -1171,12 +1258,39 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             const isCancelledResume = proc.status === 'cancelled';
-            const resumeSessionId = isCancelledResume ? proc.sdkSessionId : undefined;
-            if (isCancelledResume && !resumeSessionId) {
+            const resumeSessionId = isCancelledResume && !fields.isProviderSwitch
+                ? activeBinding.sessionId
+                : undefined;
+            if (isCancelledResume && !fields.isProviderSwitch && !resumeSessionId) {
                 return handleAPIError(res, new APIError(
                     409,
                     'Cannot continue this stopped chat because no SDK session was saved. Start a new chat manually.',
                     'SESSION_NOT_RESUMABLE',
+                ));
+            }
+
+            if (!bridge) {
+                return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
+            }
+
+            // Fast-path rejection before attachment processing. Delivery repeats
+            // this check under process-scoped admission to close the idle race.
+            if (fields.isProviderSwitch && !isIdleForProviderSwitch(
+                proc,
+                bridge.findTaskByProcessId?.(id)?.status,
+            )) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'failed',
+                    sourceProvider: sessionProvider,
+                    targetProvider: fields.requestedProvider!,
+                    workspaceId: proc.metadata?.workspaceId as string | undefined,
+                    processId: id,
+                    failureReason: 'conversation-busy',
+                });
+                return handleAPIError(res, new APIError(
+                    409,
+                    'Cannot switch providers while this conversation is busy. Wait for the current response to finish, then try again.',
+                    'PROVIDER_SWITCH_REQUIRES_IDLE',
                 ));
             }
 
@@ -1196,31 +1310,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ? (body.content as string) + textContext
                 : undefined;
 
-            // Check session liveness before forwarding the prompt
-            if (!isCancelledResume && bridge && !(await bridge.isSessionAlive(id))) {
+            // Reconstructed provider switches do not depend on the outgoing
+            // provider's native session being alive.
+            if (!fields.isProviderSwitch && !isCancelledResume && bridge && !(await bridge.isSessionAlive(id))) {
                 return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));
             }
 
-            if (!bridge) {
-                return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
-            }
-
-            // Normalize the optional scalar follow-up fields (mode, delivery mode,
-            // selected skills, model override, reasoning effort) against the
-            // conversation provider. The only client error here is an invalid
-            // deliveryMode, which maps to 400.
-            const sessionProvider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
-                ? proc.metadata.provider
-                : 'copilot';
-            const normalized = normalizeFollowUpInput(
-                body,
-                sessionProvider,
-                ctx.getLiveFeatureFlags?.().defaultChatStyle,
-            );
-            if (!normalized.ok) {
-                return handleAPIError(res, badRequest(normalized.error));
-            }
-            const fields = normalized.value;
             if (fields.modelCoerced) {
                 getLogger().warn(
                     LogCategory.AI,
@@ -1240,15 +1335,13 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // The recorded style is updated on every in-scope turn, including
             // the turns that inject nothing, so switching to Default is a real
             // state and not a gap. Only an actual change needs a write.
-            if (styleGateOpen && fields.chatStyle !== recordedStyle) {
-                await store.updateProcess(id, {
-                    metadata: {
-                        type: proc.metadata?.type ?? 'chat',
-                        ...(proc.metadata ?? {}),
-                        chatStyle: fields.chatStyle,
-                    },
-                });
-            }
+            const metadataUpdate = styleGateOpen && fields.chatStyle !== recordedStyle
+                ? {
+                    type: proc.metadata?.type ?? 'chat',
+                    ...(proc.metadata ?? {}),
+                    chatStyle: fields.chatStyle,
+                }
+                : undefined;
             const applyStyle = (text: string): string =>
                 injectStyle ? prependChatStyleBlock(text, fields.chatStyle) : text;
 
@@ -1295,6 +1388,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ...(resumeSessionId ? { resumeSessionId } : {}),
                 ...(fields.optimisticId !== undefined ? { optimisticId: fields.optimisticId } : {}),
                 pasteExternalized: isPasteExternalized,
+                ...(metadataUpdate ? { metadataUpdate } : {}),
+                // Resolved once, here. Every delivery path carries this value
+                // with the message, so a metadata change after acceptance
+                // cannot retarget a queued or buffered follow-up.
+                provider: fields.requestedProvider ?? sessionProvider,
             };
 
             const deliveryService = new ProcessMessageDeliveryService({ store, bridge });
@@ -1302,7 +1400,33 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             try {
                 result = await deliveryService.deliver(proc, deliveryInput);
             } catch (err) {
+                if (err instanceof ProviderSwitchRequiresIdleError) {
+                    fs.rmSync(tempDir, { recursive: true, force: true });
+                    recordProviderSwitchServerTelemetry({
+                        action: 'failed',
+                        sourceProvider: sessionProvider,
+                        targetProvider: fields.requestedProvider!,
+                        workspaceId: proc.metadata?.workspaceId as string | undefined,
+                        processId: id,
+                        failureReason: 'conversation-busy',
+                    });
+                    return handleAPIError(res, new APIError(
+                        409,
+                        err.message,
+                        'PROVIDER_SWITCH_REQUIRES_IDLE',
+                    ));
+                }
                 if (err instanceof FollowUpDeliveryError) {
+                    if (fields.isProviderSwitch) {
+                        recordProviderSwitchServerTelemetry({
+                            action: 'failed',
+                            sourceProvider: sessionProvider,
+                            targetProvider: fields.requestedProvider!,
+                            workspaceId: proc.metadata?.workspaceId as string | undefined,
+                            processId: id,
+                            failureReason: 'enqueue-failed',
+                        });
+                    }
                     return handleAPIError(res, new APIError(500, 'Failed to enqueue follow-up', 'ENQUEUE_FAILED'));
                 }
                 throw err;

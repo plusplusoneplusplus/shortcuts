@@ -8,7 +8,7 @@
  * Visual style mirrors the existing model picker chip in NewChatArea/FollowUpInputArea.
  */
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, type RefObject } from 'react';
 import { cn } from '../../ui/cn';
 import type { AgentSelectorProvider, ChatProvider, ConcreteChatProvider } from '../../utils/providerSelection';
 export type { AgentSelectorProvider, ChatProvider, ConcreteChatProvider };
@@ -28,6 +28,8 @@ export interface AgentSelectorChipProps {
      * whose label hiding is viewport-gated via `sm:`).
      */
     iconOnly?: boolean;
+    /** Optional focus target for dialogs opened from this chip. */
+    buttonRef?: RefObject<HTMLButtonElement>;
 }
 
 function CodexIcon() {
@@ -81,7 +83,7 @@ function ProviderIcon({ id }: { id: string }) {
     return <CopilotIcon />;
 }
 
-export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false, iconOnly = false }: AgentSelectorChipProps) {
+export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false, iconOnly = false, buttonRef }: AgentSelectorChipProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -113,6 +115,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
     return (
         <div ref={containerRef} className="relative shrink-0" data-testid="agent-selector-chip-container">
             <button
+                ref={buttonRef}
                 type="button"
                 disabled={disabled || loading}
                 onClick={() => setOpen(o => !o)}

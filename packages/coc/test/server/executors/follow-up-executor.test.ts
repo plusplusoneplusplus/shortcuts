@@ -50,7 +50,6 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 const mockWithRepoInstructions = vi.fn().mockImplementation(async (sm: any) => sm);
-const mockBuildConversationHistoryContext = vi.fn().mockReturnValue(undefined);
 const mockBuildFollowUpSuggestionsAddon = vi.fn().mockReturnValue({ tools: [], suffix: '' });
 const SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE = `\
 When citing source code locations, format each location as a Markdown link.
@@ -104,7 +103,6 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
     buildSearchConversationsAddon: () => ({ tools: [], suffix: '' }),
     buildTavilyWebSearchAddon: () => ({ tools: [], suffix: '' }),
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),
-    buildConversationHistoryContext: (...args: any[]) => mockBuildConversationHistoryContext(...args),
     buildFollowUpSuggestionsAddon: (...args: any[]) => mockBuildFollowUpSuggestionsAddon(...args),
     buildSourceLocationMarkdownLinkSystemMessage: (provider: string | undefined) =>
         provider === 'copilot' || provider === 'claude'
@@ -220,7 +218,6 @@ describe('FollowUpExecutor', () => {
         mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
         mockApplyLlmToolPreferences.mockClear();
         mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
-        mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
         mockReadNoteContent.mockReset().mockResolvedValue(undefined);
         // Default: return the empty addon so most tests are unaffected by Memory V2.
@@ -575,12 +572,6 @@ describe('FollowUpExecutor', () => {
     });
 
     it('preserves interrupted audit turns while omitting them from cold follow-up prompt history', async () => {
-        const actualPromptBuilder = await vi.importActual<typeof import('../../../src/server/executors/prompt-builder')>(
-            '../../../src/server/executors/prompt-builder',
-        );
-        mockBuildConversationHistoryContext.mockImplementation((turns: any) =>
-            actualPromptBuilder.buildConversationHistoryContext(turns),
-        );
         sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,
             response: 'Fresh answer after timeout',
@@ -647,7 +638,9 @@ describe('FollowUpExecutor', () => {
         expect(callArg.prompt).toContain('Continue after timeout');
         expect(callArg.sessionId).toBeUndefined();
         expect(callArg.systemMessage.content).toContain('[User]: Original question');
-        expect(callArg.systemMessage.content).toContain('[User]: Continue after timeout');
+        // The message being sent is the prompt; quoting it back as history too
+        // would deliver it twice (AC-05).
+        expect(callArg.systemMessage.content).not.toContain('[User]: Continue after timeout');
         expect(callArg.systemMessage.content).not.toContain('Partial output that must stay visible');
         expect(callArg.systemMessage.content).not.toContain('already-ran');
 
@@ -911,28 +904,31 @@ describe('FollowUpExecutor', () => {
     // History context (no session resume)
     // -------------------------------------------------------------------------
 
-    it('builds conversation history context when process has no sdkSessionId', async () => {
+    it('builds a bounded conversation handoff when process has no sdkSessionId', async () => {
         const proc = makeProcess({ id: 'proc-history', sdkSessionId: undefined });
         await store.addProcess(proc);
 
         const executor = makeExecutor(store);
         await executor.executeFollowUp('proc-history', 'msg');
 
-        expect(mockBuildConversationHistoryContext).toHaveBeenCalledWith(proc.conversationTurns);
+        const content = (sdkMocks.mockSendMessage.mock.calls[0][0] as any).systemMessage.content;
+        expect(content).toContain('<conversation_handoff>');
+        expect(content).toContain('[User]: Hello');
+        expect(content).toContain('[Assistant]: Hi there');
     });
 
-    it('skips conversation history context when process has sdkSessionId', async () => {
+    it('skips the conversation handoff when process has sdkSessionId', async () => {
         const proc = makeProcess({ id: 'proc-resume', sdkSessionId: 'existing-session' });
         await store.addProcess(proc);
 
         const executor = makeExecutor(store);
         await executor.executeFollowUp('proc-resume', 'msg');
 
-        expect(mockBuildConversationHistoryContext).not.toHaveBeenCalled();
+        const content = (sdkMocks.mockSendMessage.mock.calls[0][0] as any).systemMessage?.content ?? '';
+        expect(content).not.toContain('<conversation_handoff>');
     });
 
     it('prepends cold history to the system message when session cannot resume', async () => {
-        mockBuildConversationHistoryContext.mockReturnValue('HISTORY: prior turns');
         const proc = makeProcess({ id: 'proc-cold-history', sdkSessionId: undefined });
         await store.addProcess(proc);
 
@@ -941,12 +937,11 @@ describe('FollowUpExecutor', () => {
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.sessionId).toBeUndefined();
-        expect(callArg.systemMessage.content).toContain('HISTORY: prior turns');
+        expect(callArg.systemMessage.content).toContain('<conversation_handoff>');
         expect(callArg.systemMessage.content).toContain(SOURCE_LOCATION_MARKDOWN_LINK_SYSTEM_MESSAGE);
     });
 
     it('keeps resumable sessions on the SDK session without prepending history', async () => {
-        mockBuildConversationHistoryContext.mockReturnValue('HISTORY: prior turns');
         const proc = makeProcess({ id: 'proc-warm-history', sdkSessionId: 'existing-session' });
         await store.addProcess(proc);
 
@@ -955,8 +950,7 @@ describe('FollowUpExecutor', () => {
 
         const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
         expect(callArg.sessionId).toBe('existing-session');
-        expect(callArg.systemMessage.content).not.toContain('HISTORY: prior turns');
-        expect(mockBuildConversationHistoryContext).not.toHaveBeenCalled();
+        expect(callArg.systemMessage.content).not.toContain('<conversation_handoff>');
     });
 
     // -------------------------------------------------------------------------
@@ -2136,7 +2130,6 @@ describe('FollowUpExecutor chat-mode directive injection', () => {
         sdkMocks.resetAll();
         mockBuildFollowUpSuggestionsAddon.mockReset().mockReturnValue({ tools: [], suffix: '' });
         mockBuildChatToolBundle.mockReset().mockReturnValue(makeMockToolBundle());
-        mockBuildConversationHistoryContext.mockReset().mockReturnValue(undefined);
         mockWithRepoInstructions.mockReset().mockImplementation(async (sm: any) => sm);
         mockReadNoteContent.mockReset().mockResolvedValue(undefined);
         mockBuildMemoryV2Addon.mockReset().mockResolvedValue({

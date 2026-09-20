@@ -7,12 +7,14 @@ import type { ChatProvider } from '../ProviderBadge';
  *                action is not offered at all.
  * - `disabled` — the provider supports rewind, but this turn was recorded
  *                before anchors were captured, so there is nothing to rewind to.
+ * - `earlier-segment` — the turn belongs to a provider session that is no longer active.
  * - `enabled`  — provider supports rewind and the turn carries an anchor.
  */
-export type RewindCapability = 'hidden' | 'disabled' | 'enabled';
+export type RewindCapability = 'hidden' | 'disabled' | 'earlier-segment' | 'enabled';
 
 /** Tooltip shown on the disabled menu item so the state is self-explaining. */
 export const REWIND_NO_ANCHOR_TOOLTIP = 'This turn predates rewind support';
+export const REWIND_EARLIER_SEGMENT_TOOLTIP = 'This turn belongs to an earlier provider session. Cross-provider rewind is not available yet.';
 
 /**
  * Providers whose SDK exposes a native rewind primitive. Codex has none
@@ -29,7 +31,31 @@ const REWIND_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set<ChatProvider>(['co
  * An unknown/absent provider is treated as capable — the backend stays the
  * definitive gate and will surface a typed error if it is not.
  */
-export function resolveRewindCapability(provider: ChatProvider | undefined, sdkEventId: string | undefined): RewindCapability {
+export interface RewindSegmentContext {
+    turnIndex?: number;
+    turnProvider?: ChatProvider;
+    turnSegmentId?: string;
+    activeProvider?: ChatProvider;
+    activeSegmentId?: string;
+    activeSegmentStartTurnIndex?: number;
+}
+
+export function resolveRewindCapability(
+    provider: ChatProvider | undefined,
+    sdkEventId: string | undefined,
+    segment?: RewindSegmentContext,
+): RewindCapability {
+    const belongsToEarlierSegment = Boolean(segment?.activeSegmentId
+        && (
+            (segment.turnIndex != null
+                && segment.activeSegmentStartTurnIndex != null
+                && segment.turnIndex < segment.activeSegmentStartTurnIndex)
+            || (segment.turnSegmentId != null && segment.turnSegmentId !== segment.activeSegmentId)
+            || (segment.turnProvider != null
+                && segment.activeProvider != null
+                && segment.turnProvider !== segment.activeProvider)
+        ));
+    if (belongsToEarlierSegment) return 'earlier-segment';
     if (provider && !REWIND_CAPABLE_PROVIDERS.has(provider)) return 'hidden';
     return sdkEventId ? 'enabled' : 'disabled';
 }

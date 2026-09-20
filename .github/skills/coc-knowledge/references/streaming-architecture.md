@@ -65,12 +65,14 @@ chat it is viewing, instead of every tab being flooded with every process's outp
 
 ### Warm-status SSE (`?warm=1`)
 
-`GET /api/processes/{processId}/stream?warm=1` (`streamWarmStatusOnly` in
+`GET /api/processes/{processId}/stream?warm=1&provider={provider}` (`streamWarmStatusOnly` in
 `streaming/sse-handler.ts`) drives the composer's conversation-warm dot. Unlike the main
 stream it sends no conversation snapshot, relays only `warm_status` frames, and stays open
 across terminal process status — the dominant case is a finished chat whose provider client is
 still parked warm.
 
+The optional concrete provider selects a confirmed pending follow-up provider; otherwise
+the stream resolves the latest accepted user-turn provider and then the active binding.
 On connect it (1) subscribes to process output, (2) registers interest with the
 `WarmStatusBridge` under `makeWarmKey(provider, processId)`, then (3) reads
 `warmBridge.getCurrentStatus(provider, processId, cwd)` →
@@ -82,6 +84,8 @@ already-warm chat show the dot immediately; `cold` snapshots are sent too (usefu
 reconnects, unsupported providers, TTL expiry, or restart). A transition racing the snapshot
 can duplicate a frame — harmless, since the SPA assigns status idempotently.
 `getCurrentStatus` returns `cold` for providers without `getWarmStatus` (e.g. Claude).
+Bridge events carry their provider and each stream filters other providers sharing the
+same process id, preserving `(provider, processId)` isolation during a switch.
 
 ### Background-task replay on connect
 

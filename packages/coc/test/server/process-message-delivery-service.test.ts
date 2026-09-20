@@ -14,9 +14,12 @@ import type { AIProcess, ConversationTurn, PendingMessage } from '@plusplusonepl
 import {
     ProcessMessageDeliveryService,
     normalizeFollowUpInput,
+    isIdleForProviderSwitch,
     FollowUpDeliveryError,
+    ProviderSwitchRequiresIdleError,
     type FollowUpMessageInput,
 } from '../../src/server/processes/process-message-delivery-service';
+import { ProcessOperationAdmission } from '../../src/server/processes/process-operation-admission';
 import type { QueueExecutorBridge } from '../../src/server/queue/queue-executor-bridge';
 
 // ============================================================================
@@ -30,9 +33,12 @@ interface FakeStore {
     appendConversationTurn: ReturnType<typeof vi.fn>;
     appendPendingMessage: ReturnType<typeof vi.fn>;
     updateProcess: ReturnType<typeof vi.fn>;
+    getProcess: ReturnType<typeof vi.fn>;
+    setCurrentProcess: (proc: AIProcess) => void;
 }
 
 function makeStore(initialTurns: ConversationTurn[] = []): FakeStore {
+    let currentProcess: AIProcess | undefined;
     const store: FakeStore = {
         turns: [...initialTurns],
         pending: [],
@@ -40,10 +46,21 @@ function makeStore(initialTurns: ConversationTurn[] = []): FakeStore {
         appendConversationTurn: vi.fn(),
         appendPendingMessage: vi.fn(),
         updateProcess: vi.fn(),
+        getProcess: vi.fn(async () => currentProcess),
+        setCurrentProcess: (proc: AIProcess) => {
+            currentProcess = proc;
+        },
     };
     store.appendConversationTurn.mockImplementation(async (_id: string, makeTurn: (i: number) => ConversationTurn) => {
         const turn = makeTurn(store.turns.length);
         store.turns.push(turn);
+        if (currentProcess) {
+            currentProcess = {
+                ...currentProcess,
+                conversationTurns: [...store.turns],
+                status: 'running',
+            };
+        }
         return { turn, allTurns: [...store.turns] };
     });
     store.appendPendingMessage.mockImplementation(async (_id: string, message: PendingMessage) => {
@@ -52,6 +69,7 @@ function makeStore(initialTurns: ConversationTurn[] = []): FakeStore {
     });
     store.updateProcess.mockImplementation(async (_id: string, updates: Record<string, unknown>) => {
         store.updates.push(updates);
+        if (currentProcess) currentProcess = { ...currentProcess, ...updates } as AIProcess;
     });
     return store;
 }
@@ -218,6 +236,62 @@ describe('normalizeFollowUpInput', () => {
         });
     });
 
+    describe('requested provider', () => {
+        it('leaves the provider unset when the body omits it (pre-switching clients)', () => {
+            const r = normalizeFollowUpInput({}, 'copilot');
+            expect(r.ok && r.value.requestedProvider).toBeUndefined();
+            expect(r.ok && r.value.isProviderSwitch).toBe(false);
+        });
+        it('treats an explicit null like an omitted provider', () => {
+            const r = normalizeFollowUpInput({ provider: null }, 'copilot');
+            expect(r.ok && r.value.requestedProvider).toBeUndefined();
+            expect(r.ok && r.value.isProviderSwitch).toBe(false);
+        });
+        it('accepts every concrete provider', () => {
+            for (const provider of ['copilot', 'codex', 'claude', 'opencode'] as const) {
+                const r = normalizeFollowUpInput({ provider }, 'copilot');
+                expect(r.ok && r.value.requestedProvider).toBe(provider);
+            }
+        });
+        it('does not flag a switch when the requested provider is the active one', () => {
+            const r = normalizeFollowUpInput({ provider: 'codex' }, 'codex');
+            expect(r.ok && r.value.requestedProvider).toBe('codex');
+            expect(r.ok && r.value.isProviderSwitch).toBe(false);
+        });
+        it('flags a switch when the requested provider differs', () => {
+            const r = normalizeFollowUpInput({ provider: 'codex' }, 'copilot');
+            expect(r.ok && r.value.isProviderSwitch).toBe(true);
+        });
+        it('rejects auto with INVALID_PROVIDER rather than resolving it', () => {
+            const r = normalizeFollowUpInput({ provider: 'auto' }, 'copilot');
+            expect(r.ok).toBe(false);
+            expect(!r.ok && r.code).toBe('INVALID_PROVIDER');
+        });
+        it('rejects an unknown provider', () => {
+            const r = normalizeFollowUpInput({ provider: 'gemini' }, 'copilot');
+            expect(r.ok).toBe(false);
+            expect(!r.ok && r.code).toBe('INVALID_PROVIDER');
+        });
+        it('rejects a non-string provider', () => {
+            const r = normalizeFollowUpInput({ provider: 3 }, 'copilot');
+            expect(r.ok).toBe(false);
+            expect(!r.ok && r.code).toBe('INVALID_PROVIDER');
+        });
+        it('validates the model against the requested provider, not the active one', () => {
+            // Valid for the active provider, meaningless to the target: it must
+            // be dropped rather than sent to the wrong provider.
+            const r = normalizeFollowUpInput({ provider: 'codex', model: 'claude-sonnet-4-6' }, 'claude');
+            expect(r.ok && r.value.model).toBeUndefined();
+            expect(r.ok && r.value.modelCoerced).toBe(true);
+            expect(r.ok && r.value.requestedModel).toBe('claude-sonnet-4-6');
+        });
+        it('keeps a model that is valid for the requested provider', () => {
+            const r = normalizeFollowUpInput({ provider: 'claude', model: 'claude-sonnet-4-6' }, 'copilot');
+            expect(r.ok && r.value.model).toBe('claude-sonnet-4-6');
+            expect(r.ok && r.value.modelCoerced).toBe(false);
+        });
+    });
+
     describe('optimisticId', () => {
         it('keeps a string optimisticId', () => {
             const r = normalizeFollowUpInput({ optimisticId: 'opt-1' }, 'copilot');
@@ -235,6 +309,129 @@ describe('normalizeFollowUpInput', () => {
 // ============================================================================
 
 describe('ProcessMessageDeliveryService.deliver', () => {
+    it('rejects a provider switch when the task becomes busy after the route snapshot', async () => {
+        const store = makeStore();
+        const current = makeProc({
+            status: 'completed',
+            metadata: { provider: 'copilot' },
+        });
+        store.setCurrentProcess(current);
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn().mockReturnValue({ id: 't1', type: 'chat', status: 'running' }),
+            steerProcess: vi.fn(),
+        };
+        const service = makeService(store, bridge);
+
+        await expect(service.deliver(
+            makeProc({ status: 'completed', metadata: { provider: 'copilot' } }),
+            makeInput({
+                provider: 'codex',
+                deliveryMode: 'immediate',
+                metadataUpdate: { type: 'chat', chatStyle: 'direct' },
+            }),
+        )).rejects.toBeInstanceOf(ProviderSwitchRequiresIdleError);
+
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect(store.appendPendingMessage).not.toHaveBeenCalled();
+        expect(store.appendConversationTurn).not.toHaveBeenCalled();
+        expect(store.updateProcess).not.toHaveBeenCalled();
+    });
+
+    it('serializes delivery admission so a provider switch that loses the idle race is rejected', async () => {
+        const store = makeStore();
+        const current = makeProc({
+            status: 'completed',
+            metadata: { provider: 'copilot' },
+        });
+        store.setCurrentProcess(current);
+        let taskStatus: string | undefined;
+        let releaseEnqueue!: () => void;
+        const enqueueBlocked = new Promise<void>(resolve => {
+            releaseEnqueue = resolve;
+        });
+        const bridge = {
+            enqueue: vi.fn(async () => {
+                taskStatus = 'running';
+                await enqueueBlocked;
+                return 'task-id';
+            }),
+            findTaskByProcessId: vi.fn(() => taskStatus
+                ? { id: 't1', type: 'chat' as const, status: taskStatus as 'running' }
+                : undefined),
+            steerProcess: vi.fn(),
+        };
+        const admission = new ProcessOperationAdmission();
+        const service = new ProcessMessageDeliveryService({
+            store: store as never,
+            bridge: bridge as QueueExecutorBridge,
+            admission,
+        });
+
+        const accepted = service.deliver(current, makeInput({ provider: 'copilot' }));
+        await vi.waitFor(() => expect(bridge.enqueue).toHaveBeenCalledOnce());
+        const rejected = service.deliver(current, makeInput({
+            provider: 'codex',
+            deliveryMode: 'immediate',
+        }));
+
+        releaseEnqueue();
+        await expect(accepted).resolves.toMatchObject({ path: 'enqueued' });
+        await expect(rejected).rejects.toBeInstanceOf(ProviderSwitchRequiresIdleError);
+        expect(bridge.enqueue).toHaveBeenCalledOnce();
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect(store.appendPendingMessage).not.toHaveBeenCalled();
+        expect(store.appendConversationTurn).toHaveBeenCalledOnce();
+    });
+
+    it('rejects a contending provider switch even when the prior operation restores an idle state', async () => {
+        const store = makeStore();
+        const current = makeProc({
+            status: 'completed',
+            metadata: { provider: 'copilot' },
+        });
+        store.setCurrentProcess(current);
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn(),
+            steerProcess: vi.fn(),
+        };
+        const admission = new ProcessOperationAdmission();
+        const service = new ProcessMessageDeliveryService({
+            store: store as never,
+            bridge: bridge as unknown as QueueExecutorBridge,
+            admission,
+        });
+        let releaseOperation!: () => void;
+        let markAcquired!: () => void;
+        const acquired = new Promise<void>(resolve => {
+            markAcquired = resolve;
+        });
+        const blocker = admission.runExclusive(current.id, async () => {
+            markAcquired();
+            await new Promise<void>(resolve => {
+                releaseOperation = resolve;
+            });
+        });
+        await acquired;
+
+        const rejected = service.deliver(current, makeInput({
+            provider: 'codex',
+            deliveryMode: 'immediate',
+        }));
+        const rejectedExpectation = expect(rejected).rejects.toBeInstanceOf(ProviderSwitchRequiresIdleError);
+        releaseOperation();
+        await blocker;
+
+        await rejectedExpectation;
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect(store.appendPendingMessage).not.toHaveBeenCalled();
+        expect(store.appendConversationTurn).not.toHaveBeenCalled();
+        expect(store.updateProcess).not.toHaveBeenCalled();
+    });
+
     it('steers immediately when a running parent task accepts steering', async () => {
         const store = makeStore();
         const steerProcess = vi.fn().mockResolvedValue(true);
@@ -349,6 +546,116 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(result.events.map(e => e.kind)).toEqual(['message-queued']);
     });
 
+    it('carries the accepted provider into the enqueue payload', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({ status: 'completed', metadata: { provider: 'copilot' } }),
+            makeInput({ provider: 'codex' }),
+        );
+
+        expect(bridge.enqueue.mock.calls[0][0].payload.provider).toBe('codex');
+    });
+
+    it('omits provider from the enqueue payload when the input carries none', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(makeProc({ status: 'completed' }), makeInput({}));
+
+        expect(bridge.enqueue.mock.calls[0][0].payload.provider).toBeUndefined();
+    });
+
+    it('records the accepted provider on the persisted user turn', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({ status: 'completed', metadata: { provider: 'copilot' } }),
+            makeInput({ provider: 'codex' }),
+        );
+
+        const turn = store.appendConversationTurn.mock.calls[0][1](0);
+        expect(turn.provider).toBe('codex');
+    });
+
+    it('leaves the user turn unattributed when the input carries no provider', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(makeProc({ status: 'completed' }), makeInput({}));
+
+        const turn = store.appendConversationTurn.mock.calls[0][1](0);
+        expect(turn.provider).toBeUndefined();
+    });
+
+    it('records the active segment on a same-provider user turn', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({
+                status: 'completed',
+                activeProviderSession: {
+                    provider: 'copilot',
+                    sessionId: 'copilot-1',
+                    segmentId: 'seg-copilot-1',
+                    firstTurnIndex: 0,
+                },
+            }),
+            makeInput({ provider: 'copilot' }),
+        );
+
+        const turn = store.appendConversationTurn.mock.calls[0][1](0);
+        expect(turn.segmentId).toBe('seg-copilot-1');
+    });
+
+    it('leaves a cross-provider user turn without a segment until the target binds one', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({
+                status: 'completed',
+                activeProviderSession: {
+                    provider: 'copilot',
+                    sessionId: 'copilot-1',
+                    segmentId: 'seg-copilot-1',
+                    firstTurnIndex: 0,
+                },
+            }),
+            makeInput({ provider: 'codex' }),
+        );
+
+        const turn = store.appendConversationTurn.mock.calls[0][1](0);
+        expect(turn.provider).toBe('codex');
+        expect(turn.segmentId).toBeUndefined();
+    });
+
+    it('records the accepted provider on a buffered pending message', async () => {
+        const store = makeStore();
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn().mockReturnValue({ id: 't1', type: 'chat', status: 'running' }),
+            steerProcess: vi.fn(),
+        };
+        const service = makeService(store, bridge);
+
+        await service.deliver(
+            makeProc({ status: 'running', metadata: { provider: 'claude' } }),
+            makeInput({ deliveryMode: 'enqueue', provider: 'claude' }),
+        );
+
+        expect(store.appendPendingMessage.mock.calls[0][1].provider).toBe('claude');
+    });
+
     it('carries resumeSessionId into the enqueue payload for a cancelled strict resume', async () => {
         const store = makeStore();
         const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
@@ -415,5 +722,44 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(pending.model).toBe('gpt-5');
         expect(pending.reasoningEffort).toBe('low');
         expect(pending.mode).toBe('autopilot');
+    });
+});
+
+// ============================================================================
+// isIdleForProviderSwitch
+// ============================================================================
+
+describe('isIdleForProviderSwitch', () => {
+    it('is idle for a completed process with no owning task', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed' })).toBe(true);
+    });
+    it('is idle for a cancelled (stopped) process so it can continue elsewhere', () => {
+        expect(isIdleForProviderSwitch({ status: 'cancelled' })).toBe(true);
+    });
+    it('is idle for a failed process so a retry can switch providers', () => {
+        expect(isIdleForProviderSwitch({ status: 'failed' })).toBe(true);
+    });
+    it('is busy while the owning task runs', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed' }, 'running')).toBe(false);
+    });
+    it('is busy while the owning task is queued', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed' }, 'queued')).toBe(false);
+    });
+    it('is idle once the owning task reached a terminal status', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed' }, 'completed')).toBe(true);
+    });
+    it('falls back to a non-terminal process status when the task is gone', () => {
+        for (const status of ['queued', 'running', 'cancelling', 'created']) {
+            expect(isIdleForProviderSwitch({ status })).toBe(false);
+        }
+    });
+    it('is busy while an ask_user batch is waiting for an answer', () => {
+        expect(isIdleForProviderSwitch({
+            status: 'completed',
+            pendingAskUser: [{ question: 'which one?' }],
+        })).toBe(false);
+    });
+    it('ignores an empty pendingAskUser list', () => {
+        expect(isIdleForProviderSwitch({ status: 'completed', pendingAskUser: [] })).toBe(true);
     });
 });

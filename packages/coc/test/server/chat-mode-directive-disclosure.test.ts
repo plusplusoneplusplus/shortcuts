@@ -159,6 +159,7 @@ describe('mode directive disclosure on follow-up turns', () => {
             canvasEnabled: false,
             kustoEnabled: false,
             chatStyleSelectorEnabled: false,
+            chatProviderSwitchingEnabled: false,
         }));
 
         const handler = createRequestHandler({ routes, spaHtml: generateDashboardHtml(), store });

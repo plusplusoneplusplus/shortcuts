@@ -7,7 +7,7 @@
  */
 
 import { AIBackendType } from './types';
-import type { TokenUsage, Attachment } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { TokenUsage, Attachment, SupportedProvider } from '@plusplusoneplusplus/coc-agent-sdk';
 import type {
     CodeReviewProcessMetadata,
     DiscoveryProcessMetadata,
@@ -192,7 +192,7 @@ export interface ConversationTurn {
      * True for turns synthesized for display only (e.g. the `/compact` result
      * notice). Rendered in the transcript but deliberately excluded from the
      * provider model's prompt history on future follow-ups — see
-     * `buildConversationHistoryContext`.
+     * `buildConversationHandoff`.
      */
     displayOnly?: boolean;
     /**
@@ -225,6 +225,24 @@ export interface ConversationTurn {
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
     mode?: string;
+    /**
+     * Concrete AI provider that ran this turn. Written when the turn is
+     * recorded, from the provider the request was accepted for — never
+     * re-read later from mutable conversation metadata, so a turn keeps its
+     * original attribution after the conversation switches providers. Absent
+     * on turns recorded before provider attribution existed; those fall back
+     * to the process's provider for display only.
+     */
+    provider?: SupportedProvider;
+    /**
+     * Provider segment this turn belongs to. A segment is one continuous run
+     * on one native provider session; a new one starts whenever the provider
+     * changes or a fresh native session replaces the previous one. Written
+     * alongside `provider` and never re-derived, so the boundary between two
+     * provider sessions stays provable after the fact. Absent on turns
+     * recorded before segment attribution existed.
+     */
+    segmentId?: string;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: Date;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */
@@ -303,6 +321,24 @@ export interface SerializedConversationTurn {
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
     mode?: string;
+    /**
+     * Concrete AI provider that ran this turn. Written when the turn is
+     * recorded, from the provider the request was accepted for — never
+     * re-read later from mutable conversation metadata, so a turn keeps its
+     * original attribution after the conversation switches providers. Absent
+     * on turns recorded before provider attribution existed; those fall back
+     * to the process's provider for display only.
+     */
+    provider?: SupportedProvider;
+    /**
+     * Provider segment this turn belongs to. A segment is one continuous run
+     * on one native provider session; a new one starts whenever the provider
+     * changes or a fresh native session replaces the previous one. Written
+     * alongside `provider` and never re-derived, so the boundary between two
+     * provider sessions stays provable after the fact. Absent on turns
+     * recorded before segment attribution existed.
+     */
+    segmentId?: string;
     /** ISO timestamp when this turn was soft-deleted (undefined = not deleted) */
     deletedAt?: string;
     /** ISO timestamp when this turn was pinned (undefined = not pinned) */
@@ -415,6 +451,42 @@ export interface PendingFileAttachmentMeta {
 }
 
 /**
+ * The one authoritative binding between a CoC conversation and the
+ * provider-native session that currently continues it.
+ *
+ * Provider and native session id live in a single stored value on purpose:
+ * they are written as one store operation, so a crash or a failed write can
+ * never leave a new provider paired with the previous provider's session id.
+ * No reader may combine a provider read from one place with a session id read
+ * from another.
+ *
+ * The process-level `provider` metadata and `sdkSessionId` remain
+ * backward-compatible projections of this binding until every consumer reads
+ * through it.
+ */
+export interface ActiveProviderSession {
+    /** Concrete provider that owns the current native session. */
+    provider: SupportedProvider;
+    /**
+     * Native session id, present once the provider has reported one. Absent
+     * between "we decided to run on this provider" and "the provider created a
+     * session" — the binding is still authoritative about the provider.
+     */
+    sessionId?: string;
+    /**
+     * Stable id for this provider segment. A new segment starts whenever the
+     * provider changes or a fresh native session replaces the previous one;
+     * switching back to an earlier provider starts another segment rather than
+     * resuming the earlier one.
+     */
+    segmentId: string;
+    /** Index of the first conversation turn that belongs to this segment. */
+    firstTurnIndex: number;
+    /** ISO timestamp of when this binding became active. */
+    boundAt?: string;
+}
+
+/**
  * A message queued on the server while an AI response is in progress.
  * Persisted on the AIProcess so it survives chat switches and page refreshes.
  */
@@ -431,6 +503,14 @@ export interface PendingMessage {
     pasteExternalized?: boolean;
     /** Model override used for this turn */
     model?: string;
+    /**
+     * Concrete AI provider this message was accepted for, resolved once when
+     * the follow-up was received. Carried on the message itself so a later
+     * change to the conversation's provider metadata cannot retarget a message
+     * that was already buffered. Absent on messages buffered before per-message
+     * provider routing existed — those drain on the conversation provider.
+     */
+    provider?: SupportedProvider;
     /** Interaction mode when the message was queued */
     mode?: string;
     /**
@@ -559,6 +639,13 @@ export interface AIProcess {
     backend?: AIBackendType;
     /** Working directory used for the original session */
     workingDirectory?: string;
+    /**
+     * Authoritative provider/native-session binding for this conversation.
+     * Absent on processes recorded before provider bindings existed; those
+     * fall back to the `metadata.provider` + `sdkSessionId` projection.
+     */
+    activeProviderSession?: ActiveProviderSession;
+
 
     /** Human-readable title generated by AI after the first exchange */
     title?: string;
@@ -670,6 +757,13 @@ export interface SerializedAIProcess {
     backend?: AIBackendType;
     /** Working directory used for the original session */
     workingDirectory?: string;
+    /**
+     * Authoritative provider/native-session binding for this conversation.
+     * Absent on processes recorded before provider bindings existed; those
+     * fall back to the `metadata.provider` + `sdkSessionId` projection.
+     */
+    activeProviderSession?: ActiveProviderSession;
+
 
     /** Human-readable title generated by AI after the first exchange */
     title?: string;

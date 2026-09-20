@@ -63,7 +63,6 @@ describe('useExplorerTabsState', () => {
                 path: 'src/a.ts',
                 name: 'a.ts',
                 preview: true,
-                readOnly: false,
             }],
             activeId: fileTabId('src/a.ts'),
             mru: [fileTabId('src/a.ts')],
@@ -133,12 +132,12 @@ describe('useExplorerTabs — opening', () => {
         expect(storedTabs('ws-1').tabs[0].preview).toBe(false);
     });
 
-    it('opens a read-only search buffer alongside file tabs', () => {
+    it('opens a search buffer alongside file tabs', () => {
         const { result } = renderHook(() => useExplorerTabs('ws-1'));
         act(() => result.current.openFile({ path: 'a.ts', name: 'a.ts', preview: false }));
         act(() => result.current.openSearch({ query: 'todo', name: 'Search: todo' }));
         expect(result.current.tabs.map(tab => tab.id)).toEqual([fileTabId('a.ts'), searchTabId('todo')]);
-        expect(result.current.active?.readOnly).toBe(true);
+        expect(result.current.active?.kind).toBe('search');
     });
 });
 
@@ -286,6 +285,6 @@ describe('useExplorerTabs — stability and scoping', () => {
         expect(raw).not.toContain('content');
         expect(raw).not.toContain('dirty');
         const keys = Object.keys(storedTabs('ws-1').tabs[0]).sort();
-        expect(keys).toEqual(['id', 'kind', 'line', 'name', 'path', 'preview', 'readOnly']);
+        expect(keys).toEqual(['id', 'kind', 'line', 'name', 'path', 'preview']);
     });
 });

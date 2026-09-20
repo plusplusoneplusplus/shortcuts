@@ -32,6 +32,7 @@ import {
     createPythonRepoFixture,
     createRustRepoFixture,
     createTypeScriptRepoFixture,
+    disableLanguageServers,
     enableLanguageServers,
 } from './fixtures/language-server-seed';
 import {
@@ -535,12 +536,16 @@ test.describe('Explorer language support – status', () => {
             const repoDir = createTypeScriptRepoFixture(tmpDir);
             await seedWorkspace(serverUrl, WORKSPACE_ID, 'lsp-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
+            // An unconfigured workspace is seeded from its own files, which for
+            // this fixture means TypeScript on. Turning support off explicitly
+            // is what puts the workspace in the state this case is about.
+            await disableLanguageServers(serverUrl, WORKSPACE_ID);
 
             await gotoExplorer(page, serverUrl);
             await openSourceFile(page, 'app.ts');
 
-            // The config ships disabled, so the host refuses the document and
-            // the badge names the reason rather than a failure.
+            // Support is off, so the host refuses the document and the badge
+            // names the reason rather than a failure.
             await expect(statusBadge(page)).toHaveAttribute('data-tone', 'warning', { timeout: 20_000 });
             await expect(page.locator(`${APP_PANEL} [data-testid="language-status-label"]`))
                 .toHaveText('Language support off');

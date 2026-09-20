@@ -41,12 +41,12 @@ vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/Source
 // jsdom cannot run Monaco, and the code viewer inside SourceCanvasBody mounts
 // it — stub the module the same way PreviewPane's read-only test does.
 vi.mock('../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, language, readOnly, highlightRange }: any) => (
+    MonacoFileEditor: ({ value, language, onModelMount, highlightRange }: any) => (
         <div
             data-testid="mock-monaco-editor"
             data-language={language}
             data-value={value}
-            data-read-only={String(!!readOnly)}
+            data-read-only={String(typeof onModelMount === 'function')}
             data-highlight-start={highlightRange ? String(highlightRange.start) : ''}
             data-highlight-end={highlightRange ? String(highlightRange.end) : ''}
         />
