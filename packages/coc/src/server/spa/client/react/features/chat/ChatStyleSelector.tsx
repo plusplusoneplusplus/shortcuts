@@ -1,6 +1,6 @@
 /**
  * ChatStyleSelector — a single-chip dropdown that lets the user pick how the
- * response is written (Default / Human / Direct / Structured).
+ * response is written (Default / Human / Direct / Terse / Structured).
  *
  * Mirrors EffortTierSelector's button, popover, focus, outside-click, dark-mode,
  * and compact-trigger conventions so the two chips read as one control group.
@@ -29,6 +29,7 @@ export const CHAT_STYLE_DESCRIPTIONS: Record<ChatStyle, string> = {
     default: 'No style instruction is added to your message.',
     human: 'Natural, conversational, like a helpful coworker.',
     direct: 'Answer first, fewest words that keep the important facts.',
+    terse: 'Fewest words that fully answer, usually 1–3 short sentences.',
     structured: 'Easy to scan: key points, decisions, risks, next steps.',
 };
 

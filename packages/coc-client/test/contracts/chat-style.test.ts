@@ -8,8 +8,8 @@ import {
 } from '../../src/contracts/common';
 
 describe('ChatStyle wire contract', () => {
-    it('lists the four stable values with Default first', () => {
-        expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'structured']);
+    it('lists the five stable values with Default first', () => {
+        expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'terse', 'structured']);
     });
 
     it('starts on default', () => {
@@ -21,6 +21,7 @@ describe('ChatStyle wire contract', () => {
             default: 'Default',
             human: 'Human',
             direct: 'Direct',
+            terse: 'Terse',
             structured: 'Structured',
         });
     });

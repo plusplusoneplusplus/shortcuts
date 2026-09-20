@@ -54,6 +54,7 @@ const autoProviderRoutingSchema = z.object({
 const chatStylePromptsSchema = z.object({
     human: z.string().nullish(),
     direct: z.string().nullish(),
+    terse: z.string().nullish(),
     structured: z.string().nullish(),
 }).passthrough();
 
