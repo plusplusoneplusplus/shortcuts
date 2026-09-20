@@ -1334,7 +1334,7 @@ function PauseDurationMenu({
 
     return (
         <div
-            className="absolute right-0 top-full mt-1 z-30 min-w-52 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
+            className="absolute right-0 top-full mt-1 z-30 min-w-52 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#252526] shadow-lg p-1 text-xs"
             data-testid={`pause-duration-menu-${testIdScope}`}
             onClick={(e) => e.stopPropagation()}
         >

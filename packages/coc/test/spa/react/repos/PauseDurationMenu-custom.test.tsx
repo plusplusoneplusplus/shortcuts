@@ -208,7 +208,8 @@ describe('PauseDurationMenu — Custom… float-hours row', () => {
 
     it('renders the Custom… row in the ALL menu below the presets', () => {
         renderPane();
-        openAllMenu();
+        const menu = openAllMenu();
+        expect(menu).toHaveClass('max-h-[calc(100dvh-4rem)]', 'overflow-y-auto', 'overscroll-contain');
         expect(screen.getByTestId('pause-duration-all-custom')).toBeTruthy();
         expect(screen.getByTestId('pause-duration-all-custom').textContent).toContain('Custom');
         // Presets are unchanged alongside the custom row
