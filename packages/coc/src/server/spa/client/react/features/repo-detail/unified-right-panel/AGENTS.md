@@ -362,8 +362,10 @@ session.
 
 ## Closing is guarded
 
-Both the strip's ✕ and a view's own close button go through `requestClose`, which
-runs the terminal check, then the dirty check, then `closeTab`:
+The strip's ✕ and the close buttons owned by canvas, note, diff, and external
+views go through `requestClose`, which runs the terminal check, then the dirty
+check, then `closeTab`. File tabs use only the strip's ✕ because `PreviewPane`'s
+floating close button would duplicate it:
 
 - **Terminal.** `TerminalView` reports its sessions through `onSessionsChange`;
   `liveTerminalSessionIds` counts only `running` sessions that have a server id, so

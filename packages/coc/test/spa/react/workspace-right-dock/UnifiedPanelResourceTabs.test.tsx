@@ -271,12 +271,14 @@ describe('UnifiedRightPanel — file tabs (AC-04)', () => {
         expect(screen.queryByTestId(`unified-panel-tab-error-${fileId}`)).toBeNull();
     });
 
-    it('closes its own tab from the view\'s close control', async () => {
+    it('uses only the tab-strip close control for a file tab', async () => {
         const fileId = openFile({ path: 'src/a.ts' });
         renderPanel();
 
         await screen.findByTestId('mock-monaco-textarea');
-        fireEvent.click(screen.getByTestId('preview-close-btn'));
+        expect(screen.queryByTestId('preview-close-btn')).toBeNull();
+
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${fileId}`));
         expect(screen.queryByTestId(`unified-panel-tab-${fileId}`)).toBeNull();
     });
 });
