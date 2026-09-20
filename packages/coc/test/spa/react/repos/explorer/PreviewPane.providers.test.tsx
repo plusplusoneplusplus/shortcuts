@@ -23,6 +23,10 @@ import {
     resetShadowLanguagesForTests,
 } from '../../../../../src/server/spa/client/react/features/language-servers/shadowLanguage';
 import { FakeClient, readyState } from '../../language-servers/fakeLanguageTransport';
+import {
+    readExternalSourceRecord,
+    resetExternalSourceStoreForTests,
+} from '../../../../../src/server/spa/client/react/features/language-servers/externalSourceStore';
 
 const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
@@ -218,6 +222,7 @@ function renderPane(props: Partial<Parameters<typeof PreviewPane>[0]> = {}) {
 beforeEach(() => {
     vi.clearAllMocks();
     resetLanguageDocumentStoresForTests();
+    resetExternalSourceStoreForTests();
     monacoStub.reset();
     cueStub.reset();
     monacoStub.model.languageId = 'typescript';
@@ -648,6 +653,41 @@ describe('PreviewPane — language providers (AC-03)', () => {
         expect(mockExplorerApi.readBlob).not.toHaveBeenCalledWith(
             expect.anything(), 'string_view', expect.anything(), expect.anything(),
         );
+    });
+
+    it('waits for a lone external reference before handing it to Monaco', async () => {
+        monacoStub.model.languageId = 'cpp';
+        renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp' });
+        const attachment = await attachmentFor('src/a.cpp');
+        attachWith(attachment);
+        attachment.externalSources.set('cap-ref', {
+            content: 'namespace std { class string_view; }',
+            displayName: 'string_view',
+            languageHint: 'cpp',
+        });
+        attachment.respond('textDocument/references', () => [{
+            uri: 'coc-lsp-external://cap-ref/string_view',
+            range: { start: { line: 41, character: 8 }, end: { line: 41, character: 14 } },
+        }]);
+        // Keep the read in flight, so only an actual wait can produce content.
+        attachment.externalReadGate = new Promise<void>(resolve => { setTimeout(resolve, 10); });
+
+        await waitFor(() => expect(monacoStub.live().map(entry => entry.kind)).toContain('references'));
+        const links = await monacoStub.provider('references').provideReferences(
+            monacoStub.model,
+            { lineNumber: 1, column: 3 },
+            { includeDeclaration: true },
+            token,
+        );
+
+        // A single result navigates straight through, which unmounts the pane
+        // whose attachment holds the capability: the content has to be here
+        // already, not in flight.
+        expect(links.map((link: any) => link.uri.toString())).toEqual(['coc-lsp-external://cap-ref/string_view']);
+        expect(readExternalSourceRecord('cap-ref'))
+            .toMatchObject({ content: 'namespace std { class string_view; }' });
+        expect(monacoStub.resolvePreview('coc-lsp-external://cap-ref/string_view'))
+            .toMatchObject({ content: 'namespace std { class string_view; }' });
     });
 
     it('shows an unavailable model when the external read fails', async () => {

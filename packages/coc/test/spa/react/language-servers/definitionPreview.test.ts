@@ -297,14 +297,73 @@ describe('definition preview source', () => {
             expect(readExternalSourceRecord('cap-2')).toMatchObject({ content: '#pragma once', displayName: 'widget.hpp' });
         });
 
-        it('shows the unavailable model when the read fails', async () => {
+        it('carries the host\'s reason into the model and the store when the read fails', async () => {
             const { monaco, model } = createMonaco();
-            const source = externalSource(monaco, vi.fn().mockRejectedValue(new Error('expired')));
+            const message = 'That definition source expired. Run Go to Definition again.';
+            const source = externalSource(monaco, vi.fn().mockRejectedValue(new Error(message)));
+
+            await source.prepare(EXTERNAL, new AbortController().signal, undefined, true);
+
+            expect(model(EXTERNAL)?.content).toBe(message);
+            expect(readExternalSourceRecord('cap-1')).toMatchObject({ failure: message, content: message });
+        });
+
+        it('falls back to the generic sentence when the failure says nothing', async () => {
+            const { monaco, model } = createMonaco();
+            const source = externalSource(monaco, vi.fn().mockRejectedValue(new Error('   ')));
 
             await source.prepare(EXTERNAL, new AbortController().signal, undefined, true);
 
             expect(model(EXTERNAL)?.content).toBe('Definition source unavailable.');
-            expect(readExternalSourceRecord('cap-1')).toBeUndefined();
+        });
+
+        it('republishes for a live model whose record the store already dropped', async () => {
+            const { monaco, model } = createMonaco();
+            const read = vi.fn().mockResolvedValue({ content: 'class string_view;', displayName: 'string_view' });
+            const source = externalSource(monaco, read);
+
+            await source.prepare(EXTERNAL, new AbortController().signal, undefined, true);
+            // A Peek left open outlives the store's orphan drop; the model is
+            // still here when the user finally confirms the result.
+            resetExternalSourceStoreForTests();
+
+            expect(await source.prepare(EXTERNAL, new AbortController().signal, undefined, true)).toBe(true);
+            expect(read).toHaveBeenCalledTimes(1);
+            expect(readExternalSourceRecord('cap-1')).toMatchObject({ content: 'class string_view;' });
+            expect(model(EXTERNAL)?.content).toBe('class string_view;');
+        });
+
+        it('loads again for a model another surface created', async () => {
+            const { monaco } = createMonaco();
+            const first = externalSource(monaco, vi.fn().mockResolvedValue({
+                content: 'class string_view;', displayName: 'string_view',
+            }));
+            await first.prepare(EXTERNAL, new AbortController().signal, undefined, true);
+            resetExternalSourceStoreForTests();
+
+            // Every open pane registers its own source against the one Monaco
+            // registry, so this one finds a model it has never loaded through.
+            const read = vi.fn().mockResolvedValue({ content: 'class string_view;', displayName: 'string_view' });
+            const second = externalSource(monaco, read);
+            expect(await second.prepare(EXTERNAL, new AbortController().signal, undefined, true)).toBe(true);
+
+            expect(read).toHaveBeenCalledTimes(1);
+            expect(readExternalSourceRecord('cap-1')).toMatchObject({ content: 'class string_view;' });
+        });
+
+        it('waits for a load another prepare already started', async () => {
+            const { monaco } = createMonaco();
+            let resolveRead: (value: unknown) => void = () => undefined;
+            const read = vi.fn(() => new Promise(resolve => { resolveRead = resolve; }));
+            const source = externalSource(monaco, read);
+
+            const first = source.prepare(EXTERNAL, new AbortController().signal, undefined, true);
+            const second = source.prepare(EXTERNAL, new AbortController().signal, undefined, true);
+            resolveRead({ content: 'class string_view;', displayName: 'string_view' });
+            await Promise.all([first, second]);
+
+            expect(read).toHaveBeenCalledTimes(1);
+            expect(readExternalSourceRecord('cap-1')).toMatchObject({ content: 'class string_view;' });
         });
 
         it('shows the unavailable model when this surface has no reader at all', async () => {

@@ -20,6 +20,12 @@ export const EXTERNAL_SOURCE_ORPHAN_TIMEOUT_MS = 60_000;
 
 export interface ExternalSourceRecord extends ExternalSourceContent {
     resourceId: string;
+    /**
+     * Why the read failed, in the host's own words. A failed read is published
+     * too, because the reason is the only thing the tab can show that helps.
+     * `content` carries the same text for the Peek model.
+     */
+    failure?: string;
 }
 
 interface Entry {
