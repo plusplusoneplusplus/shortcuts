@@ -30,6 +30,24 @@ export function selectDefinitionsForFile(
         .map((entry) => entry.definition);
 }
 
+/**
+ * Every enabled server, in the same preference order, for a query that names no
+ * document at all — the Go To All palette asking a workspace-wide question.
+ *
+ * Selection is by definition rather than by file pattern deliberately: a
+ * workspace symbol query is not about one file, and attaching a sentinel path
+ * just to satisfy pattern matching would pick servers by a lie.
+ */
+export function selectDefinitionsForWorkspace(
+    definitions: LanguageServerDefinition[],
+): LanguageServerDefinition[] {
+    return definitions
+        .filter((definition) => definition.enabled !== false)
+        .map((definition) => ({ definition, pattern: '' }))
+        .sort(comparePreference)
+        .map((entry) => entry.definition);
+}
+
 /** Preferred server for call sites that intentionally consume one definition. */
 export function selectDefinitionForFile(
     definitions: LanguageServerDefinition[],

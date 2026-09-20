@@ -272,6 +272,13 @@ interface AttachWaiter {
 
 interface AttachmentRecord {
     localId: string;
+    /**
+     * `document` attaches one file; `workspace` attaches the repository itself,
+     * which is what a symbol palette needs — it has a question about the repo
+     * and no open buffer to hang it on.
+     */
+    kind: 'document' | 'workspace';
+    /** Empty for a workspace attachment. */
     path: string;
     refCount: number;
     released: boolean;
@@ -367,38 +374,66 @@ export class LanguageServerClient {
         const normalized = normalizePath(path);
         let record = this.findByPath(normalized);
         if (!record) {
-            record = {
-                localId: `doc-${++this.localCounter}`,
-                path: normalized,
-                refCount: 0,
-                released: false,
-                attachRequestId: null,
-                infos: new Map(),
-                unavailable: null,
-                pending: new Set(),
-                waiters: new Set(),
-                attachedListeners: new Set(),
-                detachedListeners: new Set(),
-                unavailableListeners: new Set(),
-                notificationListeners: new Set(),
-                statusListeners: new Set(),
-            };
-            this.attachments.set(record.localId, record);
-            const blocked = this.detectTransportBlock(this.workspaceId, this.routingRef);
-            if (blocked) {
-                // Settle the document as unavailable without a socket. The store
-                // reads `getUnavailable()` when it builds its record, so this is
-                // visible to the badge on the first render.
-                record.unavailable = blocked;
-            } else {
-                this.connect();
-                if (this.status === 'open') {
-                    this.sendAttach(record);
-                }
-            }
+            record = this.createRecord('document', normalized);
         }
         record.refCount += 1;
         return this.createHandle(record);
+    }
+
+    /**
+     * Attach the workspace with no document open. Views share one host
+     * attachment per client, so a palette opened twice holds one session
+     * reference, and releasing the last view frees the servers again.
+     */
+    attachWorkspace(): LanguageServerAttachment {
+        if (this.disposed) {
+            throw new Error('LanguageServerClient has been disposed');
+        }
+        let record: AttachmentRecord | undefined;
+        for (const [, candidate] of this.attachments) {
+            if (candidate.kind === 'workspace') {
+                record = candidate;
+                break;
+            }
+        }
+        record ??= this.createRecord('workspace', '');
+        record.refCount += 1;
+        return this.createHandle(record);
+    }
+
+    /** Registers a fresh record and starts its attach, or settles it blocked. */
+    private createRecord(kind: 'document' | 'workspace', path: string): AttachmentRecord {
+        const record: AttachmentRecord = {
+            localId: `doc-${++this.localCounter}`,
+            kind,
+            path,
+            refCount: 0,
+            released: false,
+            attachRequestId: null,
+            infos: new Map(),
+            unavailable: null,
+            pending: new Set(),
+            waiters: new Set(),
+            attachedListeners: new Set(),
+            detachedListeners: new Set(),
+            unavailableListeners: new Set(),
+            notificationListeners: new Set(),
+            statusListeners: new Set(),
+        };
+        this.attachments.set(record.localId, record);
+        const blocked = this.detectTransportBlock(this.workspaceId, this.routingRef);
+        if (blocked) {
+            // Settle the attachment as unavailable without a socket. The store
+            // reads `getUnavailable()` when it builds its record, so this is
+            // visible to the badge on the first render.
+            record.unavailable = blocked;
+        } else {
+            this.connect();
+            if (this.status === 'open') {
+                this.sendAttach(record);
+            }
+        }
+        return record;
     }
 
     /** Drops every attachment and the socket. The client is unusable after. */
@@ -809,7 +844,9 @@ export class LanguageServerClient {
         }
         record.infos.clear();
         this.byAttachRequest.set(requestId, record);
-        this.send({ type: 'lsp-attach', requestId, path: record.path });
+        this.send(record.kind === 'workspace'
+            ? { type: 'lsp-attach-workspace', requestId }
+            : { type: 'lsp-attach', requestId, path: record.path });
     }
 
     /**
@@ -1117,7 +1154,7 @@ export class LanguageServerClient {
 
     private findByPath(path: string): AttachmentRecord | undefined {
         for (const [, record] of this.attachments) {
-            if (record.path === path) {
+            if (record.kind === 'document' && record.path === path) {
                 return record;
             }
         }

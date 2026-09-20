@@ -159,9 +159,33 @@ settles a tracked flag; deriving it also keeps the two mounted Explorer panels
 renders a `⚠` retry affordance; clicking it clears the error and re-fires the
 effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
-## Quick Open file search
+## Quick Open and Go To All
 
-`explorer/QuickOpen.tsx` takes an explicit repo or repo-group search scope.
+`explorer/QuickOpen.tsx` is one dialog with two modes, chosen by the `mode`
+prop: `files` for Ctrl/Cmd+P and `symbols` for Ctrl/Cmd+, (Go To All). Typed
+prefixes move between them live — `explorer/paletteQuery.ts` is the pure
+grammar: `t ` types, `m ` members, `f ` files, `:N` line, and a bare prefix
+letter with no trailing space is a search term, so a symbol named `f` stays
+findable. Backspacing a prefix restores the mode the dialog was opened in. The
+footer names the active filter. Do not add a second palette component.
+
+Symbols are answered over the language-server bridge, never HTTP:
+`features/language-servers/useWorkspaceSymbols.ts` holds one workspace
+attachment per repo for as long as the dialog is open (capped at
+`MAX_CONCURRENT_MEMBERS`, released on close — a leak here leaks a
+language-server session per open), and `workspaceSymbols.ts` fans
+`workspace/symbol` out to every attached server advertising
+`workspaceSymbolProvider`, merging each answer as it lands rather than awaiting
+them all. The highlighted row is pinned by result identity, so a slow server
+folding in cannot move the selection under an Enter press. Highlighting uses
+the `cocMatchIndices` the answering server scored on. Indexing, server
+unavailable (with the host's recovery command), partial group, and zero results
+are four distinct renderings; indexing is derived from live session status, so a
+repo that finishes mid-query shows results without a keystroke.
+
+### File search
+
+Repo scope asks `/api/repos/:repoId/search`; group scope calls
 Repo scope asks `/api/repos/:repoId/search`; group scope calls
 `repoGroupService.searchRepoGroupFiles` with the group owner's base URL. Both
 debounce keystrokes, cancel superseded requests, reject stale responses, and

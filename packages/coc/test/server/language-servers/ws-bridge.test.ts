@@ -255,6 +255,66 @@ describe('language-server WebSocket bridge', () => {
         expect(harness.manager.size).toBe(2);
     });
 
+    it('attaches a workspace with no document open, by definition not by pattern', async () => {
+        // README.md matches no file pattern, so a document attach would be
+        // refused — the palette has no file to name and must not invent one.
+        const harness = await createHarness({
+            definitions: [
+                echoDefinition({ id: 'fallback', displayName: 'Fallback', priority: 10 }),
+                echoDefinition({ id: 'semantic', displayName: 'Semantic', priority: 100 }),
+            ],
+        });
+        const client = await harness.connect();
+
+        client.send({ type: 'lsp-attach-workspace', requestId: 'w1' });
+        await client.next('lsp-attached', (msg) => msg.requestId === 'w1' && msg.complete);
+
+        const attached = client.received.filter(
+            (message): message is Extract<LanguageServerServerMessage, { type: 'lsp-attached' }> =>
+                message.type === 'lsp-attached',
+        );
+        const ids = attached.map(({ definitionId }) => definitionId);
+        // Both echo servers are attached even though neither claims a file the
+        // palette could have named, and priority still orders them.
+        expect(ids.indexOf('semantic')).toBeLessThan(ids.indexOf('fallback'));
+        expect(attached.at(-1)?.complete).toBe(true);
+        expect(attached.slice(0, -1).every(({ complete }) => !complete)).toBe(true);
+        // The workspace root, not a file inside it.
+        expect(attached[0].documentUri).toBe(browserDocumentUri(WORKSPACE_ID, ''));
+    });
+
+    it('answers a workspace query over the same request framing', async () => {
+        const harness = await createHarness();
+        const client = await harness.connect();
+        client.send({ type: 'lsp-attach-workspace', requestId: 'w1' });
+        const attached = await client.next(
+            'lsp-attached',
+            (msg) => msg.requestId === 'w1' && msg.definitionId === 'echo',
+        );
+
+        const response = await client.request(attached.attachmentId, 'q1', 'echo', { query: 'fwc' });
+        expect(response.error).toBeUndefined();
+        expect(response.result).toEqual({ query: 'fwc' });
+    });
+
+    it('releases the workspace sessions when the socket goes', async () => {
+        const harness = await createHarness();
+        const client = await harness.connect();
+        client.send({ type: 'lsp-attach-workspace', requestId: 'w1' });
+        const attached = await client.next('lsp-attached', (msg) => msg.requestId === 'w1' && msg.complete);
+
+        client.send({ type: 'lsp-detach', attachmentId: attached.attachmentId });
+        await client.next('lsp-detached', (msg) => msg.attachmentId === attached.attachmentId);
+    });
+
+    it('reports disabled for a workspace attach when language support is off', async () => {
+        const harness = await createHarness({ enabled: false });
+        const client = await harness.connect();
+        client.send({ type: 'lsp-attach-workspace', requestId: 'w1' });
+        const unavailable = await client.next('lsp-unavailable', (msg) => msg.requestId === 'w1');
+        expect(unavailable.reason).toBe('disabled');
+    });
+
     it('starts the server when a document attaches and reports the ready generation', async () => {
         // Lazy startup is "after an eligible file opens", not "after the first
         // request": a notification cannot spawn a process, so without this the

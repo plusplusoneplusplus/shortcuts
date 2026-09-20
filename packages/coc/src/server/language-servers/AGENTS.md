@@ -170,7 +170,13 @@ and transport code stays generic.
   uses the outermost Cargo workspace, and Python canonicalizes its nearest
   project root), and returns handles carrying the sessions, LSP language ids,
   and `release` functions. `acquire` remains the preferred-definition form for
-  single-server internal callers. A failure carries a
+  single-server internal callers.
+  `acquireWorkspace({ workspaceId, workspaceRoot, editingSessionId })` acquires
+  every enabled definition for a repository with no document in play — what the
+  Go To All palette attaches to. Selection is by definition rather than by file
+  pattern (`selectDefinitionsForWorkspace`), so no sentinel path is resolved to
+  satisfy a matcher, and each session is rooted at the workspace root. A
+  failure carries a
   reason of `disabled`, `no-definition`, or `capacity` so the editor can show a
   concise status instead of an error.
 - Sessions are keyed on workspace, browser editing session, definition id, and
@@ -295,7 +301,8 @@ and transport code stays generic.
   upgrade URL and are validated against the workspace list before any process is
   touched; the origin check is the shared one in
   `src/server/streaming/websocket.ts`, which routes the path to this server.
-- Client messages: `lsp-attach`, `lsp-detach`, `lsp-request`, `lsp-cancel`,
+- Client messages: `lsp-attach`, `lsp-attach-workspace`, `lsp-detach`,
+  `lsp-request`, `lsp-cancel`,
   `lsp-notify`, `lsp-restart`, `lsp-external-source`, `ping`. Server messages:
   `lsp-welcome`, `lsp-attached`, `lsp-unavailable`, `lsp-response`,
   `lsp-notification`, `lsp-status`, `lsp-detached`, `lsp-external-source-result`,
@@ -314,6 +321,11 @@ and transport code stays generic.
   are session-wide rather than per attachment. A manager-initiated close detaches
   every affected attachment with the manager's reason, which is the client's cue
   to re-attach and replay its buffers.
+- `lsp-attach-workspace` attaches the repository itself: same `lsp-attached`
+  stream, same `complete` flag on the last, same request/cancel framing, and a
+  `documentUri` naming the workspace root. It is how a symbol palette gets a
+  live session with no file open, and releasing the attachment frees the
+  sessions when nothing else references them.
 - Attaching a document starts its session. That is what "lazy startup after an
   eligible file opens" means here: a notification cannot spawn a process, so
   without it the browser's opening `didOpen` would be dropped and the server

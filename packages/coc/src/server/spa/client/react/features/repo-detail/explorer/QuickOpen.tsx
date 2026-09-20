@@ -1,14 +1,24 @@
 /**
- * QuickOpen — command-palette-style file finder dialog.
+ * QuickOpen — the command palette, in files mode or symbols mode.
  *
- * Searches on the server, debounced, and renders only the top matches. The repo
- * path list never crosses the network — in a large repo that list is multiple
- * megabytes, and matching it on the render thread stalls typing.
+ * One dialog, two questions. `Ctrl+P` opens it on files, `Ctrl+,` on symbols
+ * (Visual Studio's Go To All), and the typed prefixes `f `, `t `, `m ` and
+ * `:N` move between them without closing anything — see `paletteQuery.ts` for
+ * the grammar. Keeping it one component is the point: two palettes would drift
+ * apart in keyboard handling, highlighting and placement, and could stack.
+ *
+ * Files are searched on the server, debounced, and only the top matches are
+ * rendered. The repo path list never crosses the network — in a large repo that
+ * list is multiple megabytes, and matching it on the render thread stalls
+ * typing. Symbols are answered over the language-server bridge instead
+ * (`useWorkspaceSymbols`), fanned out across every server that can answer and
+ * merged as the answers land, so the fast index shows results while a heavier
+ * server is still warming.
  *
  * Portal-rendered to document.body.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import type {
     ExplorerRepoGroupSearchResult,
@@ -16,7 +26,12 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../../ui/cn';
 import { searchRepoGroupFiles } from '../../../repos/repoGroupService';
+import { useRepoGroupMembers } from '../../../repos/useRepoGroupMembers';
+import { useWorkspaceSymbols } from '../../language-servers/useWorkspaceSymbols';
+import type { WorkspaceSymbolScopeMember } from '../../language-servers/useWorkspaceSymbols';
+import type { WorkspaceSymbolResult } from '../../language-servers/workspaceSymbols';
 import { explorerApi } from './explorerApi';
+import { matchesKindFilter, parsePaletteQuery, type PaletteMode } from './paletteQuery';
 
 /** Maximum results requested and rendered for a query. */
 const RESULT_LIMIT = 50;
@@ -44,7 +59,21 @@ export interface QuickOpenProps {
     onClose: () => void;
     /** Return false to keep the dialog open without changing its selection. */
     onFileSelect: (result: QuickOpenResult) => QuickOpenSelectionOutcome | Promise<QuickOpenSelectionOutcome>;
+    /** Which question the dialog opens on. A typed prefix can change it. */
+    mode?: PaletteMode;
+    /** Required for symbols mode; without it `Ctrl+,` has nowhere to navigate. */
+    onSymbolSelect?: (
+        result: WorkspaceSymbolResult,
+    ) => QuickOpenSelectionOutcome | Promise<QuickOpenSelectionOutcome>;
+    /** `:N` jumps here. Absent means the dialog has no active editor: inert. */
+    onLineSelect?: (line: number) => void;
 }
+
+/** A glyph per LSP `SymbolKind`, falling back to the generic one. */
+const KIND_GLYPHS: Record<number, string> = {
+    2: '📦', 3: '⬡', 5: '🅲', 6: 'ƒ', 7: '◆', 8: '▪', 9: '🅲',
+    10: '🅴', 11: '🅸', 12: 'ƒ', 13: '𝑥', 14: '#', 22: '▫', 23: '🅢',
+};
 
 /**
  * Emphasise the characters at `indices` in `target`.
@@ -101,7 +130,27 @@ function isGroupResult(result: QuickOpenResult): result is ExplorerRepoGroupSear
     return 'workspaceId' in result;
 }
 
-export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps) {
+function isSymbolResult(result: QuickOpenResult | WorkspaceSymbolResult): result is WorkspaceSymbolResult {
+    return 'definitionId' in result;
+}
+
+/** Stable identity of a rendered row, used to pin the highlight across merges. */
+function rowKey(result: QuickOpenResult | WorkspaceSymbolResult): string {
+    if (isSymbolResult(result)) {
+        return `${result.workspaceId ?? ''}:${result.path}:${result.line}:${result.name}`;
+    }
+    return isGroupResult(result) ? `${result.workspaceId}:${result.path}` : result.path;
+}
+
+export function QuickOpen({
+    scope,
+    open,
+    onClose,
+    onFileSelect,
+    mode = 'files',
+    onSymbolSelect,
+    onLineSelect,
+}: QuickOpenProps) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<QuickOpenResult[]>([]);
     const [loading, setLoading] = useState(false);
@@ -114,9 +163,41 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
     const abortRef = useRef<AbortController | null>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const requestIdRef = useRef(0);
+    /** Identity of the highlighted row, so a merge cannot shift the selection. */
+    const highlightKeyRef = useRef<string | null>(null);
     const scopeKey = scope.kind === 'repo'
         ? `repo:${scope.routingRef ?? scope.workspaceId}`
         : `group:${scope.groupId}:${scope.baseUrl ?? ''}`;
+
+    const parsed = parsePaletteQuery(query, mode);
+    const symbolsMode = parsed.mode === 'symbols';
+    // Group membership is only fetched once the palette actually needs it, so
+    // Ctrl+P in a group still costs no extra request.
+    const groupMembers = useRepoGroupMembers(
+        scope.kind === 'repo-group' ? scope.groupId : '',
+        scope.kind === 'repo-group' ? scope.baseUrl : undefined,
+        open && symbolsMode && scope.kind === 'repo-group',
+    );
+    const symbolMembers = useMemo<WorkspaceSymbolScopeMember[]>(() => {
+        if (scope.kind === 'repo') {
+            return [{ workspaceId: scope.workspaceId, routingRef: scope.routingRef }];
+        }
+        return (groupMembers ?? [])
+            .filter(member => !member.stale)
+            .map(member => ({ workspaceId: member.workspaceId, repoName: member.name ?? member.workspaceId }));
+    }, [scopeKey, groupMembers]);
+    const symbols = useWorkspaceSymbols({
+        open: open && symbolsMode,
+        members: symbolMembers,
+        query: parsed.term,
+        debounceMs: SEARCH_DEBOUNCE_MS,
+        limit: RESULT_LIMIT,
+    });
+    const visibleSymbols = useMemo(
+        () => symbols.results.filter(result => matchesKindFilter(result.kind, parsed.kindFilter)),
+        [symbols.results, parsed.kindFilter],
+    );
+    const rows: (QuickOpenResult | WorkspaceSymbolResult)[] = symbolsMode ? visibleSymbols : results;
 
     // Start each open from a clean slate; nothing is fetched until the first
     // keystroke, so opening the dialog costs no network at all.
@@ -125,6 +206,7 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
         setQuery('');
         setResults([]);
         setHighlightIndex(0);
+        highlightKeyRef.current = null;
         setGroupStatus(null);
         setError(null);
     }, [open, scopeKey]);
@@ -139,7 +221,7 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
             return;
         }
 
-        const trimmed = query.trim();
+        const trimmed = symbolsMode ? '' : parsed.term;
         if (!trimmed) {
             abortRef.current?.abort();
             setResults([]);
@@ -199,7 +281,7 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
             if (debounceRef.current) clearTimeout(debounceRef.current);
             if (abortRef.current) abortRef.current.abort();
         };
-    }, [query, open, retry, scopeKey]);
+    }, [parsed.term, symbolsMode, open, retry, scopeKey]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -217,10 +299,20 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
         return () => previous?.focus();
     }, [open]);
 
-    // Reset highlight when results change
+    // Keep the highlight on the row it was on, by identity rather than index:
+    // a slower server folding its results in must never move the selection out
+    // from under an Enter press.
     useEffect(() => {
-        setHighlightIndex(0);
-    }, [results]);
+        setHighlightIndex(previous => {
+            const pinned = highlightKeyRef.current;
+            const next = pinned ? rows.findIndex(row => rowKey(row) === pinned) : -1;
+            return next >= 0 ? next : Math.min(previous, Math.max(rows.length - 1, 0));
+        });
+    }, [rows]);
+
+    useEffect(() => {
+        highlightKeyRef.current = rows[highlightIndex] ? rowKey(rows[highlightIndex]) : null;
+    }, [rows, highlightIndex]);
 
     // Scroll highlighted item into view
     useEffect(() => {
@@ -228,8 +320,10 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
         item?.scrollIntoView({ block: 'nearest' });
     }, [highlightIndex]);
 
-    const handleSelect = useCallback(async (result: QuickOpenResult) => {
-        const outcome = await onFileSelect(result);
+    const handleSelect = useCallback(async (result: QuickOpenResult | WorkspaceSymbolResult) => {
+        const outcome = isSymbolResult(result)
+            ? await onSymbolSelect?.(result)
+            : await onFileSelect(result);
         if (outcome === false) return;
         if (typeof outcome === 'object') {
             setError(outcome.error);
@@ -237,25 +331,29 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
             return;
         }
         onClose();
-    }, [onFileSelect, onClose]);
+    }, [onFileSelect, onSymbolSelect, onClose]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'ArrowDown') {
             e.preventDefault();
-            setHighlightIndex(i => Math.min(i + 1, results.length - 1));
+            setHighlightIndex(i => Math.min(i + 1, rows.length - 1));
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             setHighlightIndex(i => Math.max(i - 1, 0));
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            if (results[highlightIndex]) {
-                void handleSelect(results[highlightIndex]);
+            if (parsed.lineTarget !== undefined) {
+                // `:N` with no active editor is inert, not an error.
+                onLineSelect?.(parsed.lineTarget);
+                if (onLineSelect) onClose();
+            } else if (rows[highlightIndex]) {
+                void handleSelect(rows[highlightIndex]);
             }
         } else if (e.key === 'Escape') {
             e.preventDefault();
             onClose();
         }
-    }, [results, highlightIndex, handleSelect, onClose]);
+    }, [rows, highlightIndex, handleSelect, onClose, parsed.lineTarget, onLineSelect]);
 
     if (!open) return null;
 
@@ -276,11 +374,13 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
                 data-testid="quick-open-dialog"
                 role="dialog"
                 aria-modal="true"
-                aria-label={scope.kind === 'repo-group' ? `Open file in ${scope.groupName}` : 'Open file'}
+                aria-label={symbolsMode
+                    ? (scope.kind === 'repo-group' ? `Go to symbol in ${scope.groupName}` : 'Go to symbol')
+                    : (scope.kind === 'repo-group' ? `Open file in ${scope.groupName}` : 'Open file')}
             >
                 {scope.kind === 'repo-group' && (
                     <div className="px-3 pt-2 text-xs font-medium text-[#616161] dark:text-[#c8c8c8]">
-                        Open file in {scope.groupName}
+                        {symbolsMode ? 'Go to symbol in' : 'Open file in'} {scope.groupName}
                     </div>
                 )}
                 {/* Search input */}
@@ -292,7 +392,7 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
                         value={query}
                         onChange={e => setQuery(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Search files by name…"
+                        placeholder={symbolsMode ? 'Search symbols by name…' : 'Search files by name…'}
                         className={cn(
                             'flex-1 bg-transparent text-sm text-[#1e1e1e] dark:text-[#cccccc]',
                             'outline-none border-none placeholder-[#999] dark:placeholder-[#888]',
@@ -317,21 +417,47 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
                     data-testid="quick-open-results"
                     role="listbox"
                 >
-                    {groupStatus === 'partial' && (
+                    {(groupStatus === 'partial' || symbols.status === 'partial') && (
                         <div className="px-3 py-1.5 text-xs text-[#8a6d1d] dark:text-[#cca700]" data-testid="quick-open-partial">
                             Some repositories could not be searched.
+                        </div>
+                    )}
+                    {symbolsMode && symbols.indexing && rows.length > 0 && (
+                        <div className="px-3 py-1.5 text-xs text-[#8a6d1d] dark:text-[#cca700]" data-testid="quick-open-indexing-note">
+                            Some repositories are still indexing.
                         </div>
                     )}
                     {/* Only blank out while the first search of a query is in
                         flight — once results exist they stay rendered, so typing
                         never flickers. */}
-                    {!query.trim() && scope.kind === 'repo-group' ? (
-                        <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-empty-query">
-                            Type to search across {scope.liveRepoCount} {scope.liveRepoCount === 1 ? 'repository' : 'repositories'}.
+                    {parsed.lineTarget !== undefined ? (
+                        <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-line-target">
+                            {onLineSelect
+                                ? `Press ↵ to go to line ${parsed.lineTarget}.`
+                                : 'Open a file first to jump to a line.'}
                         </div>
-                    ) : loading && results.length === 0 ? (
+                    ) : !parsed.term && (symbolsMode || scope.kind === 'repo-group') ? (
+                        <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-empty-query">
+                            {symbolsMode
+                                ? 'Type to search symbols.'
+                                : `Type to search across ${scope.kind === 'repo-group' ? scope.liveRepoCount : 1} ${scope.kind === 'repo-group' && scope.liveRepoCount === 1 ? 'repository' : 'repositories'}.`}
+                        </div>
+                    ) : symbolsMode && symbols.unavailable ? (
+                        <div className="flex flex-col items-center justify-center gap-1 py-4 px-3 text-center text-sm text-[#848484]" data-testid="quick-open-unavailable">
+                            <span>{symbols.unavailable.detail}</span>
+                            {symbols.unavailable.recoveryCommand && (
+                                <code className="text-xs text-[#616161] dark:text-[#c8c8c8]">
+                                    {symbols.unavailable.recoveryCommand}
+                                </code>
+                            )}
+                        </div>
+                    ) : symbolsMode && symbols.indexing && rows.length === 0 ? (
+                        <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-indexing">
+                            Indexing…
+                        </div>
+                    ) : (symbolsMode ? symbols.loading : loading) && rows.length === 0 ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]">
-                            Searching files…
+                            {symbolsMode ? 'Searching symbols…' : 'Searching files…'}
                         </div>
                     ) : error ? (
                         <div className="flex flex-col items-center justify-center gap-2 py-4 text-sm text-[#b42318] dark:text-[#f48771]" data-testid="quick-open-error">
@@ -343,20 +469,28 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
                                 Retry
                             </button>
                         </div>
-                    ) : groupStatus === 'no-searchable-members' ? (
+                    ) : (symbolsMode ? symbols.status : groupStatus) === 'no-searchable-members' ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-no-members">
                             This repo group has no searchable repositories.
                         </div>
-                    ) : results.length === 0 ? (
+                    ) : rows.length === 0 ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-no-results">
-                            {scope.kind === 'repo-group' ? 'No files found in this repo group.' : 'No matching files'}
+                            {symbolsMode
+                                ? 'No symbols found'
+                                : scope.kind === 'repo-group' ? 'No files found in this repo group.' : 'No matching files'}
                         </div>
                     ) : (
-                        results.map((result, idx) => {
-                            const matched = splitIndices(result.path, result.indices ?? []);
+                        rows.map((result, idx) => {
+                            const symbol = isSymbolResult(result) ? result : null;
+                            const matched = symbol
+                                ? { dir: [], name: [] }
+                                : splitIndices(result.path, result.indices ?? []);
+                            const repoName = symbol
+                                ? symbol.repoName
+                                : isGroupResult(result) ? result.repoName : undefined;
                             return (
                                 <div
-                                    key={isGroupResult(result) ? `${result.workspaceId}:${result.path}` : result.path}
+                                    key={rowKey(result)}
                                     className={cn(
                                         'flex items-center px-3 py-1.5 cursor-pointer text-sm',
                                         idx === highlightIndex
@@ -369,23 +503,40 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
                                     role="option"
                                     aria-selected={idx === highlightIndex}
                                     aria-label={[
-                                        fileName(result.path),
-                                        dirName(result.path),
-                                        isGroupResult(result) ? result.repoName : '',
+                                        symbol ? symbol.name : fileName(result.path),
+                                        symbol ? symbol.containerName ?? '' : dirName(result.path),
+                                        repoName ?? '',
                                     ].filter(Boolean).join(', ')}
                                 >
-                                    <span className="text-xs mr-2 opacity-60">📄</span>
-                                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
-                                        {highlightMatches(fileName(result.path), matched.name)}
+                                    <span className="text-xs mr-2 opacity-60">
+                                        {symbol ? KIND_GLYPHS[symbol.kind] ?? 'ƒ' : '📄'}
                                     </span>
-                                    {dirName(result.path) && (
+                                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                                        {symbol
+                                            ? highlightMatches(symbol.name, symbol.indices ?? [])
+                                            : highlightMatches(fileName(result.path), matched.name)}
+                                    </span>
+                                    {symbol?.containerName && (
+                                        <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
+                                            {symbol.containerName}
+                                        </span>
+                                    )}
+                                    {!symbol && dirName(result.path) && (
                                         <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
                                             {highlightMatches(dirName(result.path), matched.dir)}
                                         </span>
                                     )}
-                                    {isGroupResult(result) && (
-                                        <span className="ml-auto rounded bg-[#e8e8e8] dark:bg-[#3c3c3c] px-1.5 py-0.5 text-[10px] text-[#555] dark:text-[#d4d4d4]" data-testid={`quick-open-repo-${idx}`}>
-                                            {result.repoName}
+                                    {symbol && (
+                                        <span className="ml-auto pl-2 text-xs text-[#848484] truncate" data-testid={`quick-open-symbol-path-${idx}`}>
+                                            {symbol.path}:{symbol.line}
+                                        </span>
+                                    )}
+                                    {repoName && (
+                                        <span className={cn(
+                                            'rounded bg-[#e8e8e8] dark:bg-[#3c3c3c] px-1.5 py-0.5 text-[10px] text-[#555] dark:text-[#d4d4d4]',
+                                            symbol ? 'ml-2 flex-shrink-0' : 'ml-auto',
+                                        )} data-testid={`quick-open-repo-${idx}`}>
+                                            {repoName}
                                         </span>
                                     )}
                                 </div>
@@ -396,8 +547,15 @@ export function QuickOpen({ scope, open, onClose, onFileSelect }: QuickOpenProps
 
                 {/* Footer hint */}
                 <div className="flex items-center justify-between px-3 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484]">
-                    <span>↑↓ navigate · ↵ open · esc close</span>
-                    {results.length > 0 && <span>{results.length} results</span>}
+                    <span>
+                        {parsed.filterLabel ? `${parsed.filterLabel} · ` : ''}
+                        ↑↓ navigate · ↵ open · esc close
+                    </span>
+                    {rows.length > 0 && (
+                        <span>
+                            {rows.length} results{symbolsMode && symbols.streaming ? ' (searching…)' : ''}
+                        </span>
+                    )}
                 </div>
             </div>
         </div>

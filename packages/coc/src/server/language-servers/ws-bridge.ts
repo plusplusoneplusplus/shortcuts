@@ -75,6 +75,7 @@ export interface WorkspaceLookup {
 
 export type LanguageServerClientMessage =
     | { type: 'lsp-attach'; requestId: string; path: string }
+    | { type: 'lsp-attach-workspace'; requestId: string }
     | { type: 'lsp-detach'; attachmentId: string }
     | { type: 'lsp-request'; attachmentId: string; id: string; method: string; params?: unknown }
     | { type: 'lsp-cancel'; attachmentId: string; id: string }
@@ -291,6 +292,9 @@ export class LanguageServerWebSocketServer {
             case 'lsp-attach':
                 this.attachDocument(client, message);
                 return;
+            case 'lsp-attach-workspace':
+                this.attachWorkspace(client, message);
+                return;
             case 'lsp-detach':
                 this.detachDocument(client, message.attachmentId, 'client-request');
                 return;
@@ -329,12 +333,34 @@ export class LanguageServerWebSocketServer {
             return;
         }
 
-        const result = this.manager.acquireAll({
+        this.attachHandles(client, requestId, resolved.relativePath, this.manager.acquireAll({
             workspaceId: client.workspaceId,
             workspaceRoot: client.workspaceRoot,
             editingSessionId: client.editingSessionId,
             relativePath: resolved.relativePath,
-        });
+        }));
+    }
+
+    /**
+     * Attach the workspace itself, with no document in play — what the Go To
+     * All palette asks for. Selection is by definition rather than by file
+     * pattern, so no sentinel path is ever resolved to satisfy a matcher.
+     */
+    private attachWorkspace(client: BridgeClient, message: { requestId: string }): void {
+        this.attachHandles(client, String(message.requestId ?? ''), '', this.manager.acquireWorkspace({
+            workspaceId: client.workspaceId,
+            workspaceRoot: client.workspaceRoot,
+            editingSessionId: client.editingSessionId,
+        }));
+    }
+
+    /** One `lsp-attached` per acquired server, `complete` on the last. */
+    private attachHandles(
+        client: BridgeClient,
+        requestId: string,
+        relativePath: string,
+        result: ReturnType<LanguageServerManager['acquireAll']>,
+    ): void {
         if (!result.ok) {
             this.send(client.socket, {
                 type: 'lsp-unavailable',
@@ -349,8 +375,8 @@ export class LanguageServerWebSocketServer {
             const attachment: Attachment = {
                 id: crypto.randomUUID(),
                 handle,
-                relativePath: resolved.relativePath,
-                documentUri: browserDocumentUri(client.workspaceId, resolved.relativePath),
+                relativePath,
+                documentUri: browserDocumentUri(client.workspaceId, relativePath),
                 pending: new Map(),
             };
             client.attachments.set(attachment.id, attachment);

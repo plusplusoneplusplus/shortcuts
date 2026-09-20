@@ -55,14 +55,21 @@ export function quickOpenOwner(context: QuickOpenOwnerContext): QuickOpenOwner |
     return null;
 }
 
-/** The keys this router claims, or `null` for anything else. */
+/**
+ * The keys this router claims, or `null` for anything else.
+ *
+ * `Ctrl+,` (Go To All) is claimed here rather than by the palette itself so
+ * that panel-vs-explorer ownership stays one decision: two surfaces listening
+ * separately is exactly how Ctrl+P once opened two dialogs at a time.
+ */
 export function quickOpenShortcut(
     event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'altKey' | 'key'>,
-): 'quick' | 'exact' | null {
+): 'quick' | 'exact' | 'goto' | null {
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return null;
     const key = event.key.toLowerCase();
     if (key === 'p') return 'quick';
     if (key === 'o') return 'exact';
+    if (key === ',') return 'goto';
     return null;
 }
 

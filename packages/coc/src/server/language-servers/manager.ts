@@ -23,7 +23,12 @@ import { ensureLanguageServerConfigSeeded } from './seed';
 import { prepareDefinitionForRoot, resolveDefinitionRoot } from './adapters';
 import type { PrepareDefinitionDeps } from './adapters';
 import { normalizeRelativePath } from './file-match';
-import { resolveLanguageId, selectDefinitionForFile, selectDefinitionsForFile } from './selection';
+import {
+    resolveLanguageId,
+    selectDefinitionForFile,
+    selectDefinitionsForFile,
+    selectDefinitionsForWorkspace,
+} from './selection';
 import type { JsonValue, LanguageServerDefinition } from './types';
 
 /** Why a document has no language server. Each maps to a concise editor status. */
@@ -183,6 +188,42 @@ export class LanguageServerManager {
         const handles: LanguageServerHandle[] = [];
         for (const definition of definitions) {
             const result = this.acquireDefinition({ ...request, relativePath }, definition);
+            if (!result.ok) {
+                for (const handle of handles) {
+                    handle.release();
+                }
+                return result;
+            }
+            handles.push(result.handle);
+        }
+        return { ok: true, handles };
+    }
+
+    /**
+     * Acquires every enabled definition for a workspace, with no document in
+     * play. This is what a symbol palette attaches to: it has a question about
+     * the repository, not about a file, and the server that answers it may be
+     * one no open buffer would have started.
+     *
+     * Each session is rooted at the workspace root, which is what
+     * `resolveDefinitionRoot` returns for an empty relative path.
+     */
+    acquireWorkspace(request: Omit<AcquireRequest, 'relativePath'>): AcquireAllResult {
+        if (this.disposed) {
+            return { ok: false, reason: 'disabled', detail: 'Language support is shut down.' };
+        }
+        const withRoot: AcquireRequest = { ...request, relativePath: '' };
+        const startable = this.resolveDefinitions(withRoot);
+        if (startable.length === 0) {
+            return { ok: false, reason: 'disabled', detail: 'Language support is off for this workspace.' };
+        }
+        const definitions = selectDefinitionsForWorkspace(startable);
+        if (definitions.length === 0) {
+            return { ok: false, reason: 'no-definition', detail: 'No language server serves this workspace.' };
+        }
+        const handles: LanguageServerHandle[] = [];
+        for (const definition of definitions) {
+            const result = this.acquireDefinition(withRoot, definition);
             if (!result.ok) {
                 for (const handle of handles) {
                     handle.release();
