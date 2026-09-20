@@ -14,6 +14,7 @@ import { registerApiProcessRoutes } from '../../../src/server/routes/api-process
 import type { Route } from '../../../src/server/types';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import type { MockProcessStore } from '../helpers/mock-process-store';
+import type { QueueExecutorBridge } from '../../../src/server/queue/queue-executor-bridge';
 
 // ============================================================================
 // Mocks
@@ -138,19 +139,36 @@ describe('POST /api/processes/:id/turns/:turnIndex/rewind', () => {
     let baseUrl: string;
     let store: MockProcessStore;
     let broadcastSpy: ReturnType<typeof vi.fn>;
+    let bridge: QueueExecutorBridge;
 
     beforeAll(async () => {
         store = createMockProcessStore();
         broadcastSpy = vi.fn();
         const getWsServer = () => ({ broadcastProcessEvent: broadcastSpy });
+        bridge = {
+            enqueue: vi.fn().mockResolvedValue('task-follow-up'),
+            executeFollowUp: vi.fn(),
+            isSessionAlive: vi.fn().mockResolvedValue(true),
+            findTaskByProcessId: vi.fn(),
+            steerProcess: vi.fn(),
+        } as unknown as QueueExecutorBridge;
 
         const routes: Route[] = [];
         registerApiProcessRoutes({
             routes,
             store,
+            bridge,
             dataDir: '/tmp/test-coc',
             gitOpsStore: {} as any,
             getWsServer: getWsServer as any,
+            getLiveFeatureFlags: () => ({
+                excalidrawEnabled: false,
+                canvasEnabled: false,
+                kustoEnabled: false,
+                chatStyleSelectorEnabled: false,
+                chatProviderSwitchingEnabled: true,
+                defaultChatStyle: 'default',
+            }),
         });
 
         const router = createRouter({ routes });
@@ -172,6 +190,10 @@ describe('POST /api/processes/:id/turns/:turnIndex/rewind', () => {
         requestedProviders.length = 0;
         registeredProviders.add('codex');
         (store.truncateConversationTurns as ReturnType<typeof vi.fn>).mockClear();
+        vi.mocked(bridge.enqueue!).mockReset().mockResolvedValue('task-follow-up');
+        vi.mocked(bridge.findTaskByProcessId!).mockReset();
+        vi.mocked(bridge.steerProcess!).mockReset();
+        vi.mocked(bridge.isSessionAlive).mockReset().mockResolvedValue(true);
     });
 
     it('returns 404 when the process does not exist', async () => {
@@ -337,6 +359,174 @@ describe('POST /api/processes/:id/turns/:turnIndex/rewind', () => {
         expect(res.status).toBe(409);
         expect(res.json().code).toBe('CONVERSATION_NOT_IDLE');
         expect(mockRewindSession).not.toHaveBeenCalled();
+    });
+
+    it('exposes a busy reservation while rewinding and rejects an overlapping provider switch', async () => {
+        await seedConversation(store, 'proc-overlap-rewind-first');
+        let releaseRewind!: () => void;
+        mockRewindSession.mockImplementation(() => new Promise(resolve => {
+            releaseRewind = () => resolve({ eventsRemoved: 2, upToEventId: 'evt-2' });
+        }));
+
+        const rewindRequest = request(
+            baseUrl,
+            '/api/processes/proc-overlap-rewind-first/turns/2/rewind',
+            { method: 'POST', body: '{}' },
+        );
+        await vi.waitFor(() => expect(mockRewindSession).toHaveBeenCalledOnce());
+
+        const reserved = await store.getProcess('proc-overlap-rewind-first');
+        expect(reserved?.status).toBe('running');
+        expect(reserved?.metadata?.rewind).toMatchObject({
+            state: 'running',
+            priorStatus: 'completed',
+            turnIndex: 2,
+        });
+
+        const providerSwitch = await request(
+            baseUrl,
+            '/api/processes/proc-overlap-rewind-first/message',
+            { method: 'POST', body: JSON.stringify({ content: 'switch', provider: 'codex' }) },
+        );
+        expect(providerSwitch.status).toBe(409);
+        expect(providerSwitch.json().code).toBe('PROVIDER_SWITCH_REQUIRES_IDLE');
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+
+        releaseRewind();
+        expect((await rewindRequest).status).toBe(200);
+        const settled = await store.getProcess('proc-overlap-rewind-first');
+        expect(settled?.status).toBe('completed');
+        expect(settled?.metadata?.rewind).toBeUndefined();
+    });
+
+    it('holds the busy reservation until the CoC turn mutation finishes', async () => {
+        await seedConversation(store, 'proc-store-mutation');
+        mockRewindSession.mockResolvedValue({ eventsRemoved: 2, upToEventId: 'evt-2' });
+        let releaseTruncate!: () => void;
+        vi.mocked(store.truncateConversationTurns!).mockImplementationOnce(() => new Promise(resolve => {
+            releaseTruncate = () => resolve({ removed: [], allTurns: [] });
+        }));
+
+        const rewindRequest = request(
+            baseUrl,
+            '/api/processes/proc-store-mutation/turns/2/rewind',
+            { method: 'POST', body: '{}' },
+        );
+        await vi.waitFor(() => expect(store.truncateConversationTurns).toHaveBeenCalledOnce());
+
+        const reserved = await store.getProcess('proc-store-mutation');
+        expect(reserved?.status).toBe('running');
+        expect(reserved?.metadata?.rewind).toMatchObject({ state: 'running', turnIndex: 2 });
+
+        releaseTruncate();
+        expect((await rewindRequest).status).toBe(200);
+        const settled = await store.getProcess('proc-store-mutation');
+        expect(settled?.status).toBe('completed');
+        expect(settled?.metadata?.rewind).toBeUndefined();
+    });
+
+    it('restores the terminal status before an overlapping same-provider follow-up is admitted', async () => {
+        await seedConversation(store, 'proc-rewind-follow-up');
+        let releaseRewind!: () => void;
+        mockRewindSession.mockImplementation(() => new Promise(resolve => {
+            releaseRewind = () => resolve({ eventsRemoved: 2, upToEventId: 'evt-2' });
+        }));
+
+        const rewindRequest = request(
+            baseUrl,
+            '/api/processes/proc-rewind-follow-up/turns/2/rewind',
+            { method: 'POST', body: '{}' },
+        );
+        await vi.waitFor(() => expect(mockRewindSession).toHaveBeenCalledOnce());
+        const followUpRequest = request(
+            baseUrl,
+            '/api/processes/proc-rewind-follow-up/message',
+            { method: 'POST', body: JSON.stringify({ content: 'continue', provider: 'copilot' }) },
+        );
+
+        releaseRewind();
+        expect((await rewindRequest).status).toBe(200);
+        expect((await followUpRequest).status).toBe(202);
+        expect(bridge.enqueue).toHaveBeenCalledOnce();
+        const settled = await store.getProcess('proc-rewind-follow-up');
+        expect(settled?.pendingMessages ?? []).toHaveLength(0);
+        expect(settled?.conversationTurns?.at(-1)?.content).toContain('continue');
+    });
+
+    it('rejects rewind when it overlaps an admitted provider switch', async () => {
+        await seedConversation(store, 'proc-overlap-switch-first');
+        let releaseEnqueue!: () => void;
+        vi.mocked(bridge.enqueue!).mockImplementation(async () => {
+            vi.mocked(bridge.findTaskByProcessId!).mockReturnValue({
+                id: 'task-follow-up',
+                type: 'chat',
+                status: 'running',
+            } as any);
+            await new Promise<void>(resolve => {
+                releaseEnqueue = resolve;
+            });
+            return 'task-follow-up';
+        });
+
+        const providerSwitch = request(
+            baseUrl,
+            '/api/processes/proc-overlap-switch-first/message',
+            { method: 'POST', body: JSON.stringify({ content: 'switch', provider: 'codex' }) },
+        );
+        await vi.waitFor(() => expect(bridge.enqueue).toHaveBeenCalledOnce());
+        const rewindRequest = request(
+            baseUrl,
+            '/api/processes/proc-overlap-switch-first/turns/2/rewind',
+            { method: 'POST', body: '{}' },
+        );
+
+        releaseEnqueue();
+        expect((await providerSwitch).status).toBe(202);
+        const rewindResponse = await rewindRequest;
+        expect(rewindResponse.status).toBe(409);
+        expect(rewindResponse.json().code).toBe('CONVERSATION_NOT_IDLE');
+        expect(mockRewindSession).not.toHaveBeenCalled();
+    });
+
+    it('releases the rewind reservation when native rewind fails', async () => {
+        await seedConversation(store, 'proc-native-failure');
+        mockRewindSession.mockRejectedValueOnce(new Error('native failure'));
+
+        const failed = await request(
+            baseUrl,
+            '/api/processes/proc-native-failure/turns/2/rewind',
+            { method: 'POST', body: '{}' },
+        );
+
+        expect(failed.status).toBe(500);
+        const settled = await store.getProcess('proc-native-failure');
+        expect(settled?.status).toBe('completed');
+        expect(settled?.metadata?.rewind).toBeUndefined();
+
+        mockRewindSession.mockResolvedValueOnce({ eventsRemoved: 2, upToEventId: 'evt-2' });
+        const retry = await request(
+            baseUrl,
+            '/api/processes/proc-native-failure/turns/2/rewind',
+            { method: 'POST', body: '{}' },
+        );
+        expect(retry.status).toBe(200);
+    });
+
+    it('releases the rewind reservation when turn truncation fails', async () => {
+        await seedConversation(store, 'proc-store-failure');
+        mockRewindSession.mockResolvedValue({ eventsRemoved: 2, upToEventId: 'evt-2' });
+        vi.mocked(store.truncateConversationTurns!).mockRejectedValueOnce(new Error('store failure'));
+
+        const failed = await request(
+            baseUrl,
+            '/api/processes/proc-store-failure/turns/2/rewind',
+            { method: 'POST', body: '{}' },
+        );
+
+        expect(failed.status).toBe(500);
+        const settled = await store.getProcess('proc-store-failure');
+        expect(settled?.status).toBe('completed');
+        expect(settled?.metadata?.rewind).toBeUndefined();
     });
 
     it('returns 404 when the turn index does not exist', async () => {

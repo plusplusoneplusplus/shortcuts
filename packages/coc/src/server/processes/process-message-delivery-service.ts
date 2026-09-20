@@ -304,14 +304,17 @@ export class ProcessMessageDeliveryService {
     }
 
     async deliver(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
-        return this.admission.runExclusive(proc.id, async () => {
+        return this.admission.runExclusive(proc.id, async (contended) => {
             const currentProc = await this.store.getProcess(proc.id) ?? proc;
             const currentBinding = readActiveProviderSession(currentProc);
             const isProviderSwitch = input.provider !== undefined
                 && input.provider !== currentBinding.provider;
-            if (isProviderSwitch && !isIdleForProviderSwitch(
-                currentProc,
-                this.bridge.findTaskByProcessId?.(currentProc.id)?.status,
+            if (isProviderSwitch && (
+                contended
+                || !isIdleForProviderSwitch(
+                    currentProc,
+                    this.bridge.findTaskByProcessId?.(currentProc.id)?.status,
+                )
             )) {
                 throw new ProviderSwitchRequiresIdleError();
             }

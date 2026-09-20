@@ -385,6 +385,53 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(store.appendConversationTurn).toHaveBeenCalledOnce();
     });
 
+    it('rejects a contending provider switch even when the prior operation restores an idle state', async () => {
+        const store = makeStore();
+        const current = makeProc({
+            status: 'completed',
+            metadata: { provider: 'copilot' },
+        });
+        store.setCurrentProcess(current);
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn(),
+            steerProcess: vi.fn(),
+        };
+        const admission = new ProcessOperationAdmission();
+        const service = new ProcessMessageDeliveryService({
+            store: store as never,
+            bridge: bridge as unknown as QueueExecutorBridge,
+            admission,
+        });
+        let releaseOperation!: () => void;
+        let markAcquired!: () => void;
+        const acquired = new Promise<void>(resolve => {
+            markAcquired = resolve;
+        });
+        const blocker = admission.runExclusive(current.id, async () => {
+            markAcquired();
+            await new Promise<void>(resolve => {
+                releaseOperation = resolve;
+            });
+        });
+        await acquired;
+
+        const rejected = service.deliver(current, makeInput({
+            provider: 'codex',
+            deliveryMode: 'immediate',
+        }));
+        const rejectedExpectation = expect(rejected).rejects.toBeInstanceOf(ProviderSwitchRequiresIdleError);
+        releaseOperation();
+        await blocker;
+
+        await rejectedExpectation;
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect(store.appendPendingMessage).not.toHaveBeenCalled();
+        expect(store.appendConversationTurn).not.toHaveBeenCalled();
+        expect(store.updateProcess).not.toHaveBeenCalled();
+    });
+
     it('steers immediately when a running parent task accepts steering', async () => {
         const store = makeStore();
         const steerProcess = vi.fn().mockResolvedValue(true);

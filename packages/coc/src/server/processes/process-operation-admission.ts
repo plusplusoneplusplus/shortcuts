@@ -5,7 +5,11 @@
 export class ProcessOperationAdmission {
     private readonly tails = new Map<string, Promise<void>>();
 
-    async runExclusive<T>(processId: string, operation: () => Promise<T>): Promise<T> {
+    async runExclusive<T>(
+        processId: string,
+        operation: (contended: boolean) => Promise<T>,
+    ): Promise<T> {
+        const contended = this.tails.has(processId);
         const prior = this.tails.get(processId) ?? Promise.resolve();
         let release!: () => void;
         const current = new Promise<void>(resolve => {
@@ -16,7 +20,7 @@ export class ProcessOperationAdmission {
 
         await prior.catch(() => {});
         try {
-            return await operation();
+            return await operation(contended);
         } finally {
             release();
             if (this.tails.get(processId) === tail) {

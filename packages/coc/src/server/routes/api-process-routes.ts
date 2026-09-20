@@ -46,6 +46,7 @@ import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-b
 import { getRepoDataPath } from '../paths';
 import { readActiveProviderSession, turnProviderAttribution } from '../processes/active-provider-session';
 import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetry';
+import { processOperationAdmission } from '../processes/process-operation-admission';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -862,8 +863,15 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const id = decodeURIComponent(match![1]);
             const turnIndex = parseInt(match![2], 10);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const initialProc = await resolveProcess(store, id, wsId);
+            if (!initialProc) {
+                return handleAPIError(res, notFound('Process'));
+            }
 
-            const proc = await resolveProcess(store, id, wsId);
+            return processOperationAdmission.runExclusive(initialProc.id, async () => {
+            let reservationStartedAt: string | undefined;
+            try {
+            const proc = await resolveProcess(store, initialProc.id, wsId);
             if (!proc) {
                 return handleAPIError(res, notFound('Process'));
             }
@@ -923,6 +931,18 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!sdkService || typeof sdkService.rewindSession !== 'function') {
                 return handleAPIError(res, new APIError(409, `Rewind is not supported for provider '${provider}'.`, 'REWIND_UNSUPPORTED'));
             }
+            const priorStatus = proc.status;
+            const baseMetadata = (proc.metadata ?? { type: proc.type ?? 'chat' }) as GenericProcessMetadata;
+            const startedAt = new Date().toISOString();
+            const rewindReservation = { state: 'running', priorStatus, startedAt, turnIndex };
+            await store.updateProcess(proc.id, {
+                status: 'running',
+                metadata: {
+                    ...baseMetadata,
+                    rewind: rewindReservation,
+                },
+            });
+            reservationStartedAt = startedAt;
             let rewound: { newSessionId?: string } | undefined;
             try {
                 rewound = await sdkService.rewindSession(activeBinding.sessionId, target.sdkEventId);
@@ -950,6 +970,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         sdkSessionId: newSessionId,
                         metadata: {
                             ...(proc.metadata ?? {}),
+                            rewind: rewindReservation,
                             rewindHistory: [
                                 ...prior,
                                 { previousSessionId: priorSessionId, newSessionId, turnIndex, rewoundAt: new Date().toISOString() },
@@ -998,6 +1019,31 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     ...(target.images && target.images.length > 0 ? { images: target.images } : {}),
                 },
                 turnsRemoved: result.removed.length,
+            });
+            } finally {
+                if (reservationStartedAt) {
+                    const current = await store.getProcess(initialProc.id, wsId);
+                    const rewind = current?.metadata?.rewind as {
+                        state?: string;
+                        priorStatus?: AIProcessStatus;
+                        startedAt?: string;
+                    } | undefined;
+                    if (
+                        current
+                        && rewind?.state === 'running'
+                        && rewind.startedAt === reservationStartedAt
+                    ) {
+                        const metadata = { ...(current.metadata ?? {}) };
+                        delete metadata.rewind;
+                        await store.updateProcess(current.id, {
+                            status: rewind.priorStatus && TERMINAL_STATUSES.has(rewind.priorStatus)
+                                ? rewind.priorStatus
+                                : 'completed',
+                            metadata: metadata as GenericProcessMetadata,
+                        });
+                    }
+                }
+            }
             });
         },
     });
@@ -1223,6 +1269,31 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ));
             }
 
+            if (!bridge) {
+                return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
+            }
+
+            // Fast-path rejection before attachment processing. Delivery repeats
+            // this check under process-scoped admission to close the idle race.
+            if (fields.isProviderSwitch && !isIdleForProviderSwitch(
+                proc,
+                bridge.findTaskByProcessId?.(id)?.status,
+            )) {
+                recordProviderSwitchServerTelemetry({
+                    action: 'failed',
+                    sourceProvider: sessionProvider,
+                    targetProvider: fields.requestedProvider!,
+                    workspaceId: proc.metadata?.workspaceId as string | undefined,
+                    processId: id,
+                    failureReason: 'conversation-busy',
+                });
+                return handleAPIError(res, new APIError(
+                    409,
+                    'Cannot switch providers while this conversation is busy. Wait for the current response to finish, then try again.',
+                    'PROVIDER_SWITCH_REQUIRES_IDLE',
+                ));
+            }
+
             // Process both new-style attachments and legacy images
             const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-attach-'));
             const {
@@ -1245,32 +1316,6 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, new APIError(410, 'The AI session has ended. Please start a new task.', 'SESSION_EXPIRED'));
             }
 
-            if (!bridge) {
-                return handleAPIError(res, new APIError(501, 'Follow-up execution not available', 'NOT_IMPLEMENTED'));
-            }
-
-            // A different provider means a fresh native session, so it can only
-            // start between turns. Rejected outright rather than steered or
-            // buffered: both of those would hand the message to the provider
-            // that is already running.
-            if (fields.isProviderSwitch && !isIdleForProviderSwitch(
-                proc,
-                bridge.findTaskByProcessId?.(id)?.status,
-            )) {
-                recordProviderSwitchServerTelemetry({
-                    action: 'failed',
-                    sourceProvider: sessionProvider,
-                    targetProvider: fields.requestedProvider!,
-                    workspaceId: proc.metadata?.workspaceId as string | undefined,
-                    processId: id,
-                    failureReason: 'conversation-busy',
-                });
-                return handleAPIError(res, new APIError(
-                    409,
-                    'Cannot switch providers while this conversation is busy. Wait for the current response to finish, then try again.',
-                    'PROVIDER_SWITCH_REQUIRES_IDLE',
-                ));
-            }
             if (fields.modelCoerced) {
                 getLogger().warn(
                     LogCategory.AI,
