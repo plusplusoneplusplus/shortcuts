@@ -83,6 +83,21 @@ describe('ExternalSourcePane', () => {
         expect(readExternalSourceRecord('cap-1')).toBeUndefined();
     });
 
+    it('shows why the read failed instead of a generic sentence', () => {
+        publishExternalSource({
+            resourceId: 'cap-expired',
+            content: 'That definition source expired. Run Go to Definition again.',
+            displayName: 'string_view',
+            failure: 'That definition source expired. Run Go to Definition again.',
+        });
+
+        render(<ExternalSourcePane resourceId="cap-expired" name="string_view" />);
+
+        expect(screen.getByTestId('external-source-unavailable'))
+            .toHaveTextContent('That definition source expired. Run Go to Definition again.');
+        expect(screen.queryByTestId('external-editor')).toBeNull();
+    });
+
     it('reports an unavailable source rather than an empty editor', () => {
         render(<ExternalSourcePane resourceId="cap-gone" name="string_view" />);
 

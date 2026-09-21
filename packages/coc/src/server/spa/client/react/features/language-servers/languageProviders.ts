@@ -347,6 +347,15 @@ async function runTargetedRequest<T>(
 const SYMBOLS_DEFINITION_ID = 'coc-symbols';
 
 /**
+ * A single result navigates straight through, so its content has to exist
+ * first. That matters for an external source in particular: confirming it tears
+ * down the pane whose attachment holds the capability to read it.
+ */
+function waitsForContent(uri: string, resultCount: number): boolean {
+    return resultCount > 1 || uri.startsWith(`${EXTERNAL_URI_SCHEME}:`);
+}
+
+/**
  * Registers the selected language features for one model and returns a single
  * disposable. Dispose it with the document: a provider outliving its buffer
  * would answer out of a document the host has already closed.
@@ -367,7 +376,7 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                 const uri = await resolveUri(link.uri, signal, {
                     lineNumber: target.startLineNumber,
                     column: target.startColumn,
-                    waitForContent: links.length > 1,
+                    waitForContent: waitsForContent(link.uri, links.length),
                 });
                 return uri ? { ...link, uri } : null;
             }))
@@ -388,10 +397,7 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
         const uri = await resolveUri(link.uri, signal, {
             lineNumber: target.startLineNumber,
             column: target.startColumn,
-            // An external source is also waited for when it is the only
-            // result: confirming it tears down the pane whose attachment may
-            // read it, so the content has to exist before Monaco navigates.
-            waitForContent: links.length > 1 || link.uri.startsWith(`${EXTERNAL_URI_SCHEME}:`),
+            waitForContent: waitsForContent(link.uri, links.length),
         });
         return { ...link, uri: uri ?? monaco.Uri.parse(link.uri) };
     }));

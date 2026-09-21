@@ -50,6 +50,8 @@ export class FakeAttachment {
     readonly externalReads: SentExternalRead[] = [];
     /** Scripted answers by resource id; a missing id fails the read. */
     readonly externalSources = new Map<string, { content: string; displayName: string; languageHint?: string }>();
+    /** Held by a test that needs an external read still in flight while it asserts. */
+    externalReadGate: Promise<void> | null = null;
     /** Every `restart()` the layers above asked for. */
     restarts = 0;
     private readonly responders = new Map<string, RequestResponder>();
@@ -106,6 +108,7 @@ export class FakeAttachment {
             },
             readExternalSource: async (resourceId: string, options?: { signal?: AbortSignal }) => {
                 self.externalReads.push({ resourceId, signal: options?.signal });
+                if (self.externalReadGate) await self.externalReadGate;
                 const source = self.externalSources.get(resourceId);
                 if (!source) {
                     throw new Error('Definition source unavailable.');

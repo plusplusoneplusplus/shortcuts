@@ -77,7 +77,7 @@ export function ExternalSourcePane({ resourceId, name, revealLine, revealColumn,
                 )}
             </div>
             <div className="flex-1 min-h-0">
-                {record
+                {record && !record.failure
                     ? (
                         <MonacoFileEditor
                             value={record.content}
@@ -88,11 +88,14 @@ export function ExternalSourcePane({ resourceId, name, revealLine, revealColumn,
                         />
                     )
                     : (
+                        // The host says why a read failed — expired capability,
+                        // missing file, too large. Repeating its sentence is the
+                        // only thing here that tells the user what to do next.
                         <p
                             className="px-3 py-2 m-0 text-xs text-[#848484]"
                             data-testid="external-source-unavailable"
                         >
-                            Definition source unavailable.
+                            {record?.failure ?? 'Definition source unavailable.'}
                         </p>
                     )}
             </div>
