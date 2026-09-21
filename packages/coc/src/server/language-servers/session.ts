@@ -19,7 +19,8 @@ import { LanguageServerClientRequests, DEFAULT_CLIENT_CAPABILITIES } from './cli
 import type { DynamicRegistration } from './client-requests';
 import { LanguageServerConnection, LanguageServerRequestError } from './connection';
 import type { ServerNotificationHandler, ServerRequestHandler, SendRequestOptions } from './connection';
-import type { JsonValue, LanguageServerDefinition } from './types';
+import { textDocumentUri } from './uri-mapping';
+import type { JsonValue, LanguageServerDefinition, LanguageServerPrimeDocument } from './types';
 
 /**
  * Concise state shown next to the editor.
@@ -93,6 +94,13 @@ export interface LanguageServerSessionOptions {
         LanguageServerSessionOptions,
         'definition' | 'runtimeLabel' | 'commandLabel' | 'unavailableDetail' | 'recoveryCommand'
     >;
+    /**
+     * Resolves a document to open on the session's own behalf before a
+     * workspace-scoped request when the editor has nothing open. Adapters
+     * supply it for servers that answer such requests only from a loaded
+     * project; see `prime-document.ts`.
+     */
+    primeDocument?: () => LanguageServerPrimeDocument | undefined;
     /** Client capabilities sent in `initialize`. Defaults to `DEFAULT_CLIENT_CAPABILITIES`. */
     clientCapabilities?: JsonValue;
     /** Bound on the initialize handshake. Defaults to 20 seconds. */
@@ -114,6 +122,13 @@ export interface LanguageServerSessionOptions {
     onStateChange?: (state: LanguageServerSessionState) => void;
     onError?: (error: Error) => void;
 }
+
+/**
+ * Requests answered from a loaded project rather than from a document named in
+ * the request itself. Only these are worth priming for: everything else either
+ * carries its own document or needs no project at all.
+ */
+const PRIME_BEFORE_REQUESTS = new Set(['workspace/symbol']);
 
 const DEFAULT_START_TIMEOUT_MS = 20_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60_000;
@@ -145,6 +160,10 @@ export class LanguageServerSession {
     private reachedReady = false;
     private lastCrashDetail?: string;
     private readonly progressTokens = new Set<string | number>();
+    /** Document URIs the editor has open on this process, for priming. */
+    private readonly openDocuments = new Set<string>();
+    /** URI of the document this session opened itself, while it is open. */
+    private primedUri?: string;
     private disposed = false;
     private state: LanguageServerSessionState;
 
@@ -252,11 +271,24 @@ export class LanguageServerSession {
         if (!connection) {
             throw new LanguageServerRequestError('closed', method, `Language server ${this.definition.id} is not running`);
         }
+        if (PRIME_BEFORE_REQUESTS.has(method)) {
+            this.openPrimeDocument();
+        }
         return connection.sendRequest<T>(method, params, options);
     }
 
     /** Sends a notification to a running server. Returns false when it is not running. */
     sendNotification(method: string, params?: unknown): boolean {
+        const uri = textDocumentUri(params);
+        if (uri && method === 'textDocument/didOpen') {
+            // The editor's document has to lead: a server that answers
+            // workspace queries from the first open file would otherwise keep
+            // answering from the primed one for the rest of the session.
+            this.closePrimeDocument();
+            this.openDocuments.add(uri);
+        } else if (uri && method === 'textDocument/didClose') {
+            this.openDocuments.delete(uri);
+        }
         return this.connection?.sendNotification(method, params) ?? false;
     }
 
@@ -424,6 +456,37 @@ export class LanguageServerSession {
     }
 
     /**
+     * Opens the priming document, if this session has one and the editor has
+     * nothing open. Doing it here rather than at handshake keeps the cost off
+     * sessions that only ever serve the file a user is editing.
+     */
+    private openPrimeDocument(): void {
+        if (this.primedUri || this.openDocuments.size > 0) {
+            return;
+        }
+        const document = this.options.primeDocument?.();
+        if (!document) {
+            return;
+        }
+        const sent = this.connection?.sendNotification('textDocument/didOpen', {
+            textDocument: { uri: document.uri, languageId: document.languageId, version: 1, text: document.text },
+        });
+        if (sent) {
+            this.primedUri = document.uri;
+        }
+    }
+
+    /** Closes the priming document, if one is open. */
+    private closePrimeDocument(): void {
+        const uri = this.primedUri;
+        if (!uri) {
+            return;
+        }
+        this.primedUri = undefined;
+        this.connection?.sendNotification('textDocument/didClose', { textDocument: { uri } });
+    }
+
+    /**
      * Deliberately not `unref`ed, unlike the idle and restart timers: this one
      * runs during teardown, and an event loop free to exit before it fires
      * would orphan the very process it is there to kill.
@@ -451,6 +514,9 @@ export class LanguageServerSession {
             lastAttemptAt: new Date().toISOString(),
         });
         this.stderrTail = '';
+        // A new process knows no documents, primed or editor-owned.
+        this.openDocuments.clear();
+        this.primedUri = undefined;
         let child: ChildProcessWithoutNullStreams;
         try {
             child = spawn(this.definition.command, this.definition.args, {

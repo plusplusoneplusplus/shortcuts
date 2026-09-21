@@ -14,6 +14,7 @@
 import { applyClangdRuntime, resolveClangdRuntime, resolveClangdServerRoot } from './clangd-adapter';
 import type { ClangdRuntimeDeps } from './clangd-adapter';
 import { CLANGD_PRESET, COC_SYMBOLS_PRESET, PYTHON_PRESET, RUST_PRESET, TYPESCRIPT_PRESET } from './presets';
+import { resolvePrimeDocument } from './prime-document';
 import { applyPythonRuntime, resolvePythonRuntime, resolvePythonServerRoot } from './python-adapter';
 import type { PythonRuntimeDeps } from './python-adapter';
 import { applyRustRuntime, resolveRustRuntime, resolveRustServerRoot } from './rust-adapter';
@@ -23,7 +24,7 @@ import { applySymbolsRuntime, resolveSymbolsRuntime } from './symbols-adapter';
 import type { SymbolsRuntimeDeps } from './symbols-adapter';
 import { applyTypeScriptRuntime, resolveTypeScriptRuntime } from './typescript-adapter';
 import type { TypeScriptRuntimeDeps } from './typescript-adapter';
-import type { LanguageServerDefinition } from './types';
+import type { LanguageServerDefinition, LanguageServerPrimeDocument } from './types';
 
 export interface PreparedDefinition {
     /** The definition to start, with any resolved executable applied. */
@@ -36,6 +37,11 @@ export interface PreparedDefinition {
     notes?: string[];
     /** Safe command the user may copy and run themselves. */
     recoveryCommand?: string;
+    /**
+     * Resolves a document the session opens itself so the server has a project
+     * loaded. Only languages whose servers need one supply it.
+     */
+    primeDocument?: () => LanguageServerPrimeDocument | undefined;
 }
 
 export type PrepareDefinitionDeps =
@@ -79,6 +85,10 @@ export function prepareDefinitionForRoot(
             runtimeLabel: runtime.label,
             commandLabel: TYPESCRIPT_PRESET.command,
             notes: runtime.notes,
+            // `tsserver` answers `workspace/symbol` only from the project of
+            // the first open file, so Go To All finds nothing until one is
+            // open. The session opens this one when nothing else is.
+            primeDocument: () => resolvePrimeDocument(definition, rootPath),
         };
     }
     if (claimsRust(definition)) {

@@ -46,6 +46,18 @@ export interface LanguageServerDefinition {
     builtIn?: boolean;
 }
 
+/**
+ * A document a session opens on its own behalf to load a project, so a
+ * project-scoped server can answer workspace queries with nothing else open.
+ * See `prime-document.ts`.
+ */
+export interface LanguageServerPrimeDocument {
+    /** Host `file://` URI, in the same form the bridge sends. */
+    uri: string;
+    languageId: string;
+    text: string;
+}
+
 /** A single field-level validation failure, addressed by dotted path. */
 export interface LanguageServerDefinitionError {
     /** Dotted field path, e.g. `args.1` or `command`. */

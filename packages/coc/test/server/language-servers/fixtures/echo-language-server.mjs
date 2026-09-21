@@ -14,6 +14,8 @@
  *   locate                -> same, under a non-definition method
  *   getInit               -> the received initialize params plus process.cwd()
  *   getDocument           -> returns the open text for one document URI
+ *   getOpenDocuments      -> open document URIs, in the order they were opened
+ *   workspace/symbol      -> always an empty list; only the priming it triggers matters
  *   slow                  -> never replies, for timeout and cancellation tests
  *   indexing              -> reports work progress around a delayed reply
  *   fail                  -> replies with a JSON-RPC error
@@ -108,6 +110,14 @@ function handle(message) {
                 id,
                 result: openDocuments.get(params?.textDocument?.uri) ?? null,
             });
+            return;
+        case 'getOpenDocuments':
+            // Order matters: a project-scoped server answers workspace queries
+            // from the first open document, which is what priming is about.
+            send({ jsonrpc: '2.0', id, result: [...openDocuments.keys()] });
+            return;
+        case 'workspace/symbol':
+            send({ jsonrpc: '2.0', id, result: [] });
             return;
         case 'echo':
             send({ jsonrpc: '2.0', id, result: params ?? null });

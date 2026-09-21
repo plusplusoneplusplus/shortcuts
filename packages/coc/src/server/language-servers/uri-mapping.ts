@@ -147,6 +147,18 @@ export function resolveWorkspaceDocument(workspaceRoot: string, relativePath: st
     return { ok: true, relativePath: normalized, absolutePath, uri: pathToFileURL(absolutePath).href };
 }
 
+/** The `textDocument.uri` an LSP payload names, when it names one. */
+export function textDocumentUri(params: unknown): string | undefined {
+    if (!params || typeof params !== 'object' || !('textDocument' in params)) {
+        return undefined;
+    }
+    const textDocument = params.textDocument;
+    if (!textDocument || typeof textDocument !== 'object' || !('uri' in textDocument)) {
+        return undefined;
+    }
+    return typeof textDocument.uri === 'string' ? textDocument.uri : undefined;
+}
+
 /** True when `candidate` is the root itself or lives beneath it. */
 export function isInsideRoot(root: string, candidate: string): boolean {
     const relative = path.relative(path.resolve(root), path.resolve(candidate));

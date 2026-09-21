@@ -416,6 +416,7 @@ export class LanguageServerManager {
             commandLabel: prepared.commandLabel,
             unavailableDetail: prepared.notes?.join(' '),
             recoveryCommand: prepared.recoveryCommand,
+            primeDocument: prepared.primeDocument,
             prepareForStart: () => {
                 const next = prepareDefinitionForRoot(definition, rootPath, prepareDeps);
                 return {

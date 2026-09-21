@@ -513,3 +513,117 @@ describe('LanguageServerSession reference counting and disposal', () => {
         expect(session.status).toBe('ready');
     });
 });
+
+describe('LanguageServerSession priming', () => {
+    const PRIME_URI = 'file:///prime/project/main.ts';
+
+    function primingSession(uri = PRIME_URI) {
+        let resolved = 0;
+        const created = createSession(fixtureDefinition(), {
+            primeDocument: () => {
+                resolved++;
+                return { uri, languageId: 'typescript', text: 'export {};\n' };
+            },
+        });
+        return { ...created, resolveCount: () => resolved };
+    }
+
+    function openDocuments(session: LanguageServerSession): Promise<string[]> {
+        return session.sendRequest<string[]>('getOpenDocuments');
+    }
+
+    it('opens the priming document before a workspace-scoped request', async () => {
+        // Regression: `workspace/symbol` against a workspace nobody had opened
+        // a file in reached a server with no project loaded, so Go To All
+        // reported "No symbols found" for every query.
+        const { session } = primingSession();
+        await session.start();
+        expect(await openDocuments(session)).toEqual([]);
+
+        await session.sendRequest('workspace/symbol', { query: 'anything' });
+
+        expect(await openDocuments(session)).toEqual([PRIME_URI]);
+    });
+
+    it('primes once, however many workspace queries follow', async () => {
+        const { session, resolveCount } = primingSession();
+        await session.start();
+
+        await session.sendRequest('workspace/symbol', { query: 'one' });
+        await session.sendRequest('workspace/symbol', { query: 'two' });
+
+        expect(resolveCount()).toBe(1);
+        expect(await openDocuments(session)).toEqual([PRIME_URI]);
+    });
+
+    it('leaves requests that name their own document unprimed', async () => {
+        const { session } = primingSession();
+        await session.start();
+
+        await session.sendRequest('echo', { query: 'anything' });
+
+        expect(await openDocuments(session)).toEqual([]);
+    });
+
+    it('closes the priming document when the editor opens one, so the editor leads', async () => {
+        const editorUri = 'file:///prime/project/editing.ts';
+        const { session } = primingSession();
+        await session.start();
+        await session.sendRequest('workspace/symbol', { query: 'anything' });
+
+        session.sendNotification('textDocument/didOpen', {
+            textDocument: { uri: editorUri, languageId: 'typescript', version: 1, text: 'export {};\n' },
+        });
+
+        expect(await openDocuments(session)).toEqual([editorUri]);
+    });
+
+    it('does not prime while the editor already has a document open', async () => {
+        const editorUri = 'file:///prime/project/editing.ts';
+        const { session, resolveCount } = primingSession();
+        await session.start();
+        session.sendNotification('textDocument/didOpen', {
+            textDocument: { uri: editorUri, languageId: 'typescript', version: 1, text: 'export {};\n' },
+        });
+
+        await session.sendRequest('workspace/symbol', { query: 'anything' });
+
+        expect(resolveCount()).toBe(0);
+        expect(await openDocuments(session)).toEqual([editorUri]);
+    });
+
+    it('primes again once the editor closes its last document', async () => {
+        const editorUri = 'file:///prime/project/editing.ts';
+        const { session } = primingSession();
+        await session.start();
+        session.sendNotification('textDocument/didOpen', {
+            textDocument: { uri: editorUri, languageId: 'typescript', version: 1, text: 'export {};\n' },
+        });
+        session.sendNotification('textDocument/didClose', { textDocument: { uri: editorUri } });
+
+        await session.sendRequest('workspace/symbol', { query: 'anything' });
+
+        expect(await openDocuments(session)).toEqual([PRIME_URI]);
+    });
+
+    it('re-primes after a restart, because the new process knows no documents', async () => {
+        const { session } = primingSession();
+        await session.start();
+        await session.sendRequest('workspace/symbol', { query: 'anything' });
+        await session.restart();
+        expect(await openDocuments(session)).toEqual([]);
+
+        await session.sendRequest('workspace/symbol', { query: 'anything' });
+
+        expect(await openDocuments(session)).toEqual([PRIME_URI]);
+    });
+
+    it('stays unprimed when the session has no priming document', async () => {
+        const { session } = createSession(fixtureDefinition());
+        await session.start();
+
+        await session.sendRequest('workspace/symbol', { query: 'anything' });
+
+        expect(await openDocuments(session)).toEqual([]);
+    });
+});
