@@ -30,11 +30,14 @@ export interface ExternalSourcePaneProps {
     revealLine?: number;
     /** One-based column within `revealLine`. */
     revealColumn?: number;
+    /** Changes when the same position should be revealed again — see
+     * `MonacoFileEditor`. */
+    revealNonce?: number;
     /** Omitted on mobile, where the tab strip owns closing. */
     onClose?: () => void;
 }
 
-export function ExternalSourcePane({ resourceId, name, revealLine, revealColumn, onClose }: ExternalSourcePaneProps) {
+export function ExternalSourcePane({ resourceId, name, revealLine, revealColumn, revealNonce, onClose }: ExternalSourcePaneProps) {
     // Retaining on mount is what keeps the record alive across the unmount of
     // the pane whose attachment owned the capability.
     const [record, setRecord] = useState(() => readExternalSourceRecord(resourceId));
@@ -85,6 +88,7 @@ export function ExternalSourcePane({ resourceId, name, revealLine, revealColumn,
                             onModelMount={mountNonEditableModel}
                             revealLine={revealLine}
                             revealColumn={revealColumn}
+                            revealNonce={revealNonce}
                         />
                     )
                     : (

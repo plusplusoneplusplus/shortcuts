@@ -78,6 +78,12 @@ export interface PreviewPaneProps {
      * unset; a language-server navigation supplies the target symbol's column.
      */
     revealColumn?: number;
+    /**
+     * Changes whenever the owner navigated here again, even to the position
+     * already shown — a repeat pick of the same symbol. Nothing reads the
+     * value; it re-runs the editor's reveal so the line re-centres.
+     */
+    revealNonce?: number;
     /** Shows that this location came from the fuzzy repository symbol index. */
     symbolCandidate?: boolean;
     onClose?: () => void;
@@ -143,7 +149,7 @@ export interface PreviewPaneProps {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
 
@@ -480,6 +486,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     onSave={isTrusted ? undefined : handleSave}
                     revealLine={revealLine}
                     revealColumn={revealColumn}
+                    revealNonce={revealNonce}
                     markers={languageEnabled ? languageDocument.markers : undefined}
                     onModelMount={displayBlob.encoding === 'utf-8'
                         ? (isTrusted ? mountNonEditableModel : handleModelMount)

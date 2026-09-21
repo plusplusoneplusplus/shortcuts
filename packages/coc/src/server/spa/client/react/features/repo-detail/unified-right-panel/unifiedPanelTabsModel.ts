@@ -148,6 +148,17 @@ export interface UnifiedPanelTab {
      * navigation supplies one; a deep link lands at the start of the line.
      */
     column?: number;
+    /**
+     * Bumped every time a navigation explicitly names a `line` for this tab,
+     * even when it names the line already stored. Without it, jumping twice to
+     * the same symbol would produce an identical descriptor, the panel would
+     * not re-render, and the editor's reveal effect would never fire — so the
+     * second jump would silently do nothing after the user scrolled away.
+     *
+     * Never persisted: it only means "reveal again, now", which a tab restored
+     * from storage has no business claiming.
+     */
+    revealNonce?: number;
     /** Present when a fuzzy repository symbol lookup opened this location. */
     symbolCandidate?: true;
     /**
@@ -298,6 +309,7 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.repoLabel === b.repoLabel
         && a.line === b.line
         && a.column === b.column
+        && a.revealNonce === b.revealNonce
         && a.symbolCandidate === b.symbolCandidate
         && a.preview === b.preview;
 }
@@ -378,15 +390,35 @@ export interface OpenUnifiedTabInput {
     symbolCandidate?: true;
 }
 
+/** Source of `revealNonce`. Monotonic for the life of the page. */
+let revealSequence = 0;
+
+/** The reveal fields a tab already holds, nonce included, so re-focusing it
+ * neither forgets the position nor asks for a fresh reveal. */
+function keptReveal(tab: UnifiedPanelTab): Pick<UnifiedPanelTab, 'line' | 'column' | 'revealNonce'> {
+    if (tab.line === undefined) return {};
+    return {
+        line: tab.line,
+        ...(tab.column === undefined ? {} : { column: tab.column }),
+        ...(tab.revealNonce === undefined ? {} : { revealNonce: tab.revealNonce }),
+    };
+}
+
 /**
  * The reveal fields an open contributes. A column only ever travels with a
  * line, so a source that names neither contributes nothing.
+ *
+ * Naming a line always mints a fresh `revealNonce`, which is what makes a
+ * second jump to a position the tab already stores still re-centre the editor.
  */
-function revealFields(input: { line?: number; column?: number }): { line?: number; column?: number } {
+function revealFields(input: { line?: number; column?: number }): Pick<UnifiedPanelTab, 'line' | 'column' | 'revealNonce'> {
     if (input.line === undefined) return {};
-    return input.column === undefined
-        ? { line: input.line }
-        : { line: input.line, column: input.column };
+    revealSequence += 1;
+    return {
+        line: input.line,
+        ...(input.column === undefined ? {} : { column: input.column }),
+        revealNonce: revealSequence,
+    };
 }
 
 /**
@@ -436,10 +468,11 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         const existing = list[index];
         const merged: UnifiedPanelTab = {
             ...opened,
-            // Keep the existing reveal position when this open supplied none, so
-            // re-focusing a tab does not forget where it was pointed. The column
-            // travels with its line and is never kept without one.
-            ...(input.line === undefined ? revealFields(existing) : {}),
+            // Keep the existing reveal position — and its nonce — when this open
+            // supplied none, so re-focusing a tab neither forgets where it was
+            // pointed nor scrolls it back there. The column travels with its
+            // line and is never kept without one.
+            ...(input.line === undefined ? keptReveal(existing) : {}),
         };
         const copy = [...list];
         copy[index] = sameTab(existing, merged) ? existing : merged;
@@ -700,7 +733,11 @@ interface SerializedUnifiedPanelState {
 
 /** Serialize descriptors only — never document bodies, output, or credentials. */
 export function serializeUnifiedPanelState(state: UnifiedPanelState): string {
-    const persistable = (list: readonly UnifiedPanelTab[]) => list.filter(tab => !EPHEMERAL_KINDS.has(tab.kind));
+    // `revealNonce` is a "scroll there again now" signal, not identity: writing
+    // it would put a value in storage that a restore must ignore anyway.
+    const persistable = (list: readonly UnifiedPanelTab[]) => list
+        .filter(tab => !EPHEMERAL_KINDS.has(tab.kind))
+        .map(({ revealNonce: _nonce, ...tab }) => tab);
     const written = new Set<string>();
     const workspaceTabs = persistable(state.workspaceTabs);
     for (const tab of workspaceTabs) written.add(tab.id);

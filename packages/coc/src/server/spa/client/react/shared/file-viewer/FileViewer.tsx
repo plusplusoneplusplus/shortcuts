@@ -42,6 +42,9 @@ export interface FileViewerProps {
      * supplies the target symbol's own column.
      */
     revealColumn?: number;
+    /** Changes when the same `revealLine` should be revealed again — see
+     * `MonacoFileEditor`. */
+    revealNonce?: number;
     /**
      * `'off'` (the default) renders markdown as source in Monaco, like any
      * other file. `'toggle'` renders it formatted with a Rendered ⇄ Raw switch.
@@ -60,7 +63,7 @@ export function formatFileSize(bytes: number): string {
 
 export function FileViewer({
     blob, fileName, language, onChange, onSave,
-    highlightRange, revealLine, revealColumn, markdown = 'off', codeTestId, markers, onModelMount,
+    highlightRange, revealLine, revealColumn, revealNonce, markdown = 'off', codeTestId, markers, onModelMount,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
         return blob.mimeType.startsWith('image/') ? (
@@ -99,6 +102,7 @@ export function FileViewer({
                 highlightRange={highlightRange ?? null}
                 revealLine={revealLine}
                 revealColumn={revealColumn}
+                revealNonce={revealNonce}
                 markers={markers}
                 onModelMount={onModelMount}
             />

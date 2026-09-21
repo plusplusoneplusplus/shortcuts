@@ -883,6 +883,10 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         }
 
         if (!isOpen || mode !== 'explorer') dock.selectMode('explorer');
+        // Past the liveness and routing guards this pick is going to open
+        // something, so the palette is done — otherwise it stays stacked over
+        // the file it just opened. The single-repo branch closes the same way.
+        setQuickOpenVisible(false);
         tree.setOpen(true);
         const name = fileNameOf(result.path);
         if (position) {

@@ -41,7 +41,7 @@ from same-id clones never merge into one tab.
 
 | File | Holds |
 |---|---|
-| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab, and `external` tabs are filtered out of the codec along with any selection naming one. |
+| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab, and `external` tabs are filtered out of the codec along with any selection naming one. An open that names a `line` also mints a fresh `revealNonce` on the tab — that is what makes a repeat jump to a position the tab already stores re-centre the editor instead of being swallowed as a no-op. An open naming no line keeps the stored position *and* its nonce, so re-focusing a tab never scrolls it. The nonce is never persisted. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
 | `unifiedPanelTree.ts` | The navigator column's open and width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, panel collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
@@ -231,6 +231,10 @@ run the dirty-editor guard. Missing/stale members, unknown remote routes, and a
 declined guard leave tabs, target, tree, and dialog unchanged. An accepted pick
 builds the preview descriptor directly from the result's member id and repo
 label rather than waiting for target state to rerender.
+
+A symbol row carries a position, so it opens **pinned** on its declaration the
+way a definition jump does, instead of taking the preview slot. Every accepted
+pick — repo or group, file or symbol — closes the palette.
 
 An accepted pick opens Explorer mode and sets the tree's open bit; the active
 tab then drives `ExplorerPanel.activeFilePath`, which expands ancestors and

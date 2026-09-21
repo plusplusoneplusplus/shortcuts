@@ -41,6 +41,19 @@ function open(state: UnifiedPanelState, input: Partial<OpenUnifiedTabInput> & Pi
     });
 }
 
+/** The same state with every tab's `revealNonce` dropped. */
+function withoutRevealNonce(state: UnifiedPanelState): UnifiedPanelState {
+    const strip = (list: readonly { revealNonce?: number }[]) =>
+        list.map(({ revealNonce: _nonce, ...tab }) => tab);
+    return {
+        ...state,
+        workspaceTabs: strip(state.workspaceTabs) as UnifiedPanelState['workspaceTabs'],
+        chatTabs: Object.fromEntries(
+            Object.entries(state.chatTabs).map(([key, list]) => [key, strip(list)]),
+        ) as UnifiedPanelState['chatTabs'],
+    };
+}
+
 /** A workspace terminal + a notes tab + one chat-1 file, in that strip order. */
 function baseState(): UnifiedPanelState {
     let state = open(EMPTY_UNIFIED_PANEL, { kind: 'terminal', resourceId: 'sess-1', label: 'bash' });
@@ -168,6 +181,33 @@ describe('unifiedPanelTabsModel — identity and deduplication', () => {
         });
         state = open(state, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1 });
         expect(activeTab(state, CHAT_1)).toMatchObject({ line: 7, column: 21 });
+    });
+
+    it('re-reveals when a jump names the position the tab already points at', () => {
+        // The regression: picking a symbol, scrolling away, and picking the same
+        // symbol again used to reuse the descriptor object, so nothing
+        // re-rendered and the editor never moved back.
+        const jump = { kind: 'file' as const, resourceId: 'src/a.ts', chatId: CHAT_1, line: 42, column: 8 };
+        const first = open(EMPTY_UNIFIED_PANEL, jump);
+        const second = open(first, jump);
+
+        expect(visibleTabs(second, CHAT_1)).toHaveLength(1);
+        expect(activeTab(second, CHAT_1)).toMatchObject({ line: 42, column: 8 });
+        expect(activeTab(second, CHAT_1)).not.toBe(activeTab(first, CHAT_1));
+        expect(activeTab(second, CHAT_1)!.revealNonce)
+            .toBeGreaterThan(activeTab(first, CHAT_1)!.revealNonce!);
+    });
+
+    it('does not ask for a fresh reveal when a re-focus names no line', () => {
+        // Clicking the tab in the strip, or any open that carries no position,
+        // must leave the buffer where the user scrolled it.
+        const state = open(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1, line: 42, column: 8,
+        });
+        const again = open(state, { kind: 'file', resourceId: 'src/a.ts', chatId: CHAT_1 });
+
+        expect(again).toBe(state);
+        expect(activeTab(again, CHAT_1)).toMatchObject({ line: 42, column: 8 });
     });
 
     it('shows candidate provenance until an exact open replaces it', () => {
@@ -317,7 +357,9 @@ describe('unifiedPanelTabsModel — persistence codec', () => {
         state = activateTab(state, CHAT_2, state.workspaceTabs[0].id);
 
         const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
-        expect(restored).toEqual(state);
+        // `revealNonce` is the one field that deliberately does not survive: it
+        // says "scroll there again, now", which a reload has no business doing.
+        expect(restored).toEqual(withoutRevealNonce(state));
         expect(activeTabId(restored, CHAT_1)).toBe(activeTabId(state, CHAT_1));
         expect(activeTabId(restored, CHAT_2)).toBe(activeTabId(state, CHAT_2));
     });

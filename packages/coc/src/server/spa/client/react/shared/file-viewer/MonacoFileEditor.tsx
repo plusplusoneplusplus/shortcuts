@@ -161,6 +161,12 @@ export interface MonacoFileEditorProps {
      */
     revealColumn?: number;
     /**
+     * Changes whenever the host wants `revealLine` applied again, even though
+     * the line and column did not change — a repeat jump to the same symbol.
+     * Nothing reads the value; it exists to re-run the reveal effect.
+     */
+    revealNonce?: number;
+    /**
      * One-based inclusive line range to highlight as whole lines, centring the
      * first line in the viewport. Applied on mount and whenever it changes, so
      * opening a second `file:line` reference into an already-open file moves the
@@ -322,7 +328,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
 };
 
 export function MonacoFileEditor({
-    value, language, onChange, onSave, revealLine, revealColumn, highlightRange, markers, onModelMount,
+    value, language, onChange, onSave, revealLine, revealColumn, revealNonce, highlightRange, markers, onModelMount,
 }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
@@ -441,11 +447,14 @@ export function MonacoFileEditor({
     // mount to piggyback on, so apply it here too. `value` is a dependency
     // because the content arrives after the editor does: revealing a line before
     // the model is populated would clamp to the end of an empty buffer.
+    // `revealNonce` is one because a repeat jump to the *same* symbol changes
+    // nothing else, and must still re-centre the line the user scrolled away
+    // from.
     useEffect(() => {
         const editor = editorRef.current;
         if (!editor || revealLine === undefined) return;
         revealEditorLine(editor, revealLine, revealColumn);
-    }, [revealLine, revealColumn, value]);
+    }, [revealLine, revealColumn, revealNonce, value]);
 
     // A later range (a second `file:line` reference into the already-open file)
     // has no mount to piggyback on. `value` is a dependency for the same reason

@@ -178,6 +178,7 @@ export function UnifiedTabView({
                     fileName={fileNameOf(tab)}
                     revealLine={tab.line}
                     revealColumn={tab.column}
+                    revealNonce={tab.revealNonce}
                     symbolCandidate={tab.symbolCandidate}
                     onNavigate={onOpenFile ? handleNavigate : undefined}
                     onNavigateExternal={onOpenExternal ? handleNavigateExternal : undefined}
@@ -195,6 +196,7 @@ export function UnifiedTabView({
                     name={tab.label}
                     revealLine={tab.line}
                     revealColumn={tab.column}
+                    revealNonce={tab.revealNonce}
                     onClose={close}
                 />
             );
