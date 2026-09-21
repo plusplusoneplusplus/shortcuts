@@ -181,7 +181,11 @@ folding in cannot move the selection under an Enter press. Highlighting uses
 the `cocMatchIndices` the answering server scored on. Indexing, server
 unavailable (with the host's recovery command), partial group, and zero results
 are four distinct renderings; indexing is derived from live session status, so a
-repo that finishes mid-query shows results without a keystroke.
+repo that finishes mid-query shows results without a keystroke. A status push
+only re-derives that status — it must not restart the query, or an indexing
+server's push rate keeps aborting the fan-out and blinking the list empty. The
+sole exception is the no-answerable-server → answerable edge, which re-queries
+once because the earlier answer was computed against an empty server set.
 
 ### File search
 

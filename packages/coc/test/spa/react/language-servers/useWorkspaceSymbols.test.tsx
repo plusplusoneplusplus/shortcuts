@@ -6,7 +6,9 @@
  * keystrokes but not the dialog — leaking one leaks a language-server session
  * per open — and no more than `MAX_CONCURRENT_MEMBERS` repos are ever attached
  * at once. And "Indexing…" is derived from the live session state, so a repo
- * that finishes indexing becomes results without the user retyping.
+ * that finishes indexing becomes results without the user retyping — while a
+ * status push on its own leaves the in-flight query alone, since an indexing
+ * server pushes often enough that restarting would blink the list empty.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -18,6 +20,7 @@ const querySpy = vi.fn();
 class FakeAttachment {
     released = 0;
     statusListeners = new Set<() => void>();
+    attachListeners = new Set<() => void>();
     infos: unknown[] = [];
 
     constructor(readonly workspaceId: string) { attached.push(this); }
@@ -27,7 +30,10 @@ class FakeAttachment {
         this.statusListeners.add(listener);
         return () => this.statusListeners.delete(listener);
     }
-    onAttached() { return () => {}; }
+    onAttached(listener: () => void) {
+        this.attachListeners.add(listener);
+        return () => this.attachListeners.delete(listener);
+    }
     release() { this.released += 1; }
     /** What the host does when a session changes state. */
     setInfos(infos: unknown[]) {
@@ -143,5 +149,65 @@ describe('useWorkspaceSymbols', () => {
             detail: 'The bundled symbol index server was not built for this platform.',
             recoveryCommand: 'npm run build:native -w packages/coc-native',
         }));
+    });
+
+    it('leaves an in-flight query alone when a status push arrives', async () => {
+        // The blink: every `lsp-status` push used to tear the query effect down,
+        // aborting the fan-out and flashing the empty state before the debounce
+        // restarted it. An indexing server pushes these constantly.
+        let settle: (outcome: unknown) => void = () => {};
+        const signals: AbortSignal[] = [];
+        querySpy.mockImplementation((args: { signal: AbortSignal }) => {
+            signals.push(args.signal);
+            return new Promise((resolve) => { settle = resolve; });
+        });
+
+        const { result } = renderHook(() => useWorkspaceSymbols({
+            open: true, members: members(1), query: 'fwc', debounceMs: 0, limit: 50,
+        }));
+        await waitFor(() => expect(querySpy).toHaveBeenCalledTimes(1));
+
+        act(() => { attached[0].setInfos([readyInfo('indexing')]); });
+        act(() => { attached[0].setInfos([readyInfo('indexing')]); });
+        expect(querySpy).toHaveBeenCalledTimes(1);
+        expect(signals.every((signal) => !signal.aborted)).toBe(true);
+
+        const found = [{ name: 'findWorkspaceConfig', kind: 12, path: 'a.cpp', line: 1, col: 1, definitionId: 'coc-symbols' }];
+        await act(async () => { settle({ results: found, status: 'complete' }); });
+        await waitFor(() => expect(result.current.results).toHaveLength(1));
+
+        // Status keeps moving; the answer already on screen stays there.
+        act(() => { attached[0].setInfos([readyInfo('indexing')]); });
+        expect(result.current.results).toHaveLength(1);
+        expect(result.current.loading).toBe(false);
+        expect(result.current.indexing).toBe(true);
+        expect(querySpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-runs the query once when the first server becomes answerable', async () => {
+        // Results computed against an empty server set are not an answer, so the
+        // no-usable-server → usable edge — and only that edge — re-queries.
+        renderHook(() => useWorkspaceSymbols({
+            open: true, members: members(1), query: 'fwc', debounceMs: 0, limit: 50,
+        }));
+        await waitFor(() => expect(querySpy).toHaveBeenCalledTimes(1));
+
+        act(() => { attached[0].setInfos([readyInfo('ready')]); });
+        await waitFor(() => expect(querySpy).toHaveBeenCalledTimes(2));
+
+        act(() => { attached[0].setInfos([readyInfo('ready')]); });
+        act(() => { attached[0].setInfos([readyInfo('indexing')]); });
+        expect(querySpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('drops the indexing flag when the session dies, without retyping', async () => {
+        const { result } = renderHook(() => useWorkspaceSymbols({
+            open: true, members: members(1), query: 'fwc', debounceMs: 0, limit: 50,
+        }));
+        act(() => { attached[0].setInfos([readyInfo('indexing')]); });
+        await waitFor(() => expect(result.current.indexing).toBe(true));
+
+        act(() => { attached[0].setInfos([]); });
+        await waitFor(() => expect(result.current.indexing).toBe(false));
     });
 });
