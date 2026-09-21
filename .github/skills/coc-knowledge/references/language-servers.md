@@ -169,6 +169,14 @@ method is "no answer": some failing is `partial`, all failing is `failed`, and
 none of it throws into the dialog. There is no HTTP symbol route; the fan-out
 is browser-side, so a group member on another host is reached directly.
 
+`tsserver` answers `workspace/symbol` from the project holding the first open
+file and answers nothing without one, so a TypeScript session opens a priming
+document of its own before such a request when the editor has nothing open —
+the first file under its project root the preset claims, resolved by
+`prime-document.ts`. The editor's first `didOpen` closes it again, so the
+user's file decides which project answers. Results stay scoped to that one
+project, which is tsserver's own limit, not CoC's.
+
 `coc-symbols-lsp` answers `workspace/symbol` with a camel-case-aware scorer: a
 subsequence match weighted by word starts, with an all-word-starts acronym
 (`fwc` → `findWorkspaceConfig`) ranked above an incidental one, and the prefix
@@ -192,6 +200,14 @@ answer as it arrives. A server that times out, dies, or does not support the
 method is "no answer": some failing is `partial`, all failing is `failed`, and
 none of it throws into the dialog. There is no HTTP symbol route; the fan-out
 is browser-side, so a group member on another host is reached directly.
+
+`tsserver` answers `workspace/symbol` from the project holding the first open
+file and answers nothing without one, so a TypeScript session opens a priming
+document of its own before such a request when the editor has nothing open —
+the first file under its project root the preset claims, resolved by
+`prime-document.ts`. The editor's first `didOpen` closes it again, so the
+user's file decides which project answers. Results stay scoped to that one
+project, which is tsserver's own limit, not CoC's.
 
 `coc-symbols-lsp` answers `workspace/symbol` with a camel-case-aware scorer: a
 subsequence match weighted by word starts, with an all-word-starts acronym

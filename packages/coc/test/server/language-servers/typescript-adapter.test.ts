@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import * as nodeFs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import {
     MIN_WORKSPACE_TYPESCRIPT_VERSION,
     applyTypeScriptRuntime,
@@ -272,5 +275,63 @@ describe('prepareDefinitionForRoot', () => {
         const prepared = prepareDefinitionForRoot(other, workspaceRoot, deps);
 
         expect(prepared.definition).toBe(other);
+    });
+});
+
+describe('prepareDefinitionForRoot priming', () => {
+    const roots: string[] = [];
+
+    afterEach(() => {
+        for (const dir of roots.splice(0)) {
+            nodeFs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    function projectRoot(files: Record<string, string>): string {
+        const dir = nodeFs.mkdtempSync(path.join(os.tmpdir(), 'coc-lsp-prepare-prime-'));
+        roots.push(dir);
+        for (const [relative, contents] of Object.entries(files)) {
+            const target = path.join(dir, relative);
+            nodeFs.mkdirSync(path.dirname(target), { recursive: true });
+            nodeFs.writeFileSync(target, contents, 'utf-8');
+        }
+        return dir;
+    }
+
+    it('gives the TypeScript preset a priming document from its own project root', () => {
+        // tsserver answers `workspace/symbol` only from the project holding an
+        // open file, so a session with nothing open needs one of its own.
+        const root = projectRoot({ 'Component.tsx': 'export const Component = () => null;\n' });
+        const prepared = prepareDefinitionForRoot(preset(), root, { resolveBundled: () => undefined });
+
+        expect(prepared.primeDocument?.()).toEqual({
+            uri: pathToFileURL(path.join(root, 'Component.tsx')).href,
+            languageId: 'typescriptreact',
+            text: 'export const Component = () => null;\n',
+        });
+    });
+
+    it('resolves nothing when the project holds no file the preset claims', () => {
+        const root = projectRoot({ 'README.md': '# empty\n' });
+        const prepared = prepareDefinitionForRoot(preset(), root, { resolveBundled: () => undefined });
+
+        expect(prepared.primeDocument?.()).toBeUndefined();
+    });
+
+    it('leaves other languages unprimed, because only tsserver needs it', () => {
+        const root = projectRoot({ 'main.py': 'pass\n' });
+        const other: LanguageServerDefinition = {
+            id: 'python',
+            displayName: 'Python',
+            languageIds: ['python'],
+            filePatterns: ['**/*.py'],
+            command: 'pylsp',
+            args: [],
+            rootMarkers: ['pyproject.toml'],
+            builtIn: true,
+            enabled: true,
+        };
+
+        expect(prepareDefinitionForRoot(other, root).primeDocument).toBeUndefined();
     });
 });

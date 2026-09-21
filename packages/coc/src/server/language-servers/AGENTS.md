@@ -23,6 +23,10 @@ and transport code stays generic.
   manager acquisition and settings GET. For a workspace with no config file, it
   writes the detected presets enabled and returns that. A workspace with any
   config file — valid or corrupt — is read, never seeded.
+- `prime-document.ts` — the bounded, deterministic search for the one file a
+  session opens on its own behalf so a project-scoped server has a project
+  loaded. Breadth-first and in name order, skipping the same directories
+  detection skips.
 - `adapters.ts` — the language-neutral root and runtime preparation hooks the
   manager calls before starting a session.
 - `typescript-adapter.ts` — TypeScript's answer to that hook: which
@@ -117,6 +121,12 @@ and transport code stays generic.
   documents, and the browser keeps its attachment across all of them, so this
   number is the only cue it has that the process behind an open file is a new
   one. It starts at 0 and only ever increases; a failed start leaves it alone.
+- A session may carry a `primeDocument` resolver from its adapter. Before a
+  request in `PRIME_BEFORE_REQUESTS` (`workspace/symbol`) and only while the
+  editor has nothing open, the session opens that document itself; the first
+  editor `didOpen` closes it again. The session tracks open document URIs by
+  watching `textDocument/didOpen` and `didClose` pass through
+  `sendNotification`, and forgets them on every new process.
 - `attach()` returns a release function. The process stops
   `idleTimeoutMs` after the last reference releases; an unexpected exit while
   references remain restarts with doubling backoff up to `maxRestarts`, then
@@ -258,6 +268,10 @@ and transport code stays generic.
   server is run as `node <cli.mjs> --stdio` rather than through a
   `node_modules/.bin` shim, because that shim is a shell script on POSIX and a
   `.cmd` file on Windows and the definition contract forbids a shell.
+- The TypeScript branch also supplies `primeDocument`. `tsserver` answers
+  `workspace/symbol` from the project holding the first open file and answers
+  nothing without one, so Go To All against a workspace with no open document
+  found no symbols at all. No other language supplies one.
 - TypeScript itself is resolved the same way: a workspace `typescript` at least
   `MIN_WORKSPACE_TYPESCRIPT_VERSION` wins and is passed as
   `initializationOptions.tsserver.path`; an older one is rejected with a note
@@ -288,6 +302,8 @@ and transport code stays generic.
   the workspace root, so the mapping is also the access check. `toBrowserUri`
   leaves an out-of-workspace dependency or a non-`file:` scheme untouched, which
   is how the client can tell a live repo document from an external target.
+  `textDocumentUri` reads the `textDocument.uri` out of an LSP payload, shared
+  by the bridge's open-document bookkeeping and the session's priming.
   `translateUris` deep-copies a payload, rewriting only LSP URI keys (`uri`,
   `targetUri`, `newUri`, `oldUri`, `rootUri`, `documentUri`, `externalUri`), and
   rejects the whole payload when one URI cannot be mapped. `collectUris` returns

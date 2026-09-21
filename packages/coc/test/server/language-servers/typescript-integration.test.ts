@@ -526,3 +526,67 @@ describe('unsaved buffers', () => {
         expect(labels).not.toContain('label');
     });
 });
+
+/**
+ * Go To All against a workspace nobody has opened a file in.
+ *
+ * This gets its own project and session on purpose: the suite above opens
+ * documents in `beforeAll`, and the whole point here is that nothing is open.
+ * `tsserver` answers `workspace/symbol` from the project holding the first
+ * open file and answers nothing at all without one, so the palette used to
+ * report "No symbols found" for every query until the user happened to open a
+ * file first.
+ */
+describe('workspace symbols with no document open', () => {
+    const COMPONENT_TSX = `export interface PanelHeaderProps {
+    title: string;
+}
+
+export const PanelHeader = (props: PanelHeaderProps) => props.title;
+`;
+
+    let symbolRoot: string;
+    let symbolSession: LanguageServerSession;
+
+    beforeAll(async () => {
+        symbolRoot = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'coc-lsp-ts-symbols-'));
+        fs.mkdirSync(path.join(symbolRoot, 'src'), { recursive: true });
+        fs.writeFileSync(
+            path.join(symbolRoot, 'package.json'),
+            JSON.stringify({ name: 'coc-lsp-symbols-fixture', version: '1.0.0' }, null, 2),
+        );
+        fs.writeFileSync(
+            path.join(symbolRoot, 'tsconfig.json'),
+            JSON.stringify({ compilerOptions: { target: 'ES2020', jsx: 'react-jsx', strict: true, noEmit: true }, include: ['src'] }, null, 2),
+        );
+        fs.writeFileSync(path.join(symbolRoot, 'src', 'PanelHeader.tsx'), COMPONENT_TSX);
+
+        const enabled: LanguageServerDefinition = { ...TYPESCRIPT_PRESET, enabled: true };
+        const prepared = prepareDefinitionForRoot(enabled, symbolRoot);
+        symbolSession = new LanguageServerSession({
+            definition: prepared.definition,
+            rootPath: symbolRoot,
+            primeDocument: prepared.primeDocument,
+            startTimeoutMs: 45_000,
+            requestTimeoutMs: 30_000,
+            idleTimeoutMs: 10 * 60_000,
+        });
+        await symbolSession.start();
+    }, 90_000);
+
+    afterAll(async () => {
+        await symbolSession?.dispose();
+        await safeRm(symbolRoot);
+    });
+
+    it('finds a symbol declared in a .tsx file', async () => {
+        const results = await symbolSession.sendRequest<{ name: string; location: { uri: string } }[]>(
+            'workspace/symbol',
+            { query: 'PanelHeaderProps' },
+        );
+
+        expect(results?.map((entry) => entry.name)).toContain('PanelHeaderProps');
+        expect(results?.map((entry) => fileUriKey(entry.location.uri)))
+            .toContain(fileUriKey(pathToFileURL(path.join(symbolRoot, 'src', 'PanelHeader.tsx')).href));
+    }, 60_000);
+});

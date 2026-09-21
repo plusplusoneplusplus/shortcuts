@@ -29,6 +29,7 @@ import {
     collectUris,
     externalResourceUri,
     resolveWorkspaceDocument,
+    textDocumentUri,
     toBrowserUri,
     toServerUri,
     translateUris,
@@ -851,17 +852,6 @@ export class LanguageServerWebSocketServer {
         }, HEARTBEAT_INTERVAL_MS);
         this.heartbeatTimer.unref?.();
     }
-}
-
-function textDocumentUri(params: unknown): string | undefined {
-    if (!params || typeof params !== 'object' || !('textDocument' in params)) {
-        return undefined;
-    }
-    const textDocument = params.textDocument;
-    if (!textDocument || typeof textDocument !== 'object' || !('uri' in textDocument)) {
-        return undefined;
-    }
-    return typeof textDocument.uri === 'string' ? textDocument.uri : undefined;
 }
 
 function sameDocumentUri(left: string | undefined, right: string): boolean {
