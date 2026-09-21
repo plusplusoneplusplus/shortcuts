@@ -11,7 +11,9 @@
  * Status is derived, never latched. "Indexing…" comes from the live session
  * state of the servers that are attached right now, so a repo that finishes
  * indexing mid-query becomes results without the user retyping, and a session
- * that dies stops claiming to be indexing.
+ * that dies stops claiming to be indexing. Deriving it is all a status push
+ * does: it never restarts the query, because an indexing server pushes often
+ * enough that restarting would keep aborting the fan-out mid-flight.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -76,7 +78,8 @@ export function useWorkspaceSymbols(options: UseWorkspaceSymbolsOptions): Worksp
     const membersKey = members.map((member) => `${member.workspaceId}|${member.routingRef ?? ''}`).join(',');
 
     const attachmentsRef = useRef<WorkspaceSymbolTarget[]>([]);
-    const [attachGeneration, setAttachGeneration] = useState(0);
+    const answerableRef = useRef(false);
+    const [queryGeneration, setQueryGeneration] = useState(0);
     const [state, setState] = useState<WorkspaceSymbolsState>(IDLE);
 
     // Attachments live for as long as the dialog does.
@@ -96,15 +99,31 @@ export function useWorkspaceSymbols(options: UseWorkspaceSymbolsOptions): Worksp
         attachmentsRef.current = views;
         // A session that turns ready, starts indexing, or dies re-derives the
         // status without a keystroke — that is AC-07's "no retyping" rule.
-        const unsubscribe = views.map(({ attachment }) =>
-            attachment.onStatus(() => setAttachGeneration((value) => value + 1)));
-        const unattached = views.map(({ attachment }) =>
-            attachment.onAttached(() => setAttachGeneration((value) => value + 1)));
-        setAttachGeneration((value) => value + 1);
+        //
+        // Only the status is re-derived here. An indexing server pushes status
+        // constantly, and restarting the query on each push would abort the
+        // fan-out the user is waiting on and flash "No symbols found" between
+        // the tear-down and the next debounce. The one push that does deserve a
+        // re-query is the edge where nothing could answer and now something
+        // can: those results were computed against an empty server set.
+        const sync = () => {
+            const { answerable, ...status } = readSessionHealth(attachmentsRef.current);
+            setState((previous) => (sameStatus(previous, status) ? previous : { ...previous, ...status }));
+            if (answerable && !answerableRef.current) {
+                setQueryGeneration((value) => value + 1);
+            }
+            answerableRef.current = answerable;
+        };
+        const disposers = views.flatMap(({ attachment }) => [
+            attachment.onStatus(sync),
+            attachment.onAttached(sync),
+        ]);
+        sync();
         return () => {
-            for (const dispose of [...unsubscribe, ...unattached]) dispose();
+            for (const dispose of disposers) dispose();
             for (const { attachment } of views) attachment.release();
             attachmentsRef.current = [];
+            answerableRef.current = false;
         };
     }, [open, membersKey]);
 
@@ -115,7 +134,7 @@ export function useWorkspaceSymbols(options: UseWorkspaceSymbolsOptions): Worksp
         }
         const trimmed = query.trim();
         if (!trimmed) {
-            setState({ ...IDLE, ...readSessionHealth(attachmentsRef.current) });
+            setState({ ...IDLE, ...readStatus(attachmentsRef.current) });
             return;
         }
         const abort = new AbortController();
@@ -124,7 +143,7 @@ export function useWorkspaceSymbols(options: UseWorkspaceSymbolsOptions): Worksp
                 ...previous,
                 loading: previous.results.length === 0,
                 streaming: previous.results.length > 0,
-                ...readSessionHealth(attachmentsRef.current),
+                ...readStatus(attachmentsRef.current),
             }));
             void queryWorkspaceSymbols({
                 targets: attachmentsRef.current,
@@ -138,7 +157,7 @@ export function useWorkspaceSymbols(options: UseWorkspaceSymbolsOptions): Worksp
                         results,
                         loading: false,
                         streaming: pending > 0,
-                        ...readSessionHealth(attachmentsRef.current),
+                        ...readStatus(attachmentsRef.current),
                     }));
                 },
             }).then((outcome) => {
@@ -149,7 +168,7 @@ export function useWorkspaceSymbols(options: UseWorkspaceSymbolsOptions): Worksp
                     status: outcome.status,
                     loading: false,
                     streaming: false,
-                    ...readSessionHealth(attachmentsRef.current),
+                    ...readStatus(attachmentsRef.current),
                 }));
             });
         }, debounceMs);
@@ -157,9 +176,30 @@ export function useWorkspaceSymbols(options: UseWorkspaceSymbolsOptions): Worksp
             clearTimeout(timer);
             abort.abort();
         };
-    }, [open, query, debounceMs, limit, membersKey, attachGeneration]);
+    }, [open, query, debounceMs, limit, membersKey, queryGeneration]);
 
     return state;
+}
+
+type SymbolStatusFields = Pick<WorkspaceSymbolsState, 'indexing' | 'unavailable'>;
+
+interface SessionHealth extends SymbolStatusFields {
+    /** At least one attached server can answer a query right now. */
+    answerable: boolean;
+}
+
+/** The rendered half of session health. */
+function readStatus(
+    views: readonly { attachment: LanguageServerAttachment }[],
+): SymbolStatusFields {
+    const { indexing, unavailable } = readSessionHealth(views);
+    return { indexing, unavailable };
+}
+
+function sameStatus(a: SymbolStatusFields, b: SymbolStatusFields): boolean {
+    return a.indexing === b.indexing
+        && a.unavailable?.detail === b.unavailable?.detail
+        && a.unavailable?.recoveryCommand === b.unavailable?.recoveryCommand;
 }
 
 /**
@@ -169,7 +209,7 @@ export function useWorkspaceSymbols(options: UseWorkspaceSymbolsOptions): Worksp
  */
 function readSessionHealth(
     views: readonly { attachment: LanguageServerAttachment }[],
-): Pick<WorkspaceSymbolsState, 'indexing' | 'unavailable'> {
+): SessionHealth {
     let indexing = false;
     let servers = 0;
     let usable = 0;
@@ -192,5 +232,9 @@ function readSessionHealth(
     }
     // The recovery hint is the whole story only when nothing else can answer;
     // one dead server beside a working one is not worth a banner.
-    return { indexing, unavailable: servers === 0 || usable === 0 ? unavailable : null };
+    return {
+        indexing,
+        unavailable: servers === 0 || usable === 0 ? unavailable : null,
+        answerable: usable > 0 && !indexing,
+    };
 }
