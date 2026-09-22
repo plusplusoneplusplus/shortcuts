@@ -89,8 +89,14 @@ describe('Explorer sub-tab Go To All', () => {
         pressGoto(root);
 
         await waitFor(() => screen.getByTestId('quick-open-input'));
-        fireEvent.change(screen.getByTestId('quick-open-input'), { target: { value: 'CanvasHeader' } });
-        expect(screen.getByTestId('quick-open-item-0').textContent).toContain('CanvasHeader');
+        // The palette clears its query in an open effect, and the Explorer's
+        // first tree load lands on its own tick — so on a loaded CI box a
+        // keystroke typed the instant the input appears can be swallowed and
+        // the row never renders. Retype until the row is there.
+        await waitFor(() => {
+            fireEvent.change(screen.getByTestId('quick-open-input'), { target: { value: 'CanvasHeader' } });
+            expect(screen.getByTestId('quick-open-item-0').textContent).toContain('CanvasHeader');
+        });
 
         await act(async () => { fireEvent.click(screen.getByTestId('quick-open-item-0')); });
 
