@@ -108,7 +108,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             'proc-img',
             'check these images',
             expect.anything(),
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'enqueue',
             images,
             undefined,
@@ -135,7 +135,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             'proc-img',
             'no images',
             undefined,
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'enqueue',
             undefined,
             undefined,
@@ -161,7 +161,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             'proc-img',
             'empty images',
             undefined,
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'enqueue',
             undefined,
             undefined,
@@ -190,7 +190,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             'proc-img',
             'too many images',
             expect.anything(),
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'enqueue',
             sevenImages.slice(0, 5),
             undefined,
@@ -223,7 +223,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             'proc-img',
             'mixed images',
             expect.anything(),
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'enqueue',
             [PNG_DATA_URL, GIF_DATA_URL],
             undefined,
@@ -255,7 +255,7 @@ describe('POST /api/processes/:id/message — image persistence', () => {
             'proc-img',
             'with non-strings',
             expect.anything(),
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'enqueue',
             [PNG_DATA_URL, JPEG_DATA_URL],
             undefined,
