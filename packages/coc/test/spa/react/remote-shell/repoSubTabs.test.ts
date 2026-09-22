@@ -114,10 +114,12 @@ describe('computeVisibleSubTabs', () => {
 
 // AC-02: when the splitWorkspacePanel flag is on, the split "Workspace" view
 // replaces the chat slot — the standalone `git` sub-tab is hidden and the chat
-// tab is relabeled "Workspace" (key preserved). Off by default; off-path is a
+// tab is relabeled "Workspace" (key preserved). The admin flag is on by
+// default; the option itself is optional here and treated as off when omitted,
+// for callers (remote-shell) that don't host the split panel. The off-path is a
 // strict no-op.
 describe('computeVisibleSubTabs — splitWorkspacePanel flag', () => {
-    it('off by default: omitting the option leaves git visible and labels unchanged (classic)', () => {
+    it('omitting the option leaves git visible and labels unchanged (classic)', () => {
         const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
         expect(tabs.find(t => t.key === 'git')?.label).toBe('Git');
         expect(tabs.find(t => t.key === 'activity')?.label).toBe('Activity');

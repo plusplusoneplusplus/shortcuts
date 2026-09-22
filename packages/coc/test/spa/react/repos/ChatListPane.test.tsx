@@ -3751,6 +3751,38 @@ describe('getTaskModeKey / getTaskModeLabel — Ralph', () => {
     });
 });
 
+describe('getTaskModeKey / getTaskModeLabel / getTaskTypeIcon — Sentinel', () => {
+    it('returns sentinel for chat task with payload.mode === sentinel (regression: used to fall through to auto)', () => {
+        const t = { type: 'chat', payload: { mode: 'sentinel' } };
+        expect(getTaskModeKey(t)).toBe('sentinel');
+        expect(getTaskModeLabel(t)).toBe('SN');
+        expect(getTaskTypeIcon(t)).toBe('\u{1F6E1}\uFE0F');
+    });
+
+    it('returns sentinel when the mode lives flat on the task (history projection)', () => {
+        const t = { type: 'chat', mode: 'sentinel' };
+        expect(getTaskModeKey(t)).toBe('sentinel');
+        expect(getTaskModeLabel(t)).toBe('SN');
+        expect(getTaskTypeIcon(t)).toBe('\u{1F6E1}\uFE0F');
+    });
+
+    it('keeps the ralph badge when a sentinel-mode task also carries ralph context', () => {
+        const t = { type: 'chat', payload: { mode: 'sentinel', context: { ralph: { sessionId: 's-r' } } } };
+        expect(getTaskModeKey(t)).toBe('ralph');
+        expect(getTaskModeLabel(t)).toBe('R');
+    });
+
+    it('gives sentinel a badge letter distinct from ask/auto/script/ralph', () => {
+        const labels = [
+            getTaskModeLabel({ type: 'chat', payload: { mode: 'ask' } }),
+            getTaskModeLabel({ type: 'chat', payload: { mode: 'autopilot' } }),
+            getTaskModeLabel({ type: 'run-script' }),
+            getTaskModeLabel({ type: 'chat', payload: { mode: 'ralph' } }),
+        ];
+        expect(labels).not.toContain(getTaskModeLabel({ type: 'chat', payload: { mode: 'sentinel' } }));
+    });
+});
+
 describe('getTaskTypeIcon — Ralph', () => {
     it('returns the loop icon for chat task with ralph context (grilling phase, mode=ask)', () => {
         const t = { type: 'chat', payload: { mode: 'ask', context: { ralph: { sessionId: 's-g' } } } };

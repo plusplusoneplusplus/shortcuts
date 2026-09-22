@@ -106,6 +106,7 @@ const CHAT_MODE_LABELS: Record<string, string> = {
     'autopilot': 'Autopilot',
     'ralph': 'Ralph',
     'map-reduce': 'Map Reduce',
+    'sentinel': 'Sentinel',
 };
 
 export type ActivityTabMode = 'chats' | 'tasks';
@@ -285,6 +286,7 @@ export function getTaskTypeIcon(task: any): string {
         const normalizedMode = normalizeChatMode(mode);
         if (normalizedMode === 'ask') return '💡';
         if (normalizedMode === 'ralph') return '🔄';
+        if (normalizedMode === 'sentinel') return '🛡️';
         return '🤖';
     }
     if (type === 'run-workflow') return payload.workItemId ? '📦' : '▶️';
@@ -301,7 +303,7 @@ export function getTaskTypeIcon(task: any): string {
  *   - run-script → SCRP (scheduled / one-shot script)
  *   - run-workflow / replicate-template / memory-promote / generate / default → AUTO
  */
-export function getTaskModeKey(task: any): 'ask' | 'auto' | 'script' | 'ralph' {
+export function getTaskModeKey(task: any): 'ask' | 'auto' | 'script' | 'ralph' | 'sentinel' {
     const type = task.type as string;
     if (type === 'run-script') return 'script';
     if (type === 'chat') {
@@ -310,16 +312,18 @@ export function getTaskModeKey(task: any): 'ask' | 'auto' | 'script' | 'ralph' {
         const normalizedMode = normalizeChatMode(mode);
         if (normalizedMode === 'ralph') return 'ralph';
         if (normalizedMode === 'ask') return 'ask';
+        if (normalizedMode === 'sentinel') return 'sentinel';
         return 'auto';
     }
     return 'auto';
 }
 
-export function getTaskModeLabel(task: any): 'A' | 'S' | 'R' {
+export function getTaskModeLabel(task: any): 'A' | 'S' | 'R' | 'SN' {
     const key = getTaskModeKey(task);
     if (key === 'ask') return 'A';
     if (key === 'script') return 'S';
     if (key === 'ralph') return 'R';
+    if (key === 'sentinel') return 'SN';
     return 'A';
 }
 
@@ -3584,10 +3588,12 @@ export function ChatListPane({
             !isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/70 dark:border-emerald-500/60 bg-emerald-50/60 dark:bg-emerald-500/10',
             !isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/55 dark:border-[#9d9d9d]/45 bg-[#1e1e1e]/[0.06] dark:bg-[#dcdcdc]/[0.06]',
             !isGroupChild && modeKey === 'ralph' && 'text-purple-600 dark:text-purple-400 border-purple-500/70 dark:border-purple-500/60 bg-purple-50/60 dark:bg-purple-500/10',
+            !isGroupChild && modeKey === 'sentinel' && 'text-teal-600 dark:text-teal-400 border-teal-500/70 dark:border-teal-500/60 bg-teal-50/60 dark:bg-teal-500/10',
             isGroupChild && modeKey === 'ask' && 'text-amber-600 dark:text-amber-400 border-amber-400/30 dark:border-amber-500/25 bg-transparent',
             isGroupChild && modeKey === 'auto' && 'text-emerald-600 dark:text-emerald-400 border-emerald-500/30 dark:border-emerald-500/25 bg-transparent',
             isGroupChild && modeKey === 'script' && 'text-[#1e1e1e] dark:text-[#dcdcdc] border-[#3c3c3c]/25 dark:border-[#9d9d9d]/20 bg-transparent',
             isGroupChild && modeKey === 'ralph' && 'text-purple-600 dark:text-purple-400 border-purple-500/30 dark:border-purple-500/25 bg-transparent',
+            isGroupChild && modeKey === 'sentinel' && 'text-teal-600 dark:text-teal-400 border-teal-500/30 dark:border-teal-500/25 bg-transparent',
         );
 
         const dotClasses = cn(

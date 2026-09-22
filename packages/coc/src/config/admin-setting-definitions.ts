@@ -857,7 +857,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.splitWorkspacePanel', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
+        key: 'features.splitWorkspacePanel', default: true, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
         ui: {
             group: 'dashboard', order: 67, label: 'Split Workspace panel',
             hint: 'Replaces the Activity tab with a split "Workspace" view (chat list on top, git on the bottom) that feeds one shared detail pane, and hides the standalone Git tab. Enabled by default.',

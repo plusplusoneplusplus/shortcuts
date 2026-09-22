@@ -62,15 +62,17 @@ export interface VisibleSubTabOptions {
     showPlanDepTab: boolean;
     uiLayoutMode: 'classic' | 'dev-workflow';
     /**
-     * When true (feature flag `splitWorkspacePanel`, default off), the split
+     * When true (feature flag `splitWorkspacePanel`, default on), the split
      * "Workspace" view takes over the chat slot: the standalone `git`,
      * `terminal`, and `explorer` sub-tabs are hidden — git's diff/stage/commit
      * functionality now lives inside the split panel, and Terminal/Explorer move
      * into the workspace right dock (segmented Terminal|Explorer) — and the chat
      * tab is relabeled "Workspace". The tab *key* (`activity`/`chats`) is
      * unchanged so mount/selection logic is unaffected — only the label and the
-     * git/terminal/explorer visibility change. Optional so the remote-shell
-     * callers, which don't host the split panel or dock, keep today's behavior.
+     * git/terminal/explorer visibility change. Optional — and defaulted to
+     * false below — so the remote-shell callers, which don't host the split
+     * panel or dock, keep today's behavior; real callers pass the flag, which
+     * is on by default.
      */
     splitWorkspacePanelEnabled?: boolean;
     /**

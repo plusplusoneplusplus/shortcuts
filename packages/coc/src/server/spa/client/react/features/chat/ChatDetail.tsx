@@ -889,6 +889,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if (allowedModes) return allowedModes;
         const ralphCtx = getRalphContext(task);
         const payloadMode = resolveLoadedTaskMode(task);
+        // Sentinel is a terminal conversation mode: its identity lives in
+        // `metadata.mode`, so a per-turn switch would demote the sentinel.
+        // Pinning the set to Sentinel locks the pill (cycleMode over a
+        // single-entry list is a no-op) and stops the coercion effect below
+        // from rewriting the mode to Ask. Deliberately not gated on the
+        // sentinel feature flag — turning the flag off must not reopen
+        // demotion of an existing sentinel chat.
+        if (payloadMode === 'sentinel') return ['sentinel'];
         const noPending = (pendingQueue?.length ?? 0) === 0;
         const ralphEligible = isRalphEnabled()
             && !readOnly
@@ -904,7 +912,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     useEffect(() => {
         const allowed = effectiveAllowedModes ?? ['ask', 'autopilot'];
         if (!allowed.includes(selectedMode)) {
-            setSelectedMode('ask');
+            setSelectedMode(allowed.includes('ask') ? 'ask' : allowed[0]);
         }
     }, [selectedMode, effectiveAllowedModes]);
 

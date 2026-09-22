@@ -106,7 +106,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             'proc-dm',
             'hello',
             undefined,
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'enqueue',
             undefined,
             undefined,
@@ -129,7 +129,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             'proc-dm',
             'steer me',
             undefined,
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'immediate',
             undefined,
             undefined,
@@ -152,7 +152,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             'proc-dm',
             'queue me',
             undefined,
-            undefined,
+            'ask', // mode — the route always resolves and forwards one
             'enqueue',
             undefined,
             undefined,

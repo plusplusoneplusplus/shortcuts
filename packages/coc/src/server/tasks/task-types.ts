@@ -152,6 +152,23 @@ export function normalizeChatModeOrDefault(value: unknown, fallback: ChatMode = 
     return normalizeChatMode(value) ?? fallback;
 }
 
+/**
+ * Modes a conversation can never leave once set.
+ *
+ * `sentinel` stores its workflow identity in `metadata.mode` itself (unlike
+ * ralph / for-each / map-reduce, which keep identity in a separate context
+ * object), and the whole sentinel machinery — classifier, workspace ownership,
+ * cron routing — keys off `metadata.mode === 'sentinel'`. A per-turn mode
+ * switch would therefore silently dismantle the sentinel, so it is refused.
+ */
+const TERMINAL_CHAT_MODES: ReadonlySet<ChatMode> = new Set(['sentinel']);
+
+/** True when the mode, once persisted on a conversation, must never change. */
+export function isTerminalChatMode(value: unknown): boolean {
+    const mode = normalizeChatMode(value);
+    return mode !== undefined && TERMINAL_CHAT_MODES.has(mode);
+}
+
 /** Maps each ChatMode to the instruction folder used by loadInstructions. */
 const INSTRUCTION_MODE_MAP: Record<ChatMode, InstructionMode> = {
     ask: 'ask',

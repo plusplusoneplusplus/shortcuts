@@ -509,6 +509,10 @@ export function FollowUpInputArea({
             featureFlags: {
                 ralph: isRalphEnabled(),
                 'for-each': isForEachEnabled(),
+                // Sentinel is not a follow-up surface mode, so it only ever
+                // shows up here when `allowedModes` pins it — a sentinel chat,
+                // whose locked pill must render regardless of the flag.
+                sentinel: true,
             },
             allowedModes,
         })];

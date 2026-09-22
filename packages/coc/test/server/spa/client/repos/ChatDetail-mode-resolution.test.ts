@@ -5,6 +5,12 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { isChatMode, resolveLoadedTaskMode } from '../../../../../src/server/spa/client/react/features/chat/chatMode';
+import { cycleMode, getVisibleChatModes } from '../../../../../src/server/spa/client/react/repos/modeConfig';
+
+const FOLLOW_UP_INPUT_SOURCE = resolve(
+    __dirname,
+    '../../../../../src/server/spa/client/react/features/chat/FollowUpInputArea.tsx',
+);
 
 const CHAT_DETAIL_SOURCE = resolve(
     __dirname,
@@ -68,5 +74,45 @@ describe('ChatDetail mode resolution', () => {
         expect(source).toContain("const isSentinelChat = isSentinelEnabled() && resolveLoadedTaskMode(task) === 'sentinel';");
         expect(source).toContain('onCheckSentinelNow={isSentinelChat ?');
         expect(source).toContain('client.workspaces.checkSentinelNow(workspaceId)');
+    });
+});
+
+// Regression: a follow-up in a sentinel chat used to demote it to Ask. The
+// composer coerced the mode to 'ask' (sentinel was not in the allowed set) and
+// sent it, which rewrote `metadata.mode` and unhooked the sentinel.
+describe('Sentinel is a locked follow-up mode', () => {
+    it('pins the allowed mode set to sentinel for a sentinel chat', () => {
+        const source = readFileSync(CHAT_DETAIL_SOURCE, 'utf-8');
+        expect(source).toContain("if (payloadMode === 'sentinel') return ['sentinel'];");
+    });
+
+    it('coerces to the first allowed mode instead of hardcoding ask', () => {
+        const source = readFileSync(CHAT_DETAIL_SOURCE, 'utf-8');
+        expect(source).toContain("setSelectedMode(allowed.includes('ask') ? 'ask' : allowed[0]);");
+        expect(source).not.toContain('        if (!allowed.includes(selectedMode)) {\n            setSelectedMode(\'ask\');');
+    });
+
+    it('does not offer sentinel as a per-turn mode in ordinary chats', () => {
+        expect(getVisibleChatModes({
+            surface: 'follow-up',
+            featureFlags: { sentinel: true },
+        })).not.toContain('sentinel');
+    });
+
+    it('renders only the sentinel pill on the follow-up bar when pinned', () => {
+        expect(getVisibleChatModes({
+            surface: 'follow-up',
+            featureFlags: { sentinel: true },
+            allowedModes: ['sentinel'],
+        })).toEqual(['sentinel']);
+    });
+
+    it('renders the pinned sentinel pill through the follow-up feature flags', () => {
+        const source = readFileSync(FOLLOW_UP_INPUT_SOURCE, 'utf-8');
+        expect(source).toContain('sentinel: true,');
+    });
+
+    it('makes the pill click and Shift+Tab shortcut no-ops', () => {
+        expect(cycleMode('sentinel', ['sentinel'])).toBe('sentinel');
     });
 });

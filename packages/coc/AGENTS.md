@@ -799,7 +799,10 @@ all have their own `references/*.md`.
   serialized state keys stable.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
-  to `'ask'` if missing.
+  to `'ask'` if missing. A terminal conversation mode (`isTerminalChatMode` —
+  today only `sentinel`) overrides any caller-supplied mode, so a follow-up
+  cannot demote a sentinel chat; the SPA correspondingly pins the composer's
+  allowed mode set to `['sentinel']` for such a chat.
 - **Stopped-chat follow-ups** (`cancelled` process with saved `sdkSessionId`)
   must carry `payload.resumeSessionId`; the follow-up executor sends
   `strictSessionResume: true` and must not persist or accept a replacement SDK

@@ -18,6 +18,7 @@ import {
     hasNoteCreateContext,
     hasRalphContext,
     isRalphMode,
+    isTerminalChatMode,
     normalizeChatMode,
     normalizeChatModeOrDefault,
     resolveInstructionMode,
@@ -647,5 +648,23 @@ describe('normalizeChatMode', () => {
 
     it('uses the fallback when a value is invalid', () => {
         expect(normalizeChatModeOrDefault('bogus', 'autopilot')).toBe('autopilot');
+    });
+});
+
+describe('isTerminalChatMode', () => {
+    it('treats sentinel as terminal', () => {
+        expect(isTerminalChatMode('sentinel')).toBe(true);
+    });
+
+    it('treats every other mode as switchable', () => {
+        for (const mode of ['ask', 'autopilot', 'ralph', 'plan']) {
+            expect(isTerminalChatMode(mode)).toBe(false);
+        }
+    });
+
+    it('returns false for absent or unknown values', () => {
+        expect(isTerminalChatMode(undefined)).toBe(false);
+        expect(isTerminalChatMode(null)).toBe(false);
+        expect(isTerminalChatMode('garbage')).toBe(false);
     });
 });

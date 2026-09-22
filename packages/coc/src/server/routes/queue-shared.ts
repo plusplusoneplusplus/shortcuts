@@ -372,7 +372,7 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         if (payload.mode !== undefined && !normalizedMode) {
             return {
                 valid: false,
-                error: `Invalid chat mode: ${payload.mode}. Valid modes: ask, autopilot, ralph`,
+                error: `Invalid chat mode: ${payload.mode}. Valid modes: ask, autopilot, ralph, sentinel`,
             };
         }
         if (normalizedMode) payload.mode = normalizedMode;
