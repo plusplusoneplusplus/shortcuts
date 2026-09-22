@@ -76,7 +76,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 
 **Dreams:** `dreams.enabled` is the global gate and each workspace must also opt in via `PerRepoPreferences.dreams.enabled`. Admin -> Knowledge -> Dreams renders `dreams.enabled`, the restart-required `dreams.idleCheckIntervalMs`, and idle-run defaults `dreams.provider`/`dreams.model`/`dreams.timeoutMs` (interval and timeout entered in minutes, persisted as milliseconds). Config-file-only knobs: `dreams.minIdleMs`, `dreams.confidenceThreshold`, `dreams.maxCandidates`, `dreams.conversationLimit`.
 
-**`features.*` flags.** Bootstrap-conservative `absentFallback` makes partial configs read the on-by-default ones as off.
+**`features.*` flags.** Bootstrap-conservative `absentFallback` makes partial configs read some of the on-by-default ones (e.g. `remoteShell`, `chatStyleSelector`) as off. Flags without `absentFallback` (e.g. `splitWorkspacePanel`) resolve an absent key to their `default`, so a fresh install gets them on.
 
 | Flag | Default | Gates |
 |------|---------|-------|
