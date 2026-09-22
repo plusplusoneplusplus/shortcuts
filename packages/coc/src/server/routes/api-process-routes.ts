@@ -27,6 +27,7 @@ import { parseBodyOrReject } from '../shared/handler-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
+import { resolveFollowUpMode } from '../executors/follow-up-mode';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProvider, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
@@ -1354,7 +1355,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // the transcript matches. Innermost, keeping the style block as
             // the outermost prefix (AC-05).
             const followUpPreviousMode = normalizeChatModeOrDefault(proc.metadata?.mode);
-            const followUpMode = normalizeChatModeOrDefault(fields.mode, followUpPreviousMode);
+            // Resolved through the shared resolver so this path honours the
+            // same rules as the programmatic enqueuers — in particular, a
+            // terminal conversation mode (sentinel) ignores `fields.mode`.
+            const followUpMode = await resolveFollowUpMode(store, id, fields.mode);
             const displayContent = applyStyle(
                 prependSelectedSkillsDirective(
                     prependChatModeDirective(
@@ -1381,7 +1385,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ...(imageTempDir ? { imageTempDir } : {}),
                 ...(fileAttachmentMeta ? { fileAttachmentMeta } : {}),
                 ...(fields.selectedSkillNames ? { selectedSkillNames: fields.selectedSkillNames } : {}),
-                ...(fields.mode ? { mode: fields.mode } : {}),
+                // Always populated — FollowUpExecutor treats a missing mode as
+                // an enqueue-site bug.
+                mode: followUpMode,
                 ...(fields.model ? { model: fields.model } : {}),
                 ...(fields.effort ? { effort: fields.effort } : {}),
                 deliveryMode: fields.deliveryMode,

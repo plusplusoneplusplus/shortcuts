@@ -151,7 +151,7 @@ Wakeups bypass the queue/tick-completion path; `WakeupExecutor` owns them end to
 
 ## Follow-Up Mode Resolution
 
-`resolveFollowUpMode(store, processId, explicit?)` in `executors/follow-up-mode.ts` is the single source of truth for the mode a follow-up runs in. Every programmatic enqueue site (cron ticks, wakeup timer, requeue) must call it and set `payload.mode`. `validateAndParseTask` defaults `payload.mode` to `autopilot` only for new chats (no `processId`); REST follow-ups must supply mode. `FollowUpExecutor.executeFollowUp` requires `mode` and logs a fail-loud warning plus defaults to `'ask'` if it is missing.
+`resolveFollowUpMode(store, processId, explicit?)` in `executors/follow-up-mode.ts` is the single source of truth for the mode a follow-up runs in. Every enqueue site — cron ticks, wakeup timer, requeue, and `POST /api/processes/:id/message` — calls it and sets `payload.mode`. Resolution order is explicit > `process.metadata.mode` > `'ask'`, except that a terminal persisted mode (`isTerminalChatMode`, today only `sentinel`) wins over an explicit mode and logs a warning: sentinel keeps its workflow identity in `metadata.mode`, so a per-turn switch would unhook it from cron routing and workspace ownership. `validateAndParseTask` defaults `payload.mode` to `autopilot` only for new chats (no `processId`). `FollowUpExecutor.executeFollowUp` requires `mode` and logs a fail-loud warning plus defaults to `'ask'` if it is missing.
 
 ## REST API
 
