@@ -125,6 +125,10 @@ export interface ExplorerContentSearchOptions {
   wholeWord?: boolean;
   regex?: boolean;
   showIgnored?: boolean;
+  /** Restrict candidates to Git-tracked files. */
+  fileScope?: 'tracked';
+  /** Add non-ignored untracked files when `fileScope` is `tracked`. */
+  includeUntracked?: boolean;
   /** Whitelist globs. When non-empty, a file matching none of them is skipped. */
   include?: string[];
   /** Globs whose matches are skipped. */

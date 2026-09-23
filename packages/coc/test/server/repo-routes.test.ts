@@ -662,6 +662,91 @@ describe('GET /api/repos/:repoId/search/content', () => {
         expect(((await shown.json()) as any).matches.map((m: any) => m.path)).toEqual(['dist/bundle.js']);
     });
 
+    it('searches tracked files by default and optionally adds non-ignored untracked files', async () => {
+        seedDefaultRepo();
+        initGitRepo(repoDir);
+        fs.writeFileSync(path.join(repoDir, '.gitignore'), 'ignored/\n');
+        fs.writeFileSync(path.join(repoDir, 'tracked file.txt'), 'needle tracked\n');
+        fs.mkdirSync(path.join(repoDir, 'ignored'));
+        fs.writeFileSync(path.join(repoDir, 'ignored', 'tracked-日本語.txt'), 'needle ignored tracked\n');
+        fs.writeFileSync(path.join(repoDir, 'untracked.txt'), 'needle untracked\n');
+        fs.writeFileSync(path.join(repoDir, 'ignored', 'untracked.txt'), 'needle ignored untracked\n');
+        childProcess.execFileSync('git', ['add', '.gitignore', 'tracked file.txt'], {
+            cwd: repoDir,
+            stdio: 'pipe',
+        });
+        childProcess.execFileSync('git', ['add', '-f', 'ignored/tracked-日本語.txt'], {
+            cwd: repoDir,
+            stdio: 'pipe',
+        });
+
+        const tracked = await fetch(
+            `${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&fileScope=tracked`,
+        );
+        expect(tracked.status).toBe(200);
+        expect(((await tracked.json()) as any).matches.map((m: any) => m.path)).toEqual([
+            'ignored/tracked-日本語.txt',
+            'tracked file.txt',
+        ]);
+
+        const withUntracked = await fetch(
+            `${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&fileScope=tracked&includeUntracked=true`,
+        );
+        expect(withUntracked.status).toBe(200);
+        expect(((await withUntracked.json()) as any).matches.map((m: any) => m.path)).toEqual([
+            'ignored/tracked-日本語.txt',
+            'tracked file.txt',
+            'untracked.txt',
+        ]);
+    });
+
+    it('composes tracked candidates with case, word, regex, and glob controls', async () => {
+        seedDefaultRepo();
+        initGitRepo(repoDir);
+        fs.mkdirSync(path.join(repoDir, 'src'));
+        fs.writeFileSync(path.join(repoDir, 'src', 'keep.ts'), 'Needle\nneedles\n');
+        fs.writeFileSync(path.join(repoDir, 'src', 'drop.ts'), 'Needle\n');
+        fs.writeFileSync(path.join(repoDir, 'outside.txt'), 'Needle\n');
+        childProcess.execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' });
+
+        const res = await fetch(
+            `${baseUrl}/api/repos/${REPO_ID}/search/content`
+            + `?q=${encodeURIComponent('N..dle')}`
+            + '&fileScope=tracked&regex=true&caseSensitive=true&wholeWord=true'
+            + '&include=*.ts&exclude=src%2Fdrop.ts',
+        );
+
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.matches.map((m: any) => `${m.path}:${m.line}`)).toEqual(['src/keep.ts:1']);
+    });
+
+    it('reports tracked search as unavailable outside a Git repository', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'plain.txt'), 'needle\n');
+
+        const res = await fetch(
+            `${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&fileScope=tracked`,
+        );
+
+        expect(res.status).toBe(409);
+        expect(await res.json()).toMatchObject({
+            code: 'TRACKED_CONTENT_SEARCH_UNAVAILABLE',
+            error: expect.stringMatching(/git-tracked search is unavailable/i),
+        });
+    });
+
+    it('rejects unsupported file scopes', async () => {
+        seedSearchableRepo();
+
+        const res = await fetch(
+            `${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&fileScope=filesystem`,
+        );
+
+        expect(res.status).toBe(400);
+        expect(await res.json()).toMatchObject({ error: expect.stringMatching(/fileScope/i) });
+    });
+
     it('filters by include and exclude globs', async () => {
         seedSearchableRepo();
 

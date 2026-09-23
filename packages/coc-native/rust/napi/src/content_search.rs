@@ -27,6 +27,8 @@ pub struct SearchContentOptions {
     pub regex: Option<bool>,
     /// Search files `.gitignore` excludes — the explorer's `showIgnored` flag.
     pub show_ignored: Option<bool>,
+    /// Exact repo-relative paths eligible for this search.
+    pub files: Option<Vec<String>>,
     /// Whitelist globs. When non-empty, a file matching none of them is skipped.
     pub include: Option<Vec<String>>,
     /// Globs whose matches are skipped.
@@ -84,6 +86,7 @@ fn search_options(options: Option<SearchContentOptions>) -> ContentSearchOptions
         whole_word: options.whole_word.unwrap_or(defaults.whole_word),
         regex: options.regex.unwrap_or(defaults.regex),
         show_ignored: options.show_ignored.unwrap_or(defaults.show_ignored),
+        files: options.files,
         include: options.include.unwrap_or_default(),
         exclude: options.exclude.unwrap_or_default(),
         max_results: options.max_results.map_or(defaults.max_results, |m| m as usize),

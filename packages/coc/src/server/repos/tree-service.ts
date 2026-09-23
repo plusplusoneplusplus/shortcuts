@@ -4,6 +4,7 @@ import * as childProcess from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
 import {
     loadNativeContentSearch,
     loadNativeFileIndex,
@@ -175,6 +176,33 @@ function isBinary(buffer: Buffer): boolean {
  */
 function stripLeadingSeparators(p: string): string {
     return p.replace(/^[/\\]+/, '') || '.';
+}
+
+export class TrackedContentSearchUnavailableError extends Error {
+    readonly code = 'TRACKED_CONTENT_SEARCH_UNAVAILABLE';
+}
+
+const GIT_CANDIDATE_TIMEOUT_MS = 15_000;
+const GIT_CANDIDATE_MAX_BUFFER = 64 * 1024 * 1024;
+
+async function gitContentCandidates(repoRoot: string, includeUntracked: boolean): Promise<string[]> {
+    const args = ['ls-files', '-z', '--cached'];
+    if (includeUntracked) args.push('--others', '--exclude-standard');
+    try {
+        const stdout = await execGitAsync(args, repoRoot, {
+            timeout: GIT_CANDIDATE_TIMEOUT_MS,
+            maxBuffer: GIT_CANDIDATE_MAX_BUFFER,
+        });
+        return stdout
+            .split('\0')
+            .filter(Boolean)
+            .map(file => file.split(path.sep).join('/'));
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new TrackedContentSearchUnavailableError(
+            `Git-tracked search is unavailable: ${detail}`,
+        );
+    }
 }
 
 /**
@@ -868,7 +896,7 @@ export class RepoTreeService {
     }
 
     /**
-     * Search the contents of every non-ignored file under the repo root.
+     * Search eligible file contents under the repo root.
      *
      * Every query is a fresh parallel walk — there is no content index to keep
      * warm and no cancellation, so the caps in `options` are the only bound on
@@ -908,6 +936,9 @@ export class RepoTreeService {
         // '.' is how every other repo route spells "the root", but handing it
         // to the addon as a subfolder would prefix every result path with './'.
         const scope = stripLeadingSeparators(options?.path ?? '').replace(/^\.(?:\/|$)/, '');
+        const files = options?.fileScope === 'tracked'
+            ? await gitContentCandidates(repoRoot, options.includeUntracked ?? false)
+            : undefined;
 
         this.nativeContent ??= loadNativeContentSearch();
         return this.nativeContent.searchContent(repoRoot, query, {
@@ -916,6 +947,7 @@ export class RepoTreeService {
             wholeWord: options?.wholeWord ?? false,
             regex: options?.regex ?? false,
             showIgnored: options?.showIgnored ?? false,
+            files,
             include: options?.include,
             exclude: options?.exclude,
             maxResults: limit,

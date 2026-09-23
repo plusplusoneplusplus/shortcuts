@@ -109,6 +109,15 @@ describe('marshalling', () => {
         const ignored = await addon.searchContent(root, 'needle', { showIgnored: true });
         expect(locations(ignored)).toContain('ignored.txt:1');
 
+        const files = await addon.searchContent(root, 'needle', {
+            files: ['ignored.txt', 'src/index.ts'],
+        });
+        expect(locations(files)).toEqual([
+            'ignored.txt:1',
+            'src/index.ts:1',
+            'src/index.ts:2',
+        ]);
+
         const worded = await addon.searchContent(root, 'needl', { wholeWord: true });
         expect(worded.matches).toEqual([]);
 

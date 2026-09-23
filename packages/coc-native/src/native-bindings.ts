@@ -986,6 +986,8 @@ export interface SearchContentOptions {
   regex?: boolean
   /** Search files `.gitignore` excludes — the explorer's `showIgnored` flag. */
   showIgnored?: boolean
+  /** Exact repo-relative paths eligible for this search. */
+  files?: Array<string>
   /** Whitelist globs. When non-empty, a file matching none of them is skipped. */
   include?: Array<string>
   /** Globs whose matches are skipped. */

@@ -18,7 +18,7 @@ import * as path from 'path';
 import * as child_process from 'child_process';
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500, readJsonBody } from '../router';
-import { RepoTreeService } from './tree-service';
+import { RepoTreeService, TrackedContentSearchUnavailableError } from './tree-service';
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
 import type { ContentReplaceFile } from './content-replace';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -302,6 +302,11 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 const limit = isNaN(rawLimit)
                     ? CONTENT_SEARCH_MAX_RESULTS
                     : Math.min(Math.max(rawLimit, 1), CONTENT_SEARCH_MAX_RESULTS);
+                const fileScope = parsedUrl.query.fileScope;
+                if (fileScope !== undefined && fileScope !== 'tracked') {
+                    send400(res, 'Invalid fileScope: expected "tracked"');
+                    return;
+                }
 
                 const result = await svc.searchContent(parsed.repoId, q, {
                     path: parsed.path,
@@ -309,6 +314,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                     wholeWord: boolParam(parsedUrl.query, 'wholeWord'),
                     regex: boolParam(parsedUrl.query, 'regex'),
                     showIgnored: boolParam(parsedUrl.query, 'showIgnored'),
+                    fileScope,
+                    includeUntracked: boolParam(parsedUrl.query, 'includeUntracked'),
                     include: globParam(parsedUrl.query, 'include'),
                     exclude: globParam(parsedUrl.query, 'exclude'),
                     limit,
@@ -321,6 +328,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 // mistake, not a server failure.
                 if ((err as { code?: unknown } | null)?.code === 'InvalidArg') {
                     send400(res, message);
+                } else if (err instanceof TrackedContentSearchUnavailableError) {
+                    sendJson(res, { error: message, code: err.code }, 409);
                 } else if (/not found/i.test(message)) {
                     send404(res, message);
                 } else {

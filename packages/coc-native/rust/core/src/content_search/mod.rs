@@ -1,4 +1,4 @@
-//! Full-text search across a repository's non-ignored files.
+//! Full-text search across eligible repository files.
 //!
 //! Built on ripgrep's own `grep-searcher` / `grep-regex` over the same
 //! `ignore`-crate walk the Explorer tree and path search use, so "the files
@@ -17,6 +17,8 @@ pub use options::{
     MAX_LINE_UTF16,
 };
 
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fmt;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -135,8 +137,13 @@ pub fn search(
     // The walk yields paths relative to `scope`, but every path the client sees
     // is relative to the repo root, so re-root them by this prefix.
     let prefix = to_posix(scope.strip_prefix(root).unwrap_or(Path::new("")));
+    let candidates = options.files.as_ref().map(|files| {
+        Arc::new(files.iter().map(|file| candidate_key(file).into_owned()).collect::<HashSet<_>>())
+    });
 
-    let mut builder = walk_builder(&scope, options.show_ignored);
+    // An explicit candidate set is already filtered by its owner (Git for the
+    // tracked-content contract), so ignore rules must not remove a tracked path.
+    let mut builder = walk_builder(&scope, options.show_ignored || candidates.is_some());
     if !options.include.is_empty() || !options.exclude.is_empty() {
         builder.overrides(build_overrides(&scope, options)?);
     }
@@ -154,6 +161,7 @@ pub fn search(
         let matcher = matcher.clone();
         let prefix = prefix.clone();
         let scope = scope.clone();
+        let candidates = candidates.clone();
         let mut searcher = SearcherBuilder::new()
             .line_number(true)
             // Stop at the first NUL rather than emitting the garbage that
@@ -180,14 +188,20 @@ pub fn search(
             if !entry.file_type().is_some_and(|t| t.is_file()) {
                 return WalkState::Continue;
             }
-            if entry.metadata().is_ok_and(|m| m.len() > max_file_size) {
-                truncated.store(true, Ordering::Relaxed);
-                return WalkState::Continue;
-            }
             let Ok(relative) = entry.path().strip_prefix(&scope) else {
                 return WalkState::Continue;
             };
             let path = join_posix(&prefix, &to_posix(relative));
+            if candidates
+                .as_ref()
+                .is_some_and(|files| !files.contains(candidate_key(&path).as_ref()))
+            {
+                return WalkState::Continue;
+            }
+            if entry.metadata().is_ok_and(|m| m.len() > max_file_size) {
+                truncated.store(true, Ordering::Relaxed);
+                return WalkState::Continue;
+            }
 
             let mut sink = MatchSink::new(&matcher, &path, context_lines, max_per_file, multi_line);
             // A file that cannot be read or decoded is skipped; one bad file
@@ -220,6 +234,17 @@ pub fn search(
         truncated = true;
     }
     Ok(ContentSearchResult { matches, truncated })
+}
+
+fn candidate_key(path: &str) -> Cow<'_, str> {
+    #[cfg(windows)]
+    {
+        Cow::Owned(path.replace('\\', "/").to_lowercase())
+    }
+    #[cfg(not(windows))]
+    {
+        Cow::Borrowed(path)
+    }
 }
 
 /// The directory the walk starts from: the root, or `path` beneath it.

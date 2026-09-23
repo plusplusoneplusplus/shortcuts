@@ -322,6 +322,60 @@ fn respects_gitignore_unless_show_ignored_is_set() {
 }
 
 #[test]
+fn exact_file_candidates_include_ignored_paths_and_exclude_everything_else() {
+    let dir = repo(&[
+        (".gitignore", "ignored/\n"),
+        ("tracked.txt", "needle\n"),
+        ("untracked.txt", "needle\n"),
+        ("ignored/tracked-too.txt", "needle\n"),
+    ]);
+
+    let result = run(
+        dir.path(),
+        "needle",
+        ContentSearchOptions {
+            files: Some(vec!["tracked.txt".into(), "ignored/tracked-too.txt".into()]),
+            ..Default::default()
+        },
+    );
+
+    assert_eq!(locations(&result), ["ignored/tracked-too.txt:1", "tracked.txt:1"]);
+}
+
+#[test]
+fn exact_file_candidates_compose_with_scope_and_globs() {
+    let dir =
+        repo(&[("src/a.ts", "needle\n"), ("src/b.js", "needle\n"), ("outside.ts", "needle\n")]);
+
+    let result = run(
+        dir.path(),
+        "needle",
+        ContentSearchOptions {
+            path: Some("src".into()),
+            files: Some(vec!["src/a.ts".into(), "src/b.js".into(), "outside.ts".into()]),
+            include: vec!["*.ts".into()],
+            ..Default::default()
+        },
+    );
+
+    assert_eq!(locations(&result), ["src/a.ts:1"]);
+}
+
+#[cfg(windows)]
+#[test]
+fn exact_file_candidates_use_windows_case_insensitive_path_identity() {
+    let dir = repo(&[("src/Tracked.ts", "needle\n")]);
+
+    let result = run(
+        dir.path(),
+        "needle",
+        ContentSearchOptions { files: Some(vec!["SRC/TRACKED.TS".into()]), ..Default::default() },
+    );
+
+    assert_eq!(locations(&result), ["src/Tracked.ts:1"]);
+}
+
+#[test]
 fn never_descends_into_the_git_directory() {
     let dir = repo(&[(".git/config.txt", "needle\n"), ("tracked.txt", "needle\n")]);
 

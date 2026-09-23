@@ -283,6 +283,7 @@ suiteIfGit('RepoTreeService.searchContent — options reaching the addon', () =>
             wholeWord: false,
             regex: false,
             showIgnored: false,
+            files: undefined,
             include: undefined,
             exclude: undefined,
             maxResults: 500,

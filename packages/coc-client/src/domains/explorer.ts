@@ -59,6 +59,8 @@ function serializeContentSearchOptions(
     wholeWord: options?.wholeWord,
     regex: options?.regex,
     showIgnored: options?.showIgnored,
+    fileScope: options?.fileScope,
+    includeUntracked: options?.includeUntracked,
     include: options?.include,
     exclude: options?.exclude,
     limit: options?.limit,

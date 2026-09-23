@@ -119,6 +119,10 @@ export interface ContentSearchOptions {
     regex?: boolean;
     /** Search files `.gitignore` excludes — the explorer's `showIgnored` flag. */
     showIgnored?: boolean;
+    /** Search only Git-tracked files, optionally adding non-ignored untracked files. */
+    fileScope?: 'tracked';
+    /** Add ordinary untracked files when `fileScope` is `tracked`. */
+    includeUntracked?: boolean;
     /** Whitelist globs. When non-empty, a file matching none of them is skipped. */
     include?: string[];
     /** Globs whose matches are skipped. */
