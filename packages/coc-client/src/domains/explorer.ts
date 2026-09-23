@@ -7,6 +7,7 @@ import type {
   ExplorerContentSearchResponse,
   ExplorerFilesOptions,
   ExplorerFilesResponse,
+  ExplorerRepoGroupContentSearchResponse,
   ExplorerRepoGroupSearchResponse,
   ExplorerSearchOptions,
   ExplorerSearchResponse,
@@ -124,6 +125,26 @@ export class ExplorerClient {
     options?: ExplorerContentSearchOptions & Pick<CocRequestOptions, 'signal'>,
   ): Promise<ExplorerContentSearchResponse> {
     return this.transport.request<ExplorerContentSearchResponse>(repoPath(repoId, '/search/content'), {
+      query: serializeContentSearchOptions(query, options),
+      signal: options?.signal,
+    });
+  }
+
+  /**
+   * Full-text search across every live member of a repo group.
+   *
+   * Like {@link searchRepoGroupFiles}, call this on the client selected for the
+   * group owner: the group-owning server resolves membership and fans out, so a
+   * member workspace id in the answer is identity only and never a transport
+   * choice. A member that fails is reported in `failures` rather than failing
+   * the whole query.
+   */
+  searchRepoGroupContent(
+    groupId: string,
+    query: string,
+    options?: ExplorerContentSearchOptions & Pick<CocRequestOptions, 'signal'>,
+  ): Promise<ExplorerRepoGroupContentSearchResponse> {
+    return this.transport.request<ExplorerRepoGroupContentSearchResponse>(repoGroupPath(groupId, '/search/content'), {
       query: serializeContentSearchOptions(query, options),
       signal: options?.signal,
     });

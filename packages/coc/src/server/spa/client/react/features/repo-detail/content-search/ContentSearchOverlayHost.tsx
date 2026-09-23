@@ -10,10 +10,9 @@
  * the sub-tab button, tree row or editor the user came from — because by the
  * time the dialog closes the overlay has long since taken focus away.
  *
- * The query and results are still local to this host. The search request
- * (AC-02), group aggregation (AC-03) and match opening (AC-04) plug in here in
- * later slices; mounting the host now is what makes the shortcut real on every
- * repo and repo-group sub-tab.
+ * The query and results are local to this host: it owns the request hook and
+ * hands it the scope, so the same dialog serves a single repo and a repo-group
+ * fan-out. Match opening (AC-04) plugs in through `onOpenMatch`.
  */
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -30,20 +29,29 @@ import { useContentSearchShortcut } from './useContentSearchShortcut';
 export interface ContentSearchOverlayHostProps {
     /** Selected repo or repo-group workspace. Decides whether we claim the key. */
     workspaceId: string | null | undefined;
-    /** Concrete clone owner for the active repo scope, when it is a clone. */
+    /**
+     * Concrete clone owner for the active scope: the repo's clone key, or the
+     * group owner's for a repo group.
+     */
     routingRef?: string | null;
+    /** Group owner's base URL. Only a repo-group scope uses it. */
+    baseUrl?: string;
     /** Open a match in the unified right panel. Wired in the AC-04 slice. */
     onOpenMatch?: (match: ContentSearchOverlayMatch) => void;
 }
 
 export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
-    const { workspaceId, routingRef, onOpenMatch } = props;
+    const { workspaceId, routingRef, baseUrl, onOpenMatch } = props;
     const scope = resolveContentSearchScope(workspaceId);
     const [open, setOpen] = useState(false);
     const [focusToken, setFocusToken] = useState(0);
     const { controls, setControls, results, submit } = useContentSearchRequest({
         workspaceId: workspaceId ?? '',
+        // The scope decides the route: a group query goes to the group-owning
+        // server's fan-out, a repo query straight to the repo.
+        scope: scope === 'group' ? 'group' : 'repo',
         routingRef,
+        baseUrl,
     });
     const invokerRef = useRef<HTMLElement | null>(null);
 

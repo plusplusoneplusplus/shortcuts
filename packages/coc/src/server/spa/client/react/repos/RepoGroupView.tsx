@@ -315,7 +315,11 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
             </div>
 
             {/* Ctrl/Cmd+Shift+F — one query across the group's live members. */}
-            <ContentSearchOverlayHost workspaceId={workspaceId} routingRef={groupRoutingRef} />
+            <ContentSearchOverlayHost
+                workspaceId={workspaceId}
+                routingRef={groupRoutingRef}
+                baseUrl={groupBaseUrl}
+            />
         </div>
         </UnifiedPanelHostProvider>
     );

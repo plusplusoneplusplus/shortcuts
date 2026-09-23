@@ -20,7 +20,11 @@
  * the overlay must never look like it silently searched the filesystem.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+    ExplorerRepoGroupContentSearchResponse,
+} from '@plusplusoneplusplus/coc-client';
 import { explorerApi } from '../explorer/explorerApi';
+import { searchRepoGroupContent } from '../../../repos/repoGroupService';
 import type { ContentSearchOverlayMatch } from './ContentSearchOverlay';
 import {
     DEFAULT_CONTENT_SEARCH_CONTROLS,
@@ -47,6 +51,15 @@ export type ContentSearchOverlayStatus =
 /** Which input an error belongs against. `request` is the retryable catch-all. */
 export type ContentSearchOverlayErrorKind = 'regex' | 'glob' | 'request' | 'unavailable';
 
+/** A group member that could not contribute to the current answer. */
+export interface ContentSearchOverlayFailure {
+    workspaceId: string;
+    /** Display label; absent when the workspace itself is gone. */
+    repoLabel?: string;
+    reason: 'stale' | 'unavailable' | 'error';
+    message: string;
+}
+
 export interface ContentSearchResultState {
     status: ContentSearchOverlayStatus;
     matches: ContentSearchOverlayMatch[];
@@ -55,6 +68,12 @@ export interface ContentSearchResultState {
     errorKind: ContentSearchOverlayErrorKind | null;
     /** The query the current results came from — not what is typed now. */
     query: string;
+    /**
+     * Members that were not searched successfully. Always empty in a repo
+     * scope; a partial group answer keeps its successful members visible and
+     * names the rest here.
+     */
+    failures: ContentSearchOverlayFailure[];
 }
 
 export const EMPTY_CONTENT_SEARCH_RESULTS: ContentSearchResultState = {
@@ -64,6 +83,7 @@ export const EMPTY_CONTENT_SEARCH_RESULTS: ContentSearchResultState = {
     error: null,
     errorKind: null,
     query: '',
+    failures: [],
 };
 
 /**
@@ -78,18 +98,32 @@ export function describeContentSearchResults(results: ContentSearchResultState):
         case 'loading':
             return 'Searching\u2026';
         case 'empty':
-            return 'No results.';
+            return appendFailureNote('No results.', results.failures);
         case 'error':
         case 'unavailable':
             return results.error ?? 'Search failed';
         case 'success': {
-            const files = new Set(results.matches.map(match => match.path)).size;
+            const files = new Set(
+                results.matches.map(match => `${match.workspaceId}\u0000${match.path}`),
+            ).size;
             const matches = results.matches.length;
             const summary = `${matches} ${matches === 1 ? 'result' : 'results'}`
                 + ` in ${files} ${files === 1 ? 'file' : 'files'}`;
-            return results.truncated ? `${summary} (showing the first results)` : summary;
+            const capped = results.truncated ? `${summary} (showing the first results)` : summary;
+            return appendFailureNote(capped, results.failures);
         }
     }
+}
+
+/**
+ * Name the members that dropped out, so a partial answer never reads like a
+ * complete one. The overlay's grouped view lists them individually; this line
+ * is the announced summary.
+ */
+function appendFailureNote(summary: string, failures: readonly ContentSearchOverlayFailure[]): string {
+    if (failures.length === 0) return summary;
+    const names = failures.map(failure => failure.repoLabel || failure.workspaceId);
+    return `${summary} \u2014 could not search ${names.join(', ')}.`;
 }
 
 /** True for the rejection an aborted (superseded or unmounted) request produces. */
@@ -141,9 +175,105 @@ export function toOverlayMatches(
     }));
 }
 
+/**
+ * Flatten a group answer into overlay rows, in membership order.
+ *
+ * Every row keeps the MEMBER's workspace id — that is what a later open reads
+ * through — while `routingRef` stays the group owner's clone key, because the
+ * member workspace lives on the server that owns the group. An equal workspace
+ * id on another host therefore cannot capture the follow-up read.
+ */
+export function toGroupOverlayMatches(
+    response: ExplorerRepoGroupContentSearchResponse,
+    routingRef: string | null | undefined,
+): ContentSearchOverlayMatch[] {
+    const rows: ContentSearchOverlayMatch[] = [];
+    for (const member of response.members) {
+        for (const match of member.matches) {
+            rows.push({
+                // The running index keeps duplicate path/line rows distinct,
+                // including the same relative path in two members.
+                id: `${member.workspaceId} ${match.path} ${match.line} ${rows.length}`,
+                workspaceId: member.workspaceId,
+                routingRef: routingRef ?? null,
+                repoLabel: member.repoName,
+                path: match.path,
+                line: match.line,
+                preview: match.text,
+            });
+        }
+    }
+    return rows;
+}
+
+/** Member failures, as the overlay shows them. */
+export function toOverlayFailures(
+    response: ExplorerRepoGroupContentSearchResponse,
+): ContentSearchOverlayFailure[] {
+    return response.failures.map(failure => ({
+        workspaceId: failure.workspaceId,
+        repoLabel: failure.repoName,
+        reason: failure.reason,
+        message: failure.message,
+    }));
+}
+
+/**
+ * A group answer becomes one overlay state. A `partial` answer is still a
+ * success — the members that answered stay visible and the rest are named —
+ * but an answer where nothing could be searched is not, so those two statuses
+ * get their own sentences instead of reading like an empty result set.
+ */
+export function toGroupResultState(
+    response: ExplorerRepoGroupContentSearchResponse,
+    routingRef: string | null | undefined,
+    query: string,
+): ContentSearchResultState {
+    const failures = toOverlayFailures(response);
+    if (response.status === 'no-searchable-members') {
+        return {
+            ...EMPTY_CONTENT_SEARCH_RESULTS,
+            status: 'unavailable',
+            error: 'No repository in this group can be searched.',
+            errorKind: 'unavailable',
+            failures,
+            query,
+        };
+    }
+    if (response.status === 'failed') {
+        return {
+            ...EMPTY_CONTENT_SEARCH_RESULTS,
+            status: 'error',
+            error: 'Could not search any repository in this group.',
+            errorKind: 'request',
+            failures,
+            query,
+        };
+    }
+    const matches = toGroupOverlayMatches(response, routingRef);
+    return {
+        status: matches.length > 0 ? 'success' : 'empty',
+        matches,
+        truncated: response.truncated,
+        error: null,
+        errorKind: null,
+        failures,
+        query,
+    };
+}
+
 export interface UseContentSearchRequestOptions {
+    /** Repo or repo-group workspace being searched. */
     workspaceId: string;
+    /**
+     * `group` fans the query out through the group-owning server; `repo`
+     * searches the one workspace. Defaults to `repo`.
+     */
+    scope?: 'repo' | 'group';
+    /** Concrete clone owner: the repo's, or the group owner's for a group. */
     routingRef?: string | null;
+    /** Group owner's base URL — only a group scope uses it. */
+    baseUrl?: string;
 }
 
 export interface ContentSearchRequest {
@@ -157,7 +287,7 @@ export interface ContentSearchRequest {
 export function useContentSearchRequest(
     options: UseContentSearchRequestOptions,
 ): ContentSearchRequest {
-    const { workspaceId, routingRef } = options;
+    const { workspaceId, routingRef, baseUrl, scope = 'repo' } = options;
     const [controls, setControlsState] = useState(DEFAULT_CONTENT_SEARCH_CONTROLS);
     const [results, setResults] = useState(EMPTY_CONTENT_SEARCH_RESULTS);
     // Submitting reads the controls through a ref so `submit` stays stable
@@ -221,24 +351,29 @@ export function useContentSearchRequest(
             query,
         }));
 
-        explorerApi
-            .searchContent(
-                workspaceId,
-                query,
-                { ...buildTrackedSearchOptions(current), signal: controller.signal },
-                routingRef,
-            )
-            .then(response => {
-                if (runId !== runIdRef.current) return;
-                const overlayMatches = toOverlayMatches(workspaceId, routingRef, response.matches);
-                setResults({
-                    status: overlayMatches.length > 0 ? 'success' : 'empty',
-                    matches: overlayMatches,
-                    truncated: response.truncated,
-                    error: null,
-                    errorKind: null,
-                    query,
+        const searchOptions = { ...buildTrackedSearchOptions(current), signal: controller.signal };
+        const searching = scope === 'group'
+            ? searchRepoGroupContent(workspaceId, query, searchOptions, baseUrl)
+                .then(response => toGroupResultState(response, routingRef, query))
+            : explorerApi
+                .searchContent(workspaceId, query, searchOptions, routingRef)
+                .then(response => {
+                    const overlayMatches = toOverlayMatches(workspaceId, routingRef, response.matches);
+                    return {
+                        status: overlayMatches.length > 0 ? 'success' : 'empty',
+                        matches: overlayMatches,
+                        truncated: response.truncated,
+                        error: null,
+                        errorKind: null,
+                        failures: [],
+                        query,
+                    } satisfies ContentSearchResultState;
                 });
+
+        searching
+            .then(next => {
+                if (runId !== runIdRef.current) return;
+                setResults(next);
             })
             .catch(error => {
                 if (runId !== runIdRef.current || isAbortError(error)) return;
@@ -248,7 +383,7 @@ export function useContentSearchRequest(
                     query,
                 });
             });
-    }, [routingRef, workspaceId]);
+    }, [baseUrl, routingRef, scope, workspaceId]);
 
     return useMemo(
         () => ({ controls, setControls, results, submit }),

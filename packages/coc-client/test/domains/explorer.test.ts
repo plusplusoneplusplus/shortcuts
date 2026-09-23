@@ -114,6 +114,52 @@ describe('ExplorerClient', () => {
     });
   });
 
+  it('sends a repo-group content search to the group route with the tracked scope', async () => {
+    const adapter = createMockAdapter({
+      status: 'partial',
+      members: [],
+      failures: [],
+      truncated: false,
+      totalMatches: 0,
+      limit: 500,
+      memberCount: 2,
+      searchableMemberCount: 1,
+      searchedMemberCount: 1,
+      unavailableMemberCount: 0,
+      failedMemberCount: 1,
+    });
+    const client = new ExplorerClient(adapter);
+    const signal = new AbortController().signal;
+
+    await client.searchRepoGroupContent('group/a', 'needle', {
+      fileScope: 'tracked',
+      includeUntracked: true,
+      caseSensitive: true,
+      include: ['*.ts'],
+      exclude: ['dist/**'],
+      limit: 500,
+      signal,
+    });
+
+    expect(adapter.calls).toMatchObject([
+      {
+        path: '/repo-groups/group%2Fa/search/content',
+        options: {
+          query: {
+            q: 'needle',
+            fileScope: 'tracked',
+            includeUntracked: true,
+            caseSensitive: true,
+            include: ['*.ts'],
+            exclude: ['dist/**'],
+            limit: 500,
+          },
+          signal,
+        },
+      },
+    ]);
+  });
+
   it('posts a replace with the matched spans and every mode defaulted', async () => {
     const adapter = createMockAdapter({ replacedMatches: 1, replacedFiles: 1, skipped: [] });
     const client = new ExplorerClient(adapter);
