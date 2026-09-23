@@ -20,6 +20,10 @@ import {
     ContentSearchOverlay,
     type ContentSearchOverlayMatch,
 } from './ContentSearchOverlay';
+import {
+    describeContentSearchResults,
+    useContentSearchRequest,
+} from './contentSearchRequest';
 import { resolveContentSearchScope } from './contentSearchShortcut';
 import { useContentSearchShortcut } from './useContentSearchShortcut';
 
@@ -33,12 +37,14 @@ export interface ContentSearchOverlayHostProps {
 }
 
 export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
-    const { workspaceId, onOpenMatch } = props;
+    const { workspaceId, routingRef, onOpenMatch } = props;
     const scope = resolveContentSearchScope(workspaceId);
     const [open, setOpen] = useState(false);
     const [focusToken, setFocusToken] = useState(0);
-    const [query, setQuery] = useState('');
-    const [matches] = useState<ContentSearchOverlayMatch[]>([]);
+    const { controls, setControls, results, submit } = useContentSearchRequest({
+        workspaceId: workspaceId ?? '',
+        routingRef,
+    });
     const invokerRef = useRef<HTMLElement | null>(null);
 
     const handleOpen = useCallback(() => {
@@ -82,11 +88,15 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
         <ContentSearchOverlay
             open={open}
             scope={scope}
-            query={query}
-            onQueryChange={setQuery}
-            onSubmit={() => undefined}
+            query={controls.query}
+            onQueryChange={query => setControls(current => ({ ...current, query }))}
+            controls={controls}
+            onControlsChange={setControls}
+            onSubmit={submit}
             onClose={handleClose}
-            matches={matches}
+            matches={results.matches}
+            busy={results.status === 'loading'}
+            status={describeContentSearchResults(results)}
             onOpenMatch={handleOpenMatch}
             focusToken={focusToken}
         />

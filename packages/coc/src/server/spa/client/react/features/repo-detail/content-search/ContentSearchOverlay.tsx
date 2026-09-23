@@ -26,6 +26,10 @@ import { createPortal } from 'react-dom';
 import { cn } from '../../../ui/cn';
 import { usePortalContainer } from '../../../ui/usePortalContainer';
 import type { ContentSearchScope } from './contentSearchShortcut';
+import {
+    DEFAULT_CONTENT_SEARCH_CONTROLS,
+    type ContentSearchControls,
+} from './contentSearchControls';
 
 /** One selectable row. Carries the owner identity the open path needs (AC-04). */
 export interface ContentSearchOverlayMatch {
@@ -61,6 +65,15 @@ export interface ContentSearchOverlayProps {
     /** Status line under the query: no results, errors, truncation notices. */
     status?: ReactNode;
     /**
+     * Match-case / whole-word / regex, the glob boxes and the untracked
+     * toggle. Changing any of them only edits this object — searching is
+     * Enter's job alone, so nothing here calls `onSubmit`.
+     */
+    controls?: ContentSearchControls;
+    onControlsChange?: (
+        update: (current: ContentSearchControls) => ContentSearchControls,
+    ) => void;
+    /**
      * Bump to pull focus back into the query and select it. A counter, not a
      * boolean, because repeating the shortcut while the overlay is already up
      * has to re-focus an overlay that never unmounted.
@@ -69,6 +82,13 @@ export interface ContentSearchOverlayProps {
 }
 
 const QUERY_SELECTION = -1;
+
+/** The three mode toggles, with VS Code's glyphs. */
+const MODE_CONTROLS: { id: keyof ContentSearchControls['modes']; label: string; glyph: string }[] = [
+    { id: 'caseSensitive', label: 'Match case', glyph: 'Aa' },
+    { id: 'wholeWord', label: 'Match whole word', glyph: 'ab' },
+    { id: 'regex', label: 'Use regular expression', glyph: '.*' },
+];
 
 export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
     const {
@@ -82,6 +102,8 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
         onOpenMatch,
         busy,
         status,
+        controls = DEFAULT_CONTENT_SEARCH_CONTROLS,
+        onControlsChange,
         focusToken = 0,
     } = props;
     const portalContainer = usePortalContainer(open);
@@ -194,6 +216,69 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                     >
                         ✕
                     </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs">
+                    {MODE_CONTROLS.map(mode => (
+                        <button
+                            key={mode.id}
+                            type="button"
+                            aria-label={mode.label}
+                            aria-pressed={controls.modes[mode.id]}
+                            data-testid={`content-search-overlay-mode-${mode.id}`}
+                            className={cn(
+                                'px-1.5 py-0.5 rounded border border-transparent font-mono',
+                                controls.modes[mode.id]
+                                    && 'border-[#0078d4] bg-[#e8e8e8] dark:bg-[#37373d]',
+                            )}
+                            onClick={() =>
+                                onControlsChange?.(current => ({
+                                    ...current,
+                                    modes: {
+                                        ...current.modes,
+                                        [mode.id]: !current.modes[mode.id],
+                                    },
+                                }))
+                            }
+                        >
+                            {mode.glyph}
+                        </button>
+                    ))}
+                    <input
+                        type="text"
+                        aria-label="Files to include"
+                        data-testid="content-search-overlay-include"
+                        placeholder="files to include"
+                        className="w-32 px-2 py-0.5 bg-transparent border border-[#c8c8c8] dark:border-[#555555] rounded outline-none focus:border-[#0078d4]"
+                        value={controls.include}
+                        onChange={event => {
+                            const include = event.target.value;
+                            onControlsChange?.(current => ({ ...current, include }));
+                        }}
+                    />
+                    <input
+                        type="text"
+                        aria-label="Files to exclude"
+                        data-testid="content-search-overlay-exclude"
+                        placeholder="files to exclude"
+                        className="w-32 px-2 py-0.5 bg-transparent border border-[#c8c8c8] dark:border-[#555555] rounded outline-none focus:border-[#0078d4]"
+                        value={controls.exclude}
+                        onChange={event => {
+                            const exclude = event.target.value;
+                            onControlsChange?.(current => ({ ...current, exclude }));
+                        }}
+                    />
+                    <label className="flex items-center gap-1">
+                        <input
+                            type="checkbox"
+                            data-testid="content-search-overlay-untracked"
+                            checked={controls.includeUntracked}
+                            onChange={event => {
+                                const includeUntracked = event.target.checked;
+                                onControlsChange?.(current => ({ ...current, includeUntracked }));
+                            }}
+                        />
+                        Include untracked files
+                    </label>
                 </div>
                 <div
                     role="status"
