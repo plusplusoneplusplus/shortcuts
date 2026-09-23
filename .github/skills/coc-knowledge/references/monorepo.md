@@ -87,7 +87,7 @@ The plain-Node server and the Electron desktop share one hoisted `node_modules`,
 
 - **CoC desktop:** when Windows DevTunnel hosting is enabled and the configured tunnel has exactly one HTTP binding, that port is the preferred attach/start port; otherwise 4000. Either way it attaches to a healthy CoC server, starts the embedded server on the preferred port when free, and falls back to an ephemeral port only when the preferred one is unusable.
 - **CoCContainer desktop:** built from `packages/coc-desktop/electron-builder.container.cjs` with the dedicated `container-main` and `container-server-entry` outputs. Same DevTunnel port rule, otherwise port 5000 with free-port fallback. It shares the CLI's `~/.coccontainer` data directory and uses tunnel identity `<hostname>-coccontainer` so it does not contend with CoC desktop's `<hostname>-coc`.
-- **Packaged agent CLIs:** the desktop build prepends bundled Copilot/Codex/Claude CLI directories to the forked server `PATH`. Copilot needs both `@github/copilot/**` (the JS launcher run by system Node) and `@github/copilot-*-*/**` (the platform binary) unpacked; a launcher left inside `app.asar` breaks packaged Copilot even when the native binary is unpacked.
+- **Packaged agent runtimes:** the desktop build prepends bundled standalone Codex/Claude CLI directories to the forked server `PATH`. Copilot runs the native wrapper from `@github/copilot-sdk-<platform>/prebuilds/<platform>/`; the SDK platform package is unpacked from `app.asar` so the wrapper and adjacent `runtime.node` stay executable and loadable.
 
 ## Cross-Package Conventions
 

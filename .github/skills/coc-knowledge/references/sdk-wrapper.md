@@ -77,10 +77,10 @@ Each `sendMessage()` spawns its **own `CopilotClient`** child process — no sha
 
 ### Copilot CLI spawn resolution
 
-`sdk-client-factory.ts`: with no caller `connection`, `resolveCopilotCli()` locates the CLI, rewriting `app.asar` paths to `app.asar.unpacked`. Two layouts: `@github/copilot` <= 1.0.61 ships an `index.js` entry; >= 1.0.62 ships a thin `npm-loader.js` plus a native executable in `@github/copilot-<platform>-<arch>`.
+`sdk-client-factory.ts`: with no caller `connection`, `resolveCopilotCli()` locates the runtime and rewrites `app.asar` paths to `app.asar.unpacked`. It supports the SDK runtime package at `@github/copilot-sdk-<platform>/prebuilds/<platform>/copilot-runtime`, the standalone native package at `@github/copilot-<platform>-<arch>`, and the JavaScript `@github/copilot/index.js` entry.
 
 - `index.js` under Electron: connection is overridden to `<node runtime> index.js` (system node preferred, else the Electron binary with `ELECTRON_RUN_AS_NODE=1`). Under plain Node the copilot-sdk default handles it.
-- Native layout: the unpacked binary is spawned **directly** (`forStdio({ path: binary, args: [] })`; the SDK appends `--headless --stdio …`), under both Electron and plain Node, since the SDK's bundled-CLI default requires `index.js`.
+- Native layouts: the unpacked binary is spawned **directly** (`forStdio({ path: binary, args: [] })`; the SDK appends its runtime arguments) under both Electron and plain Node.
 
 The resolved spawn mode (`system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors.
 

@@ -14,8 +14,8 @@
 #   build — runs on the BUILD platform (native speed): npm ci + `npm run build
 #           -w packages/coc`. Output (dist/, SPA bundle) is arch-independent.
 #   deps  — runs on the TARGET platform: `npm ci --omit=dev` so native addons
-#           (better-sqlite3, node-pty) and the per-arch agent CLIs
-#           (@github/copilot-linux-*, @openai/codex-linux-*) match the image arch.
+#           (better-sqlite3, node-pty) and per-arch agent runtimes
+#           (@github/copilot-sdk-linux-*, @openai/codex-linux-*) match the image arch.
 #   final — slim runtime: build output + target-arch node_modules + git/gh/tini.
 ARG NODE_VERSION=24
 

@@ -72,6 +72,23 @@ describe('applyDangerousCommandGuardToPermissionHandler', () => {
         expect(requestApproval).not.toHaveBeenCalled();
     });
 
+    it('preserves attributed permission results from the host handler', async () => {
+        const attributed = {
+            kind: 'attributed' as const,
+            result: { kind: 'approve-once' as const },
+            decisionContext: {
+                decisionSource: 'user' as const,
+                decisionSurface: 'host' as const,
+            },
+        };
+        const handler = vi.fn(() => attributed);
+        const guarded = applyDangerousCommandGuardToPermissionHandler(handler as never, { enabled: true });
+
+        const result = await guarded(shellRequest('ls -la'), INVOCATION);
+
+        expect(result).toBe(attributed);
+    });
+
     it('does not screen non-shell permission requests', async () => {
         const handler = vi.fn(() => ({ kind: 'approve-once' as const }));
         const guarded = applyDangerousCommandGuardToPermissionHandler(handler, { enabled: true, requestApproval: vi.fn() });

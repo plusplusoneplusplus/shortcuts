@@ -94,10 +94,10 @@ Zero dependency on an editor. CoC runs as a standalone server with a mobile-resp
 
 ### How it works
 
-CoC uses `@github/copilot-sdk` (which wraps the `@github/copilot` CLI package)
-for all AI features. When you `npm install -g @plusplusoneplusplus/coc`, the SDK
-and CLI are pulled as transitive npm dependencies — no separate binary install is
-needed.
+CoC uses `@github/copilot-sdk` for its Copilot provider. The SDK installs a
+platform-specific runtime package, so CoC does not download a runtime when it
+starts. Authentication comes from `COPILOT_GITHUB_TOKEN`/`GH_TOKEN` or the
+existing login under `~/.copilot`.
 
 ### Quick setup
 
@@ -106,8 +106,10 @@ needed.
    npm install -g @plusplusoneplusplus/coc
    ```
 
-2. Authenticate with the Copilot CLI:
+2. Authenticate with a token, or use a separately installed Copilot CLI to
+   create the login under `~/.copilot`:
    ```bash
+   npm install -g @github/copilot
    copilot        # launches the Copilot CLI REPL
    /login         # type this inside the REPL, then follow the prompts
    ```
@@ -119,8 +121,9 @@ needed.
 
 **Configuration:** `~/.coc/config.yaml` — CLI flags override config file values.
 
-> **Troubleshooting:** If you see exit code 3 ("AI unavailable"), run `copilot`
-> and use `/login` to verify your authentication.
+> **Troubleshooting:** If you see exit code 3 ("AI unavailable"), check the
+> token environment or use a separately installed `copilot` command and
+> `/login` to verify the shared `~/.copilot` login.
 
 ## Run with Docker
 
@@ -152,9 +155,8 @@ Things to know:
 - **`/data` is everything persistent** (`HOME`): `~/.coc` (config,
   `processes.db`, skills, logs) plus agent logins. Keep it on a named volume.
 - **Agent auth**: pass `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` / `ANTHROPIC_API_KEY`
-  / `OPENAI_API_KEY` as env, or mount your host `~/.copilot`, `~/.claude`,
-  `~/.codex` under `/data/`, or run the login (`copilot` → `/login`) once in the
-  in-app terminal — it persists on `/data`.
+  / `OPENAI_API_KEY` as env, or mount existing host credentials from
+  `~/.copilot`, `~/.claude`, and `~/.codex` under `/data/`.
 - **The container runs as uid 1000.** If your host user differs, add
   `--user $(id -u):$(id -g)` so bind-mounted repos stay writable by both.
 - **CLI**: `docker exec coc coc queue …`, `docker exec coc coc --version`.

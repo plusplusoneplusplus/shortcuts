@@ -56,6 +56,7 @@ describe('electron-builder packaging config', () => {
     it('unpacks Copilot launcher files and platform binaries for packaged desktop', () => {
         const asarUnpack = buildConfig().asarUnpack ?? [];
         expect(asarUnpack).toContain('**/@github/copilot/**');
+        expect(asarUnpack).toContain('**/@github/copilot-sdk-*/**');
         expect(asarUnpack).toContain('**/@github/copilot-*-*/**');
     });
 
