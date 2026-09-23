@@ -49,6 +49,7 @@ import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
 import { UnifiedPanelHostProvider } from './unified-right-panel/unifiedPanelHost';
+import { ContentSearchOverlayHost } from './content-search/ContentSearchOverlayHost';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
@@ -931,6 +932,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                 repos={repos}
                 onSuccess={() => { setEditOpen(false); onRefresh(); }}
             />
+
+            {/* Ctrl/Cmd+Shift+F — works from every sub-tab, so it hangs off the
+                page rather than any one tab's content. */}
+            <ContentSearchOverlayHost workspaceId={ws.id} routingRef={explorerRoutingRef} />
         </div>
         </UnifiedPanelHostProvider>
     );

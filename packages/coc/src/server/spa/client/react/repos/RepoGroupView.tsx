@@ -32,6 +32,7 @@ import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
+import { ContentSearchOverlayHost } from '../features/repo-detail/content-search/ContentSearchOverlayHost';
 import { UnifiedPanelHostProvider } from '../features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
@@ -312,6 +313,9 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                     />
                 )}
             </div>
+
+            {/* Ctrl/Cmd+Shift+F — one query across the group's live members. */}
+            <ContentSearchOverlayHost workspaceId={workspaceId} routingRef={groupRoutingRef} />
         </div>
         </UnifiedPanelHostProvider>
     );
