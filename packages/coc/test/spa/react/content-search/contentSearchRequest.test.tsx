@@ -331,11 +331,15 @@ describe('ContentSearchOverlayHost requests', () => {
         type('content-search-overlay-query', 'needle');
         submit();
 
+        // The path is the file group's heading; the match row carries the line.
         await waitFor(() =>
-            expect(screen.getByTestId('content-search-overlay-results').textContent).toContain(
-                'src/a.ts:12',
-            ),
+            expect(screen.getByTestId('content-search-overlay-file-coc src/a.ts')).toBeTruthy(),
         );
+        const row = screen.getByTestId('content-search-overlay-results').querySelector(
+            '[role="treeitem"][aria-selected]',
+        );
+        expect(row?.textContent).toContain('12');
+        expect(row?.textContent).toContain('const needle = 1');
         expect(screen.getByTestId('content-search-overlay-status').textContent).toBe(
             '1 result in 1 file',
         );

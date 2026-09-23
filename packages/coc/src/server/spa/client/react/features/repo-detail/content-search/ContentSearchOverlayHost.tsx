@@ -103,6 +103,8 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
             onSubmit={submit}
             onClose={handleClose}
             matches={results.matches}
+            truncated={results.truncated}
+            failures={results.failures}
             busy={results.status === 'loading'}
             status={describeContentSearchResults(results)}
             onOpenMatch={handleOpenMatch}

@@ -209,12 +209,17 @@ describe('ContentSearchOverlay keyboard model', () => {
         expect(props.onOpenMatch.mock.calls[0][0].id).toBe('m0');
     });
 
-    it('shows member labels only in a group scope', () => {
+    it('shows a repository level only in a group scope', () => {
         const groupMatches: ContentSearchOverlayMatch[] = [
             { id: 'g0', workspaceId: 'api', repoLabel: 'api', path: 'src/a.ts', line: 3, preview: 'hit' },
         ];
         renderOverlay({ scope: 'group', matches: groupMatches });
-        expect(screen.getByTestId('content-search-overlay-match-g0').textContent).toContain('api');
+        expect(screen.getByTestId('content-search-overlay-repo-api').textContent).toContain('api');
+
+        cleanup();
+        renderOverlay({ scope: 'repo', matches: groupMatches });
+        expect(screen.queryByTestId('content-search-overlay-repo-api')).toBeNull();
+        expect(screen.getByTestId('content-search-overlay-file-api src/a.ts')).toBeTruthy();
     });
 
     it('announces progress through a live status region', () => {

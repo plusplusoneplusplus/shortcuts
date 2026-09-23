@@ -25,7 +25,10 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import { explorerApi } from '../explorer/explorerApi';
 import { searchRepoGroupContent } from '../../../repos/repoGroupService';
-import type { ContentSearchOverlayMatch } from './ContentSearchOverlay';
+import type {
+    ContentSearchOverlayFailure,
+    ContentSearchOverlayMatch,
+} from './ContentSearchOverlay';
 import {
     DEFAULT_CONTENT_SEARCH_CONTROLS,
     buildTrackedSearchOptions,
@@ -51,14 +54,11 @@ export type ContentSearchOverlayStatus =
 /** Which input an error belongs against. `request` is the retryable catch-all. */
 export type ContentSearchOverlayErrorKind = 'regex' | 'glob' | 'request' | 'unavailable';
 
-/** A group member that could not contribute to the current answer. */
-export interface ContentSearchOverlayFailure {
-    workspaceId: string;
-    /** Display label; absent when the workspace itself is gone. */
-    repoLabel?: string;
-    reason: 'stale' | 'unavailable' | 'error';
-    message: string;
-}
+/**
+ * A group member that could not contribute to the current answer. Defined with
+ * the overlay's row types, since it is something the dialog draws.
+ */
+export type { ContentSearchOverlayFailure } from './ContentSearchOverlay';
 
 export interface ContentSearchResultState {
     status: ContentSearchOverlayStatus;

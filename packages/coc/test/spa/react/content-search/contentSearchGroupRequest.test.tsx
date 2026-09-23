@@ -29,6 +29,11 @@ import {
 
 const GROUP_ID = 'group-alpha';
 
+/** Only the match rows — the repo and file rows are treeitems too. */
+function matchRows(): HTMLElement[] {
+    return screen.queryAllByTestId(/^content-search-overlay-match-/);
+}
+
 beforeEach(() => {
     searchContent.mockReset();
     searchRepoGroupContent.mockReset();
@@ -151,10 +156,18 @@ describe('repo-group dispatch', () => {
         submit();
 
         await waitFor(() => {
-            const rows = screen.getAllByRole('option');
-            expect(rows).toHaveLength(2);
-            expect(rows[0].textContent).toContain('Alpha');
-            expect(rows[1].textContent).toContain('Beta');
+            const repos = matchRows().length === 2
+                ? [
+                    screen.getByTestId('content-search-overlay-repo-repo-a'),
+                    screen.getByTestId('content-search-overlay-repo-repo-b'),
+                ]
+                : [];
+            expect(repos).toHaveLength(2);
+            expect(repos[0].textContent).toContain('Alpha');
+            expect(repos[1].textContent).toContain('Beta');
+            // The same relative path in two members stays two file groups.
+            expect(screen.getByTestId('content-search-overlay-file-repo-a src/app.ts')).toBeTruthy();
+            expect(screen.getByTestId('content-search-overlay-file-repo-b src/app.ts')).toBeTruthy();
         });
     });
 
@@ -185,9 +198,13 @@ describe('repo-group dispatch', () => {
         submit();
 
         await waitFor(() => {
-            expect(screen.getAllByRole('option')).toHaveLength(1);
+            expect(matchRows()).toHaveLength(1);
             expect(screen.getByTestId('content-search-overlay-status').textContent).toContain('Beta');
         });
+        // The dropped member is named in its own list, not only in the summary.
+        expect(
+            screen.getByTestId('content-search-overlay-failure-repo-b').textContent,
+        ).toContain('Beta');
     });
 
     it('lets a newer submission supersede an in-flight group answer', async () => {
@@ -230,9 +247,9 @@ describe('repo-group dispatch', () => {
         });
 
         await waitFor(() => {
-            const rows = screen.getAllByRole('option');
-            expect(rows).toHaveLength(1);
-            expect(rows[0].textContent).toContain('Beta');
+            expect(matchRows()).toHaveLength(1);
+            expect(screen.getByTestId('content-search-overlay-repo-repo-b').textContent)
+                .toContain('Beta');
         });
     });
 });
