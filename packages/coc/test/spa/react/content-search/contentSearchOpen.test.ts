@@ -195,4 +195,20 @@ describe('openContentSearchMatch', () => {
         expect(deps.readBlob).not.toHaveBeenCalled();
         expect(deps.openPreview).not.toHaveBeenCalled();
     });
+
+    it('loads without eagerly reading group-only exports from narrow page mocks', async () => {
+        vi.resetModules();
+        vi.doMock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({}));
+        vi.doMock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({}));
+
+        try {
+            await expect(import(
+                '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchOpen'
+            )).resolves.toHaveProperty('openContentSearchMatch');
+        } finally {
+            vi.doUnmock('../../../../src/server/spa/client/react/repos/repoGroupService');
+            vi.doUnmock('../../../../src/server/spa/client/react/repos/cloneRegistry');
+            vi.resetModules();
+        }
+    });
 });

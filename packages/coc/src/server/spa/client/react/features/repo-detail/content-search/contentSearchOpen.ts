@@ -46,11 +46,15 @@ export interface ContentSearchOpenDependencies {
 }
 
 const DEFAULT_DEPENDENCIES: ContentSearchOpenDependencies = {
-    getGroup: getRepoGroup,
-    hasWorkspaceRoute: hasWorkspaceRouteForBaseUrl,
-    resolveRoute: resolveCloneRoute,
-    readBlob: explorerApi.readBlob,
-    openPreview: openUnifiedPanelPreviewTab,
+    // Keep these lookups lazy. RepoDetail and RepoGroupView are imported by
+    // broad shell tests whose narrow module mocks intentionally expose only
+    // the dependency used by that test. Capturing a newly added export here at
+    // module load makes those unrelated views fail before they can render.
+    getGroup: (...args) => getRepoGroup(...args),
+    hasWorkspaceRoute: (...args) => hasWorkspaceRouteForBaseUrl(...args),
+    resolveRoute: (...args) => resolveCloneRoute(...args),
+    readBlob: (...args) => explorerApi.readBlob(...args),
+    openPreview: (...args) => openUnifiedPanelPreviewTab(...args),
 };
 
 function unavailable(message: string): ContentSearchOpenOutcome {
