@@ -8,7 +8,15 @@
  * independently of CopilotSDKService.
  */
 
-import type { CopilotClient, CopilotSession, SessionConfig, AssistantMessageEvent, SessionEvent } from '@github/copilot-sdk';
+import type {
+    AttributedPermissionResult,
+    CopilotClient,
+    CopilotSession,
+    PermissionHandler,
+    SessionConfig,
+    AssistantMessageEvent,
+    SessionEvent,
+} from '@github/copilot-sdk';
 import { ToolCall } from './tool-call';
 import { getAIServiceLogger, createSessionLogger } from './logger';
 import { loadEffectiveMcpConfig } from './mcp-config-loader';
@@ -59,10 +67,10 @@ import * as path from 'path';
  * not invent an interception layer to catch it.
  */
 export function applyDangerousCommandGuardToPermissionHandler(
-    handler: (request: PermissionRequest, invocation: { sessionId: string }) => Promise<PermissionRequestResult> | PermissionRequestResult,
+    handler: PermissionHandler,
     guard: DangerousCommandGuardOptions | undefined,
     signal?: AbortSignal,
-): (request: PermissionRequest, invocation: { sessionId: string }) => Promise<PermissionRequestResult> | PermissionRequestResult {
+): PermissionHandler {
     if (!guard?.enabled) return handler;
     return async (request, invocation) => {
         const command = extractPermissionRequestShellCommand(request as { kind?: unknown; fullCommandText?: unknown });
@@ -183,7 +191,10 @@ export class RequestRunner {
                 onPermissionRequest: (request: PermissionRequest, invocation: { sessionId: string }) => {
                     const sessionLog = createSessionLogger(invocation.sessionId);
                     sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as ExtendedSdkRequest).resource, operation: (request as ExtendedSdkRequest).operation }, 'Permission request');
-                    const capturePermission = (permResult: PermissionRequestResult) => {
+                    const capturePermission = (handlerResult: PermissionRequestResult | AttributedPermissionResult) => {
+                        const permResult = handlerResult.kind === 'attributed'
+                            ? handlerResult.result
+                            : handlerResult;
                         if (request.toolCallId) {
                             const tc = toolCallsMap.get(request.toolCallId);
                             if (tc) {
@@ -206,16 +217,17 @@ export class RequestRunner {
                         && (request as PermissionRequest & { requestSandboxBypass?: boolean }).requestSandboxBypass
                         ? { kind: 'reject' as const }
                         : effectiveHandler(request, invocation);
-                    if (handlerResult && typeof (handlerResult as Promise<PermissionRequestResult>).then === 'function') {
-                        return (handlerResult as Promise<PermissionRequestResult>).then(r => {
+                    if (handlerResult && typeof (handlerResult as Promise<PermissionRequestResult | AttributedPermissionResult>).then === 'function') {
+                        return (handlerResult as Promise<PermissionRequestResult | AttributedPermissionResult>).then(r => {
                             createSessionLogger(invocation.sessionId).debug({ kind: r.kind, requestKind: request.kind }, 'Permission result');
                             capturePermission(r);
                             return r;
                         });
                     }
-                    createSessionLogger(invocation.sessionId).debug({ kind: (handlerResult as PermissionRequestResult).kind, requestKind: request.kind }, 'Permission result');
-                    capturePermission(handlerResult as PermissionRequestResult);
-                    return handlerResult;
+                    const syncResult = handlerResult as PermissionRequestResult | AttributedPermissionResult;
+                    createSessionLogger(invocation.sessionId).debug({ kind: syncResult.kind, requestKind: request.kind }, 'Permission result');
+                    capturePermission(syncResult);
+                    return syncResult;
                 },
             };
             const switchModelAfterSessionCreate = !!(options.model && options.reasoningEffort);

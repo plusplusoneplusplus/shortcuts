@@ -35,6 +35,9 @@ export type {
  */
 export type ToolResultType = 'success' | 'failure' | 'rejected' | 'denied' | 'timeout';
 
+/** JSON value accepted by Copilot tool telemetry. */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 /** Binary payload attached to a structured tool result. */
 export interface ToolBinaryResult {
     data: string;
@@ -47,7 +50,7 @@ export interface ToolBinaryResult {
  * Per-tool telemetry payload attached to a structured tool result.
  * Matches the Copilot SDK's `ToolTelemetry`.
  */
-export type ToolTelemetry = Record<string, Record<string, unknown> | undefined>;
+export type ToolTelemetry = Record<string, Record<string, JsonValue> | undefined>;
 
 /**
  * Structured tool-handler result. Structurally identical to the Copilot SDK's
@@ -75,6 +78,8 @@ export interface ToolInvocation {
     traceparent?: string;
     /** W3C Trace Context tracestate from the CLI's execute_tool span. */
     tracestate?: string;
+    /** Aborted when the runtime completes this request or disconnects the session. */
+    signal?: AbortSignal;
 }
 
 /** Tool handler signature: receives parsed args plus the invocation envelope. */

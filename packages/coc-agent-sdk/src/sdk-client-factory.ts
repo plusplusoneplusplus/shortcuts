@@ -69,11 +69,47 @@ export function findCopilotNativeCliPath(
 }
 
 /**
+ * Walk up from `startDir` looking for the native runtime shipped by the
+ * platform package used by current Copilot SDK releases. Linux checks both
+ * glibc and musl package names; npm installs only the compatible one.
+ */
+export function findCopilotSdkRuntimePath(
+    startDir?: string,
+    platform: NodeJS.Platform = process.platform,
+    arch: string = process.arch,
+): string | undefined {
+    const platformNames = platform === 'linux'
+        ? [`linux-${arch}`, `linuxmusl-${arch}`]
+        : [`${platform}-${arch}`];
+    const executable = platform === 'win32' ? 'copilot-runtime.exe' : 'copilot-runtime';
+    let dir = startDir ?? __dirname;
+    while (true) {
+        for (const platformName of platformNames) {
+            const candidate = path.join(
+                dir,
+                'node_modules',
+                '@github',
+                `copilot-sdk-${platformName}`,
+                'prebuilds',
+                platformName,
+                executable,
+            );
+            if (fs.existsSync(candidate)) {
+                return candidate;
+            }
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
+    return undefined;
+}
+
+/**
  * How the Copilot CLI entry was resolved:
  * - `js`: `@github/copilot/index.js` (<= 1.0.61 layout) — must run under a Node
  *   runtime.
- * - `native`: the platform package's native executable (>= 1.0.62 layout, where
- *   `@github/copilot` is only a thin `npm-loader.js`) — spawned directly.
+ * - `native`: a platform package's native executable — spawned directly.
  *
  * Paths are rewritten to their `app.asar.unpacked` copy when applicable, since
  * neither a plain Node child nor an exec'd binary can load from inside asar.
@@ -84,9 +120,8 @@ export interface CopilotCliResolution {
 }
 
 /**
- * Resolve the Copilot CLI entry, preferring the `index.js` layout (matches the
- * copilot-sdk's own bundled-CLI default) and falling back to the native
- * platform binary. Returns `undefined` when neither is installed.
+ * Resolve the Copilot runtime entry across the supported package layouts.
+ * Returns `undefined` when none is installed.
  */
 export function resolveCopilotCli(startDir?: string): CopilotCliResolution | undefined {
     const js = findCopilotCliPath(startDir);
@@ -96,6 +131,10 @@ export function resolveCopilotCli(startDir?: string): CopilotCliResolution | und
     const native = findCopilotNativeCliPath(startDir);
     if (native) {
         return { kind: 'native', path: preferUnpackedPath(native) };
+    }
+    const sdkRuntime = findCopilotSdkRuntimePath(startDir);
+    if (sdkRuntime) {
+        return { kind: 'native', path: preferUnpackedPath(sdkRuntime) };
     }
     return undefined;
 }
@@ -290,18 +329,10 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
     const sdk = getCachedCopilotSdk();
     if (!sdk) throw new Error('Copilot SDK not loaded. Call loadCopilotSdk() first.');
 
-    // In desktop mode the server runs under Electron Helper (ELECTRON_RUN_AS_NODE=1),
-    // so process.execPath is the Electron binary. Left alone, the copilot-sdk
-    // resolves its own bundled CLI and spawns it under that binary, which fails in
-    // packaged builds. Override the connection so CoC controls both the runtime
-    // and the CLI entry. The copilot-sdk validates the path with `existsSync`,
-    // so the runtime and CLI must be absolute on-disk paths.
-    //
-    // `@github/copilot` >= 1.0.62 no longer ships `index.js` — only a thin
-    // `npm-loader.js` plus a native platform binary. The copilot-sdk's own
-    // bundled-CLI default requires `index.js`, so with the new layout it cannot
-    // start the CLI under ANY runtime (Electron or plain Node). Spawn the
-    // unpacked native binary directly in that case, everywhere.
+    // In desktop mode the server runs under Electron Helper
+    // (ELECTRON_RUN_AS_NODE=1). Resolve unpacked runtime assets explicitly so
+    // packaged builds never try to execute a file inside app.asar. Native
+    // platform runtimes are also selected explicitly under plain Node.
     if (!clientOptions.connection) {
         const isElectron = Boolean((process.versions as Record<string, string | undefined>).electron);
         const resolution = resolveCopilotCli();
@@ -335,11 +366,11 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
             lastCopilotElectronSpawn = spawn;
             aiLog.info(
                 { copilotCliPath: spawn.cliPath, mode: spawn.mode },
-                'Launching copilot native CLI binary directly (no index.js in @github/copilot)',
+                'Launching Copilot native runtime directly',
             );
         } else if (isElectron && !resolution) {
             aiLog.warn(
-                'Electron detected but no copilot CLI was found (neither @github/copilot/index.js nor the @github/copilot-<platform>-<arch> native binary).',
+                'Electron detected but no installed Copilot runtime could be resolved.',
             );
         }
         // resolution?.kind === 'js' && !isElectron: leave the SDK default —

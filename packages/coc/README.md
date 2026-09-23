@@ -7,9 +7,10 @@ A standalone Node.js CLI and dashboard for executing YAML-based AI workflows.
 - Node.js ≥ 24
 - [GitHub Copilot](https://github.com/features/copilot) subscription
 
-CoC depends on `@github/copilot-sdk` → `@github/copilot` for AI features. Both
-are installed automatically as npm dependencies. You must authenticate with the
-Copilot CLI (`copilot` → `/login`) before using AI features — see the
+CoC depends on `@github/copilot-sdk` and its platform-specific runtime package
+for AI features. Authenticate with `COPILOT_GITHUB_TOKEN`/`GH_TOKEN` or an
+existing login under `~/.copilot`. A separately installed Copilot CLI can create
+that login with `copilot` → `/login`; see the
 [root README](../../README.md#prerequisites--setup) for setup instructions.
 
 ## Installation

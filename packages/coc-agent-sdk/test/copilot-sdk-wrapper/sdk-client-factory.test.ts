@@ -70,6 +70,7 @@ import {
     buildElectronCopilotConnection,
     buildCopilotNativeConnection,
     findCopilotNativeCliPath,
+    findCopilotSdkRuntimePath,
     resolveCopilotCli,
     getLastCopilotElectronSpawn,
 } from '../../src/sdk-client-factory';
@@ -207,6 +208,8 @@ describe('createSdkClient', () => {
 // Path fragments used to distinguish the two CLI layouts in existsSync mocks.
 const INDEX_JS_FRAGMENT = path.join('@github', 'copilot', 'index.js');
 const NATIVE_PKG_FRAGMENT = path.join('@github', `copilot-${process.platform}-${process.arch}`);
+const SDK_RUNTIME_PLATFORM = `${process.platform}-${process.arch}`;
+const SDK_RUNTIME_PKG_FRAGMENT = path.join('@github', `copilot-sdk-${SDK_RUNTIME_PLATFORM}`);
 
 /** existsSync mock: the >= 1.0.62 layout — no index.js, native binary present. */
 function mockNativeOnlyLayout(): void {
@@ -395,6 +398,24 @@ describe('findCopilotNativeCliPath / resolveCopilotCli', () => {
         const resolution = resolveCopilotCli('/repo');
 
         expect(resolution).toEqual({ kind: 'native', path: expect.stringContaining(NATIVE_PKG_FRAGMENT) });
+    });
+
+    it('finds the runtime from the current SDK platform package', () => {
+        vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes(SDK_RUNTIME_PKG_FRAGMENT));
+
+        const found = findCopilotSdkRuntimePath('/repo/packages/coc-agent-sdk/dist');
+
+        expect(found).toContain(SDK_RUNTIME_PKG_FRAGMENT);
+        expect(found).toContain(path.join('prebuilds', SDK_RUNTIME_PLATFORM));
+        expect(path.basename(found!)).toBe(process.platform === 'win32' ? 'copilot-runtime.exe' : 'copilot-runtime');
+    });
+
+    it('resolveCopilotCli falls back to the current SDK runtime package', () => {
+        vi.mocked(fs.existsSync).mockImplementation((p) => String(p).includes(SDK_RUNTIME_PKG_FRAGMENT));
+
+        const resolution = resolveCopilotCli('/repo');
+
+        expect(resolution).toEqual({ kind: 'native', path: expect.stringContaining(SDK_RUNTIME_PKG_FRAGMENT) });
     });
 
     it('resolveCopilotCli returns undefined when neither layout is installed', () => {

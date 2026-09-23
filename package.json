@@ -1,6 +1,6 @@
 {
   "name": "workspace-shortcuts",
-  "version": "3.5.0",
+  "version": "3.5.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/plusplusoneplusplus/shortcuts.git"
@@ -48,7 +48,7 @@
     "typescript": "^4.9.4"
   },
   "dependencies": {
-    "@github/copilot-sdk": "^1.0.9"
+    "@github/copilot-sdk": "^1.0.14"
   },
   "overrides": {
     "@excalidraw/excalidraw": {
