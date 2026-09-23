@@ -12,6 +12,7 @@ import {
     DEFAULT_CSV_HAS_HEADER
 } from '../config/defaults';
 import { PipelineCoreError, ErrorCode } from '../errors';
+import { normalizeNewlines } from './text';
 
 /**
  * Default CSV parsing options
@@ -56,8 +57,7 @@ export function parseCSVContent(content: string, options?: CSVParseOptions): CSV
 
     const opts = { ...DEFAULT_CSV_OPTIONS, ...filteredOptions };
 
-    // Normalize line endings
-    const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const normalizedContent = normalizeNewlines(content);
 
     const rows = parseCSVRows(normalizedContent, opts.delimiter);
 

@@ -51,3 +51,5 @@ export {
     SKILL_PROMPT_FILENAME,
 } from './skills/skill-resolver';
 export type { SkillResolutionResult, SkillMetadata } from './skills/skill-resolver';
+
+export { normalizeNewlines, extractJsonObjectString } from './utils/text';

@@ -21,7 +21,7 @@ export function _resetGhCliCache(): void {
     ghCliAvailable = undefined;
 }
 
-async function isGhCliAvailable(): Promise<boolean> {
+export async function isGhCliAvailable(): Promise<boolean> {
     if (ghCliAvailable !== undefined) {
         return ghCliAvailable;
     }

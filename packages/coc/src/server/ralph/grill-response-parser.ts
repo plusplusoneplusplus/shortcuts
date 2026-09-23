@@ -5,15 +5,10 @@ import type {
     RalphGrillQuestionType,
     ResolvedRalphGrillAgent,
 } from './grill-planning-types';
+import { stripAiCodeFences } from '../shared/ai-json';
 
 export const MAX_QUESTIONS_PER_AGENT = 6;
 const QUESTION_TYPES = new Set<RalphGrillQuestionType>(['select', 'multi-select', 'yes-no', 'confirm', 'text']);
-
-function stripCodeFences(raw: string): string {
-    const trimmed = raw.trim();
-    const fenced = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
-    return fenced ? fenced[1].trim() : trimmed;
-}
 
 export function sourceFor(agent: ResolvedRalphGrillAgent): RalphGrillQuestionSource {
     return {
@@ -69,7 +64,7 @@ function sanitizeDefaultValue(raw: unknown): string | string[] | undefined {
 }
 
 export function parseRalphGrillAgentResponse(raw: string, agent: ResolvedRalphGrillAgent): RalphGrillCandidateQuestion[] {
-    const jsonText = stripCodeFences(raw);
+    const jsonText = stripAiCodeFences(raw);
     let parsed: unknown;
     try {
         parsed = JSON.parse(jsonText);

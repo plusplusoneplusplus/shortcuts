@@ -132,25 +132,8 @@ export function scanCacheItems<TCache, TResult>(
     validator: (cached: TCache) => boolean,
     extractor: (cached: TCache) => TResult
 ): { found: TResult[]; missing: string[] } {
-    const found: TResult[] = [];
-    const missing: string[] = [];
-
-    for (const id of ids) {
-        const cachePath = pathResolver(id);
-        if (!cachePath) {
-            missing.push(id);
-            continue;
-        }
-
-        const cached = readCacheFile<TCache>(cachePath);
-        if (cached && validator(cached)) {
-            found.push(extractor(cached));
-        } else {
-            missing.push(id);
-        }
-    }
-
-    return { found, missing };
+    const { entries, missing } = scanCacheEntries(ids, pathResolver, validator, extractor);
+    return { found: entries.map(([, result]) => result), missing };
 }
 
 /**
@@ -170,7 +153,20 @@ export function scanCacheItemsMap<TCache, TResult>(
     validator: (cached: TCache) => boolean,
     extractor: (cached: TCache) => TResult
 ): { found: Map<string, TResult>; missing: string[] } {
-    const found = new Map<string, TResult>();
+    const { entries, missing } = scanCacheEntries(ids, pathResolver, validator, extractor);
+    return { found: new Map(entries), missing };
+}
+
+/**
+ * Core scan implementation shared by `scanCacheItems` (array) and `scanCacheItemsMap` (Map).
+ */
+function scanCacheEntries<TCache, TResult>(
+    ids: string[],
+    pathResolver: (id: string) => string | null,
+    validator: (cached: TCache) => boolean,
+    extractor: (cached: TCache) => TResult
+): { entries: [string, TResult][]; missing: string[] } {
+    const entries: [string, TResult][] = [];
     const missing: string[] = [];
 
     for (const id of ids) {
@@ -182,11 +178,11 @@ export function scanCacheItemsMap<TCache, TResult>(
 
         const cached = readCacheFile<TCache>(cachePath);
         if (cached && validator(cached)) {
-            found.set(id, extractor(cached));
+            entries.push([id, extractor(cached)]);
         } else {
             missing.push(id);
         }
     }
 
-    return { found, missing };
+    return { entries, missing };
 }

@@ -1,4 +1,5 @@
 import type { ParsedProgressSection, RalphExitSignal } from './types';
+import { normalizeNewlines } from '../utils/text';
 
 export interface FormatProgressSectionInput {
     iteration: number;
@@ -24,7 +25,7 @@ export function formatProgressSection(input: FormatProgressSectionInput): string
  * Accepts both the canonical em dash separator and the legacy ASCII hyphen.
  */
 export function parseProgressSections(progressMd: string): ParsedProgressSection[] {
-    const lines = progressMd.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const lines = normalizeNewlines(progressMd).split('\n');
     const sections: ParsedProgressSection[] = [];
 
     let current: ParsedProgressSection | null = null;

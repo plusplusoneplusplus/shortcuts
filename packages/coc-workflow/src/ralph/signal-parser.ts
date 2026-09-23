@@ -1,4 +1,5 @@
 import type { RalphParseResult, RalphSignal } from './types';
+import { normalizeNewlines } from '../utils/text';
 
 const RALPH_SIGNAL_TOKENS = ['RALPH_COMPLETE', 'RALPH_NEXT'] as const;
 type DetectableRalphSignal = typeof RALPH_SIGNAL_TOKENS[number];
@@ -10,7 +11,7 @@ type DetectableRalphSignal = typeof RALPH_SIGNAL_TOKENS[number];
  * can use it from server adapters, tests, or package consumers.
  */
 export function parseRalphSignal(response: string): RalphParseResult {
-    const normalised = response.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const normalised = normalizeNewlines(response);
     const signals = detectRalphSignals(normalised);
 
     const signal: RalphSignal = signals.has('RALPH_COMPLETE') ? 'RALPH_COMPLETE'

@@ -7,6 +7,7 @@ import type {
     DreamSourceRange,
 } from './types';
 import type { DreamConversationSelection } from './dream-source-selector';
+import { parseAiJsonObject } from '../shared/ai-json';
 
 export const DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS = 3_600_000;
 export const DEFAULT_DREAM_CONFIDENCE_THRESHOLD = 0.85;
@@ -102,25 +103,6 @@ interface ParseCandidateOptions extends DreamAnalysisPolicy {
     allowedSourceRanges: readonly DreamSourceRange[];
 }
 
-function stripCodeFences(raw: string): string {
-    const trimmed = raw.trim();
-    const fenced = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
-    return fenced ? fenced[1].trim() : trimmed;
-}
-
-function parseJsonObject(raw: string, label: string): Record<string, unknown> {
-    const jsonText = stripCodeFences(raw);
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(jsonText);
-    } catch {
-        throw new Error(`AI returned non-JSON ${label}: ${raw.slice(0, 200)}`);
-    }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error(`AI ${label} must be a JSON object`);
-    }
-    return parsed as Record<string, unknown>;
-}
 
 function clampConfidenceThreshold(value: number | undefined): number {
     if (value === undefined) return DEFAULT_DREAM_CONFIDENCE_THRESHOLD;
@@ -274,7 +256,7 @@ export function normalizeDreamAnalysisCandidates(
     raw: string,
     options: ParseCandidateOptions,
 ): DreamCandidateNormalizationResult {
-    const obj = parseJsonObject(raw, 'Dream analysis response');
+    const obj = parseAiJsonObject(raw, 'Dream analysis response');
     const rawCandidates = obj.candidates;
     if (!Array.isArray(rawCandidates)) {
         throw new Error('AI Dream analysis response must include a candidates array');
@@ -368,7 +350,7 @@ function isCriticVerdict(value: unknown): value is CriticVerdict {
 }
 
 export function parseDreamCriticResponse(raw: string): DreamCriticDecision[] {
-    const obj = parseJsonObject(raw, 'Dream critic response');
+    const obj = parseAiJsonObject(raw, 'Dream critic response');
     const decisions = obj.decisions;
     if (!Array.isArray(decisions)) {
         throw new Error('AI Dream critic response must include a decisions array');

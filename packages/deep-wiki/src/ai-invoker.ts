@@ -78,32 +78,34 @@ export async function checkAIAvailability(): Promise<AIAvailabilityResult> {
 }
 
 // ============================================================================
-// Analysis Invoker (Phase 3)
+// Internal shared invoker builder
 // ============================================================================
 
-/**
- * Uses direct sessions with read-only MCP tools
- * (view, grep, glob) so the AI can investigate source code.
- * Permissions: approve reads, deny everything else.
- */
-export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoker {
+interface InvokerConfig {
+    defaultModel?: string;
+    defaultTimeoutMs?: number;
+    workingDirectory?: string;
+    availableTools?: string[];
+    onPermissionRequest?: SendMessageOptions['onPermissionRequest'];
+}
+
+function createSdkInvoker(config: InvokerConfig): AIInvoker {
     const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
     return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
         try {
-            const model = invokerOptions?.model || options.model;
-            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_TIMEOUT_MS;
+            const model = invokerOptions?.model || config.defaultModel;
+            const timeoutMs = invokerOptions?.timeoutMs || config.defaultTimeoutMs || DEFAULT_TIMEOUT_MS;
 
             const sendOptions: SendMessageOptions = {
                 prompt,
                 model,
-                workingDirectory: resolveWorkingDirectory(options.repoPath),
                 timeoutMs,
                 signal: invokerOptions?.signal,
-                availableTools: ANALYSIS_TOOLS,
-                onPermissionRequest: (req) =>
-                    req.kind === 'read' ? { kind: 'approve-once' } : { kind: 'reject' },
-                loadDefaultMcpConfig: false, // Don't load user's MCP config
+                workingDirectory: config.workingDirectory,
+                loadDefaultMcpConfig: false,
+                ...(config.availableTools ? { availableTools: config.availableTools } : {}),
+                ...(config.onPermissionRequest ? { onPermissionRequest: config.onPermissionRequest } : {}),
             };
 
             const result = await service.sendMessage(sendOptions) as SDKInvocationResult;
@@ -125,6 +127,26 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
 }
 
 // ============================================================================
+// Analysis Invoker (Phase 3)
+// ============================================================================
+
+/**
+ * Uses direct sessions with read-only MCP tools
+ * (view, grep, glob) so the AI can investigate source code.
+ * Permissions: approve reads, deny everything else.
+ */
+export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoker {
+    return createSdkInvoker({
+        defaultModel: options.model,
+        defaultTimeoutMs: options.timeoutMs,
+        workingDirectory: resolveWorkingDirectory(options.repoPath),
+        availableTools: ANALYSIS_TOOLS,
+        onPermissionRequest: (req) =>
+            req.kind === 'read' ? { kind: 'approve-once' } : { kind: 'reject' },
+    });
+}
+
+// ============================================================================
 // Writing Invoker (Phase 4)
 // ============================================================================
 
@@ -133,38 +155,11 @@ export function createAnalysisInvoker(options: AnalysisInvokerOptions): AIInvoke
  * context is provided in the prompt.
  */
 export function createWritingInvoker(options: WritingInvokerOptions): AIInvoker {
-    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-
-    return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
-        try {
-            const model = invokerOptions?.model || options.model;
-            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_TIMEOUT_MS;
-
-            const sendOptions: SendMessageOptions = {
-                prompt,
-                model,
-                workingDirectory: options.repoPath ? resolveWorkingDirectory(options.repoPath) : undefined,
-                timeoutMs,
-                signal: invokerOptions?.signal,
-                loadDefaultMcpConfig: false, // Writing doesn't need MCP; avoid user's global MCP config
-            };
-
-            const result = await service.sendMessage(sendOptions) as SDKInvocationResult;
-
-            return {
-                success: result.success,
-                response: result.response || '',
-                error: result.error,
-                tokenUsage: result.tokenUsage,
-            };
-        } catch (error) {
-            return {
-                success: false,
-                response: '',
-                error: error instanceof Error ? error.message : String(error),
-            };
-        }
-    };
+    return createSdkInvoker({
+        defaultModel: options.model,
+        defaultTimeoutMs: options.timeoutMs,
+        workingDirectory: options.repoPath ? resolveWorkingDirectory(options.repoPath) : undefined,
+    });
 }
 
 // ============================================================================
@@ -183,42 +178,14 @@ export interface ConsolidationInvokerOptions {
     timeoutMs?: number;
 }
 
-
 /**
  * Uses direct sessions without tools. The AI only needs to analyze the
  * component list and return clusters.
  */
 export function createConsolidationInvoker(options: ConsolidationInvokerOptions): AIInvoker {
-    const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-
-    return async (prompt: string, invokerOptions?: AIInvokerOptions): Promise<AIInvokerResult> => {
-        try {
-            const model = invokerOptions?.model || options.model;
-            const timeoutMs = invokerOptions?.timeoutMs || options.timeoutMs || DEFAULT_TIMEOUT_MS;
-
-            const sendOptions: SendMessageOptions = {
-                prompt,
-                model,
-                timeoutMs,
-                signal: invokerOptions?.signal,
-                workingDirectory: resolveWorkingDirectory(options.workingDirectory),
-                loadDefaultMcpConfig: false,
-            };
-
-            const result = await service.sendMessage(sendOptions) as SDKInvocationResult;
-
-            return {
-                success: result.success,
-                response: result.response || '',
-                error: result.error,
-                tokenUsage: result.tokenUsage,
-            };
-        } catch (error) {
-            return {
-                success: false,
-                response: '',
-                error: error instanceof Error ? error.message : String(error),
-            };
-        }
-    };
+    return createSdkInvoker({
+        defaultModel: options.model,
+        defaultTimeoutMs: options.timeoutMs,
+        workingDirectory: resolveWorkingDirectory(options.workingDirectory),
+    });
 }

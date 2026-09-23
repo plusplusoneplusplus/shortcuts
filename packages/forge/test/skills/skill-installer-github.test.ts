@@ -20,6 +20,7 @@ vi.mock('../../src/utils', async (importOriginal) => {
 });
 
 import { installSkills } from '../../src/skills/skill-installer';
+import { _resetGhCliCache } from '../../src/skills/skill-scanner';
 import type { DiscoveredSkill, ParsedSource } from '../../src/skills/types';
 import { execAsync, httpGetJson, httpDownload } from '../../src/utils';
 
@@ -49,6 +50,7 @@ describe('installSkills (GitHub source)', () => {
     beforeEach(() => {
         installDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-dst-'));
         vi.resetAllMocks();
+        _resetGhCliCache();
     });
 
     afterEach(() => {

@@ -3,6 +3,7 @@ import type { SystemMessageConfig } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ChatProvider, ReasoningEffort } from '../tasks/task-types';
 import type { ForEachChildMode, ForEachItem } from './types';
 import { assertDraftInitialStatuses, normalizeForEachItems } from './for-each-plan-validation';
+import { stripAiCodeFences } from '../shared/ai-json';
 
 const PLAN_TIMEOUT_MS = 60_000;
 
@@ -56,14 +57,8 @@ export interface ForEachPlanGeneratorOptions {
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
 }
 
-function stripCodeFences(raw: string): string {
-    const trimmed = raw.trim();
-    const fenced = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
-    return fenced ? fenced[1].trim() : trimmed;
-}
-
 export function parseForEachItemPlanResponse(raw: string): ForEachItem[] {
-    const jsonText = stripCodeFences(raw);
+    const jsonText = stripAiCodeFences(raw);
     let parsed: unknown;
     try {
         parsed = JSON.parse(jsonText);
