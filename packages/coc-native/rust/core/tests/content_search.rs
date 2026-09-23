@@ -328,6 +328,7 @@ fn exact_file_candidates_include_ignored_paths_and_exclude_everything_else() {
         ("tracked.txt", "needle\n"),
         ("untracked.txt", "needle\n"),
         ("ignored/tracked-too.txt", "needle\n"),
+        ("ignored/untracked/deep.txt", "needle\n"),
     ]);
 
     let result = run(

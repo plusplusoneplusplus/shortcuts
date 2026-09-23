@@ -140,10 +140,34 @@ pub fn search(
     let candidates = options.files.as_ref().map(|files| {
         Arc::new(files.iter().map(|file| candidate_key(file).into_owned()).collect::<HashSet<_>>())
     });
+    let candidate_directories =
+        candidates.as_ref().map(|files| Arc::new(candidate_directory_keys(files)));
 
     // An explicit candidate set is already filtered by its owner (Git for the
     // tracked-content contract), so ignore rules must not remove a tracked path.
+    // Prune everything that is neither a candidate nor one of its ancestors:
+    // otherwise disabling ignore rules would enumerate large ignored trees such
+    // as node_modules before the file-level candidate check rejected them.
     let mut builder = walk_builder(&scope, options.show_ignored || candidates.is_some());
+    if let (Some(files), Some(directories)) = (&candidates, candidate_directories) {
+        let root = root.to_path_buf();
+        let files = Arc::clone(files);
+        builder.filter_entry(move |entry| {
+            if entry.file_name() == ".git" && entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                return false;
+            }
+            let Ok(relative) = entry.path().strip_prefix(&root) else {
+                return false;
+            };
+            let relative = to_posix(relative);
+            let key = candidate_key(&relative);
+            if entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                key.is_empty() || directories.contains(key.as_ref())
+            } else {
+                files.contains(key.as_ref())
+            }
+        });
+    }
     if !options.include.is_empty() || !options.exclude.is_empty() {
         builder.overrides(build_overrides(&scope, options)?);
     }
@@ -244,6 +268,41 @@ fn candidate_key(path: &str) -> Cow<'_, str> {
     #[cfg(not(windows))]
     {
         Cow::Borrowed(path)
+    }
+}
+
+fn candidate_directory_keys(files: &HashSet<String>) -> HashSet<String> {
+    let mut directories = HashSet::new();
+    for file in files {
+        let mut end = 0;
+        while let Some(offset) = file[end..].find('/') {
+            end += offset;
+            if end > 0 {
+                directories.insert(file[..end].to_owned());
+            }
+            end += 1;
+        }
+    }
+    directories
+}
+
+#[cfg(test)]
+mod tests {
+    use super::candidate_directory_keys;
+    use std::collections::HashSet;
+
+    #[test]
+    fn candidate_directories_contain_only_candidate_ancestors() {
+        let files = HashSet::from([
+            "tracked.txt".to_owned(),
+            "ignored/tracked-too.txt".to_owned(),
+            "src/nested/deep.ts".to_owned(),
+        ]);
+
+        assert_eq!(
+            candidate_directory_keys(&files),
+            HashSet::from(["ignored".to_owned(), "src".to_owned(), "src/nested".to_owned(),]),
+        );
     }
 }
 
