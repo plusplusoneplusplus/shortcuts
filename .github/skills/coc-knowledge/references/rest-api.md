@@ -113,7 +113,7 @@ Chat canvas side panel, gated by `canvas.enabled` (default on). Markdown or code
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/repos/:repoId/search/content` | Bounded repository content search with case, whole-word, regex, include/exclude glob, path, and limit controls. `fileScope=tracked` derives exact candidates with Git; `includeUntracked=true` adds non-ignored untracked files while ignored tracked files remain eligible. A non-Git workspace returns `409` with `TRACKED_CONTENT_SEARCH_UNAVAILABLE` |
+| GET | `/api/repos/:repoId/search/content` | Bounded repository content search with case, whole-word, regex, include/exclude glob, path, and limit controls. `fileScope=tracked` derives exact candidates with Git; `includeUntracked=true` adds non-ignored untracked files while ignored tracked files remain eligible. A non-Git workspace returns `409` with `TRACKED_CONTENT_SEARCH_UNAVAILABLE`. Client disconnects suppress late success and error responses |
 
 ## Git
 

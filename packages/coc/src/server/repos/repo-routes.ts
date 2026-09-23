@@ -320,8 +320,10 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                     exclude: globParam(parsedUrl.query, 'exclude'),
                     limit,
                 });
+                if (req.aborted || res.destroyed) return;
                 sendJson(res, result);
             } catch (err) {
+                if (req.aborted || res.destroyed) return;
                 const message = err instanceof Error ? err.message : String(err);
                 // The addon reports a bad regex, an escaping path or a
                 // malformed include/exclude glob as InvalidArg — the caller's

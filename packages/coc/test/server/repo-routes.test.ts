@@ -529,6 +529,35 @@ describe('GET /api/repos/:repoId/search/content', () => {
         }
     });
 
+    it('does not write a search result after the client disconnects', async () => {
+        seedDefaultRepo();
+        let resolveSearch!: (result: { matches: []; truncated: false }) => void;
+        let markSearchStarted!: () => void;
+        const searchStarted = new Promise<void>(resolve => { markSearchStarted = resolve; });
+        const service = {
+            resolveRepoRoot: vi.fn(async () => repoDir),
+            searchContent: vi.fn(() => {
+                markSearchStarted();
+                return new Promise<{ matches: []; truncated: false }>(resolve => { resolveSearch = resolve; });
+            }),
+        } as unknown as RepoTreeService;
+        await replaceServer(service);
+
+        let serverResponse: http.ServerResponse | undefined;
+        server.once('request', (_request, response) => { serverResponse = response; });
+        const request = http.get(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle`);
+        request.on('error', () => {});
+        await searchStarted;
+
+        const serverResponseClosed = new Promise<void>(resolve => serverResponse!.once('close', resolve));
+        request.destroy();
+        await serverResponseClosed;
+        resolveSearch({ matches: [], truncated: false });
+        await new Promise<void>(resolve => setImmediate(resolve));
+
+        expect(serverResponse?.headersSent).toBe(false);
+    });
+
     it('returns 400 when q is missing', async () => {
         seedDefaultRepo();
         const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content`);
