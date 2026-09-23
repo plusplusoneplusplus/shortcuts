@@ -5,13 +5,19 @@
  * shortcut — open, initial focus, Escape with focus restoration, arrow-key
  * selection, Enter, and a repeat press that must not stack a second dialog.
  */
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import {
     ContentSearchOverlay,
     type ContentSearchOverlayMatch,
 } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/ContentSearchOverlay';
 import { ContentSearchOverlayHost } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/ContentSearchOverlayHost';
+import { resetContentSearchMemoryForTests } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchStateStore';
+
+beforeEach(() => {
+    localStorage.clear();
+    resetContentSearchMemoryForTests();
+});
 
 afterEach(() => {
     cleanup();

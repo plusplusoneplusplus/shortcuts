@@ -249,12 +249,15 @@ the content arrives after the editor does and a second hit in an already-open
 file has no mount to piggyback on.
 
 The page-level Ctrl/Cmd+Shift+F overlay is a separate tracked-file surface under
-`content-search/`. Activating a row runs `contentSearchOpen`: group results first
-refresh membership, every result preflights its repo-relative path through the
-clone-qualified owner route, and only then opens the unified panel's preview slot
-at the matching line. The panel scope and dock target stay unchanged for group
-results. A stale member, unresolved clone, or deleted file leaves the overlay and
-panel state intact and is announced inline.
+`content-search/`. `contentSearchStateStore` keys repo and group state by workspace
+plus concrete clone route. It persists only query/modes/globs/untracked controls;
+result payloads remain in memory, so close/reopen and same-page scope changes can
+restore them while a reload restores controls without searching. Activating a row
+runs `contentSearchOpen`: group results first refresh membership, every result
+preflights its repo-relative path through the clone-qualified owner route, and only
+then opens the unified panel's preview slot at the matching line. The panel scope
+and dock target stay unchanged for group results. A stale member, unresolved clone,
+or deleted file leaves the overlay and panel state intact and is announced inline.
 
 `SearchBar.tsx` is shared by both views. Its `data-testid`s derive from a
 `testIdPrefix` (`<prefix>-bar` / `-input` / `-clear` / `-toggle-<id>`) whose

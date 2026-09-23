@@ -251,7 +251,9 @@ repo or repo-group sub-tab. Activating a result preflights the clone-qualified
 file route and opens it at the matching line in the panel's preview slot. Group
 results keep the page and panel scoped to the group and carry the member owner on
 the tab; stale membership, offline routing, and deleted files leave the overlay
-and existing panel state intact.
+and existing panel state intact. Overlay controls persist per clone-qualified repo
+or group scope in localStorage, while results remain in memory; reopening restores
+both during the page lifetime, and a reload restores controls without searching.
 
 The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs,
 with a searchable `+` menu and one right-edge navigator that switches between

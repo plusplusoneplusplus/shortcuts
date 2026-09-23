@@ -28,8 +28,11 @@ import {
     describeContentSearchResults,
     toOverlayMatches,
 } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchRequest';
+import { resetContentSearchMemoryForTests } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchStateStore';
 
 beforeEach(() => {
+    localStorage.clear();
+    resetContentSearchMemoryForTests();
     searchContent.mockReset();
     searchContent.mockResolvedValue({ matches: [], truncated: false });
 });

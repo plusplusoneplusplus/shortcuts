@@ -21,6 +21,7 @@ vi.mock(
 );
 
 import { ContentSearchOverlayHost } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/ContentSearchOverlayHost';
+import { resetContentSearchMemoryForTests } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchStateStore';
 import {
     toGroupOverlayMatches,
     toGroupResultState,
@@ -35,6 +36,8 @@ function matchRows(): HTMLElement[] {
 }
 
 beforeEach(() => {
+    localStorage.clear();
+    resetContentSearchMemoryForTests();
     searchContent.mockReset();
     searchRepoGroupContent.mockReset();
     searchRepoGroupContent.mockResolvedValue(groupResponse({}));

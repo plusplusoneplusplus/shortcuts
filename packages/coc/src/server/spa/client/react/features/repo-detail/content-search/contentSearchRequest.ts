@@ -19,7 +19,7 @@
  * which becomes the distinct `unavailable` state instead of a generic failure —
  * the overlay must never look like it silently searched the filesystem.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type {
     ExplorerRepoGroupContentSearchResponse,
 } from '@plusplusoneplusplus/coc-client';
@@ -35,6 +35,15 @@ import {
     validateQuery,
     type ContentSearchControls,
 } from './contentSearchControls';
+import {
+    EMPTY_CONTENT_SEARCH_RESULTS,
+    contentSearchScopeKey,
+    useContentSearchControls,
+    useContentSearchResults,
+    type ContentSearchOverlayErrorKind,
+    type ContentSearchOverlayStatus,
+    type ContentSearchResultState,
+} from './contentSearchStateStore';
 
 export type { ContentSearchControls } from './contentSearchControls';
 export {
@@ -43,48 +52,18 @@ export {
     validateQuery,
 } from './contentSearchControls';
 
-export type ContentSearchOverlayStatus =
-    | 'idle'
-    | 'loading'
-    | 'success'
-    | 'empty'
-    | 'error'
-    | 'unavailable';
-
-/** Which input an error belongs against. `request` is the retryable catch-all. */
-export type ContentSearchOverlayErrorKind = 'regex' | 'glob' | 'request' | 'unavailable';
+export type {
+    ContentSearchOverlayErrorKind,
+    ContentSearchOverlayStatus,
+    ContentSearchResultState,
+} from './contentSearchStateStore';
+export { EMPTY_CONTENT_SEARCH_RESULTS } from './contentSearchStateStore';
 
 /**
  * A group member that could not contribute to the current answer. Defined with
  * the overlay's row types, since it is something the dialog draws.
  */
 export type { ContentSearchOverlayFailure } from './ContentSearchOverlay';
-
-export interface ContentSearchResultState {
-    status: ContentSearchOverlayStatus;
-    matches: ContentSearchOverlayMatch[];
-    truncated: boolean;
-    error: string | null;
-    errorKind: ContentSearchOverlayErrorKind | null;
-    /** The query the current results came from — not what is typed now. */
-    query: string;
-    /**
-     * Members that were not searched successfully. Always empty in a repo
-     * scope; a partial group answer keeps its successful members visible and
-     * names the rest here.
-     */
-    failures: ContentSearchOverlayFailure[];
-}
-
-export const EMPTY_CONTENT_SEARCH_RESULTS: ContentSearchResultState = {
-    status: 'idle',
-    matches: [],
-    truncated: false,
-    error: null,
-    errorKind: null,
-    query: '',
-    failures: [],
-};
 
 /**
  * The one-line status under the query. Each result state gets a distinct
@@ -288,13 +267,18 @@ export function useContentSearchRequest(
     options: UseContentSearchRequestOptions,
 ): ContentSearchRequest {
     const { workspaceId, routingRef, baseUrl, scope = 'repo' } = options;
-    const [controls, setControlsState] = useState(DEFAULT_CONTENT_SEARCH_CONTROLS);
-    const [results, setResults] = useState(EMPTY_CONTENT_SEARCH_RESULTS);
+    const stateKey = contentSearchScopeKey({ workspaceId, scope, routingRef });
+    const [controls, setControlsState] = useContentSearchControls(stateKey);
+    const [results, setResults] = useContentSearchResults(stateKey);
     // Submitting reads the controls through a ref so `submit` stays stable
     // across keystrokes; a callback that changed identity per character would
     // make every control re-render the dialog's key handler.
     const controlsRef = useRef(controls);
     controlsRef.current = controls;
+    const settledResultsRef = useRef(new Map<string, ContentSearchResultState>());
+    if (results.status !== 'loading') {
+        settledResultsRef.current.set(stateKey, results);
+    }
     const runIdRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
 
@@ -305,15 +289,21 @@ export function useContentSearchRequest(
             runIdRef.current += 1;
             abortRef.current?.abort();
             abortRef.current = null;
+            // A scope change or unmount aborts the request. Restore that
+            // scope's last settled answer so reopening cannot show a search
+            // that is no longer running.
+            setResults(previous => previous.status === 'loading'
+                ? settledResultsRef.current.get(stateKey) ?? EMPTY_CONTENT_SEARCH_RESULTS
+                : previous);
         },
-        [],
+        [setResults, stateKey],
     );
 
     const setControls = useCallback(
         (update: (current: ContentSearchControls) => ContentSearchControls) => {
             setControlsState(current => update(current));
         },
-        [],
+        [setControlsState],
     );
 
     const submit = useCallback(() => {
