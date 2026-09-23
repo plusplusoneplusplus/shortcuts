@@ -25,6 +25,7 @@ import {
 } from './contentSearchRequest';
 import { resolveContentSearchScope } from './contentSearchShortcut';
 import { useContentSearchShortcut } from './useContentSearchShortcut';
+import type { ContentSearchOpenOutcome } from './contentSearchOpen';
 
 export interface ContentSearchOverlayHostProps {
     /** Selected repo or repo-group workspace. Decides whether we claim the key. */
@@ -36,8 +37,11 @@ export interface ContentSearchOverlayHostProps {
     routingRef?: string | null;
     /** Group owner's base URL. Only a repo-group scope uses it. */
     baseUrl?: string;
-    /** Open a match in the unified right panel. Wired in the AC-04 slice. */
-    onOpenMatch?: (match: ContentSearchOverlayMatch) => void;
+    /** Verify and open a match in the unified right panel. */
+    onOpenMatch?: (
+        match: ContentSearchOverlayMatch,
+        signal: AbortSignal,
+    ) => Promise<ContentSearchOpenOutcome>;
 }
 
 export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
@@ -45,6 +49,7 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
     const scope = resolveContentSearchScope(workspaceId);
     const [open, setOpen] = useState(false);
     const [focusToken, setFocusToken] = useState(0);
+    const [openError, setOpenError] = useState<string | null>(null);
     const { controls, setControls, results, submit } = useContentSearchRequest({
         workspaceId: workspaceId ?? '',
         // The scope decides the route: a group query goes to the group-owning
@@ -54,6 +59,9 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
         baseUrl,
     });
     const invokerRef = useRef<HTMLElement | null>(null);
+    const openRunRef = useRef(0);
+    const openPendingRef = useRef(false);
+    const openAbortRef = useRef<AbortController | null>(null);
 
     const handleOpen = useCallback(() => {
         const active = document.activeElement;
@@ -67,7 +75,12 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
     }, []);
 
     const handleClose = useCallback(() => {
+        openRunRef.current += 1;
+        openAbortRef.current?.abort();
+        openAbortRef.current = null;
+        openPendingRef.current = false;
         setOpen(false);
+        setOpenError(null);
         const invoker = invokerRef.current;
         invokerRef.current = null;
         // Guard against an invoker that unmounted while the overlay was up;
@@ -83,12 +96,40 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
     });
 
     const handleOpenMatch = useCallback(
-        (match: ContentSearchOverlayMatch) => {
-            onOpenMatch?.(match);
-            handleClose();
+        async (match: ContentSearchOverlayMatch) => {
+            if (openPendingRef.current) return;
+            openPendingRef.current = true;
+            const controller = new AbortController();
+            openAbortRef.current = controller;
+            const run = openRunRef.current + 1;
+            openRunRef.current = run;
+            setOpenError(null);
+            const outcome = onOpenMatch
+                ? await onOpenMatch(match, controller.signal).catch(() => ({
+                    opened: false as const,
+                    error: 'Could not open this result. Check the repository connection and try again.',
+                }))
+                : {
+                    opened: false as const,
+                    error: 'The file panel is unavailable in this view.',
+                };
+            if (openAbortRef.current === controller) openAbortRef.current = null;
+            openPendingRef.current = false;
+            if (openRunRef.current !== run) return;
+            if (outcome.opened) handleClose();
+            else setOpenError(outcome.error);
         },
         [handleClose, onOpenMatch],
     );
+
+    const handleSubmit = useCallback(() => {
+        openRunRef.current += 1;
+        openAbortRef.current?.abort();
+        openAbortRef.current = null;
+        openPendingRef.current = false;
+        setOpenError(null);
+        submit();
+    }, [submit]);
 
     if (scope === null) return null;
 
@@ -100,13 +141,13 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
             onQueryChange={query => setControls(current => ({ ...current, query }))}
             controls={controls}
             onControlsChange={setControls}
-            onSubmit={submit}
+            onSubmit={handleSubmit}
             onClose={handleClose}
             matches={results.matches}
             truncated={results.truncated}
             failures={results.failures}
             busy={results.status === 'loading'}
-            status={describeContentSearchResults(results)}
+            status={openError ?? describeContentSearchResults(results)}
             onOpenMatch={handleOpenMatch}
             focusToken={focusToken}
         />

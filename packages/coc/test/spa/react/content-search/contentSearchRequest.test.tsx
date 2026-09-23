@@ -344,4 +344,80 @@ describe('ContentSearchOverlayHost requests', () => {
             '1 result in 1 file',
         );
     });
+
+    it('closes only after the selected match opens successfully', async () => {
+        searchContent.mockResolvedValue({
+            matches: [serverMatch('src/a.ts', 12, 'const needle = 1')],
+            truncated: false,
+        });
+        const onOpenMatch = vi.fn().mockResolvedValue({ opened: true });
+        render(<ContentSearchOverlayHost workspaceId="coc" onOpenMatch={onOpenMatch} />);
+        pressShortcut();
+        type('content-search-overlay-query', 'needle');
+        submit();
+        await waitFor(() => expect(
+            screen.getByTestId('content-search-overlay-match-coc src/a.ts 12 0'),
+        ).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('content-search-overlay-match-coc src/a.ts 12 0'));
+
+        await waitFor(() => expect(screen.queryByTestId('content-search-overlay')).toBeNull());
+        expect(onOpenMatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                workspaceId: 'coc',
+                path: 'src/a.ts',
+                line: 12,
+            }),
+            expect.any(AbortSignal),
+        );
+    });
+
+    it('keeps results intact and announces an owner-resolution failure', async () => {
+        searchContent.mockResolvedValue({
+            matches: [serverMatch('src/a.ts', 12, 'const needle = 1')],
+            truncated: false,
+        });
+        const onOpenMatch = vi.fn().mockResolvedValue({
+            opened: false,
+            error: 'This repository is no longer available. Run the search again.',
+        });
+        render(<ContentSearchOverlayHost workspaceId="coc" onOpenMatch={onOpenMatch} />);
+        pressShortcut();
+        type('content-search-overlay-query', 'needle');
+        submit();
+        const row = await screen.findByTestId('content-search-overlay-match-coc src/a.ts 12 0');
+
+        fireEvent.click(row);
+
+        await waitFor(() => expect(screen.getByTestId('content-search-overlay-status').textContent)
+            .toBe('This repository is no longer available. Run the search again.'));
+        expect(screen.getByTestId('content-search-overlay')).toBeTruthy();
+        expect(screen.getByTestId('content-search-overlay-match-coc src/a.ts 12 0')).toBe(row);
+    });
+
+    it('cancels a pending activation when Escape closes the overlay', async () => {
+        searchContent.mockResolvedValue({
+            matches: [serverMatch('src/a.ts', 12, 'const needle = 1')],
+            truncated: false,
+        });
+        let resolveOpen!: (value: { opened: false; error: string }) => void;
+        const onOpenMatch = vi.fn((_match, signal: AbortSignal) =>
+            new Promise<{ opened: false; error: string }>(resolve => { resolveOpen = resolve; })
+                .finally(() => expect(signal.aborted).toBe(true)),
+        );
+        render(<ContentSearchOverlayHost workspaceId="coc" onOpenMatch={onOpenMatch} />);
+        pressShortcut();
+        type('content-search-overlay-query', 'needle');
+        submit();
+        const row = await screen.findByTestId('content-search-overlay-match-coc src/a.ts 12 0');
+
+        fireEvent.click(row);
+        const signal = onOpenMatch.mock.calls[0][1] as AbortSignal;
+        fireEvent.keyDown(screen.getByTestId('content-search-overlay'), { key: 'Escape' });
+
+        expect(signal.aborted).toBe(true);
+        expect(screen.queryByTestId('content-search-overlay')).toBeNull();
+        resolveOpen({ opened: false, error: 'cancelled' });
+        await act(async () => Promise.resolve());
+    });
 });

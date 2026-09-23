@@ -28,9 +28,11 @@ import { openWorkspaceDock } from '../WorkspaceDockToggle';
 import { readUnifiedPanelState, writeUnifiedPanelState } from './unifiedPanelStore';
 import {
     activateTab,
+    openPreviewTab,
     openTab,
     unifiedTabId,
     type OpenUnifiedTabInput,
+    type OpenUnifiedPreviewTabInput,
     type UnifiedPanelState,
 } from './unifiedPanelTabsModel';
 
@@ -60,6 +62,26 @@ export function openUnifiedPanelTab(
 ): string {
     const id = unifiedTabIdFor(input);
     updateUnifiedPanelState(workspaceId, prev => openTab(prev, input));
+    if (options.reveal !== false) openWorkspaceDock(workspaceId);
+    return id;
+}
+
+/**
+ * Open a file through the panel's single replaceable preview slot.
+ *
+ * Content-search results live outside the panel subtree, just like the other
+ * imperative entry points in this module. A dirty preview is promoted by the
+ * editor as soon as it changes, so it is no longer the replaceable preview
+ * that this operation can evict; the panel's dirty-close guard remains the
+ * safety net for component-local tree opens.
+ */
+export function openUnifiedPanelPreviewTab(
+    workspaceId: string,
+    input: OpenUnifiedPreviewTabInput,
+    options: OpenUnifiedPanelTabOptions = {},
+): string {
+    const id = unifiedTabIdFor({ kind: 'file', ...input });
+    updateUnifiedPanelState(workspaceId, prev => openPreviewTab(prev, input));
     if (options.reveal !== false) openWorkspaceDock(workspaceId);
     return id;
 }

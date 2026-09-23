@@ -248,6 +248,14 @@ revealed both on mount and from an effect keyed on `[revealLine, value]`, becaus
 the content arrives after the editor does and a second hit in an already-open
 file has no mount to piggyback on.
 
+The page-level Ctrl/Cmd+Shift+F overlay is a separate tracked-file surface under
+`content-search/`. Activating a row runs `contentSearchOpen`: group results first
+refresh membership, every result preflights its repo-relative path through the
+clone-qualified owner route, and only then opens the unified panel's preview slot
+at the matching line. The panel scope and dock target stay unchanged for group
+results. A stale member, unresolved clone, or deleted file leaves the overlay and
+panel state intact and is announced inline.
+
 `SearchBar.tsx` is shared by both views. Its `data-testid`s derive from a
 `testIdPrefix` (`<prefix>-bar` / `-input` / `-clear` / `-toggle-<id>`) whose
 default reproduces the file-filter bar's long-standing ids — do not hardcode them

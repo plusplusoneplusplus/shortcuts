@@ -25,7 +25,7 @@
  * not here — the Workspace tab is the chat and nothing else.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
@@ -33,6 +33,8 @@ import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnab
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { ContentSearchOverlayHost } from '../features/repo-detail/content-search/ContentSearchOverlayHost';
+import type { ContentSearchOverlayMatch } from '../features/repo-detail/content-search/ContentSearchOverlay';
+import { openContentSearchMatch } from '../features/repo-detail/content-search/contentSearchOpen';
 import { UnifiedPanelHostProvider } from '../features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
@@ -205,6 +207,22 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // `useQueueOptional` because this read is cosmetic to the group view: with
     // no provider (a focused test host) the panel simply has no chat scope.
     const panelChatId = useQueueOptional()?.state.selectedTaskIdByRepo[workspaceId] ?? null;
+    const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
+        if (!dockAvailable) {
+            return Promise.resolve({
+                opened: false as const,
+                error: 'The file panel is unavailable in this view.',
+            });
+        }
+        return openContentSearchMatch({
+            panelWorkspaceId: workspaceId,
+            scope: 'group',
+            chatId: panelChatId,
+            groupBaseUrl,
+            signal,
+            match,
+        });
+    }, [dockAvailable, groupBaseUrl, panelChatId, workspaceId]);
     // See RepoDetail: publishes the panel to chat entry points below, scoped to
     // the group id (the panel's store key) and the chat it is showing.
     const unifiedPanelHost = useMemo(
@@ -319,6 +337,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                 workspaceId={workspaceId}
                 routingRef={groupRoutingRef}
                 baseUrl={groupBaseUrl}
+                onOpenMatch={openSearchMatch}
             />
         </div>
         </UnifiedPanelHostProvider>
