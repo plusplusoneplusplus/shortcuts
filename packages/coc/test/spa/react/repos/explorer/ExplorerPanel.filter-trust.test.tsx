@@ -50,9 +50,11 @@ describe('ExplorerPanel file-filter trust', () => {
 
         expect(screen.getByTestId('tree-node-src')).toBeInTheDocument();
         expect(screen.getByTestId('tree-node-scripts')).toBeInTheDocument();
+        expect(screen.queryByTestId('file-tree-no-matches')).not.toBeInTheDocument();
         finishSearch(results([]));
         await waitFor(() => expect(screen.queryByTestId('tree-node-src')).not.toBeInTheDocument());
         expect(screen.queryByTestId('tree-node-scripts')).not.toBeInTheDocument();
+        expect(screen.getByTestId('file-tree-no-matches')).toHaveTextContent('No matching files');
     });
 
     it('keeps unfetched directories when search fails', async () => {
@@ -64,6 +66,7 @@ describe('ExplorerPanel file-filter trust', () => {
             await waitFor(() => expect(log).toHaveBeenCalled());
             expect(screen.getByTestId('tree-node-src')).toBeInTheDocument();
             expect(screen.getByTestId('tree-node-scripts')).toBeInTheDocument();
+            expect(screen.queryByTestId('file-tree-no-matches')).not.toBeInTheDocument();
         } finally {
             log.mockRestore();
         }
@@ -76,6 +79,7 @@ describe('ExplorerPanel file-filter trust', () => {
         await waitFor(() => expect(screen.queryByTestId('explorer-server-search-loading')).not.toBeInTheDocument());
         expect(screen.getByTestId('tree-node-src')).toBeInTheDocument();
         expect(screen.getByTestId('tree-node-scripts')).toBeInTheDocument();
+        expect(screen.queryByTestId('file-tree-no-matches')).not.toBeInTheDocument();
     });
 
     it('resets trust as soon as the query changes, before the next request starts', async () => {
@@ -86,6 +90,7 @@ describe('ExplorerPanel file-filter trust', () => {
 
         fireEvent.change(screen.getByTestId('explorer-search-input'), { target: { value: 'another.rs' } });
         expect(screen.getByTestId('tree-node-src')).toBeInTheDocument();
+        expect(screen.queryByTestId('file-tree-no-matches')).not.toBeInTheDocument();
         await waitFor(() => expect(searchSpy).toHaveBeenCalledTimes(2));
         expect(screen.getByTestId('tree-node-src')).toBeInTheDocument();
     });
@@ -117,5 +122,29 @@ describe('ExplorerPanel file-filter trust', () => {
         } finally {
             log.mockRestore();
         }
+    });
+
+    it('does not show the filtered empty state without a query', async () => {
+        treeSpy.mockResolvedValue({ entries: [] });
+        render(<ExplorerPanel workspaceId="ws-filter" mode="editor" />);
+        await waitFor(() => expect(screen.getByTestId('file-tree')).toBeInTheDocument());
+        expect(screen.queryByTestId('file-tree-no-matches')).not.toBeInTheDocument();
+    });
+
+    it('shows a seeded search hit without an empty state or unrelated folders', async () => {
+        treeSpy.mockImplementation((_ws: string, options: { path: string }) =>
+            Promise.resolve(options.path === '/' ? {
+                entries: [
+                    { name: 'src', type: 'dir', path: 'src' },
+                    { name: 'scripts', type: 'dir', path: 'scripts' },
+                ],
+            } : { entries: [{ name: 'storage.rs', type: 'file', path: 'src/storage.rs' }] }));
+        searchSpy.mockResolvedValue(results(['src/storage.rs']));
+        render(<ExplorerPanel workspaceId="ws-filter" mode="editor" />);
+        await searchFor('storage.rs');
+        await waitFor(() => expect(screen.getByTestId('tree-node-src/storage.rs')).toBeInTheDocument());
+        expect(screen.getByTestId('tree-node-src')).toBeInTheDocument();
+        expect(screen.queryByTestId('tree-node-scripts')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('file-tree-no-matches')).not.toBeInTheDocument();
     });
 });

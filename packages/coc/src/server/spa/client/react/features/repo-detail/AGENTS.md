@@ -164,8 +164,9 @@ effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 `filterEntries`. `ExplorerPanel` supplies `hideUnfetchedDirs` only for a current,
 successful file-name search below the 100-hit cap with complete ancestor loads;
 errors, truncated results, and pending searches leave unfetched directories
-visible. Name-matching directories always remain visible, and an empty query
-leaves the tree unchanged.
+visible. Name-matching directories always remain visible; an active, trusted
+filter with no visible entries shows a tree empty state. An empty query leaves
+the tree unchanged.
 
 ## Quick Open and Go To All
 

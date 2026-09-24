@@ -183,6 +183,11 @@ export function FileTree({
                         hideUnfetchedDirs={hideUnfetchedDirs}
                     />
                 ))}
+                {filterQuery && hideUnfetchedDirs && filteredEntries.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-[#848484]" data-testid="file-tree-no-matches">
+                        No matching files
+                    </div>
+                )}
             </div>
         </div>
     );

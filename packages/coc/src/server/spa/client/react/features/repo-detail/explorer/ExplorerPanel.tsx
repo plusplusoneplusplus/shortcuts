@@ -471,7 +471,7 @@ export function ExplorerPanel({
     const [serverSearchLoading, setServerSearchLoading] = useState(false);
     const [trustedSearch, setTrustedSearch] = useState<{ query: string; owner: string } | null>(null);
     const serverSearchTimerRef = useRef<ReturnType<typeof setTimeout>>();
-    const hideUnfetchedDirs = !!searchQuery && searchInput === searchQuery
+    const hideUnfetchedDirs = !!searchQuery && !serverSearchLoading && searchInput === searchQuery
         && trustedSearch?.query === searchQuery && trustedSearch.owner === ownerKey;
 
     // Context menu state
