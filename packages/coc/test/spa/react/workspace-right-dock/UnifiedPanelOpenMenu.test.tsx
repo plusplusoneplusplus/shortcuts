@@ -46,7 +46,6 @@ function renderMenu(props: Partial<React.ComponentProps<typeof UnifiedPanelOpenM
         onOpenResource: props.onOpenResource ?? vi.fn(),
         onOpenWorkspaceResource: props.onOpenWorkspaceResource ?? vi.fn(),
         onClose: props.onClose ?? vi.fn(),
-        onSelectTarget: props.onSelectTarget ?? vi.fn(),
     };
     const view = render(
         <UnifiedPanelOpenMenu
@@ -206,7 +205,6 @@ describe('file search', () => {
                 chatId="chat-1"
                 target="ws-b"
                 targets={targets}
-                onSelectTarget={vi.fn()}
                 onOpenResource={onOpenResource}
                 onOpenWorkspaceResource={vi.fn()}
                 onClose={vi.fn()}
@@ -297,20 +295,17 @@ describe('keyboard', () => {
 });
 
 describe('repo picker', () => {
-    it('appears only for a group and reports the picked repo', () => {
-        const single = renderMenu();
-        expect(screen.queryByTestId('unified-panel-open-menu-repo')).toBeNull();
-        single.unmount();
-
-        const { onSelectTarget } = renderMenu({
+    it('is not in the menu — it lives on the tab strip', async () => {
+        renderMenu({
             target: WS,
             targets: [
                 { workspaceId: WS, label: 'root' },
                 { workspaceId: 'ws-member', label: 'member' },
             ],
         });
-        fireEvent.change(screen.getByTestId('unified-panel-open-menu-repo'), { target: { value: 'ws-member' } });
-        expect(onSelectTarget).toHaveBeenCalledWith('ws-member');
+        expect(screen.queryByTestId('unified-panel-open-menu-repo')).toBeNull();
+        // With no repo row above it, the search box is the menu's first stop.
+        await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('unified-panel-open-menu-search')));
     });
 });
 

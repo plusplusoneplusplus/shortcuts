@@ -82,8 +82,9 @@ the workspace `DockNotesPanel` is keyed on. The *target* is the workspace new
 terminals and file resources open against. They are the same value unless the
 caller passes `targets?: readonly DockTarget[]` (`{ workspaceId, label,
 disabled?, deprioritized? }`) to both `useWorkspaceDock` and the panel; that adds
-a repo picker to the panel's `+` menu (`UnifiedPanelOpenMenu`) and lets the user
-re-point new content while the panel's open state, tabs, and width stay put.
+a repo picker to the tab strip beside the `+` (`UnifiedPanelRepoPicker`) and lets
+the user re-point new content while the panel's open state, tabs, and width stay
+put.
 Omitting `targets` is a strict no-op. Changing the target never retargets an
 already-open tab.
 

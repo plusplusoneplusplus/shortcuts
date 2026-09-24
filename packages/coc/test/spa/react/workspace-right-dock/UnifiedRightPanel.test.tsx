@@ -371,9 +371,14 @@ describe('UnifiedRightPanel', () => {
         expect(screen.getByTestId('mock-explorer').textContent).toBe(`explorer:${member}:false`);
         expect(screen.getByTestId('unified-panel-tab-list').querySelectorAll('[role="tab"]')).toHaveLength(0);
 
-        // A tab opened against the member carries the repo attribution.
+        // A tab opened against the member carries the repo attribution. Read it
+        // off the tab, not the document: the strip's repo picker shows the same
+        // label for the dock target.
         openViaMenu('unified-panel-open-terminal');
-        expect(screen.getByText('api')).toBeTruthy();
+        const terminalId = unifiedTabId({
+            kind: 'terminal', ownerWorkspaceId: member, chatId: null, resourceId: 'terminal',
+        });
+        expect(screen.getByTestId(`unified-panel-tab-repo-${terminalId}`).textContent).toBe('api');
         // Notes stays with the panel's own workspace scope.
         openViaMenu('unified-panel-open-notes');
         expect(screen.getByTestId('mock-notes').textContent).toBe(`notes:${WS}`);

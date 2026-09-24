@@ -222,8 +222,9 @@ test.describe('Right panel quick open', () => {
                 panel.locator('[data-testid^="unified-panel-tab-label-"]').filter({ hasText: GROUP_TARGET_NAME }),
             ).toHaveCount(1);
 
-            await panel.getByTestId('unified-panel-open-menu').click();
-            await expect(panel.getByTestId('unified-panel-open-menu-repo')).toHaveValue(GROUP_MEMBER_B);
+            // The strip's repo picker reports the panel's scope without a menu.
+            await expect(panel.getByTestId('unified-panel-repo-picker'))
+                .toHaveAttribute('data-target', GROUP_MEMBER_B);
             await expect(panel.getByTestId('unified-panel-tree')).toBeVisible();
             await expect(panel.getByTestId(`tree-node-${GROUP_TARGET_PATH}`)).toBeVisible({ timeout: 15_000 });
             await expect(page.getByTestId('repo-group-view')).toHaveAttribute('data-workspace', groupId);
