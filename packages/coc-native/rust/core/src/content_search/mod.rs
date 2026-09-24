@@ -286,26 +286,6 @@ fn candidate_directory_keys(files: &HashSet<String>) -> HashSet<String> {
     directories
 }
 
-#[cfg(test)]
-mod tests {
-    use super::candidate_directory_keys;
-    use std::collections::HashSet;
-
-    #[test]
-    fn candidate_directories_contain_only_candidate_ancestors() {
-        let files = HashSet::from([
-            "tracked.txt".to_owned(),
-            "ignored/tracked-too.txt".to_owned(),
-            "src/nested/deep.ts".to_owned(),
-        ]);
-
-        assert_eq!(
-            candidate_directory_keys(&files),
-            HashSet::from(["ignored".to_owned(), "src".to_owned(), "src/nested".to_owned(),]),
-        );
-    }
-}
-
 /// The directory the walk starts from: the root, or `path` beneath it.
 ///
 /// A `path` that climbs out of the root is an error rather than a silent
@@ -414,5 +394,25 @@ fn join_posix(prefix: &str, relative: &str) -> String {
         relative.to_owned()
     } else {
         format!("{prefix}/{relative}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::candidate_directory_keys;
+    use std::collections::HashSet;
+
+    #[test]
+    fn candidate_directories_contain_only_candidate_ancestors() {
+        let files = HashSet::from([
+            "tracked.txt".to_owned(),
+            "ignored/tracked-too.txt".to_owned(),
+            "src/nested/deep.ts".to_owned(),
+        ]);
+
+        assert_eq!(
+            candidate_directory_keys(&files),
+            HashSet::from(["ignored".to_owned(), "src".to_owned(), "src/nested".to_owned(),]),
+        );
     }
 }
