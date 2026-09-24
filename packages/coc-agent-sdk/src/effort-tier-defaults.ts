@@ -38,10 +38,10 @@ export function isEffortTierKey(value: unknown): value is EffortTierKey {
 export type DefaultedProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 const COPILOT_DEFAULTS: EffortTierDefaultsMap = {
-    'very-low': { model: 'gpt-5.6-luna',      reasoningEffort: 'xhigh' },
-    low:    { model: 'gpt-5.6-terra',     reasoningEffort: 'xhigh' },
-    medium: { model: 'gpt-5.6-sol',       reasoningEffort: 'medium' },
-    high:   { model: 'gpt-6-astra',       reasoningEffort: 'medium' },
+    'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh' },
+    low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+    medium: { model: 'gpt-6-sol',     reasoningEffort: 'medium' },
+    high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium' },
 };
 
 const CODEX_DEFAULTS: EffortTierDefaultsMap = {
