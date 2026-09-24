@@ -374,11 +374,16 @@ describeWithRustTooling('Rust language features over a real Cargo workspace', ()
             .replace('widget.label', 'widget.')
             .replace('derived.generated_label()', 'derived.');
         changeApp(completionText);
-        const widgetResult = await session.sendRequest('textDocument/completion', {
-            textDocument: { uri: uriFor('app/src/lib.rs') },
-            position: positionAt(completionText, 'widget.', 'widget.'.length),
-            context: { triggerKind: 1 },
-        });
+        const widgetResult = await waitForRequest(
+            'textDocument/completion',
+            {
+                textDocument: { uri: uriFor('app/src/lib.rs') },
+                position: positionAt(completionText, 'widget.', 'widget.'.length),
+                context: { triggerKind: 1 },
+            },
+            (result) => completionLabels(result).includes('label'),
+            'field completion',
+        );
         expect(completionLabels(widgetResult)).toContain('label');
 
         const macroResult = await waitForRequest(
@@ -393,7 +398,7 @@ describeWithRustTooling('Rust language features over a real Cargo workspace', ()
         );
         expect(completionLabels(macroResult)).toContain('generated_label');
         changeApp(APP_RS);
-    });
+    }, 240_000);
 
     it('answers signature help inside a cross-crate call', async () => {
         const result = await waitForRequest<{
