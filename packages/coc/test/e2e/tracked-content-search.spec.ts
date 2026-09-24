@@ -77,7 +77,7 @@ test.describe('Tracked content search overlay', () => {
         }
     });
 
-    test('searches both group members and opens the selected owner at its matching line', async ({
+    test('searches both group members and navigates an already-open owner file to its matching line', async ({
         page,
         serverUrl,
     }) => {
@@ -105,6 +105,24 @@ test.describe('Tracked content search overlay', () => {
 
             await page.goto(`${serverUrl}/#repos/${groupId}/git`);
             await expect(page.getByTestId('repo-group-git-tab')).toBeVisible({ timeout: 20_000 });
+
+            await page.keyboard.press('Control+p');
+            const quickOpen = page.getByTestId('quick-open-dialog');
+            await expect(quickOpen).toBeVisible({ timeout: 10_000 });
+            await page.getByTestId('quick-open-input').fill(TARGET_PATH);
+            const betaFile = page.getByRole('option', {
+                name: `tracked-search-target.ts, src, ${MEMBER_B_LABEL}`,
+            });
+            await expect(betaFile).toBeVisible({ timeout: 15_000 });
+            await betaFile.click();
+            await expect(quickOpen).toHaveCount(0, { timeout: 10_000 });
+            const openEditor = page
+                .getByTestId('unified-right-panel')
+                .locator('[data-testid="monaco-container"] .monaco-editor')
+                .first();
+            await expect(openEditor).toBeVisible({ timeout: 20_000 });
+            await expect(openEditor.locator('.line-numbers.active-line-number')).toHaveText('1');
+
             await pressContentSearchShortcut(page);
 
             const query = page.getByTestId('content-search-overlay-query');

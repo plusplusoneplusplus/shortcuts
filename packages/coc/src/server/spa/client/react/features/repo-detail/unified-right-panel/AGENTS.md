@@ -304,8 +304,10 @@ Two rules keep the slot honest:
 
 - **A file that already has a visible tab is focused, never previewed.** That
   covers both a permanent tab (which must not be demoted) and the current
-  preview (which must not churn its buffer) — and both return the same state
-  reference when that tab is already active.
+  preview (which must not churn its buffer). An open with no line preserves the
+  existing cursor, scroll, and state reference when already active; an open with
+  a line updates the line/column and mints a fresh reveal nonce, including for a
+  repeated jump to the same line.
 - **Reuse destroys a buffer, so it is guarded like a close.** The shell asks
   `previewToReplace` first and, if the outgoing preview is dirty, queues the
   open behind the unsaved-edits prompt (`pendingPreviewOpen`); cancel drops the

@@ -511,7 +511,9 @@ describe('unifiedPanelTabsModel — preview tabs', () => {
     });
 
     it('focuses an existing permanent tab instead of previewing it again', () => {
-        let state = open(EMPTY_UNIFIED_PANEL, { kind: 'file', resourceId: 'src/a.ts', label: 'a.ts' });
+        let state = open(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', resourceId: 'src/a.ts', label: 'a.ts', line: 11, column: 5,
+        });
         state = preview(state, 'src/z.ts');
         const withPreview = state;
         state = preview(state, 'src/a.ts');
@@ -520,8 +522,48 @@ describe('unifiedPanelTabsModel — preview tabs', () => {
         // the preview slot still holds z.ts.
         expect(activeTab(state, null)?.resourceId).toBe('src/a.ts');
         expect(activeTab(state, null)?.preview).toBeUndefined();
+        expect(activeTab(state, null)).toMatchObject({ line: 11, column: 5 });
         expect(sectionLabels(state)).toEqual(sectionLabels(withPreview));
         expect(previewTab(state, null)?.resourceId).toBe('src/z.ts');
+    });
+
+    it('navigates an existing permanent tab without demoting it, including repeated jumps', () => {
+        let state = open(EMPTY_UNIFIED_PANEL, {
+            kind: 'file', resourceId: 'src/a.ts', label: 'a.ts', line: 8, column: 3,
+        });
+        state = preview(state, 'src/z.ts');
+        state = preview(state, 'src/a.ts', { line: 42, column: 7 });
+        const firstNonce = activeTab(state, null)!.revealNonce!;
+
+        expect(activeTab(state, null)).toMatchObject({
+            resourceId: 'src/a.ts',
+            line: 42,
+            column: 7,
+        });
+        expect(activeTab(state, null)?.preview).toBeUndefined();
+        expect(previewTab(state, null)?.resourceId).toBe('src/z.ts');
+
+        state = preview(state, 'src/a.ts', { line: 42, column: 7 });
+        expect(activeTab(state, null)!.revealNonce).toBeGreaterThan(firstNonce);
+        expect(activeTab(state, null)?.preview).toBeUndefined();
+    });
+
+    it('navigates the current preview without promoting it, including repeated jumps', () => {
+        let state = preview(EMPTY_UNIFIED_PANEL, 'src/a.ts', { line: 8, column: 3 });
+        state = preview(state, 'src/a.ts', { line: 42 });
+        const firstNonce = activeTab(state, null)!.revealNonce!;
+
+        expect(activeTab(state, null)).toMatchObject({
+            resourceId: 'src/a.ts',
+            line: 42,
+            preview: true,
+        });
+        expect(activeTab(state, null)?.column).toBeUndefined();
+        expect(sectionLabels(state)).toEqual(['src/a.ts']);
+
+        state = preview(state, 'src/a.ts', { line: 42 });
+        expect(activeTab(state, null)!.revealNonce).toBeGreaterThan(firstNonce);
+        expect(activeTab(state, null)?.preview).toBe(true);
     });
 
     it('returns the same state when the current preview is clicked again', () => {
