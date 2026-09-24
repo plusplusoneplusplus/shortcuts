@@ -84,6 +84,10 @@ Each `sendMessage()` spawns its **own `CopilotClient`** child process — no sha
 
 The resolved spawn mode (`system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors.
 
+### Account quota contract
+
+`IAccountQuotaSnapshot.remainingPercentage` is a **0-1 fraction** for every provider; the dashboard, auto-provider router, and quota pause watcher all read it that way. The Copilot CLI's `account.getQuota` RPC reports it on a 0-100 scale, so `CopilotSDKService.getAccountQuota()` divides by 100 and clamps it through `normalizeCopilotAccountQuota`. Codex and Claude build fractions directly.
+
 ### Copilot tool telemetry
 
 `SessionTelemetry` normalizes streaming tool events into the shared `ToolCall` / `ToolEvent` contract. `parentToolCallId` is preserved from either the start or terminal SDK event; a terminal event supplying or correcting the parent updates the stored `ToolCall`, keeping sub-agent descendants reconstructable from both live timelines and persisted `toolCalls`.

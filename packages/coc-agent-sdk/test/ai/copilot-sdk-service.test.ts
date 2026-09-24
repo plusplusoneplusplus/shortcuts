@@ -3351,6 +3351,99 @@ describe('CopilotSDKService - reasoningEffort session option', () => {
 // listModels() Tests
 // ============================================================================
 
+describe('CopilotSDKService - getAccountQuota()', () => {
+    let service: CopilotSDKService;
+
+    beforeEach(() => {
+        resetCopilotSDKService();
+        service = CopilotSDKService.getInstance();
+        vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        service.dispose();
+        resetCopilotSDKService();
+    });
+
+    function snapshot(overrides: Record<string, unknown>) {
+        return {
+            isUnlimitedEntitlement: false,
+            entitlementRequests: 1000000,
+            usedRequests: 0,
+            usageAllowedWithExhaustedQuota: true,
+            overage: 0,
+            overageAllowedWithExhaustedQuota: true,
+            remainingPercentage: 100,
+            resetDate: '2026-10-01T00:00:00.000Z',
+            ...overrides,
+        };
+    }
+
+    function wireQuota(getQuota: ReturnType<typeof vi.fn>) {
+        const { MockCopilotClient, mockClient } = createMockSDKModule();
+        (mockClient as any).rpc = { account: { getQuota } };
+        createSdkClientMock.mockImplementation((opts: any) => new MockCopilotClient(opts));
+        (service as any).availabilityCache = { available: true, sdkPath: '/fake/sdk' };
+        return mockClient;
+    }
+
+    // Regression: the CLI reports remainingPercentage on a 0-100 scale. Passing
+    // it through made 3.7% remaining render as "100% remaining" (3.7 * 100
+    // clamped) and hid the quota from low-quota guards.
+    it('normalizes the CLI 0-100 remainingPercentage to a 0-1 fraction', async () => {
+        wireQuota(vi.fn().mockResolvedValue({
+            quotaSnapshots: {
+                premium_interactions: snapshot({ usedRequests: 963000, remainingPercentage: 3.7 }),
+                chat: snapshot({ isUnlimitedEntitlement: true, entitlementRequests: 0, remainingPercentage: 100 }),
+                half: snapshot({ usedRequests: 500000, remainingPercentage: 50 }),
+                exhausted: snapshot({ usedRequests: 1000000, remainingPercentage: 0 }),
+            },
+        }));
+
+        const result = await service.getAccountQuota();
+
+        expect(result.quotaSnapshots.premium_interactions.remainingPercentage).toBeCloseTo(0.037, 10);
+        expect(result.quotaSnapshots.chat.remainingPercentage).toBe(1);
+        expect(result.quotaSnapshots.half.remainingPercentage).toBe(0.5);
+        expect(result.quotaSnapshots.exhausted.remainingPercentage).toBe(0);
+        expect(result.quotaSnapshots.premium_interactions).toMatchObject({
+            entitlementRequests: 1000000,
+            usedRequests: 963000,
+            usageAllowedWithExhaustedQuota: true,
+            resetDate: '2026-10-01T00:00:00.000Z',
+        });
+    });
+
+    it('clamps out-of-range values into [0, 1]', async () => {
+        wireQuota(vi.fn().mockResolvedValue({
+            quotaSnapshots: {
+                over: snapshot({ remainingPercentage: 150 }),
+                negative: snapshot({ remainingPercentage: -5 }),
+            },
+        }));
+
+        const result = await service.getAccountQuota();
+
+        expect(result.quotaSnapshots.over.remainingPercentage).toBe(1);
+        expect(result.quotaSnapshots.negative.remainingPercentage).toBe(0);
+    });
+
+    it('returns empty snapshots when the CLI reports none', async () => {
+        wireQuota(vi.fn().mockResolvedValue({ quotaSnapshots: {} }));
+        await expect(service.getAccountQuota()).resolves.toEqual({ quotaSnapshots: {} });
+    });
+
+    it('forwards the gitHubToken and stops the client', async () => {
+        const getQuota = vi.fn().mockResolvedValue({ quotaSnapshots: {} });
+        const mockClient = wireQuota(getQuota);
+
+        await service.getAccountQuota('token-placeholder');
+
+        expect(getQuota).toHaveBeenCalledWith({ gitHubToken: 'token-placeholder' });
+        expect(mockClient.stop).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('CopilotSDKService - listModels()', () => {
     let service: CopilotSDKService;
 
