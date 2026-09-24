@@ -195,6 +195,11 @@ interface RalphSessionFileBrowserProps {
 function RalphSessionFileBrowser(props: RalphSessionFileBrowserProps): React.ReactElement {
     const { sessionId, files, selectedFileName: selectedFileNameProp, onSelectFile } = props;
     const [localSelectedFileName, setLocalSelectedFileName] = useState<string | null>(selectedFileNameProp ?? null);
+    // `null` means "follow the layout default" (expanded); a click pins it.
+    // Collapsing only takes effect while stacked — side by side the files have
+    // their own column and are never in the timeline's way.
+    const [filesOpen, setFilesOpen] = useState<boolean | null>(null);
+    const filesExpanded = filesOpen ?? true;
 
     useEffect(() => {
         setLocalSelectedFileName(selectedFileNameProp ?? null);
@@ -212,19 +217,41 @@ function RalphSessionFileBrowser(props: RalphSessionFileBrowserProps): React.Rea
 
     return (
         <section
-            className="flex min-h-[260px] w-full flex-col border-t border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-950 xl:min-h-0 xl:w-[58%] xl:border-l xl:border-t-0"
+            className={cn(
+                // Stacked under the timeline the files get a height budget so a
+                // long file cannot push the timeline off screen; side by side
+                // they take a fixed share of the pane instead.
+                'flex min-h-0 max-h-[45%] w-full flex-col border-t border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-950',
+                '[@container_ralph-pane_(min-width:900px)]:max-h-none [@container_ralph-pane_(min-width:900px)]:w-[58%] [@container_ralph-pane_(min-width:900px)]:border-l [@container_ralph-pane_(min-width:900px)]:border-t-0',
+            )}
             data-testid="ralph-session-files"
             aria-label="Ralph session files"
         >
-            <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">
+            <button
+                type="button"
+                onClick={() => setFilesOpen(!filesExpanded)}
+                aria-expanded={filesExpanded}
+                data-testid="ralph-session-files-toggle"
+                className="flex w-full shrink-0 items-center justify-between border-b border-zinc-200 px-3 py-2 text-left hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900"
+            >
+                <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">
+                    <span aria-hidden className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                        {filesExpanded ? '\u25be' : '\u25b8'}
+                    </span>
                     Session files
                 </h3>
                 <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
                     {files.length} {files.length === 1 ? 'file' : 'files'}
                 </span>
-            </div>
+            </button>
 
+            <div
+                className={cn(
+                    'flex min-h-0 flex-1 flex-col',
+                    !filesExpanded && '[@container_ralph-pane_(max-width:899px)]:hidden',
+                )}
+                data-testid="ralph-session-files-body"
+            >
             {files.length === 0 ? (
                 <div
                     className="flex flex-1 items-center justify-center px-4 py-6 text-xs italic text-zinc-500 dark:text-zinc-400"
@@ -233,13 +260,20 @@ function RalphSessionFileBrowser(props: RalphSessionFileBrowserProps): React.Rea
                     No session files available.
                 </div>
             ) : (
-                <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+                <div className="flex min-h-0 flex-1 flex-col [@container_ralph-pane_(min-width:560px)]:flex-row">
                     <nav
-                        className="max-h-40 shrink-0 overflow-y-auto border-b border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-950 md:max-h-none md:w-48 md:border-b-0 md:border-r"
+                        className={cn(
+                            // Narrow, the list is a horizontal strip so file
+                            // switching stays one click away without spending
+                            // half the pane on a sidebar.
+                            'shrink-0 overflow-x-auto border-b border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-950',
+                            '[@container_ralph-pane_(min-width:560px)]:max-h-none [@container_ralph-pane_(min-width:560px)]:w-40 [@container_ralph-pane_(min-width:560px)]:overflow-x-hidden [@container_ralph-pane_(min-width:560px)]:overflow-y-auto [@container_ralph-pane_(min-width:560px)]:border-b-0 [@container_ralph-pane_(min-width:560px)]:border-r',
+                            '[@container_ralph-pane_(min-width:900px)]:w-48',
+                        )}
                         aria-label="Ralph session file list"
                         data-testid="ralph-session-file-list"
                     >
-                        <ul className="flex flex-col gap-1">
+                        <ul className="flex flex-row gap-1 [@container_ralph-pane_(min-width:560px)]:flex-col">
                             {files.map((file) => {
                                 const active = file.name === selectedFile?.name;
                                 return (
@@ -248,7 +282,8 @@ function RalphSessionFileBrowser(props: RalphSessionFileBrowserProps): React.Rea
                                             type="button"
                                             onClick={() => handleSelectFile(file.name)}
                                             className={cn(
-                                                'w-full truncate rounded px-2 py-1.5 text-left font-mono text-[11px] transition-colors',
+                                                'truncate whitespace-nowrap rounded px-2 py-1.5 text-left font-mono text-[11px] transition-colors',
+                                                '[@container_ralph-pane_(min-width:560px)]:w-full',
                                                 active
                                                     ? 'bg-violet-100 text-violet-800 ring-1 ring-violet-200 dark:bg-violet-900/40 dark:text-violet-100 dark:ring-violet-700'
                                                     : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900',
@@ -289,6 +324,7 @@ function RalphSessionFileBrowser(props: RalphSessionFileBrowserProps): React.Rea
                     </div>
                 </div>
             )}
+            </div>
         </section>
     );
 }
@@ -675,16 +711,22 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         timelineItems.push({ kind: 'submit', submit });
     }
 
+    // The pane sits in the middle column of the workspace shell, so its own
+    // inline size — not the viewport's — decides the layout. Naming the
+    // container keeps nested queries from binding to a closer one.
     return (
         <div
             data-testid="ralph-workflow-pane"
-            className="flex h-full flex-col overflow-hidden bg-white dark:bg-zinc-950"
+            className="flex h-full flex-col overflow-hidden bg-white dark:bg-zinc-950 [container-type:inline-size] [container-name:ralph-pane]"
         >
             {/* Header strip */}
             <div className="flex flex-wrap items-start gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                        <h2 className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                        <h2
+                            className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100"
+                            title={record.originalGoal}
+                        >
                             Ralph: {singleLine(record.originalGoal, 80)}
                         </h2>
                         <span
@@ -694,132 +736,139 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                             {phase.label}
                         </span>
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-                        <span data-testid="ralph-workflow-iteration-count" className="inline-flex items-center gap-1">
-                            Iteration {record.currentIteration} /{' '}
-                            {canEditMaxIterations && (capState === 'editing' || capState === 'submitting') ? (
-                                <input
-                                    type="number"
-                                    data-testid="ralph-workflow-max-iterations-input"
-                                    aria-label="Total iteration cap"
-                                    value={capDraft}
-                                    min={1}
-                                    max={RALPH_MAX_ITERATIONS_CAP}
-                                    step={1}
-                                    autoFocus
-                                    disabled={capState === 'submitting'}
-                                    onChange={(e) => setCapDraft(e.target.value)}
-                                    onKeyDown={handleCapKeyDown}
-                                    onBlur={handleCapBlur}
-                                    className="w-16 rounded border border-blue-400 bg-white px-1 py-0.5 text-xs text-zinc-800 disabled:opacity-50 dark:border-blue-500 dark:bg-zinc-900 dark:text-zinc-100"
-                                />
-                            ) : canEditMaxIterations ? (
-                                <button
-                                    type="button"
-                                    data-testid="ralph-workflow-max-iterations-edit"
-                                    onClick={openCapEditor}
-                                    title="Change the total iteration cap"
-                                    className="rounded px-0.5 underline decoration-dotted underline-offset-2 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                    {/* Facts and actions share a line once the pane is wide
+                        enough; narrow, the buttons drop to their own row so
+                        they stop interleaving with the timestamps. */}
+                    <div className="mt-1 flex flex-col gap-1 [@container_ralph-pane_(min-width:560px)]:flex-row [@container_ralph-pane_(min-width:560px)]:flex-wrap [@container_ralph-pane_(min-width:560px)]:items-center [@container_ralph-pane_(min-width:560px)]:gap-3">
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+                            <span data-testid="ralph-workflow-iteration-count" className="inline-flex items-center gap-1">
+                                Iteration {record.currentIteration} /{' '}
+                                {canEditMaxIterations && (capState === 'editing' || capState === 'submitting') ? (
+                                    <input
+                                        type="number"
+                                        data-testid="ralph-workflow-max-iterations-input"
+                                        aria-label="Total iteration cap"
+                                        value={capDraft}
+                                        min={1}
+                                        max={RALPH_MAX_ITERATIONS_CAP}
+                                        step={1}
+                                        autoFocus
+                                        disabled={capState === 'submitting'}
+                                        onChange={(e) => setCapDraft(e.target.value)}
+                                        onKeyDown={handleCapKeyDown}
+                                        onBlur={handleCapBlur}
+                                        className="w-16 rounded border border-blue-400 bg-white px-1 py-0.5 text-xs text-zinc-800 disabled:opacity-50 dark:border-blue-500 dark:bg-zinc-900 dark:text-zinc-100"
+                                    />
+                                ) : canEditMaxIterations ? (
+                                    <button
+                                        type="button"
+                                        data-testid="ralph-workflow-max-iterations-edit"
+                                        onClick={openCapEditor}
+                                        title="Change the total iteration cap"
+                                        className="rounded px-0.5 underline decoration-dotted underline-offset-2 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                                    >
+                                        {displayedMaxIterations}
+                                    </button>
+                                ) : (
+                                    displayedMaxIterations
+                                )}
+                            </span>
+                            {capState === 'confirming' && capPending !== null && (
+                                <span
+                                    className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300"
+                                    data-testid="ralph-workflow-max-iterations-confirm"
                                 >
-                                    {displayedMaxIterations}
-                                </button>
-                            ) : (
-                                displayedMaxIterations
+                                    Loop will stop after iteration {capPending}
+                                    <button
+                                        type="button"
+                                        data-testid="ralph-workflow-max-iterations-confirm-apply"
+                                        onClick={() => { void submitCap(capPending); }}
+                                        className="rounded border border-amber-500 px-1.5 py-0.5 hover:bg-amber-100 dark:border-amber-400 dark:hover:bg-amber-900/40"
+                                    >
+                                        Apply
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-testid="ralph-workflow-max-iterations-confirm-cancel"
+                                        onClick={closeCapEditor}
+                                        className="rounded border border-zinc-300 px-1.5 py-0.5 hover:bg-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-800"
+                                    >
+                                        Cancel
+                                    </button>
+                                </span>
                             )}
-                        </span>
-                        {capState === 'confirming' && capPending !== null && (
-                            <span
-                                className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300"
-                                data-testid="ralph-workflow-max-iterations-confirm"
-                            >
-                                Loop will stop after iteration {capPending}
+                            {capError && (
+                                <span
+                                    className="text-[11px] text-red-700 dark:text-red-300"
+                                    data-testid="ralph-workflow-max-iterations-error"
+                                >
+                                    {capError}
+                                </span>
+                            )}
+                            {RALPH_MULTI_LOOP && record.loops && record.loops.length > 1 && (
+                                <span data-testid="ralph-workflow-loop-count">
+                                    Loop {record.loops.length}
+                                </span>
+                            )}
+                            <span>Started {formatRelativeTime(record.startedAt)}</span>
+                            {record.completedAt && record.terminalReason && (
+                                <span data-testid="ralph-workflow-terminal-reason">
+                                    {TERMINAL_LABEL[record.terminalReason] ?? record.terminalReason} ·{' '}
+                                    {formatRelativeTime(record.completedAt)}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                            {isContinuable && continueState === 'idle' && (
                                 <button
                                     type="button"
-                                    data-testid="ralph-workflow-max-iterations-confirm-apply"
-                                    onClick={() => { void submitCap(capPending); }}
-                                    className="rounded border border-amber-500 px-1.5 py-0.5 hover:bg-amber-100 dark:border-amber-400 dark:hover:bg-amber-900/40"
+                                    onClick={() => { setContinueError(null); setContinueState('confirm'); }}
+                                    data-testid="ralph-workflow-continue"
+                                    className="rounded border border-blue-500 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 dark:border-blue-400 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
                                 >
-                                    Apply
+                                    ↻ Continue loop
                                 </button>
+                            )}
+                            {isStuckExecuting && resumeState === 'idle' && (
                                 <button
                                     type="button"
-                                    data-testid="ralph-workflow-max-iterations-confirm-cancel"
-                                    onClick={closeCapEditor}
-                                    className="rounded border border-zinc-300 px-1.5 py-0.5 hover:bg-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-800"
+                                    onClick={() => { setResumeError(null); setResumeState('confirm'); }}
+                                    data-testid="ralph-workflow-resume"
+                                    className="rounded border border-amber-500 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-100 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
                                 >
-                                    Cancel
+                                    ↻ Resume
                                 </button>
-                            </span>
-                        )}
-                        {capError && (
-                            <span
-                                className="text-[11px] text-red-700 dark:text-red-300"
-                                data-testid="ralph-workflow-max-iterations-error"
-                            >
-                                {capError}
-                            </span>
-                        )}
-                        {RALPH_MULTI_LOOP && record.loops && record.loops.length > 1 && (
-                            <span data-testid="ralph-workflow-loop-count">
-                                Loop {record.loops.length}
-                            </span>
-                        )}
-                        <span>Started {formatRelativeTime(record.startedAt)}</span>
-                        {record.completedAt && record.terminalReason && (
-                            <span data-testid="ralph-workflow-terminal-reason">
-                                {TERMINAL_LABEL[record.terminalReason] ?? record.terminalReason} ·{' '}
-                                {formatRelativeTime(record.completedAt)}
-                            </span>
-                        )}
-                        {isContinuable && continueState === 'idle' && (
-                            <button
-                                type="button"
-                                onClick={() => { setContinueError(null); setContinueState('confirm'); }}
-                                data-testid="ralph-workflow-continue"
-                                className="rounded border border-blue-500 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 dark:border-blue-400 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50"
-                            >
-                                ↻ Continue loop
-                            </button>
-                        )}
-                        {isStuckExecuting && resumeState === 'idle' && (
-                            <button
-                                type="button"
-                                onClick={() => { setResumeError(null); setResumeState('confirm'); }}
-                                data-testid="ralph-workflow-resume"
-                                className="rounded border border-amber-500 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-100 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
-                            >
-                                ↻ Resume
-                            </button>
-                        )}
-                        {RALPH_MULTI_LOOP && isRalphComplete && newLoopState === 'idle' && (
-                            <button
-                                type="button"
-                                onClick={() => { setNewLoopError(null); setNewLoopGoal(''); setNewLoopState('confirm'); }}
-                                data-testid="ralph-workflow-new-loop"
-                                className="rounded border border-violet-500 bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700 hover:bg-violet-100 dark:border-violet-400 dark:bg-violet-900/30 dark:text-violet-200 dark:hover:bg-violet-900/50"
-                            >
-                                ＋ New loop
-                            </button>
-                        )}
-                        {canSubmitPr && (
-                            <button
-                                type="button"
-                                onClick={handleSubmitPr}
-                                disabled={hasActiveSubmit || submitPrPending}
-                                data-testid="ralph-workflow-submit-pr"
-                                className="rounded border border-emerald-500 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-400 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
-                            >
-                                {hasActiveSubmit || submitPrPending ? 'Submitting PR…' : '⇗ Submit PR'}
-                            </button>
-                        )}
-                        {submitPrError && (
-                            <span
-                                className="text-[11px] text-red-700 dark:text-red-300"
-                                data-testid="ralph-workflow-submit-pr-error"
-                            >
-                                {submitPrError}
-                            </span>
-                        )}
+                            )}
+                            {RALPH_MULTI_LOOP && isRalphComplete && newLoopState === 'idle' && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setNewLoopError(null); setNewLoopGoal(''); setNewLoopState('confirm'); }}
+                                    data-testid="ralph-workflow-new-loop"
+                                    className="rounded border border-violet-500 bg-violet-50 px-2 py-0.5 text-[11px] text-violet-700 hover:bg-violet-100 dark:border-violet-400 dark:bg-violet-900/30 dark:text-violet-200 dark:hover:bg-violet-900/50"
+                                >
+                                    ＋ New loop
+                                </button>
+                            )}
+                            {canSubmitPr && (
+                                <button
+                                    type="button"
+                                    onClick={handleSubmitPr}
+                                    disabled={hasActiveSubmit || submitPrPending}
+                                    data-testid="ralph-workflow-submit-pr"
+                                    className="rounded border border-emerald-500 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-400 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+                                >
+                                    {hasActiveSubmit || submitPrPending ? 'Submitting PR…' : '⇗ Submit PR'}
+                                </button>
+                            )}
+                            {submitPrError && (
+                                <span
+                                    className="text-[11px] text-red-700 dark:text-red-300"
+                                    data-testid="ralph-workflow-submit-pr-error"
+                                >
+                                    {submitPrError}
+                                </span>
+                            )}
+                        </div>
                     </div>
                     {record.worktree && (() => {
                         const worktree = worktreeCleaned ?? record.worktree;
@@ -883,7 +932,7 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                 </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col xl:flex-row" data-testid="ralph-workflow-body">
+            <div className="flex min-h-0 flex-1 flex-col [@container_ralph-pane_(min-width:900px)]:flex-row" data-testid="ralph-workflow-body">
                 {/* Timeline */}
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" data-testid="ralph-workflow-timeline">
                     {isStuckExecuting && resumeState !== 'idle' && (

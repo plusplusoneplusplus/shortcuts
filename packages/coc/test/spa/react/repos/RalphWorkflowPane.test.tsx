@@ -1373,3 +1373,117 @@ describe('RalphWorkflowPane submit PR (AC-05)', () => {
         expect(onSelectSubmit).toHaveBeenCalledWith('proc-s1');
     });
 });
+
+/**
+ * Regression cover for the container-query layout: the pane sits in the middle
+ * column of the workspace shell, so viewport breakpoints (`xl:` / `md:`) made
+ * it split into two columns while it was only ~570px wide. jsdom does not
+ * evaluate container queries, so these assert the classes are wired up.
+ */
+describe('RalphWorkflowPane — container-driven layout', () => {
+    function layoutView(): RalphSessionView {
+        return {
+            record: makeRecord({ currentIteration: 1, iterations: [makeIter(1)] }),
+            sections: [makeSection(1)],
+            files: [
+                { name: 'progress.md', content: '# Progress' },
+                { name: 'session.json', content: '{}' },
+            ],
+        };
+    }
+
+    function renderLayout() {
+        return render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={layoutView()} />);
+    }
+
+    it('makes the pane its own named inline-size container', () => {
+        renderLayout();
+        const pane = screen.getByTestId('ralph-workflow-pane');
+        expect(pane.className).toContain('[container-type:inline-size]');
+        expect(pane.className).toContain('[container-name:ralph-pane]');
+    });
+
+    it('splits the body on the pane container, not the viewport', () => {
+        renderLayout();
+        const body = screen.getByTestId('ralph-workflow-body');
+        expect(body.className).toContain('[@container_ralph-pane_(min-width:900px)]:flex-row');
+        expect(body.className).not.toMatch(/\bxl:/);
+    });
+
+    it('gives the stacked file browser a height budget and drops the viewport breakpoints', () => {
+        renderLayout();
+        const files = screen.getByTestId('ralph-session-files');
+        expect(files.className).toContain('max-h-[45%]');
+        expect(files.className).toContain('[@container_ralph-pane_(min-width:900px)]:w-[58%]');
+        expect(files.className).toContain('[@container_ralph-pane_(min-width:900px)]:max-h-none');
+        expect(files.className).not.toMatch(/\bxl:/);
+    });
+
+    it('turns the file nav into a horizontal strip below the medium tier', () => {
+        renderLayout();
+        const nav = screen.getByTestId('ralph-session-file-list');
+        expect(nav.className).toContain('overflow-x-auto');
+        expect(nav.className).toContain('[@container_ralph-pane_(min-width:560px)]:w-40');
+        expect(nav.className).toContain('[@container_ralph-pane_(min-width:900px)]:w-48');
+        expect(nav.className).not.toMatch(/\bmd:/);
+        const list = nav.querySelector('ul');
+        expect(list?.className).toContain('flex-row');
+        expect(list?.className).toContain('[@container_ralph-pane_(min-width:560px)]:flex-col');
+    });
+
+    it('collapses the file browser body only while stacked, and reports it via aria-expanded', async () => {
+        const user = userEvent.setup();
+        renderLayout();
+        const toggle = screen.getByTestId('ralph-session-files-toggle');
+        const body = screen.getByTestId('ralph-session-files-body');
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        expect(body.className).not.toContain('hidden');
+
+        await user.click(toggle);
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        expect(body.className).toContain('[@container_ralph-pane_(max-width:899px)]:hidden');
+        // The content stays mounted — only the container query hides it, so a
+        // wide pane is unaffected by a collapse pinned while narrow.
+        expect(screen.getByTestId('ralph-session-file-content')).toBeInTheDocument();
+
+        await user.click(toggle);
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        expect(body.className).not.toContain('hidden');
+    });
+
+    it('keeps header facts and actions addressable after the two-row regroup', () => {
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={{
+                    record: makeRecord({
+                        phase: 'complete',
+                        currentIteration: 2,
+                        iterations: [makeIter(1), makeIter(2)],
+                        completedAt: new Date().toISOString(),
+                        terminalReason: 'complete_signal',
+                    }),
+                    sections: [makeSection(1), makeSection(2)],
+                }}
+                onSubmitPr={vi.fn()}
+            />,
+        );
+        expect(screen.getByTestId('ralph-workflow-iteration-count')).toBeInTheDocument();
+        expect(screen.getByTestId('ralph-workflow-terminal-reason')).toBeInTheDocument();
+        expect(screen.getByTestId('ralph-workflow-phase')).toBeInTheDocument();
+        expect(screen.getByTestId('ralph-workflow-submit-pr')).toBeInTheDocument();
+    });
+
+    it('exposes the untruncated goal as a title attribute', () => {
+        const goal = 'Build the new dashboard with charts and filters';
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={{ record: makeRecord({ originalGoal: goal }), sections: [] }}
+            />,
+        );
+        expect(screen.getByTitle(goal)).toHaveTextContent(goal);
+    });
+});
