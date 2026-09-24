@@ -294,6 +294,12 @@ goes through `openTab` and is permanent, which is also why `openTab` inserts a
 new tab *before* the preview and `moveTab`'s "to the end" stops one place short
 of it.
 
+The tracked-content overlay is also a preview entry point. It preflights the
+owner and file before calling `openUnifiedPanelPreviewTab`, the imperative seam
+for callers outside the panel subtree. Group results keep the group as panel
+scope while the tab descriptor carries the member workspace id and concrete
+member route; opening one never retargets the dock or changes the page scope.
+
 Two rules keep the slot honest:
 
 - **A file that already has a visible tab is focused, never previewed.** That

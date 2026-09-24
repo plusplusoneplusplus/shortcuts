@@ -18,6 +18,12 @@ import { handleAPIError, badRequest, notFound, missingFields } from '../errors';
 import type { RepoTreeService } from '../repos/tree-service';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
+import type { ContentSearchOptions } from '../repos/types';
+import {
+    REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS,
+    RepoGroupContentSearchAbortedError,
+    searchRepoGroupContent,
+} from './repo-group-content-search';
 import {
     createRepoGroup,
     deleteRepoGroup,
@@ -47,7 +53,7 @@ export interface RepoGroupRouteDeps {
      */
     onGroupRegistered?: (ws: WorkspaceInfo) => void | Promise<void>;
     /** Shared native file-index service used by repo and repo-group search. */
-    repoTreeService?: Pick<RepoTreeService, 'searchFilesRanked'>;
+    repoTreeService?: Pick<RepoTreeService, 'searchFilesRanked' | 'searchContent'>;
 }
 
 const GROUP_SEARCH_CONCURRENCY = 4;
@@ -201,6 +207,68 @@ function parseGroupSearchQuery(req: Parameters<Route['handler']>[0]):
     return { query: queryValues[0], limit, showIgnored: showIgnoredValues[0] === 'true' };
 }
 
+/**
+ * Parse the group content-search query string.
+ *
+ * Strict in the same way {@link parseGroupSearchQuery} is: a repeated or
+ * malformed parameter is the caller's bug, and answering it with a silently
+ * different search is worse than a 400. Globs arrive repeated or comma-joined,
+ * matching what `buildQueryString` in coc-client emits.
+ */
+function parseGroupContentSearchQuery(req: Parameters<Route['handler']>[0]):
+    | { query: string; limit: number; options: Omit<ContentSearchOptions, 'limit'> }
+    | { error: string } {
+    const params = new URL(req.url ?? '', 'http://localhost').searchParams;
+    const queryValues = params.getAll('q');
+    if (queryValues.length !== 1 || queryValues[0].length === 0) {
+        return { error: 'Missing required query parameter: q' };
+    }
+
+    let limit = REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS;
+    const limitValues = params.getAll('limit');
+    if (limitValues.length > 1) return { error: 'Invalid query parameter: limit' };
+    if (limitValues.length === 1) {
+        if (!/^-?\d+$/.test(limitValues[0])) return { error: 'Invalid query parameter: limit' };
+        limit = Math.min(Math.max(Number(limitValues[0]), 1), REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS);
+    }
+
+    const flags: Record<string, boolean> = {};
+    for (const name of ['caseSensitive', 'wholeWord', 'regex', 'includeUntracked'] as const) {
+        const values = params.getAll(name);
+        if (values.length > 1 || (values.length === 1 && values[0] !== 'true' && values[0] !== 'false')) {
+            return { error: `Invalid query parameter: ${name}` };
+        }
+        flags[name] = values[0] === 'true';
+    }
+
+    const fileScopeValues = params.getAll('fileScope');
+    if (fileScopeValues.length > 1 || (fileScopeValues.length === 1 && fileScopeValues[0] !== 'tracked')) {
+        return { error: 'Invalid fileScope: expected "tracked"' };
+    }
+
+    const globs = (name: 'include' | 'exclude'): string[] | undefined => {
+        const values = params.getAll(name)
+            .flatMap(value => value.split(','))
+            .map(value => value.trim())
+            .filter(value => value.length > 0);
+        return values.length > 0 ? values : undefined;
+    };
+
+    return {
+        query: queryValues[0],
+        limit,
+        options: {
+            caseSensitive: flags.caseSensitive,
+            wholeWord: flags.wholeWord,
+            regex: flags.regex,
+            includeUntracked: flags.includeUntracked,
+            ...(fileScopeValues.length === 1 ? { fileScope: 'tracked' as const } : {}),
+            ...(globs('include') ? { include: globs('include') } : {}),
+            ...(globs('exclude') ? { exclude: globs('exclude') } : {}),
+        },
+    };
+}
+
 /** Members must arrive as an array of workspace-ID strings. */
 function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((v) => typeof v === 'string');
@@ -279,6 +347,57 @@ export function registerRepoGroupRoutes(
                     ),
                 );
             } catch (err) {
+                handleAPIError(res, err);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/repo-groups/:id/search/content — one query, every live member
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repo-groups\/([^/]+)\/search\/content$/,
+        handler: async (req, res, match) => {
+            try {
+                const id = decodeURIComponent(match![1]);
+                if (!readRepoGroup(dataDir, id)) {
+                    return handleAPIError(res, notFound('Repo group'));
+                }
+                const parsed = parseGroupContentSearchQuery(req);
+                if ('error' in parsed) {
+                    return handleAPIError(res, badRequest(parsed.error));
+                }
+                const service = deps.repoTreeService;
+                if (!service) {
+                    throw new Error('Repo-group search service is unavailable');
+                }
+                // The client abandoning the request is how a superseded query
+                // stops costing work; there is nobody left to answer either.
+                const aborted = { aborted: false };
+                req.on('close', () => { aborted.aborted = true; });
+                // Membership is resolved per transaction, never cached, so a
+                // removed or rebound member cannot be searched under its old id.
+                const members = await resolveRepoGroupMembers(dataDir, store, id);
+                const result = await searchRepoGroupContent({
+                    members,
+                    service,
+                    query: parsed.query,
+                    options: parsed.options,
+                    limit: parsed.limit,
+                    signal: aborted,
+                });
+                if (aborted.aborted) return;
+                sendJSON(res, 200, result);
+            } catch (err) {
+                if (err instanceof RepoGroupContentSearchAbortedError) return;
+                // A bad regex or glob is the caller's mistake; the addon
+                // reports it as InvalidArg exactly as the single-repo route
+                // sees it. Member-level failures never reach here — they are
+                // reported per member inside the aggregate answer.
+                if ((err as { code?: unknown } | null)?.code === 'InvalidArg') {
+                    return handleAPIError(res, badRequest(err instanceof Error ? err.message : String(err)));
+                }
                 handleAPIError(res, err);
             }
         },

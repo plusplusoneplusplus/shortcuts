@@ -125,6 +125,10 @@ export interface ExplorerContentSearchOptions {
   wholeWord?: boolean;
   regex?: boolean;
   showIgnored?: boolean;
+  /** Restrict candidates to Git-tracked files. */
+  fileScope?: 'tracked';
+  /** Add non-ignored untracked files when `fileScope` is `tracked`. */
+  includeUntracked?: boolean;
   /** Whitelist globs. When non-empty, a file matching none of them is skipped. */
   include?: string[];
   /** Globs whose matches are skipped. */
@@ -178,4 +182,65 @@ export interface ExplorerContentReplaceResponse {
   replacedFiles: number;
   /** Files that were not written, and why. */
   skipped: ExplorerContentReplaceSkip[];
+}
+
+// ---------------------------------------------------------------------------
+// Repo-group content search
+// ---------------------------------------------------------------------------
+
+/** One member's slice of a repo-group content search. */
+export interface ExplorerRepoGroupContentSearchMember {
+  /**
+   * Member workspace ID. This is result identity and the owner reference an
+   * open uses — it must never select the transport, which belongs to the
+   * group-owning server.
+   */
+  workspaceId: string;
+  /** Display name resolved by the group-owning server. */
+  repoName: string;
+  /** Repo-relative matches, in the member's own search order. */
+  matches: ExplorerContentMatch[];
+  /** Matches this member found before the group-wide cap was applied. */
+  totalMatches: number;
+  /** True when this member's own caps hit, or the group cap dropped rows. */
+  truncated: boolean;
+}
+
+/** A member that could not contribute to a repo-group content search. */
+export interface ExplorerRepoGroupContentSearchFailure {
+  workspaceId: string;
+  /** Display name; absent when the workspace itself is gone. */
+  repoName?: string;
+  /**
+   * `stale` — removed from the registry or its root vanished.
+   * `unavailable` — present but not a usable Git repository.
+   * `error` — the search itself failed.
+   */
+  reason: 'stale' | 'unavailable' | 'error';
+  /** Human-readable detail, scrubbed of filesystem roots. */
+  message: string;
+}
+
+export interface ExplorerRepoGroupContentSearchResponse {
+  /**
+   * `complete` — every member answered. `partial` — some did not.
+   * `failed` — none of the live members answered.
+   * `no-searchable-members` — the group has no live member to search.
+   */
+  status: 'complete' | 'partial' | 'failed' | 'no-searchable-members';
+  /** Members with at least one returned match, in group-membership order. */
+  members: ExplorerRepoGroupContentSearchMember[];
+  /** Members that were not searched successfully, in membership order. */
+  failures: ExplorerRepoGroupContentSearchFailure[];
+  /** True when the group cap or any member's own cap dropped matches. */
+  truncated: boolean;
+  /** Matches actually returned across every member. */
+  totalMatches: number;
+  /** The cap this answer was apportioned against. */
+  limit: number;
+  memberCount: number;
+  searchableMemberCount: number;
+  searchedMemberCount: number;
+  unavailableMemberCount: number;
+  failedMemberCount: number;
 }

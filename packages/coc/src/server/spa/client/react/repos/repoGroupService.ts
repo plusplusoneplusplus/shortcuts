@@ -14,6 +14,8 @@
  */
 import type {
     CocRequestOptions,
+    ExplorerContentSearchOptions,
+    ExplorerRepoGroupContentSearchResponse,
     ExplorerRepoGroupSearchResponse,
     ExplorerSearchOptions,
     RemoteServer,
@@ -110,6 +112,23 @@ export function searchRepoGroupFiles(
     baseUrl?: string,
 ): Promise<ExplorerRepoGroupSearchResponse> {
     return getCocClientFor(baseUrl).explorer.searchRepoGroupFiles(groupId, query, options);
+}
+
+/**
+ * One content query across every live member of a group.
+ *
+ * `baseUrl` selects the group's OWNING server, exactly as it does for
+ * {@link searchRepoGroupFiles}: that server resolves membership fresh and fans
+ * out. Member workspace ids in the answer are identity for opening a match, not
+ * a transport choice, so an equal id on another host cannot capture the request.
+ */
+export function searchRepoGroupContent(
+    groupId: string,
+    query: string,
+    options?: ExplorerContentSearchOptions & Pick<CocRequestOptions, 'signal'>,
+    baseUrl?: string,
+): Promise<ExplorerRepoGroupContentSearchResponse> {
+    return getCocClientFor(baseUrl).explorer.searchRepoGroupContent(groupId, query, options);
 }
 
 /**

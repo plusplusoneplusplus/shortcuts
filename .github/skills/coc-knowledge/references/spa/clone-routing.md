@@ -109,6 +109,10 @@ their existing bare-workspace keys.
 Tree loading, file and content search, content replacement, Quick Open, Exact
 Open, and OS reveal also receive the concrete route while sending the plain
 workspace id to the owning host.
+The tracked-content overlay derives a member-specific route from the group
+owner's route, refreshes group membership, and preflights the file before it
+creates a preview tab. An unresolved remote route is reported inline and never
+falls through to the local origin.
 `WorkspaceTabsCluster` reselects a remote clone by its clone key when changing a
 sub-tab, while local clones keep the existing in-place tab switch.
 

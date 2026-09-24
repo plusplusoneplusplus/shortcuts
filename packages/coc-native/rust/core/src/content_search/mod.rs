@@ -1,4 +1,4 @@
-//! Full-text search across a repository's non-ignored files.
+//! Full-text search across eligible repository files.
 //!
 //! Built on ripgrep's own `grep-searcher` / `grep-regex` over the same
 //! `ignore`-crate walk the Explorer tree and path search use, so "the files
@@ -17,6 +17,8 @@ pub use options::{
     MAX_LINE_UTF16,
 };
 
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fmt;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -135,8 +137,37 @@ pub fn search(
     // The walk yields paths relative to `scope`, but every path the client sees
     // is relative to the repo root, so re-root them by this prefix.
     let prefix = to_posix(scope.strip_prefix(root).unwrap_or(Path::new("")));
+    let candidates = options.files.as_ref().map(|files| {
+        Arc::new(files.iter().map(|file| candidate_key(file).into_owned()).collect::<HashSet<_>>())
+    });
+    let candidate_directories =
+        candidates.as_ref().map(|files| Arc::new(candidate_directory_keys(files)));
 
-    let mut builder = walk_builder(&scope, options.show_ignored);
+    // An explicit candidate set is already filtered by its owner (Git for the
+    // tracked-content contract), so ignore rules must not remove a tracked path.
+    // Prune everything that is neither a candidate nor one of its ancestors:
+    // otherwise disabling ignore rules would enumerate large ignored trees such
+    // as node_modules before the file-level candidate check rejected them.
+    let mut builder = walk_builder(&scope, options.show_ignored || candidates.is_some());
+    if let (Some(files), Some(directories)) = (&candidates, candidate_directories) {
+        let root = root.to_path_buf();
+        let files = Arc::clone(files);
+        builder.filter_entry(move |entry| {
+            if entry.file_name() == ".git" && entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                return false;
+            }
+            let Ok(relative) = entry.path().strip_prefix(&root) else {
+                return false;
+            };
+            let relative = to_posix(relative);
+            let key = candidate_key(&relative);
+            if entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                key.is_empty() || directories.contains(key.as_ref())
+            } else {
+                files.contains(key.as_ref())
+            }
+        });
+    }
     if !options.include.is_empty() || !options.exclude.is_empty() {
         builder.overrides(build_overrides(&scope, options)?);
     }
@@ -154,6 +185,7 @@ pub fn search(
         let matcher = matcher.clone();
         let prefix = prefix.clone();
         let scope = scope.clone();
+        let candidates = candidates.clone();
         let mut searcher = SearcherBuilder::new()
             .line_number(true)
             // Stop at the first NUL rather than emitting the garbage that
@@ -180,14 +212,20 @@ pub fn search(
             if !entry.file_type().is_some_and(|t| t.is_file()) {
                 return WalkState::Continue;
             }
-            if entry.metadata().is_ok_and(|m| m.len() > max_file_size) {
-                truncated.store(true, Ordering::Relaxed);
-                return WalkState::Continue;
-            }
             let Ok(relative) = entry.path().strip_prefix(&scope) else {
                 return WalkState::Continue;
             };
             let path = join_posix(&prefix, &to_posix(relative));
+            if candidates
+                .as_ref()
+                .is_some_and(|files| !files.contains(candidate_key(&path).as_ref()))
+            {
+                return WalkState::Continue;
+            }
+            if entry.metadata().is_ok_and(|m| m.len() > max_file_size) {
+                truncated.store(true, Ordering::Relaxed);
+                return WalkState::Continue;
+            }
 
             let mut sink = MatchSink::new(&matcher, &path, context_lines, max_per_file, multi_line);
             // A file that cannot be read or decoded is skipped; one bad file
@@ -220,6 +258,32 @@ pub fn search(
         truncated = true;
     }
     Ok(ContentSearchResult { matches, truncated })
+}
+
+fn candidate_key(path: &str) -> Cow<'_, str> {
+    #[cfg(windows)]
+    {
+        Cow::Owned(path.replace('\\', "/").to_lowercase())
+    }
+    #[cfg(not(windows))]
+    {
+        Cow::Borrowed(path)
+    }
+}
+
+fn candidate_directory_keys(files: &HashSet<String>) -> HashSet<String> {
+    let mut directories = HashSet::new();
+    for file in files {
+        let mut end = 0;
+        while let Some(offset) = file[end..].find('/') {
+            end += offset;
+            if end > 0 {
+                directories.insert(file[..end].to_owned());
+            }
+            end += 1;
+        }
+    }
+    directories
 }
 
 /// The directory the walk starts from: the root, or `path` beneath it.
@@ -330,5 +394,25 @@ fn join_posix(prefix: &str, relative: &str) -> String {
         relative.to_owned()
     } else {
         format!("{prefix}/{relative}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::candidate_directory_keys;
+    use std::collections::HashSet;
+
+    #[test]
+    fn candidate_directories_contain_only_candidate_ancestors() {
+        let files = HashSet::from([
+            "tracked.txt".to_owned(),
+            "ignored/tracked-too.txt".to_owned(),
+            "src/nested/deep.ts".to_owned(),
+        ]);
+
+        assert_eq!(
+            candidate_directory_keys(&files),
+            HashSet::from(["ignored".to_owned(), "src".to_owned(), "src/nested".to_owned(),]),
+        );
     }
 }

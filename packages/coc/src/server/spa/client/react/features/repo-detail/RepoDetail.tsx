@@ -49,6 +49,9 @@ import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
 import { UnifiedPanelHostProvider } from './unified-right-panel/unifiedPanelHost';
+import { ContentSearchOverlayHost } from './content-search/ContentSearchOverlayHost';
+import type { ContentSearchOverlayMatch } from './content-search/ContentSearchOverlay';
+import { openContentSearchMatch } from './content-search/contentSearchOpen';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
@@ -182,6 +185,21 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // that global fallback can still name another workspace's chat, and filing
     // this workspace's tabs under it would leak them across repos.
     const panelChatId = queueState.selectedTaskIdByRepo?.[ws.id] ?? null;
+    const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
+        if (!dockAvailable) {
+            return Promise.resolve({
+                opened: false as const,
+                error: 'The file panel is unavailable in this view.',
+            });
+        }
+        return openContentSearchMatch({
+            panelWorkspaceId: ws.id,
+            scope: 'repo',
+            chatId: panelChatId,
+            signal,
+            match,
+        });
+    }, [dockAvailable, panelChatId, ws.id]);
     // Published to the whole subtree so chat entry points (source links, diffs,
     // canvas embeds) know a unified panel is on screen for them and which chat
     // it is showing. Null when there is no dock (mobile, or `splitWorkspacePanel`
@@ -930,6 +948,14 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                 editId={ws.id}
                 repos={repos}
                 onSuccess={() => { setEditOpen(false); onRefresh(); }}
+            />
+
+            {/* Ctrl/Cmd+Shift+F — works from every sub-tab, so it hangs off the
+                page rather than any one tab's content. */}
+            <ContentSearchOverlayHost
+                workspaceId={ws.id}
+                routingRef={explorerRoutingRef}
+                onOpenMatch={openSearchMatch}
             />
         </div>
         </UnifiedPanelHostProvider>

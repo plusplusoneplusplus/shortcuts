@@ -15,6 +15,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 
 import {
     focusUnifiedPanelTab,
+    openUnifiedPanelPreviewTab,
     openUnifiedPanelTab,
     unifiedTabIdFor,
     updateUnifiedPanelState,
@@ -148,6 +149,39 @@ describe('unifiedPanelOpen', () => {
         // Scope is the group, owner is the member — requests route by the owner.
         expect(tab?.ownerWorkspaceId).toBe('member-1');
         expect(readUnifiedPanelState(WS).chatTabs[CHAT]).toBeUndefined();
+    });
+
+    it('opens content matches through one owner-routed preview slot at the requested line', () => {
+        openUnifiedPanelPreviewTab('group-acme', {
+            ownerWorkspaceId: 'member-1',
+            ownerRoutingRef: 'remote:hub:member-1',
+            chatId: CHAT,
+            resourceId: 'src/a.ts',
+            label: 'a.ts',
+            repoLabel: 'API',
+            line: 12,
+        });
+        openUnifiedPanelPreviewTab('group-acme', {
+            ownerWorkspaceId: 'member-2',
+            ownerRoutingRef: 'remote:hub:member-2',
+            chatId: CHAT,
+            resourceId: 'src/a.ts',
+            label: 'a.ts',
+            repoLabel: 'Web',
+            line: 34,
+        });
+
+        const tabs = readUnifiedPanelState('group-acme').chatTabs[CHAT] ?? [];
+        expect(tabs).toHaveLength(1);
+        expect(tabs[0]).toMatchObject({
+            ownerWorkspaceId: 'member-2',
+            ownerRoutingRef: 'remote:hub:member-2',
+            resourceId: 'src/a.ts',
+            repoLabel: 'Web',
+            line: 34,
+            preview: true,
+        });
+        expect(isDockOpen('group-acme')).toBe(true);
     });
 
     it('composes two opens fired in the same tick', () => {
