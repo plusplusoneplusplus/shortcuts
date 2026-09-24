@@ -15,6 +15,7 @@ import type {
     AdminAutoProviderRoutingConfig,
     AdminConcreteAgentProvider,
     AdminDefaultProvider,
+    ProviderQuotaType,
 } from '@plusplusoneplusplus/coc-client';
 import { resolveAutoAgentProvider } from '../../../../agent-providers/auto-provider-router';
 import {
@@ -191,6 +192,16 @@ function InstallBadge({ status }: { status?: ProviderInstallStatus }) {
     return <span className={`ar-badge ${cls[status]}`} data-testid={`sdk-install-badge-${status}`}>{label[status]}</span>;
 }
 
+function QuotaOverageNote({ quotaType }: { quotaType: ProviderQuotaType }) {
+    if (!quotaType.usageAllowedWithExhaustedQuota) return null;
+    const overage = Number.isFinite(quotaType.overage) && quotaType.overage > 0 ? ` (${quotaType.overage} over)` : '';
+    return (
+        <div className="aip-quota-caption" data-testid={`quota-overage-${quotaType.type}`}>
+            Overage allowed{overage}
+        </div>
+    );
+}
+
 function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData: AgentProvidersQuotaResponse | null }) {
     if (!quotaData) {
         return (
@@ -246,6 +257,7 @@ function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData:
                             <div className="aip-quota-caption">
                                 {quotaType.usedRequests} / {quotaType.entitlementRequests} used
                             </div>
+                            <QuotaOverageNote quotaType={quotaType} />
                             <div className={`aip-bar ${barClass}`} aria-label={`${label} quota remaining`}>
                                 <span style={{ width: `${pct}%` }} />
                             </div>
@@ -270,6 +282,7 @@ function QuotaCell({ providerId, quotaData }: { providerId: Provider; quotaData:
                     <div className="aip-quota-caption">
                         {tightest.usedRequests} / {tightest.entitlementRequests} used
                     </div>
+                    <QuotaOverageNote quotaType={tightest} />
                     <div className={`aip-bar ${barClass}`}>
                         <span style={{ width: `${pct}%` }} />
                     </div>

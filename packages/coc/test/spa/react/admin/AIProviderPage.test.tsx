@@ -84,6 +84,8 @@ function quotaType(overrides: {
     entitlementRequests?: number;
     resetDate?: string;
     isUnlimitedEntitlement?: boolean;
+    usageAllowedWithExhaustedQuota?: boolean;
+    overage?: number;
 }) {
     return {
         type: overrides.type,
@@ -91,8 +93,8 @@ function quotaType(overrides: {
         usedRequests: overrides.usedRequests ?? 0,
         entitlementRequests: overrides.entitlementRequests ?? 100,
         remainingPercentage: overrides.remainingPercentage ?? 1,
-        usageAllowedWithExhaustedQuota: false,
-        overage: 0,
+        usageAllowedWithExhaustedQuota: overrides.usageAllowedWithExhaustedQuota ?? false,
+        overage: overrides.overage ?? 0,
         resetDate: overrides.resetDate ?? '',
     };
 }
@@ -573,6 +575,94 @@ describe('AIProviderPage', () => {
         expect(within(copilotRow).queryByText('Weekly')).toBeNull();
         expect(within(copilotRow).queryByText('72% remaining')).toBeNull();
         expect(within(copilotRow).queryByLabelText('Weekly quota remaining')).toBeNull();
+    });
+
+    it('shows overage-allowed status on the Copilot tightest quota row', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'copilot',
+                        quotaTypes: [
+                            quotaType({
+                                type: 'premium_interactions',
+                                remainingPercentage: 0.037,
+                                usedRequests: 963000,
+                                entitlementRequests: 1000000,
+                                usageAllowedWithExhaustedQuota: true,
+                            }),
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const copilotRow = screen.getByTestId('provider-row-copilot');
+        expect(within(copilotRow).getByText('4% remaining')).toBeDefined();
+        expect(within(copilotRow).getByText('963000 / 1000000 used')).toBeDefined();
+        expect(within(copilotRow).getByTestId('quota-overage-premium_interactions').textContent).toBe('Overage allowed');
+    });
+
+    it('shows the overage count once usage exceeds the entitlement', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'copilot',
+                        quotaTypes: [
+                            quotaType({
+                                type: 'premium_interactions',
+                                remainingPercentage: 0,
+                                usedRequests: 1000000,
+                                entitlementRequests: 1000000,
+                                usageAllowedWithExhaustedQuota: true,
+                                overage: 1250,
+                            }),
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const copilotRow = screen.getByTestId('provider-row-copilot');
+        expect(within(copilotRow).getByTestId('quota-overage-premium_interactions').textContent)
+            .toBe('Overage allowed (1250 over)');
+    });
+
+    it('shows overage-allowed status only on the per-window rows that allow it', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'claude',
+                        quotaTypes: [
+                            quotaType({ type: 'five_hour', remainingPercentage: 0.1, usageAllowedWithExhaustedQuota: true }),
+                            quotaType({ type: 'seven_day', remainingPercentage: 0.6 }),
+                        ],
+                    },
+                ],
+            },
+        });
+
+        const claudeRow = screen.getByTestId('provider-row-claude');
+        expect(within(claudeRow).getByTestId('quota-overage-five_hour').textContent).toBe('Overage allowed');
+        expect(within(claudeRow).queryByTestId('quota-overage-seven_day')).toBeNull();
+    });
+
+    it('hides overage status when the provider does not allow usage past the quota', () => {
+        renderPage({
+            quotaData: {
+                providers: [
+                    {
+                        id: 'copilot',
+                        quotaTypes: [quotaType({ type: 'premium_interactions', remainingPercentage: 0.5, overage: 10 })],
+                    },
+                ],
+            },
+        });
+
+        const copilotRow = screen.getByTestId('provider-row-copilot');
+        expect(within(copilotRow).queryByText(/Overage allowed/)).toBeNull();
     });
 
     it('falls back to a readable label for unknown quota types', () => {
