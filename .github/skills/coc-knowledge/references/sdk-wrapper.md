@@ -86,7 +86,7 @@ The resolved spawn mode (`system-node | electron-node | native-binary`) is recor
 
 ### Account quota contract
 
-`IAccountQuotaSnapshot.remainingPercentage` is a **0-1 fraction** for every provider; the dashboard, auto-provider router, and quota pause watcher all read it that way. The Copilot CLI's `account.getQuota` RPC reports it on a 0-100 scale, so `CopilotSDKService.getAccountQuota()` divides by 100 and clamps it through `normalizeCopilotAccountQuota`. Codex and Claude build fractions directly.
+`IAccountQuotaSnapshot.remainingPercentage` is a **0-1 fraction** for every provider; the dashboard, auto-provider router, and quota pause watcher all read it that way. The Copilot CLI's `account.getQuota` RPC reports it on a 0-100 scale, so `CopilotSDKService.getAccountQuota()` divides by 100 and clamps it through `normalizeCopilotAccountQuota`. Codex and Claude build fractions directly. `usageAllowedWithExhaustedQuota` means the provider lets usage continue past the limit; the AI Provider page's quota cell shows an `Overage allowed` caption for it, adding `(N over)` when `overage > 0`.
 
 ### Copilot tool telemetry
 
