@@ -37,11 +37,12 @@ export interface TreeNodeProps {
     isFocused?: boolean;
     treeIndex?: number;
     filterQuery?: string;
+    hideUnfetchedDirs?: boolean;
 }
 
 export function TreeNode({
     entry, depth, workspaceId, routingRef, selectedPath, expandedPaths, childrenMap,
-    onToggle, onSelect, onFileOpen, onFilePin, onChildrenLoaded, onContextMenu, isFocused, treeIndex, filterQuery,
+    onToggle, onSelect, onFileOpen, onFilePin, onChildrenLoaded, onContextMenu, isFocused, treeIndex, filterQuery, hideUnfetchedDirs,
 }: TreeNodeProps) {
     const isDir = entry.type === 'dir';
     const isExpanded = expandedPaths.has(entry.path);
@@ -159,7 +160,7 @@ export function TreeNode({
                     </span>
                 )}
             </div>
-            {isDir && isExpanded && children && filterEntries(children, filterQuery || '', childrenMap).map(child => (
+            {isDir && isExpanded && children && filterEntries(children, filterQuery || '', childrenMap, hideUnfetchedDirs).map(child => (
                 <TreeNode
                     key={child.path}
                     entry={child}
@@ -176,6 +177,7 @@ export function TreeNode({
                     onChildrenLoaded={onChildrenLoaded}
                     onContextMenu={onContextMenu}
                     filterQuery={filterQuery}
+                    hideUnfetchedDirs={hideUnfetchedDirs}
                 />
             ))}
         </>

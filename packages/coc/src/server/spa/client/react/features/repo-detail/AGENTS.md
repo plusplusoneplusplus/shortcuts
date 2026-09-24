@@ -160,6 +160,12 @@ settles a tracked flag; deriving it also keeps the two mounted Explorer panels
 renders a `⚠` retry affordance; clicking it clears the error and re-fires the
 effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
+`explorer/FileTree.tsx` filters both root entries and `TreeNode` children through
+`filterEntries`. Its optional `hideUnfetchedDirs` flag drops directories without
+matching cached descendants when the caller can trust a complete file-name
+search; otherwise unfetched directories stay visible. Name-matching directories
+always remain visible, and an empty query leaves the tree unchanged.
+
 ## Quick Open and Go To All
 
 `explorer/QuickOpen.tsx` is one dialog with two modes, chosen by the `mode`
