@@ -43,8 +43,22 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
     ),
     getMonacoLanguage: () => 'plaintext',
 }));
+let reportTerminalSessions: (sessions: readonly {
+    id: string;
+    serverSessionId?: string;
+    status: 'running' | 'exited';
+}[]) => void = () => {};
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
-    TerminalView: () => <div data-testid="mock-terminal" />,
+    TerminalView: ({ onSessionsChange }: {
+        onSessionsChange?: (sessions: readonly {
+            id: string;
+            serverSessionId?: string;
+            status: 'running' | 'exited';
+        }[]) => void;
+    }) => {
+        reportTerminalSessions = sessions => onSessionsChange?.(sessions);
+        return <div data-testid="mock-terminal" />;
+    },
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
     ExplorerPanel: () => <div data-testid="mock-explorer" />,
@@ -85,6 +99,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
@@ -164,6 +179,84 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         // Nothing has happened yet.
         expect(screen.getByTestId(`unified-panel-tab-${tabId}`)).toBeTruthy();
         expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+    });
+
+    it('routes middle-click through the unsaved-edit guard without activating the tab', async () => {
+        const backgroundTabId = openFile({ path: 'src/background.ts' });
+        const activeTabId = openFile({ path: 'src/active.ts' });
+        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+        fireEvent.change(await screen.findByTestId('mock-monaco-textarea'), { target: { value: 'edited' } });
+        await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${activeTabId}`)).toBeTruthy());
+
+        fireEvent(
+            screen.getByTestId(`unified-panel-tab-${activeTabId}`),
+            new MouseEvent('auxclick', { bubbles: true, button: 1 }),
+        );
+
+        expect(screen.getByTestId('explorer-close-tabs-prompt')).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${backgroundTabId}`).getAttribute('aria-selected')).toBe('false');
+        expect(screen.getByTestId(`unified-panel-tab-${activeTabId}`).getAttribute('aria-selected')).toBe('true');
+        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+    });
+
+    it('processes mixed Close Saved and Close All targets in visible order after cancellations', async () => {
+        const dirtyTabId = openFile({ path: 'src/dirty.ts' });
+        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+        fireEvent.change(await screen.findByTestId('mock-monaco-textarea'), { target: { value: 'edited' } });
+        await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${dirtyTabId}`)).toBeTruthy());
+
+        const cleanTabId = openFile({ path: 'src/clean.ts' });
+        await screen.findByTestId(`unified-panel-tab-${cleanTabId}`);
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        fireEvent.click(screen.getByTestId('unified-panel-open-terminal'));
+        const terminalTabId = unifiedTabId({
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal',
+        });
+        act(() => {
+            reportTerminalSessions([{ id: 't1', serverSessionId: 's-1', status: 'running' }]);
+        });
+
+        fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${dirtyTabId}`), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-saved'));
+        expect(screen.getByTestId('unified-panel-close-confirm')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('unified-panel-close-confirm-cancel'));
+
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${cleanTabId}`)).toBeNull());
+        expect(screen.getByTestId(`unified-panel-tab-${terminalTabId}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${dirtyTabId}`)).toBeTruthy();
+
+        fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${dirtyTabId}`), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-all'));
+        expect(screen.getByTestId('unified-panel-close-confirm')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('unified-panel-close-confirm-cancel'));
+
+        await screen.findByTestId('explorer-close-tabs-prompt');
+        fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));
+        expect(screen.getByTestId(`unified-panel-tab-${terminalTabId}`)).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${dirtyTabId}`)).toBeTruthy();
+    });
+
+    it('skips queued tabs that stop being visible while a bulk prompt is open', async () => {
+        const fileTabId = openFile({ path: 'src/chat-one.ts' });
+        const dock = dockStub();
+        const { rerender } = render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dock} />);
+        await screen.findByTestId(`unified-panel-tab-${fileTabId}`);
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        fireEvent.click(screen.getByTestId('unified-panel-open-terminal'));
+        act(() => {
+            reportTerminalSessions([{ id: 't1', serverSessionId: 's-1', status: 'running' }]);
+        });
+
+        fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${fileTabId}`), { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-close-all'));
+        expect(screen.getByTestId('unified-panel-close-confirm')).toBeTruthy();
+
+        rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-2" dock={dock} />);
+        fireEvent.click(screen.getByTestId('unified-panel-close-confirm-cancel'));
+        await Promise.resolve();
+        rerender(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dock} />);
+
+        expect(screen.getByTestId(`unified-panel-tab-${fileTabId}`)).toBeTruthy();
     });
 
     it('cancel leaves the tab and its draft alone', async () => {

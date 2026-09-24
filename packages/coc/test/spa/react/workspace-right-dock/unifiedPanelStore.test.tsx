@@ -197,7 +197,7 @@ describe('unifiedPanelStore', () => {
         act(() => { api.close(idB); });
         expect(labels('a')).toBe('a.ts');
 
-        act(() => { api.closeAllVisible(); });
+        act(() => { api.close(idA); });
         expect(labels('a')).toBe('');
     });
 

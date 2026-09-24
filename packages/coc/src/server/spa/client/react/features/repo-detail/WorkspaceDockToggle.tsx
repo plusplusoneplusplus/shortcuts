@@ -49,6 +49,8 @@ export function workspaceDockModeStorageKey(workspaceId: string): string {
 export interface DockTarget {
     workspaceId: string;
     label: string;
+    /** Absolute root path on the target host, when known. */
+    rootPath?: string;
     disabled?: boolean;
     /**
      * Listed and selectable, but never chosen automatically. Set on a repo

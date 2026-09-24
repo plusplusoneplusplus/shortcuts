@@ -107,6 +107,7 @@ export function repoGroupDockTargets(workspaceId: string, members: readonly Repo
         ...members.map(member => ({
             workspaceId: member.workspaceId,
             label: (member.name || member.workspaceId) + (member.stale ? staleSuffix(member.staleReason) : ''),
+            ...(member.rootPath ? { rootPath: member.rootPath } : {}),
             disabled: member.stale || undefined,
         })),
     ];

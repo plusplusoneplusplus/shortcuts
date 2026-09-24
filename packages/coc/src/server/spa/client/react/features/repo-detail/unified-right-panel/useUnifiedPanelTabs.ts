@@ -75,9 +75,6 @@ export interface UnifiedPanelTabsApi {
     close(id: string): void;
     /** Reorder within a section: put `id` where `beforeId` is, or at the end. */
     move(id: string, beforeId: string | null): void;
-    /** Close every tab visible in this chat. */
-    closeAllVisible(): void;
-
     /**
      * The preview tab `openPreview(input)` would evict, or null. Ask before
      * opening so an outgoing dirty buffer gets the unsaved-edits prompt first.
@@ -130,11 +127,6 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
         setState(prev => moveTab(prev, id, beforeId));
     }, [setState]);
 
-    const closeAllVisible = useCallback(() => {
-        setState(prev => visibleTabIds(prev, latestChat.current)
-            .reduce((acc, id) => closeTab(acc, id), prev));
-    }, [setState]);
-
     const previewToReplace = useCallback(
         (input: OpenUnifiedPreviewTabInput) => previewTabToReplace(latest.current, latestChat.current, input),
         [],
@@ -150,9 +142,9 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
 
     return useMemo(() => ({
         state, tabs, activeId, active, preview,
-        open, openPreview, promote, activate, close, move, closeAllVisible,
+        open, openPreview, promote, activate, close, move,
         previewToReplace, find, visibleIds,
     }), [state, tabs, activeId, active, preview,
-        open, openPreview, promote, activate, close, move, closeAllVisible,
+        open, openPreview, promote, activate, close, move,
         previewToReplace, find, visibleIds]);
 }
