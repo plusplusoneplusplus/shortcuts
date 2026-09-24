@@ -31,6 +31,12 @@ const STATUS_DOT: Record<string, string> = {
     pending: 'bg-zinc-300 dark:bg-zinc-600',
 };
 
+/**
+ * Below this card width one truncated line is a label and three characters,
+ * so the Files/Decisions/Remaining lines get two clamped lines instead.
+ */
+const NARROW_CLAMP = '[@container_(max-width:359px)]:line-clamp-2 [@container_(max-width:359px)]:whitespace-normal';
+
 const SIGNAL_LABEL: Record<string, string> = {
     RALPH_NEXT: 'NEXT',
     RALPH_COMPLETE: 'COMPLETE',
@@ -92,7 +98,9 @@ export function RalphWorkflowNode({
             onClick={onClick ? () => onClick(iteration) : undefined}
             data-testid={`ralph-workflow-node-${iteration}`}
             className={cn(
-                'group flex w-full gap-3 rounded-md border border-zinc-200 bg-white px-3 py-2 text-left',
+                // Own inline-size container: the card's width, not the
+                // viewport's, decides whether its lines can afford to truncate.
+                'group flex w-full gap-3 rounded-md border border-zinc-200 bg-white px-3 py-2 text-left [container-type:inline-size]',
                 'shadow-sm hover:bg-zinc-50',
                 'dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800',
                 isCurrent && 'ring-1 ring-[#0078d4]/40',
@@ -106,7 +114,7 @@ export function RalphWorkflowNode({
                 )}
             />
             <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-xs font-medium text-zinc-700 dark:text-zinc-200">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-zinc-700 dark:text-zinc-200">
                     <span>Iter {iteration}</span>
                     {signal && (
                         <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
@@ -120,20 +128,20 @@ export function RalphWorkflowNode({
                     )}
                 </div>
                 {parsed.raw && (
-                    <p className="mt-1 truncate text-xs text-zinc-600 dark:text-zinc-300">{parsed.raw}</p>
+                    <p className={cn('mt-1 truncate text-xs text-zinc-600 dark:text-zinc-300', NARROW_CLAMP)}>{parsed.raw}</p>
                 )}
                 {parsed.files && (
-                    <p className="mt-1 truncate text-xs text-zinc-600 dark:text-zinc-300">
+                    <p className={cn('mt-1 truncate text-xs text-zinc-600 dark:text-zinc-300', NARROW_CLAMP)}>
                         <span className="font-semibold">Files:</span> {parsed.files}
                     </p>
                 )}
                 {parsed.decisions && (
-                    <p className="mt-0.5 truncate text-xs text-zinc-600 dark:text-zinc-300">
+                    <p className={cn('mt-0.5 truncate text-xs text-zinc-600 dark:text-zinc-300', NARROW_CLAMP)}>
                         <span className="font-semibold">Decisions:</span> {parsed.decisions}
                     </p>
                 )}
                 {parsed.remaining && (
-                    <p className="mt-0.5 truncate text-xs text-zinc-600 dark:text-zinc-300">
+                    <p className={cn('mt-0.5 truncate text-xs text-zinc-600 dark:text-zinc-300', NARROW_CLAMP)}>
                         <span className="font-semibold">Remaining:</span> {parsed.remaining}
                     </p>
                 )}
