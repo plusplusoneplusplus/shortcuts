@@ -1,4 +1,5 @@
 import type { ParsedProgressSection } from './types';
+import { normalizeNewlines } from '../utils/text';
 
 export type RalphProgressStagnationClassification =
     | 'continue'
@@ -78,7 +79,7 @@ function classifyProgress(progress: string): RalphProgressStagnationClassificati
 }
 
 function extractRemainingText(progress: string): string {
-    const lines = progress.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const lines = normalizeNewlines(progress).split('\n');
     const remainingLines: string[] = [];
     let capturing = false;
 

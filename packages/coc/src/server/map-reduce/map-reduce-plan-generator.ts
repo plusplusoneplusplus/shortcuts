@@ -9,6 +9,7 @@ import {
     normalizeMapReducePlan,
 } from './map-reduce-plan-validation';
 import type { NormalizedMapReducePlan } from './map-reduce-plan-validation';
+import { stripAiCodeFences } from '../shared/ai-json';
 
 const PLAN_TIMEOUT_MS = 60_000;
 
@@ -67,14 +68,8 @@ export interface MapReducePlanGeneratorOptions {
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
 }
 
-function stripCodeFences(raw: string): string {
-    const trimmed = raw.trim();
-    const fenced = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
-    return fenced ? fenced[1].trim() : trimmed;
-}
-
 export function parseMapReducePlanResponse(raw: string): NormalizedMapReducePlan {
-    const jsonText = stripCodeFences(raw);
+    const jsonText = stripAiCodeFences(raw);
     let parsed: unknown;
     try {
         parsed = JSON.parse(jsonText);

@@ -1,4 +1,5 @@
 import type { RalphSubmitResult } from './types';
+import { normalizeNewlines, extractJsonObjectString } from '../utils/text';
 
 const MARKER = 'RALPH_SUBMIT_RESULT';
 
@@ -10,14 +11,14 @@ const MARKER = 'RALPH_SUBMIT_RESULT';
  * detail in `error` — callers persist those as a failed submit.
  */
 export function parseRalphSubmitResult(response: string): RalphSubmitResult {
-    const normalised = response.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const normalised = normalizeNewlines(response);
     const markerIdx = normalised.indexOf(MARKER);
     if (markerIdx === -1) {
         return unparseable('Response does not contain RALPH_SUBMIT_RESULT marker');
     }
 
     const afterMarker = normalised.slice(markerIdx + MARKER.length);
-    const raw = extractJson(afterMarker);
+    const raw = extractJsonObjectString(afterMarker);
     if (!raw) {
         return unparseable('No JSON block found after RALPH_SUBMIT_RESULT marker');
     }
@@ -30,32 +31,6 @@ export function parseRalphSubmitResult(response: string): RalphSubmitResult {
     }
 
     return validateParsed(parsed);
-}
-
-function extractJson(text: string): string | null {
-    const fenced = /```json\s*\n([\s\S]*?)\n```/m.exec(text);
-    if (fenced) {
-        return fenced[1].trim();
-    }
-
-    const start = text.indexOf('{');
-    if (start === -1) {
-        return null;
-    }
-
-    let depth = 0;
-    for (let i = start; i < text.length; i++) {
-        if (text[i] === '{') {
-            depth++;
-        } else if (text[i] === '}') {
-            depth--;
-            if (depth === 0) {
-                return text.slice(start, i + 1);
-            }
-        }
-    }
-
-    return null;
 }
 
 function validateParsed(parsed: unknown): RalphSubmitResult {

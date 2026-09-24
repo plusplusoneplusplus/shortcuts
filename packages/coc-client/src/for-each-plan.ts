@@ -1,4 +1,12 @@
 import type { ForEachChildMode, ForEachItem, ForEachItemStatus } from './contracts/for-each';
+import {
+  ITEM_ID_PATTERN,
+  isPlainRecord,
+  normalizeOptionalStringArray,
+  extractJsonCandidates,
+  type PlanScanTurn,
+  type PlanScanError,
+} from './plan-validation-shared';
 
 export const FOR_EACH_ITEM_STATUSES: readonly ForEachItemStatus[] = [
   'pending',
@@ -8,26 +16,7 @@ export const FOR_EACH_ITEM_STATUSES: readonly ForEachItemStatus[] = [
   'skipped',
 ];
 
-const ITEM_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 const ITEM_STATUS_SET = new Set<ForEachItemStatus>(FOR_EACH_ITEM_STATUSES);
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function normalizeOptionalStringArray(value: unknown, fieldName: string): string[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) {
-    throw new Error(`${fieldName} must be an array of item IDs`);
-  }
-  const result = value.map((entry, index) => {
-    if (typeof entry !== 'string' || !entry.trim()) {
-      throw new Error(`${fieldName}[${index}] must be a non-empty string`);
-    }
-    return entry.trim();
-  });
-  return result.length > 0 ? result : undefined;
-}
 
 export function normalizeForEachPlanItems(rawItems: unknown): ForEachItem[] {
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
@@ -143,34 +132,12 @@ export interface ForEachPlanArtifact {
   childMode?: ForEachChildMode;
 }
 
-export interface ForEachPlanScanTurn {
-  role: string;
-  content: string;
-  turnIndex?: number;
-  streaming?: boolean;
-}
-
-export interface ForEachPlanScanError {
-  turnIndex: number;
-  message: string;
-}
+export type ForEachPlanScanTurn = PlanScanTurn;
+export type ForEachPlanScanError = PlanScanError;
 
 export interface ForEachPlanScanResult {
   plan: ForEachPlanArtifact | null;
   error: ForEachPlanScanError | null;
-}
-
-function extractJsonCandidates(content: string): string[] {
-  const candidates: string[] = [];
-  const fencePattern = /```(?:json)?\s*([\s\S]*?)```/gi;
-  for (let match = fencePattern.exec(content); match; match = fencePattern.exec(content)) {
-    if (match[1]?.trim()) candidates.push(match[1].trim());
-  }
-  const trimmed = content.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-    candidates.push(trimmed);
-  }
-  return candidates;
 }
 
 export function parseForEachPlanArtifactJson(jsonText: string, turnIndex: number): ForEachPlanArtifact {

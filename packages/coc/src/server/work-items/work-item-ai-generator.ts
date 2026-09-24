@@ -109,20 +109,14 @@ PLAN TEMPLATE (use inside "plan" and/or "goal"):
 // Response parser
 // ============================================================================
 
-/** Strip optional markdown code fences that some models wrap around JSON. */
-function stripCodeFences(raw: string): string {
-    const trimmed = raw.trim();
-    // Match ```json ... ``` or ``` ... ```
-    const fenced = trimmed.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/);
-    return fenced ? fenced[1].trim() : trimmed;
-}
+import { stripAiCodeFences } from '../shared/ai-json';
 
 /**
  * Parse the raw AI response text into a typed `AiDraftResponse`.
  * Throws a descriptive `Error` when the response cannot be parsed or is invalid.
  */
 export function parseAiDraftResponse(raw: string): AiDraftResponse {
-    const jsonText = stripCodeFences(raw);
+    const jsonText = stripAiCodeFences(raw);
 
     let parsed: unknown;
     try {

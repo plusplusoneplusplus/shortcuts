@@ -4,15 +4,7 @@ import { DiscoveredSkill, InstallDetail, InstallResult, ParsedSource } from './t
 import { ensureDirectoryExists, safeExists, safeReadDir, safeStats, safeCopyFile, safeWriteFile, execAsync, httpGetJson, httpDownload } from '../utils';
 import { getLogger, LogCategory } from '../logger';
 import { parseGitHubApiResponse } from './github-api-utils';
-
-async function isGhCliAvailable(): Promise<boolean> {
-    try {
-        await execAsync('gh --version');
-        return true;
-    } catch {
-        return false;
-    }
-}
+import { isGhCliAvailable } from './skill-scanner';
 
 /**
  * @param handleConflict Callback to handle skill conflicts (returns true to replace)

@@ -6,6 +6,14 @@ import type {
   MapReduceReduceStepStatus,
 } from './contracts/map-reduce';
 import { DEFAULT_MAP_REDUCE_MAX_PARALLEL } from './contracts/map-reduce';
+import {
+  ITEM_ID_PATTERN,
+  isPlainRecord,
+  normalizeOptionalStringArray,
+  extractJsonCandidates,
+  type PlanScanTurn,
+  type PlanScanError,
+} from './plan-validation-shared';
 
 export const MAP_REDUCE_ITEM_STATUSES: readonly MapReduceItemStatus[] = [
   'pending',
@@ -29,27 +37,8 @@ export interface NormalizedMapReduceDraftPlan {
   maxParallel: number;
 }
 
-const ITEM_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 const ITEM_STATUS_SET = new Set<MapReduceItemStatus>(MAP_REDUCE_ITEM_STATUSES);
 const REDUCE_STEP_STATUS_SET = new Set<MapReduceReduceStepStatus>(MAP_REDUCE_REDUCE_STEP_STATUSES);
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function normalizeOptionalStringArray(value: unknown, fieldName: string): string[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) {
-    throw new Error(`${fieldName} must be an array of item IDs`);
-  }
-  const result = value.map((entry, index) => {
-    if (typeof entry !== 'string' || !entry.trim()) {
-      throw new Error(`${fieldName}[${index}] must be a non-empty string`);
-    }
-    return entry.trim();
-  });
-  return result.length > 0 ? result : undefined;
-}
 
 function copyOptionalString(
   target: MapReduceItem | MapReduceReduceStep,
@@ -253,34 +242,12 @@ export interface MapReducePlanArtifact {
   childMode?: MapReduceChildMode;
 }
 
-export interface MapReducePlanScanTurn {
-  role: string;
-  content: string;
-  turnIndex?: number;
-  streaming?: boolean;
-}
-
-export interface MapReducePlanScanError {
-  turnIndex: number;
-  message: string;
-}
+export type MapReducePlanScanTurn = PlanScanTurn;
+export type MapReducePlanScanError = PlanScanError;
 
 export interface MapReducePlanScanResult {
   plan: MapReducePlanArtifact | null;
   error: MapReducePlanScanError | null;
-}
-
-function extractJsonCandidates(content: string): string[] {
-  const candidates: string[] = [];
-  const fencePattern = /```(?:json)?\s*([\s\S]*?)```/gi;
-  for (let match = fencePattern.exec(content); match; match = fencePattern.exec(content)) {
-    if (match[1]?.trim()) candidates.push(match[1].trim());
-  }
-  const trimmed = content.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-    candidates.push(trimmed);
-  }
-  return candidates;
 }
 
 export function parseMapReducePlanArtifactJson(jsonText: string, turnIndex: number): MapReducePlanArtifact {

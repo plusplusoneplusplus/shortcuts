@@ -4,20 +4,15 @@ import type {
     SentinelLooseEndJudge,
     SentinelLooseEndVerdict,
 } from './sentinel-classifier';
+import { stripAiCodeFences } from '../shared/ai-json';
 
 const SENTINEL_LOOSE_END_TIMEOUT_MS = 30_000;
-
-function unwrapJsonResponse(raw: string): string {
-    const trimmed = raw.trim();
-    const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    return fenced?.[1] ?? trimmed;
-}
 
 export function parseSentinelLooseEndVerdicts(
     raw: string,
     candidateIds: ReadonlySet<string>,
 ): SentinelLooseEndVerdict[] {
-    const parsed: unknown = JSON.parse(unwrapJsonResponse(raw));
+    const parsed: unknown = JSON.parse(stripAiCodeFences(raw));
     if (!Array.isArray(parsed)) {
         throw new Error('Sentinel loose-end response must be a JSON array');
     }
