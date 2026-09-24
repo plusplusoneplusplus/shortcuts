@@ -119,6 +119,21 @@ describe('UnifiedRightPanel terminal close guard', () => {
         expect(deleteTerminal).not.toHaveBeenCalled();
     });
 
+    it('routes middle-click through the live-terminal guard', () => {
+        openTerminalTab();
+        report([{ id: 't1', serverSessionId: 's-1', status: 'running' }]);
+
+        fireEvent(
+            screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`),
+            new MouseEvent('auxclick', { bubbles: true, button: 1 }),
+        );
+
+        expect(screen.getByTestId('unified-panel-close-confirm-message').textContent)
+            .toContain('its running terminal session');
+        expect(screen.getByTestId(`unified-panel-tab-${TERMINAL_TAB_ID}`)).toBeTruthy();
+        expect(deleteTerminal).not.toHaveBeenCalled();
+    });
+
     it('cancel leaves the tab and the process alone', () => {
         const closeButton = openTerminalTab();
         report([{ id: 't1', serverSessionId: 's-1', status: 'running' }]);

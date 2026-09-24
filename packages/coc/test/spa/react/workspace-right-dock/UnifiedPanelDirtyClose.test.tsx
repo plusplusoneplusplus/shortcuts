@@ -166,6 +166,24 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
     });
 
+    it('routes middle-click through the unsaved-edit guard without activating the tab', async () => {
+        const backgroundTabId = openFile({ path: 'src/background.ts' });
+        const activeTabId = openFile({ path: 'src/active.ts' });
+        render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />);
+        fireEvent.change(await screen.findByTestId('mock-monaco-textarea'), { target: { value: 'edited' } });
+        await waitFor(() => expect(screen.getByTestId(`unified-panel-tab-dirty-${activeTabId}`)).toBeTruthy());
+
+        fireEvent(
+            screen.getByTestId(`unified-panel-tab-${activeTabId}`),
+            new MouseEvent('auxclick', { bubbles: true, button: 1 }),
+        );
+
+        expect(screen.getByTestId('explorer-close-tabs-prompt')).toBeTruthy();
+        expect(screen.getByTestId(`unified-panel-tab-${backgroundTabId}`).getAttribute('aria-selected')).toBe('false');
+        expect(screen.getByTestId(`unified-panel-tab-${activeTabId}`).getAttribute('aria-selected')).toBe('true');
+        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+    });
+
     it('cancel leaves the tab and its draft alone', async () => {
         const { tabId, closeButton } = await dirtyFileTab();
         fireEvent.click(closeButton);

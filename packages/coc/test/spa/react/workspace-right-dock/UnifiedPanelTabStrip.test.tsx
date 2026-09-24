@@ -14,7 +14,9 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import { UnifiedPanelTabStrip } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabStrip';
 import {
+    ALL_UNIFIED_TAB_KINDS,
     openTab,
+    scopeForKind,
     visibleTabs,
     EMPTY_UNIFIED_PANEL,
     type UnifiedPanelTab,
@@ -29,6 +31,20 @@ function sampleTabs(): readonly UnifiedPanelTab[] {
     state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
     state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/b.ts', label: 'b.ts' });
+    return visibleTabs(state, CHAT);
+}
+
+function tabsOfEveryKind(): readonly UnifiedPanelTab[] {
+    let state = EMPTY_UNIFIED_PANEL;
+    for (const kind of ALL_UNIFIED_TAB_KINDS) {
+        state = openTab(state, {
+            kind,
+            ownerWorkspaceId: WS,
+            chatId: scopeForKind(kind) === 'workspace' ? null : CHAT,
+            resourceId: `${kind}-resource`,
+            label: kind,
+        });
+    }
     return visibleTabs(state, CHAT);
 }
 
@@ -94,12 +110,32 @@ describe('UnifiedPanelTabStrip', () => {
         expect(props.onActivate).not.toHaveBeenCalled();
     });
 
-    it('closes on middle click', () => {
+    it('closes the tab under the pointer on middle click without activating it', () => {
+        const tabs = tabsOfEveryKind();
+        const props = renderStrip({ tabs, activeId: tabs[0].id });
+
+        // `fireEvent` has no auxClick helper; dispatch the DOM event React listens for.
+        for (const tab of tabs) {
+            fireEvent(tabNode(tab), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+            expect(props.onClose).toHaveBeenLastCalledWith(tab.id);
+        }
+        expect(props.onActivate).not.toHaveBeenCalled();
+    });
+
+    it('leaves non-middle auxiliary clicks available for navigation', () => {
         const tabs = sampleTabs();
         const props = renderStrip({ tabs, activeId: tabs[0].id });
-        // `fireEvent` has no auxClick helper; dispatch the DOM event React listens for.
-        fireEvent(tabNode(tabs[1]), new MouseEvent('auxclick', { bubbles: true, button: 1 }));
-        expect(props.onClose).toHaveBeenCalledWith(tabs[1].id);
+
+        for (const button of [3, 4]) {
+            const event = new MouseEvent('auxclick', {
+                bubbles: true,
+                cancelable: true,
+                button,
+            });
+            expect(tabNode(tabs[1]).dispatchEvent(event)).toBe(true);
+        }
+        expect(props.onClose).not.toHaveBeenCalled();
+        expect(props.onActivate).not.toHaveBeenCalled();
     });
 
     it('walks tabs with the arrow keys, wrapping at both ends', () => {
