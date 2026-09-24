@@ -68,9 +68,26 @@ export interface IAccountQuotaSnapshot {
     entitlementRequests: number;
     usedRequests: number;
     usageAllowedWithExhaustedQuota: boolean;
+    /** Remaining share of the entitlement as a fraction in [0, 1] (0.25 = 25%). */
     remainingPercentage: number;
     overage: number;
     resetDate?: string;
+}
+
+/**
+ * The Copilot CLI reports `remainingPercentage` on a 0-100 scale; every
+ * consumer of IAccountQuotaSnapshot expects a 0-1 fraction.
+ */
+export function normalizeCopilotAccountQuota(raw: IAccountQuotaResult): IAccountQuotaResult {
+    const quotaSnapshots: Record<string, IAccountQuotaSnapshot> = {};
+    for (const [type, snap] of Object.entries(raw?.quotaSnapshots ?? {})) {
+        const pct = Number(snap.remainingPercentage);
+        quotaSnapshots[type] = {
+            ...snap,
+            remainingPercentage: Number.isFinite(pct) ? Math.max(0, Math.min(1, pct / 100)) : pct,
+        };
+    }
+    return { quotaSnapshots };
 }
 
 export interface IAccountQuotaResult {
@@ -335,7 +352,7 @@ export class CopilotSDKService implements ISDKService {
             await client.start();
             const params = gitHubToken ? { gitHubToken } : {};
             const result = await (client as any).rpc.account.getQuota(params);
-            return result as IAccountQuotaResult;
+            return normalizeCopilotAccountQuota(result as IAccountQuotaResult);
         } catch (err) {
             // Under Electron the CLI is launched via a resolved node runtime;
             // append how it was spawned so a packaged-desktop failure (e.g. the
