@@ -27,6 +27,10 @@ Three different workspace ids, kept apart on purpose:
 
 Tabs are scoped by kind: `terminal | notes | note` are workspace-owned,
 `file | canvas | diff | external` belong to the selected chat (`scopeForKind`).
+Chat-owned tabs opened while no chat is selected belong to the draft
+`@workspace` scope. When that draft creates a chat, its tabs are copied into the
+new chat in strip order with rebuilt ids and the same active/preview state; the
+draft originals remain available for the next new conversation.
 `external` is a read-only definition source outside every workspace; its
 resource id is the opaque capability the owning member's host issued, it has no
 entry in the "+" menu, and it is never persisted. `unifiedTabId`
@@ -41,11 +45,11 @@ from same-id clones never merge into one tab.
 
 | File | Holds |
 |---|---|
-| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab, and `external` tabs are filtered out of the codec along with any selection naming one. An open that names a `line` also mints a fresh `revealNonce` on the tab — that is what makes a repeat jump to a position the tab already stores re-centre the editor instead of being swallowed as a no-op. An open naming no line keeps the stored position *and* its nonce, so re-focusing a tab never scrolls it. The nonce is never persisted. |
+| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`inheritDraftTabs`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab, and `external` tabs are filtered out of the codec along with any selection naming one. An open that names a `line` also mints a fresh `revealNonce` on the tab — that is what makes a repeat jump to a position the tab already stores re-centre the editor instead of being swallowed as a no-op. An open naming no line keeps the stored position *and* its nonce, so re-focusing a tab never scrolls it. The nonce is never persisted. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
 | `unifiedPanelTree.ts` | The navigator column's open and width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, panel collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
-| `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted. |
+| `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `inheritDraftPanelTabs`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted; inheritance is the non-revealing entry point. |
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
 | `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/mode/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — resource views on the left, the selected Search/Explorer mode on the right edge. |
 | `unifiedPanelNavigationHistory.ts` | Pure in-memory file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, and closed-tab pruning. |
@@ -304,8 +308,10 @@ Two rules keep the slot honest:
 
 - **A file that already has a visible tab is focused, never previewed.** That
   covers both a permanent tab (which must not be demoted) and the current
-  preview (which must not churn its buffer) — and both return the same state
-  reference when that tab is already active.
+  preview (which must not churn its buffer). An open with no line preserves the
+  existing cursor, scroll, and state reference when already active; an open with
+  a line updates the line/column and mints a fresh reveal nonce, including for a
+  repeated jump to the same line.
 - **Reuse destroys a buffer, so it is guarded like a close.** The shell asks
   `previewToReplace` first and, if the outgoing preview is dirty, queues the
   open behind the unsaved-edits prompt (`pendingPreviewOpen`); cancel drops the
