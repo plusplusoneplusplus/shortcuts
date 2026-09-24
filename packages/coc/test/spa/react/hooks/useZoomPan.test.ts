@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook, act, render, fireEvent } from '@testing-library/react';
-import { createElement, type ReactElement } from 'react';
+import { createElement, useEffect, useRef, type ReactElement } from 'react';
 import { useZoomPan } from '../../../../src/server/spa/client/react/hooks/ui/useZoomPan';
 
 const defaultOptions = { contentWidth: 400, contentHeight: 200 };
@@ -223,5 +223,88 @@ describe('useZoomPan wheel handling', () => {
         expect(getByTestId('label').textContent).toBe('100%');
         // Not prevented → the browser performs its native scroll of the overlay.
         expect(notPrevented).toBe(true);
+    });
+});
+
+/**
+ * Mirrors the SVG canvas: the content lives in a shadow root, so `event.target`
+ * is retargeted to the host and only `composedPath()` sees the real node.
+ */
+function ShadowHarness({ selectableSelector }: { selectableSelector?: string }): ReactElement {
+    const { containerRef, state, zoomLabel } = useZoomPan({ ...defaultOptions, selectableSelector });
+    const hostRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host || host.shadowRoot) return;
+        const root = host.attachShadow({ mode: 'open' });
+        root.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg">
+                <rect id="bg" width="100" height="100"></rect>
+                <text id="label">Repo selector</text>
+            </svg>
+            <div data-no-drag><span id="overlay">toolbar</span></div>
+        `;
+    }, []);
+
+    return createElement(
+        'div',
+        { ref: containerRef, 'data-testid': 'container' },
+        createElement('div', { ref: hostRef, 'data-testid': 'host' }),
+        createElement('span', { 'data-testid': 'label' }, zoomLabel),
+        createElement('span', { 'data-testid': 'tx' }, String(state.translateX)),
+    );
+}
+
+function shadowNode(host: HTMLElement, id: string): Element {
+    const node = host.shadowRoot?.getElementById(id);
+    if (!node) throw new Error(`missing shadow node #${id}`);
+    return node;
+}
+
+describe('useZoomPan text selection inside a shadow root', () => {
+    it('does NOT pan when a drag starts on selectable text, leaving the native selection alone', () => {
+        const { getByTestId } = render(createElement(ShadowHarness, { selectableSelector: 'text, tspan' }));
+        const text = shadowNode(getByTestId('host'), 'label');
+
+        const notPrevented = fireEvent.mouseDown(text, { button: 0, clientX: 10, clientY: 10, composed: true });
+        fireEvent.mouseMove(document, { clientX: 60, clientY: 40 });
+        fireEvent.mouseUp(document);
+
+        // Not prevented → the browser runs its own text-selection drag.
+        expect(notPrevented).toBe(true);
+        expect(getByTestId('tx').textContent).toBe('0');
+    });
+
+    it('still pans when the drag starts on non-text content inside the shadow root', () => {
+        const { getByTestId } = render(createElement(ShadowHarness, { selectableSelector: 'text, tspan' }));
+        const bg = shadowNode(getByTestId('host'), 'bg');
+
+        fireEvent.mouseDown(bg, { button: 0, clientX: 10, clientY: 10, composed: true });
+        fireEvent.mouseMove(document, { clientX: 60, clientY: 40 });
+        fireEvent.mouseUp(document);
+
+        expect(getByTestId('tx').textContent).toBe('50');
+    });
+
+    it('pans from text when no selectableSelector is configured (DAG/agent canvases)', () => {
+        const { getByTestId } = render(createElement(ShadowHarness, {}));
+        const text = shadowNode(getByTestId('host'), 'label');
+
+        fireEvent.mouseDown(text, { button: 0, clientX: 10, clientY: 10, composed: true });
+        fireEvent.mouseMove(document, { clientX: 60, clientY: 40 });
+        fireEvent.mouseUp(document);
+
+        expect(getByTestId('tx').textContent).toBe('50');
+    });
+
+    it('honors a [data-no-drag] overlay nested in the shadow root', () => {
+        const { getByTestId } = render(createElement(ShadowHarness, {}));
+        const overlay = shadowNode(getByTestId('host'), 'overlay');
+
+        const notPrevented = fireEvent.wheel(overlay, { deltaY: -100, clientX: 10, clientY: 10, composed: true });
+
+        expect(notPrevented).toBe(true);
+        expect(getByTestId('label').textContent).toBe('100%');
     });
 });

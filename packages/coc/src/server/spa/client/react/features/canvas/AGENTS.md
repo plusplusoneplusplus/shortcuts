@@ -78,6 +78,11 @@ component; do not grow `CanvasPanel.tsx` back.
   markdown pipeline (a Kusto result JSON can be 10k rows); extension canvases
   only do so to show raw JSON in a history view. SVG detection runs against the
   *displayed* content, so an older revision is classified on its own body.
+- **SVG text is selectable.** `SvgCanvasView` renders into a shadow root and
+  passes `selectableSelector: 'text, tspan, foreignObject'` to `useZoomPan`, so a
+  drag starting on a label becomes a native text selection instead of a pan. The
+  hook resolves the hit element through `composedPath()`; `event.target` is
+  retargeted to the shadow host and would hide both that check and `[data-no-drag]`.
 - **Header actions gate on canvas type, not just on flags.** Export entries key
   off `canvas.type`, and "New Kusto query" needs `kustoEnabled && kind.isKusto`
   — a feature flag alone would park it on every canvas. Creating a Kusto canvas
