@@ -35,10 +35,10 @@ describe('getDefaultEffortTiers', () => {
     it('returns the copilot defaults', () => {
         const defaults = getDefaultEffortTiers('copilot');
         expect(defaults).toEqual({
-            'very-low': { model: 'gpt-5.6-luna',      reasoningEffort: 'xhigh' },
-            low:    { model: 'gpt-5.6-terra',     reasoningEffort: 'xhigh' },
-            medium: { model: 'gpt-5.6-sol',       reasoningEffort: 'medium' },
-            high:   { model: 'gpt-6-astra',       reasoningEffort: 'medium' },
+            'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh' },
+            low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+            medium: { model: 'gpt-6-sol',     reasoningEffort: 'medium' },
+            high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium' },
         });
     });
 
@@ -85,7 +85,7 @@ describe('getDefaultEffortTiers', () => {
         a['very-low'].model = 'mutated-very-low';
         a.low.model = 'mutated';
         const b = getDefaultEffortTiers('copilot')!;
-        expect(b['very-low'].model).toBe('gpt-5.6-luna');
+        expect(b['very-low'].model).toBe('gpt-6-luna');
         expect(b.low.model).toBe('gpt-5.6-terra');
     });
 });
@@ -94,10 +94,10 @@ describe('mergeEffortTiersWithDefaults', () => {
     it('returns all four tiers as defaults when stored config is empty', () => {
         const merged = mergeEffortTiersWithDefaults('copilot', {});
         expect(merged).toEqual({
-            'very-low': { model: 'gpt-5.6-luna',      reasoningEffort: 'xhigh', source: 'default' },
-            low:    { model: 'gpt-5.6-terra',     reasoningEffort: 'xhigh', source: 'default' },
-            medium: { model: 'gpt-5.6-sol',       reasoningEffort: 'medium', source: 'default' },
-            high:   { model: 'gpt-6-astra',       reasoningEffort: 'medium', source: 'default' },
+            'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh', source: 'default' },
+            low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh', source: 'default' },
+            medium: { model: 'gpt-6-sol',     reasoningEffort: 'medium', source: 'default' },
+            high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium', source: 'default' },
         });
     });
 
