@@ -3,6 +3,9 @@ import { MarkdownView } from '../../shared/MarkdownView';
 import { sanitizeSvg } from '../../shared/svg/sanitizeSvg';
 import { useZoomPan } from '../../hooks/ui/useZoomPan';
 
+/** Nodes a drag should select rather than pan. */
+const SELECTABLE_SELECTOR = 'text, tspan, foreignObject';
+
 interface SvgDimensions {
     width: number;
     height: number;
@@ -39,6 +42,7 @@ export function SvgCanvasView({ source, sourceHtml }: SvgCanvasViewProps) {
     const { containerRef, state, svgTransform } = useZoomPan({
         contentWidth: dimensions.width,
         contentHeight: dimensions.height,
+        selectableSelector: SELECTABLE_SELECTOR,
     });
 
     useEffect(() => {
@@ -52,6 +56,7 @@ export function SvgCanvasView({ source, sourceHtml }: SvgCanvasViewProps) {
             :host { display: block; width: 100%; height: 100%; }
             .svg-canvas-content { width: max-content; min-width: 1px; transform-origin: 0 0; }
             svg { display: block; max-width: none; }
+            ${SELECTABLE_SELECTOR} { cursor: text; }
         `;
         const content = document.createElement('div');
         content.className = 'svg-canvas-content';

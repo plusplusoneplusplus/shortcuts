@@ -17,6 +17,12 @@ export interface UseZoomPanOptions {
     contentWidth: number;
     /** Intrinsic content height (for fit-to-view calculation). */
     contentHeight: number;
+    /**
+     * CSS selector for content the user should be able to select with the
+     * mouse (e.g. `'text, tspan'` in an SVG). A drag that starts on a match is
+     * left to the browser as a native text selection instead of panning.
+     */
+    selectableSelector?: string;
 }
 
 export interface ZoomPanState {
@@ -50,6 +56,17 @@ export interface UseZoomPanReturn {
     zoomLabel: string;
 }
 
+/**
+ * The deepest element the event actually hit. `event.target` is retargeted to
+ * the shadow host for anything inside a shadow root (the SVG canvas renders its
+ * content that way), which would hide `[data-no-drag]` opt-outs and inner nodes
+ * from `closest()`; `composedPath()[0]` pierces the boundary.
+ */
+function composedTarget(e: Event): HTMLElement | null {
+    const first = e.composedPath?.()[0] ?? e.target;
+    return first instanceof Element ? (first as HTMLElement) : null;
+}
+
 export function useZoomPan(options: UseZoomPanOptions): UseZoomPanReturn {
     const {
         minZoom = MIN_ZOOM,
@@ -57,9 +74,13 @@ export function useZoomPan(options: UseZoomPanOptions): UseZoomPanReturn {
         requireModifierKey = false,
         contentWidth,
         contentHeight,
+        selectableSelector,
     } = options;
 
     const containerRef = useRef<HTMLDivElement>(null);
+    // Live selector, read inside the listeners so changing it doesn't re-bind them.
+    const selectableRef = useRef(selectableSelector);
+    selectableRef.current = selectableSelector;
     const [state, setState] = useState<ZoomPanState>({
         scale: 1, translateX: 0, translateY: 0, isDragging: false,
     });
@@ -84,7 +105,7 @@ export function useZoomPan(options: UseZoomPanOptions): UseZoomPanReturn {
             // legends, etc.). They opt out with [data-no-drag] —
             // the same marker the pan-drag handler honors — so their own
             // content can scroll natively instead of zooming the canvas behind.
-            const target = e.target as HTMLElement | null;
+            const target = composedTarget(e);
             if (target?.closest('[data-no-drag]')) return;
             e.preventDefault();
             e.stopPropagation();
@@ -120,8 +141,11 @@ export function useZoomPan(options: UseZoomPanOptions): UseZoomPanReturn {
 
         const onMouseDown = (e: MouseEvent) => {
             if (e.button !== 0) return;
-            const target = e.target as HTMLElement;
-            if (target.closest('button, [data-no-drag]')) return;
+            const target = composedTarget(e);
+            if (target?.closest('button, [data-no-drag]')) return;
+            // Let the browser run its native text-selection drag instead of
+            // panning; `preventDefault` below would otherwise cancel it.
+            if (selectableRef.current && target?.closest(selectableRef.current)) return;
 
             dragRef.current = {
                 isDragging: true,
