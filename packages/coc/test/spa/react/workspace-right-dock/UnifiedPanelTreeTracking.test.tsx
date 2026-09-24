@@ -193,36 +193,102 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(activeTab.getAttribute('data-preview')).toBeNull();
     });
 
-    it('copies local absolute and canonical relative file paths', async () => {
+    it('copies and reveals a local file without changing its active tab', async () => {
         const writeText = vi.fn(async () => undefined);
+        const setTarget = vi.fn(() => true);
+        const selectMode = vi.fn();
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-        renderWithTree({ workspaceRootPath: '/repos/local' });
+        const { rerender } = renderWithTree({
+            dock: dockStub({ setTarget, selectMode }),
+            workspaceRootPath: '/repos/local',
+        });
         fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
 
         runTabAction('copy-path');
         expect(writeText).toHaveBeenLastCalledWith('/repos/local/src/app.ts');
         runTabAction('copy-relative-path');
         expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
+
+        writeUnifiedTreeState(WS, { open: false, width: 220 });
+        rerender(
+            <UnifiedRightPanel
+                workspaceId={WS}
+                dock={dockStub({ mode: 'search', target: MEMBER, setTarget, selectMode })}
+                workspaceRootPath="/repos/local"
+            />,
+        );
+        const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
+
+        runTabAction('reveal-in-explorer');
+
+        expect(setTarget).toHaveBeenCalledWith(WS);
+        expect(selectMode).toHaveBeenCalledWith('explorer');
+        expect(readUnifiedTreeState(WS).open).toBe(true);
+        rerender(
+            <UnifiedRightPanel
+                workspaceId={WS}
+                dock={dockStub({ target: WS, setTarget, selectMode })}
+                workspaceRootPath="/repos/local"
+            />,
+        );
+        expect(tracked()).toBe('src/app.ts');
+        expect(activeTab.getAttribute('aria-selected')).toBe('true');
     });
 
-    it('copies a remote clone path from that clone root', () => {
+    it('copies and reveals a remote-clone file without changing its active tab', () => {
         const writeText = vi.fn(async () => undefined);
+        const setTarget = vi.fn(() => true);
+        const selectMode = vi.fn();
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-        renderWithTree({ routingRef: 'remote:server-1:ws-1', workspaceRootPath: '/remote/repo' });
+        const { rerender } = renderWithTree({
+            dock: dockStub({ setTarget, selectMode }),
+            routingRef: 'remote:server-1:ws-1',
+            workspaceRootPath: '/remote/repo',
+        });
         fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
 
         runTabAction('copy-path');
+        expect(writeText).toHaveBeenLastCalledWith('/remote/repo/src/app.ts');
+        runTabAction('copy-relative-path');
+        expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
 
-        expect(writeText).toHaveBeenCalledWith('/remote/repo/src/app.ts');
+        writeUnifiedTreeState(WS, { open: false, width: 220 });
+        rerender(
+            <UnifiedRightPanel
+                workspaceId={WS}
+                routingRef="remote:server-1:ws-1"
+                dock={dockStub({ mode: 'search', target: MEMBER, setTarget, selectMode })}
+                workspaceRootPath="/remote/repo"
+            />,
+        );
+        const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
+
+        runTabAction('reveal-in-explorer');
+
+        expect(setTarget).toHaveBeenCalledWith(WS);
+        expect(selectMode).toHaveBeenCalledWith('explorer');
+        expect(readUnifiedTreeState(WS).open).toBe(true);
+        rerender(
+            <UnifiedRightPanel
+                workspaceId={WS}
+                routingRef="remote:server-1:ws-1"
+                dock={dockStub({ target: WS, setTarget, selectMode })}
+                workspaceRootPath="/remote/repo"
+            />,
+        );
+        expect(tracked()).toBe('src/app.ts');
+        expect(activeTab.getAttribute('aria-selected')).toBe('true');
     });
 
-    it('routes Reveal in Explorer to a repo-group file owner and leaves its tab active', () => {
+    it('copies and reveals a repo-group-owned file without changing its active tab', () => {
+        const writeText = vi.fn(async () => undefined);
         const setTarget = vi.fn(() => true);
         const selectMode = vi.fn();
         const targets = [
             { workspaceId: WS, label: 'group' },
             { workspaceId: MEMBER, label: 'api', rootPath: '/repos/api' },
         ];
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
         writeUnifiedTreeState(WS, { open: true, width: 220 });
         const { rerender } = renderPanel({
             dock: dockStub({
@@ -234,6 +300,12 @@ describe('unified panel tree tracking (AC-06)', () => {
             targets,
         });
         fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+
+        runTabAction('copy-path');
+        expect(writeText).toHaveBeenLastCalledWith('/repos/api/src/app.ts');
+        runTabAction('copy-relative-path');
+        expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
+
         writeUnifiedTreeState(WS, { open: false, width: 220 });
         rerender(
             <UnifiedRightPanel
@@ -255,6 +327,19 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(setTarget).toHaveBeenCalledWith(MEMBER);
         expect(selectMode).toHaveBeenCalledWith('explorer');
         expect(readUnifiedTreeState(WS).open).toBe(true);
+        rerender(
+            <UnifiedRightPanel
+                workspaceId={WS}
+                dock={dockStub({
+                    target: MEMBER,
+                    setTarget,
+                    selectMode,
+                    targets,
+                })}
+                targets={targets}
+            />,
+        );
+        expect(tracked()).toBe('src/app.ts');
         expect(activeTab.getAttribute('aria-selected')).toBe('true');
     });
 
