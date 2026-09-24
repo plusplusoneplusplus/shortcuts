@@ -76,6 +76,13 @@ describe('filterEntries', () => {
         expect(filterFn(entries, 'helper.ts', childrenMap, true).map(e => e.name)).toEqual(['src']);
     });
 
+    it('keeps a directory whose own name matches even without matching children', () => {
+        const noMatches = new Map<string, TreeEntry[]>([['src', [
+            { name: 'index.ts', type: 'file', path: 'src/index.ts' },
+        ]]]);
+        expect(filterFn(entries, 'src', noMatches, true).map(e => e.name)).toEqual(['src']);
+    });
+
     it('removes files that do not match', () => {
         const result = filterFn(entries, 'package', childrenMap);
         expect(result.some(e => e.name === 'README.md')).toBe(false);
