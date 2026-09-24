@@ -97,6 +97,7 @@ import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/featu
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import {
     clearUnifiedTreeState,
+    readUnifiedTreeState,
     writeUnifiedTreeState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
@@ -111,7 +112,7 @@ function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDo
         mode: 'explorer',
         selectMode: vi.fn(),
         target: WS,
-        setTarget: vi.fn(),
+        setTarget: vi.fn(() => true),
         targets: [],
         width: 900,
         maxWidth: 1200,
@@ -137,6 +138,12 @@ function tracked(): string | null {
 function openViaMenu(testId: string) {
     fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
     fireEvent.click(screen.getByTestId(testId));
+}
+
+function runTabAction(action: string) {
+    const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
+    fireEvent.contextMenu(activeTab, { clientX: 20, clientY: 30 });
+    fireEvent.click(screen.getByTestId(`unified-panel-tab-menu-${action}`));
 }
 
 describe('unified panel tree tracking (AC-06)', () => {
@@ -172,6 +179,83 @@ describe('unified panel tree tracking (AC-06)', () => {
         // with the active tab, not with the tab count.
         fireEvent.click(screen.getByTestId('mock-explorer-open-lib'));
         expect(tracked()).toBe('src/lib/util.ts');
+    });
+
+    it('promotes a preview in place from Keep Open', () => {
+        renderWithTree();
+        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
+        expect(activeTab.getAttribute('data-preview')).toBe('true');
+
+        runTabAction('keep-open');
+
+        expect(screen.getAllByRole('tab')).toHaveLength(1);
+        expect(activeTab.getAttribute('data-preview')).toBeNull();
+    });
+
+    it('copies local absolute and canonical relative file paths', async () => {
+        const writeText = vi.fn(async () => undefined);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        renderWithTree({ workspaceRootPath: '/repos/local' });
+        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+
+        runTabAction('copy-path');
+        expect(writeText).toHaveBeenLastCalledWith('/repos/local/src/app.ts');
+        runTabAction('copy-relative-path');
+        expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
+    });
+
+    it('copies a remote clone path from that clone root', () => {
+        const writeText = vi.fn(async () => undefined);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        renderWithTree({ routingRef: 'remote:server-1:ws-1', workspaceRootPath: '/remote/repo' });
+        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+
+        runTabAction('copy-path');
+
+        expect(writeText).toHaveBeenCalledWith('/remote/repo/src/app.ts');
+    });
+
+    it('routes Reveal in Explorer to a repo-group file owner and leaves its tab active', () => {
+        const setTarget = vi.fn(() => true);
+        const selectMode = vi.fn();
+        const targets = [
+            { workspaceId: WS, label: 'group' },
+            { workspaceId: MEMBER, label: 'api', rootPath: '/repos/api' },
+        ];
+        writeUnifiedTreeState(WS, { open: true, width: 220 });
+        const { rerender } = renderPanel({
+            dock: dockStub({
+                target: MEMBER,
+                setTarget,
+                selectMode,
+                targets,
+            }),
+            targets,
+        });
+        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        writeUnifiedTreeState(WS, { open: false, width: 220 });
+        rerender(
+            <UnifiedRightPanel
+                workspaceId={WS}
+                dock={dockStub({
+                    mode: 'search',
+                    target: WS,
+                    setTarget,
+                    selectMode,
+                    targets,
+                })}
+                targets={targets}
+            />,
+        );
+        const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
+
+        runTabAction('reveal-in-explorer');
+
+        expect(setTarget).toHaveBeenCalledWith(MEMBER);
+        expect(selectMode).toHaveBeenCalledWith('explorer');
+        expect(readUnifiedTreeState(WS).open).toBe(true);
+        expect(activeTab.getAttribute('aria-selected')).toBe('true');
     });
 
     it('stops tracking for a non-file tab, so the tree keeps the last highlight', () => {

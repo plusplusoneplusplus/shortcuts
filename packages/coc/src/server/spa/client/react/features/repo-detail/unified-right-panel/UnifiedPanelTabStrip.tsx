@@ -26,9 +26,15 @@
  *    no matter how many tabs are open.
  */
 
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
 import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
+import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
+import {
+    unifiedPanelTabMenuItems,
+    type UnifiedPanelFileActionAvailability,
+    type UnifiedPanelTabMenuAction,
+} from './unifiedPanelTabMenuModel';
 
 /**
  * The tooltip a tab shows on hover: the full label, its repo if any, and — for
@@ -106,6 +112,10 @@ export interface UnifiedPanelTabStripProps {
      * strip does not have to check.
      */
     onPromote?: (id: string) => void;
+    /** Resolve file-only command availability for a tab. */
+    fileActionAvailability?: (tab: UnifiedPanelTab) => UnifiedPanelFileActionAvailability;
+    /** Context-menu command selected for a tab. */
+    onMenuAction?: (action: UnifiedPanelTabMenuAction, tabId: string) => void;
     /** The trailing "+" — opens the searchable resource menu (AC-03). */
     onOpenMenu?: () => void;
     /**
@@ -127,12 +137,15 @@ export function UnifiedPanelTabStrip({
     onClose,
     onMove,
     onPromote,
+    fileActionAvailability,
+    onMenuAction,
     onOpenMenu,
     trailing,
     className,
 }: UnifiedPanelTabStripProps) {
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
     const draggingId = useRef<string | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
 
     // Keep the active tab visible: it is routinely activated from far outside
     // the strip — a chat source link, a canvas event, a restored selection —
@@ -141,6 +154,16 @@ export function UnifiedPanelTabStrip({
         if (activeId === null) return;
         tabRefs.current.get(activeId)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     }, [activeId, tabs]);
+
+    useEffect(() => {
+        if (contextMenu && !tabs.some(tab => tab.id === contextMenu.tabId)) setContextMenu(null);
+    }, [contextMenu, tabs]);
+
+    const dismissContextMenu = useCallback(() => {
+        const originId = contextMenu?.tabId;
+        setContextMenu(null);
+        if (originId) queueMicrotask(() => tabRefs.current.get(originId)?.focus());
+    }, [contextMenu?.tabId]);
 
     /** The contiguous run of tabs sharing `tab`'s scope — its own section. */
     const sectionOf = (tab: UnifiedPanelTab) => {
@@ -163,6 +186,16 @@ export function UnifiedPanelTabStrip({
 
     const onTabKeyDown = (event: ReactKeyboardEvent, index: number) => {
         const tab = tabs[index];
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+            event.preventDefault();
+            const rect = tabRefs.current.get(tab.id)?.getBoundingClientRect();
+            setContextMenu({
+                tabId: tab.id,
+                x: rect?.left ?? 0,
+                y: rect?.bottom ?? 0,
+            });
+            return;
+        }
         if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
             event.preventDefault();
             shift(tab, event.key === 'ArrowLeft' ? -1 : 1);
@@ -240,6 +273,10 @@ export function UnifiedPanelTabStrip({
                                 if (event.button !== 1) return;
                                 event.preventDefault();
                                 onClose(tab.id);
+                            }}
+                            onContextMenu={event => {
+                                event.preventDefault();
+                                setContextMenu({ tabId: tab.id, x: event.clientX, y: event.clientY });
                             }}
                             onKeyDown={event => onTabKeyDown(event, index)}
                             onDragStart={event => {
@@ -353,6 +390,28 @@ export function UnifiedPanelTabStrip({
             )}
 
             {trailing}
+            {contextMenu && (() => {
+                const tab = tabs.find(candidate => candidate.id === contextMenu.tabId);
+                if (!tab) return null;
+                const items = unifiedPanelTabMenuItems(
+                    tab,
+                    tabs,
+                    dirtyIds ?? new Set<string>(),
+                    fileActionAvailability?.(tab),
+                );
+                return (
+                    <UnifiedPanelTabContextMenu
+                        x={contextMenu.x}
+                        y={contextMenu.y}
+                        items={items}
+                        onDismiss={dismissContextMenu}
+                        onAction={action => {
+                            dismissContextMenu();
+                            onMenuAction?.(action, tab.id);
+                        }}
+                    />
+                );
+            })()}
         </div>
     );
 }

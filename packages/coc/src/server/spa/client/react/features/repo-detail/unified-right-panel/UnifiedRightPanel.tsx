@@ -138,6 +138,14 @@ import {
     hasWorkspaceRouteForBaseUrl,
 } from '../../../repos/cloneRegistry';
 import { routingRefForPanelOwner } from './unifiedPanelOwnerRouting';
+import { copyToClipboard } from '../../../utils/format';
+import {
+    unifiedPanelAbsoluteFilePath,
+    unifiedPanelBulkCloseTargets,
+    unifiedPanelFileActionAvailability,
+    unifiedPanelRelativeFilePath,
+    type UnifiedPanelTabMenuAction,
+} from './unifiedPanelTabMenuModel';
 
 export interface UnifiedRightPanelProps {
     /**
@@ -154,6 +162,8 @@ export interface UnifiedRightPanelProps {
     chatId?: string | null;
     /** Open/width/resize + the target workspace new resources open against. */
     dock: WorkspaceDockController;
+    /** Absolute root path on the scope's host, when the scope is a concrete repo. */
+    workspaceRootPath?: string;
     /** Target options for repo groups; the "+" menu picks among them. */
     targets?: readonly DockTarget[];
     /** Group-owner context for group-wide Quick Open. */
@@ -170,7 +180,15 @@ function fileNameOf(path: string): string {
     return path.includes('/') ? path.slice(path.lastIndexOf('/') + 1) : path;
 }
 
-export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock, targets, repoGroup }: UnifiedRightPanelProps) {
+export function UnifiedRightPanel({
+    workspaceId,
+    routingRef,
+    chatId = null,
+    dock,
+    workspaceRootPath,
+    targets,
+    repoGroup,
+}: UnifiedRightPanelProps) {
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const {
         state, tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
@@ -212,6 +230,14 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
     const targetRoutingRef = useMemo(
         () => routingRefForPanelOwner(routingRef, target),
         [routingRef, target],
+    );
+    const rootPathForTab = useCallback(
+        (tab: (typeof tabs)[number]) => (
+            tab.ownerWorkspaceId === workspaceId
+                ? workspaceRootPath
+                : targetOptions.find(option => option.workspaceId === tab.ownerWorkspaceId)?.rootPath
+        ),
+        [targetOptions, workspaceId, workspaceRootPath],
     );
     const definitionPreviewOwners = useMemo(() => (
         repoGroup
@@ -654,6 +680,45 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
         }
         closeTab(id);
     }, [tabs, terminalSessions, dirtyIds, closeTab]);
+
+    const handleTabMenuAction = useCallback((action: UnifiedPanelTabMenuAction, tabId: string) => {
+        const tab = tabs.find(candidate => candidate.id === tabId);
+        if (!tab) return;
+        if (action === 'keep-open') {
+            promote(tabId);
+            return;
+        }
+        if (action === 'close') {
+            requestClose(tabId);
+            return;
+        }
+        if (
+            action === 'close-others'
+            || action === 'close-right'
+            || action === 'close-saved'
+            || action === 'close-all'
+        ) {
+            for (const id of unifiedPanelBulkCloseTargets(tabs, tabId, action, dirtyIds)) requestClose(id);
+            return;
+        }
+        if (tab.kind !== 'file') return;
+        if (action === 'copy-path') {
+            const path = unifiedPanelAbsoluteFilePath(tab, rootPathForTab(tab));
+            if (path) void copyToClipboard(path).catch(err => console.error('Failed to copy file path:', err));
+            return;
+        }
+        if (action === 'copy-relative-path') {
+            const path = unifiedPanelRelativeFilePath(tab);
+            if (path) void copyToClipboard(path).catch(err => console.error('Failed to copy relative file path:', err));
+            return;
+        }
+        if (action === 'reveal-in-explorer') {
+            const path = unifiedPanelRelativeFilePath(tab);
+            if (!path || !dock.setTarget(tab.ownerWorkspaceId)) return;
+            if (mode !== 'explorer') dock.selectMode('explorer');
+            tree.setOpen(true);
+        }
+    }, [dirtyIds, dock, mode, promote, requestClose, rootPathForTab, tabs, tree]);
 
     // A file picked in the tree opens against the dock's target, exactly as an
     // Explorer navigator tab's selection does — same descriptor builder, so the
@@ -1262,6 +1327,8 @@ export function UnifiedRightPanel({ workspaceId, routingRef, chatId = null, dock
                     onClose={requestClose}
                     onMove={move}
                     onPromote={promote}
+                    fileActionAvailability={tab => unifiedPanelFileActionAvailability(tab, rootPathForTab(tab))}
+                    onMenuAction={handleTabMenuAction}
                     onOpenMenu={toggleMenu}
                     trailing={toolbar === null ? navigatorControls('strip') : undefined}
                 />

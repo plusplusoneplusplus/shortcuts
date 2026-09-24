@@ -151,8 +151,8 @@ describe('repoGroupDockTargets', () => {
     it('puts the group root first, deprioritized, then the members', () => {
         expect(repoGroupDockTargets(GROUP_ID, MEMBERS)).toEqual([
             { workspaceId: GROUP_ID, label: REPO_GROUP_ROOT_TARGET_LABEL, deprioritized: true },
-            { workspaceId: 'r1', label: 'shortcuts', disabled: undefined },
-            { workspaceId: 'r2', label: 'docs', disabled: undefined },
+            { workspaceId: 'r1', label: 'shortcuts', rootPath: '/r/r1', disabled: undefined },
+            { workspaceId: 'r2', label: 'docs', rootPath: '/r/r2', disabled: undefined },
         ]);
     });
 

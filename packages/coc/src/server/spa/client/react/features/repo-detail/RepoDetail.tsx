@@ -922,6 +922,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     routingRef={explorerRoutingRef}
                     chatId={panelChatId}
                     dock={dock}
+                    workspaceRootPath={ws.rootPath}
                 />
             )}
             </div>

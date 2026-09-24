@@ -55,6 +55,7 @@ function renderStrip(overrides: Partial<React.ComponentProps<typeof UnifiedPanel
         onActivate: vi.fn(),
         onClose: vi.fn(),
         onMove: vi.fn(),
+        onMenuAction: vi.fn(),
         ...overrides,
     };
     render(<UnifiedPanelTabStrip {...props} />);
@@ -136,6 +137,97 @@ describe('UnifiedPanelTabStrip', () => {
         }
         expect(props.onClose).not.toHaveBeenCalled();
         expect(props.onActivate).not.toHaveBeenCalled();
+    });
+
+    describe('context menu', () => {
+        it('shows common commands for every kind and file commands only for files', () => {
+            const tabs = tabsOfEveryKind();
+            const props = renderStrip({ tabs, activeId: tabs[0].id });
+
+            fireEvent.contextMenu(tabNode(tabs[0]), { clientX: 20, clientY: 30 });
+            expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+                'Close', 'Close Others', 'Close to the Right', 'Close Saved', 'Close All',
+            ]);
+            fireEvent.mouseDown(document.body);
+
+            const file = tabs.find(tab => tab.kind === 'file')!;
+            fireEvent.contextMenu(tabNode(file), { clientX: 20, clientY: 30 });
+            expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+                'Close', 'Close Others', 'Close to the Right', 'Close Saved', 'Close All',
+                'Copy Path', 'Copy Relative Path', 'Reveal in Explorer',
+            ]);
+            expect(props.onActivate).not.toHaveBeenCalled();
+        });
+
+        it('offers Keep Open for a preview and dispatches it in place', () => {
+            const tabs = sampleTabs().map((tab, index) => index === 1 ? { ...tab, preview: true as const } : tab);
+            const props = renderStrip({ tabs, activeId: tabs[1].id });
+
+            fireEvent.contextMenu(tabNode(tabs[1]), { clientX: 20, clientY: 30 });
+            fireEvent.click(screen.getByTestId('unified-panel-tab-menu-keep-open'));
+
+            expect(props.onMenuAction).toHaveBeenCalledWith('keep-open', tabs[1].id);
+            expect(props.onActivate).not.toHaveBeenCalled();
+        });
+
+        it('opens from the keyboard, skips disabled items, and activates with Enter', () => {
+            const tabs = sampleTabs();
+            const props = renderStrip({ tabs, activeId: tabs[0].id });
+            const origin = tabNode(tabs[0]);
+            origin.focus();
+
+            fireEvent.keyDown(origin, { key: 'F10', shiftKey: true });
+            expect(screen.getByTestId('unified-panel-tab-menu')).toBeTruthy();
+            expect(document.activeElement).toBe(screen.getByTestId('unified-panel-tab-menu-close'));
+
+            fireEvent.keyDown(screen.getByTestId('unified-panel-tab-menu'), { key: 'ArrowDown' });
+            expect(document.activeElement).toBe(screen.getByTestId('unified-panel-tab-menu-close-others'));
+            fireEvent.keyDown(screen.getByTestId('unified-panel-tab-menu'), { key: 'Enter' });
+            expect(props.onMenuAction).toHaveBeenCalledWith('close-others', tabs[0].id);
+        });
+
+        it('keeps the menu inside the viewport', () => {
+            const originalRect = HTMLElement.prototype.getBoundingClientRect;
+            const originalWidth = window.innerWidth;
+            const originalHeight = window.innerHeight;
+            Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
+            Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+            HTMLElement.prototype.getBoundingClientRect = () => ({
+                x: 0, y: 0, top: 0, left: 0, right: 200, bottom: 300, width: 200, height: 300,
+                toJSON: () => ({}),
+            });
+            try {
+                const tabs = sampleTabs();
+                renderStrip({ tabs, activeId: tabs[0].id });
+                fireEvent.contextMenu(tabNode(tabs[0]), { clientX: 790, clientY: 590 });
+                const menu = screen.getByTestId('unified-panel-tab-menu');
+                expect(menu.style.left).toBe('596px');
+                expect(menu.style.top).toBe('296px');
+            } finally {
+                HTMLElement.prototype.getBoundingClientRect = originalRect;
+                Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+                Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalHeight });
+            }
+        });
+
+        it('dismisses on Escape and outside click and restores focus to the origin', async () => {
+            const tabs = sampleTabs();
+            renderStrip({ tabs, activeId: tabs[0].id });
+            const origin = tabNode(tabs[0]);
+            origin.focus();
+
+            fireEvent.contextMenu(origin, { clientX: 20, clientY: 30 });
+            fireEvent.keyDown(document, { key: 'Escape' });
+            await Promise.resolve();
+            expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+            expect(document.activeElement).toBe(origin);
+
+            fireEvent.contextMenu(origin, { clientX: 20, clientY: 30 });
+            fireEvent.mouseDown(document.body);
+            await Promise.resolve();
+            expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+            expect(document.activeElement).toBe(origin);
+        });
     });
 
     it('walks tabs with the arrow keys, wrapping at both ends', () => {
