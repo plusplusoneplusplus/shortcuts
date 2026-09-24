@@ -10,11 +10,12 @@
  *
  * @vitest-environment jsdom
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 
 import {
     focusUnifiedPanelTab,
+    inheritDraftPanelTabs,
     openUnifiedPanelPreviewTab,
     openUnifiedPanelTab,
     unifiedTabIdFor,
@@ -28,6 +29,7 @@ import { useUnifiedPanelTabs } from '../../../../src/server/spa/client/react/fea
 import {
     closeTab,
     unifiedTabId,
+    unifiedPanelStorageKey,
     WORKSPACE_SCOPE_KEY,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import {
@@ -239,5 +241,42 @@ describe('unifiedPanelOpen', () => {
         const state = readUnifiedPanelState(WS);
         expect(state.chatTabs[WORKSPACE_SCOPE_KEY]?.map(tab => tab.id)).toEqual([id]);
         expect(state.activeByScope[WORKSPACE_SCOPE_KEY]).toBe(id);
+    });
+
+    it('persists inherited draft tabs, wakes subscribers once, and does not reveal the dock', () => {
+        openUnifiedPanelTab(WS, fileInput('src/a.ts', null), { reveal: false });
+        setDockOpen(WS, false);
+        let renders = 0;
+        function RenderProbe() {
+            const { tabs } = useUnifiedPanelTabs(WS, CHAT);
+            renders += 1;
+            return <span data-testid="inherited-labels">{tabs.map(tab => tab.label).join(',')}</span>;
+        }
+        render(<RenderProbe />);
+        const before = renders;
+
+        act(() => { inheritDraftPanelTabs(WS, CHAT); });
+
+        expect(renders).toBe(before + 1);
+        expect(screen.getByTestId('inherited-labels')).toHaveTextContent('a.ts');
+        expect(localStorage.getItem(unifiedPanelStorageKey(WS))).toContain(CHAT);
+        expect(isDockOpen(WS)).toBe(false);
+    });
+
+    it('does not write or re-render when there are no draft tabs to inherit', () => {
+        let renders = 0;
+        function RenderProbe() {
+            useUnifiedPanelTabs(WS, CHAT);
+            renders += 1;
+            return null;
+        }
+        render(<RenderProbe />);
+        const before = renders;
+        const setItem = vi.spyOn(Storage.prototype, 'setItem');
+
+        act(() => { inheritDraftPanelTabs(WS, CHAT); });
+
+        expect(setItem).not.toHaveBeenCalled();
+        expect(renders).toBe(before);
     });
 });

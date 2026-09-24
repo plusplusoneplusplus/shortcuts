@@ -8,6 +8,7 @@ import {
     activeTabId,
     closeTab,
     findTab,
+    inheritDraftTabs,
     moveTab,
     openPreviewTab,
     openTab,
@@ -96,6 +97,88 @@ describe('unifiedPanelTabsModel — ownership', () => {
         let state = baseState();
         state = open(state, { kind: 'note', resourceId: 'notes/plan.md', label: 'plan.md' });
         expect(visibleTabs(state, CHAT_1).map(t => t.kind)).toEqual(['terminal', 'notes', 'note', 'file']);
+    });
+});
+
+describe('unifiedPanelTabsModel — draft inheritance', () => {
+    function draftState(): UnifiedPanelState {
+        let state = open(EMPTY_UNIFIED_PANEL, { kind: 'terminal', resourceId: 'sess-1', label: 'Terminal' });
+        state = open(state, { kind: 'file', resourceId: 'src/a.ts', label: 'a.ts', line: 12, column: 3 });
+        state = open(state, { kind: 'canvas', resourceId: 'canvas-1', label: 'Canvas' });
+        state = open(state, { kind: 'diff', resourceId: 'diff-1', label: 'Changes' });
+        return openPreviewTab(state, {
+            ownerWorkspaceId: WS,
+            chatId: null,
+            resourceId: 'src/preview.ts',
+            label: 'preview.ts',
+            line: 20,
+        });
+    }
+
+    it('copies draft tabs in strip order with rebuilt ids and leaves the originals untouched', () => {
+        const state = draftState();
+        const originalDraft = state.chatTabs[WORKSPACE_SCOPE_KEY]!;
+        const originalWorkspaceTabs = state.workspaceTabs;
+
+        const next = inheritDraftTabs(state, CHAT_1);
+        const copies = next.chatTabs[CHAT_1]!;
+
+        expect(copies.map(tab => tab.label)).toEqual(originalDraft.map(tab => tab.label));
+        expect(copies.map(tab => tab.kind)).toEqual(['file', 'canvas', 'diff', 'file']);
+        expect(copies.map(tab => tab.id)).toEqual(copies.map(tab => unifiedTabId({
+            kind: tab.kind,
+            ownerWorkspaceId: tab.ownerWorkspaceId,
+            ownerRoutingRef: tab.ownerRoutingRef,
+            chatId: CHAT_1,
+            resourceId: tab.resourceId,
+        })));
+        expect(copies.every((tab, index) => tab.id !== originalDraft[index].id)).toBe(true);
+        expect(next.chatTabs[WORKSPACE_SCOPE_KEY]).toBe(originalDraft);
+        expect(next.workspaceTabs).toBe(originalWorkspaceTabs);
+        expect(visibleTabs(next, CHAT_1).map(tab => tab.label))
+            .toEqual(visibleTabs(next, null).map(tab => tab.label));
+    });
+
+    it('maps a draft active tab to its copy and preserves preview without replaying reveal', () => {
+        const state = draftState();
+        const sourceActive = activeTab(state, null)!;
+        expect(sourceActive.preview).toBe(true);
+        expect(sourceActive.revealNonce).toBeDefined();
+
+        const next = inheritDraftTabs(state, CHAT_1);
+        const inherited = activeTab(next, CHAT_1)!;
+
+        expect(inherited.resourceId).toBe(sourceActive.resourceId);
+        expect(inherited.id).not.toBe(sourceActive.id);
+        expect(inherited.preview).toBe(true);
+        expect(inherited.revealNonce).toBeUndefined();
+    });
+
+    it('keeps a workspace tab active and falls forward when no draft selection is remembered', () => {
+        const state = draftState();
+        const terminalId = state.workspaceTabs[0].id;
+        const workspaceActive = activateTab(state, null, terminalId);
+        expect(activeTabId(inheritDraftTabs(workspaceActive, CHAT_1), CHAT_1)).toBe(terminalId);
+
+        const { [WORKSPACE_SCOPE_KEY]: _draftActive, ...activeByScope } = state.activeByScope;
+        const withoutDraftActive = { ...state, activeByScope };
+        const inherited = inheritDraftTabs(withoutDraftActive, CHAT_1);
+        expect(inherited.activeByScope[CHAT_1]).toBeUndefined();
+        expect(activeTabId(inherited, CHAT_1)).toBe(terminalId);
+    });
+
+    it('returns the identical state for empty drafts, populated targets, and the workspace scope key', () => {
+        expect(inheritDraftTabs(EMPTY_UNIFIED_PANEL, CHAT_1)).toBe(EMPTY_UNIFIED_PANEL);
+
+        const draft = draftState();
+        const populated = open(draft, {
+            kind: 'file',
+            resourceId: 'src/existing.ts',
+            label: 'existing.ts',
+            chatId: CHAT_1,
+        });
+        expect(inheritDraftTabs(populated, CHAT_1)).toBe(populated);
+        expect(inheritDraftTabs(draft, WORKSPACE_SCOPE_KEY)).toBe(draft);
     });
 });
 

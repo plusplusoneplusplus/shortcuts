@@ -10,7 +10,7 @@
  * They share one thing — they know a workspace, a chat, and a descriptor, and
  * they want it shown. That is this module.
  *
- * Three properties the entry points depend on:
+ * Three properties the opening entry points depend on:
  *
  *  - **It works with no panel mounted.** State goes straight through
  *    `unifiedPanelStore`, so a tab opened while the dock is collapsed — or
@@ -22,12 +22,16 @@
  *    whichever chat happens to be selected when an async operation lands. Both
  *    travel in the descriptor, so a late-arriving response files its tab where
  *    it belongs instead of following the user's current selection.
+ *
+ * `inheritDraftPanelTabs` is the deliberate exception: it persists copied tabs
+ * without revealing the dock, so submitting a collapsed draft keeps it collapsed.
  */
 
 import { openWorkspaceDock } from '../WorkspaceDockToggle';
 import { readUnifiedPanelState, writeUnifiedPanelState } from './unifiedPanelStore';
 import {
     activateTab,
+    inheritDraftTabs,
     openPreviewTab,
     openTab,
     unifiedTabId,
@@ -35,6 +39,11 @@ import {
     type OpenUnifiedPreviewTabInput,
     type UnifiedPanelState,
 } from './unifiedPanelTabsModel';
+
+/** Copy the no-chat draft tab set into a newly created chat without revealing the dock. */
+export function inheritDraftPanelTabs(workspaceId: string, chatId: string): void {
+    updateUnifiedPanelState(workspaceId, prev => inheritDraftTabs(prev, chatId));
+}
 
 export interface OpenUnifiedPanelTabOptions {
     /**

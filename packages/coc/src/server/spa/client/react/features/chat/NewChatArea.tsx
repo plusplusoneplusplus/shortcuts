@@ -105,6 +105,8 @@ import {
 } from './sessionContextDrag';
 import { drainNewChatSeedContext, subscribeNewChatSeedContext } from './newChatSeedContext';
 import { useContainerWidth } from './hooks/useContainerWidth';
+import { useUnifiedPanelHost } from '../repo-detail/unified-right-panel/unifiedPanelHost';
+import { inheritDraftPanelTabs } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
@@ -264,6 +266,7 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
     const { updateOnboarding } = useOnboardingPreferences();
     // AC-07: enqueue the new chat onto the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
+    const panelHost = useUnifiedPanelHost();
 
     function getSelectedWorkspaceRoot(): string | undefined {
         const ws = appState.workspaces?.find((w: any) => w.id === workspaceId);
@@ -299,7 +302,11 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
 
     async function handleSubmitted(processId: string | null, executionWorkspaceId?: string) {
         if (processId) {
-            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId: executionWorkspaceId ?? workspaceId });
+            const repoId = executionWorkspaceId ?? workspaceId;
+            if (panelHost && panelHost.chatId === null && panelHost.workspaceId === repoId) {
+                inheritDraftPanelTabs(panelHost.workspaceId, processId);
+            }
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: processId, repoId });
         }
         if (!appState.onboardingProgress?.hasUsedChat) {
             await updateOnboarding({ hasUsedChat: true }).catch(() => {});

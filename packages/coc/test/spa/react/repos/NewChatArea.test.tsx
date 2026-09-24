@@ -8,8 +8,9 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSentinelEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockDefaultChatStyle, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockInheritDraftPanelTabs, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSentinelEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockDefaultChatStyle, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
+    mockInheritDraftPanelTabs: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
         onboardingProgress: { hasUsedChat: false },
@@ -72,6 +73,10 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueue
             { id: 'claude', label: 'Claude', enabled: false, available: false, reason: 'Claude Code not installed' },
         ],
     },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', () => ({
+    inheritDraftPanelTabs: mockInheritDraftPanelTabs,
 }));
 
 const OriginalFileReader = globalThis.FileReader;
@@ -283,6 +288,7 @@ import {
     resetCloneRegistryForTests,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { __resetChatStyleSelectorFlagCache } from '../../../../src/server/spa/client/react/hooks/feature-flags/useChatStyleSelectorEnabled';
+import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 
 function makeCommitPayload(overrides: Partial<GitCommitContextDragPayload> = {}): GitCommitContextDragPayload {
     return {
@@ -686,6 +692,63 @@ describe('NewChatArea', () => {
             id: 'queue_new-task-42',
             repoId: 'ws-1',
         });
+        expect(mockInheritDraftPanelTabs).not.toHaveBeenCalled();
+    });
+
+    it('inherits draft panel tabs before selecting a new chat in the matching host scope', async () => {
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'new-task-42' } });
+        render(
+            <UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: null }}>
+                <NewChatArea workspaceId="ws-1" />
+            </UnifiedPanelHostProvider>,
+        );
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Hello world' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockInheritDraftPanelTabs).toHaveBeenCalledWith('ws-1', 'queue_new-task-42');
+        expect(mockInheritDraftPanelTabs.mock.invocationCallOrder[0])
+            .toBeLessThan(mockQueueDispatch.mock.invocationCallOrder[0]);
+    });
+
+    it('does not inherit draft panel tabs when the host belongs to another scope', async () => {
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'new-task-42' } });
+        render(
+            <UnifiedPanelHostProvider host={{ workspaceId: 'ws-other', chatId: null }}>
+                <NewChatArea workspaceId="ws-1" />
+            </UnifiedPanelHostProvider>,
+        );
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Hello world' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockInheritDraftPanelTabs).not.toHaveBeenCalled();
+        expect(mockQueueDispatch).toHaveBeenCalledWith({
+            type: 'SELECT_QUEUE_TASK',
+            id: 'queue_new-task-42',
+            repoId: 'ws-1',
+        });
+    });
+
+    it('does not inherit draft panel tabs from a host already showing a chat', async () => {
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'new-task-42' } });
+        render(
+            <UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: 'existing-chat' }}>
+                <NewChatArea workspaceId="ws-1" />
+            </UnifiedPanelHostProvider>,
+        );
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Hello world' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockInheritDraftPanelTabs).not.toHaveBeenCalled();
+        expect(mockQueueDispatch).toHaveBeenCalled();
     });
 
     // AC-03 (remote-server repo groups): a chat started from a REMOTE group's

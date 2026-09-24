@@ -75,6 +75,9 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import {
+    inheritDraftPanelTabs,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import {
     clearUnifiedPanelState,
     readUnifiedPanelState,
     writeUnifiedPanelState,
@@ -413,6 +416,25 @@ describe('UnifiedRightPanel', () => {
         rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-2" dock={dockStub()} />);
         const labels = screen.getAllByRole('tab').map(node => node.getAttribute('data-kind'));
         expect(labels).toEqual(['terminal']);
+    });
+
+    it('keeps the draft strip and active body visible when the draft becomes a chat', async () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal',
+        });
+        state = openTab(state, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/a.ts', label: 'a.ts',
+        });
+        writeUnifiedPanelState(WS, state);
+        const { rerender } = renderPanel({ chatId: null });
+        expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind'))).toEqual(['terminal', 'file']);
+        expect(await screen.findByTestId('mock-monaco')).toBeTruthy();
+
+        inheritDraftPanelTabs(WS, 'chat-1');
+        rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />);
+
+        expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind'))).toEqual(['terminal', 'file']);
+        expect(await screen.findByTestId('mock-monaco')).toBeTruthy();
     });
 
     it('opens a searched file as a tab of the selected chat', async () => {

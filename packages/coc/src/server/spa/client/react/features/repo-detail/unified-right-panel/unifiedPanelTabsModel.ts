@@ -365,6 +365,48 @@ function withActive(state: UnifiedPanelState, scopeKey: string, id: string | nul
     return { ...state, activeByScope };
 }
 
+/**
+ * Copy chat-owned tabs opened with no selected chat into a newly created chat.
+ *
+ * The draft scope keeps its originals. Copies rebuild their ids because scope is
+ * part of tab identity, and drop `revealNonce` because inheritance is not a new
+ * navigation request.
+ */
+export function inheritDraftTabs(state: UnifiedPanelState, chatId: string): UnifiedPanelState {
+    const source = state.chatTabs[WORKSPACE_SCOPE_KEY] ?? [];
+    if (source.length === 0 || chatId === WORKSPACE_SCOPE_KEY || (state.chatTabs[chatId]?.length ?? 0) > 0) {
+        return state;
+    }
+
+    const copiedIds = new Map<string, string>();
+    const copies = source.reduce<readonly UnifiedPanelTab[]>((list, sourceTab) => {
+        const {
+            id: sourceId,
+            chatId: _sourceChatId,
+            revealNonce: _revealNonce,
+            ...descriptor
+        } = sourceTab;
+        const id = unifiedTabId({
+            kind: sourceTab.kind,
+            ownerWorkspaceId: sourceTab.ownerWorkspaceId,
+            ownerRoutingRef: sourceTab.ownerRoutingRef,
+            chatId,
+            resourceId: sourceTab.resourceId,
+        });
+        copiedIds.set(sourceId, id);
+        const copy: UnifiedPanelTab = { ...descriptor, id, chatId };
+        return copy.preview ? [...list, copy] : insertPermanent(list, copy);
+    }, []);
+
+    const sourceActive = state.activeByScope[WORKSPACE_SCOPE_KEY] ?? null;
+    const inheritedActive = sourceActive === null
+        ? null
+        : copiedIds.get(sourceActive)
+            ?? (state.workspaceTabs.some(tab => tab.id === sourceActive) ? sourceActive : null);
+
+    return withActive(withList(state, chatId, 'chat', copies), chatId, inheritedActive);
+}
+
 // ---------------------------------------------------------------------------
 // Opening
 // ---------------------------------------------------------------------------

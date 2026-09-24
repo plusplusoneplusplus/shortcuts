@@ -239,6 +239,12 @@ chat's tabs open it, while an empty view closes it. The selected chat comes from
 remain stored, and an explicit toggle can keep an empty panel open until the next
 selection or reload.
 
+Chat-owned tabs opened while composing with no selected chat live in the draft
+`@workspace` scope. A successful matching-workspace submission copies those tabs
+into the new chat before selection, rebuilding scope-based ids while preserving
+order, active selection, and preview state. The draft copies remain in place, and
+inheritance does not reveal a collapsed dock.
+
 Quick Open has an explicit repo or repo-group scope. A desktop repo group owns
 Ctrl/Cmd+P across all of its sub-tabs even while the panel is closed, and sends
 one search request to the group's owning server. Selecting a member result
