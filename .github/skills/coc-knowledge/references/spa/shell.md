@@ -295,6 +295,14 @@ replay path only when a visible panel owns the interaction, its active tab is a
 file, and the destination is still accessible; otherwise browser behavior is left
 untouched.
 
+Unified-panel tabs close on middle-click through the same dirty-buffer and live
+terminal guards as their close buttons. Their accessible context menu provides
+preview promotion, visible-strip bulk close commands, and file-only path copy and
+Explorer reveal. Bulk close targets span the workspace/selected-chat divider in
+rendered order, exclude tabs hidden under other chats, and run each target through
+the protected close flow. File reveal retargets the dock to the owning clone and
+uses the existing Explorer active-file tracking path.
+
 Remote-target dialogs additionally fetch the selected server's `/config/runtime`
 `gitWorktreeExecutionEnabled` as a **per-target capability signal**, since the local flag
 says nothing about a remote host.

@@ -87,11 +87,12 @@ describe('unified panel tab menu model', () => {
             kind: 'file', ownerWorkspaceId: WS, chatId: 'chat-2', resourceId: 'src/hidden.ts', label: 'hidden.ts',
         });
         const visible = visibleTabs(state, CHAT);
+        const hiddenId = state.chatTabs['chat-2'][0].id;
 
         expect(unifiedPanelBulkCloseTargets(visible, visible[0].id, 'close-all', new Set()))
             .toEqual(visible.map(item => item.id));
         expect(unifiedPanelBulkCloseTargets(visible, visible[0].id, 'close-all', new Set()))
-            .not.toContain('file:chat-2:ws-1:src/hidden.ts');
+            .not.toContain(hiddenId);
     });
 
     it('resolves local, Windows, trusted, and unavailable absolute paths', () => {

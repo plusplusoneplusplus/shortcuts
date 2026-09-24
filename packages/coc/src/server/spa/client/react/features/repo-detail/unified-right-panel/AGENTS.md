@@ -55,7 +55,7 @@ from same-id clones never merge into one tab.
 | `unifiedPanelNavigationHistory.ts` | Pure in-memory file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, and closed-tab pruning. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | Session-only history keyed by panel scope, plus pure Alt+Arrow and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
-| `UnifiedPanelTabStrip.tsx` | Presentational strip; derives the workspace/chat divider from `scopeForKind`. |
+| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip and accessible VS Code-style tab menu. The pure model owns per-kind action availability, path resolution, and visible-order bulk target selection. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
@@ -378,10 +378,13 @@ session.
 
 ## Closing is guarded
 
-The strip's ✕ and the close buttons owned by canvas, note, diff, and external
-views go through `requestClose`, which runs the terminal check, then the dirty
-check, then `closeTab`. File tabs use only the strip's ✕ because `PreviewPane`'s
-floating close button would duplicate it:
+The strip's ✕, middle-click, tab-menu commands, and the close buttons owned by
+canvas, note, diff, and external views go through `requestClose`, which runs the
+terminal check, then the dirty check, then `closeTab`. Bulk tab-menu commands
+select targets from the currently visible workspace + selected-chat strip and
+process them in rendered order through the same protected path. Cancel leaves
+that target open and continues with later targets. File tabs use only the strip's
+✕ because `PreviewPane`'s floating close button would duplicate it:
 
 - **Terminal.** `TerminalView` reports its sessions through `onSessionsChange`;
   `liveTerminalSessionIds` counts only `running` sessions that have a server id, so
@@ -398,6 +401,14 @@ floating close button would duplicate it:
 established; `useCanvasRecord.saveNow()` and `NoteEditor`'s flush both return
 false when the write did not land, including when the draft moved while it was in
 flight.
+
+The tab context menu opens from right-click, the Context Menu key, or Shift+F10,
+keeps keyboard focus inside enabled actions, clamps to the viewport, and restores
+focus to its originating tab on dismissal. Every kind exposes the close group;
+preview tabs add Keep Open, and file tabs add path copy and Explorer reveal.
+Reveal retargets the dock to the file owner, selects Explorer mode, opens the tree,
+and relies on `activeFilePath` tracking to expand and highlight the row without
+changing the active tab.
 
 ## Entry points
 

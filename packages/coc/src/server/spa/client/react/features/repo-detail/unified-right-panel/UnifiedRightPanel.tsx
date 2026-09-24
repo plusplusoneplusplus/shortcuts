@@ -551,6 +551,8 @@ export function UnifiedRightPanel({
     // exactly the state a user cannot otherwise find.
     const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(() => new Set());
     const [errorIds, setErrorIds] = useState<ReadonlySet<string>>(() => new Set());
+    const dirtyIdsRef = useRef(dirtyIds);
+    dirtyIdsRef.current = dirtyIds;
     const setFlag = useCallback(
         (update: (fn: (prev: ReadonlySet<string>) => ReadonlySet<string>) => void, id: string, on: boolean) => {
             update(prev => {
@@ -588,6 +590,8 @@ export function UnifiedRightPanel({
     // this the panel would either kill PTYs silently or prompt about a tab that
     // holds nothing but tombstones.
     const [terminalSessions, setTerminalSessions] = useState<Record<string, readonly UnifiedTerminalSession[]>>({});
+    const terminalSessionsRef = useRef(terminalSessions);
+    terminalSessionsRef.current = terminalSessions;
     const handleTerminalSessions = useCallback(
         (tabId: string, sessions: readonly UnifiedTerminalSession[]) => {
             setTerminalSessions(prev => (prev[tabId] === sessions ? prev : { ...prev, [tabId]: sessions }));
@@ -657,29 +661,55 @@ export function UnifiedRightPanel({
     const [dirtySaving, setDirtySaving] = useState(false);
     const [dirtyError, setDirtyError] = useState<string | null>(null);
 
+    const bulkCloseQueue = useRef<string[]>([]);
+    const drainBulkCloseRef = useRef<() => void>(() => undefined);
+    const scheduleBulkCloseContinuation = useCallback(() => {
+        if (bulkCloseQueue.current.length === 0) return;
+        queueMicrotask(() => drainBulkCloseRef.current());
+    }, []);
+
     // The strip's ✕ and the views' own close buttons both come through here. A
     // terminal tab with nothing running still closes immediately: an exited
     // session is a tombstone, and prompting to kill a process that already ended
     // is noise.
-    const requestClose = useCallback((id: string) => {
-        const tab = tabs.find(candidate => candidate.id === id);
+    const beginProtectedClose = useCallback((id: string): 'closed' | 'prompted' | 'missing' => {
+        const tab = tabsRef.current.find(candidate => candidate.id === id);
+        if (!tab) return 'missing';
         if (tab?.kind === 'terminal') {
-            const sessionIds = liveTerminalSessionIds(terminalSessions[id]);
+            const sessionIds = liveTerminalSessionIds(terminalSessionsRef.current[id]);
             if (sessionIds.length > 0) {
                 setPendingClose({ tabId: id, workspaceId: tab.ownerWorkspaceId, sessionIds });
                 setCloseError(null);
                 setCloseBusy(false);
-                return;
+                return 'prompted';
             }
         }
-        if (needsDirtyCloseConfirm(tab, dirtyIds.has(id))) {
-            setPendingDirty({ tabId: id, label: dirtyCloseLabel(tab!) });
+        if (needsDirtyCloseConfirm(tab, dirtyIdsRef.current.has(id))) {
+            setPendingDirty({ tabId: id, label: dirtyCloseLabel(tab) });
             setDirtyError(null);
             setDirtySaving(false);
-            return;
+            return 'prompted';
         }
         closeTab(id);
-    }, [tabs, terminalSessions, dirtyIds, closeTab]);
+        return 'closed';
+    }, [closeTab]);
+
+    const drainBulkClose = useCallback(() => {
+        while (bulkCloseQueue.current.length > 0) {
+            const id = bulkCloseQueue.current.shift()!;
+            if (beginProtectedClose(id) === 'prompted') return;
+        }
+    }, [beginProtectedClose]);
+    drainBulkCloseRef.current = drainBulkClose;
+
+    const requestClose = useCallback((id: string) => {
+        beginProtectedClose(id);
+    }, [beginProtectedClose]);
+
+    const requestBulkClose = useCallback((ids: readonly string[]) => {
+        bulkCloseQueue.current = [...ids];
+        drainBulkClose();
+    }, [drainBulkClose]);
 
     const handleTabMenuAction = useCallback((action: UnifiedPanelTabMenuAction, tabId: string) => {
         const tab = tabs.find(candidate => candidate.id === tabId);
@@ -698,7 +728,7 @@ export function UnifiedRightPanel({
             || action === 'close-saved'
             || action === 'close-all'
         ) {
-            for (const id of unifiedPanelBulkCloseTargets(tabs, tabId, action, dirtyIds)) requestClose(id);
+            requestBulkClose(unifiedPanelBulkCloseTargets(tabs, tabId, action, dirtyIds));
             return;
         }
         if (tab.kind !== 'file') return;
@@ -718,7 +748,7 @@ export function UnifiedRightPanel({
             if (mode !== 'explorer') dock.selectMode('explorer');
             tree.setOpen(true);
         }
-    }, [dirtyIds, dock, mode, promote, requestClose, rootPathForTab, tabs, tree]);
+    }, [dirtyIds, dock, mode, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
 
     // A file picked in the tree opens against the dock's target, exactly as an
     // Explorer navigator tab's selection does — same descriptor builder, so the
@@ -1159,7 +1189,8 @@ export function UnifiedRightPanel({
         setPendingClose(null);
         setCloseError(null);
         setCloseBusy(false);
-    }, []);
+        scheduleBulkCloseContinuation();
+    }, [scheduleBulkCloseContinuation]);
 
     // Terminate, then close — never the other way round. If the server refuses,
     // the tab and its sessions both stay and the dialog turns into a retry.
@@ -1173,13 +1204,14 @@ export function UnifiedRightPanel({
                 setPendingClose(null);
                 setCloseBusy(false);
                 closeTab(tabId);
+                scheduleBulkCloseContinuation();
             })
             .catch(err => {
                 console.error('Failed to terminate terminal session:', err);
                 setCloseBusy(false);
                 setCloseError('Could not terminate the terminal session. The tab is still open.');
             });
-    }, [pendingClose, closeBusy, closeTab]);
+    }, [pendingClose, closeBusy, closeTab, scheduleBulkCloseContinuation]);
 
     // A pending prompt whose tab went away (a chat switch, a close from
     // elsewhere) has nothing left to confirm.
@@ -1198,7 +1230,8 @@ export function UnifiedRightPanel({
         setPendingDirty(null);
         setDirtyError(null);
         setDirtySaving(false);
-    }, []);
+        scheduleBulkCloseContinuation();
+    }, [scheduleBulkCloseContinuation]);
 
     /** Don't Save: close the tab and let the buffer go with it. */
     const discardAndClose = useCallback(() => {
@@ -1207,7 +1240,8 @@ export function UnifiedRightPanel({
         setPendingDirty(null);
         setDirtyError(null);
         closeTab(pending.tabId);
-    }, [pendingDirty, closeTab]);
+        scheduleBulkCloseContinuation();
+    }, [pendingDirty, closeTab, scheduleBulkCloseContinuation]);
 
     /**
      * Save: write the buffer, then close. A write that fails — or a tab that
@@ -1230,8 +1264,9 @@ export function UnifiedRightPanel({
                 }
                 setPendingDirty(null);
                 closeTab(pending.tabId);
+                scheduleBulkCloseContinuation();
             });
-    }, [pendingDirty, dirtySaving, closeTab]);
+    }, [pendingDirty, dirtySaving, closeTab, scheduleBulkCloseContinuation]);
 
     // Same rule as the terminal prompt: a question about a tab that is no longer
     // there (a chat switch, a close from elsewhere) has nothing left to answer.
