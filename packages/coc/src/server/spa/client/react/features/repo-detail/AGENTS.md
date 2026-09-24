@@ -259,6 +259,9 @@ preflights its repo-relative path through the clone-qualified owner route, and o
 then opens the unified panel's preview slot at the matching line. The panel scope
 and dock target stay unchanged for group results. A stale member, unresolved clone,
 or deleted file leaves the overlay and panel state intact and is announced inline.
+Rows highlight the exact server-provided UTF-16 `startColumn`/`endColumn` span; the
+shared Explorer splitter clamps malformed offsets, and the overlay never derives a
+span from the current query.
 
 `SearchBar.tsx` is shared by both views. Its `data-testid`s derive from a
 `testIdPrefix` (`<prefix>-bar` / `-input` / `-clear` / `-toggle-<id>`) whose

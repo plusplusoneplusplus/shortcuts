@@ -18,6 +18,8 @@ function match(overrides: Partial<ContentSearchOverlayMatch> = {}): ContentSearc
         path: 'src/app.ts',
         line: 7,
         preview: 'needle',
+        startColumn: 0,
+        endColumn: 6,
         ...overrides,
     };
 }

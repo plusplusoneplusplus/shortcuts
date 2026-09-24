@@ -260,6 +260,9 @@ the tab; stale membership, offline routing, and deleted files leave the overlay
 and existing panel state intact. Overlay controls persist per clone-qualified repo
 or group scope in localStorage, while results remain in memory; reopening restores
 both during the page lifetime, and a reload restores controls without searching.
+Result previews highlight the exact server-provided UTF-16 column span, including
+regex and multiline pieces, with malformed offsets clamped by the shared Explorer
+match-text splitter.
 
 The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs,
 with a searchable `+` menu and one right-edge navigator that switches between

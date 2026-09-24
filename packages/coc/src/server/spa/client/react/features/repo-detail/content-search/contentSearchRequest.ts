@@ -21,6 +21,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type {
+    ExplorerContentMatch,
     ExplorerRepoGroupContentSearchResponse,
 } from '@plusplusoneplusplus/coc-client';
 import { explorerApi } from '../explorer/explorerApi';
@@ -142,7 +143,7 @@ export function classifyOverlaySearchError(
 export function toOverlayMatches(
     workspaceId: string,
     routingRef: string | null | undefined,
-    matches: readonly { path: string; line: number; text: string }[],
+    matches: readonly ExplorerContentMatch[],
 ): ContentSearchOverlayMatch[] {
     return matches.map((match, index) => ({
         id: `${workspaceId} ${match.path} ${match.line} ${index}`,
@@ -151,6 +152,8 @@ export function toOverlayMatches(
         path: match.path,
         line: match.line,
         preview: match.text,
+        startColumn: match.startColumn,
+        endColumn: match.endColumn,
     }));
 }
 
@@ -179,6 +182,8 @@ export function toGroupOverlayMatches(
                 path: match.path,
                 line: match.line,
                 preview: match.text,
+                startColumn: match.startColumn,
+                endColumn: match.endColumn,
             });
         }
     }

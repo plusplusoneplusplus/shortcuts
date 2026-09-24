@@ -146,15 +146,17 @@ describe('classifyOverlaySearchError', () => {
 });
 
 describe('toOverlayMatches', () => {
-    it('carries the owner identity and gives duplicate lines distinct ids', () => {
+    it('carries owner identity, exact offsets, and gives duplicate lines distinct ids', () => {
         const rows = toOverlayMatches('coc', 'clone-a', [
-            serverMatch('src/a.ts', 3, 'hit'),
+            { ...serverMatch('src/a.ts', 3, 'before hit after'), startColumn: 7, endColumn: 10 },
             serverMatch('src/a.ts', 3, 'hit'),
         ]);
         expect(rows[0].workspaceId).toBe('coc');
         expect(rows[0].routingRef).toBe('clone-a');
         expect(rows[0].path).toBe('src/a.ts');
         expect(rows[0].line).toBe(3);
+        expect(rows[0].startColumn).toBe(7);
+        expect(rows[0].endColumn).toBe(10);
         expect(rows[0].id).not.toBe(rows[1].id);
     });
 });
