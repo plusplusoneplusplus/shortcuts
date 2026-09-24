@@ -105,7 +105,7 @@
   },
   "license": "MIT",
   "peerDependencies": {
-    "@openai/codex-sdk": ">=0.1.0"
+    "@openai/codex-sdk": "^0.155.1"
   },
   "peerDependenciesMeta": {
     "@openai/codex-sdk": {
@@ -122,13 +122,13 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@plusplusoneplusplus/coc-workflow": "*",
+    "@github/copilot-sdk": "^1.0.14",
+    "@octokit/rest": "^22.0.1",
     "@plusplusoneplusplus/coc-agent-sdk": "*",
     "@plusplusoneplusplus/coc-memory": "*",
     "@plusplusoneplusplus/coc-native": "^0.1.0",
-    "@github/copilot-sdk": "^1.0.14",
-    "@octokit/rest": "^22.0.1",
-    "azure-devops-node-api": "^17.0.0",
+    "@plusplusoneplusplus/coc-workflow": "*",
+    "azure-devops-node-api": "^17.0.1",
     "better-sqlite3": "^12.11.1",
     "des.js": "^1.1.0",
     "diff": "^9.0.0",
