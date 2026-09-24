@@ -423,6 +423,59 @@ describe('RepoChatTab: layout', () => {
         expect(document.activeElement).toBe(panel);
     });
 
+    // Regression: stealing focus on touch blurred the composer and collapsed the
+    // mobile on-screen keyboard as soon as the user long-pressed to select text.
+    it('touch pointer-down does NOT move focus off the focused composer', async () => {
+        await renderTab();
+        const panel = screen.getByTestId('activity-detail-panel');
+        const editor = document.createElement('div');
+        editor.setAttribute('contenteditable', 'true');
+        panel.appendChild(editor);
+        const text = document.createElement('p');
+        panel.appendChild(text);
+        editor.focus();
+        expect(document.activeElement).toBe(editor);
+
+        for (const target of [editor, text, panel]) {
+            await act(async () => {
+                fireEvent.pointerDown(target, { pointerType: 'touch' });
+            });
+            expect(document.activeElement).toBe(editor);
+        }
+        await act(async () => {
+            fireEvent.pointerDown(text, { pointerType: 'pen' });
+        });
+        expect(document.activeElement).toBe(editor);
+    });
+
+    it('mouse pointer-down inside the contenteditable composer does NOT steal focus', async () => {
+        await renderTab();
+        const panel = screen.getByTestId('activity-detail-panel');
+        const editor = document.createElement('div');
+        editor.setAttribute('contenteditable', 'true');
+        const inner = document.createElement('span');
+        editor.appendChild(inner);
+        panel.appendChild(editor);
+        editor.focus();
+
+        await act(async () => {
+            fireEvent.pointerDown(inner, { pointerType: 'mouse' });
+        });
+        expect(document.activeElement).toBe(editor);
+    });
+
+    it('mouse pointer-down on readable text still focuses the detail wrapper', async () => {
+        await renderTab();
+        const panel = screen.getByTestId('activity-detail-panel');
+        const text = document.createElement('p');
+        panel.appendChild(text);
+
+        await act(async () => {
+            fireEvent.pointerDown(text, { pointerType: 'mouse' });
+        });
+        expect(document.activeElement).toBe(panel);
+    });
+
     it('applies inline width to left panel from useResizablePanel', async () => {
         await renderTab();
         const panel = screen.getByTestId('activity-list-panel');

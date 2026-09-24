@@ -1064,9 +1064,12 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     // Focus the detail wrapper on pointer-down over non-interactive content so
     // Ctrl+F originates from [data-pane="detail"] and ChatListPane's guard lets
     // native find-in-page handle it instead of opening the list search.
+    // Touch/pen taps are skipped: moving focus would blur the composer and
+    // collapse the on-screen keyboard while the user long-presses to select.
     const handleDetailPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        if (e.pointerType === 'touch' || e.pointerType === 'pen') return;
         const target = e.target as Element;
-        if (target.closest('input, textarea, button, select, a[href], [tabindex]:not([tabindex="-1"])')) return;
+        if (target.closest('input, textarea, button, select, a[href], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])')) return;
         e.currentTarget.focus({ preventScroll: true });
     }, []);
 
