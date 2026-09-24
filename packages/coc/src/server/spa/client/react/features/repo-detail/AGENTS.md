@@ -161,10 +161,11 @@ renders a `⚠` retry affordance; clicking it clears the error and re-fires the
 effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
 `explorer/FileTree.tsx` filters both root entries and `TreeNode` children through
-`filterEntries`. Its optional `hideUnfetchedDirs` flag drops directories without
-matching cached descendants when the caller can trust a complete file-name
-search; otherwise unfetched directories stay visible. Name-matching directories
-always remain visible, and an empty query leaves the tree unchanged.
+`filterEntries`. `ExplorerPanel` supplies `hideUnfetchedDirs` only for a current,
+successful file-name search below the 100-hit cap with complete ancestor loads;
+errors, truncated results, and pending searches leave unfetched directories
+visible. Name-matching directories always remain visible, and an empty query
+leaves the tree unchanged.
 
 ## Quick Open and Go To All
 
