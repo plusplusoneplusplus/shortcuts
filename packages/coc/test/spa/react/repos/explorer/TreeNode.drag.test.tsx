@@ -81,11 +81,11 @@ describe('TreeNode drag source', () => {
 
     it('uses compact indentation at the root and at deep nesting levels', () => {
         const { unmount } = renderNode(FILE);
-        expect(screen.getByTestId(`tree-node-${FILE.path}`)).toHaveStyle({ paddingLeft: '6px' });
+        expect(screen.getByTestId(`tree-node-${FILE.path}`)).toHaveStyle({ paddingLeft: '8px' });
 
         unmount();
         renderNode(FILE, WS, 8);
-        expect(screen.getByTestId(`tree-node-${FILE.path}`)).toHaveStyle({ paddingLeft: '70px' });
+        expect(screen.getByTestId(`tree-node-${FILE.path}`)).toHaveStyle({ paddingLeft: '88px' });
     });
 
     it('writes the file-path payload and a text/plain fallback with a copy-only effect', () => {
