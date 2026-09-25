@@ -111,6 +111,19 @@ describe('QuickOpen in symbols mode', () => {
         expect(onSymbolSelect).toHaveBeenCalledWith(expect.objectContaining({ line: 42, col: 3 }));
     });
 
+    it('names the prefix grammar before anything is typed and until a filter takes over', () => {
+        symbolsState.results = [symbol({ name: 'Loader', kind: 5 })];
+        renderPalette();
+        for (const hint of ['f', 't', 'm', ':42']) {
+            expect(screen.getByTestId('quick-open-prefix-hints').textContent).toContain(hint);
+            expect(screen.getByTestId('quick-open-footer-hints').textContent).toContain(hint);
+        }
+
+        typeQuery('t lo');
+        expect(screen.queryByTestId('quick-open-footer-hints')).toBeNull();
+        expect(document.body.textContent).toContain('Types ·');
+    });
+
     it('`t ` keeps types, `m ` keeps members, and the footer names the filter', () => {
         symbolsState.results = [symbol({ name: 'Loader', kind: 5 }), symbol({ name: 'load', kind: 12 })];
         renderPalette();

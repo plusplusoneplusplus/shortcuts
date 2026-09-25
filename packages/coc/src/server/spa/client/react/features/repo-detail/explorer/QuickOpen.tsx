@@ -43,6 +43,34 @@ const RESULT_LIMIT = 50;
  */
 const SEARCH_DEBOUNCE_MS = 40;
 
+/**
+ * The prefix grammar, spelled out for the user. The prefixes in
+ * `paletteQuery.ts` are worth nothing if nobody knows they exist, so the
+ * palette names them wherever it has room: in the empty state before anything
+ * is typed, and in the footer until a prefix takes over the label.
+ */
+const PREFIX_HINTS: ReadonlyArray<{ prefix: string; label: string }> = [
+    { prefix: 'f', label: 'files' },
+    { prefix: 't', label: 'types' },
+    { prefix: 'm', label: 'members' },
+    { prefix: ':42', label: 'line' },
+];
+
+function PrefixHints({ testId }: { testId: string }) {
+    return (
+        <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1" data-testid={testId}>
+            {PREFIX_HINTS.map(({ prefix, label }) => (
+                <span key={prefix} className="whitespace-nowrap">
+                    <code className="rounded bg-[#e8e8e8] dark:bg-[#3c3c3c] px-1 text-[#555] dark:text-[#d4d4d4]">
+                        {prefix}
+                    </code>{' '}
+                    {label}
+                </span>
+            ))}
+        </span>
+    );
+}
+
 export type QuickOpenScope =
     | { kind: 'repo'; workspaceId: string; routingRef?: string | null }
     | { kind: 'repo-group'; groupId: string; groupName: string; liveRepoCount: number; baseUrl?: string };
@@ -437,10 +465,15 @@ export function QuickOpen({
                                 : 'Open a file first to jump to a line.'}
                         </div>
                     ) : !parsed.term && (symbolsMode || scope.kind === 'repo-group') ? (
-                        <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-empty-query">
-                            {symbolsMode
-                                ? 'Type to search symbols.'
-                                : `Type to search across ${scope.kind === 'repo-group' ? scope.liveRepoCount : 1} ${scope.kind === 'repo-group' && scope.liveRepoCount === 1 ? 'repository' : 'repositories'}.`}
+                        <div className="flex flex-col items-center justify-center gap-1.5 py-4 text-sm text-[#848484]" data-testid="quick-open-empty-query">
+                            <span>
+                                {symbolsMode
+                                    ? 'Type to search symbols.'
+                                    : `Type to search across ${scope.kind === 'repo-group' ? scope.liveRepoCount : 1} ${scope.kind === 'repo-group' && scope.liveRepoCount === 1 ? 'repository' : 'repositories'}.`}
+                            </span>
+                            <span className="text-xs">
+                                <PrefixHints testId="quick-open-prefix-hints" />
+                            </span>
                         </div>
                     ) : symbolsMode && symbols.unavailable ? (
                         <div className="flex flex-col items-center justify-center gap-1 py-4 px-3 text-center text-sm text-[#848484]" data-testid="quick-open-unavailable">
@@ -547,9 +580,11 @@ export function QuickOpen({
 
                 {/* Footer hint */}
                 <div className="flex items-center justify-between px-3 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] text-[#848484]">
-                    <span>
-                        {parsed.filterLabel ? `${parsed.filterLabel} · ` : ''}
-                        ↑↓ navigate · ↵ open · esc close
+                    <span className="flex items-center gap-2">
+                        {parsed.filterLabel
+                            ? <span>{parsed.filterLabel} ·</span>
+                            : <PrefixHints testId="quick-open-footer-hints" />}
+                        <span>↑↓ navigate · ↵ open · esc close</span>
                     </span>
                     {rows.length > 0 && (
                         <span>
