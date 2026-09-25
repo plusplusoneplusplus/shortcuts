@@ -79,7 +79,7 @@ describe('TreeNode', () => {
 
         it('applies depth-based indentation via paddingLeft', () => {
             expect(source).toContain('paddingLeft');
-            expect(source).toContain('depth * 16');
+            expect(source).toContain('getTreeNodePaddingLeft(depth)');
         });
 
         it('uses chevron for directory expand/collapse', () => {

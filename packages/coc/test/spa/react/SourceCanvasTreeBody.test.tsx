@@ -148,6 +148,8 @@ describe('SourceCanvasTreeBody', () => {
         ]);
         // The expanded folder marks aria-expanded.
         expect(rows[0].getAttribute('aria-expanded')).toBe('true');
+        expect(rows[0]).toHaveStyle({ paddingLeft: '8px' });
+        expect(rows[1]).toHaveStyle({ paddingLeft: '18px' });
     });
 
     it('shows a per-folder spinner while an expanded folder is loading', () => {
@@ -177,7 +179,9 @@ describe('SourceCanvasTreeBody', () => {
                 onNavigate={() => {}}
             />,
         );
-        expect(getByTestId('source-canvas-tree-node-error').textContent).toContain('Permission denied');
+        const error = getByTestId('source-canvas-tree-node-error');
+        expect(error.textContent).toContain('Permission denied');
+        expect(error).toHaveStyle({ paddingLeft: '18px' });
     });
 
     it('shows an empty marker for an expanded folder with no children', () => {

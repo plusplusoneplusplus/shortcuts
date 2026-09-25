@@ -23,6 +23,7 @@ import { cn } from '../../../ui/cn';
 import type { ExplorerTreeEntry } from '@plusplusoneplusplus/coc-client';
 import type { SourceCanvasTreeState } from './useSourceCanvasTree';
 import type { SourceCanvasFileRef } from './types';
+import { getTreeNodePaddingLeft } from '../../repo-detail/explorer/treeIndent';
 
 export interface SourceCanvasTreeBodyProps {
     /** Tree state (root load status + per-folder expansion). */
@@ -90,8 +91,8 @@ function TreeRow({ entry, depth, tree, onNavigate }: {
     const isLoading = isDir && tree.loadingPaths.has(entry.path);
     const folderError = isDir ? tree.errorPaths.get(entry.path) : undefined;
     const children = isDir ? tree.childrenMap.get(entry.path) : undefined;
-    const indent = { paddingLeft: `${12 + depth * 16}px` };
-    const childIndent = { paddingLeft: `${12 + (depth + 1) * 16}px` };
+    const indent = { paddingLeft: getTreeNodePaddingLeft(depth) };
+    const childIndent = { paddingLeft: getTreeNodePaddingLeft(depth + 1) };
 
     return (
         <>
