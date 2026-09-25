@@ -74,6 +74,8 @@ export interface RepoGroupGitTabProps {
     onActivateDetail?: () => void;
     /** Portal target for the compact, hoisted git toolbar. */
     headerToolbarContainer?: HTMLElement | null;
+    /** Whether the Git tab is displayed; forwarded to pause its timed refresh. */
+    active?: boolean;
 }
 
 /**
@@ -101,6 +103,7 @@ export function RepoGroupGitTab({
     detailActive,
     onActivateDetail,
     headerToolbarContainer,
+    active,
 }: RepoGroupGitTabProps) {
     const app = useAppOptional();
     const dispatch = app?.dispatch;
@@ -262,6 +265,7 @@ export function RepoGroupGitTab({
                         detailActive={detailActive}
                         onActivateDetail={onActivateDetail}
                         headerToolbarContainer={headerToolbarContainer}
+                        active={active}
                     />
                 ) : unavailableMemberId ? (
                     // The link names a repo this group cannot show. Keep the

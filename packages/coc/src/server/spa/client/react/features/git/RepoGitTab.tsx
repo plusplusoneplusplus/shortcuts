@@ -50,6 +50,7 @@ import { useRepoGitData } from './repoGitTab/useRepoGitData';
 import { useRepoGitSelection } from './repoGitTab/useRepoGitSelection';
 import { useGitOperationActions, rebindCommitChat } from './repoGitTab/useGitOperationActions';
 import { useGitAutoPullController } from './repoGitTab/useGitAutoPullController';
+import { useGitAutoRefresh } from './repoGitTab/useGitAutoRefresh';
 import { useGitSkillActions } from './repoGitTab/useGitSkillActions';
 import { buildGitContextMenuItems } from './repoGitTab/gitContextMenuModel';
 import { RepoGitListPane } from './repoGitTab/RepoGitListPane';
@@ -98,9 +99,15 @@ interface RepoGitTabProps {
      * there instead of as its own row, saving the toolbar's full height.
      */
     headerToolbarContainer?: HTMLElement | null;
+    /**
+     * Whether this tab is currently displayed. Hosts that keep the tab mounted
+     * behind `display: none` pass false while hidden so the timed refresh pauses.
+     * Defaults to true.
+     */
+    active?: boolean;
 }
 
-export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps) {
+export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer, active = true }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -149,6 +156,8 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
     const onInitialLoad = useCallback((loaded: GitCommitItem[]) => hydrateRef.current(loaded), []);
 
     const data = useRepoGitData({ workspaceId, selection: dataSelectionBridge, onInitialLoad });
+    // Keep a displayed tab current: re-run the same full refresh every 5 minutes.
+    useGitAutoRefresh({ workspaceId, refreshAll: data.refreshAll, active });
 
     const selection = useRepoGitSelection({
         workspaceId,

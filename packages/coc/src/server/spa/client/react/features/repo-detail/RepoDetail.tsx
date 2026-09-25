@@ -845,6 +845,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             detailActive={splitLastClicked === 'git'}
                                             onActivateDetail={() => setSplitLastClicked('git')}
                                             headerToolbarContainer={splitGitHeaderNode}
+                                            active={activeSubTab === 'activity' || activeSubTab === 'chats'}
                                         />
                                     ) : null}
                                     gitHeaderExtra={isGitRepo ? (
@@ -866,7 +867,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         )}
                         {activeSubTab === 'schedules' && <RepoSchedulesTab key={ws.id} workspaceId={ws.id} />}
                         {!splitWorkspacePanelEnabled && isGitRepo && <div style={{ display: activeSubTab === 'git' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                            {wasVisited('git') && <RepoGitTab key={ws.id} workspaceId={ws.id} />}
+                            {wasVisited('git') && <RepoGitTab key={ws.id} workspaceId={ws.id} active={activeSubTab === 'git'} />}
                         </div>}
                         {activeSubTab === 'wiki' && <RepoWikiTab key={ws.id} workspaceId={ws.id} workspacePath={ws.rootPath} initialWikiId={state.selectedRepoWikiId} initialTab={state.repoWikiInitialTab} initialAdminTab={state.repoWikiInitialAdminTab} initialComponentId={state.repoWikiInitialComponentId} />}
                         <div style={{ display: activeSubTab === 'explorer' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
