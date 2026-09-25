@@ -224,12 +224,13 @@ describe('QuickOpen component', () => {
 
         it('highlights the positions the server scored, in both segments', () => {
             expect(source).toContain('splitIndices(result.path, result.indices');
-            expect(source).toContain('highlightMatches(fileName(result.path), matched.name)');
+            expect(source).toContain('indices={matched.name}');
             expect(source).toContain('highlightMatches(dirName(result.path), matched.dir)');
         });
 
-        it('has file icon for each result', () => {
-            expect(source).toContain('📄');
+        it('uses the shared file-type icon for each file result', () => {
+            expect(source).toContain("import { FileNameIcon } from './FileTypeIcon'");
+            expect(source).toContain('testId={`quick-open-file-icon-${idx}`}');
         });
     });
 

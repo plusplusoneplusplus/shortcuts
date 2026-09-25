@@ -22,7 +22,12 @@ vi.mock('../../../../../src/server/spa/client/react/repos/repoGroupService', () 
     searchRepoGroupFiles: (...args: unknown[]) => groupSearchSpy(...args),
 }));
 
-import { QuickOpen, highlightMatches, splitIndices } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/QuickOpen';
+import {
+    QuickOpen,
+    highlightMatches,
+    splitFileNameForDisplay,
+    splitIndices,
+} from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/QuickOpen';
 import { rankFuzzyMatches } from '../../../../../src/server/shared/fuzzy-file-score';
 
 const FILES = [
@@ -134,6 +139,27 @@ describe('QuickOpen — server-side search', () => {
         typeQuery('readme');
         await flushDebounce();
         await waitFor(() => expect(screen.getByTestId('quick-open-item-0')).toHaveTextContent('README.md'));
+    });
+
+    it('keeps same-stem file suffixes visible and gives each type its own icon', async () => {
+        searchSpy.mockResolvedValue({
+            results: [
+                { path: 'include/widget.h', score: 10, indices: [8, 9, 10] },
+                { path: 'src/widget.cpp', score: 9, indices: [4, 5, 6] },
+            ],
+            truncated: false,
+        });
+
+        renderOpen();
+        typeQuery('widget');
+        await flushDebounce();
+        await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(2));
+
+        expect(screen.getByTestId('quick-open-file-icon-0')).toHaveAttribute('data-icon-label', 'C');
+        expect(screen.getByTestId('quick-open-file-icon-1')).toHaveAttribute('data-icon-label', 'C++');
+        expect(screen.getByTestId('quick-open-file-suffix-0')).toHaveTextContent('.h');
+        expect(screen.getByTestId('quick-open-file-suffix-1')).toHaveTextContent('.cpp');
+        expect(screen.getByTestId('quick-open-file-suffix-1')).toHaveClass('flex-shrink-0');
     });
 
     it('matches against the full path, not just the file name', async () => {
@@ -406,7 +432,7 @@ describe('QuickOpen — server-side search', () => {
         await flushDebounce();
         await waitFor(() => expect(screen.getByTestId('quick-open-item-0')).toBeInTheDocument());
 
-        const marks = screen.getByTestId('quick-open-item-0').querySelectorAll('span.font-semibold');
+        const marks = screen.getByTestId('quick-open-file-name-0').querySelectorAll('span.font-semibold');
         expect([...marks].map(m => m.textContent).join('')).toBe('idx');
     });
 
@@ -448,5 +474,20 @@ describe('splitIndices', () => {
 
     it('drops the separator position, which belongs to neither segment', () => {
         expect(splitIndices('src/a.ts', [3])).toEqual({ dir: [], name: [] });
+    });
+});
+
+describe('splitFileNameForDisplay', () => {
+    it('separates and rebases the final suffix', () => {
+        expect(splitFileNameForDisplay('widget.cpp', [0, 6, 7, 8])).toEqual({
+            stem: 'widget',
+            suffix: '.cpp',
+            stemIndices: [0],
+            suffixIndices: [0, 1, 2],
+        });
+    });
+
+    it.each(['.gitignore', 'trailing.'])('does not invent a suffix for %s', name => {
+        expect(splitFileNameForDisplay(name)).toMatchObject({ stem: name, suffix: '' });
     });
 });

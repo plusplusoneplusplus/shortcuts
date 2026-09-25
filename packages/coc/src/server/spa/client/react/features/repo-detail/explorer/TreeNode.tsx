@@ -11,6 +11,7 @@ import { filterEntries } from './FileTree';
 import { FileTypeIcon } from './FileTypeIcon';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
+import { getTreeNodePaddingLeft } from './treeIndent';
 import { createFilePathDragPayload, writeFilePathDragData } from '../../chat/sessionContextDrag';
 
 export interface TreeNodeProps {
@@ -131,7 +132,7 @@ export function TreeNode({
                         : 'text-[#1e1e1e] dark:text-[#cccccc]',
                     isFocused && 'ring-1 ring-[#0078d4]/50 dark:ring-[#3794ff]/50',
                 )}
-                style={{ paddingLeft: `${12 + depth * 16}px` }}
+                style={{ paddingLeft: getTreeNodePaddingLeft(depth) }}
                 data-testid={`tree-node-${entry.path}`}
                 data-tree-index={treeIndex}
                 draggable

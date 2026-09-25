@@ -822,6 +822,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     workspaceId={ws.id}
                                     footer={chromeless ? <StatusActions variant="sidebar" /> : undefined}
                                     onNewChat={handleSplitNewChat}
+                                    runningCount={queueRunningCount}
+                                    queuedCount={queueQueuedCount}
                                     chatList={
                                         <RepoChatTab
                                             key={`${ws.id}-split-chat`}

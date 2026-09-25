@@ -26,11 +26,11 @@ const WS = 'ws-1';
 const FILE: TreeEntry = { name: 'RichTextInput.tsx', type: 'file', path: 'packages/coc/src/shared/RichTextInput.tsx' };
 const DIR: TreeEntry = { name: 'docs', type: 'dir', path: 'packages/coc/docs' };
 
-function renderNode(entry: TreeEntry, workspaceId = WS) {
+function renderNode(entry: TreeEntry, workspaceId = WS, depth = 0) {
     return render(
         <TreeNode
             entry={entry}
-            depth={0}
+            depth={depth}
             workspaceId={workspaceId}
             selectedPath={null}
             expandedPaths={new Set()}
@@ -77,6 +77,15 @@ describe('TreeNode drag source', () => {
     it('marks directory rows draggable too', () => {
         renderNode(DIR);
         expect(screen.getByTestId(`tree-node-${DIR.path}`)).toHaveProperty('draggable', true);
+    });
+
+    it('uses compact indentation at the root and at deep nesting levels', () => {
+        const { unmount } = renderNode(FILE);
+        expect(screen.getByTestId(`tree-node-${FILE.path}`)).toHaveStyle({ paddingLeft: '8px' });
+
+        unmount();
+        renderNode(FILE, WS, 8);
+        expect(screen.getByTestId(`tree-node-${FILE.path}`)).toHaveStyle({ paddingLeft: '88px' });
     });
 
     it('writes the file-path payload and a text/plain fallback with a copy-only effect', () => {

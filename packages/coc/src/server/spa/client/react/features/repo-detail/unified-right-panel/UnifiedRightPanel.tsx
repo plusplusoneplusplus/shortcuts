@@ -712,6 +712,12 @@ export function UnifiedRightPanel({
         drainBulkClose();
     }, [drainBulkClose]);
 
+    // "Reveal in Explorer" asks the tree to reveal a specific tab's file even when
+    // the passive tracking above already points at it (and so would not re-fire).
+    const [treeRevealRequest, setTreeRevealRequest] = useState<
+        { ownerWorkspaceId: string; path: string; nonce: number } | null
+    >(null);
+
     const handleTabMenuAction = useCallback((action: UnifiedPanelTabMenuAction, tabId: string) => {
         const tab = tabs.find(candidate => candidate.id === tabId);
         if (!tab) return;
@@ -748,6 +754,11 @@ export function UnifiedRightPanel({
             if (!path || !dock.setTarget(tab.ownerWorkspaceId)) return;
             if (mode !== 'explorer') dock.selectMode('explorer');
             tree.setOpen(true);
+            setTreeRevealRequest(prev => ({
+                ownerWorkspaceId: tab.ownerWorkspaceId,
+                path,
+                nonce: (prev?.nonce ?? 0) + 1,
+            }));
         }
     }, [dirtyIds, dock, mode, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
 
@@ -1526,6 +1537,11 @@ export function UnifiedRightPanel({
                                             deepLink={target === workspaceId}
                                             mode="sidebar"
                                             activeFilePath={trackedTreeFile}
+                                            revealRequest={
+                                                treeRevealRequest?.ownerWorkspaceId === target
+                                                    ? treeRevealRequest
+                                                    : undefined
+                                            }
                                             onOpenFile={openTreeFile}
                                         />
                                     </div>

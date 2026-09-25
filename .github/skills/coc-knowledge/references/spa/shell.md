@@ -230,7 +230,10 @@ the left column's live, workspace-scoped width through `WorkspaceLeftWidth.ts`.
 The right-panel maximum reserves that width, both resize handles, and 360px for
 the middle pane; the left-panel maximum reserves the dock minimum and the same
 fixed space. Viewport clamps do not replace either panel's persisted pixel width,
-so the chosen size returns when space becomes available.
+so the chosen size returns when space becomes available. The collapsed left rail
+receives per-workspace running and queued counts from `RepoDetail`; each nonzero
+state has its own accessible control, and selecting one expands the workspace
+column.
 
 On mount and on a panel-scope chat selection change, the panel reconciles its open
 bit with that chat's visible tab view: workspace-owned tabs plus the selected

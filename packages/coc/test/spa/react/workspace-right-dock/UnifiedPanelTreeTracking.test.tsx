@@ -38,9 +38,10 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
     );
     return {
         getAncestorPaths: actual.getAncestorPaths,
-        ExplorerPanel: ({ workspaceId, activeFilePath, onOpenFile }: {
+        ExplorerPanel: ({ workspaceId, activeFilePath, revealRequest, onOpenFile }: {
             workspaceId: string;
             activeFilePath?: string | null;
+            revealRequest?: { path: string; nonce: number };
             onOpenFile?: (
                 file: { path: string; name: string; line?: number },
                 options: { preview: boolean },
@@ -50,6 +51,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
                 data-testid="mock-explorer"
                 data-tracking={activeFilePath === undefined ? 'off' : 'on'}
                 {...(activeFilePath === undefined ? {} : { 'data-active-file': String(activeFilePath) })}
+                {...(revealRequest ? { 'data-reveal': `${revealRequest.path}#${revealRequest.nonce}` } : {})}
             >
                 explorer:{workspaceId}
                 {TREE_FILES.map(file => (
@@ -233,6 +235,20 @@ describe('unified panel tree tracking (AC-06)', () => {
         );
         expect(tracked()).toBe('src/app.ts');
         expect(activeTab.getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('sends an explicit reveal request each time, even for the already-tracked file', () => {
+        renderWithTree();
+        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        const column = () => screen.getByTestId('mock-explorer');
+        expect(tracked()).toBe('src/app.ts');
+        expect(column().getAttribute('data-reveal')).toBeNull();
+
+        runTabAction('reveal-in-explorer');
+        expect(column().getAttribute('data-reveal')).toBe('src/app.ts#1');
+
+        runTabAction('reveal-in-explorer');
+        expect(column().getAttribute('data-reveal')).toBe('src/app.ts#2');
     });
 
     it('copies and reveals a remote-clone file without changing its active tab', () => {

@@ -90,13 +90,17 @@ describe('QuickOpen in symbols mode', () => {
         expect(row.textContent).toContain('findWorkspaceConfig');
         expect(row.textContent).toContain('Loader');
         expect(screen.getByTestId('quick-open-symbol-path-0').textContent).toBe('src/config.ts:42');
+        expect(screen.getByTestId('quick-open-symbol-kind-0')).toHaveTextContent('ƒ');
+        expect(screen.getByTestId('quick-open-symbol-file-icon-0')).toHaveAttribute('data-icon-label', 'TS');
+        expect(screen.getByTestId('quick-open-symbol-suffix-0')).toHaveTextContent('.ts');
+        expect(screen.getByTestId('quick-open-symbol-suffix-0')).toHaveClass('flex-shrink-0');
     });
 
     it('highlights exactly the characters the scorer matched', () => {
         symbolsState.results = [symbol()];
         renderPalette();
         typeQuery('fwc');
-        const marked = [...screen.getByTestId('quick-open-item-0').querySelectorAll('span span')]
+        const marked = [...screen.getByTestId('quick-open-symbol-name-0').querySelectorAll('span.font-semibold')]
             .map(node => node.textContent)
             .join('');
         expect(marked).toBe('fWC');
@@ -109,6 +113,19 @@ describe('QuickOpen in symbols mode', () => {
         typeQuery('fwc');
         fireEvent.keyDown(screen.getByTestId('quick-open-input'), { key: 'Enter' });
         expect(onSymbolSelect).toHaveBeenCalledWith(expect.objectContaining({ line: 42, col: 3 }));
+    });
+
+    it('names the prefix grammar before anything is typed and until a filter takes over', () => {
+        symbolsState.results = [symbol({ name: 'Loader', kind: 5 })];
+        renderPalette();
+        for (const hint of ['f', 't', 'm', ':42']) {
+            expect(screen.getByTestId('quick-open-prefix-hints').textContent).toContain(hint);
+            expect(screen.getByTestId('quick-open-footer-hints').textContent).toContain(hint);
+        }
+
+        typeQuery('t lo');
+        expect(screen.queryByTestId('quick-open-footer-hints')).toBeNull();
+        expect(document.body.textContent).toContain('Types ·');
     });
 
     it('`t ` keeps types, `m ` keeps members, and the footer names the filter', () => {

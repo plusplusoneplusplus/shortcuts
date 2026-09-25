@@ -85,6 +85,10 @@ export interface SplitWorkspacePanelProps {
      * is omitted. Desktop layout only.
      */
     onNewChat?: () => void;
+    /** Active jobs shown on the collapsed desktop rail. Zero hides the control. */
+    runningCount?: number;
+    /** Waiting jobs shown on the collapsed desktop rail. Zero hides the control. */
+    queuedCount?: number;
 }
 
 /** localStorage key for the chat/git divider ratio (chat half height), per workspace. */
@@ -244,6 +248,60 @@ function SectionHeader({ label, collapsed, onToggle, testId, extra }: SectionHea
     );
 }
 
+function formatRailCount(count: number): string {
+    return count > 99 ? '99+' : String(count);
+}
+
+interface RailJobStatusProps {
+    status: 'running' | 'queued';
+    count: number;
+    onClick: () => void;
+}
+
+function RailJobStatus({ status, count, onClick }: RailJobStatusProps) {
+    if (count <= 0) return null;
+
+    const running = status === 'running';
+    const label = `${count} ${status} ${count === 1 ? 'job' : 'jobs'}`;
+    return (
+        <button
+            type="button"
+            className={cn(
+                'relative flex h-7 w-7 items-center justify-center rounded-md border transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/50',
+                running
+                    ? 'border-[#b9d9f7] bg-[#eaf4ff] text-[#1878c8] hover:bg-[#dceeff] dark:border-[#245c88] dark:bg-[#152d40] dark:text-[#4daaf0] dark:hover:bg-[#19384f]'
+                    : 'border-[#efd99c] bg-[#fff8e7] text-[#a06b00] hover:bg-[#fff1cc] dark:border-[#70551c] dark:bg-[#382d16] dark:text-[#e0aa36] dark:hover:bg-[#44371b]',
+            )}
+            onClick={onClick}
+            aria-label={label}
+            title={label}
+            data-testid={`split-workspace-left-${status}`}
+        >
+            {running ? (
+                <span
+                    className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent"
+                    aria-hidden="true"
+                />
+            ) : (
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3.5 2h7M3.5 12h7M4 2c0 2.3 1.6 2.7 3 5-1.4 2.3-3 2.7-3 5M10 2c0 2.3-1.6 2.7-3 5 1.4 2.3 3 2.7 3 5" />
+                </svg>
+            )}
+            <span
+                className={cn(
+                    'absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5',
+                    'border border-white text-[8px] font-bold leading-none text-white dark:border-[#1e1e1e]',
+                    running ? 'bg-[#1878c8]' : 'bg-[#b77900]',
+                )}
+                aria-hidden="true"
+            >
+                {formatRailCount(count)}
+            </span>
+        </button>
+    );
+}
+
 export function SplitWorkspacePanel({
     workspaceId,
     chatList,
@@ -254,6 +312,8 @@ export function SplitWorkspacePanel({
     gitHeaderExtra,
     footer,
     onNewChat,
+    runningCount = 0,
+    queuedCount = 0,
 }: SplitWorkspacePanelProps) {
     const { isMobile } = useBreakpoint();
     const viewportWidth = useViewportWidth();
@@ -508,6 +568,8 @@ export function SplitWorkspacePanel({
                             </svg>
                         </button>
                     )}
+                    <RailJobStatus status="running" count={runningCount} onClick={toggleLeftCollapsed} />
+                    <RailJobStatus status="queued" count={queuedCount} onClick={toggleLeftCollapsed} />
                     <span
                         className="mt-1 text-[10px] tracking-wide text-[#848484] select-none"
                         style={{ writingMode: 'vertical-rl' }}

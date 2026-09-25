@@ -186,6 +186,44 @@ describe('ExplorerPanel — tracking the host active file (AC-06)', () => {
         expect(screen.queryByTestId('tree-node-src/app.ts')).toBeNull();
     });
 
+    it('re-reveals an already-tracked path on an explicit reveal request', async () => {
+        // Regression: "Reveal in Explorer" on the tab the tree already tracks
+        // used to do nothing once the user had collapsed or selected elsewhere.
+        const { rerender } = await renderColumn({ activeFilePath: 'src/app.ts' });
+        await waitFor(() => expect(selectedPath()).toBe('src/app.ts'));
+
+        fireEvent.click(screen.getByTestId('tree-node-src'));
+        await waitFor(() => expect(screen.queryByTestId('tree-node-src/app.ts')).toBeNull());
+        expect(selectedPath()).toBe('src');
+
+        rerender(
+            <ExplorerPanel
+                workspaceId={WS}
+                mode="sidebar"
+                onOpenFile={vi.fn()}
+                activeFilePath="src/app.ts"
+                revealRequest={{ path: 'src/app.ts', nonce: 1 }}
+            />,
+        );
+        await waitFor(() => expect(screen.getByTestId('tree-node-src/app.ts')).toBeTruthy());
+        expect(selectedPath()).toBe('src/app.ts');
+
+        // A second request for the same path reveals again.
+        fireEvent.click(screen.getByTestId('tree-node-src'));
+        await waitFor(() => expect(screen.queryByTestId('tree-node-src/app.ts')).toBeNull());
+        rerender(
+            <ExplorerPanel
+                workspaceId={WS}
+                mode="sidebar"
+                onOpenFile={vi.fn()}
+                activeFilePath="src/app.ts"
+                revealRequest={{ path: 'src/app.ts', nonce: 2 }}
+            />,
+        );
+        await waitFor(() => expect(screen.getByTestId('tree-node-src/app.ts')).toBeTruthy());
+        expect(selectedPath()).toBe('src/app.ts');
+    });
+
     it('re-reveals the same path after the column is retargeted to another repo', async () => {
         const { rerender } = await renderColumn({ activeFilePath: 'src/app.ts' });
         await waitFor(() => expect(selectedPath(WS)).toBe('src/app.ts'));
