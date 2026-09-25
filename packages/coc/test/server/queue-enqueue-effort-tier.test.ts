@@ -113,7 +113,7 @@ describe('resolveEffortTierConfig', () => {
 
         resolveEffortTierConfig(input, makeContext());
 
-        expect(input.config.model).toBe('gpt-5.6-luna');
+        expect(input.config.model).toBe('gpt-6-luna');
         expect(input.config.reasoningEffort).toBe('xhigh');
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
