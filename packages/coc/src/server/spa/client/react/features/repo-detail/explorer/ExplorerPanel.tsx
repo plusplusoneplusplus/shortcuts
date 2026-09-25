@@ -101,6 +101,12 @@ export interface ExplorerPanelProps {
      *  - omitted — this host does not track; the tree keeps whatever it shows.
      */
     activeFilePath?: string | null;
+    /**
+     * An explicit "Reveal in Explorer" from the host. Unlike `activeFilePath`,
+     * which only reveals when the tracked path changes, every new `nonce`
+     * reveals and selects `path` again — even if it is already tracked.
+     */
+    revealRequest?: { path: string; nonce: number };
 }
 
 /** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
@@ -249,6 +255,7 @@ export function ExplorerPanel({
     onOpenFile,
     mode: panelMode,
     activeFilePath,
+    revealRequest,
 }: ExplorerPanelProps) {
     const ownerKey = routingRef ?? workspaceId;
     // Navigator mode: the host owns the editor, so this panel is only a tree.
@@ -1013,6 +1020,17 @@ export function ExplorerPanel({
         }
         void revealPath(activeFilePath, { silent: true });
     }, [activeFilePath, ownerKey, revealPath, setSelectedPath]);
+
+    // Keyed on the nonce alone: `revealPath` changes identity as the tree
+    // loads, and re-running on that would undo a manual collapse.
+    const revealPathRef = useRef(revealPath);
+    revealPathRef.current = revealPath;
+    const revealNonce = revealRequest?.nonce;
+    const revealRequestPath = revealRequest?.path;
+    useEffect(() => {
+        if (revealNonce === undefined || revealRequestPath === undefined) return;
+        void revealPathRef.current(revealRequestPath);
+    }, [revealNonce, revealRequestPath]);
 
     // Centre the revealed row once the expansion above has rendered. Runs against
     // the tree's own scroll container so nothing outside the sidebar moves.
