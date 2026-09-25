@@ -852,6 +852,13 @@ describe('RepoDetail split-workspace panel wiring', () => {
         expect(REPO_DETAIL_SOURCE).toContain('<SplitWorkspacePanel');
     });
 
+    it('passes workspace-scoped running and queued counts to the collapsed rail', () => {
+        const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 1000);
+        expect(block).toContain('runningCount={queueRunningCount}');
+        expect(block).toContain('queuedCount={queueQueuedCount}');
+    });
+
     it('feeds the chat list into the panel as a split-workspace RepoChatTab (AC-03/04)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
         expect(anchor).toBeGreaterThan(-1);

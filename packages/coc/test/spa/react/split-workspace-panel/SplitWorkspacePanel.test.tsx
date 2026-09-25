@@ -740,7 +740,11 @@ describe('SplitWorkspacePanel whole-column collapse', () => {
         document.documentElement.style.removeProperty(LEFT_VAR);
     });
 
-    function renderCollapsible(workspaceId = 'ws1', onNewChat?: () => void) {
+    function renderCollapsible(
+        workspaceId = 'ws1',
+        onNewChat?: () => void,
+        counts: { runningCount?: number; queuedCount?: number } = {},
+    ) {
         return render(
             <SplitWorkspacePanel
                 workspaceId={workspaceId}
@@ -748,6 +752,7 @@ describe('SplitWorkspacePanel whole-column collapse', () => {
                 gitList={<div data-testid="git-content">git</div>}
                 detail={<div data-testid="detail-content">detail</div>}
                 onNewChat={onNewChat}
+                {...counts}
             />,
         );
     }
@@ -788,6 +793,36 @@ describe('SplitWorkspacePanel whole-column collapse', () => {
         expect(screen.queryByTestId('split-workspace-left-new-chat')).toBeNull();
         // The expand affordance is still there.
         expect(screen.getByTestId('split-workspace-left-expand')).toBeTruthy();
+    });
+
+    it('shows separate running and queued job controls with accessible counts', () => {
+        renderCollapsible('ws-jobs', undefined, { runningCount: 2, queuedCount: 4 });
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+
+        expect(screen.getByTestId('split-workspace-left-running')).toHaveAttribute('aria-label', '2 running jobs');
+        expect(screen.getByTestId('split-workspace-left-queued')).toHaveAttribute('aria-label', '4 queued jobs');
+        expect(screen.getByTestId('split-workspace-left-running')).toHaveTextContent('2');
+        expect(screen.getByTestId('split-workspace-left-queued')).toHaveTextContent('4');
+    });
+
+    it('hides zero-count job controls and uses singular labels', () => {
+        renderCollapsible('ws-one-job', undefined, { runningCount: 0, queuedCount: 1 });
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+
+        expect(screen.queryByTestId('split-workspace-left-running')).toBeNull();
+        expect(screen.getByTestId('split-workspace-left-queued')).toHaveAttribute('aria-label', '1 queued job');
+    });
+
+    it('caps the visible badge and expands the workspace when a job control is clicked', () => {
+        renderCollapsible('ws-many-jobs', undefined, { runningCount: 123 });
+        act(() => { fireEvent.click(screen.getByTestId('split-workspace-left-collapse')); });
+
+        const running = screen.getByTestId('split-workspace-left-running');
+        expect(running).toHaveTextContent('99+');
+        expect(running).toHaveAttribute('aria-label', '123 running jobs');
+
+        act(() => { fireEvent.click(running); });
+        expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
     });
 
     it('clicking » expands the column back', () => {
