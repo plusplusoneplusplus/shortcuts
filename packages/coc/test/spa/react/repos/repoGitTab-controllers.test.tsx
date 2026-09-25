@@ -85,6 +85,7 @@ import { useRepoGitData } from '../../../../src/server/spa/client/react/features
 import { useRepoGitSelection } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useRepoGitSelection';
 import { useGitOperationActions } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitOperationActions';
 import { useGitAutoPullController } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitAutoPullController';
+import { useGitAutoRefresh, GIT_AUTO_REFRESH_INTERVAL_MS } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitAutoRefresh';
 import { useGitSkillActions } from '../../../../src/server/spa/client/react/features/git/repoGitTab/useGitSkillActions';
 import { useGitOperationPoller } from '../../../../src/server/spa/client/react/features/git/hooks/useGitOperationPoller';
 import { clearCommitsCache } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitsCache';
@@ -230,6 +231,114 @@ describe('useRepoGitData', () => {
         rerender({ ws: OTHER_WS });
         await waitFor(() => expect(clientFor(OTHER_WS).git.listCommits).toHaveBeenCalledWith(
             OTHER_WS, expect.objectContaining({ limit: 50 })));
+    });
+});
+
+describe('useRepoGitData + useGitAutoRefresh (timed refresh)', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    /** The Git tab's composition: the timer drives the data hook's refreshAll. */
+    function renderTimedTab(ws = WS) {
+        const { bridge } = makeBridge();
+        return renderHook(({ id }) => {
+            const data = useRepoGitData({ workspaceId: id, selection: bridge });
+            useGitAutoRefresh({ workspaceId: id, refreshAll: data.refreshAll });
+            return data;
+        }, { initialProps: { id: ws } });
+    }
+
+    async function flush(ms = 0) {
+        await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+    }
+
+    it('runs the same full refresh as a manual click, with no remote or mutating git calls', async () => {
+        vi.useFakeTimers();
+        const { result } = renderTimedTab();
+        await flush(1000);
+        expect(result.current.loading).toBe(false);
+        const stampBefore = result.current.lastRefreshedAt;
+        const keyBefore = result.current.workingChangesRefreshKey;
+
+        const git = clientFor(WS).git;
+        for (const fn of Object.values(git) as any[]) fn.mockClear();
+
+        await flush(GIT_AUTO_REFRESH_INTERVAL_MS);
+
+        expect(git.listCommits).toHaveBeenCalledTimes(1);
+        expect(git.listCommits).toHaveBeenCalledWith(WS, expect.objectContaining({ refresh: true, limit: 50 }));
+        expect(git.getBranchRange).toHaveBeenCalledWith(WS, expect.objectContaining({ refresh: true }));
+        expect(git.getRepoState).toHaveBeenCalledWith(WS);
+        expect(result.current.workingChangesRefreshKey).toBe(keyBefore + 1);
+        expect(result.current.lastRefreshedAt).toBeGreaterThan(stampBefore ?? 0);
+        expect(result.current.refreshing).toBe(false);
+
+        for (const op of ['fetch', 'pull', 'push', 'pushTo', 'reset', 'amend', 'reword', 'dropCommit',
+            'cherryPick', 'rebaseAutosquash', 'rebaseReorder', 'rebaseContinue', 'rebaseAbort',
+            'mergeContinue', 'mergeAbort'] as const) {
+            expect(git[op], op).not.toHaveBeenCalled();
+        }
+        // Nothing leaked to another clone.
+        expect(clients.has(OTHER_WS)).toBe(false);
+    });
+
+    it('does not start an overlapping refresh while one is already running', async () => {
+        vi.useFakeTimers();
+        const { result } = renderTimedTab();
+        await flush(1000);
+
+        const git = clientFor(WS).git;
+        let release!: (v: any) => void;
+        git.listCommits.mockClear();
+        git.listCommits.mockImplementation(() => new Promise(r => { release = r; }));
+
+        // A manual refresh is in flight when the timer fires — twice.
+        act(() => result.current.refreshAll());
+        expect(result.current.refreshing).toBe(true);
+        await flush(GIT_AUTO_REFRESH_INTERVAL_MS * 2);
+        expect(git.listCommits).toHaveBeenCalledTimes(1);
+
+        release({ commits: [], unpushedCount: 0 });
+        await flush();
+        expect(result.current.refreshing).toBe(false);
+
+        // Once idle, the next tick refreshes again.
+        git.listCommits.mockResolvedValue({ commits: [], unpushedCount: 0 });
+        await flush(GIT_AUTO_REFRESH_INTERVAL_MS);
+        expect(git.listCommits).toHaveBeenCalledTimes(2);
+    });
+
+    it('surfaces a failed timed refresh through the existing refresh error', async () => {
+        vi.useFakeTimers();
+        const { result } = renderTimedTab();
+        await flush(1000);
+
+        clientFor(WS).git.listCommits.mockRejectedValueOnce(new Error('git broke'));
+        await flush(GIT_AUTO_REFRESH_INTERVAL_MS);
+        expect(result.current.refreshError).toBe('git broke');
+        expect(result.current.refreshing).toBe(false);
+    });
+
+    it('stops refreshing the former workspace after a switch and after unmount', async () => {
+        vi.useFakeTimers();
+        const { rerender, unmount } = renderTimedTab(WS);
+        await flush(1000);
+        const oldGit = clientFor(WS).git;
+        oldGit.listCommits.mockClear();
+
+        rerender({ id: OTHER_WS });
+        await flush(1000);
+        const newGit = clientFor(OTHER_WS).git;
+        newGit.listCommits.mockClear();
+
+        await flush(GIT_AUTO_REFRESH_INTERVAL_MS);
+        expect(oldGit.listCommits).not.toHaveBeenCalled();
+        expect(newGit.listCommits).toHaveBeenCalledWith(OTHER_WS, expect.objectContaining({ refresh: true }));
+
+        unmount();
+        newGit.listCommits.mockClear();
+        await flush(GIT_AUTO_REFRESH_INTERVAL_MS * 2);
+        expect(newGit.listCommits).not.toHaveBeenCalled();
+        expect(oldGit.listCommits).not.toHaveBeenCalled();
     });
 });
 

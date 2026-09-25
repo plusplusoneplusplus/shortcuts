@@ -116,8 +116,10 @@ empty chat. See [rest-api.md](rest-api.md).
 - **Conversation cost read model** — process detail derives `conversationCostEstimate` from
   turn-level token usage without persisting it. Pricing model resolution starts at
   `metadata.model`, falls back to `config.model`, and is overridable by a later user turn with a
-  `model` field. `token-usage` events may carry live `cumulativeTokenUsage` plus a derived
-  estimate for running-chat UI; final process reads are authoritative.
+  `model` field. Forge prices known models, including GPT-6 Astra, Luna, and Sol, at the
+  published Copilot default-tier token rates; unknown models remain unpriced. `token-usage`
+  events may carry live `cumulativeTokenUsage` plus a derived estimate for running-chat UI;
+  final process reads are authoritative.
 - **Dream internals** — analyzer and critic steps persist as read-only internal process records
   (`dream-analyzer` / `dream-critic`) whose `metadata.dreamStep` carries workspace ID, Dream run
   ID, purpose, read-only/no-tools policy, parent Dream process ID, and analyzer-to-critic

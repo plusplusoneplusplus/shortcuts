@@ -13,6 +13,7 @@ classification, composer PR chips, and the Pull Requests tab.
 | `useRepoGitSelection` | Right-panel routing, URL hash + AppContext sync, deep links, direct SHA lookup |
 | `useGitOperationActions` | Every mutation plus all four job pollers |
 | `useGitAutoPullController` | Automatic pull scheduling |
+| `useGitAutoRefresh` | Timed `refreshAll` every 5 min while the tab is `active` and the page visible |
 | `useGitSkillActions` | Commit-context skill runs |
 
 Pure helpers `selectionModel`, `gitPrompts`, `gitContextMenuModel` sit alongside the
@@ -22,7 +23,10 @@ Pure helpers `selectionModel`, `gitPrompts`, `gitContextMenuModel` sit alongside
 selected clone's server. `useGitOperationActions` owns the pull poller and hands it to
 `useGitAutoPullController`, so manual and automatic pulls can never poll concurrently;
 auto-pull skips and failures report through `useTransientToast`, not the `actionError`
-banner.
+banner. `useGitAutoRefresh` only calls the existing `refreshAll` (local reads, no
+fetch/pull) and relies on its in-progress guard; hosts that keep the tab mounted behind
+`display: none` (`RepoDetail`, `RepoGroupView` → `RepoGroupGitTab`) pass `active` so the
+timer pauses while hidden and restarts when shown.
 
 ### Stale working-tree recovery
 

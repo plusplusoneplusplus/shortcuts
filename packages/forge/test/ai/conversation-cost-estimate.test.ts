@@ -30,6 +30,21 @@ function turn(role: 'user' | 'assistant', turnIndex: number, overrides: Partial<
 }
 
 describe('computeConversationCostEstimate', () => {
+    it('shows a priced USD estimate for a GPT-6 Sol conversation', () => {
+        const estimate = computeConversationCostEstimate([
+            turn('user', 0),
+            turn('assistant', 1, { tokenUsage: usage() }),
+        ], 'gpt-6-sol');
+
+        expect(estimate).toMatchObject({
+            estimatedUsdCost: 6.845,
+            displayedUsdCost: 6.845,
+            displayedUsdCostSource: 'estimated',
+            unpricedTurnCount: 0,
+            pricingUnavailable: false,
+        });
+    });
+
     it('sums a single-model conversation from per-turn estimates', () => {
         const firstUsage = usage({ inputTokens: 1_000_000, outputTokens: 100_000, cacheReadTokens: 0, cacheWriteTokens: 0 });
         const secondUsage = usage({ inputTokens: 2_000_000, outputTokens: 200_000, cacheReadTokens: 250_000, cacheWriteTokens: 0 });

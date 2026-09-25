@@ -70,6 +70,8 @@ describe('Copilot token cost pricing', () => {
         ['GPT 5.6 Sol', 'gpt-5.6-sol', 'GPT-5.6 Sol', 'Powerful', 4, 0.4, 5, 20],
         ['GPT 5.6 Terra', 'gpt-5.6-terra', 'GPT-5.6 Terra', 'Versatile', 2, 0.2, 2.5, 12],
         ['GPT 6 Astra', 'gpt-6-astra', 'GPT-6 Astra', 'Powerful', 10, 1, 12.5, 50],
+        ['GPT 6 Luna', 'gpt-6-luna', 'GPT-6 Luna', 'Lightweight', 0.1, 0.01, 0.125, 0.5],
+        ['GPT 6 Sol', 'gpt-6-sol', 'GPT-6 Sol', 'Powerful', 2, 0.2, 2.5, 10],
     ] as const)('prices %s with its supported default-tier rates', (
         modelName,
         modelId,
@@ -102,6 +104,22 @@ describe('Copilot token cost pricing', () => {
 
         expect(cost).toBeDefined();
         expect(cost!.totalUsd).toBeCloseTo(inputRate + outputRate);
+    });
+
+    it('prices GPT-6 Sol cached reads and writes from a reasoning-suffixed model ID', () => {
+        expect(getCopilotModelPricing('gpt-6-sol-medium')?.modelId).toBe('gpt-6-sol');
+        const cost = estimateCopilotTokenCost('gpt-6-sol-medium', {
+            inputTokens: 1_000_000,
+            outputTokens: 500_000,
+            cacheReadTokens: 100_000,
+            cacheWriteTokens: 50_000,
+        });
+
+        expect(cost!.inputUsd).toBeCloseTo(1.7);
+        expect(cost!.cachedInputUsd).toBeCloseTo(0.02);
+        expect(cost!.cacheWriteUsd).toBeCloseTo(0.125);
+        expect(cost!.outputUsd).toBeCloseTo(5);
+        expect(cost!.totalUsd).toBeCloseTo(6.845);
     });
 
     // Regression: these rows drifted from the published Copilot pricing table

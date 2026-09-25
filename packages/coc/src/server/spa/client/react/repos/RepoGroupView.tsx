@@ -269,6 +269,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                                         detailActive={splitLastClicked === 'git'}
                                         onActivateDetail={() => setSplitLastClicked('git')}
                                         headerToolbarContainer={splitGitHeaderNode}
+                                        active={activeTab === 'chats'}
                                     />
                                 }
                                 gitHeaderExtra={
@@ -296,7 +297,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                     </div>
                     {!mobileWorkspaceSplit && (
                         <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                            {gitVisited && <RepoGroupGitTab workspaceId={workspaceId} members={members} />}
+                            {gitVisited && <RepoGroupGitTab workspaceId={workspaceId} members={members} active={activeTab === 'git'} />}
                         </div>
                     )}
                     <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
