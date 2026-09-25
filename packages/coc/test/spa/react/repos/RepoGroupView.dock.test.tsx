@@ -129,16 +129,42 @@ beforeEach(() => {
 });
 
 /**
- * The target select lives in the panel's open menu now, so every picker
- * assertion has to open the menu first. Rendering the panel open is the caller's
- * job (the open bit is read from storage at mount).
+ * The "+" menu. Rendering the panel open is the caller's job (the open bit is
+ * read from storage at mount).
  */
 function openMenu(): void {
     act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-menu')); });
 }
 
-function picker(): HTMLSelectElement {
-    return screen.getByTestId('unified-panel-open-menu-repo') as HTMLSelectElement;
+/**
+ * The repo picker sits on the tab strip beside the "+", so reading or changing
+ * the panel's target needs no menu — and changing it closes the menu.
+ */
+function picker(): HTMLButtonElement {
+    return screen.getByTestId('unified-panel-repo-picker') as HTMLButtonElement;
+}
+
+/** The workspace the panel currently points at, as the trigger reports it. */
+function pickedRepo(): string | undefined {
+    return picker().dataset.target;
+}
+
+/** Every option the picker lists, in order, as the user reads them. */
+function pickerOptions(): string[] {
+    act(() => { fireEvent.click(picker()); });
+    const labels = Array.from(
+        screen.getByTestId('unified-panel-repo-picker-list').querySelectorAll('[role="option"]'),
+    ).map(option => option.textContent?.replace('✓', '').trim() ?? '');
+    act(() => { fireEvent.keyDown(screen.getByTestId('unified-panel-repo-picker-list'), { key: 'Escape' }); });
+    return labels;
+}
+
+/** Point the panel at another repo through the strip picker. */
+function pickRepo(workspaceId: string): void {
+    act(() => { fireEvent.click(picker()); });
+    act(() => {
+        fireEvent.click(screen.getByTestId(`unified-panel-repo-picker-option-${workspaceId}`));
+    });
 }
 
 /** Render the group with its panel already open, the way a returning user sees it. */
@@ -247,17 +273,15 @@ describe('RepoGroupView right panel', () => {
         // Wait on the resolved target, not just the picker: the members land one
         // render before the effect that moves the target off the group root, so a
         // slow runner can observe all three options with the root still selected.
-        openMenu();
-        await waitFor(() => expect(picker().value).toBe('r1'));
+        await waitFor(() => expect(pickedRepo()).toBe('r1'));
 
-        expect(Array.from(picker().options).map(o => o.text))
-            .toEqual([REPO_GROUP_ROOT_TARGET_LABEL, 'shortcuts', 'docs']);
+        expect(pickerOptions()).toEqual([REPO_GROUP_ROOT_TARGET_LABEL, 'shortcuts', 'docs']);
     });
 
     it('opens a terminal against the picked member and notes against the group', async () => {
         renderOpen();
+        await waitFor(() => expect(pickedRepo()).toBe('r1'));
         openMenu();
-        await waitFor(() => expect(picker().value).toBe('r1'));
 
         act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-terminal')); });
         expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
@@ -266,8 +290,8 @@ describe('RepoGroupView right panel', () => {
 
         // Retarget, then open again: the second terminal is owned by r2, so the
         // two members' terminals coexist rather than one replacing the other.
+        pickRepo('r2');
         openMenu();
-        act(() => { fireEvent.change(picker(), { target: { value: 'r2' } }); });
         act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-terminal')); });
         expect(screen.getByTestId(`unified-panel-tab-${unifiedTabId({
             kind: 'terminal', ownerWorkspaceId: 'r2', chatId: null, resourceId: 'terminal',
@@ -283,8 +307,8 @@ describe('RepoGroupView right panel', () => {
 
     it('points the file-tree column at the picked member, without a deep link', async () => {
         renderOpen();
+        await waitFor(() => expect(pickedRepo()).toBe('r1'));
         openMenu();
-        await waitFor(() => expect(picker().value).toBe('r1'));
 
         // The menu's Explorer entry toggles the tree column rather than opening a tab.
         act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-explorer')); });
@@ -293,8 +317,7 @@ describe('RepoGroupView right panel', () => {
         // a file click would navigate out of the group.
         expect(screen.getByTestId('mock-explorer').dataset.deeplink).toBe('false');
 
-        openMenu();
-        act(() => { fireEvent.change(picker(), { target: { value: 'r2' } }); });
+        pickRepo('r2');
         expect(screen.getByTestId('mock-explorer').textContent).toBe('explorer:r2');
     });
 
@@ -308,17 +331,17 @@ describe('RepoGroupView right panel', () => {
             ],
         });
         renderOpen();
-        openMenu();
-        await waitFor(() => expect(picker().value).toBe('r2'));
+        await waitFor(() => expect(pickedRepo()).toBe('r2'));
 
-        // The panel's select keeps every member selectable and marks the
-        // unavailable one in its label instead; picking it gates the actions
-        // rather than the option.
-        const stale = Array.from(picker().options).find(o => o.value === 'r1')!;
-        expect(stale.text).toBe('shortcuts (path missing) (unavailable)');
+        // The stale member stays listed with its reason, so its absence is
+        // explained rather than silent — but it cannot be picked.
+        act(() => { fireEvent.click(picker()); });
+        const stale = screen.getByTestId('unified-panel-repo-picker-option-r1') as HTMLButtonElement;
+        expect(stale.textContent).toContain('shortcuts (path missing) (unavailable)');
+        expect(stale.disabled).toBe(true);
 
-        act(() => { fireEvent.change(picker(), { target: { value: 'r1' } }); });
-        expect((screen.getByTestId('unified-panel-open-terminal') as HTMLButtonElement).disabled).toBe(true);
+        act(() => { fireEvent.click(stale); });
+        expect(pickedRepo()).toBe('r2');
     });
 
     it('reads a remote group from its own server base URL', async () => {
@@ -342,8 +365,8 @@ describe('RepoGroupView right panel', () => {
         }];
         mockAppState.workspaces = [];
         renderOpen();
+        await waitFor(() => expect(pickedRepo()).toBe('r1'));
         openMenu();
-        await waitFor(() => expect(picker().value).toBe('r1'));
 
         act(() => { fireEvent.click(screen.getByTestId('unified-panel-open-explorer')); });
         expect(screen.getByTestId('mock-explorer').dataset.routingRef).toBe('remote:server-remote:r1');
@@ -353,7 +376,19 @@ describe('RepoGroupView right panel', () => {
         mockGetRepoGroup.mockRejectedValue(new Error('offline'));
         renderOpen();
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalled());
+        expect(screen.queryByTestId('unified-panel-repo-picker')).toBeNull();
+    });
+
+    it('closes an open "+" menu when the repo changes under it', async () => {
+        renderOpen();
+        await waitFor(() => expect(pickedRepo()).toBe('r1'));
         openMenu();
-        expect(screen.queryByTestId('unified-panel-open-menu-repo')).toBeNull();
+        expect(screen.getByTestId('unified-panel-open-menu-popover')).toBeTruthy();
+
+        // The menu's file results are scoped to the repo they were searched in,
+        // so a switch has to dismiss them rather than leave them under a new one.
+        pickRepo('r2');
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        expect(pickedRepo()).toBe('r2');
     });
 });

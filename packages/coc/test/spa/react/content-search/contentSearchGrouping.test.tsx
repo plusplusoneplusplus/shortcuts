@@ -32,6 +32,8 @@ function match(
         path: 'src/app.ts',
         line: 1,
         preview: 'hit',
+        startColumn: 0,
+        endColumn: 3,
         ...overrides,
     };
 }

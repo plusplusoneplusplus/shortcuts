@@ -137,6 +137,7 @@ export async function mergeServerResultsIntoChildrenMap(
     setChildrenMap: Dispatch<SetStateAction<Map<string, TreeEntry[]>>>,
     workspaceId: string,
     routingRef?: string | null,
+    onLoadError?: (error: unknown) => void,
 ): Promise<string[]> {
     const allAncestors = new Set<string>();
     for (const p of paths) {
@@ -150,7 +151,10 @@ export async function mergeServerResultsIntoChildrenMap(
             missing.map(dir =>
                 explorerApi.tree(workspaceId, { path: dir }, routingRef)
                     .then((data: { entries: TreeEntry[] }) => ({ dir, entries: data.entries }))
-                    .catch(() => null),
+                    .catch((error: unknown) => {
+                        onLoadError?.(error);
+                        return null;
+                    }),
             ),
         );
         const updates: [string, TreeEntry[]][] = [];
@@ -465,7 +469,10 @@ export function ExplorerPanel({
 
     // Server search state
     const [serverSearchLoading, setServerSearchLoading] = useState(false);
+    const [trustedSearch, setTrustedSearch] = useState<{ query: string; owner: string } | null>(null);
     const serverSearchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+    const hideUnfetchedDirs = !!searchQuery && !serverSearchLoading && searchInput === searchQuery
+        && trustedSearch?.query === searchQuery && trustedSearch.owner === ownerKey;
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{
@@ -1093,6 +1100,7 @@ export function ExplorerPanel({
     // Search handlers
     const onSearchChange = useCallback((value: string) => {
         setSearchInput(value);
+        setTrustedSearch(null);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => setSearchQuery(value), 150);
     }, []);
@@ -1100,6 +1108,7 @@ export function ExplorerPanel({
     const onSearchClear = useCallback(() => {
         setSearchInput('');
         setSearchQuery('');
+        setTrustedSearch(null);
         if (debounceRef.current) clearTimeout(debounceRef.current);
     }, []);
 
@@ -1142,6 +1151,8 @@ export function ExplorerPanel({
     // Server search: debounce 300 ms, seed childrenMap with results from unexplored directories
     useEffect(() => {
         if (serverSearchTimerRef.current) clearTimeout(serverSearchTimerRef.current);
+        let cancelled = false;
+        setTrustedSearch(null);
         if (!searchQuery) {
             setServerSearchLoading(false);
             return;
@@ -1150,10 +1161,16 @@ export function ExplorerPanel({
             setServerSearchLoading(true);
             explorerApi.searchFiles(workspaceId, searchQuery, { limit: 100 }, routingRef)
                 .then(async (data: { results: { path: string; score: number }[] }) => {
+                    if (cancelled) return;
                     const paths = data.results.map(r => r.path);
+                    let ancestorsComplete = true;
                     const ancestors = await mergeServerResultsIntoChildrenMap(
-                        paths, childrenMap, setChildrenMap, workspaceId, routingRef,
+                        paths, childrenMap, setChildrenMap, workspaceId, routingRef, error => {
+                            ancestorsComplete = false;
+                            console.error('Explorer file search ancestor load failed', error);
+                        },
                     );
+                    if (cancelled) return;
                     if (ancestors.length > 0) {
                         setExpandedPaths(prev => {
                             const next = new Set(prev);
@@ -1161,14 +1178,22 @@ export function ExplorerPanel({
                             return next;
                         });
                     }
+                    if (ancestorsComplete && data.results.length < 100) {
+                        setTrustedSearch({ query: searchQuery, owner: ownerKey });
+                    }
                 })
-                .catch(() => { /* silently ignore search errors */ })
-                .finally(() => setServerSearchLoading(false));
+                .catch((error: unknown) => {
+                    if (!cancelled) console.error('Explorer file search failed', error);
+                })
+                .finally(() => {
+                    if (!cancelled) setServerSearchLoading(false);
+                });
         }, 300);
         return () => {
+            cancelled = true;
             if (serverSearchTimerRef.current) clearTimeout(serverSearchTimerRef.current);
         };
-    }, [searchQuery, workspaceId, routingRef]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [searchQuery, workspaceId, routingRef, ownerKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /**
      * Announce this mount to the Ctrl+P router. Only the Explorer *sub-tab*
@@ -1483,6 +1508,7 @@ export function ExplorerPanel({
                             onChildrenLoaded={handleChildrenLoaded}
                             onContextMenu={handleTreeContextMenu}
                             filterQuery={searchQuery}
+                            hideUnfetchedDirs={hideUnfetchedDirs}
                             scrollRef={treeScrollRef}
                         />
                     </>

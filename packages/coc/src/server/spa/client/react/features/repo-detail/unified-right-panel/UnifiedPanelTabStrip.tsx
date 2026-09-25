@@ -24,6 +24,11 @@
  *    scrolling row so labels truncate at a sane width instead of collapsing to
  *    nothing, and the trailing "+" sits outside that row so it stays reachable
  *    no matter how many tabs are open.
+ *
+ * The strip is also an inline-size container named `unified-panel-strip`, so the
+ * chrome parked at its end can condense against the panel's width rather than
+ * the viewport's — that is how the repo picker drops its label on a narrow
+ * panel.
  */
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
@@ -121,10 +126,17 @@ export interface UnifiedPanelTabStripProps {
     /**
      * The file-tree toggle, parked beside the "+" whenever the panel's own
      * toolbar row is not rendered (a non-file tab, or no tabs at all) so the
-     * tree is always one click away. It is the strip's only guest — nothing
-     * else portals in here, because the strip is the panel's one tab row.
+     * tree is always one click away. One of the strip's two guests, and the
+     * conditional one — nothing else portals in here, because the strip is the
+     * panel's one tab row.
      */
     trailing?: ReactNode;
+    /**
+     * The repo picker, sitting just left of the "+". Its own prop rather than
+     * part of `trailing` because it is present on every tab state: the panel's
+     * repo scope does not come and go with the breadcrumb toolbar.
+     */
+    leadingControls?: ReactNode;
     className?: string;
 }
 
@@ -141,6 +153,7 @@ export function UnifiedPanelTabStrip({
     onMenuAction,
     onOpenMenu,
     trailing,
+    leadingControls,
     className,
 }: UnifiedPanelTabStripProps) {
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
@@ -227,7 +240,11 @@ export function UnifiedPanelTabStrip({
 
     return (
         <div
-            className={cn('flex min-w-0 flex-shrink-0 items-stretch border-b border-[#e5e5e5] dark:border-[#333]', className)}
+            className={cn(
+                'flex min-w-0 flex-shrink-0 items-stretch border-b border-[#e5e5e5] dark:border-[#333]',
+                '[container-type:inline-size] [container-name:unified-panel-strip]',
+                className,
+            )}
             data-testid="unified-panel-tab-strip"
         >
             <div
@@ -371,6 +388,7 @@ export function UnifiedPanelTabStrip({
             </div>
 
             {/* Outside the scrolling row, so they stay reachable at any tab count. */}
+            {leadingControls}
             {onOpenMenu && (
                 <button
                     type="button"

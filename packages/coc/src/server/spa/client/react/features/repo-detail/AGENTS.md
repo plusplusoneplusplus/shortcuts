@@ -82,8 +82,9 @@ the workspace `DockNotesPanel` is keyed on. The *target* is the workspace new
 terminals and file resources open against. They are the same value unless the
 caller passes `targets?: readonly DockTarget[]` (`{ workspaceId, label,
 disabled?, deprioritized? }`) to both `useWorkspaceDock` and the panel; that adds
-a repo picker to the panel's `+` menu (`UnifiedPanelOpenMenu`) and lets the user
-re-point new content while the panel's open state, tabs, and width stay put.
+a repo picker to the tab strip beside the `+` (`UnifiedPanelRepoPicker`) and lets
+the user re-point new content while the panel's open state, tabs, and width stay
+put.
 Omitting `targets` is a strict no-op. Changing the target never retargets an
 already-open tab.
 
@@ -158,6 +159,14 @@ settles a tracked flag; deriving it also keeps the two mounted Explorer panels
 (RepoDetail's Explorer sub-tab + the right panel's tree column) in agreement. A failed listing sets `loadError` and
 renders a `⚠` retry affordance; clicking it clears the error and re-fires the
 effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
+
+`explorer/FileTree.tsx` filters both root entries and `TreeNode` children through
+`filterEntries`. `ExplorerPanel` supplies `hideUnfetchedDirs` only for a current,
+successful file-name search below the 100-hit cap with complete ancestor loads;
+errors, truncated results, and pending searches leave unfetched directories
+visible. Name-matching directories always remain visible; an active, trusted
+filter with no visible entries shows a tree empty state. An empty query leaves
+the tree unchanged.
 
 ## Quick Open and Go To All
 
@@ -258,6 +267,9 @@ preflights its repo-relative path through the clone-qualified owner route, and o
 then opens the unified panel's preview slot at the matching line. The panel scope
 and dock target stay unchanged for group results. A stale member, unresolved clone,
 or deleted file leaves the overlay and panel state intact and is announced inline.
+Rows highlight the exact server-provided UTF-16 `startColumn`/`endColumn` span; the
+shared Explorer splitter clamps malformed offsets, and the overlay never derives a
+span from the current query.
 
 `SearchBar.tsx` is shared by both views. Its `data-testid`s derive from a
 `testIdPrefix` (`<prefix>-bar` / `-input` / `-clear` / `-toggle-<id>`) whose

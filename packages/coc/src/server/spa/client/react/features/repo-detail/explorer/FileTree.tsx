@@ -24,6 +24,7 @@ export interface FileTreeProps {
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
     onContextMenu?: (e: React.MouseEvent, entry: TreeEntry) => void;
     filterQuery?: string;
+    hideUnfetchedDirs?: boolean;
     /**
      * Handed down so the panel can drive the tree's own scroll position — the
      * Reveal Open File button centres a row inside this container. The tree
@@ -72,15 +73,15 @@ export function filterEntries(
     entries: TreeEntry[],
     query: string,
     childrenMap: Map<string, TreeEntry[]>,
+    hideUnfetchedDirs = false,
 ): TreeEntry[] {
     if (!query) return entries;
     const q = query.toLowerCase();
     return entries.filter(entry => {
         if (entry.type === 'dir') {
-            // Show dirs whose name matches, have matching descendants, or haven't been fetched yet
             return entry.name.toLowerCase().includes(q)
                 || hasMatchingDescendant(entry, q, childrenMap)
-                || !childrenMap.has(entry.path);
+                || (!hideUnfetchedDirs && !childrenMap.has(entry.path));
         }
         return entry.name.toLowerCase().includes(q);
     });
@@ -88,13 +89,13 @@ export function filterEntries(
 
 export function FileTree({
     workspaceId, routingRef, entries, selectedPath, expandedPaths, childrenMap,
-    onSelect, onToggle, onFileOpen, onFilePin, onChildrenLoaded, onContextMenu, filterQuery, scrollRef,
+    onSelect, onToggle, onFileOpen, onFilePin, onChildrenLoaded, onContextMenu, filterQuery, hideUnfetchedDirs, scrollRef,
 }: FileTreeProps) {
     const [focusedIndex, setFocusedIndex] = useState(-1);
 
     const filteredEntries = useMemo(
-        () => filterEntries(entries, filterQuery || '', childrenMap),
-        [entries, filterQuery, childrenMap],
+        () => filterEntries(entries, filterQuery || '', childrenMap, hideUnfetchedDirs),
+        [entries, filterQuery, childrenMap, hideUnfetchedDirs],
     );
 
     const visibleNodes = useMemo(
@@ -179,8 +180,14 @@ export function FileTree({
                         onContextMenu={onContextMenu}
                         isFocused={entry.path === focusedPath}
                         filterQuery={filterQuery}
+                        hideUnfetchedDirs={hideUnfetchedDirs}
                     />
                 ))}
+                {filterQuery && hideUnfetchedDirs && filteredEntries.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-[#848484]" data-testid="file-tree-no-matches">
+                        No matching files
+                    </div>
+                )}
             </div>
         </div>
     );

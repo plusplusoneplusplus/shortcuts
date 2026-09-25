@@ -91,6 +91,7 @@ import {
 } from './unifiedPanelTree';
 import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
+import { UnifiedPanelRepoPicker } from './UnifiedPanelRepoPicker';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
@@ -1312,6 +1313,15 @@ export function UnifiedRightPanel({
         open(input);
     }, [open]);
 
+    // The strip's repo picker. A switch closes the "+" menu: its search results
+    // are scoped to the repo that was current when they were fetched, so keeping
+    // it open would list files from the repo the user just left.
+    const selectTarget = useCallback((next: string) => {
+        const switched = dock.setTarget(next);
+        if (switched) setMenuOpen(false);
+        return switched;
+    }, [dock.setTarget]);
+
     const toggleMenu = useCallback(() => {
         menuTriggerRef.current = document.activeElement as HTMLElement | null;
         setMenuOpen(prev => !prev);
@@ -1365,6 +1375,13 @@ export function UnifiedRightPanel({
                     fileActionAvailability={tab => unifiedPanelFileActionAvailability(tab, rootPathForTab(tab))}
                     onMenuAction={handleTabMenuAction}
                     onOpenMenu={toggleMenu}
+                    leadingControls={(
+                        <UnifiedPanelRepoPicker
+                            target={target}
+                            targets={targetOptions}
+                            onSelectTarget={selectTarget}
+                        />
+                    )}
                     trailing={toolbar === null ? navigatorControls('strip') : undefined}
                 />
 
@@ -1376,7 +1393,6 @@ export function UnifiedRightPanel({
                             target={target}
                             targetRoutingRef={targetRoutingRef}
                             targets={targetOptions}
-                            onSelectTarget={dock.setTarget}
                             onOpenResource={openResource}
                             onOpenWorkspaceResource={kind => {
                                 setMenuOpen(false);

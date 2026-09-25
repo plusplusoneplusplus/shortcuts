@@ -277,11 +277,12 @@ describe('toGroupOverlayMatches', () => {
         ],
     });
 
-    it('stamps each row with its own member and the group owner route', () => {
+    it('stamps each row with its member, owner route, and exact offsets', () => {
         const rows = toGroupOverlayMatches(response, 'remote:hub');
         expect(rows.map(row => row.workspaceId)).toEqual(['repo-a', 'repo-b']);
         expect(rows.map(row => row.repoLabel)).toEqual(['Alpha', 'Beta']);
         expect(rows.every(row => row.routingRef === 'remote:hub')).toBe(true);
+        expect(rows.map(row => [row.startColumn, row.endColumn])).toEqual([[0, 3], [0, 3]]);
     });
 
     it('keeps the same relative path in two members as distinct rows', () => {

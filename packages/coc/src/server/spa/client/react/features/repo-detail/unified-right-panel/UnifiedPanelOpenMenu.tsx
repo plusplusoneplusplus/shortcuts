@@ -18,11 +18,11 @@
  *    into the browser), typing is debounced, and each new query aborts the
  *    previous request. Highlights come from the server's `indices`, so the
  *    emphasis always shows the match the ranking used.
- *  - **A stale result can never open the wrong repo.** Changing the repo picker
- *    aborts the in-flight search before issuing the new one, and an aborted
- *    request's response is discarded — so switching repos mid-flight abandons
- *    the old results instead of listing files the user would then open in the
- *    repo they just left.
+ *  - **A stale result can never open the wrong repo.** The repo picker lives on
+ *    the tab strip, outside this menu, and a switch there closes the menu
+ *    outright. Even so, a target change aborts the in-flight search before
+ *    issuing the new one and discards the aborted request's response, so a
+ *    result can never be listed under a repo it was not searched in.
  *  - **Every state is visible.** Loading, empty query, no results, and a failed
  *    search (with Retry) are all rendered; an unavailable target disables the
  *    repo-bound actions with the reason rather than silently dropping them.
@@ -68,8 +68,6 @@ export interface UnifiedPanelOpenMenuProps {
     target: string;
     /** Concrete clone route for the target repo. */
     targetRoutingRef?: string | null;
-    /** Point the menu (and the dock) at another repo. */
-    onSelectTarget: (workspaceId: string) => void;
     /** Repo options for a group; a single-repo panel passes none. */
     targets?: readonly DockTarget[];
     /** Open a concrete resource — a searched file or a chat canvas. */
@@ -85,7 +83,6 @@ export function UnifiedPanelOpenMenu({
     chatId,
     target,
     targetRoutingRef,
-    onSelectTarget,
     targets,
     onOpenResource,
     onOpenWorkspaceResource,
@@ -319,24 +316,6 @@ export function UnifiedPanelOpenMenu({
             onKeyDown={handleKeyDown}
             data-testid="unified-panel-open-menu-popover"
         >
-            {targetOptions.length > 1 && (
-                <div className="flex items-center gap-1.5 border-b border-[#e5e5e5] px-2 py-1.5 dark:border-[#3c3c3c]">
-                    <span className="text-[10px] uppercase tracking-wide text-[#8a8a8a]">Repo</span>
-                    <select
-                        className="min-w-0 flex-1 rounded border border-[#d0d0d0] bg-transparent px-1 py-0.5 text-xs text-[#1f1f1f] dark:border-[#3c3c3c] dark:text-[#cccccc]"
-                        value={target}
-                        onChange={event => onSelectTarget(event.target.value)}
-                        data-testid="unified-panel-open-menu-repo"
-                    >
-                        {targetOptions.map(option => (
-                            <option key={option.workspaceId} value={option.workspaceId}>
-                                {option.label}{option.disabled ? ' (unavailable)' : ''}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-            )}
-
             <div className="flex items-center gap-1.5 border-b border-[#e5e5e5] px-2 py-1.5 dark:border-[#3c3c3c]">
                 <span aria-hidden className="text-xs opacity-60">🔍</span>
                 <input

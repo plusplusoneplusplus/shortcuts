@@ -64,6 +64,25 @@ describe('filterEntries', () => {
         expect(result.some(e => e.name === 'dist')).toBe(true);
     });
 
+    it('keeps unfetched directories while the server search is in flight', () => {
+        expect(filterFn(entries, 'storage.rs', new Map(), false).map(e => e.name)).toEqual(['src', 'dist']);
+    });
+
+    it('drops unfetched directories after a trusted server search', () => {
+        expect(filterFn(entries, 'storage.rs', new Map(), true)).toEqual([]);
+    });
+
+    it('keeps directories with matching cached descendants after a trusted search', () => {
+        expect(filterFn(entries, 'helper.ts', childrenMap, true).map(e => e.name)).toEqual(['src']);
+    });
+
+    it('keeps a directory whose own name matches even without matching children', () => {
+        const noMatches = new Map<string, TreeEntry[]>([['src', [
+            { name: 'index.ts', type: 'file', path: 'src/index.ts' },
+        ]]]);
+        expect(filterFn(entries, 'src', noMatches, true).map(e => e.name)).toEqual(['src']);
+    });
+
     it('removes files that do not match', () => {
         const result = filterFn(entries, 'package', childrenMap);
         expect(result.some(e => e.name === 'README.md')).toBe(false);

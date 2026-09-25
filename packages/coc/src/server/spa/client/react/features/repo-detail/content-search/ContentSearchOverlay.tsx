@@ -38,6 +38,7 @@ import {
     visibleMatches,
     type ContentSearchRepoGroup,
 } from './contentSearchGrouping';
+import { splitMatchText } from '../explorer/contentSearchMatchText';
 
 /** One selectable row. Carries the owner identity the open path needs (AC-04). */
 export interface ContentSearchOverlayMatch {
@@ -55,6 +56,10 @@ export interface ContentSearchOverlayMatch {
     line: number;
     /** The matching line, already trimmed by the server. */
     preview: string;
+    /** UTF-16 offset of the exact server match within `preview`. */
+    startColumn: number;
+    /** UTF-16 offset one past the exact server match within `preview`. */
+    endColumn: number;
 }
 
 /**
@@ -497,6 +502,11 @@ function renderGroups(args: RenderGroupsArgs): ReactNode[] {
             for (const match of file.matches) {
                 const index = rowIndex;
                 rowIndex += 1;
+                const { before, hit, after } = splitMatchText({
+                    text: match.preview,
+                    startColumn: match.startColumn,
+                    endColumn: match.endColumn,
+                });
                 nodes.push(
                     <button
                         key={match.id}
@@ -522,7 +532,13 @@ function renderGroups(args: RenderGroupsArgs): ReactNode[] {
                         <span className="shrink-0 tabular-nums text-[#616161] dark:text-[#a0a0a0]">
                             {match.line}
                         </span>
-                        <span className="truncate font-mono">{match.preview}</span>
+                        <span className="truncate font-mono">
+                            {before}
+                            <mark className="bg-[#fff2a8] dark:bg-[#623315] text-inherit rounded-sm">
+                                {hit}
+                            </mark>
+                            {after}
+                        </span>
                     </button>,
                 );
             }

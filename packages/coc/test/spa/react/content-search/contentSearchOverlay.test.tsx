@@ -46,6 +46,8 @@ function matches(count: number): ContentSearchOverlayMatch[] {
         path: `src/file${index}.ts`,
         line: index + 1,
         preview: `hit ${index}`,
+        startColumn: 0,
+        endColumn: 3,
     }));
 }
 
@@ -185,6 +187,60 @@ describe('ContentSearchOverlay keyboard model', () => {
         expect(props.onOpenMatch.mock.calls[0][0].id).toBe('m2');
     });
 
+    it('highlights exact UTF-16 spans and clamps malformed offsets for each row', () => {
+        renderOverlay({
+            matches: [
+                {
+                    id: 'unicode',
+                    workspaceId: 'coc',
+                    path: 'unicode.ts',
+                    line: 1,
+                    preview: 'hello 🌍 needle',
+                    startColumn: 9,
+                    endColumn: 15,
+                },
+                {
+                    id: 'malformed',
+                    workspaceId: 'coc',
+                    path: 'malformed.ts',
+                    line: 2,
+                    preview: 'whole row',
+                    startColumn: 99,
+                    endColumn: 200,
+                },
+                {
+                    id: 'multiline-1',
+                    workspaceId: 'coc',
+                    path: 'multiline.ts',
+                    line: 3,
+                    preview: 'start match',
+                    startColumn: 6,
+                    endColumn: 11,
+                },
+                {
+                    id: 'multiline-2',
+                    workspaceId: 'coc',
+                    path: 'multiline.ts',
+                    line: 4,
+                    preview: 'piece end',
+                    startColumn: 0,
+                    endColumn: 5,
+                },
+            ],
+        });
+
+        expect(screen.getByTestId('content-search-overlay-match-unicode').querySelector('mark')?.textContent)
+            .toBe('needle');
+        expect(screen.getByTestId('content-search-overlay-match-malformed').textContent)
+            .toContain('whole row');
+        expect(screen.getByTestId('content-search-overlay-match-malformed').querySelector('mark')?.textContent)
+            .toBe('');
+        expect(screen.getByTestId('content-search-overlay-match-multiline-1').querySelector('mark')?.textContent)
+            .toBe('match');
+        expect(screen.getByTestId('content-search-overlay-match-multiline-2').querySelector('mark')?.textContent)
+            .toBe('piece');
+    });
+
     it('arrow keys are left alone when there is nothing to select', () => {
         renderOverlay({ matches: [] });
         const dialog = screen.getByTestId('content-search-overlay');
@@ -217,7 +273,16 @@ describe('ContentSearchOverlay keyboard model', () => {
 
     it('shows a repository level only in a group scope', () => {
         const groupMatches: ContentSearchOverlayMatch[] = [
-            { id: 'g0', workspaceId: 'api', repoLabel: 'api', path: 'src/a.ts', line: 3, preview: 'hit' },
+            {
+                id: 'g0',
+                workspaceId: 'api',
+                repoLabel: 'api',
+                path: 'src/a.ts',
+                line: 3,
+                preview: 'hit',
+                startColumn: 0,
+                endColumn: 3,
+            },
         ];
         renderOverlay({ scope: 'group', matches: groupMatches });
         expect(screen.getByTestId('content-search-overlay-repo-api').textContent).toContain('api');

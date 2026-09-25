@@ -32,7 +32,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../../ui/cn';
+import {
+    splitMatchText,
+    type MatchTextParts,
+} from './contentSearchMatchText';
 import type { ContentSearchResultView } from './types';
+
+export { splitMatchText, type MatchTextParts } from './contentSearchMatchText';
 
 /** Matches for one file, in line order. */
 export interface ContentSearchFileGroup {
@@ -297,26 +303,6 @@ export function stepToMatch(
         if (row.kind === 'match') return row.key;
     }
     return null;
-}
-
-/** The three pieces a match row renders: text before, inside, and after the hit. */
-export interface MatchTextParts {
-    before: string;
-    hit: string;
-    after: string;
-}
-
-/** Split a match's line into the text before, inside, and after the match. */
-export function splitMatchText(match: ExplorerContentMatch): MatchTextParts {
-    // Columns are UTF-16 offsets into `text` by contract, but clamp anyway so a
-    // surprising payload degrades to "no highlight" rather than a blank row.
-    const start = Math.max(0, Math.min(match.startColumn, match.text.length));
-    const end = Math.max(start, Math.min(match.endColumn, match.text.length));
-    return {
-        before: match.text.slice(0, start),
-        hit: match.text.slice(start, end),
-        after: match.text.slice(end),
-    };
 }
 
 /**
