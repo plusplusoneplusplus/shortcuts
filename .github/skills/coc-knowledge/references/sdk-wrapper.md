@@ -154,7 +154,7 @@ Codex thread options expose no `skillDirectories`/`disabledSkills`. CoC maps res
 
 ### Permissions
 
-Every SDK agent mode maps to `approvalPolicy: 'never'` and `sandboxMode: 'danger-full-access'` with network enabled, so Codex can read skill files and other allowed roots on hosts where the restricted workspace-write sandbox cannot initialize. Ask-mode write constraints are enforced by the `<coc-read-only-mode>` directive CoC prepends to each ask-mode user turn (plan file, attached note, `.goal.md` specs are the exceptions). The server normalizes chat `mode='plan'` to Ask before calling the SDK.
+Every SDK agent mode maps to `approvalPolicy: 'never'` and `sandboxMode: 'danger-full-access'` with network enabled, so Codex can read skill files and other allowed roots on hosts where the restricted workspace-write sandbox cannot initialize. Ask-mode write constraints are enforced by the `<coc-read-only-mode>` directive CoC prepends to each ask-mode user turn; it allows the plan file, attached note file, explicitly requested `.goal.md` files, and files outside the repository such as temporary files. The server normalizes chat `mode='plan'` to Ask before calling the SDK.
 
 ### Attachments
 

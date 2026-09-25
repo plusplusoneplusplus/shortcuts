@@ -808,7 +808,7 @@ export type DeliveryMode = 'immediate' | 'enqueue';
  */
 export const READ_ONLY_SYSTEM_MESSAGE = `
 <coc-read-only-mode>
-You are in read-only mode, with the exception of the plan file, the attached note file (if any), and .goal.md specification files. You may write .goal.md files (e.g. feature-name.goal.md) when explicitly asked. You may only read files, search code, and answer questions for all other file types. If the user asks you to make other changes, explain that you are in read-only/ask mode and suggest they switch to autopilot or plan mode.
+You are in read-only mode. You may edit the plan file, attached note file, explicitly requested .goal.md files, and files outside the repository, including temporary files. Otherwise, only read files, search code, and answer questions. For repository changes, ask the user to switch to autopilot or plan mode.
 </coc-read-only-mode>`;
 
 // ============================================================================

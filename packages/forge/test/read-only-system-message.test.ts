@@ -33,6 +33,11 @@ describe('READ_ONLY_SYSTEM_MESSAGE', () => {
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('.goal.md');
     });
 
+    it('should allow editing files outside the repository, including temporary files', () => {
+        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('outside the repository');
+        expect(READ_ONLY_SYSTEM_MESSAGE).toContain('temporary files');
+    });
+
     it('should suggest switching modes', () => {
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('autopilot');
         expect(READ_ONLY_SYSTEM_MESSAGE).toContain('plan mode');
