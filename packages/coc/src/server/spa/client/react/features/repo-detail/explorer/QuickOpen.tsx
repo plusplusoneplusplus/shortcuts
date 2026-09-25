@@ -31,6 +31,7 @@ import { useWorkspaceSymbols } from '../../language-servers/useWorkspaceSymbols'
 import type { WorkspaceSymbolScopeMember } from '../../language-servers/useWorkspaceSymbols';
 import type { WorkspaceSymbolResult } from '../../language-servers/workspaceSymbols';
 import { explorerApi } from './explorerApi';
+import { FileNameIcon } from './FileTypeIcon';
 import { matchesKindFilter, parsePaletteQuery, type PaletteMode } from './paletteQuery';
 
 /** Maximum results requested and rendered for a query. */
@@ -152,6 +153,57 @@ function fileName(p: string): string {
 function dirName(p: string): string {
     const idx = p.lastIndexOf('/');
     return idx < 0 ? '' : p.slice(0, idx);
+}
+
+export interface FileNameDisplayParts {
+    stem: string;
+    suffix: string;
+    stemIndices: number[];
+    suffixIndices: number[];
+}
+
+/** Keep the final extension separate so flex truncation can never hide it. */
+export function splitFileNameForDisplay(
+    name: string,
+    indices: readonly number[] = [],
+): FileNameDisplayParts {
+    const dot = name.lastIndexOf('.');
+    const suffixStart = dot > 0 && dot < name.length - 1 ? dot : name.length;
+    return {
+        stem: name.slice(0, suffixStart),
+        suffix: name.slice(suffixStart),
+        stemIndices: indices.filter(index => index < suffixStart),
+        suffixIndices: indices.filter(index => index >= suffixStart).map(index => index - suffixStart),
+    };
+}
+
+function FileNameLabel({
+    name,
+    indices = [],
+    testId,
+    suffixTestId,
+    className,
+}: {
+    name: string;
+    indices?: readonly number[];
+    testId?: string;
+    suffixTestId?: string;
+    className?: string;
+}) {
+    const parts = splitFileNameForDisplay(name, indices);
+    return (
+        <span className={cn('flex min-w-0 items-baseline', className)} title={name} data-testid={testId}>
+            <span className="truncate">{highlightMatches(parts.stem, parts.stemIndices)}</span>
+            {parts.suffix && (
+                <span
+                    className="flex-shrink-0 font-mono text-[#0067b8] dark:text-[#75beff]"
+                    data-testid={suffixTestId}
+                >
+                    {highlightMatches(parts.suffix, parts.suffixIndices)}
+                </span>
+            )}
+        </span>
+    );
 }
 
 function isGroupResult(result: QuickOpenResult): result is ExplorerRepoGroupSearchResult {
@@ -541,27 +593,68 @@ export function QuickOpen({
                                         repoName ?? '',
                                     ].filter(Boolean).join(', ')}
                                 >
-                                    <span className="text-xs mr-2 opacity-60">
-                                        {symbol ? KIND_GLYPHS[symbol.kind] ?? 'ƒ' : '📄'}
-                                    </span>
-                                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
-                                        {symbol
-                                            ? highlightMatches(symbol.name, symbol.indices ?? [])
-                                            : highlightMatches(fileName(result.path), matched.name)}
-                                    </span>
+                                    {symbol ? (
+                                        <span
+                                            className="text-xs mr-2 opacity-60"
+                                            data-testid={`quick-open-symbol-kind-${idx}`}
+                                        >
+                                            {KIND_GLYPHS[symbol.kind] ?? 'ƒ'}
+                                        </span>
+                                    ) : (
+                                        <span className="mr-2">
+                                            <FileNameIcon
+                                                fileName={fileName(result.path)}
+                                                testId={`quick-open-file-icon-${idx}`}
+                                            />
+                                        </span>
+                                    )}
+                                    {symbol ? (
+                                        <span
+                                            className="min-w-0 truncate font-medium text-[#1e1e1e] dark:text-[#cccccc]"
+                                            data-testid={`quick-open-symbol-name-${idx}`}
+                                        >
+                                            {highlightMatches(symbol.name, symbol.indices ?? [])}
+                                        </span>
+                                    ) : (
+                                        <FileNameLabel
+                                            name={fileName(result.path)}
+                                            indices={matched.name}
+                                            testId={`quick-open-file-name-${idx}`}
+                                            suffixTestId={`quick-open-file-suffix-${idx}`}
+                                            className="shrink font-medium text-[#1e1e1e] dark:text-[#cccccc]"
+                                        />
+                                    )}
                                     {symbol?.containerName && (
                                         <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
                                             {symbol.containerName}
                                         </span>
                                     )}
                                     {!symbol && dirName(result.path) && (
-                                        <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
+                                        <span className="ml-2 min-w-0 flex-1 truncate text-xs text-[#848484]">
                                             {highlightMatches(dirName(result.path), matched.dir)}
                                         </span>
                                     )}
                                     {symbol && (
-                                        <span className="ml-auto pl-2 text-xs text-[#848484] truncate" data-testid={`quick-open-symbol-path-${idx}`}>
-                                            {symbol.path}:{symbol.line}
+                                        <span className="ml-auto flex min-w-0 items-center pl-2 text-xs text-[#848484]">
+                                            <FileNameIcon
+                                                fileName={fileName(symbol.path)}
+                                                showTitle={false}
+                                                testId={`quick-open-symbol-file-icon-${idx}`}
+                                            />
+                                            <span
+                                                className="ml-1 flex min-w-0 items-baseline"
+                                                data-testid={`quick-open-symbol-path-${idx}`}
+                                            >
+                                                {dirName(symbol.path) && (
+                                                    <span className="min-w-0 truncate">{dirName(symbol.path)}/</span>
+                                                )}
+                                                <FileNameLabel
+                                                    name={fileName(symbol.path)}
+                                                    suffixTestId={`quick-open-symbol-suffix-${idx}`}
+                                                    className="min-w-0"
+                                                />
+                                                <span className="flex-shrink-0">:{symbol.line}</span>
+                                            </span>
                                         </span>
                                     )}
                                     {repoName && (

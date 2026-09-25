@@ -90,13 +90,17 @@ describe('QuickOpen in symbols mode', () => {
         expect(row.textContent).toContain('findWorkspaceConfig');
         expect(row.textContent).toContain('Loader');
         expect(screen.getByTestId('quick-open-symbol-path-0').textContent).toBe('src/config.ts:42');
+        expect(screen.getByTestId('quick-open-symbol-kind-0')).toHaveTextContent('ƒ');
+        expect(screen.getByTestId('quick-open-symbol-file-icon-0')).toHaveAttribute('data-icon-label', 'TS');
+        expect(screen.getByTestId('quick-open-symbol-suffix-0')).toHaveTextContent('.ts');
+        expect(screen.getByTestId('quick-open-symbol-suffix-0')).toHaveClass('flex-shrink-0');
     });
 
     it('highlights exactly the characters the scorer matched', () => {
         symbolsState.results = [symbol()];
         renderPalette();
         typeQuery('fwc');
-        const marked = [...screen.getByTestId('quick-open-item-0').querySelectorAll('span span')]
+        const marked = [...screen.getByTestId('quick-open-symbol-name-0').querySelectorAll('span.font-semibold')]
             .map(node => node.textContent)
             .join('');
         expect(marked).toBe('fWC');
