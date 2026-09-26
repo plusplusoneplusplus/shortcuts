@@ -183,6 +183,7 @@ export function UnifiedTabView({
                     workspaceId={scopeWorkspaceId}
                     initialNotePath={tab.notesView?.notePath ?? null}
                     navigation="local"
+                    layout="container"
                     active={false}
                     onSelectedNotePathChange={handleNotesSelection}
                 />

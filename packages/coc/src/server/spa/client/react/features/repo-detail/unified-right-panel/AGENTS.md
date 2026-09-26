@@ -77,7 +77,8 @@ There is no second editor, search backend, terminal manager, or canvas store.
 Explorer sub-tab uses), `canvas` renders `CanvasPanel` (the panel is its ONLY
 host — the chat has no canvas column of its own), `note` renders
 `NoteEditor`, `notes` renders the shared `NotesView` with panel-local selection
-restored from its descriptor (a missing path clears after tree validation),
+restored from its descriptor (a missing path clears after tree validation)
+and a container-width layout,
 `diff` renders the chat's `WhisperDiffPanel`, and `terminal` renders
 `TerminalView`. The file tree is not among them: it is
 the panel's own column (`ExplorerPanel` in sidebar mode), so no tab mounts a

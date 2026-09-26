@@ -111,6 +111,7 @@ describe('UnifiedTabView — language navigation (AC-03/AC-04)', () => {
             workspaceId: 'group-1',
             initialNotePath: 'Plans/Release.md',
             navigation: 'local',
+            layout: 'container',
             active: false,
         });
         viewProps.notes.onSelectedNotePathChange('Plans/Next.md');

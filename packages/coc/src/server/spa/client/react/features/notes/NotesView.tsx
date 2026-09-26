@@ -16,6 +16,7 @@ import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark, revea
 import type { TextAnchor } from './editor/textAnchor';
 import { AddCommentDialog } from './editor/NotesDialogs';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
+import { useContainerWidth } from '../chat/hooks/useContainerWidth';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useHoverPeek } from '../chat/hooks/useHoverPeek';
 import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeftColWidth';
@@ -57,7 +58,17 @@ export interface NotesViewProps {
      * of the app-wide `GlobalStatusDock` painting a partial-width band beside it.
      * No-ops in classic / mobile via `DockedStatusFooter`'s own gate. */
     dockStatusFooter?: boolean;
+    /**
+     * `viewport` (default) follows the window breakpoints, as in the main Notes
+     * sub-tab. `container` follows this view's own width, for hosts such as the
+     * unified right panel: below `NOTES_CONTAINER_WIDE_WIDTH` the tree sidebar
+     * becomes a toggleable overlay and the note chat starts collapsed.
+     */
+    layout?: 'viewport' | 'container';
 }
+
+/** Container width (px) at or above which a `layout="container"` view uses the full layout. */
+export const NOTES_CONTAINER_WIDE_WIDTH = 720;
 
 const MAX_NAV_HISTORY = 50;
 
@@ -101,12 +112,16 @@ export function NotesView({
     defaultScope,
     active = true,
     dockStatusFooter = false,
+    layout = 'viewport',
 }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPathState, setSelectedPathState] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [noteViewMode, setNoteViewMode] = useState<NoteViewMode>('rich');
     const { isMobile } = useBreakpoint();
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const { width: containerWidth } = useContainerWidth(rootRef, { wideThreshold: NOTES_CONTAINER_WIDE_WIDTH });
+    const isCompact = layout === 'container' && !isMobile && containerWidth < NOTES_CONTAINER_WIDE_WIDTH;
 
     const updateHash = useCallback((path: string | null) => {
         const target = path
@@ -147,8 +162,8 @@ export function NotesView({
     }), [workspaceId]);
     const legacyChatOpenStorageKey = useMemo(() => getNotesChatLegacyOpenStorageKey(workspaceId), [workspaceId]);
     const {
-        chatOpen: chatPanelOpen,
-        toggleChat: handleToggleChatPanel,
+        chatOpen: persistedChatOpen,
+        toggleChat: togglePersistedChat,
         closeChat: closeNoteChat,
         minimizeChat: minimizeNoteChat,
         restoreChat: restoreNoteChat,
@@ -163,6 +178,17 @@ export function NotesView({
         target: notesChatTarget,
         legacyOpenStorageKey: legacyChatOpenStorageKey,
     });
+
+    // A compact container starts with the chat collapsed without touching the
+    // persisted open state, which is shared with the main Notes sub-tab.
+    const [compactChatCollapsed, setCompactChatCollapsed] = useState(true);
+    const chatSuppressed = isCompact && compactChatCollapsed;
+    const chatPanelOpen = persistedChatOpen && !chatSuppressed;
+    const handleToggleChatPanel = useCallback(() => {
+        setCompactChatCollapsed(false);
+        if (chatSuppressed && persistedChatOpen) return;
+        togglePersistedChat();
+    }, [chatSuppressed, persistedChatOpen, togglePersistedChat]);
 
     // ── Whether the notes chat has an existing conversation ──────────────────
 
@@ -258,7 +284,10 @@ export function NotesView({
     // Collapse only applies to the desktop/tablet in-flow sidebar — on mobile the
     // sidebar is a portal drawer with its own open/close affordance.
     const [sidebarCollapsed, toggleSidebarCollapsed] = useNotesSidebarCollapsed(workspaceId);
-    const sidebarCollapsedDesktop = !isMobile && sidebarCollapsed;
+    // A compact container always shows the rail; its button toggles the tree as
+    // an overlay instead of changing the persisted collapse state.
+    const [compactSidebarOpen, setCompactSidebarOpen] = useState(false);
+    const sidebarCollapsedDesktop = !isMobile && (isCompact || sidebarCollapsed);
 
     // Hover-to-float peek: while the sidebar is collapsed, hovering the thin rail
     // floats the full tree sidebar back as a temporary overlay, and leaving it
@@ -270,21 +299,21 @@ export function NotesView({
     const [hasFinePointer] = useState(hasFinePointerDevice);
     const peekPanelRef = useRef<HTMLDivElement | null>(null);
     const hoverPeek = useHoverPeek({
-        enabled: sidebarCollapsedDesktop && hasFinePointer,
+        enabled: sidebarCollapsedDesktop && hasFinePointer && !isCompact,
         panelRef: peekPanelRef,
     });
     // Drive a one-shot slide-in once the peek opens (matches the split panel's
     // ~200ms rail-peek timing).
     const [peekVisible, setPeekVisible] = useState(false);
+    const sidebarPeeking = sidebarCollapsedDesktop && (isCompact ? compactSidebarOpen : hoverPeek.isOpen);
     useEffect(() => {
-        if (!hoverPeek.isOpen) {
+        if (!sidebarPeeking) {
             setPeekVisible(false);
             return;
         }
         const raf = requestAnimationFrame(() => setPeekVisible(true));
         return () => cancelAnimationFrame(raf);
-    }, [hoverPeek.isOpen]);
-    const sidebarPeeking = sidebarCollapsedDesktop && hoverPeek.isOpen;
+    }, [sidebarPeeking]);
     // Class applied to the keep-alive sidebar's own <aside> (ResponsiveSidebar
     // forwards `className`): hidden while collapsed-not-peeking, and an absolute
     // slide-in overlay while peeking. Undefined when expanded so it stays in flow.
@@ -508,6 +537,7 @@ export function NotesView({
         setSelectedPath(path);
         publishSelection(path);
         if (isMobile) setSidebarOpen(false);
+        setCompactSidebarOpen(false);
     }, [isMobile, publishSelection, pushEntry, setSelectedPath]);
 
     const handleNavigateToNote = useCallback((path: string, heading?: string) => {
@@ -559,6 +589,9 @@ export function NotesView({
     const noteChatWindowMode: NotesChatWindowMode = noteChatPresentation === 'lens'
         ? 'lens'
         : (noteChatLensEnabled && noteChatPinned && noteChatIsDesktop ? 'side-panel' : 'embedded');
+    const railButtonLabel = isCompact
+        ? (compactSidebarOpen ? 'Hide notes sidebar' : 'Show notes sidebar')
+        : (sidebarPeeking ? 'Keep notes sidebar open' : 'Expand notes sidebar');
     const renderNoteChatPanel = () => (
         <NoteChatPanel
             workspaceId={workspaceId}
@@ -582,8 +615,10 @@ export function NotesView({
 
     return (
         <div
+            ref={rootRef}
             className={`relative flex h-full${isResizing ? ' select-none' : ''}`}
             data-testid="notes-view"
+            data-compact={isCompact ? 'true' : undefined}
             onPointerDown={handlePointerDown}
         >
             {/* Collapsed rail — a thin strip that replaces the tree sidebar when
@@ -603,11 +638,11 @@ export function NotesView({
                     <button
                         type="button"
                         className={`w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]${sidebarPeeking ? ' bg-[#e8e8e8] text-[#333] ring-1 ring-[#007acc]/40 dark:bg-[#2d2d2d] dark:text-[#ddd]' : ''}`}
-                        onClick={toggleSidebarCollapsed}
-                        aria-label={sidebarPeeking ? 'Keep notes sidebar open' : 'Expand notes sidebar'}
-                        aria-expanded={!sidebarCollapsed}
-                        title={sidebarPeeking ? 'Keep notes sidebar open' : 'Expand notes sidebar'}
-                        data-testid="notes-sidebar-expand"
+                        onClick={isCompact ? () => setCompactSidebarOpen((open) => !open) : toggleSidebarCollapsed}
+                        aria-label={railButtonLabel}
+                        aria-expanded={isCompact ? compactSidebarOpen : !sidebarCollapsed}
+                        title={railButtonLabel}
+                        data-testid={isCompact ? 'notes-sidebar-overlay-toggle' : 'notes-sidebar-expand'}
                     >
                         »
                     </button>
@@ -668,7 +703,7 @@ export function NotesView({
 
             {/* Sidebar resize handle + collapse chevron (desktop/tablet only).
                 Dropped while collapsed — the rail owns the expand affordance then. */}
-            {!isMobile && !sidebarCollapsed && (
+            {!sidebarCollapsedDesktop && !isMobile && (
                 <div className="relative flex items-stretch flex-shrink-0 group">
                     <div
                         className={`w-1 self-stretch flex-shrink-0 cursor-col-resize bg-[#e0e0e0] dark:bg-[#3c3c3c] hover:bg-[#007acc]/40 active:bg-[#007acc]/60 transition-colors${sidebarResize.isDragging ? ' bg-[#007acc]/60' : ''}`}
