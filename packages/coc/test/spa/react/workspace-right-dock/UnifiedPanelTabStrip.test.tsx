@@ -76,16 +76,19 @@ describe('UnifiedPanelTabStrip', () => {
         expect(screen.getByTestId('unified-panel-open-menu')).toBeTruthy();
     });
 
-    it('orders workspace tabs first and marks where the chat section starts', () => {
+    it('separates workspace tools from chat resources with a dedicated tab-strip divider', () => {
         const tabs = sampleTabs();
         renderStrip({ tabs });
         expect(screen.getAllByRole('tab').map(el => el.getAttribute('data-kind')))
             .toEqual(['terminal', 'file', 'file']);
-        // The divider is derived from the kinds, not passed in: exactly one tab
-        // opens the chat section.
+        // The boundary is derived from the kinds, not passed in: exactly one tab
+        // opens the chat section and the divider remains outside both tabs.
         const starts = screen.getAllByRole('tab').filter(el => el.getAttribute('data-section-start') === 'true');
         expect(starts).toHaveLength(1);
         expect(starts[0].getAttribute('data-tab-id')).toBe(tabs[1].id);
+        const divider = screen.getByTestId('unified-panel-tab-section-divider');
+        expect(divider.getAttribute('aria-hidden')).toBe('true');
+        expect(divider.nextElementSibling).toBe(starts[0]);
     });
 
     it('marks the active tab for assistive tech, not only with color', () => {
@@ -96,6 +99,28 @@ describe('UnifiedPanelTabStrip', () => {
         // Roving tabindex: only the active tab is in the tab order.
         expect(tabNode(tabs[1]).getAttribute('tabindex')).toBe('0');
         expect(tabNode(tabs[0]).getAttribute('tabindex')).toBe('-1');
+    });
+
+    it.each([
+        ['chat.md', 'M↓'],
+        ['canvas-types.ts', 'TS'],
+        ['native.cpp', 'C++'],
+        ['lib.rs', 'RS'],
+        ['AUTHORS', 'file'],
+    ])('uses the Explorer file-type icon for a %s tab', (label, iconLabel) => {
+        let state = EMPTY_UNIFIED_PANEL;
+        state = openTab(state, {
+            kind: 'file',
+            ownerWorkspaceId: WS,
+            chatId: CHAT,
+            resourceId: `src/${label}`,
+            label,
+        });
+        const [tab] = visibleTabs(state, CHAT);
+
+        renderStrip({ tabs: [tab], activeId: tab.id });
+        expect(screen.getByTestId(`unified-panel-tab-file-icon-${tab.id}`))
+            .toHaveAttribute('data-icon-label', iconLabel);
     });
 
     it('activates on click and closes on the close button without activating', () => {

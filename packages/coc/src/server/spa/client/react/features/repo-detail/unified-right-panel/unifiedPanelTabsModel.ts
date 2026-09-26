@@ -37,6 +37,8 @@
  * tab is a pointer to a resource, never a copy of it.
  */
 
+import type { PersistedGitView } from '../../git/repoGitTab/types';
+
 /**
  * What a tab renders.
  *
@@ -49,20 +51,29 @@
  * column (`unifiedPanelTree`), not a tab, so it cannot be closed by accident,
  * duplicated per chat, or ordered among resources.
  *
+ * `git` is the workspace's single git detail view — the commit, file diff,
+ * branch range, or working-tree view the split workspace's git list last
+ * selected. Its `resourceId` is always `GIT_TAB_RESOURCE_ID`, so each workspace
+ * has one Git tab whose content is replaced rather than a tab per commit. It is
+ * opened by git clicks only, never from the "+" menu.
+ *
  * `external` is a read-only standard-library or dependency source a language
  * server named as a definition. Its `resourceId` is the opaque capability the
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'external';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Every kind, in the order the "+" menu and default strip present them. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'notes', 'file', 'note', 'canvas', 'diff',
+    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git',
 ];
+
+/** The fixed resource id of a workspace's one Git tab. */
+export const GIT_TAB_RESOURCE_ID = 'git';
 
 /**
  * Kinds that are never written to storage. An external source is addressed by a
@@ -72,7 +83,7 @@ export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
 const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'git']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
@@ -81,7 +92,7 @@ const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['t
 export const WORKSPACE_SCOPE_KEY = '@workspace';
 
 /**
- * Ownership rule (AC-02). Terminals, Notes, and note documents are
+ * Ownership rule (AC-02). Terminals, Notes, note documents, and the Git tab are
  * workspace-owned; specific files, canvases, and diffs follow the chat that
  * opened them. Files opened with no chat selected fall back to the workspace,
  * which `scopeKeyFor` handles.
@@ -172,6 +183,11 @@ export interface UnifiedPanelTab {
      * at-most-one-per-section repair all compare on presence.
      */
     preview?: true;
+    /**
+     * A `git` tab's current view, by hash and path only — never commit data or
+     * diff content. It is what a reload refetches to restore the tab.
+     */
+    gitView?: PersistedGitView;
 }
 
 export interface UnifiedPanelState {
@@ -311,7 +327,12 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.column === b.column
         && a.revealNonce === b.revealNonce
         && a.symbolCandidate === b.symbolCandidate
-        && a.preview === b.preview;
+        && a.preview === b.preview
+        && gitViewKey(a.gitView) === gitViewKey(b.gitView);
+}
+
+function gitViewKey(view: PersistedGitView | undefined): string {
+    return view === undefined ? '' : JSON.stringify(view);
 }
 
 function sameList(a: readonly UnifiedPanelTab[], b: readonly UnifiedPanelTab[]): boolean {
@@ -430,6 +451,8 @@ export interface OpenUnifiedTabInput {
     column?: number;
     /** Present when a fuzzy repository symbol lookup opened this location. */
     symbolCandidate?: true;
+    /** A `git` tab's new view. Omitted, re-focusing keeps the one it holds. */
+    gitView?: PersistedGitView;
 }
 
 /** Source of `revealNonce`. Monotonic for the life of the page. */
@@ -503,6 +526,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...(input.repoLabel === undefined ? {} : { repoLabel: input.repoLabel }),
         ...revealFields(input),
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
+        ...(input.kind === 'git' && input.gitView ? { gitView: input.gitView } : {}),
     };
 
     let nextList: readonly UnifiedPanelTab[];
@@ -515,6 +539,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
             // pointed nor scrolls it back there. The column travels with its
             // line and is never kept without one.
             ...(input.line === undefined ? keptReveal(existing) : {}),
+            ...(opened.gitView === undefined && existing.gitView !== undefined ? { gitView: existing.gitView } : {}),
         };
         const copy = [...list];
         copy[index] = sameTab(existing, merged) ? existing : merged;
@@ -859,8 +884,58 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         // Only `file` tabs can hold the preview slot: the tree's single click is
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),
+        ...(kind === 'git' ? gitViewField(value.gitView) : {}),
     };
     return tab;
+}
+
+const GIT_STAGES: readonly string[] = ['staged', 'unstaged', 'untracked'];
+
+function isNonEmptyString(value: unknown): value is string {
+    return typeof value === 'string' && value !== '';
+}
+
+/**
+ * Validate a persisted git view field by field, rebuilding it so nothing but
+ * the known keys survives. An unrecognized shape restores as a Git tab with no
+ * view rather than dropping the tab.
+ */
+export function parsePersistedGitView(raw: unknown): PersistedGitView | null {
+    if (raw === null || typeof raw !== 'object') return null;
+    const value = raw as Record<string, unknown>;
+    switch (value.type) {
+        case 'commit':
+            return isNonEmptyString(value.hash) ? { type: 'commit', hash: value.hash } : null;
+        case 'commit-file':
+            return isNonEmptyString(value.hash) && isNonEmptyString(value.filePath)
+                ? { type: 'commit-file', hash: value.hash, filePath: value.filePath }
+                : null;
+        case 'branch-range':
+        case 'working-tree-comments':
+        case 'branch-range-comments':
+            return { type: value.type };
+        case 'branch-file':
+            return isNonEmptyString(value.filePath) ? { type: 'branch-file', filePath: value.filePath } : null;
+        case 'working-tree-file':
+            return isNonEmptyString(value.filePath) && GIT_STAGES.includes(value.stage as string)
+                ? {
+                    type: 'working-tree-file',
+                    filePath: value.filePath,
+                    stage: value.stage as 'staged' | 'unstaged' | 'untracked',
+                }
+                : null;
+        case 'multi-commit':
+            return Array.isArray(value.hashes) && value.hashes.length > 0 && value.hashes.every(isNonEmptyString)
+                ? { type: 'multi-commit', hashes: [...value.hashes] }
+                : null;
+        default:
+            return null;
+    }
+}
+
+function gitViewField(raw: unknown): Pick<UnifiedPanelTab, 'gitView'> {
+    const gitView = parsePersistedGitView(raw);
+    return gitView ? { gitView } : {};
 }
 
 function parseList(raw: unknown, expectedScopeKey: string): UnifiedPanelTab[] {

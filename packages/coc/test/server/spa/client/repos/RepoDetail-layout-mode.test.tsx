@@ -7,8 +7,9 @@
  * of layout mode, causing duplicate API calls and WebSocket listeners.
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { createPortal } from 'react-dom';
+import { useState } from 'react';
 
 // jsdom doesn't implement scrollIntoView
 beforeAll(() => {
@@ -22,6 +23,7 @@ let mockActiveRepoSubTab = 'chats';
 let mockUiLayoutMode = 'dev-workflow';
 let mockDreamsEnabled = false;
 let mockSplitWorkspacePanelEnabled = false;
+let mockIsMobile = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
@@ -68,7 +70,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useUiLayou
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
-    useBreakpoint: () => ({ isMobile: false, isTablet: false }),
+    useBreakpoint: () => ({ isMobile: mockIsMobile, isTablet: false }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
@@ -212,15 +214,32 @@ vi.mock('../../../../../src/server/spa/client/react/features/schedules/RepoSched
 // the shared detailContainer — so last-selection-wins routing can be tested (AC-04).
 vi.mock('../../../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
     RepoGitTab: (props: any) => {
+        const [view, setView] = useState('none');
         if (props.layout !== 'split-workspace') return null;
+        const select = (next: any, key: string) => {
+            props.onActivateDetail?.();
+            setView(key);
+            props.onViewChange?.(next);
+        };
         return (
-            <div data-testid="repo-git-tab-split">
+            <div
+                data-testid="repo-git-tab-split"
+                data-detail-open={String(props.detailOpen)}
+                data-restore-view={JSON.stringify(props.restoreView ?? null)}
+            >
+                {/* What RepoGitTab does once a restored commit is refetched. */}
                 <button
-                    data-testid="split-git-list-item"
-                    onClick={() => props.onActivateDetail?.()}
+                    data-testid="split-git-restore"
+                    onClick={() => {
+                        setView(props.restoreView.hash);
+                        props.onViewChange?.({ type: 'commit', commit: { hash: props.restoreView.hash } });
+                    }}
                 />
+                <button data-testid="split-git-list-item" onClick={() => select({ type: 'branch-range' }, 'branch-range')} />
+                <button data-testid="split-git-commit-a" onClick={() => select({ type: 'commit', commit: { hash: 'aaa' } }, 'aaa')} />
+                <button data-testid="split-git-commit-b" onClick={() => select({ type: 'commit', commit: { hash: 'bbb' } }, 'bbb')} />
                 {props.detailActive && props.detailContainer
-                    ? createPortal(<div data-testid="git-detail-marker" />, props.detailContainer)
+                    ? createPortal(<div data-testid="git-detail-marker" data-view={view} />, props.detailContainer)
                     : null}
             </div>
         );
@@ -247,6 +266,10 @@ vi.mock('../../../../../src/server/spa/client/react/tasks/TasksPanel', () => ({
 vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
 
 import { RepoDetail } from '../../../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
+import { openUnifiedPanelTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { activeTab, findTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { readUnifiedPanelState } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { setWorkspaceDockOpen } from '../../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -595,6 +618,7 @@ describe('RepoDetail — header action buttons by layout mode', () => {
 // AC-04 (one shared detail pane, last-selection-wins). Flag off = today's behavior.
 describe('RepoDetail — split workspace panel', () => {
     beforeEach(() => {
+        mockIsMobile = false;
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
         mockDreamsEnabled = false;
@@ -687,12 +711,139 @@ describe('RepoDetail — split workspace panel', () => {
         expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
     });
 
-    // End-to-end AC-04: clicking a list item in one half routes THAT half's detail
+    // Desktop: git detail never takes the middle pane — it lands in the right
+    // panel's one Git tab, and the chat stays where it was.
+    it('flag ON (desktop): a git click keeps the chat in the middle and opens the Git tab', async () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        localStorage.clear();
+        renderDetail();
+
+        const host = screen.getByTestId('split-workspace-detail-host');
+        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('split-git-list-item'));
+
+        const gitTab = await screen.findByTestId('unified-git-tab');
+        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')).toBeTruthy());
+        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
+        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
+        expect(screen.getAllByRole('tab').filter(tab => tab.getAttribute('data-kind') === 'git')).toHaveLength(1);
+    });
+
+    // AC-04: a collapsed right panel is revealed by a git click, with the Git
+    // tab focused over whatever tab held focus before.
+    it('flag ON (desktop): a git click with the panel collapsed opens it on the Git tab', async () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        localStorage.clear();
+        openUnifiedPanelTab('ws-1', { kind: 'notes', ownerWorkspaceId: 'ws-1', chatId: null, resourceId: 'notes', label: 'Notes' });
+        renderDetail();
+        // The user collapses the panel (mount reconciles it open for the Notes tab).
+        act(() => setWorkspaceDockOpen('ws-1', false));
+
+        const panel = screen.getByTestId('unified-right-panel');
+        expect(panel.getAttribute('data-open')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('split-git-commit-a'));
+
+        await waitFor(() => expect(panel.getAttribute('data-open')).toBe('true'));
+        expect(activeTab(readUnifiedPanelState('ws-1'), null)?.kind).toBe('git');
+        const gitTab = await screen.findByTestId('unified-git-tab');
+        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')?.getAttribute('data-view')).toBe('aaa'));
+        expect(screen.getByTestId('split-workspace-detail-host').querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
+    });
+
+    // AC-02: the Git tab is reused — a second commit click replaces the first's
+    // content instead of stacking another tab.
+    it('flag ON (desktop): two commit clicks reuse ONE Git tab showing the second commit', async () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        localStorage.clear();
+        renderDetail();
+
+        fireEvent.click(screen.getByTestId('split-git-commit-a'));
+        const gitTab = await screen.findByTestId('unified-git-tab');
+        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')?.getAttribute('data-view')).toBe('aaa'));
+
+        fireEvent.click(screen.getByTestId('split-git-commit-b'));
+        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')?.getAttribute('data-view')).toBe('bbb'));
+        expect(screen.getAllByRole('tab').filter(tab => tab.getAttribute('data-kind') === 'git')).toHaveLength(1);
+    });
+
+    // AC-02: closing the Git tab tells RepoGitTab the detail is gone, so it
+    // drops the list highlight.
+    it('flag ON (desktop): closing the Git tab reports the detail closed to RepoGitTab', async () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        localStorage.clear();
+        renderDetail();
+
+        const gitList = screen.getByTestId('repo-git-tab-split');
+        expect(gitList.getAttribute('data-detail-open')).toBe('false');
+        fireEvent.click(screen.getByTestId('split-git-commit-a'));
+        await waitFor(() => expect(gitList.getAttribute('data-detail-open')).toBe('true'));
+
+        const tab = screen.getAllByRole('tab').find(t => t.getAttribute('data-kind') === 'git')!;
+        const tabId = tab.getAttribute('data-testid')!.replace('unified-panel-tab-', '');
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+        await waitFor(() => expect(gitList.getAttribute('data-detail-open')).toBe('false'));
+        expect(screen.queryAllByRole('tab').filter(t => t.getAttribute('data-kind') === 'git')).toHaveLength(0);
+    });
+
+    // AC-03: the Git tab persists the view it shows (hash only) and hands it
+    // back to RepoGitTab after a reload; restoring it does not steal focus.
+    it('flag ON (desktop): the Git tab persists its view and restores it after a reload', async () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        localStorage.clear();
+        const first = renderDetail();
+
+        fireEvent.click(screen.getByTestId('split-git-commit-a'));
+        fireEvent.click(screen.getByTestId('split-git-commit-b'));
+        await screen.findByTestId('unified-git-tab');
+        const gitTab = () => readUnifiedPanelState('ws-1').workspaceTabs.find(tab => tab.kind === 'git');
+        await waitFor(() => expect(gitTab()?.gitView).toEqual({ type: 'commit', hash: 'bbb' }));
+        const stored = localStorage.getItem(Object.keys(localStorage).find(key => localStorage.getItem(key)?.includes('"gitView"'))!)!;
+        expect(stored).toContain('"gitView":{"type":"commit","hash":"bbb"}');
+        expect(stored).not.toContain('"commit":{');
+        first.unmount();
+
+        // Another tab holds focus when the page comes back.
+        openUnifiedPanelTab('ws-1', { kind: 'notes', ownerWorkspaceId: 'ws-1', chatId: null, resourceId: 'notes', label: 'Notes' });
+        renderDetail();
+        const gitList = screen.getByTestId('repo-git-tab-split');
+        expect(JSON.parse(gitList.getAttribute('data-restore-view')!)).toEqual({ type: 'commit', hash: 'bbb' });
+        expect(gitList.getAttribute('data-detail-open')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('split-git-restore'));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const state = readUnifiedPanelState('ws-1');
+        expect(activeTab(state, null)?.kind).toBe('notes');
+        expect(findTab(state, gitTab()!.id)?.gitView).toEqual({ type: 'commit', hash: 'bbb' });
+    });
+
+    it('flag ON (mobile): RepoGitTab gets no detailOpen signal (the shared pane owns git)', () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockIsMobile = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        renderDetail();
+        expect(screen.getByTestId('repo-git-tab-split').getAttribute('data-detail-open')).toBe('undefined');
+    });
+
+    // End-to-end AC-04 (mobile, where the shared pane still holds git): clicking a list item in one half routes THAT half's detail
     // into the single shared pane and evicts the other's — driven by RepoDetail's own
     // `splitLastClicked` state and the mirrored detailActive/onActivateDetail wiring.
     // Both tabs point at the SAME detail host, so the pane never shows chat + git at once.
-    it('flag ON: last-selection-wins routes the clicked half into the ONE shared detail (AC-04)', () => {
+    it('flag ON (mobile): last-selection-wins routes the clicked half into the ONE shared detail (AC-04)', () => {
         mockSplitWorkspacePanelEnabled = true;
+        mockIsMobile = true;
         mockUiLayoutMode = 'dev-workflow';
         mockActiveRepoSubTab = 'chats';
         renderDetail();
@@ -713,7 +864,5 @@ describe('RepoDetail — split workspace panel', () => {
         expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
         expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
 
-        // The detail pane is always singular — exactly one shared region throughout.
-        expect(screen.getAllByTestId('split-workspace-detail')).toHaveLength(1);
     });
 });

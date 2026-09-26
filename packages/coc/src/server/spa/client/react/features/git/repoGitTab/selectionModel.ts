@@ -9,7 +9,7 @@
  */
 
 import type { GitCommitItem } from '../commits/CommitList';
-import type { RefreshSelectionOptions, RightPanelView } from './types';
+import type { PersistedGitView, RefreshSelectionOptions, RightPanelView } from './types';
 
 /** Views that survive a refresh untouched — they are not commit-scoped. */
 const REFRESH_STABLE_VIEWS: ReadonlySet<RightPanelView['type']> = new Set([
@@ -25,6 +25,44 @@ export function selectedCommitHashOf(view: RightPanelView | null): string | null
     if (view?.type === 'commit') return view.commit.hash;
     if (view?.type === 'commit-file') return view.hash;
     return null;
+}
+
+/**
+ * A string naming what a view shows — equal for two views of the same thing,
+ * even when one holds a refreshed commit object. `''` for no view.
+ */
+export function viewIdentity(view: RightPanelView | null): string {
+    switch (view?.type) {
+        case undefined: return '';
+        case 'commit': return `commit:${view.commit.hash}`;
+        case 'commit-file': return `commit-file:${view.hash}:${view.filePath}`;
+        case 'branch-file': return `branch-file:${view.filePath}`;
+        case 'working-tree-file': return `working-tree-file:${view.stage}:${view.filePath}`;
+        case 'multi-commit': return `multi-commit:${view.commits.map(c => c.hash).join(',')}`;
+        default: return view.type;
+    }
+}
+
+/** The serializable form of a view: commits by hash, nothing fetched. */
+export function persistGitView(view: RightPanelView): PersistedGitView {
+    switch (view.type) {
+        case 'commit': return { type: 'commit', hash: view.commit.hash };
+        case 'multi-commit': return { type: 'multi-commit', hashes: view.commits.map(c => c.hash) };
+        default: return view;
+    }
+}
+
+/** `viewIdentity` for a persisted view — equal exactly when the live views are. */
+export function persistedViewIdentity(view: PersistedGitView | null | undefined): string {
+    switch (view?.type) {
+        case undefined: return '';
+        case 'commit': return `commit:${view.hash}`;
+        case 'commit-file': return `commit-file:${view.hash}:${view.filePath}`;
+        case 'branch-file': return `branch-file:${view.filePath}`;
+        case 'working-tree-file': return `working-tree-file:${view.stage}:${view.filePath}`;
+        case 'multi-commit': return `multi-commit:${view.hashes.join(',')}`;
+        default: return view.type;
+    }
 }
 
 /** Every commit hash a view counts as selected (multi-select aware). */

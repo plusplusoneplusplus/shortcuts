@@ -21,6 +21,9 @@
  *    shows the expired state (`UnifiedDiffTab`) — except a chat's own Changes
  *    tab, which rebuilds itself from the chat, so the scope and the owning chat
  *    go down with it.
+ *  - `git` — an empty host the split workspace's `RepoGitTab` portals its
+ *    detail pane into (`UnifiedGitTab`), so the commit / file diff / range /
+ *    working-tree views are the same components the middle pane used.
  *  - `note` — the editable `NoteEditor`, wired exactly as the docked source
  *    canvas wires a note link, with the resolution decoded from the descriptor
  *    rather than re-run (`UnifiedNoteTab`).
@@ -46,6 +49,7 @@ import type {
 } from '../../../shared/file-viewer/MonacoFileEditor';
 import { UnifiedCanvasTab } from './UnifiedCanvasTab';
 import { UnifiedDiffTab } from './UnifiedDiffTab';
+import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 
@@ -237,6 +241,8 @@ export function UnifiedTabView({
                     onErrorChange={handleError}
                 />
             );
+        case 'git':
+            return <UnifiedGitTab scopeWorkspaceId={scopeWorkspaceId} />;
         default:
             return (
                 <div

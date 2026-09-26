@@ -733,48 +733,50 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // those keep the docked canvas, since a tab there could only ever render an
     // error. Folder refs still belong to the Explorer and keep the canvas.
     const openSourceCanvas = sourceCanvas.open;
+    const openFileRef = useCallback((fileRef: Parameters<typeof openSourceCanvas>[0]) => {
+        if (unifiedPanelHost) {
+            const input = fileRef.kind === 'note'
+                ? noteTabInput({
+                    fileRef,
+                    workspaces: resolvableWorkspaces,
+                    scopeWorkspaceId: unifiedPanelHost.workspaceId,
+                })
+                : sourceLinkTabInput({
+                    fileRef,
+                    workspaces: resolvableWorkspaces,
+                    sourceSelectionId,
+                    // The panel's scope; the descriptor's owner is whichever
+                    // clone the resolution picked.
+                    scopeWorkspaceId: unifiedPanelHost.workspaceId,
+                    // The originating chat, never whichever chat is selected
+                    // by the time this lands.
+                    chatId: taskId,
+                });
+            if (input) {
+                openUnifiedPanelTab(unifiedPanelHost.workspaceId, input);
+                return;
+            }
+        }
+        openSourceCanvas(fileRef);
+    }, [openSourceCanvas, unifiedPanelHost, resolvableWorkspaces, sourceSelectionId, taskId]);
     useEffect(() => {
         const handler = (event: Event) => {
             const detail = (event as CustomEvent).detail || {};
             const filePath = typeof detail.filePath === 'string' ? detail.filePath : '';
             if (!filePath) return;
             const kind = detail.kind === 'note' || detail.kind === 'dir' ? detail.kind : 'code';
-            const fileRef = {
+            openFileRef({
                 fullPath: filePath,
                 wsId: typeof detail.wsId === 'string' ? detail.wsId : undefined,
                 line: typeof detail.line === 'number' ? detail.line : undefined,
                 endLine: typeof detail.endLine === 'number' ? detail.endLine : undefined,
                 sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
                 kind,
-            };
-            if (unifiedPanelHost) {
-                const input = kind === 'note'
-                    ? noteTabInput({
-                        fileRef,
-                        workspaces: resolvableWorkspaces,
-                        scopeWorkspaceId: unifiedPanelHost.workspaceId,
-                    })
-                    : sourceLinkTabInput({
-                        fileRef,
-                        workspaces: resolvableWorkspaces,
-                        sourceSelectionId,
-                        // The panel's scope; the descriptor's owner is whichever
-                        // clone the resolution picked.
-                        scopeWorkspaceId: unifiedPanelHost.workspaceId,
-                        // The originating chat, never whichever chat is selected
-                        // by the time this lands.
-                        chatId: taskId,
-                    });
-                if (input) {
-                    openUnifiedPanelTab(unifiedPanelHost.workspaceId, input);
-                    return;
-                }
-            }
-            openSourceCanvas(fileRef);
+            });
         };
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
         return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
-    }, [openSourceCanvas, unifiedPanelHost, resolvableWorkspaces, sourceSelectionId, taskId]);
+    }, [openFileRef]);
 
     // "Insert into chat" from the workspace right dock's Notes panel lands here:
     // the dock is a sibling column with no React path to this composer, so it
@@ -2511,12 +2513,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     const handleOpenPlanFile = useCallback((filePath: string) => {
         if (!filePath.toLowerCase().endsWith('.md')) return;
-        sourceCanvas.open({
+        // Same routing as an in-chat plan link: a right side panel note tab when
+        // one hosts this chat, otherwise the docked canvas.
+        openFileRef({
             fullPath: filePath,
             wsId: workspaceId,
             kind: 'note',
         });
-    }, [sourceCanvas, workspaceId]);
+    }, [openFileRef, workspaceId]);
 
     const handleScratchpadNotFound = useCallback(() => {
         const missingPath = scratchpad.linkedNotePath;

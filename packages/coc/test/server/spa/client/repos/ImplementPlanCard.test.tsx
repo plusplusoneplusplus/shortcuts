@@ -82,7 +82,7 @@ describe('ImplementPlanCard', () => {
 
         const pathButton = screen.getByTestId('implement-plan-card-path');
         expect(pathButton.tagName).toBe('BUTTON');
-        expect(pathButton.getAttribute('aria-label')).toBe('Open feature.plan.md in the right-side file panel');
+        expect(pathButton.getAttribute('aria-label')).toBe('Open this plan in the side panel: feature.plan.md');
 
         pathButton.focus();
         await user.keyboard('{Enter}');

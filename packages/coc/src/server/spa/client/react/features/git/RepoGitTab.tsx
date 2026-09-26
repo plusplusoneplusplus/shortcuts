@@ -56,7 +56,8 @@ import { buildGitContextMenuItems } from './repoGitTab/gitContextMenuModel';
 import { RepoGitListPane } from './repoGitTab/RepoGitListPane';
 import { RepoGitDetailPane } from './repoGitTab/RepoGitDetailPane';
 import { RepoGitOverlays } from './repoGitTab/RepoGitOverlays';
-import type { GitContextMenuState, SkillMenuContext } from './repoGitTab/types';
+import type { GitContextMenuState, PersistedGitView, RightPanelView, SkillMenuContext } from './repoGitTab/types';
+import { viewIdentity } from './repoGitTab/selectionModel';
 
 export { matchCommitsByIdentity } from './repoGitTab/commitIdentity';
 export { buildBranchRangeSkillPrompt } from './repoGitTab/gitPrompts';
@@ -94,6 +95,26 @@ interface RepoGitTabProps {
     /** Fired when the user clicks in the git list, so the parent marks git last-clicked. */
     onActivateDetail?: () => void;
     /**
+     * Fired when the detail view changes to show something else (a new commit,
+     * file, range, or working-tree entry) or is cleared, so a host can surface
+     * the portal target — e.g. open the right panel's Git tab. A refresh that
+     * re-selects the same thing does not fire it.
+     */
+    onViewChange?: (view: RightPanelView | null) => void;
+    /**
+     * Whether the host still shows the detail — e.g. the right panel's Git tab
+     * is open. Going from true to false (the user closed that tab) clears the
+     * selection, so the list highlight drops and the same item can reopen it.
+     * Left undefined, the selection is never cleared this way.
+     */
+    detailOpen?: boolean;
+    /**
+     * A view the host persisted (e.g. in the right panel's Git tab), restored
+     * by refetching once the first commit page loads — unless the URL already
+     * deep-links a selection. Read at that moment only; later changes are ignored.
+     */
+    restoreView?: PersistedGitView | null;
+    /**
      * Portal target inside the split panel's "Git" section header. When set
      * (split-workspace only), the compact `GitPanelHeader` toolbar renders
      * there instead of as its own row, saving the toolbar's full height.
@@ -107,7 +128,7 @@ interface RepoGitTabProps {
     active?: boolean;
 }
 
-export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer, active = true }: RepoGitTabProps) {
+export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -166,7 +187,9 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
         loading: data.loading,
     });
     selectionRef.current = selection;
-    hydrateRef.current = selection.hydrateFromInitialLoad;
+    const restoreViewRef = useRef(restoreView);
+    restoreViewRef.current = restoreView;
+    hydrateRef.current = loaded => selection.hydrateFromInitialLoad(loaded, restoreViewRef.current);
 
     // Mobile Workspace panel (AC-02): this tab has no `mobileShowDetail` of its
     // own — a selection IS its detail view — so the shell's full-screen push is
@@ -194,6 +217,27 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
         if (!setMobileWorkspaceDetailOpen || mobileWorkspaceDetailOpen || !wasOpen) return;
         clearSelection();
     }, [setMobileWorkspaceDetailOpen, mobileWorkspaceDetailOpen, clearSelection]);
+
+    // Report what the detail shows, keyed by identity so a refresh handing back
+    // a fresh commit object for the same hash stays quiet.
+    const onViewChangeRef = useRef(onViewChange);
+    onViewChangeRef.current = onViewChange;
+    const gitViewIdentity = viewIdentity(gitView);
+    const reportedViewIdentityRef = useRef('');
+    useEffect(() => {
+        if (gitViewIdentity === reportedViewIdentityRef.current) return;
+        reportedViewIdentityRef.current = gitViewIdentity;
+        onViewChangeRef.current?.(gitView);
+    }, [gitViewIdentity, gitView]);
+
+    // Only a genuine open→closed transition means "the host dropped the
+    // detail"; a host that never opened it must not wipe a fresh selection.
+    const wasDetailOpenRef = useRef(detailOpen);
+    useEffect(() => {
+        const wasOpen = wasDetailOpenRef.current;
+        wasDetailOpenRef.current = detailOpen;
+        if (wasOpen === true && detailOpen === false) clearSelection();
+    }, [detailOpen, clearSelection]);
 
     const sourceWorkspace = useMemo(
         () => state.workspaces.find((w: any) => w.id === workspaceId),
@@ -778,7 +822,16 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
                             className="h-full flex flex-col overflow-hidden bg-white dark:bg-[#1e1e1e]"
                             data-testid="git-split-workspace-detail"
                         >
-                            <div className="flex-1 min-h-0 overflow-hidden">{detailPanel}</div>
+                            <div className="flex-1 min-h-0 overflow-hidden">
+                                {!view && selection.restoreNotFound ? (
+                                    <div
+                                        className="flex h-full items-center justify-center p-4 text-center text-sm text-[#848484]"
+                                        data-testid="git-detail-restore-not-found"
+                                    >
+                                        {selection.restoreNotFound}
+                                    </div>
+                                ) : detailPanel}
+                            </div>
                         </div>,
                         detailContainer,
                     )

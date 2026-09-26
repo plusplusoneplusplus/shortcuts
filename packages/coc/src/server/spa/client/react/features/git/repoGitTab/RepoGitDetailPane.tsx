@@ -77,6 +77,17 @@ export function RepoGitDetailPane({
         );
     }
 
+    // A restored branch view can outlive its branch range (the user has since
+    // switched to the default branch): say so instead of rendering a range
+    // that is not there.
+    if ((view?.type === 'branch-range' || view?.type === 'branch-range-comments') && !branchRangeData) {
+        return (
+            <div className="flex-1 flex items-center justify-center text-sm text-[#848484]" data-testid="git-detail-no-branch-range">
+                No branch changes to show
+            </div>
+        );
+    }
+
     if (view?.type === 'branch-range') {
         return (
             <BranchRangeOverview

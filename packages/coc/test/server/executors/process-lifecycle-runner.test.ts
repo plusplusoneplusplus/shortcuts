@@ -1779,7 +1779,7 @@ describe('ProcessLifecycleRunner — effort tier resolved against the Auto-selec
     // default provider's model coerced away to a fallback.
     const MEDIUM_TIER_BY_PROVIDER: Array<[string, string, string | undefined]> = [
         ['copilot', 'gpt-6-sol', 'medium'],
-        ['codex', 'gpt-6-sol', 'medium'],
+        ['codex', 'gpt-5.6-sol', 'medium'],
         ['claude', 'opus', 'medium'],
         ['opencode', 'anthropic/claude-sonnet', 'high'],
     ];

@@ -31,8 +31,9 @@
  * panel.
  */
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
+import { FileNameIcon } from '../explorer/FileTypeIcon';
 import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
 import {
@@ -91,6 +92,15 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
             <line x1="12" y1="3" x2="12" y2="13" />
             <line x1="6.2" y1="6" x2="9.8" y2="6" />
             <line x1="6.2" y1="10" x2="9.8" y2="10" />
+        </svg>
+    ),
+    git: (
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
+            <circle cx="5" cy="4" r="1.6" />
+            <circle cx="5" cy="12" r="1.6" />
+            <circle cx="11" cy="6" r="1.6" />
+            <line x1="5" y1="5.6" x2="5" y2="10.4" />
+            <path d="M11 7.6c0 2.2-2.4 2.4-4.6 3.4" />
         </svg>
     ),
 };
@@ -258,12 +268,23 @@ export function UnifiedPanelTabStrip({
                     const isActive = tab.id === activeId;
                     const isDirty = dirtyIds?.has(tab.id) ?? false;
                     const hasError = errorIds?.has(tab.id) ?? false;
-                    // The divider marks where workspace ownership ends and the
-                    // selected chat's tabs begin — derived, never passed in.
+                    // The divider marks where workspace-owned tools (Terminal
+                    // and Notes) end and chat resources begin — derived, never
+                    // passed in.
                     const startsChatSection = index > 0
                         && scopeForKind(tab.kind) === 'chat'
                         && scopeForKind(tabs[index - 1].kind) === 'workspace';
                     return (
+                        <Fragment key={tab.id}>
+                            {startsChatSection && (
+                                <div
+                                    aria-hidden="true"
+                                    data-testid="unified-panel-tab-section-divider"
+                                    className="flex h-[35px] w-4 flex-shrink-0 items-center justify-center border-x border-[#c8c8c8] bg-[#e8e8e8] dark:border-[#3c3c3c] dark:bg-[#252526]"
+                                >
+                                    <span className="h-5 w-px bg-[#808080] dark:bg-[#858585]" />
+                                </div>
+                            )}
                         <div
                             key={tab.id}
                             ref={node => {
@@ -325,12 +346,13 @@ export function UnifiedPanelTabStrip({
                                 isActive
                                     ? 'bg-white text-[#1f1f1f] shadow-[inset_0_-2px_0_0_#0078d4] dark:bg-[#1e1e1e] dark:text-white dark:shadow-[inset_0_-2px_0_0_#3794ff]'
                                     : 'text-[#616161] hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:text-white',
-                                // The section divider: a heavier left border on the
-                                // first chat-owned tab.
-                                startsChatSection && 'border-l-2 border-l-[#d0d0d0] dark:border-l-[#3c3c3c]',
                             )}
                         >
-                            <span className="flex-shrink-0 opacity-80" aria-hidden="true">{KIND_ICONS[tab.kind]}</span>
+                            <span className="flex-shrink-0 opacity-80" aria-hidden="true">
+                                {tab.kind === 'file'
+                                    ? <FileNameIcon fileName={tab.label} showTitle={false} testId={`unified-panel-tab-file-icon-${tab.id}`} />
+                                    : KIND_ICONS[tab.kind]}
+                            </span>
                             {hasError && (
                                 <span aria-hidden="true" className="flex-shrink-0" data-testid={`unified-panel-tab-error-${tab.id}`}>⚠</span>
                             )}
@@ -383,6 +405,7 @@ export function UnifiedPanelTabStrip({
                                 ✕
                             </button>
                         </div>
+                        </Fragment>
                     );
                 })}
             </div>

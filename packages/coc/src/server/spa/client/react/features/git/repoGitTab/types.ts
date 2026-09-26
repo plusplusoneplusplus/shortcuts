@@ -19,6 +19,21 @@ export type RightPanelView =
     | { type: 'branch-range-comments' }
     | { type: 'multi-commit'; commits: GitCommitItem[] };
 
+/**
+ * The serializable part of a `RightPanelView` — what a host may persist and
+ * hand back to restore the detail after a reload. Commits are named by hash
+ * only; their data (and every diff) is refetched on restore.
+ */
+export type PersistedGitView =
+    | { type: 'commit'; hash: string }
+    | { type: 'commit-file'; hash: string; filePath: string }
+    | { type: 'branch-range' }
+    | { type: 'branch-file'; filePath: string }
+    | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }
+    | { type: 'working-tree-comments' }
+    | { type: 'branch-range-comments' }
+    | { type: 'multi-commit'; hashes: string[] };
+
 /** The commit-menu target a skill run applies to. Mirrors the contextMenu state shape. */
 export type SkillMenuContext = {
     type: 'commit' | 'branch-range' | 'multi-commit';
