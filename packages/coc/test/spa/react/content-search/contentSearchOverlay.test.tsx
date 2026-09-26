@@ -318,6 +318,28 @@ describe('ContentSearchOverlay keyboard model', () => {
         expect(status.textContent).toContain('Searching');
     });
 
+    it('keeps selected source and match readable in the dark theme', async () => {
+        document.documentElement.classList.add('dark');
+        try {
+            renderOverlay({
+                matches: matches(1),
+                loadPreview: vi.fn(async () => ({
+                    content: 'hit 0',
+                    encoding: 'utf-8' as const,
+                    mimeType: 'text/plain',
+                })),
+            });
+            fireEvent.click(screen.getByTestId('content-search-overlay-match-m0'));
+            const source = await screen.findByTestId('content-search-overlay-source');
+            expect(source.className).toContain('dark:bg-[#1e1e1e]');
+            expect(source.querySelector('mark')?.className).toContain('dark:bg-[#623315]');
+            expect(screen.getByTestId('content-search-overlay-match-m0').className)
+                .toContain('dark:bg-[#293448]');
+        } finally {
+            document.documentElement.classList.remove('dark');
+        }
+    });
+
     it('keeps filters, selected row, and list scroll while switching preview and back', () => {
         const props = renderOverlay();
         const dialog = screen.getByTestId('content-search-overlay');

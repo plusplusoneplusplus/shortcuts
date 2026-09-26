@@ -19,9 +19,8 @@
  *  - Escape closes, and the host restores focus to whatever invoked the
  *    overlay.
  *
- * Selection lives here rather than on the DOM's own focus so a re-render with
- * fresh results cannot silently move the user: the index is clamped back into
- * range whenever the match list changes.
+ * Selection belongs to the current result set rather than DOM focus: a new
+ * answer clears it before a stale row can trigger a source read.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
