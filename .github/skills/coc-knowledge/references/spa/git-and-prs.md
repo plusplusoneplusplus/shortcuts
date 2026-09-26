@@ -195,9 +195,11 @@ Pass `options.remoteUrl` (threaded from the chat workspace's remote through
 `gatherDetectedPrsFromTurns`) to scope detections to the chat's own
 `owner/repo` — normalized via `normalizeRemoteUrl`, so SSH and `.git` forms match.
 `unionAssociations` independently drops any detected PR whose origin is not the chat's
-own. Timeline and flat `toolCalls` records are de-duplicated by tool-call id within
-each turn; separate turns remain distinct because providers may restart tool-call ids
-on each assistant turn.
+own. `collectToolCallsFromTurns` merges timeline start, completion, and flat
+`toolCalls` records by id within each turn: it keeps the start's creating command when
+completion carries only a result, and uses the terminal status to reject failed calls.
+Separate turns remain distinct because providers may restart tool-call ids on each
+assistant turn.
 
 `remoteUrl` is three-valued, and the distinction is load-bearing: `undefined` means the
 chat's remote identity is **not known yet**, `null` means the workspace is known to have

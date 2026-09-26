@@ -505,10 +505,9 @@ export interface ToolCallBearingTurn<T extends ToolCallLike = ToolCallLike> {
 /**
  * Flattens every tool call across the given turns, preferring the structured
  * `timeline[].toolCall` entries and falling back to the legacy flat
- * `turn.toolCalls`. Within each turn, de-duplicates by tool-call id, keeping the
- * most complete record (the one carrying a `result`) so a tool that shows up as
- * both `tool-start` and `tool-complete` is scanned once with its output. Tool
- * call ids may be reused by separate assistant turns, so they remain distinct.
+ * `turn.toolCalls`. Within each turn, de-duplicates by tool-call id, merging
+ * command arguments from the start with the result and status from completion.
+ * Tool call ids may be reused by separate assistant turns, so they remain distinct.
  */
 export function collectToolCallsFromTurns<T extends ToolCallLike>(
     turns: readonly ToolCallBearingTurn<T>[] | undefined,
@@ -525,8 +524,15 @@ export function collectToolCallsFromTurns<T extends ToolCallLike>(
                 order.push(tc.id);
                 return;
             }
-            // Prefer the record that carries output.
-            if (!prev.result && tc.result) byId.set(tc.id, tc);
+            byId.set(tc.id, {
+                ...prev,
+                ...tc,
+                name: tc.name || prev.name,
+                toolName: tc.toolName || prev.toolName,
+                args: getCommandString(tc.args) ? tc.args : getCommandString(prev.args) ? prev.args : tc.args ?? prev.args,
+                result: tc.result || prev.result,
+                status: (tc.status === 'running' || tc.status === 'pending') && prev.result ? prev.status : tc.status ?? prev.status,
+            });
         };
         for (const item of turn.timeline ?? []) consider(item.toolCall);
         for (const tc of turn.toolCalls ?? []) consider(tc);

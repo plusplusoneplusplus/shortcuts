@@ -117,6 +117,19 @@ describe('bindDetectedPullRequestsForProcess', () => {
         expect(rows()).toEqual([{ workspace_id: ORIGIN_ID, pr_id: '654', task_id: BARE_TASK_ID }]);
     });
 
+    it('binds a PR when timeline completion omits the creating command', async () => {
+        const timelineTurn = {
+            ...turn([SUBMIT_PR_TOOL_CALL]),
+            timeline: [
+                { type: 'tool-start', timestamp: new Date(0), toolCall: { ...SUBMIT_PR_TOOL_CALL, status: 'running', result: undefined } },
+                { type: 'tool-complete', timestamp: new Date(0), toolCall: { ...SUBMIT_PR_TOOL_CALL, args: {} } },
+            ],
+        } as unknown as ConversationTurn;
+
+        expect(await bindDetectedPullRequestsForProcess(makeStore({}, [timelineTurn]), PROCESS_ID, WORKSPACE_ID)).toEqual(['654']);
+        expect(rows()).toEqual([{ workspace_id: ORIGIN_ID, pr_id: '654', task_id: BARE_TASK_ID }]);
+    });
+
     describe('does not bind', () => {
         it('a chat that only mentions a PR URL', async () => {
             const turns = [turn([{
