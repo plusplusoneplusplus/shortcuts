@@ -7,7 +7,7 @@
  * of layout mode, causing duplicate API calls and WebSocket listeners.
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
 
@@ -269,6 +269,7 @@ import { RepoDetail } from '../../../../../src/server/spa/client/react/features/
 import { openUnifiedPanelTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { activeTab, findTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { readUnifiedPanelState } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { setWorkspaceDockOpen } from '../../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -729,6 +730,30 @@ describe('RepoDetail — split workspace panel', () => {
         expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
         expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
         expect(screen.getAllByRole('tab').filter(tab => tab.getAttribute('data-kind') === 'git')).toHaveLength(1);
+    });
+
+    // AC-04: a collapsed right panel is revealed by a git click, with the Git
+    // tab focused over whatever tab held focus before.
+    it('flag ON (desktop): a git click with the panel collapsed opens it on the Git tab', async () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        localStorage.clear();
+        openUnifiedPanelTab('ws-1', { kind: 'notes', ownerWorkspaceId: 'ws-1', chatId: null, resourceId: 'notes', label: 'Notes' });
+        renderDetail();
+        // The user collapses the panel (mount reconciles it open for the Notes tab).
+        act(() => setWorkspaceDockOpen('ws-1', false));
+
+        const panel = screen.getByTestId('unified-right-panel');
+        expect(panel.getAttribute('data-open')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('split-git-commit-a'));
+
+        await waitFor(() => expect(panel.getAttribute('data-open')).toBe('true'));
+        expect(activeTab(readUnifiedPanelState('ws-1'), null)?.kind).toBe('git');
+        const gitTab = await screen.findByTestId('unified-git-tab');
+        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')?.getAttribute('data-view')).toBe('aaa'));
+        expect(screen.getByTestId('split-workspace-detail-host').querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
     });
 
     // AC-02: the Git tab is reused — a second commit click replaces the first's
