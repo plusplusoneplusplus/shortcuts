@@ -434,9 +434,8 @@ end to end against the real tree cache (`--environment jsdom`);
 `test/spa/react/workspace-right-dock/` covers the panel and its controller:
 `useWorkspaceDock.test.tsx` (open/width/resize plus the target rules — default,
 fallback, persistence, the dirty-edit guard, and what follows the picker and what
-does not), the `Unified*` / `unified*` suites for the panel itself, plus
-`DockNotesPanel.test.tsx`, `dockNotes.test.ts`, and `composerInsert.test.tsx`.
-The heavy views (TerminalView, ExplorerPanel, DockNotesPanel) are mocked by
+does not), and the `Unified*` / `unified*` suites for the panel itself.
+The heavy views (TerminalView, ExplorerPanel, NotesView) are mocked by
 source path there so xterm/Monaco never load.
 
 The group side lives in `test/spa/react/repos/RepoGroupView.dock.test.tsx`
