@@ -28,6 +28,8 @@ export interface AgentSelectorChipProps {
      * whose label hiding is viewport-gated via `sm:`).
      */
     iconOnly?: boolean;
+    /** Extra classes for the provider name label (e.g. a container-query hide). */
+    labelClassName?: string;
     /** Optional focus target for dialogs opened from this chip. */
     buttonRef?: RefObject<HTMLButtonElement>;
 }
@@ -83,7 +85,7 @@ function ProviderIcon({ id }: { id: string }) {
     return <CopilotIcon />;
 }
 
-export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false, iconOnly = false, buttonRef }: AgentSelectorChipProps) {
+export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false, iconOnly = false, labelClassName, buttonRef }: AgentSelectorChipProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -141,6 +143,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                         className={cn(
                             'font-mono text-[10.5px] font-medium text-[#848484] dark:text-[#999] truncate',
                             mobileTapTarget && 'hidden sm:inline',
+                            labelClassName,
                         )}
                     >
                         {selectedLabel}

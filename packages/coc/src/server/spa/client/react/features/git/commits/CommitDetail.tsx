@@ -13,6 +13,7 @@ import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewe
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { DiffViewToggle } from '../diff/DiffViewToggle';
+import { DIFF_TOOLBAR_NARROW_HIDDEN } from '../diff/diffToolbarClasses';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { DiffFindWidget } from '../diff/DiffFindWidget';
 import { useDiffFind } from '../diff/useDiffFind';
@@ -356,100 +357,110 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                     </div>
                 </>
             )}
-            {/* Classification toolbar — mirrors commit popout layout */}
-            <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="commit-classify-bar">
-                <ClassifyDiffAiControls
-                    selection={aiSelection}
-                    disabled={classification.state.status === 'loading'}
-                    testIdPrefix="commit-classify"
-                />
-                <button
-                    type="button"
-                    onClick={classification.classify}
-                    disabled={classification.state.status === 'loading'}
-                    className={
-                        classification.state.status === 'loading'
-                            ? 'inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-gray-100 px-2 text-[11px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-500 cursor-wait'
-                            : 'inline-flex h-6 items-center gap-1 rounded border border-indigo-400 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50'
-                    }
-                    data-testid="commit-classify-button"
-                >
-                    {classification.state.status === 'loading' ? (
-                        <>
-                            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                            Classifying…
-                        </>
-                    ) : classification.state.status === 'ready' ? 'Re-classify' : 'Classify'}
-                </button>
-                {/* Priority file navigation — available after classification */}
-                {classification.state.status === 'ready' && (
-                    <>
+            {/* Classification toolbar — mirrors commit popout layout. The outer div is the
+                size container; below 560px labels collapse to icons, and when one row no
+                longer fits the right group wraps to its own row as a unit. */}
+            <div className="sticky top-0 z-10 [container-type:inline-size] border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5" data-testid="commit-classify-bar">
+                    <div className="flex flex-nowrap items-center gap-2 min-w-0" data-testid="commit-classify-left">
+                        <ClassifyDiffAiControls
+                            selection={aiSelection}
+                            disabled={classification.state.status === 'loading'}
+                            testIdPrefix="commit-classify"
+                            collapseLabels
+                        />
                         <button
                             type="button"
-                            onClick={handlePrevPriority}
-                            disabled={priorityNav.prevPath === null}
-                            className="inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                            title="Previous priority file"
-                            data-testid="commit-prev-priority-btn"
+                            onClick={classification.classify}
+                            disabled={classification.state.status === 'loading'}
+                            className={
+                                classification.state.status === 'loading'
+                                    ? 'inline-flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded border border-gray-300 bg-gray-100 px-2 text-[11px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-500 cursor-wait'
+                                    : 'inline-flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded border border-indigo-400 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50'
+                            }
+                            data-testid="commit-classify-button"
                         >
-                            ↑ Prev
+                            {classification.state.status === 'loading' ? (
+                                <>
+                                    <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    Classifying…
+                                </>
+                            ) : classification.state.status === 'ready' ? 'Re-classify' : 'Classify'}
+                        </button>
+                        {/* Priority file navigation — available after classification */}
+                        {classification.state.status === 'ready' && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handlePrevPriority}
+                                    disabled={priorityNav.prevPath === null}
+                                    className="inline-flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                                    title="Previous priority file"
+                                    aria-label="Previous priority file"
+                                    data-testid="commit-prev-priority-btn"
+                                >
+                                    ↑<span className={DIFF_TOOLBAR_NARROW_HIDDEN}>Prev</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleNextPriority}
+                                    disabled={priorityNav.nextPath === null}
+                                    className="inline-flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                                    title="Next priority file"
+                                    aria-label="Next priority file"
+                                    data-testid="commit-next-priority-btn"
+                                >
+                                    ↓<span className={DIFF_TOOLBAR_NARROW_HIDDEN}>Next</span>
+                                </button>
+                            </>
+                        )}
+                    </div>
+                    {/* Right group: reviewed count, hunk nav, view toggle, panel buttons */}
+                    <div className="flex flex-nowrap items-center gap-1 shrink-0 ml-auto" data-testid="commit-classify-right">
+                        {/* Reviewed count — session-local */}
+                        {fileList.length > 0 && (
+                            <span
+                                className="shrink-0 whitespace-nowrap text-[10px] text-[#848484] dark:text-[#666] tabular-nums"
+                                title={`${reviewProgress.state.reviewedFiles.size} of ${fileList.length} files reviewed`}
+                                data-testid="commit-reviewed-count"
+                            >
+                                {reviewProgress.state.reviewedFiles.size}/{fileList.length}<span className={DIFF_TOOLBAR_NARROW_HIDDEN}> reviewed</span>
+                            </span>
+                        )}
+                        {classification.state.error && (
+                            <span className="max-w-[240px] truncate text-[10px] text-red-600 dark:text-red-400" title={classification.state.error}>
+                                {classification.state.error}
+                            </span>
+                        )}
+                        <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                        <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                        <button
+                            onClick={() => setSidebarOpen(o => !o)}
+                            title="Toggle comments"
+                            className="shrink-0 whitespace-nowrap text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            data-testid="toggle-comments-btn"
+                        >
+                            💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
                         </button>
                         <button
-                            type="button"
-                            onClick={handleNextPriority}
-                            disabled={priorityNav.nextPath === null}
-                            className="inline-flex h-6 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                            title="Next priority file"
-                            data-testid="commit-next-priority-btn"
+                            onClick={toggleChat}
+                            title="Toggle AI chat"
+                            className="shrink-0 whitespace-nowrap text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            data-testid="toggle-chat-btn"
                         >
-                            ↓ Next
+                            🤖
                         </button>
-                    </>
-                )}
-                {/* Reviewed count — session-local */}
-                {fileList.length > 0 && (
-                    <span
-                        className="ml-auto text-[10px] text-[#848484] dark:text-[#666] tabular-nums"
-                        data-testid="commit-reviewed-count"
-                    >
-                        {reviewProgress.state.reviewedFiles.size}/{fileList.length} reviewed
-                    </span>
-                )}
-                {classification.state.error && (
-                    <span className="text-[10px] text-red-600 dark:text-red-400">
-                        {classification.state.error}
-                    </span>
-                )}
-                {/* Hunk nav + view toggle + panel buttons */}
-                <div className={`flex items-center${fileList.length > 0 ? '' : ' ml-auto'}`}>
-                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
-                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                    <button
-                        onClick={() => setSidebarOpen(o => !o)}
-                        title="Toggle comments"
-                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                        data-testid="toggle-comments-btn"
-                    >
-                        💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
-                    </button>
-                    <button
-                        onClick={toggleChat}
-                        title="Toggle AI chat"
-                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                        data-testid="toggle-chat-btn"
-                    >
-                        🤖
-                    </button>
-                    {!isPopOut && hash && (
-                        <button
-                            onClick={handlePopOut}
-                            title="Open in new window"
-                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                            data-testid="commit-popout-btn"
-                        >
-                            ↗️
-                        </button>
-                    )}
+                        {!isPopOut && hash && (
+                            <button
+                                onClick={handlePopOut}
+                                title="Open in new window"
+                                className="shrink-0 whitespace-nowrap text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                                data-testid="commit-popout-btn"
+                            >
+                                ↗️
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
             {/* Classification filter bar — visible when classification results are ready */}
