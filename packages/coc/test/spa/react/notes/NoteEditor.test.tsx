@@ -1370,6 +1370,114 @@ describe('NoteEditor', () => {
     });
 
     // ══════════════════════════════════════════════════════════════════════
+    // Two editors on the same note (main Notes tab + right-panel Notes tab)
+    // ══════════════════════════════════════════════════════════════════════
+
+    describe('two editors on the same note', () => {
+        // A tiny fake notes server shared by both editors: saves are rejected
+        // with 409 when the caller's mtime baseline is stale, like the real API.
+        let disk: { content: string; mtime: number };
+        const sharedIo = {
+            ...mockIo,
+            loadContent: vi.fn(async () => ({ content: disk.content, path: 'page.md', mtime: disk.mtime })),
+            saveContent: vi.fn(async (_ws: string, path: string, markdown: string, expectedMtime?: number) => {
+                if (expectedMtime !== undefined && expectedMtime !== disk.mtime) {
+                    throw Object.assign(new Error('mtime_mismatch'), { status: 409, currentContent: disk.content });
+                }
+                disk = { content: markdown, mtime: disk.mtime + 100 };
+                return { path, updated: true, mtime: disk.mtime };
+            }),
+        };
+
+        // What the server's file watcher broadcasts after any note write.
+        function broadcastNotesChanged() {
+            window.dispatchEvent(new CustomEvent('notes-changed', {
+                detail: { wsId: 'ws1', changedPaths: ['page.md'] },
+            }));
+        }
+
+        function sourceTextarea(view: string): HTMLTextAreaElement {
+            return within(screen.getByTestId(view)).getByTestId('note-source-container').querySelector('textarea')!;
+        }
+
+        async function flushPromises() {
+            for (let i = 0; i < 5; i++) await Promise.resolve();
+        }
+
+        async function renderBothInSourceMode() {
+            disk = { content: '# Original', mtime: 100 };
+            sharedIo.loadContent.mockClear();
+            sharedIo.saveContent.mockClear();
+            await act(async () => {
+                render(
+                    <>
+                        <div data-testid="view-a"><NoteEditor workspaceId="ws1" notePath="page.md" io={sharedIo} /></div>
+                        <div data-testid="view-b"><NoteEditor workspaceId="ws1" notePath="page.md" io={sharedIo} /></div>
+                    </>,
+                );
+            });
+            for (const view of ['view-a', 'view-b']) {
+                await act(async () => {
+                    within(screen.getByTestId(view)).getByTestId('note-mode-source').click();
+                });
+                await waitFor(() => expect(sourceTextarea(view).value).toBe('# Original'));
+            }
+            vi.useFakeTimers();
+        }
+
+        async function typeAndAutosave(view: string, text: string) {
+            fireEvent.change(sourceTextarea(view), { target: { value: text } });
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => { await flushPromises(); });
+        }
+
+        it('reloads the other clean editor after one editor saves', async () => {
+            await renderBothInSourceMode();
+
+            await typeAndAutosave('view-a', '# From A');
+            expect(disk).toEqual({ content: '# From A', mtime: 200 });
+
+            await act(async () => {
+                broadcastNotesChanged();
+                await flushPromises();
+            });
+
+            expect(sourceTextarea('view-b').value).toBe('# From A');
+            expect(screen.queryByTestId('note-conflict-banner')).toBeNull();
+
+            // B adopted the new mtime baseline, so its next save is not a conflict.
+            await typeAndAutosave('view-b', '# From B');
+            expect(disk).toEqual({ content: '# From B', mtime: 300 });
+            expect(screen.queryByTestId('note-conflict-banner')).toBeNull();
+        });
+
+        it('keeps a dirty editor\'s edits and shows the conflict banner instead of overwriting', async () => {
+            await renderBothInSourceMode();
+
+            await typeAndAutosave('view-a', '# From A');
+            expect(disk).toEqual({ content: '# From A', mtime: 200 });
+
+            // B has unsaved edits when the change broadcast arrives.
+            fireEvent.change(sourceTextarea('view-b'), { target: { value: '# B draft' } });
+            await act(async () => {
+                broadcastNotesChanged();
+                await flushPromises();
+            });
+            expect(sourceTextarea('view-b').value).toBe('# B draft');
+
+            // B's autosave carries the stale baseline and hits the 409 path.
+            await act(async () => { vi.advanceTimersByTime(1600); });
+            await act(async () => { await flushPromises(); });
+
+            expect(sharedIo.saveContent).toHaveBeenLastCalledWith('ws1', 'page.md', '# B draft', 100, undefined);
+            expect(disk).toEqual({ content: '# From A', mtime: 200 });
+            expect(within(screen.getByTestId('view-b')).getByTestId('note-conflict-banner')).toBeDefined();
+            expect(within(screen.getByTestId('view-a')).queryByTestId('note-conflict-banner')).toBeNull();
+            expect(sourceTextarea('view-b').value).toBe('# B draft');
+        });
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
     // Conflict resolution (Keep mine / Load disk)
     // ══════════════════════════════════════════════════════════════════════
 
